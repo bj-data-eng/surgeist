@@ -8,8 +8,8 @@ use crate::rule::CssSheet;
 use crate::rule::font_face::CssFontFaceDescriptors;
 use crate::rule::page::CssPageDeclarationBlock;
 use crate::source::{
-    CssDeclarationBlockParseReport, CssDecodedStylesheetInput, CssParseSource, CssUtf16InputError,
-    CssUtf16InputLimits,
+    CssDeclarationBlockParseReport, CssDecodedStylesheetInput, CssParseSource, CssSourceSnapshot,
+    CssUtf16InputError, CssUtf16InputLimits,
 };
 use std::sync::Arc;
 
@@ -210,8 +210,26 @@ impl CssParser {
         poll: impl FnMut() -> Result<(), E>,
     ) -> Result<CssParseReport<CssSheet>, CssUtf16InputError<E>> {
         crate::source::utf16_input::parse_utf16(original, limits, poll, |source| {
-            crate::parser::parse_sheet_snapshot(source, self.context)
+            self.sheet_of_snapshot(source)
         })
+    }
+
+    /// The report of [`Self::parse_sheet`] over a prepared snapshot.
+    pub(crate) fn sheet_of_snapshot(&self, source: &CssSourceSnapshot) -> CssParseReport<CssSheet> {
+        crate::parser::parse_sheet_snapshot(source, self.context)
+    }
+
+    /// The report of [`Self::parse_block_contents_utf16`] over a prepared snapshot.
+    pub(crate) fn block_contents_of_snapshot(
+        &self,
+        source: &CssSourceSnapshot,
+    ) -> CssDeclarationBlockParseReport {
+        let report =
+            crate::parser::declaration_block::parse_snapshot(source, self.limits, self.context);
+        CssDeclarationBlockParseReport::new(
+            CssParseSource::new(source.clone(), self.context),
+            report,
+        )
     }
 
     /// Parses block contents: a style attribute, CSSOM `cssText` or a raw declaration list.
@@ -282,12 +300,7 @@ impl CssParser {
         poll: impl FnMut() -> Result<(), E>,
     ) -> Result<CssDeclarationBlockParseReport, CssUtf16InputError<E>> {
         crate::source::utf16_input::parse_utf16(original, input_limits, poll, |source| {
-            let report =
-                crate::parser::declaration_block::parse_snapshot(source, self.limits, self.context);
-            CssDeclarationBlockParseReport::new(
-                CssParseSource::new(source.clone(), self.context),
-                report,
-            )
+            self.block_contents_of_snapshot(source)
         })
     }
 

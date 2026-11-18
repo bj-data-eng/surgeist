@@ -460,6 +460,7 @@ fn charged_volume(parse: impl FnOnce(&CssHostScope)) -> Vec<(&'static str, Optio
     let read = |dimension| usize::try_from(usage.work(dimension)).ok();
     vec![
         ("input units", read(CssWork::InputUnit)),
+        ("preparation steps", read(CssWork::PreparationStep)),
         ("documents", read(CssWork::Document)),
         ("components", read(CssWork::Component)),
         ("spelling bytes", read(CssWork::SpellingByte)),
@@ -488,6 +489,74 @@ fn accounted_cases(cases: &mut Vec<Case>) {
             count
         },
     ));
+
+    let units = utf16(&synthetic_sheet(1 << 20));
+    let defaults = CssUtf16InputLimits::default();
+    let accounted_units = move |host: &CssHostScope, units: &Arc<Vec<u16>>| {
+        CssParser::default()
+            .accounted(host)
+            .parse_sheet_utf16(Arc::clone(units), defaults, || Ok::<_, ()>(()))
+            .expect("a host without caps admits the charge")
+            .expect("the default limits admit the sheet")
+    };
+    let counts = charged_volume(|host| {
+        let _ = accounted_units(host, &units);
+    });
+    let (_, host) = bench_host(ProfileMode::Off);
+    cases.push(Case::new(
+        "parse_sheet_utf16 with a host, 1 MiB synthetic sheet",
+        Some(units.len()),
+        counts,
+        move || {
+            let report = accounted_units(&host, black_box(&units));
+            let count = report.syntax().rules().len() + report.diagnostics().len();
+            black_box(&report);
+            count
+        },
+    ));
+
+    {
+        let text = "color: red";
+        let short = utf16(text);
+        let plain = short.clone();
+        cases.push(Case::new(
+            format!("parse_block_contents_utf16, one declaration ({text})"),
+            Some(text.len()),
+            vec![("declarations", Some(1))],
+            move || {
+                let report = CssParser::default()
+                    .parse_block_contents_utf16(Arc::clone(black_box(&plain)), defaults, || {
+                        Ok::<_, ()>(())
+                    })
+                    .expect("the default limits admit the declaration");
+                let count = report.report().syntax().len() + report.report().diagnostics().len();
+                black_box(&report);
+                count
+            },
+        ));
+        let accounted_block = move |host: &CssHostScope, units: &Arc<Vec<u16>>| {
+            CssParser::default()
+                .accounted(host)
+                .parse_block_contents_utf16(Arc::clone(units), defaults, || Ok::<_, ()>(()))
+                .expect("a host without caps admits the charge")
+                .expect("the default limits admit the declaration")
+        };
+        let counts = charged_volume(|host| {
+            let _ = accounted_block(host, &short);
+        });
+        let (_, host) = bench_host(ProfileMode::Off);
+        cases.push(Case::new(
+            format!("parse_block_contents_utf16 with a host, one declaration ({text})"),
+            Some(text.len()),
+            counts,
+            move || {
+                let report = accounted_block(&host, black_box(&short));
+                let count = report.report().syntax().len() + report.report().diagnostics().len();
+                black_box(&report);
+                count
+            },
+        ));
+    }
 
     let off = ProfileMode::Off;
     let timed = ProfileMode::Summary { timing: true };
