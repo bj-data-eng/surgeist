@@ -467,6 +467,20 @@ fn charged_serialization(
     ]
 }
 
+/// What one colour call charges to a fresh host operation.
+fn charged_colour(resolve: impl FnOnce(&CssHostScope)) -> Vec<(&'static str, Option<usize>)> {
+    let (ledger, host) = bench_host(ProfileMode::Off);
+    resolve(&host);
+    let usage = ledger
+        .usage(ledger.root())
+        .expect("the root of the bench operation");
+    let read = |dimension| usize::try_from(usage.work(dimension)).ok();
+    vec![
+        ("input units", read(CssWork::ColorInputUnit)),
+        ("actions", read(CssWork::ColorAction)),
+    ]
+}
+
 /// What one call of `parse` charges to a fresh host operation.
 fn charged_volume(parse: impl FnOnce(&CssHostScope)) -> Vec<(&'static str, Option<usize>)> {
     let (ledger, host) = bench_host(ProfileMode::Off);
@@ -965,22 +979,28 @@ fn colour_cases(cases: &mut Vec<Case>) {
             },
         ));
         if kind == "ordinary" {
+            let accounted = move |host: &CssHostScope, limits| {
+                CssColorInput::Utf8(bytes)
+                    .accounted(host)
+                    .parse_used_color(
+                        CssColorGrammarRequest::WholeColor,
+                        facts,
+                        facts.identity(),
+                        limits,
+                    )
+                    .expect("a host without caps admits the charge")
+                    .expect("within limits")
+            };
+            let counts = charged_colour(|host| {
+                accounted(host, wide);
+            });
             let (_, host) = bench_host(ProfileMode::Off);
             cases.push(Case::new(
                 format!("parse_used_color with a host, {kind}: {text}"),
                 Some(text.len()),
-                vec![("input units", Some(text.len()))],
+                counts,
                 move || {
-                    let result = CssColorInput::Utf8(bytes)
-                        .accounted(&host)
-                        .parse_used_color(
-                            CssColorGrammarRequest::WholeColor,
-                            facts,
-                            facts.identity(),
-                            black_box(wide),
-                        )
-                        .expect("a host without caps admits the charge")
-                        .expect("within limits");
+                    let result = accounted(&host, black_box(wide));
                     usize::from(matches!(result.outcome(), CssColorOrdinaryOutcome::Used(_)))
                 },
             ));
@@ -1053,18 +1073,24 @@ fn colour_cases(cases: &mut Vec<Case>) {
             },
         ));
         if kind == "ordinary" {
-            let (_, host) = bench_host(ProfileMode::Off);
             let value = color.value();
+            let accounted = move |host: &CssHostScope, limits| {
+                value
+                    .accounted(host)
+                    .resolve(facts, facts.identity(), limits)
+                    .expect("a host without caps admits the charge")
+                    .expect("within limits")
+            };
+            let counts = charged_colour(|host| {
+                accounted(host, wide);
+            });
+            let (_, host) = bench_host(ProfileMode::Off);
             cases.push(Case::new(
                 format!("CssColor::resolve with a host, {kind}: {text}"),
                 Some(text.len()),
-                Vec::new(),
+                counts,
                 move || {
-                    let result = value
-                        .accounted(&host)
-                        .resolve(facts, facts.identity(), black_box(wide))
-                        .expect("a host without caps admits the charge")
-                        .expect("within limits");
+                    let result = accounted(&host, black_box(wide));
                     usize::from(matches!(
                         result.outcome(),
                         surgeist_css::color::CssAuthoredColorOutcome::Used(_)
