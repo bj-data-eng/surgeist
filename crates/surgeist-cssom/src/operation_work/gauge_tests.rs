@@ -137,3 +137,25 @@ fn two_stores_below_one_host_hold_their_sum() {
     drop(second);
     assert_eq!(held(&ledger), [0, 0, 0]);
 }
+
+#[test]
+fn a_commit_inside_an_object_operation_holds_the_size_it_publishes() {
+    let (ledger, host) = open_host();
+    let (mut store, sheet) = with_sheet(CssomLimits::default(), Some(host)).unwrap();
+    let before = held(&ledger);
+    let _ = CssStyleSheet::from_state(&store.state, &sheet)
+        .unwrap()
+        .insert_rule(
+            &mut store,
+            ".e { color: blue }",
+            Some(0),
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+    let census =
+        crate::state_limits::Census::of(&store.state, &CssomLimits::default(), std::iter::empty())
+            .unwrap()
+            .retained();
+    assert_eq!(super::Retained(held(&ledger)), census);
+    assert!(held(&ledger)[1] > before[1]);
+}
