@@ -1,7 +1,11 @@
-//! Sheets, rules and rule graphs whose serialization is charged to a host's
-//! ledger scope.
+//! Sheets, rules and rule graphs whose serialization and normalization are
+//! charged to a host's ledger scope.
 
-use crate::accounting::{CssAccount, CssAccountingError, CssFront, CssHostScope};
+use crate::accounting::{
+    CssAccount, CssAccountingError, CssChange, CssFront, CssHostScope, CssWork,
+};
+use crate::normalize::normalization::NormalizationWork;
+use crate::normalize::{CssNormalizationError, CssNormalizationLimits, CssNormalizedSheet};
 use crate::rule::{CssRule, CssSheet, CssStyleAncestor};
 use crate::selector::CssNamespaceContext;
 use crate::serialization::specified_serialization::SerializationWork;
@@ -26,6 +30,14 @@ use crate::serialization::{
 /// A call that a limit refuses is charged the work admitted before the
 /// refusal and returns the refusal inside `Ok`. Shortest-form comparisons
 /// that a serialization makes run outside its limits and are not charged.
+///
+/// [`normalize`](CssAccounted::normalize) on a sheet charges the
+/// `css-normalize` scope instead, with
+/// [`CssWork::NormalizedRule`](crate::accounting::CssWork::NormalizedRule),
+/// [`CssWork::NormalizedDeclaration`](crate::accounting::CssWork::NormalizedDeclaration)
+/// and [`CssWork::NormalizedContribution`](crate::accounting::CssWork::NormalizedContribution):
+/// the rules, declarations and longhand contributions the normalizer admitted
+/// against its limits, inside one phase of that scope.
 ///
 /// Serialization of a single value or declaration is not charged on its own:
 /// its own work is a few hundred nanoseconds, and one charge would add a large
@@ -128,6 +140,25 @@ impl CssAccounted<'_, &CssSheet> {
         let sheet = self.value;
         self.charged(|| sheet.serialize_cssom_counted(limits))
     }
+
+    /// [`CssSheet::normalize`], charged to the host.
+    ///
+    /// # Errors
+    ///
+    /// A [`CssAccountingError`] when the host's operation does not admit the
+    /// charge. The sheet's own refusal is returned inside `Ok`, and is
+    /// charged the rules, declarations and contributions admitted before it.
+    pub fn normalize(
+        &self,
+        limits: CssNormalizationLimits,
+    ) -> Result<Result<CssNormalizedSheet, CssNormalizationError>, CssAccountingError> {
+        let sheet = self.value;
+        self.charged_to(
+            CssFront::Normalization,
+            || sheet.normalize_counted(limits),
+            normalization_changes,
+        )
+    }
 }
 
 impl CssAccounted<'_, &CssRule> {
@@ -203,17 +234,39 @@ impl<T> CssAccounted<'_, T> {
         &self,
         serialize: impl FnOnce() -> (Result<R, E>, SerializationWork),
     ) -> Result<Result<R, E>, CssAccountingError> {
-        let (result, work) = self.account.timed(CssFront::Serialization, serialize)?;
-        self.account
-            .charge(CssFront::Serialization, &serialization_changes(work))?;
+        self.charged_to(CssFront::Serialization, serialize, serialization_changes)
+    }
+
+    /// Runs `run` inside a phase of the scope of `front`, then charges that
+    /// scope the changes of the work it admitted, whether it succeeded or not.
+    fn charged_to<R, E, W>(
+        &self,
+        front: CssFront,
+        run: impl FnOnce() -> (Result<R, E>, W),
+        changes: impl FnOnce(W) -> [CssChange; 3],
+    ) -> Result<Result<R, E>, CssAccountingError> {
+        let (result, work) = self.account.timed(front, run)?;
+        self.account.charge(front, &changes(work))?;
         Ok(result)
     }
 }
 
+/// A count as a ledger amount. A count beyond `u64` is charged as `u64::MAX`.
+fn amount(count: usize) -> u64 {
+    u64::try_from(count).unwrap_or(u64::MAX)
+}
+
+/// The changes that charge `work` to the normalization scope.
+fn normalization_changes(work: NormalizationWork) -> [CssChange; 3] {
+    [
+        CssChange::Work(CssWork::NormalizedRule, amount(work.rules)),
+        CssChange::Work(CssWork::NormalizedDeclaration, amount(work.declarations)),
+        CssChange::Work(CssWork::NormalizedContribution, amount(work.contributions)),
+    ]
+}
+
 /// The changes that charge `work` to the serialization scope.
-fn serialization_changes(work: SerializationWork) -> [crate::accounting::CssChange; 3] {
-    use crate::accounting::{CssChange, CssWork};
-    let amount = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
+fn serialization_changes(work: SerializationWork) -> [CssChange; 3] {
     [
         CssChange::Work(CssWork::SerializedInputNode, amount(work.input_nodes)),
         CssChange::Work(
