@@ -384,3 +384,83 @@ fn entry_sources_keep_a_session_from_reusing_subgrid_computations() {
     lane::<f32>();
     lane::<f64>();
 }
+
+// A hidden write of a node removes the stores the node staged before it and a store staged after
+// it stays, so a compaction that keeps the last store and the last geometry write of the node
+// must not let an earlier store outlive the hidden write.
+#[test]
+fn a_hidden_write_in_a_capture_replays_to_the_same_stores_and_geometry() {
+    fn lane<S: LayoutScalar>() {
+        let tree = tree::<S>(false);
+        let flow = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            Vec::new(),
+            crate::WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let session = || ComputeSession::with_flow_unobserved(&flow, flow.invalidated.clone());
+        let hidden = LayoutOutputEntryOf::hidden_unrounded(2, crate::SourceIndex::ZERO);
+        let visible = |width: f64| {
+            LayoutOutputEntryOf::ordinary_unrounded(
+                2,
+                crate::output::NormalGeometryOf::metadata(
+                    Point::ZERO,
+                    Size::splat(S::from_f64(width)),
+                ),
+                NodeOutputOf::with_source_index(crate::SourceIndex::ZERO),
+            )
+        };
+        for (label, hidden_after_store) in
+            [("store then hidden", true), ("hidden then store", false)]
+        {
+            let mut original = session();
+            let mut replayed = session();
+            let start = original.begin_effect_capture(crate::engine::CaptureKind::Preparation);
+            if hidden_after_store {
+                original
+                    .compute_child(2, input(RunMode::PerformLayout))
+                    .unwrap();
+                original.set_unrounded(hidden);
+                original.set_unrounded(visible(7.0));
+            } else {
+                original.set_unrounded(hidden);
+                original
+                    .compute_child(2, input(RunMode::PerformLayout))
+                    .unwrap();
+                original.set_unrounded(visible(7.0));
+            }
+            let effects = original
+                .end_effect_capture(start)
+                .unwrap_or_else(|| panic!("{label}: the capture is reusable"));
+            assert_eq!(
+                original.cache.stores.iter().any(|entry| entry.node() == 2),
+                !hidden_after_store,
+                "{label}: the stores of the node after its hidden write"
+            );
+            replayed.replay_effects(&effects).unwrap();
+            assert_eq!(
+                replayed
+                    .cache
+                    .stores
+                    .iter()
+                    .map(|entry| (entry.node(), *entry.input(), entry.context()))
+                    .collect::<Vec<_>>(),
+                original
+                    .cache
+                    .stores
+                    .iter()
+                    .map(|entry| (entry.node(), *entry.input(), entry.context()))
+                    .collect::<Vec<_>>(),
+                "{label}: the replayed stores"
+            );
+            assert_eq!(
+                replayed.outputs.unrounded, original.outputs.unrounded,
+                "{label}: the replayed geometry"
+            );
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}

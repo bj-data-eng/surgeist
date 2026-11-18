@@ -793,3 +793,60 @@ fn subgrid_wrappers_placing_text_while_preparing_lay_out_the_same_without_reuse(
         .join()
         .unwrap();
 }
+
+// A `display: none` item stages its geometry while its Grid places its items, which a reused
+// computation of the Grid must stage again as the repeated one would, so a hidden item does not
+// stop the reuse: the levels that size their own rows from a baseline-aligned item skip the
+// baseline refreshes they skip without the hidden items, and lay out as they do with every
+// computation repeated.
+#[test]
+fn hidden_items_in_subgrid_levels_leave_the_baseline_refresh_skip_on() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(|| {
+            let depth = 3;
+            let document = |hidden: bool| {
+                let (mut tree, bindings, wrapping) =
+                    levels_document::<f64>(depth, Content::BaselineText, 140.0);
+                if hidden {
+                    for level in 1..=depth {
+                        let item = 3 * depth + level;
+                        let mut children = if level < depth { vec![level + 1] } else { Vec::new() };
+                        children.extend([depth + level, item]);
+                        tree = tree
+                            .style(
+                                item,
+                                NodeInputOf {
+                                    display: Display::None,
+                                    ..NodeInputOf::default()
+                                },
+                            )
+                            .children(item, [])
+                            .children(level, children);
+                    }
+                }
+                complete_flow(&tree, bindings, wrapping, 140.0)
+            };
+            take_subgrid_work();
+            let plain = document(false);
+            let plain_work = take_subgrid_work();
+            assert!(!plain.starts_with("refused"), "the document lays out: {plain:.300}");
+            let reused = document(true);
+            let reused_work = take_subgrid_work();
+            let repeated = with_subgrid_reuse_disabled(|| document(true));
+            let repeated_work = take_subgrid_work();
+            assert!(!reused.starts_with("refused"), "the document lays out: {reused:.300}");
+            assert!(reused == repeated, "the hidden items lay out the same with reuse");
+            assert!(
+                repeated_work.baseline_refreshes > plain_work.baseline_refreshes,
+                "the baseline refreshes are what the reuse skips: {plain_work:?} {repeated_work:?}"
+            );
+            assert_eq!(
+                reused_work.baseline_refreshes, plain_work.baseline_refreshes,
+                "hidden items leave the baseline refresh skip on: {reused_work:?} against {plain_work:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

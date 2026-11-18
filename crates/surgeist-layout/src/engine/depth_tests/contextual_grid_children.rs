@@ -758,3 +758,59 @@ fn subgrid_chain_effects_replayed_grow_at_most_quadratically_with_depth() {
         );
     }
 }
+
+// The chain with a `display: none` item in every Grid of it. A hidden item stages its geometry
+// during final placement, and a hidden write removes the stores its node staged before it.
+fn hidden_item_subgrid_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    let mut tree = intrinsic_subgrid_chain::<S>(depth);
+    for level in 0..=depth {
+        let hidden = depth + 3 + level;
+        tree = tree.style(
+            hidden,
+            NodeInputOf {
+                display: Display::None,
+                ..NodeInputOf::default()
+            },
+        );
+        let items: Vec<u32> = if level < depth {
+            vec![level + 1, hidden]
+        } else {
+            vec![depth + 1, depth + 2, hidden]
+        };
+        tree = tree.children(level, items);
+    }
+    tree
+}
+
+// A hidden item does not stop a subgrid computation from being reused, so the chain with a
+// hidden item in every Grid prepares as many wrappers as the chain without, and lays out as it
+// does with every computation repeated.
+#[test]
+fn hidden_items_in_a_subgrid_chain_leave_the_reuse_on_and_the_layout_the_same() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(|| {
+            let layout = |tree: &PublicLayoutTreeOf<f64>| {
+                take_subgrid_work();
+                let batch = compute_layout(tree, 0, standalone()).expect("hidden item chain");
+                (format!("{batch:?}"), take_subgrid_work())
+            };
+            let shallow = hidden_item_subgrid_chain::<f64>(3);
+            let (reused, _) = layout(&shallow);
+            let (repeated, _) =
+                crate::grid::subgrid_work::with_subgrid_reuse_disabled(|| layout(&shallow));
+            assert!(
+                reused == repeated,
+                "the hidden items lay out the same with reuse"
+            );
+            let (_, hidden) = layout(&hidden_item_subgrid_chain::<f64>(10));
+            let (_, plain) = layout(&intrinsic_subgrid_chain::<f64>(10));
+            assert_eq!(
+                hidden.wrapper_preparations, plain.wrapper_preparations,
+                "hidden items add no wrapper preparation: {hidden:?} against {plain:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
