@@ -1,9 +1,10 @@
-//! Every public item of the runtime is reachable at exactly one module path.
+//! Every public item of the runtime is reachable at its module path.
 //!
 //! Each item is imported once by its module path; the root holds only `Runtime`, `DomSession` and
-//! `crate_name`. A missing or misplaced export fails to compile. The feature section covers the
-//! `document_scripting` surface, which the default audit does not show.
-#![allow(unused_imports)]
+//! `crate_name`. A missing or misplaced export fails to compile. That an item has no second path is
+//! shown by the API audit, not by this file. The feature section covers the `document_scripting`
+//! surface, which the default audit does not show.
+#![expect(unused_imports, reason = "the imports are the assertion")]
 #![forbid(unsafe_code)]
 
 use surgeist_runtime::{
