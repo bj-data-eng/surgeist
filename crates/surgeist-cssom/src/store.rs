@@ -36,6 +36,15 @@ pub struct CssomStore {
     pub(crate) updating: Option<CssomBlockId>,
     /// The host the store's operations charge, if any.
     pub(crate) host: Option<Arc<CssHostScope>>,
+    /// The size of the published state, which the store holds in its host's
+    /// gauges; it is kept without a host too, and then held nowhere.
+    pub(crate) retained: crate::operation_work::Retained,
+}
+impl Drop for CssomStore {
+    /// Releases what the store holds in its host's gauges.
+    fn drop(&mut self) {
+        crate::operation_work::release_all(self.host.as_deref(), self.retained);
+    }
 }
 impl CssomStore {
     pub fn new(limits: CssomLimits, context: CssomContext) -> Result<Self, CssomError> {
@@ -65,6 +74,20 @@ impl CssomStore {
     /// the cancellation's charge. The parse of a replacement job, snapshots
     /// and captures run outside the store and are not charged. This
     /// constructor is itself charged.
+    ///
+    /// The store also holds, in the scope's gauges, the size of the state it
+    /// has published:
+    /// [`CssResource::RetainedObject`](crate::accounting::CssResource::RetainedObject),
+    /// [`CssResource::RetainedEntry`](crate::accounting::CssResource::RetainedEntry)
+    /// and
+    /// [`CssResource::RetainedStringByte`](crate::accounting::CssResource::RetainedStringByte),
+    /// the figures `max_objects`, `max_entries` and `max_string_bytes` are
+    /// checked against. A commit acquires the increases in the same batch as
+    /// its work, before it publishes, so a cap on any of them refuses the commit;
+    /// publishing releases the decreases, a prepared commit dropped
+    /// unpublished releases its increases, and dropping the store releases
+    /// everything it holds. Pending replacement inputs, batches, snapshots
+    /// and captures are not part of the holding.
     ///
     /// # Errors
     ///
@@ -109,9 +132,18 @@ impl CssomStore {
             media: crate::shared_table::SharedTable::new(),
             maps: crate::shared_table::SharedTable::new(),
         };
-        crate::operation_work::charged(state.owner.key(), host.as_deref(), || {
-            state.check_limits(&limits)
-        })?;
+        let mut retained = crate::operation_work::Retained::default();
+        let size = crate::operation_work::charged_before_publication(
+            state.owner.key(),
+            host.as_deref(),
+            || {
+                crate::state_limits::Census::of(&state, &limits, std::iter::empty())
+                    .map(|census| census.retained())
+            },
+            |size| retained.changes(*size, true),
+        )?;
+        crate::operation_work::Acquisition::acquired(host.as_ref(), retained, size)
+            .publish(&mut retained);
         Ok(Self {
             state: Arc::new(state),
             limits,
@@ -121,6 +153,7 @@ impl CssomStore {
             next_effect: 1,
             updating: None,
             host,
+            retained,
         })
     }
     pub fn snapshot(&self) -> CssomSnapshot {

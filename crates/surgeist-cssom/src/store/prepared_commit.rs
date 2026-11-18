@@ -32,6 +32,9 @@ pub struct CssomPreparedCommit<'store> {
     terminal: Option<OccupiedEntry<'store, CssomSheetId, PendingReplacement>>,
     output: CssomCommit,
     effect_successor: u64,
+    retained: &'store mut crate::operation_work::Retained,
+    // The gauge increases this preparation acquired from the store's host.
+    acquisition: crate::operation_work::Acquisition,
 }
 impl fmt::Debug for CssomPreparedCommit<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -101,7 +104,10 @@ impl CssomPreparedCommit<'_> {
             terminal,
             output,
             effect_successor,
+            retained,
+            acquisition,
         } = self;
+        acquisition.publish(retained);
         let mut retirement = CssomCommitRetirement {
             _state: None,
             _evicted_summary: None,
@@ -142,6 +148,8 @@ impl CssomPreparedSheet<'_> {
 }
 
 struct Ready {
+    /// The size of the state the commit publishes.
+    retained: crate::operation_work::Retained,
     successor: Option<Arc<State>>,
     history_summary: Option<CssomChangeSummary>,
     terminal_sheet: Option<CssomSheetId>,
@@ -162,17 +170,23 @@ impl CssomStore {
     ) -> Result<CssomPreparedCommit<'_>, CssomError> {
         // This function boundary disposes unused batch/scratch before lending
         // disjoint publication fields. Only fully ready output crosses it.
-        let (owner, host) = (self.state.owner.key(), self.host.clone());
-        let ready =
-            crate::operation_work::charged_before_publication(owner, host.as_deref(), || {
-                prepare_data(self, batch)
-            })?;
+        let (owner, host, held) = (self.state.owner.key(), self.host.clone(), self.retained);
+        // The gauge increases are acquired with the work, before anything can publish.
+        let ready = crate::operation_work::charged_before_publication(
+            owner,
+            host.as_deref(),
+            || prepare_data(self, batch),
+            |ready: &Ready| held.changes(ready.retained, true),
+        )?;
+        let acquisition =
+            crate::operation_work::Acquisition::acquired(host.as_ref(), held, ready.retained);
         let Self {
             state,
             history,
             pending_replacements,
             next_effect,
             limits,
+            retained,
             ..
         } = self;
         let terminal = ready
@@ -193,6 +207,8 @@ impl CssomStore {
             terminal,
             output: ready.output,
             effect_successor: ready.effect_successor,
+            retained,
+            acquisition,
         })
     }
 }
@@ -212,13 +228,19 @@ fn prepare_data(store: &mut CssomStore, mut batch: CssomBatch) -> Result<Ready, 
     // Only the selected rows cross the publication boundary.
     batch.discard_media_restorations();
     let reserved = store.replacement_reservations(batch.terminal_replacement.as_ref())?;
-    batch
-        .staged
-        .check_limits(&store.replacement_limits(reserved)?)?;
+    let retained = crate::state_limits::Census::of(
+        &batch.staged,
+        &store.replacement_limits(reserved)?,
+        std::iter::empty(),
+    )?
+    .retained();
     if !batch.changed() {
         let (effects, effect_successor) =
             store.reserve_owner_effects(&batch, &store.state.revision)?;
         return Ok(Ready {
+            // An unchanged commit publishes nothing, so the holding stays that
+            // of the published state.
+            retained: store.retained,
             successor: None,
             history_summary: None,
             terminal_sheet: None,
@@ -290,6 +312,7 @@ fn prepare_data(store: &mut CssomStore, mut batch: CssomBatch) -> Result<Ready, 
         .terminal_replacement
         .map(|token| token.sheet().clone());
     Ok(Ready {
+        retained,
         successor: Some(next),
         history_summary,
         terminal_sheet,

@@ -584,8 +584,13 @@ replacement's commit and the commit that ends it, the replacement stays pending
 until a cancellation the host admits. A limit refusal is charged the work done
 before it. An operation of another store run from a resolver callback is charged
 to that store's host, or to none. The parse of a replacement job, snapshots and
-captures are not charged. The limits stay local checks with or without a host,
-and a store built with `CssomStore::new` makes no ledger call.
+captures are not charged. The store also holds, in the scope's gauges, the
+objects, entries and string bytes of the state it has published (the figures
+`max_objects`, `max_entries` and `max_string_bytes` are checked against): a commit
+acquires the increases with its work before it publishes, publishing releases
+the decreases, and dropping the store releases its holding. The limits stay local
+checks with or without a host, and a store built with `CssomStore::new` makes no
+ledger call.
 
 Run the [source declaration consumer](examples/declaration_consumer.rs) for supplied
 usable support, source edits and owning old/new captures. Run the

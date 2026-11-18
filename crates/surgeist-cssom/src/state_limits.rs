@@ -337,6 +337,8 @@ impl Totals {
 pub(crate) struct Census {
     totals: Totals,
     sources: CssSourceRetention<'static>,
+    /// The objects of the state, the state itself included.
+    objects: usize,
 }
 
 /// What adoption has inserted into a state, and the entries it has added to
@@ -444,9 +446,10 @@ impl Census {
     ) -> Result<Self, CssomError> {
         let mut totals = Totals::new(state.sheet_order.len());
         let mut steps = 0;
+        let mut objects = 0;
         let census = (|| {
             state.check_contexts(limits)?;
-            state.check_object_count(limits)?;
+            objects = state.check_object_count(limits)?;
             state.add_totals(&mut totals, limits)?;
             for media in displaced.clone() {
                 totals.add_entries(media.queries().len());
@@ -457,7 +460,20 @@ impl Census {
             Ok(sources)
         })();
         crate::operation_work::census(totals.examined, totals.counted, steps);
-        census.map(|sources| Self { totals, sources })
+        census.map(|sources| Self {
+            totals,
+            sources,
+            objects,
+        })
+    }
+
+    /// The size of the state this census accounted for, which its limits admitted.
+    pub(crate) fn retained(&self) -> crate::operation_work::Retained {
+        crate::operation_work::Retained::new(
+            self.objects,
+            self.totals.entries.unwrap_or(usize::MAX),
+            self.totals.strings.unwrap_or(usize::MAX),
+        )
     }
 
     /// Accounts for what adoption inserted into `state` since this census
@@ -500,7 +516,7 @@ impl Census {
         members: usize,
         limits: &CssomLimits,
     ) -> Result<Extension, CssomError> {
-        state.check_object_count(limits)?;
+        self.objects = state.check_object_count(limits)?;
         for media in &resolved.media {
             self.totals.media(media);
         }
@@ -651,7 +667,7 @@ impl State {
 
     /// The state itself and every sheet, rule, block, list, media list and
     /// feature map it holds, detached ones included.
-    fn check_object_count(&self, limits: &CssomLimits) -> Result<(), CssomError> {
+    fn check_object_count(&self, limits: &CssomLimits) -> Result<usize, CssomError> {
         let objects = 1usize
             .checked_add(self.sheets.len())
             .and_then(|v| v.checked_add(self.rules.len()))
@@ -659,7 +675,8 @@ impl State {
             .and_then(|v| v.checked_add(self.lists.len()))
             .and_then(|v| v.checked_add(self.media.len()))
             .and_then(|v| v.checked_add(self.maps.len()));
-        limit(objects, limits.max_objects, "objects")
+        limit(objects, limits.max_objects, "objects")?;
+        Ok(objects.unwrap_or(usize::MAX))
     }
 
     /// Adds the entries and string bytes of the whole state to `totals`,
