@@ -201,7 +201,6 @@ impl<Node: Copy, S: LayoutScalar> EffectLog<Node, S> {
     /// Opens a capture and returns where its writes begin.
     pub(super) fn begin(&mut self, kind: CaptureKind) -> usize {
         self.open += 1;
-
         if !self.broken {
             if self.captures.try_reserve(1).is_ok() {
                 self.captures.push(Capture {

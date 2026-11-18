@@ -2362,8 +2362,10 @@ where
         frame_checkpoint,
         leaf_checkpoint,
     };
-    let begun = WrapperLevel::begin::<Tree, M>(tree, node, request.as_input())?;
+    // The slot is reserved before the level begins, because a beginning level may open a
+    // preparation capture that only a pushed frame closes.
     frames.try_reserve(1).map_err(|_| allocation_error(node))?;
+    let begun = WrapperLevel::begin::<Tree, M>(tree, node, request.as_input())?;
     match begun {
         LevelBegun::Empty => {
             leave_empty_wrapper::<Tree, M>(frames, folds, outer, node, tail, fold_slot)?;
