@@ -549,7 +549,7 @@ fn transform_errors_state_their_cause() {
                     range: Range::new(5, 9),
                     text_len: 7,
                 },
-                "text-node range 5..9 is reversed or extends beyond the node's 7 code units",
+                "text-node range 5..9 is reversed or extends beyond the node's UTF-16 length 7",
             ),
             (
                 E::TextNodeMismatch { origin: 2 },
@@ -669,31 +669,31 @@ fn range_fragment_errors_name_the_range_or_unit() {
                 E::OutsidePlacement {
                     aggregate: Range::new(10, 12),
                 },
-                "source range 10..12 lies outside the source covered by the placement",
+                "aggregate range 10..12 lies outside the source the placement covers",
             ),
             (
                 E::MissingOriginalMapping {
                     aggregate: Range::new(3, 5),
                 },
-                "the placement has no original mapping for source range 3..5",
+                "the placement has no original mapping for aggregate range 3..5",
             ),
             (
                 E::AmbiguousOriginalMapping {
                     aggregate: Range::new(3, 5),
                 },
-                "source range 3..5 has more than one original mapping",
+                "the original mappings of aggregate range 3..5 overlap one another",
             ),
             (
                 E::MissingUnitGeometry { line: 1, unit: 2 },
-                "unit 2 of line 1 has no geometry for the source range",
+                "grapheme group 2 of line 1 has no geometry for the requested range",
             ),
             (
                 E::UnsupportedPartition { line: 1, unit: 2 },
-                "unit 2 of line 1 cannot be partitioned for the source range",
+                "grapheme group 2 of line 1 cannot be partitioned for the requested range",
             ),
             (
                 E::MissingFontMetrics { line: 1, unit: 2 },
-                "unit 2 of line 1 has no retained font metrics",
+                "no font metrics are available for grapheme group 2 of line 1",
             ),
             (
                 E::MissingCellReference {
@@ -766,7 +766,7 @@ fn scope_alignment_errors_state_their_cause() {
                     required: 50,
                     limit: 40,
                 },
-                "a scope-alignment resource limit of 40 cannot admit the required 50",
+                "the scope-alignment limit on records (40) cannot admit the required 50",
             ),
             (
                 E::Overflow {
@@ -780,14 +780,17 @@ fn scope_alignment_errors_state_their_cause() {
                 },
                 "reserving scope-alignment storage was refused",
             ),
-            (E::MissingCapture, "the operation has no contextual capture"),
+            (
+                E::MissingCapture,
+                "a contextual capture, parent scope or scope-alignment custody that the operation requires is missing or unavailable",
+            ),
             (
                 E::ForeignCapture,
-                "a supplied handle belongs to a different capture",
+                "a supplied scope, line or product belongs to a different capture or preparation",
             ),
             (
                 E::WrongDomain,
-                "a scope or computed cause belongs to a different content domain than the operation's",
+                "a scope, computed cause or scope tree does not fit the content domain the operation requires",
             ),
             (
                 E::MissingBoundary { scope: 3 },
@@ -803,15 +806,15 @@ fn scope_alignment_errors_state_their_cause() {
             ),
             (
                 E::MissingMetrics { scope: 3 },
-                "this preparation did not retain the metrics demanded for scope 3",
+                "scope 3 lacks the metrics the operation demands",
             ),
             (
                 E::UnsupportedReference { scope: 3 },
-                "the supplied font reference for scope 3 cannot be used by the operation's frame",
+                "scope 3 has a font reference, orientation or baseline that the operation's frame cannot use",
             ),
             (
                 E::UnrepresentedOwnership { scope: 3 },
-                "content custody cannot represent the frame requested for scope 3",
+                "content custody cannot represent the requested frame (scope 3; 0 when no scope applies)",
             ),
             (
                 E::UnpartitionableUnit { scope: 3 },
@@ -827,7 +830,7 @@ fn scope_alignment_errors_state_their_cause() {
             ),
             (
                 E::MissingAllocation { scope: 3 },
-                "scope 3 has no allocation",
+                "no allocation or allocation limits were supplied for scope 3",
             ),
             (
                 E::IncompatibleFrames {
@@ -838,7 +841,7 @@ fn scope_alignment_errors_state_their_cause() {
             ),
             (
                 E::BoundaryMismatch { scope: 3 },
-                "late alignment disagrees with the captured early classification of scope 3",
+                "what was supplied for scope 3 disagrees with its captured formatting or owner",
             ),
         ],
         index_alignment,

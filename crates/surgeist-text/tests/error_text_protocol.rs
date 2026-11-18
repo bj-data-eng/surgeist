@@ -109,7 +109,7 @@ fn protocol_errors_state_their_cause() {
         vec![
             (
                 E::InvalidSemanticWindow,
-                "the request is invalid for its issued semantic window",
+                "the semantic window cannot be observed for this request and preparation",
             ),
             (
                 E::InvalidSemanticAtomic { occurrence: 3 },
@@ -117,7 +117,7 @@ fn protocol_errors_state_their_cause() {
             ),
             (
                 E::InlineBoxFragmentation(InlineBoxFragmentationError::InvalidIncidence),
-                "the inline-box fragment request is invalid",
+                "the inline-box fragmentation is invalid",
             ),
             (
                 E::InlineBoxEdge(InlineBoxEdgeError::MissingCapture),
@@ -138,7 +138,7 @@ fn protocol_errors_state_their_cause() {
                 E::WrappingScopeQuery {
                     reason: WrappingScopeQueryError::NonInlineScope,
                 },
-                "the wrapping scope query is invalid",
+                "the wrapping scope or incidence query is invalid",
             ),
             (E::InvalidMeasurementFlow, "the measurement flow is invalid"),
             (
@@ -147,7 +147,7 @@ fn protocol_errors_state_their_cause() {
             ),
             (
                 E::InvalidWordPortion,
-                "the word portion is invalid for this preparation",
+                "the word portion, or the presentation boundary behind the request, is invalid",
             ),
             (
                 E::MeasurementNotPlaceable,
@@ -198,7 +198,7 @@ fn protocol_errors_state_their_cause() {
             ),
             (
                 E::ForeignFinalizedLine { line: 2 },
-                "the finalized line 2 belongs to a different preparation or placement",
+                "finalized line or receipt 2 belongs to a different preparation or placement",
             ),
             (
                 E::InvalidOriginRange {
@@ -221,7 +221,7 @@ fn protocol_errors_state_their_cause() {
                     expected: 5,
                     actual: 7,
                 },
-                "the origins leave the source incompletely covered: position 5 was expected but 7 was found",
+                "the origins do not cover the source contiguously: position 5 was expected but 7 was found",
             ),
             (
                 E::MissingConnection {
@@ -243,7 +243,7 @@ fn protocol_errors_state_their_cause() {
             ),
             (
                 E::InvalidBoundaryPolicy { policy: 2, at: 6 },
-                "boundary policy 2 at 6 is invalid",
+                "a boundary policy is invalid or missing (policy 2, location 6)",
             ),
             (
                 E::DuplicateReplacement {
@@ -257,7 +257,7 @@ fn protocol_errors_state_their_cause() {
                     alternative: 3,
                     source: Range::new(2, 4),
                 },
-                "replacement 3 does not describe a valid source range 2..4 ending at its insertion anchor",
+                "replacement 3 does not match its defining soft hyphen or discretionary break, its origin, or its insertion anchor (source range 2..4)",
             ),
             (
                 E::InvalidBoundaryRange {
@@ -265,11 +265,11 @@ fn protocol_errors_state_their_cause() {
                     end: 9,
                     participants: 5,
                 },
-                "boundaries 2 to 9 are not a valid range in this preparation of 5 participants",
+                "boundaries 2 to 9 are not a valid range in this preparation (participant count 5)",
             ),
             (
                 E::ParticipantMismatch { position: 4 },
-                "position 4 does not match the participants issued for the request",
+                "index 4 does not match the participants issued for the request",
             ),
             (
                 E::MissingAtomic { occurrence: 3 },
@@ -345,13 +345,13 @@ fn protocol_errors_state_their_cause() {
                 E::UnsupportedContext {
                     field: ProtocolContextField::TabStops,
                 },
-                "the line context field tab stops is not supported",
+                "the context field tab stops is not supported",
             ),
             (
                 E::MismatchedContext {
                     field: ProtocolContextField::BaseDirection,
                 },
-                "the line context field base direction is inconsistent with the prepared text or the request",
+                "the context field base direction is inconsistent with the prepared text or the request",
             ),
             (
                 E::InvalidAtomicGeometry { occurrence: 3 },
@@ -403,7 +403,7 @@ fn protocol_errors_state_their_cause() {
             ),
             (
                 E::UnexpectedBoundaryContext { occurrence: 3 },
-                "control 3 was not demanded and cannot take a boundary context",
+                "the boundary context for control 3 was not demanded, or was supplied out of order",
             ),
             (
                 E::DuplicateControl { occurrence: 3 },
@@ -454,7 +454,7 @@ fn protocol_errors_state_their_cause() {
             ),
             (
                 E::IncompleteLineCoverage { line: 2 },
-                "line coverage is incomplete at line 2",
+                "the lines do not cover the content contiguously at line 2",
             ),
             (
                 E::DuplicateLine { line: 2 },
@@ -503,10 +503,7 @@ fn protocol_wrappers_report_their_reason_from_source() {
     let fragmentation = InlineBoxFragmentationError::DifferentBody;
     let outer = ProtocolError::InlineBoxFragmentation(fragmentation);
     check_wrapper(&outer, &fragmentation);
-    assert_eq!(
-        outer.to_string(),
-        "the inline-box fragment request is invalid"
-    );
+    assert_eq!(outer.to_string(), "the inline-box fragmentation is invalid");
     assert_eq!(
         std::error::Error::source(&outer).unwrap().to_string(),
         "the fragments belong to different bodies"
@@ -527,7 +524,10 @@ fn protocol_wrappers_report_their_reason_from_source() {
     let scope = WrappingScopeQueryError::ForeignCapture;
     let outer = ProtocolError::WrappingScopeQuery { reason: scope };
     check_wrapper(&outer, &scope);
-    assert_eq!(outer.to_string(), "the wrapping scope query is invalid");
+    assert_eq!(
+        outer.to_string(),
+        "the wrapping scope or incidence query is invalid"
+    );
     assert_eq!(
         std::error::Error::source(&outer).unwrap().to_string(),
         "the scope belongs to a different capture"
@@ -622,12 +622,12 @@ fn every_context_field_has_its_own_name_in_a_message() {
     for (field, name) in names {
         assert_eq!(
             ProtocolError::UnsupportedContext { field }.to_string(),
-            format!("the line context field {name} is not supported")
+            format!("the context field {name} is not supported")
         );
         assert_eq!(
             ProtocolError::MismatchedContext { field }.to_string(),
             format!(
-                "the line context field {name} is inconsistent with the prepared text or the request"
+                "the context field {name} is inconsistent with the prepared text or the request"
             )
         );
     }
@@ -671,7 +671,7 @@ fn inline_box_edge_errors_state_their_cause() {
         vec![
             (
                 E::MissingCapture,
-                "the box-edge operation has no contextual capture",
+                "the prepared paragraph or a control has no contextual capture",
             ),
             (
                 E::ForeignCapture,
@@ -683,7 +683,7 @@ fn inline_box_edge_errors_state_their_cause() {
             ),
             (
                 E::InvalidOwner,
-                "the declared box-edge owner is not a usable inline box",
+                "the declared box-edge owner is not a usable inline box, or the control is not one of its endpoints",
             ),
             (
                 E::InvalidPair,
@@ -790,7 +790,7 @@ fn wrapping_scope_query_errors_state_their_cause() {
             ),
             (
                 E::UnrepresentedIncidence,
-                "the prepared paragraph does not represent the requested scope incidence",
+                "the prepared paragraph does not represent the requested incidence",
             ),
         ],
         index_wrapping_scope,

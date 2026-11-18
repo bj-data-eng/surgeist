@@ -10,12 +10,15 @@
 //!
 //! Variants with no short public route are not reached here and rest on their
 //! table row only: the two `ProcessingCapacityError` variants (they need an
-//! arithmetic overflow or a refused allocation), the source-transform variants
-//! other than the ones below, `SourceRangeFragmentError` (it needs a placed
-//! layout) and the line-selection, finalization and placement variants of
-//! `ProtocolError` (they need a prepared line). Existing integration tests
-//! reach several of them and assert the typed reason; this file adds the text
-//! for the ones that a few lines of setup reach.
+//! arithmetic overflow or a refused allocation), `TextTransformError`
+//! variants other than the three text-node ones and `InvalidContentLocale`
+//! (style validation refuses an invalid locale before any transform runs),
+//! `SourceRangeFragmentError` (it needs a placed layout), `InlineBoxEdgeError`
+//! (it needs a captured box and its handles), and the line-selection,
+//! finalization and placement variants of `ProtocolError` (they need a
+//! prepared line). Existing integration tests reach several of them and assert
+//! the typed reason; this file adds the text for the ones that a few lines of
+//! setup reach.
 
 use std::error::Error as StdError;
 
@@ -65,7 +68,7 @@ fn a_visual_order_buffer_of_the_wrong_length_is_refused_with_both_lengths() {
     );
     assert_eq!(
         error.to_string(),
-        "the visual-order buffer holds 1 slots but the line has 2 participants"
+        "the visual-order buffer length is 1 but the line's participant count is 2"
     );
 }
 
@@ -203,7 +206,7 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
             expected: 0,
             actual: 1,
         },
-        "the origins leave the source incompletely covered: position 0 was expected but 1 was found",
+        "the origins do not cover the source contiguously: position 0 was expected but 1 was found",
     ));
 
     let mut input = paragraph("ab");
@@ -215,7 +218,7 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
             expected: 2,
             actual: 1,
         },
-        "the origins leave the source incompletely covered: position 2 was expected but 1 was found",
+        "the origins do not cover the source contiguously: position 2 was expected but 1 was found",
     ));
 
     let mut input = paragraph("ab");
@@ -274,7 +277,7 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
     cases.push((
         input,
         t::ProtocolError::InvalidBoundaryPolicy { policy: 0, at: 2 },
-        "boundary policy 0 at 2 is invalid",
+        "a boundary policy is invalid or missing (policy 0, location 2)",
     ));
 
     let definition = t::ParagraphReplacementDefinition::Source {
@@ -291,7 +294,7 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
             alternative: 0,
             source: t::Range::new(0, 1),
         },
-        "replacement 0 does not describe a valid source range 0..1 ending at its insertion anchor",
+        "replacement 0 does not match its defining soft hyphen or discretionary break, its origin, or its insertion anchor (source range 0..1)",
     ));
 
     for (input, expected, text) in cases {
@@ -305,13 +308,17 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
 // ---------------------------------------------------------------- contextual source capture
 
 fn block() -> t::SourceProcessingScope {
+    block_styled(t::Style::default())
+}
+
+fn block_styled(base_style: t::Style) -> t::SourceProcessingScope {
     t::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: t::WhiteSpaceTrim::default(),
-        base_style: t::Style::default(),
+        base_style,
         used_direction: t::ParagraphBaseDirection::LeftToRight,
     }
 }
@@ -607,7 +614,7 @@ fn an_outline_query_reports_why_the_glyph_has_no_outline() {
     assert_eq!(reason, t::FontOutlineError::GlyphRange { count: 281 });
     assert_eq!(
         reason.to_string(),
-        "the requested glyph is outside the face's 281 glyphs"
+        "the requested glyph is outside the face's glyph count of 281"
     );
 
     // glyphDataFormat is at byte 52 of `head`; only format 0 is admitted.
@@ -631,7 +638,7 @@ fn a_nonfinite_or_negative_boundary_advance_reports_its_category() {
         (
             f64::NAN,
             t::TextNumericError::NonFinite,
-            "a geometry value is not finite",
+            "a geometry value, or the result of converting or combining it, is not finite",
         ),
         (
             -1.0,
@@ -774,7 +781,10 @@ fn a_scope_query_on_an_uncaptured_preparation_wraps_its_reason() {
             reason: t::WrappingScopeQueryError::MissingCapture
         }
     );
-    assert_eq!(reason.to_string(), "the wrapping scope query is invalid");
+    assert_eq!(
+        reason.to_string(),
+        "the wrapping scope or incidence query is invalid"
+    );
     assert_eq!(
         reason.source().unwrap().to_string(),
         "the prepared paragraph has no contextual capture"
@@ -803,10 +813,226 @@ fn a_scope_alignment_refusal_prints_its_cause_apart_from_the_failure() {
                 assert_eq!(*reason, t::ScopeAlignmentError::MissingCapture);
                 assert_eq!(
                     reason.to_string(),
-                    "the operation has no contextual capture"
+                    "a contextual capture, parent scope or scope-alignment custody that the operation requires is missing or unavailable"
                 );
             }
             other => panic!("unexpected detail {other:?}"),
         }
     }
+}
+
+// ---------------------------------------------------------------- source connections
+
+fn two_origin_input(
+    connections: Vec<t::SourceProcessingConnection>,
+    events: &[Ev],
+) -> t::ContextualSourceInput {
+    use t::SourceProcessingEvent as E;
+    let source = t::Source::new("ab");
+    let mut stream = vec![E::EnterScope(0), E::EnterParagraph(0)];
+    for event in events {
+        stream.push(match *event {
+            Ev::Origin(origin) => E::Origin {
+                origin,
+                affinity: t::Affinity::After,
+            },
+            Ev::Connection(connection) => E::Connection(connection),
+        });
+    }
+    stream.extend([E::ExitParagraph(0), E::ExitScope(0)]);
+    t::ContextualSourceInput {
+        joint_flows: vec![],
+        scope_alignment_limits: None,
+        computed_line_boundaries: vec![],
+        source: source.clone(),
+        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: t::SourceProcessingEnvelope::Complete,
+        origins: vec![origin(&source, 0, 1), origin(&source, 1, 2)],
+        connections,
+        boundary_policies: vec![],
+        replacements: vec![],
+        controls: vec![],
+        scopes: vec![block()],
+        paragraphs: vec![t::SourceProcessingParagraph {
+            base_direction: t::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: t::ParagraphStrut::DefaultFont,
+        }],
+        events: stream,
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Ev {
+    Origin(usize),
+    Connection(usize),
+}
+
+fn connection(before_origin: usize, after_origin: usize) -> t::SourceProcessingConnection {
+    t::SourceProcessingConnection {
+        before_origin,
+        after_origin,
+        kind: t::ParagraphConnectionKind::Disconnected,
+    }
+}
+
+#[test]
+fn a_refused_source_connection_wraps_its_reason_without_repeating_it() {
+    use Ev::{Connection as C, Origin as O};
+    let valid = two_origin_input(vec![connection(0, 1)], &[O(0), C(0), O(1)]);
+    assert!(t::process_contextual_source(valid).is_ok());
+
+    let cases = [
+        (
+            two_origin_input(vec![connection(0, 5)], &[O(0), C(0), O(1)]),
+            t::SourceProcessingConnectionError::Endpoints { connection: 0 },
+            "connection 0 names origins that do not exist or are not adjacent",
+        ),
+        (
+            two_origin_input(
+                vec![connection(0, 1), connection(0, 1)],
+                &[O(0), C(0), C(1), O(1)],
+            ),
+            t::SourceProcessingConnectionError::Duplicate {
+                connection: 1,
+                first_connection: 0,
+            },
+            "connection 1 starts at the same origin as connection 0",
+        ),
+        (
+            two_origin_input(vec![connection(0, 1)], &[O(0), O(1), C(0)]),
+            t::SourceProcessingConnectionError::Position { connection: 0 },
+            "connection 0 is at an invalid source position",
+        ),
+    ];
+    for (input, reason, text) in cases {
+        let found = capture_reason(input);
+        assert_eq!(found, t::SourceProcessingError::SourceConnection { reason });
+        assert_eq!(found.to_string(), "a supplied source connection is invalid");
+        let source = found.source().expect("the reason is the source");
+        assert_eq!(source.to_string(), text);
+        assert_eq!(reason.to_string(), text);
+    }
+}
+
+// ---------------------------------------------------------------- text-node contributions
+
+fn text_transform_reason(error: &t::Error) -> t::TextTransformError {
+    match detail(error) {
+        t::ErrorDetail::TextTransform { reason } => *reason,
+        other => panic!("unexpected detail {other:?}"),
+    }
+}
+
+#[test]
+fn a_reversed_text_node_range_reports_its_length() {
+    let error =
+        t::CompleteTextNodeContribution::new(t::Text::from("ab"), t::Range { start: 3, end: 2 })
+            .map(|_| ())
+            .unwrap_err();
+    let reason = text_transform_reason(&error);
+    assert_eq!(
+        reason,
+        t::TextTransformError::InvalidTextNodeRange {
+            range: t::Range { start: 3, end: 2 },
+            text_len: 2
+        }
+    );
+    assert_eq!(
+        reason.to_string(),
+        "text-node range 3..2 is reversed or extends beyond the node's UTF-16 length 2"
+    );
+}
+
+#[test]
+fn a_text_node_that_differs_from_its_origin_is_refused() {
+    let node =
+        t::CompleteTextNodeContribution::new(t::Text::from("xb"), t::Range::new(0, 2)).unwrap();
+    let mut input = paragraph("ab");
+    input.origins[0].text_node = Some(node);
+    let error =
+        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
+            .map(|_| ())
+            .unwrap_err();
+    let reason = text_transform_reason(&error);
+    assert_eq!(
+        reason,
+        t::TextTransformError::TextNodeMismatch { origin: 0 }
+    );
+    assert_eq!(
+        reason.to_string(),
+        "the text-node content for origin 0 differs from its original occurrence"
+    );
+}
+
+#[test]
+fn math_auto_without_a_text_node_is_refused() {
+    let mut input = capture_input();
+    input.scopes = vec![block_styled(t::Style {
+        text_transform: t::TextTransform::MathAuto,
+        ..t::Style::default()
+    })];
+    let error = t::process_contextual_source(input).map(|_| ()).unwrap_err();
+    let reason = text_transform_reason(&error);
+    assert_eq!(
+        reason,
+        t::TextTransformError::MissingTextNodeContext { origin: 0 }
+    );
+    assert_eq!(
+        reason.to_string(),
+        "the transform requires complete original text-node context for origin 0"
+    );
+}
+
+// ---------------------------------------------------------------- boundary policies and fragments
+
+#[test]
+fn a_continuous_connection_without_a_policy_names_the_missing_policy() {
+    let mut input = paragraph("ab");
+    let source = input.source.clone();
+    input.origins = vec![origin(&source, 0, 1), origin(&source, 1, 2)];
+    input.connections.push(t::ParagraphConnection {
+        at: 1,
+        kind: t::ParagraphConnectionKind::Continuous,
+    });
+    // No policy is declared, so the payload names the first policy ordinal that does not exist.
+    let found = protocol_reason(input);
+    assert_eq!(
+        found,
+        t::ProtocolError::InvalidBoundaryPolicy { policy: 0, at: 1 }
+    );
+    assert_eq!(
+        found.to_string(),
+        "a boundary policy is invalid or missing (policy 0, location 1)"
+    );
+}
+
+#[test]
+fn an_inline_box_forest_without_its_root_is_refused_as_a_fragmentation() {
+    let error = t::SuppliedInlineBoxComponents::try_new(t::SuppliedInlineBoxComponentsInput {
+        root: 0,
+        owners: &[],
+        parents: &[None],
+        rows: &[],
+        memberships: &[],
+        order: &[],
+        bodies: &[],
+    })
+    .map(|_| ())
+    .unwrap_err();
+    let reason = match detail(&error) {
+        t::ErrorDetail::InvalidTextProtocol { reason } => reason.clone(),
+        other => panic!("unexpected detail {other:?}"),
+    };
+    assert_eq!(
+        reason,
+        t::ProtocolError::InlineBoxFragmentation(t::InlineBoxFragmentationError::InvalidIncidence)
+    );
+    assert_eq!(
+        reason.to_string(),
+        "the inline-box fragmentation is invalid"
+    );
+    assert_eq!(
+        reason.source().unwrap().to_string(),
+        "the inline box incidence is invalid for fragmentation"
+    );
 }

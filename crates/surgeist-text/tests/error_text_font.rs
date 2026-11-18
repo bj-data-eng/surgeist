@@ -71,7 +71,7 @@ fn font_metric_table_errors_state_their_cause() {
                     count: 0,
                     glyph_count: 10,
                 },
-                "long metric count 0 must be at least 1 and at most the face's 10 glyphs",
+                "long metric count 0 must be at least 1 and at most the glyph count 10",
             ),
             (
                 E::Duplicate,
@@ -140,7 +140,7 @@ fn font_metric_table_errors_state_their_cause() {
                     words: 5,
                     regions: 3,
                 },
-                "the data subtable at offset 8 declares 5 wide deltas but only 3 regions",
+                "the data subtable at offset 8 declares a wide-delta count of 5 but a region count of only 3",
             ),
             (
                 E::VariationRow {
@@ -149,7 +149,7 @@ fn font_metric_table_errors_state_their_cause() {
                     expected: 4,
                     actual: 3,
                 },
-                "row 2 of the data subtable at offset 8 yields 3 deltas where 4 are declared",
+                "row 2 of the data subtable at offset 8 yields a delta count of 3 where 4 is declared",
             ),
             (
                 E::VariationScalar {
@@ -171,11 +171,11 @@ fn font_metric_table_errors_state_their_cause() {
                     expected: 3,
                     actual: 2,
                 },
-                "the selected script has 2 coordinates for 3 baseline tags",
+                "the selected script's coordinate count 2 differs from its baseline tag count 3",
             ),
             (
                 E::BaselineDefaultIndex { index: 4, count: 3 },
-                "default baseline index 4 is outside the 3 coordinates",
+                "default baseline index 4 is outside the coordinate count 3",
             ),
             (
                 E::BaselineCoordinateFormat { format: 4 },
@@ -207,7 +207,7 @@ fn font_metric_table_errors_state_their_cause() {
                     point: 9,
                     count: 4,
                 },
-                "point 9 of glyph 6 is outside its 4 stored points",
+                "point 9 of glyph 6 is outside its stored point count 4",
             ),
             (
                 E::BaselineScriptUnavailable,
@@ -238,7 +238,7 @@ fn a_baseline_outline_failure_reports_the_outline_refusal_from_its_source() {
     );
     assert_eq!(
         std::error::Error::source(&error).unwrap().to_string(),
-        "the requested glyph is outside the face's 3 glyphs"
+        "the requested glyph is outside the face's glyph count of 3"
     );
 }
 
@@ -304,7 +304,7 @@ fn font_outline_errors_state_their_cause() {
             ),
             (
                 E::GlyphRange { count: 3 },
-                "the requested glyph is outside the face's 3 glyphs",
+                "the requested glyph is outside the face's glyph count of 3",
             ),
             (
                 E::UnavailableOutline,
@@ -350,7 +350,10 @@ fn text_numeric_errors_state_the_category_that_was_not_preserved() {
     check_table(
         4,
         vec![
-            (E::NonFinite, "a geometry value is not finite"),
+            (
+                E::NonFinite,
+                "a geometry value, or the result of converting or combining it, is not finite",
+            ),
             (
                 E::PositiveLost,
                 "a positive geometry value did not stay positive",
@@ -403,7 +406,7 @@ fn a_supplied_line_error_compares_slots_with_participants() {
                 expected: 3,
                 actual: 2,
             },
-            "the visual-order buffer holds 2 slots but the line has 3 participants",
+            "the visual-order buffer length is 2 but the line's participant count is 3",
         )],
         index_supplied,
         |_| false,
@@ -436,7 +439,7 @@ fn hyphenation_errors_state_their_cause() {
         vec![
             (
                 E::InvalidResourceMapping,
-                "the hyphenation resource or its cuts do not map onto the retained word atoms",
+                "the hyphenation resource or a cut it reports cannot be mapped onto the retained text",
             ),
             (
                 E::ResourceLengthOverflow,
