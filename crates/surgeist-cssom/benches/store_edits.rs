@@ -356,7 +356,11 @@ fn main() {
                     size.rules
                 ),
                 size,
-                text: text.clone(),
+                text: if matches!(kind, Kind::Create) {
+                    text.clone()
+                } else {
+                    String::new()
+                },
                 store,
                 disabled: false,
                 census: counted.clone(),
