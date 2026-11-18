@@ -1375,50 +1375,61 @@ where
         batch
     }
 
-    /// The writes of a computation in fewest that give the same result. A
-    /// store or an unrounded geometry write replaces an earlier write to its
+    /// The writes of a computation in fewest that give the same result, in
+    /// the order they were staged. `None` when a write belongs to no node of
+    /// the document.
+    ///
+    /// A store or an unrounded geometry write replaces an earlier write to its
     /// slot and moves it last, so only the last write to a slot counts. A
-    /// hidden geometry write also removes the stores of its node staged
-    /// before it, so those stores are dropped and the last hidden write is
-    /// kept, with the geometry that followed it. A cache clear and an inline
-    /// fragment slot keep the position of their first write, and the inline
-    /// fragments the value of their last. Native family writes are kept in
-    /// order, and a capture that holds too many of them is not reused. `None`
-    /// when a write belongs to no node of the document.
+    /// hidden geometry write also removes the stores of its node staged before
+    /// it, so those stores are dropped and the last hidden write is kept, with
+    /// the geometry that followed it. A cache clear and an inline fragment
+    /// slot keep the position of their first write, and the inline fragments
+    /// the value of their last.
+    ///
+    /// A formatter family's native writes are compacted by family. A reset
+    /// removes the family's runs and completion and a drop its runs, so
+    /// nothing before the last reset counts, nor does a run before the last
+    /// drop. A run replaces an earlier run of its source and a completion an
+    /// earlier completion of its family, in place.
     fn compact_effects(
         &self,
         writes: &[StagedEffect<Tree::Node, Tree::Scalar>],
     ) -> Option<Vec<StagedEffect<Tree::Node, Tree::Scalar>>> {
-        /// Native family writes a reusable capture may hold.
-        const NATIVE_LIMIT: usize = 64;
         let graph = self.flow_graph;
         let mut keep = Vec::new();
         keep.try_reserve_exact(writes.len()).ok()?;
         keep.resize(writes.len(), true);
         let mut buckets = std::collections::BTreeMap::<usize, Vec<usize>>::new();
-        let mut natives = 0;
+        let mut families = std::collections::BTreeMap::<usize, Vec<usize>>::new();
         for (position, write) in writes.iter().enumerate() {
             let node = match write {
                 StagedEffect::Store { node, .. }
                 | StagedEffect::Clear(node)
                 | StagedEffect::InlineFragments { node, .. } => *node,
                 StagedEffect::Geometry(entry) => entry.node(),
-                StagedEffect::NativeReset { .. }
-                | StagedEffect::NativeRunsDrop { .. }
-                | StagedEffect::NativeRun { .. }
-                | StagedEffect::NativeCompletion { .. } => {
-                    natives += 1;
+                StagedEffect::NativeReset { family } | StagedEffect::NativeRunsDrop { family } => {
+                    families.entry(*family).or_default().push(position);
+                    continue;
+                }
+                StagedEffect::NativeRun { run, .. } => {
+                    families.entry(run.family).or_default().push(position);
+                    continue;
+                }
+                StagedEffect::NativeCompletion { completion, .. } => {
+                    families
+                        .entry(completion.family)
+                        .or_default()
+                        .push(position);
                     continue;
                 }
             };
             let index = graph?.index(node)?;
             buckets.entry(index).or_default().push(position);
         }
-        if natives > NATIVE_LIMIT {
-            return None;
-        }
-        // The last inline fragment value of each node, by its first write.
-        let mut inline_last = std::collections::BTreeMap::<usize, usize>::new();
+        // The position of the last write that stands for the kept first write
+        // of a slot, by the position of that first write.
+        let mut last_value = std::collections::BTreeMap::<usize, usize>::new();
         for positions in buckets.values() {
             let mut stores: Vec<(&ComputeInputOf<Tree::Scalar>, &crate::CacheKeyContext)> =
                 Vec::new();
@@ -1471,13 +1482,63 @@ where
                 }
             }
             if let Some((first, last)) = first_inline.filter(|(first, last)| first != last) {
-                inline_last.insert(first, last);
+                last_value.insert(first, last);
+            }
+        }
+        for positions in families.values() {
+            // The last reset removes the runs and the completion staged before
+            // it, and the last drop the runs.
+            let reset = positions
+                .iter()
+                .rposition(|&p| matches!(writes[p], StagedEffect::NativeReset { .. }));
+            let drop_index = positions
+                .iter()
+                .rposition(|&p| matches!(writes[p], StagedEffect::NativeRunsDrop { .. }));
+            let mut completion = None;
+            let mut runs: Vec<(&std::ops::Range<usize>, usize)> = Vec::new();
+            for (index, &position) in positions.iter().enumerate() {
+                let after_reset = reset.is_none_or(|reset| index >= reset);
+                let after_runs_removal = after_reset && drop_index.is_none_or(|drop| index >= drop);
+                match &writes[position] {
+                    // A reset removes what a drop before it would, and a drop
+                    // after it only the runs this function drops.
+                    StagedEffect::NativeReset { .. } => keep[position] = Some(index) == reset,
+                    StagedEffect::NativeRunsDrop { .. } => {
+                        keep[position] = reset.is_none() && Some(index) == drop_index;
+                    }
+                    StagedEffect::NativeCompletion { .. } => {
+                        if !after_reset {
+                            keep[position] = false;
+                        } else if let Some((first, _)) = completion {
+                            keep[position] = false;
+                            completion = Some((first, position));
+                        } else {
+                            completion = Some((position, position));
+                        }
+                    }
+                    StagedEffect::NativeRun { run, .. } => {
+                        if !after_runs_removal {
+                            keep[position] = false;
+                        } else if let Some((_, first)) =
+                            runs.iter().find(|(source, _)| **source == run.source)
+                        {
+                            keep[position] = false;
+                            last_value.insert(*first, position);
+                        } else {
+                            runs.push((&run.source, position));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some((first, last)) = completion.filter(|(first, last)| first != last) {
+                last_value.insert(first, last);
             }
         }
         let mut compacted = Vec::new();
         compacted.try_reserve_exact(writes.len()).ok()?;
         for (position, _) in keep.iter().enumerate().filter(|(_, kept)| **kept) {
-            let source = inline_last.get(&position).copied().unwrap_or(position);
+            let source = last_value.get(&position).copied().unwrap_or(position);
             compacted.push(writes[source].try_clone()?);
         }
         Some(compacted)
