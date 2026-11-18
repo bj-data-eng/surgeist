@@ -726,8 +726,8 @@ fn fragmented_subgrid_chain_reuses_nothing_and_lays_out_the_same() {
 /// multiply them by a power of two for each level.
 fn effects_replayed_by_depth<S: LayoutScalar>(
     chain: impl Fn(u32) -> PublicLayoutTreeOf<S> + Send + 'static,
-    depths: [u32; 2],
-) -> [usize; 2] {
+    depths: [u32; 3],
+) -> [usize; 3] {
     std::thread::Builder::new()
         .stack_size(256 * 1024 * 1024)
         .spawn(move || depths.map(|depth| subgrid_work_of(&chain(depth)).effects_replayed))
@@ -738,19 +738,23 @@ fn effects_replayed_by_depth<S: LayoutScalar>(
 
 #[test]
 fn subgrid_chain_effects_replayed_grow_at_most_quadratically_with_depth() {
-    for [shallow, deep] in [
+    for [shallow, middle, deep] in [
         effects_replayed_by_depth(
             |depth| subgrid_grid_chain::<f64>(depth, Span::Whole),
-            [8, 16],
+            [8, 16, 24],
         ),
-        effects_replayed_by_depth(intrinsic_subgrid_chain::<f64>, [8, 16]),
-        effects_replayed_by_depth(subgrid_lanes_chain::<f64>, [8, 16]),
-    ]
-    .map(|replayed| [replayed[0], replayed[1]])
-    {
+        effects_replayed_by_depth(intrinsic_subgrid_chain::<f64>, [8, 16, 24]),
+        effects_replayed_by_depth(subgrid_lanes_chain::<f64>, [8, 16, 24]),
+    ] {
+        // Quadratic growth multiplies the count by at most four from depth 8 to 16 and by
+        // about two from 16 to 24; an exponential one, however mild, exceeds one of the two.
         assert!(
-            deep <= 6 * shallow + 64,
-            "{deep} writes replayed at depth 16 against {shallow} at depth 8"
+            middle <= 4 * shallow + 64,
+            "{middle} writes replayed at depth 16 against {shallow} at depth 8"
+        );
+        assert!(
+            deep <= 3 * middle + 64,
+            "{deep} writes replayed at depth 24 against {middle} at depth 16"
         );
     }
 }
