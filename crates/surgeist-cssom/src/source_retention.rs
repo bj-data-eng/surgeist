@@ -136,11 +136,13 @@ impl CssRetainedSources for CssomBlockData {
 }
 impl State {
     /// Walks the sources retained by this state, by every state its contexts
-    /// link and by the `displaced` media lists into one collector.
+    /// link and by the `displaced` media lists into one collector, and sets
+    /// `steps` to the steps it took, refused or not.
     pub(crate) fn walk_sources<'a>(
         &self,
         limits: &CssomLimits,
         displaced: impl Iterator<Item = &'a CssMediaQueryList>,
+        steps: &mut usize,
     ) -> Result<CssSourceRetention<'static>, CssomError> {
         let mut sources = CssSourceRetention::with_shared_original_utf16(
             limits.max_retained_source_bytes,
@@ -195,6 +197,7 @@ impl State {
         })();
         #[cfg(test)]
         crate::state_limits::probe::steps(sources.steps());
+        *steps = sources.steps();
         result
             .map(|()| sources)
             .map_err(|error| source_refusal(error, limits))

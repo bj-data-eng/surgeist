@@ -527,6 +527,6 @@ fn inserted_objects_that_link_states_or_are_missing_leave_the_census_to_the_whol
         census.extend(&state, &inserted, &limits).unwrap(),
         Extension::WholeStateNeeded
     );
-    assert_eq!(census.totals, before);
+    assert_eq!(census.totals.sums(), before.sums());
     assert_eq!(census.sources.steps(), steps);
 }

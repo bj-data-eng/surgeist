@@ -126,6 +126,15 @@ pub(crate) fn execute_with_cancellation<T>(
     cancel: Option<&AtomicBool>,
     operation: impl FnOnce(&mut CssomBatch) -> Result<CssomStagedOperation<T>, CssomError>,
 ) -> Result<CssomOperationOutcome<T>, CssomError> {
+    let host = store.host.clone();
+    crate::operation_work::charged(host.as_ref(), || execute_once(store, cancel, operation))
+}
+
+fn execute_once<T>(
+    store: &mut CssomStore,
+    cancel: Option<&AtomicBool>,
+    operation: impl FnOnce(&mut CssomBatch) -> Result<CssomStagedOperation<T>, CssomError>,
+) -> Result<CssomOperationOutcome<T>, CssomError> {
     let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot()))?;
     let staged = stage(&mut batch, operation)?;
     let prepared = store.prepare_commit(batch)?;
