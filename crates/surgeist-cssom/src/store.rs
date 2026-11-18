@@ -10,6 +10,7 @@ use std::{
 };
 #[cfg(test)]
 use surgeist_css::CssParser;
+use surgeist_css::accounting::CssHostScope;
 use surgeist_css::declaration::{CssDeclarationList, CssSpecifiedDeclarationBlock};
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::property::CssPropertyNameRef;
@@ -33,9 +34,54 @@ pub struct CssomStore {
     pub(crate) effect_quota: Arc<crate::owner_effect::EffectQuota>,
     pub(crate) next_effect: u64,
     pub(crate) updating: Option<CssomBlockId>,
+    /// The host the store's operations charge, if any.
+    pub(crate) host: Option<Arc<CssHostScope>>,
 }
 impl CssomStore {
     pub fn new(limits: CssomLimits, context: CssomContext) -> Result<Self, CssomError> {
+        Self::build(limits, context, None)
+    }
+    /// A store whose operations charge their work below `host`.
+    ///
+    /// Each public operation of the store, of its batches and of its rule
+    /// handles, and the beginning, finishing and cancelling of a sheet
+    /// replacement, runs inside one phase of the host's `cssom` scope and
+    /// charges that scope with what its state census runs and rule formatting
+    /// did:
+    /// [`CssWork::CensusRun`](crate::accounting::CssWork::CensusRun),
+    /// [`CssWork::CensusObject`](crate::accounting::CssWork::CensusObject),
+    /// [`CssWork::CensusEntry`](crate::accounting::CssWork::CensusEntry),
+    /// [`CssWork::SourceVisit`](crate::accounting::CssWork::SourceVisit) for
+    /// the steps of the retained-source walks and
+    /// [`CssWork::RuleFormatNode`](crate::accounting::CssWork::RuleFormatNode).
+    /// The charge is made once when the operation returns, or, for an
+    /// operation that commits, before each commit publishes and once more for
+    /// any work after the last one. An operation that another one runs adds
+    /// to the outer charge. A limit refusal is charged the work done before
+    /// it. A host refusal of a batch operation poisons the batch, and a
+    /// refused commit publishes nothing. Finishing a replacement whose host
+    /// refuses both its commit and the commit that ends the replacement leaves
+    /// the replacement pending; cancelling it ends it once the host admits
+    /// the cancellation's charge. The parse of a replacement job, snapshots
+    /// and captures run outside the store and are not charged. This
+    /// constructor is itself charged.
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`CssomStore::new`], and [`CssomError::Accounting`] when
+    /// the host does not admit the constructor's charge.
+    pub fn with_host(
+        limits: CssomLimits,
+        context: CssomContext,
+        host: CssHostScope,
+    ) -> Result<Self, CssomError> {
+        Self::build(limits, context, Some(Arc::new(host)))
+    }
+    fn build(
+        limits: CssomLimits,
+        context: CssomContext,
+        host: Option<Arc<CssHostScope>>,
+    ) -> Result<Self, CssomError> {
         if limits.max_identity == 0 {
             return Err(CssomError::IdentityExhausted);
         }
@@ -63,7 +109,9 @@ impl CssomStore {
             media: crate::shared_table::SharedTable::new(),
             maps: crate::shared_table::SharedTable::new(),
         };
-        state.check_limits(&limits)?;
+        crate::operation_work::charged(state.owner.key(), host.as_deref(), || {
+            state.check_limits(&limits)
+        })?;
         Ok(Self {
             state: Arc::new(state),
             limits,
@@ -72,6 +120,7 @@ impl CssomStore {
             effect_quota: Arc::new(crate::owner_effect::EffectQuota::default()),
             next_effect: 1,
             updating: None,
+            host,
         })
     }
     pub fn snapshot(&self) -> CssomSnapshot {
@@ -100,6 +149,7 @@ impl CssomStore {
             owner_updates: Vec::new(),
             media_restorations: HashMap::new(),
             pending_preparations: Arc::new(AtomicUsize::new(0)),
+            host: self.host.clone(),
         })
     }
     pub(crate) fn check_guard(&self, guard: &CssomEditGuard) -> Result<(), CssomError> {
@@ -267,6 +317,8 @@ pub struct CssomBatch {
         HashMap<CssomMediaListId, crate::media_operations::MediaRestoration>,
     pub(crate) pending_preparations: Arc<AtomicUsize>,
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
+    /// The host of the store that made the batch, if any.
+    pub(crate) host: Option<Arc<CssHostScope>>,
 }
 impl CssomBatch {
     pub(crate) fn created_block_id(
@@ -301,16 +353,19 @@ impl CssomBatch {
         if self.poisoned {
             return Err(CssomError::BatchAborted.into());
         }
-        let result = operation(self).and_then(|value| {
-            self.staged
-                .check_limits_with_displaced_media(
-                    &self.limits,
-                    self.media_restorations
-                        .values()
-                        .filter_map(crate::media_operations::MediaRestoration::displaced),
-                )
-                .map(|()| value)
-                .map_err(E::from)
+        let (owner, host) = (self.staged.owner.key(), self.host.clone());
+        let result = crate::operation_work::charged(owner, host.as_deref(), || {
+            operation(self).and_then(|value| {
+                self.staged
+                    .check_limits_with_displaced_media(
+                        &self.limits,
+                        self.media_restorations
+                            .values()
+                            .filter_map(crate::media_operations::MediaRestoration::displaced),
+                    )
+                    .map(|()| value)
+                    .map_err(E::from)
+            })
         });
         if result.is_err() {
             self.abort_staging();

@@ -124,6 +124,17 @@ impl CssomStore {
         sheet: &CssomSheetId,
         source: &str,
     ) -> Result<CssomReplaceJob, CssomError> {
+        let (owner, host) = (self.state.owner.key(), self.host.clone());
+        crate::operation_work::charged(owner, host.as_deref(), || {
+            self.begin_replacement(guard, sheet, source)
+        })
+    }
+    fn begin_replacement(
+        &mut self,
+        guard: CssomEditGuard,
+        sheet: &CssomSheetId,
+        source: &str,
+    ) -> Result<CssomReplaceJob, CssomError> {
         self.check_guard(&guard)?;
         let facts = self.state.sheet(sheet)?.inputs();
         if !facts.constructed || facts.disallow_modification {
@@ -255,6 +266,16 @@ impl CssomStore {
         guard: CssomEditGuard,
         work: CssomReplaceWork,
     ) -> Result<CssomReplaceCompletion, CssomError> {
+        let (owner, host) = (self.state.owner.key(), self.host.clone());
+        crate::operation_work::charged(owner, host.as_deref(), || {
+            self.finish_replacement(guard, work)
+        })
+    }
+    fn finish_replacement(
+        &mut self,
+        guard: CssomEditGuard,
+        work: CssomReplaceWork,
+    ) -> Result<CssomReplaceCompletion, CssomError> {
         self.checked_replacement(&work.token)?;
         let (parsed, diagnostics) = match work.result {
             Ok((authored, diagnostics)) => (Ok(authored), diagnostics),
@@ -322,7 +343,10 @@ impl CssomStore {
         &mut self,
         token: &CssomReplaceToken,
     ) -> Result<CssomReplaceCompletion, CssomError> {
-        self.end_replacement(token, CssomReplaceOutcome::Cancelled)
+        let (owner, host) = (self.state.owner.key(), self.host.clone());
+        crate::operation_work::charged(owner, host.as_deref(), || {
+            self.end_replacement(token, CssomReplaceOutcome::Cancelled)
+        })
     }
 
     fn end_replacement(

@@ -36,6 +36,8 @@ impl Default for CssomRuleFormatLimits {
 struct RuleFormatWork<'a> {
     limits: &'a CssomRuleFormatLimits,
     used: usize,
+    /// The rule nodes prepared for the writer.
+    nodes: usize,
 }
 impl RuleFormatWork<'_> {
     fn step(&mut self) -> Result<(), CssomError> {
@@ -137,8 +139,23 @@ impl State {
         id: &CssomRuleId,
         limits: &CssomRuleFormatLimits,
     ) -> Result<String, CssomError> {
+        let mut work = RuleFormatWork {
+            limits,
+            used: 0,
+            nodes: 0,
+        };
+        let text = self.format_rule_text_with(id, &mut work);
+        crate::operation_work::formatted(work.nodes);
+        text
+    }
+    /// [`State::format_rule_text`] with its work counted in `work`.
+    fn format_rule_text_with(
+        &self,
+        id: &CssomRuleId,
+        work: &mut RuleFormatWork<'_>,
+    ) -> Result<String, CssomError> {
+        let limits = work.limits;
         let root = self.rule(id)?;
-        let mut work = RuleFormatWork { limits, used: 0 };
         work.step()?;
         work.depth(1)?;
         if limits.max_nodes == 0 {
@@ -146,6 +163,12 @@ impl State {
                 resource: "rule format nodes",
                 maximum: 0,
             });
+        }
+        if matches!(
+            root.data(),
+            CssomRuleData::Keyframe { .. } | CssomRuleData::Margin { .. }
+        ) {
+            work.nodes = 1;
         }
         if matches!(root.data(), CssomRuleData::Keyframe { .. }) {
             return Ok(self.keyframe_view(id)?.serialize_cssom(limits.css)?);
@@ -194,6 +217,7 @@ impl State {
             let index = nodes.len();
             format_reserve(&mut nodes, 1)?;
             nodes.push((id, Vec::new()));
+            work.nodes = nodes.len();
             if let Some(parent) = parent {
                 work.step()?;
                 format_reserve(&mut nodes[parent].1, 1)?;
@@ -397,7 +421,9 @@ impl CssomBatch {
         if self.poisoned {
             return Err(CssomError::BatchAborted);
         }
-        self.base.rule(id)?;
-        self.staged.format_rule_text(id, limits)
+        crate::operation_work::charged(self.staged.owner.key(), self.host.as_deref(), || {
+            self.base.rule(id)?;
+            self.staged.format_rule_text(id, limits)
+        })
     }
 }

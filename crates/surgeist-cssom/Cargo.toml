@@ -13,6 +13,7 @@ surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
 
 [dev-dependencies]
 stats_alloc = { version = "=0.1.10", default-features = false }
+surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
 
 [[bench]]
 name = "store_edits"

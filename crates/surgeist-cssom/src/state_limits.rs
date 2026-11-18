@@ -12,10 +12,15 @@ use surgeist_css::source::CssSourceRetention;
 
 /// The entries and host string bytes the retained state accounts for. A sum
 /// that overflows is `None` and is refused by its threshold check.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// It also counts the objects and entries the census runs that built it
+/// examined, which are not part of what the state accounts for.
+#[derive(Clone, Debug)]
 pub(crate) struct Totals {
     entries: Option<usize>,
     strings: Option<usize>,
+    examined: usize,
+    counted: usize,
 }
 
 impl Totals {
@@ -24,9 +29,23 @@ impl Totals {
         Self {
             entries: Some(sheet_order),
             strings: Some(0),
+            examined: 0,
+            counted: sheet_order,
         }
     }
+    /// The entries and string bytes, without the census work.
+    #[cfg(test)]
+    fn sums(&self) -> (Option<usize>, Option<usize>) {
+        (self.entries, self.strings)
+    }
+    /// One object examined.
+    fn examine(&mut self) {
+        #[cfg(test)]
+        probe::examined(1);
+        self.examined = self.examined.saturating_add(1);
+    }
     fn add_entries(&mut self, count: usize) {
+        self.counted = self.counted.saturating_add(count);
         self.entries = self.entries.and_then(|total| total.checked_add(count));
     }
     fn add_strings(&mut self, count: usize) {
@@ -101,8 +120,7 @@ impl Totals {
         bases: &mut HashSet<*const Vec<u16>>,
         limits: &CssomLimits,
     ) -> Result<(), CssomError> {
-        #[cfg(test)]
-        probe::examined(1);
+        self.examine();
         if let Some(input) = sheet.authored.parse_source()
             && input.source().as_str().len() > limits.max_input_bytes
         {
@@ -155,18 +173,15 @@ impl Totals {
     }
     /// One rule list holding `members` rule identities.
     fn list(&mut self, members: usize) {
-        #[cfg(test)]
-        probe::examined(1);
+        self.examine();
         self.add_entries(members);
     }
     fn media(&mut self, media: &CssMediaQueryList) {
-        #[cfg(test)]
-        probe::examined(1);
+        self.examine();
         self.add_entries(media.queries().len());
     }
     fn block(&mut self, block: &CssomBlock) {
-        #[cfg(test)]
-        probe::examined(1);
+        self.examine();
         self.add_entries(block.counter_edits.len());
         for value in block.counter_edits.iter() {
             if let Some(origin) = value.origin() {
@@ -214,8 +229,7 @@ impl Totals {
         }
     }
     fn map(&mut self, map: &CssomFeatureMap) {
-        #[cfg(test)]
-        probe::examined(1);
+        self.examine();
         self.add_entries(map.authored.len());
         self.add_entries(map.entries.len());
         for entry in &map.entries {
@@ -226,8 +240,7 @@ impl Totals {
         }
     }
     fn rule(&mut self, rule: &CssomRule, limits: &CssomLimits) -> Result<(), CssomError> {
-        #[cfg(test)]
-        probe::examined(1);
+        self.examine();
         self.add_entries(rule.admission_diagnostics.len());
         if let Some(origin) = &rule.selector_input {
             if origin.source().as_str().len() > limits.max_input_bytes {
@@ -429,16 +442,22 @@ impl Census {
         limits: &CssomLimits,
         displaced: impl Iterator<Item = &'a CssMediaQueryList> + Clone,
     ) -> Result<Self, CssomError> {
-        state.check_contexts(limits)?;
-        state.check_object_count(limits)?;
-        let mut totals = state.totals(limits)?;
-        for media in displaced.clone() {
-            totals.add_entries(media.queries().len());
-        }
-        totals.check_entries(limits)?;
-        let sources = state.walk_sources(limits, displaced)?;
-        totals.check_strings(limits)?;
-        Ok(Self { totals, sources })
+        let mut totals = Totals::new(state.sheet_order.len());
+        let mut steps = 0;
+        let census = (|| {
+            state.check_contexts(limits)?;
+            state.check_object_count(limits)?;
+            state.add_totals(&mut totals, limits)?;
+            for media in displaced.clone() {
+                totals.add_entries(media.queries().len());
+            }
+            totals.check_entries(limits)?;
+            let sources = state.walk_sources(limits, displaced, &mut steps)?;
+            totals.check_strings(limits)?;
+            Ok(sources)
+        })();
+        crate::operation_work::census(totals.examined, totals.counted, steps);
+        census.map(|sources| Self { totals, sources })
     }
 
     /// Accounts for what adoption inserted into `state` since this census
@@ -459,6 +478,28 @@ impl Census {
         let Some(resolved) = inserted.resolve(state) else {
             return Ok(Extension::WholeStateNeeded);
         };
+        let (examined, counted, steps) = (
+            self.totals.examined,
+            self.totals.counted,
+            self.sources.steps(),
+        );
+        let extension = self.extend_resolved(state, &resolved, inserted.members, limits);
+        crate::operation_work::census(
+            self.totals.examined.saturating_sub(examined),
+            self.totals.counted.saturating_sub(counted),
+            self.sources.steps().saturating_sub(steps),
+        );
+        extension
+    }
+
+    /// [`Census::extend`] once the inserted objects are resolved.
+    fn extend_resolved(
+        &mut self,
+        state: &State,
+        resolved: &Resolved<'_>,
+        members: usize,
+        limits: &CssomLimits,
+    ) -> Result<Extension, CssomError> {
         state.check_object_count(limits)?;
         for media in &resolved.media {
             self.totals.media(media);
@@ -469,14 +510,14 @@ impl Census {
         for map in &resolved.maps {
             self.totals.map(map);
         }
-        self.totals.add_entries(inserted.members);
+        self.totals.add_entries(members);
         for rule in &resolved.rules {
             self.totals.rule(rule, limits)?;
         }
         self.totals.check_entries(limits)?;
         #[cfg(test)]
         let before = self.sources.steps();
-        let walked = self.walk(&resolved, limits);
+        let walked = self.walk(resolved, limits);
         #[cfg(test)]
         probe::steps(self.sources.steps().saturating_sub(before));
         walked?;
@@ -525,7 +566,7 @@ impl Census {
         match (outcome, whole) {
             (Ok(Extension::WholeStateNeeded), _) => {}
             (Ok(Extension::Applied), Ok(whole)) => {
-                assert_eq!(self.totals, whole.totals, "totals");
+                assert_eq!(self.totals.sums(), whole.totals.sums(), "totals");
                 assert_eq!(
                     self.sources.usage(),
                     whole.sources.usage(),
@@ -621,10 +662,10 @@ impl State {
         limit(objects, limits.max_objects, "objects")
     }
 
-    /// The entries and string bytes of the whole state, refusing an oversized
-    /// sheet or rule input, a missing linked sheet and an oversized test payload.
-    fn totals(&self, limits: &CssomLimits) -> Result<Totals, CssomError> {
-        let mut totals = Totals::new(self.sheet_order.len());
+    /// Adds the entries and string bytes of the whole state to `totals`,
+    /// refusing an oversized sheet or rule input, a missing linked sheet and an
+    /// oversized test payload.
+    fn add_totals(&self, totals: &mut Totals, limits: &CssomLimits) -> Result<(), CssomError> {
         for context in std::iter::once(self.context.as_ref())
             .chain(
                 self.rules
@@ -654,7 +695,7 @@ impl State {
         for rule in self.rules.values() {
             totals.rule(rule, limits)?;
         }
-        Ok(totals)
+        Ok(())
     }
 }
 fn limit(actual: Option<usize>, maximum: usize, resource: &'static str) -> Result<(), CssomError> {

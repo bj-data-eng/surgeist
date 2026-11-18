@@ -22,6 +22,7 @@ mod object_extensions;
 mod object_operations;
 mod object_rules;
 mod objects;
+mod operation_work;
 mod owner_effect;
 mod parser_resources;
 mod property_reflections;

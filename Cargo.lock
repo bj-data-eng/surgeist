@@ -4015,6 +4015,7 @@ version = "0.1.0"
 dependencies = [
  "stats_alloc",
  "surgeist-css",
+ "surgeist-ledger",
 ]
 
 [[package]]

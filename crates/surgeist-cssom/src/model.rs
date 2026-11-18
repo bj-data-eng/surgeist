@@ -1018,6 +1018,10 @@ pub enum CssomError {
     Keyframe(CssKeyframeRuleViewError),
     KeyframeComparison(CssKeyframeSelectorComparisonError),
     NamedSupports(CssSupportsConstructionError),
+    /// The host's ledger did not admit the operation's charge, or could not
+    /// open its phase. A batch operation it stops poisons the batch, and a
+    /// commit or replacement it stops publishes nothing.
+    Accounting(surgeist_css::accounting::CssAccountingError),
 }
 impl fmt::Display for CssomError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1043,6 +1047,7 @@ impl std::error::Error for CssomError {
             Self::KeyframeComparison(e) => Some(e),
             Self::Component(e) => Some(e),
             Self::NamedSupports(e) => Some(e),
+            Self::Accounting(e) => Some(e),
             _ => None,
         }
     }
@@ -1072,4 +1077,5 @@ cssom_error_from! {
     CssKeyframeRuleViewError => Keyframe,
     CssKeyframeSelectorComparisonError => KeyframeComparison,
     CssSupportsConstructionError => NamedSupports,
+    surgeist_css::accounting::CssAccountingError => Accounting,
 }
