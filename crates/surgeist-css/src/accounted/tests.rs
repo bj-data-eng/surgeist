@@ -353,3 +353,65 @@ fn a_plain_serialization_after_an_accounted_one_charges_nothing() {
     let _ = sheet.serialize_specified(unbounded());
     assert_eq!(charged(&ledger), after);
 }
+
+/// Every accounted front returns its value's own refusal inside `Ok`, and is
+/// charged no more than the limit that refused it.
+#[test]
+fn every_front_returns_its_own_refusal_and_stays_within_the_refusing_limit() {
+    let source = SOURCES[2];
+    let sheet = sheet(source);
+    let rule = first_rule(source);
+    let graph = CssRuleGraphInput::from_rule(&rule);
+    let one_short = |full: [u64; 3], dimension: usize| {
+        let mut caps = [usize::MAX; 3];
+        caps[dimension] = usize::try_from(full[dimension]).unwrap() - 1;
+        (limits(caps[0], caps[1], caps[2]), full[dimension] - 1)
+    };
+
+    let full = smallest_limits(|limits| sheet.serialize_specified(limits).is_ok());
+    for dimension in 0..3 {
+        let (limited, cap) = one_short(full, dimension);
+        let (ledger, host) = open_host();
+        let refused = sheet.accounted(&host).serialize_specified(limited).unwrap();
+        assert_eq!(refused, sheet.serialize_specified(limited));
+        assert!(refused.unwrap_err().is_resource_limit());
+        assert!(charged(&ledger)[dimension] <= cap);
+    }
+
+    let full = smallest_limits(|limits| rule.serialize_cssom(limits).is_ok());
+    for dimension in 0..3 {
+        let (limited, cap) = one_short(full, dimension);
+        let (ledger, host) = open_host();
+        let refused = rule.accounted(&host).serialize_cssom(limited).unwrap();
+        assert_eq!(
+            refused.as_ref().unwrap_err().rule_path(),
+            rule.serialize_cssom(limited).unwrap_err().rule_path()
+        );
+        assert!(charged(&ledger)[dimension] <= cap);
+    }
+
+    let full = smallest_limits(|limits| graph.serialize_specified(graph_limits(limits)).is_ok());
+    for dimension in 0..3 {
+        let (limited, cap) = one_short(full, dimension);
+        let (ledger, host) = open_host();
+        let refused = graph
+            .accounted(&host)
+            .serialize_specified(graph_limits(limited))
+            .unwrap();
+        assert!(refused.unwrap_err().is_resource_limit());
+        assert!(charged(&ledger)[dimension] <= cap);
+    }
+
+    // A graph refused for depth is charged the work admitted above it.
+    let shallow = CssRuleSerializationLimits {
+        values: unbounded(),
+        max_depth: 0,
+    };
+    let (ledger, host) = open_host();
+    let refused = graph.accounted(&host).serialize_specified(shallow).unwrap();
+    assert_eq!(
+        refused.as_ref().unwrap_err().rule_path(),
+        graph.serialize_specified(shallow).unwrap_err().rule_path()
+    );
+    assert!(charged(&ledger)[0] >= 1);
+}
