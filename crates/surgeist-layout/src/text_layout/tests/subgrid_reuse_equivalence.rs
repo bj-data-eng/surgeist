@@ -8,7 +8,10 @@
 
 use super::*;
 use crate::grid::subgrid_work::{SubgridWork, take_subgrid_work, with_subgrid_reuse_disabled};
-use crate::{GridPlacement, SubgridTrack, TextGroupAlign, TrackComponentOf};
+use crate::{
+    ChildOrderCompleteness, GeneratedBoxRef, GridPlacement, InlineChildOrderInput,
+    NativeInlineBoxFamilyInput, SubgridTrack, TextGroupAlign, TrackComponentOf,
+};
 
 /// What the innermost subgrid holds.
 #[derive(Clone, Copy)]
@@ -21,6 +24,8 @@ enum Content {
     Group,
     /// A group-aligned Block of text beside a fixed Block.
     GroupedText,
+    /// Two fixed Blocks that are native inline-box formatters.
+    Formatter,
 }
 
 /// Where the content sits.
@@ -35,6 +40,28 @@ enum Shape {
 impl Content {
     const fn has_group(self) -> bool {
         matches!(self, Self::Group | Self::GroupedText)
+    }
+}
+
+/// The wrapping input that registers each of `formatters` as a native inline-box family.
+fn native_formatters(formatters: &[u32]) -> crate::WrappingInput<u32> {
+    crate::WrappingInput {
+        native_inline_boxes: formatters
+            .iter()
+            .map(|&formatter| NativeInlineBoxFamilyInput { formatter })
+            .collect(),
+        gaps: Vec::new(),
+        scopes: Vec::new(),
+        child_order: formatters
+            .iter()
+            .map(|&formatter| InlineChildOrderInput {
+                parent: GeneratedBoxRef::Node(formatter),
+                children: Vec::new(),
+                prefix: ChildOrderCompleteness::Complete,
+                suffix: ChildOrderCompleteness::Complete,
+                formatting_context: formatter,
+            })
+            .collect(),
     }
 }
 
@@ -96,7 +123,7 @@ fn lay_out<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String 
             .children(node - 1, [node]);
     }
     let group = match content {
-        Content::Plain | Content::Text => TextGroupAlign::None,
+        Content::Plain | Content::Text | Content::Formatter => TextGroupAlign::None,
         Content::Group | Content::GroupedText => TextGroupAlign::Center,
     };
     tree = tree
@@ -137,7 +164,11 @@ fn lay_out<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String 
     } else {
         tree = tree.children(depth + 1, []);
     }
-    complete_flow(&tree, bindings, width)
+    let wrapping = match content {
+        Content::Formatter => native_formatters(&[depth + 1, depth + 2]),
+        _ => crate::WrappingInput::default(),
+    };
+    complete_flow(&tree, bindings, wrapping, width)
 }
 
 // Node 0 is a Grid with two automatic columns and an automatic row. Nodes 1..=depth are Grid
@@ -146,9 +177,20 @@ fn lay_out<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String 
 // from content. The second Block holds text, a group alignment, or neither (a fixed size).
 // For text, `2 * depth + level` is the text child of the Block of that level.
 fn lay_out_levels<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String {
+    let (tree, bindings, wrapping) = levels_document::<S>(depth, content, width);
+    complete_flow(&tree, bindings, wrapping, width)
+}
+
+type Document<S> = (
+    PublicLayoutTreeOf<S>,
+    Vec<TextParagraphBinding<u32>>,
+    crate::WrappingInput<u32>,
+);
+
+fn levels_document<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> Document<S> {
     let has_text = matches!(content, Content::Text | Content::GroupedText);
     let group = match content {
-        Content::Plain | Content::Text => TextGroupAlign::None,
+        Content::Plain | Content::Text | Content::Formatter => TextGroupAlign::None,
         Content::Group | Content::GroupedText => TextGroupAlign::Center,
     };
     let mut tree = PublicLayoutTreeOf::<S>::new().children(0, [1]).style(
@@ -217,39 +259,153 @@ fn lay_out_levels<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> 
             tree = tree.children(block, []);
         }
     }
-    complete_flow(&tree, bindings, width)
+    let wrapping = match content {
+        Content::Formatter => native_formatters(&(depth + 1..=2 * depth).collect::<Vec<_>>()),
+        _ => crate::WrappingInput::default(),
+    };
+    (tree, bindings, wrapping)
 }
 
 fn complete_flow<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     bindings: Vec<TextParagraphBinding<u32>>,
+    wrapping: crate::WrappingInput<u32>,
     width: f64,
 ) -> String {
-    let capture = LayoutFlowInput::try_new(
-        tree,
-        0,
-        bindings,
-        crate::WrappingInput {
-            native_inline_boxes: Vec::new(),
-            gaps: Vec::new(),
-            scopes: Vec::new(),
-            child_order: Vec::new(),
-        },
-        Vec::new(),
-    )
-    .unwrap();
-    let batch = compute_layout_with_flow(
+    match compute_flow(tree, bindings, wrapping, width) {
+        Ok(batch) => format!("{batch:?}"),
+        Err(error) => format!("refused: {error:?}"),
+    }
+}
+
+fn compute_flow<Tree, S>(
+    tree: &Tree,
+    bindings: Vec<TextParagraphBinding<u32>>,
+    wrapping: crate::WrappingInput<u32>,
+    width: f64,
+) -> Result<CompletedLayoutBatchOf<u32, S>, crate::LayoutErrorOf<u32, S, Tree::MeasureError>>
+where
+    S: LayoutScalar,
+    Tree: LayoutTree<Node = u32, Scalar = S>,
+    Tree::MeasureError: core::fmt::Debug,
+{
+    let capture = LayoutFlowInput::try_new(tree, 0, bindings, wrapping, Vec::new()).unwrap();
+    compute_layout_with_flow(
         &capture,
         0,
         request(width, {
             let root_input = crate::LayoutTree::node_input(capture.tree(), 0);
             crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
-    );
-    match batch {
-        Ok(batch) => format!("{batch:?}"),
-        Err(error) => format!("refused: {error:?}"),
+    )
+}
+
+/// A host whose cache holds what an earlier layout stored.
+struct CachedHost<S: LayoutScalar> {
+    tree: PublicLayoutTreeOf<S>,
+    cache: std::cell::RefCell<Vec<crate::LayoutCacheStoreEntryOf<u32, S>>>,
+    lookups: std::cell::Cell<usize>,
+}
+
+impl<S: LayoutScalar> Traverse for CachedHost<S> {
+    type Node = u32;
+    type Scalar = S;
+    type Children<'a>
+        = <PublicLayoutTreeOf<S> as Traverse>::Children<'a>
+    where
+        Self: 'a;
+
+    fn children(&self, node: u32) -> Self::Children<'_> {
+        Traverse::children(&self.tree, node)
     }
+
+    fn child_count(&self, node: u32) -> usize {
+        self.tree.child_count(node)
+    }
+
+    fn child(&self, node: u32, index: usize) -> u32 {
+        self.tree.child(node, index)
+    }
+}
+
+impl<S: LayoutScalar> LayoutTree for CachedHost<S> {
+    type MeasureError = core::convert::Infallible;
+
+    fn node_input(&self, node: u32) -> &NodeInputOf<S> {
+        self.tree.node_input(node)
+    }
+
+    fn layout_input(&self, node: u32) -> LayoutInputViewOf<'_, S> {
+        self.tree.layout_input(node)
+    }
+
+    fn has_leaf_measurement(&self, node: u32) -> bool {
+        self.tree.has_leaf_measurement(node)
+    }
+
+    fn measure_leaf(
+        &self,
+        node: u32,
+        input: LeafMeasureInputOf<S>,
+    ) -> Option<Result<Size<S>, Self::MeasureError>> {
+        self.tree.measure_leaf(node, input)
+    }
+
+    fn cache_get(
+        &self,
+        node: u32,
+        input: &ComputeInputOf<S>,
+        context: CacheKeyContext,
+    ) -> Option<ComputeOutputOf<S>> {
+        self.lookups.set(self.lookups.get() + 1);
+        self.cache
+            .borrow()
+            .iter()
+            .find(|entry| {
+                entry.node() == node && entry.input() == input && entry.context() == context
+            })
+            .map(|entry| entry.output())
+    }
+}
+
+/// The debug rendering of a cold layout and of the layout that follows it on a host whose cache
+/// holds what the cold layout stored, and how many lookups the warm layout made of it.
+fn lay_out_levels_on_a_warm_host<S: LayoutScalar>(
+    depth: u32,
+    content: Content,
+    width: f64,
+) -> (String, String, usize) {
+    let (tree, bindings, wrapping) = levels_document::<S>(depth, content, width);
+    let host = CachedHost {
+        tree,
+        cache: std::cell::RefCell::new(Vec::new()),
+        lookups: std::cell::Cell::new(0),
+    };
+    let render = |batch: &CompletedLayoutBatchOf<u32, S>| format!("{batch:?}");
+    // A flow layout leaves the host cache unconsulted, so a document without text or native
+    // formatters lays out as a plain tree, which does consult it.
+    let compute = |host: &CachedHost<S>| {
+        if bindings.is_empty() && wrapping == crate::WrappingInput::default() {
+            compute_layout(
+                host,
+                0,
+                request(width, {
+                    let root_input = crate::LayoutTree::node_input(host, 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                }),
+            )
+            .unwrap()
+        } else {
+            compute_flow(host, bindings.clone(), wrapping.clone(), width).unwrap()
+        }
+    };
+    let cold = compute(&host);
+    host.cache
+        .borrow_mut()
+        .extend(cold.cache_store_entries().iter().copied());
+    host.lookups.set(0);
+    let warm = compute(&host);
+    (render(&cold), render(&warm), host.lookups.get())
 }
 
 /// Lays out one document with the reuse and without it, and returns the work each did.
@@ -364,4 +520,131 @@ fn subgrid_wrappers_with_own_rows_holding_grouped_text_lay_out_the_same_with_reu
 #[test]
 fn subgrid_wrappers_with_own_rows_holding_fixed_blocks_lay_out_the_same_with_reuse() {
     assert_same_in_both_scalars("own rows, fixed", Shape::OwnRows, Content::Plain);
+}
+
+#[test]
+fn subgrid_wrappers_holding_native_formatters_lay_out_the_same_with_reuse() {
+    assert_same_in_both_scalars("native formatters", Shape::Inherited, Content::Formatter);
+}
+
+#[test]
+fn subgrid_wrappers_with_own_rows_holding_native_formatters_lay_out_the_same_with_reuse() {
+    assert_same_in_both_scalars(
+        "own rows, native formatters",
+        Shape::OwnRows,
+        Content::Formatter,
+    );
+}
+
+// A Grid with two columns holds a subgrid in the first, which holds a native formatter, and a
+// Block that is a native formatter in the second. The subgrid is placed and its first
+// computation completes the first family; the Block completes the second; the baseline refresh
+// then computes the subgrid again, which completes the first family again. A family that
+// completes again is published after the families that completed since.
+fn lay_out_formatter_beside_subgrid<S: LayoutScalar>() -> String {
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(0, [1, 3])
+        .children(1, [2])
+        .children(2, [])
+        .children(3, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Grid,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(100.0)),
+                    PreferredSizeOf::AUTO,
+                ),
+                grid_template_columns: auto_tracks(),
+                grid_template_rows: vec![TrackComponentOf::AUTO],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: GridPlacement::try_line(1).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                grid_template_columns: subgrid_tracks(),
+                grid_template_rows: subgrid_tracks(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Block,
+                size: px(30.0, 20.0),
+                grid_column: GridPlacement::try_line(1).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                display: Display::Block,
+                size: px(40.0, 20.0),
+                grid_column: GridPlacement::try_line(2).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                ..NodeInputOf::default()
+            },
+        );
+    complete_flow(&tree, Vec::new(), native_formatters(&[2, 3]), 100.0)
+}
+
+#[test]
+fn native_formatter_families_publish_in_the_same_order_with_reuse() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(|| {
+            for (reused, repeated) in [
+                (
+                    lay_out_formatter_beside_subgrid::<f32>(),
+                    with_subgrid_reuse_disabled(lay_out_formatter_beside_subgrid::<f32>),
+                ),
+                (
+                    lay_out_formatter_beside_subgrid::<f64>(),
+                    with_subgrid_reuse_disabled(lay_out_formatter_beside_subgrid::<f64>),
+                ),
+            ] {
+                assert!(!reused.starts_with("refused"), "the document lays out: {reused:.300}");
+                assert!(
+                    reused == repeated,
+                    "reuse changed the order of the native families: reused {reused:.600} repeated {repeated:.600}"
+                );
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn subgrid_wrappers_lay_out_the_same_with_reuse_on_a_warm_host_cache() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(|| {
+            for content in [Content::Plain, Content::Text, Content::Formatter] {
+                let reused = lay_out_levels_on_a_warm_host::<f64>(2, content, 140.0);
+                let repeated = with_subgrid_reuse_disabled(|| {
+                    lay_out_levels_on_a_warm_host::<f64>(2, content, 140.0)
+                });
+                assert!(
+                    reused.0 == repeated.0,
+                    "the cold layout is the same with reuse"
+                );
+                assert!(
+                    reused.1 == repeated.1,
+                    "the warm layout is the same with reuse"
+                );
+                if matches!(content, Content::Plain) {
+                    assert!(reused.2 > 0, "the warm layout consults the host cache");
+                }
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
