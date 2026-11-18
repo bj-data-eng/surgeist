@@ -570,6 +570,18 @@ reservations are conservatively retained. Zero is valid. These are admission/sto
 quotas; they do not promise an allocator/process-memory bound or recovery from
 system OOM. Checked CSS payloads retain their existing provider constraints.
 
+`CssomStore::with_host` builds a store whose operations charge a host's ledger
+scope (`surgeist_cssom::accounting`, the CSS accounting schema). Each public
+operation of the store, of its batches and of its replacement jobs runs inside
+one phase of the host's `cssom` scope and charges it once with what its state
+census runs and rule formatting did: census runs, objects and entries examined,
+source walk steps and rule nodes formatted. An operation that another runs adds
+to the outer charge, and a commit inside an operation charges the work so far
+before it publishes, so a host refusal (`CssomError::Accounting`) publishes
+nothing; a batch operation it stops poisons the batch. A limit refusal is charged
+the work done before it. The limits stay local checks with or without a host, and
+a store built with `CssomStore::new` makes no ledger call.
+
 Run the [source declaration consumer](examples/declaration_consumer.rs) for supplied
 usable support, source edits and owning old/new captures. Run the
 [external snapshot consumer](examples/snapshot_consumer.rs) for direct inspection
@@ -646,7 +658,9 @@ maximum time of one call, the time per rule for creation, the input bytes, the
 rule count, which each creation checks against the committed snapshot, and, for
 the two smaller sizes, the smallest `max_objects`, `max_entries` and
 `max_string_bytes` at which creation still succeeds. The limits are raised so
-that every size is admitted.
+that every size is admitted. Each case also runs on a store built with a host
+of an operation without caps, and those rows give what one call charges: census
+runs, objects, entries and source walk steps.
 
 Adoption checks the limits after each adopted rule. The first check of an
 adoption is the census of the whole state; each later check extends that census
