@@ -414,3 +414,103 @@ fn formatting_a_rule_charges_the_nodes_it_prepared() {
     assert!(text.starts_with("@media screen"), "{text}");
     assert_eq!(since(before, charged(&ledger)), [0, 0, 0, 0, nodes]);
 }
+
+/// The accepted batches and phases of the `cssom` scope.
+fn batches_and_phases(ledger: &CssLedger, host: &CssHostScope) -> (u64, u64) {
+    let scope = report(ledger, host);
+    (scope.accepted_batches, scope.phases)
+}
+
+fn summary_host() -> (CssLedger, CssHostScope) {
+    host(Limits::unlimited(), ProfileMode::Summary { timing: false })
+}
+
+#[test]
+fn formatting_a_rule_through_its_handle_charges_the_store_host() {
+    let (ledger, host) = summary_host();
+    let (store, sheet) = with_sheet(CssomLimits::default(), Some(host.clone())).unwrap();
+    let rule = CssStyleSheet::from_state(&store.state, &sheet)
+        .unwrap()
+        .css_rules(&store)
+        .unwrap()
+        .item(&store, 0)
+        .unwrap()
+        .unwrap();
+    let (before, calls) = (charged(&ledger), batches_and_phases(&ledger, &host));
+    let text = rule
+        .css_text(&store, &CssomRuleFormatLimits::default())
+        .unwrap();
+    assert!(text.starts_with("@media screen"), "{text}");
+    // The group and its two style rules, as the batch front formats them.
+    assert_eq!(since(before, charged(&ledger)), [0, 0, 0, 0, 3]);
+    let after = batches_and_phases(&ledger, &host);
+    assert_eq!((after.0 - calls.0, after.1 - calls.1), (1, 1));
+}
+
+#[test]
+fn a_store_object_operation_is_charged_in_one_batch_and_one_phase() {
+    let (ledger, host) = summary_host();
+    let (mut store, sheet) = with_sheet(CssomLimits::default(), Some(host.clone())).unwrap();
+    let handle = CssStyleSheet::from_state(&store.state, &sheet).unwrap();
+    let before = batches_and_phases(&ledger, &host);
+    let runs = charged(&ledger)[0];
+    let _ = handle
+        .insert_rule(
+            &mut store,
+            ".e { color: blue }",
+            Some(0),
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+    let after = batches_and_phases(&ledger, &host);
+    assert_eq!((after.0 - before.0, after.1 - before.1), (1, 1));
+    // Its staging, adoption and commit census runs all land in that batch.
+    assert!(charged(&ledger)[0] - runs >= 2);
+}
+
+#[test]
+fn a_batch_method_of_two_steps_is_one_operation() {
+    let (ledger, host) = summary_host();
+    let (store, sheet) = with_sheet(CssomLimits::default(), Some(host.clone())).unwrap();
+    let mut edit = store.batch(guard(&store)).unwrap();
+    let before = batches_and_phases(&ledger, &host);
+    let runs = charged(&ledger)[0];
+    edit.add_sheet_rule(
+        &sheet,
+        Some(".e"),
+        Some("color: blue"),
+        None,
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+    .unwrap();
+    let after = batches_and_phases(&ledger, &host);
+    assert_eq!((after.0 - before.0, after.1 - before.1), (1, 1));
+    assert!(charged(&ledger)[0] - runs >= 2);
+}
+
+#[test]
+fn finishing_and_cancelling_a_replacement_are_charged_once_each() {
+    let (ledger, host) = summary_host();
+    let (mut store, sheet) = with_sheet(CssomLimits::default(), Some(host.clone())).unwrap();
+    let job = store
+        .begin_replace_sheet(guard(&store), &sheet, ".e { color: blue }")
+        .unwrap();
+    let before = batches_and_phases(&ledger, &host);
+    let runs = charged(&ledger)[0];
+    let done = store
+        .finish_replace_sheet(guard(&store), job.parse())
+        .unwrap();
+    assert!(matches!(done.outcome(), CssomReplaceOutcome::Replaced));
+    let after = batches_and_phases(&ledger, &host);
+    assert_eq!((after.0 - before.0, after.1 - before.1), (1, 1));
+    assert!(charged(&ledger)[0] - runs >= 2);
+
+    let job = store
+        .begin_replace_sheet(guard(&store), &sheet, ".f { color: blue }")
+        .unwrap();
+    let before = batches_and_phases(&ledger, &host);
+    store.cancel_replace_sheet(job.token()).unwrap();
+    let after = batches_and_phases(&ledger, &host);
+    assert_eq!((after.0 - before.0, after.1 - before.1), (1, 1));
+    assert_eq!(store.pending_sheet_replacement(&sheet).unwrap(), None);
+}
