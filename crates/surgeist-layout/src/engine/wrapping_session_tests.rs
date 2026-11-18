@@ -464,3 +464,69 @@ fn a_hidden_write_in_a_capture_replays_to_the_same_stores_and_geometry() {
     lane::<f32>();
     lane::<f64>();
 }
+
+// Repeated acceptances of a float formatter in one capture compact to the writes of the last,
+// and replay to the session state they staged.
+#[test]
+fn repeated_float_formatter_acceptances_compact_and_replay_to_the_same_state() {
+    fn lane<S: LayoutScalar>() {
+        let tree = float_formatter_tree::<S>();
+        let flow =
+            LayoutFlowInput::try_new(&tree, 0, Vec::new(), float_formatter_wrapping(), Vec::new())
+                .unwrap();
+        let session = || ComputeSession::with_flow_unobserved(&flow, flow.invalidated.clone());
+        let mut probing = session();
+        let mut probe = || {
+            probing
+                .probe_float_child(
+                    4,
+                    input(RunMode::PerformLayout),
+                    crate::engine::FloatChildTrial::Detached,
+                )
+                .unwrap()
+        };
+        let with_runs = probe();
+        let mut without_runs = probe();
+        std::sync::Arc::get_mut(&mut without_runs)
+            .expect("the packet is not shared")
+            .native_inline_runs
+            .clear();
+
+        let mut original = session();
+        let mut replayed = session();
+        let start = original.begin_effect_capture(crate::engine::CaptureKind::Preparation);
+        for packet in [
+            &with_runs,
+            &with_runs,
+            &without_runs,
+            &with_runs,
+            &with_runs,
+            &with_runs,
+        ] {
+            original.accept_float_child(packet).unwrap();
+        }
+        let single = {
+            let mut once = session();
+            let start = once.begin_effect_capture(crate::engine::CaptureKind::Preparation);
+            once.accept_float_child(&with_runs).unwrap();
+            once.end_effect_capture(start).expect("recorded").len()
+        };
+        let effects = original.end_effect_capture(start).expect("recorded");
+        assert!(
+            effects.len() <= single + 1,
+            "{} writes against {single} for one acceptance",
+            effects.len()
+        );
+        replayed.replay_effects(&effects).unwrap();
+        assert_eq!(native_runs_of(&replayed), native_runs_of(&original));
+        assert!(!native_runs_of(&replayed).is_empty());
+        assert_eq!(
+            replayed.wrapping.native_completions.len(),
+            original.wrapping.native_completions.len()
+        );
+        assert_eq!(replayed.cache.stores.len(), original.cache.stores.len());
+        assert_eq!(replayed.outputs.unrounded, original.outputs.unrounded);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}

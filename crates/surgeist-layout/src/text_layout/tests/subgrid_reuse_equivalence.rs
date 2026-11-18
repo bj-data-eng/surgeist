@@ -850,3 +850,36 @@ fn hidden_items_in_subgrid_levels_leave_the_baseline_refresh_skip_on() {
         .join()
         .unwrap();
 }
+
+// Every formatter computation removes and publishes its family again, so the native writes of a
+// subtree repeat with each repeat of it. Compacted by family they stay bounded, and a chain of
+// subgrids holding native formatters keeps its reuse however deep it is: the wrapper
+// preparations grow with the depth, and the staged writes at most quadratically.
+#[test]
+fn deep_chains_of_native_formatters_keep_their_reuse() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(|| {
+            let at = |depth: u32| {
+                take_subgrid_work();
+                let laid_out = lay_out::<f64>(depth, Content::Formatter, 140.0);
+                assert!(
+                    !laid_out.starts_with("refused"),
+                    "the document lays out: {laid_out:.300}"
+                );
+                take_subgrid_work()
+            };
+            let (shallow, deep) = (at(6), at(12));
+            assert!(
+                deep.wrapper_preparations <= 3 * shallow.wrapper_preparations,
+                "{deep:?} at depth 12 against {shallow:?} at depth 6"
+            );
+            assert!(
+                deep.effects_captured <= 5 * shallow.effects_captured + 64,
+                "{deep:?} at depth 12 against {shallow:?} at depth 6"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
