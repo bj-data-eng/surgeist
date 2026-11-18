@@ -10,16 +10,18 @@
 //!
 //! # Where things live
 //!
-//! Two items sit at the crate root: [`Runtime`], the deterministic owner of application state, surfaces, queues and diagnostics,
-//! and [`DomSession`], the durable owner of the canonical DOM and its composed obligations, with the function [`crate_name`]. Every other public item has one path, in the module
-//! that owns its domain; a root path to a module item does not resolve.
+//! The crate root holds two types and one function. [`Runtime`] is the deterministic owner of
+//! application state, surfaces, queues and diagnostics. [`DomSession`] is the durable owner of the
+//! canonical DOM and its composed obligations. [`crate_name`] returns the crate identity. Every other
+//! public item has one path, in the module that owns its domain; a root path to a module item does
+//! not resolve.
 //!
 //! | Module | Domain |
 //! | --- | --- |
 //! | [`manifest`] | Authored names, command and event values, descriptors and the app manifest. |
 //! | [`reducer`], [`effect`] | State transitions and the effects they emit. |
 //! | [`input`], [`drain`], [`proxy`] | Typed inputs and their queues, drain turns, producer wakeups. |
-//! | [`identity`], [`task`], [`provenance`], [`diagnostic`] | Checked identities, task intents, input causality and diagnostics. |
+//! | [`identity`], [`task`], [`provenance`], [`diagnostic`] | Identities and versions, task intents, input causality and diagnostics. |
 //! | [`resource`], [`coordination`], [`service`], [`snapshot`] | Resource state, subscriptions, services and snapshots. |
 //! | [`surface`], [`host_capture`] | UI surfaces and their binding to the canonical DOM. |
 //! | [`session`], [`style`], [`source`], [`event`], [`hosted`], [`element_task`] | The DOM session and its composed owners. |

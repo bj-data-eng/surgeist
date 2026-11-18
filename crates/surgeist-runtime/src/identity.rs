@@ -1,4 +1,4 @@
-//! Checked identities, generations and versions.
+//! Identities, generations and versions.
 //!
 //! The identifier types ([`AppId`], [`CalcId`], [`CustomScopeId`], [`ElementId`], [`ExpressionId`], [`ResourceId`],
 //! [`RootId`], [`ServiceId`], [`SurfaceId`], [`ValueExprId`], [`WindowId`]), the generation counters

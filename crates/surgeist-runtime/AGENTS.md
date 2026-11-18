@@ -19,7 +19,7 @@ wiring and facade composition.
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
-| Public front door and exported surface | [src/lib.rs](src/lib.rs) (the module list and the two root items) and the public module files beside it, each a documented list of re-exports from `src/internal/` |
+| Public front door and exported surface | [src/lib.rs](src/lib.rs) (the module list and the three root items: `Runtime`, `DomSession` and `crate_name`) and the public module files beside it, each a documented list of re-exports from `src/internal/` |
 | Behavior and domain boundary | [README.md](README.md) and implementation under [src/](src/) |
 | Focused verification | [src/tests.rs](src/tests.rs), test modules in [src/internal/resource.rs](src/internal/resource.rs) and [src/internal/coord.rs](src/internal/coord.rs), and private fixtures in [src/testing.rs](src/testing.rs) |
 

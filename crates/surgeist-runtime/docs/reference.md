@@ -7,8 +7,8 @@
 | Cargo package | `surgeist-runtime` `0.1.0` | [Cargo.toml](../Cargo.toml) |
 | Rust library import | `surgeist_runtime` | [Cargo.toml](../Cargo.toml) |
 | Edition / minimum Rust | `2024` / `1.99.1` | [Cargo.toml](../Cargo.toml) |
-| Production dependencies | CSS, CSSOM, DOM, HTML and HTML semantics; target-gated `getrandom` 0.3.4 supplies native entropy. The HTML parser is a test dependency | [Cargo.toml](../Cargo.toml) |
-| Features | Empty `default` feature set; no other features declared | [Cargo.toml](../Cargo.toml) |
+| Production dependencies | CSS, CSSOM, DOM, HTML, HTML parser (without default features) and HTML semantics; target-gated `getrandom` 0.3.4 supplies native entropy. `document-scripting` adds the JS bindings, the ledger, `base64` and `sha2` | [Cargo.toml](../Cargo.toml) |
+| Features | Empty `default` feature set; `document-scripting` enables the `document_scripting` module and its dependencies | [Cargo.toml](../Cargo.toml) |
 | License | MIT | [LICENSE](../LICENSE) |
 | Public entry point | `Runtime`, `DomSession` and `crate_name` at the root; every other item at one path in a public module declared in `src/lib.rs`; implementation modules under `src/internal/` are private | [lib.rs](../src/lib.rs) |
 | Source lint declarations | `forbid(unsafe_code)` and `warn(missing_docs)` | [lib.rs](../src/lib.rs) |

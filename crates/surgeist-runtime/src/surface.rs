@@ -2,7 +2,8 @@
 //!
 //! A [`UiSurface`] is a registered surface with a generation-qualified identity ([`SurfaceRef`]) and a
 //! [`SurfaceLifecycle`]. Its [`SurfaceRoot`] retains the root identity and the registered event-target elements
-//! ([`SurfaceElements`], [`ElementRegistration`], [`ElementPhase`], [`SurfaceElementRef`]); a [`SurfaceRoute`] is a validated
+//! ([`SurfaceElements`], each an [`ElementRegistration`] of [`ElementPhase`]s); a [`SurfaceElementRef`] refers to one
+//! element on one surface by generation. A [`SurfaceRoute`] is a validated
 //! ordered route of [`SurfaceRouteStep`]s. A [`SurfaceInvalidation`] (of a [`SurfaceInvalidationKind`]) records why rendering
 //! work is needed, a render begins with a [`SurfaceRenderFrame`], [`SurfaceRenderState`] pairs the application state view
 //! with its frame, and [`SurfaceRenderAck`] is the result of accepting an acknowledgement. [`SurfaceMutation`] is the
