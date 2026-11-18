@@ -359,3 +359,28 @@ fn replaying_a_float_formatter_acceptance_removes_the_runs_the_acceptance_remove
     lane::<f32>();
     lane::<f64>();
 }
+
+// Entry sources charge funding on every visit, as entry storage does, so a session that holds
+// them repeats every subgrid computation.
+#[test]
+fn entry_sources_keep_a_session_from_reusing_subgrid_computations() {
+    fn lane<S: LayoutScalar>() {
+        let tree = tree::<S>(false);
+        let flow = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            Vec::new(),
+            crate::WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let mut session = ComputeSession::with_flow_unobserved(&flow, flow.invalidated.clone());
+        assert!(session.reuses_subgrid_computations());
+        session.entry_sources = Some(std::sync::Arc::new(std::sync::Mutex::new(
+            crate::engine::entry_sources::SourceMemo::new(None),
+        )));
+        assert!(!session.reuses_subgrid_computations());
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
