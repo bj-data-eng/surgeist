@@ -56,8 +56,8 @@ assert!(matches!(outcomes.intents()[2], RuntimeIntent::StartService(_)));
 The assertions verify three forwarded intents in their emitted order. The
 integrating consumer lowers them through concrete adapters into sibling crates
 and returns their resulting inputs through the Runtime task and service queues. Forwarding
-does not mean the requested work has completed. See [effect.rs](../src/effect.rs)
-and [runtime.rs](../src/runtime.rs) for the supported dispositions.
+does not mean the requested work has completed. See [effect.rs](../src/internal/effect.rs)
+and [runtime.rs](../src/internal/runtime.rs) for the supported dispositions.
 
 ## Handle queue capacity and continued work
 
@@ -77,7 +77,7 @@ construction and a `RuntimeBudget` for each drain turn.
    input remains at the front of its lane; another immediate retry cannot resolve
    an exhausted version counter.
 
-The queue rejection example in [runtime.rs](../src/runtime.rs) verifies that a
+The queue rejection example in [runtime.rs](../src/internal/runtime.rs) verifies that a
 zero-capacity UI queue returns the original payload. Its focused tests cover
 exact retry after space becomes available and cyclic lane draining.
 
@@ -87,7 +87,7 @@ For a thread-safe producer using `AppProxy`, the root host adapter supplies a
 report with `into_drained()`. A continuation failure means remaining proxy inputs
 need a host-arranged turn. Transfer each `ProxyInput` to its runtime lane while
 retaining any input rejected by runtime capacity. See
-[the proxy contract](../src/proxy.rs) and
+[the proxy contract](../src/internal/proxy.rs) and
 [wake delivery](explanation.md#queues-and-host-wakeups).
 
 ## Render a registered surface
@@ -107,7 +107,7 @@ With a `SurfaceRoot` and runtime-owned window/surface IDs available:
    `Runtime::mark_rendered`. Inspect the acknowledgement's consumed and remaining
    invalidation counts and `redraw_required()`.
 
-The public example on [Runtime](../src/runtime.rs) verifies that viewport and
+The public example on [Runtime](../src/internal/runtime.rs) verifies that viewport and
 scroll changes produce two consumed invalidations and no remaining work after
 acknowledgement. Stale frames return a typed error; later invalidations may still
 require rendering after an otherwise successful acknowledgement.
@@ -127,7 +127,7 @@ When an application needs a snapshot, begin with its authored `AppManifest`.
 Verify the snapshot's root, version, declarations, and accepted entries. Unknown
 roots, undeclared or duplicate entries, and source-type mismatches produce typed
 errors; a rejected entry leaves the accepted entries unchanged. The
-[App snapshot example](../src/descriptor.rs) shows construction, and
-[snapshot.rs](../src/snapshot.rs) contains rejection examples. Values are opaque
+[App snapshot example](../src/internal/descriptor.rs) shows construction, and
+[snapshot.rs](../src/internal/snapshot.rs) contains rejection examples. Values are opaque
 serialized text; runtime does not supply a codec or validate an application
 schema.

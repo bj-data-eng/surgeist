@@ -22,13 +22,13 @@ without those concrete systems.
 
 ## Explicit commits and effect outcomes
 
-A [reducer](../src/reducer.rs) borrows application state and input immutably.
+A [reducer](../src/internal/reducer.rs) borrows application state and input immutably.
 It returns unchanged state with a commit, replacement state with a commit, or a
 recoverable failure that cannot carry replacement state or effects. Reducers can
 mutate their own implementation state; the application-state commit boundary
 does not roll back arbitrary reducer internals.
 
-[Runtime](../src/runtime.rs) preflights changed-state version and surface
+[Runtime](../src/internal/runtime.rs) preflights changed-state version and surface
 invalidation advances before committing the input. A checked overflow restores
 that input to its lane and exposes earlier committed work in a partial report.
 A successful input's effects retain order and receive applied, forwarded, or
@@ -37,7 +37,7 @@ persistence, resource, task, and service work is forwarded as typed intents.
 The resulting disposition describes runtime handling, not eventual adapter
 completion.
 
-[Provenance](../src/provenance.rs) records the input origin and its source-specific
+[Provenance](../src/internal/provenance.rs) records the input origin and its source-specific
 identity. Task inputs identify a task and attempt; service inputs identify a
 service; surface origins carry a generation-qualified reference. Current and
 parent correlations are independently present or absent. Runtime chooses
@@ -61,10 +61,10 @@ Application state versions, surface generations, and invalidation generations
 describe different changes. A render frame captures the surface, state version,
 and invalidation boundary it covers. Acknowledgement consumes covered work
 without discarding later invalidations or regressing rendered state. The
-[surface contracts](../src/surface.rs) define the lifecycle transitions and
+[surface contracts](../src/internal/surface.rs) define the lifecycle transitions and
 acknowledgement errors.
 
-The [canonical DOM host adapter](../src/dom_host.rs) associates
+The [canonical DOM host adapter](../src/internal/dom_host.rs) associates
 generation-qualified surface elements with canonical DOM elements and publishes
 Runtime's exact focus/hover selections. These selections do not establish complete
 HTML focus processing, native activity or pointer-device state. Host publication
@@ -735,11 +735,11 @@ operational accounting and endpoint facts; snapshots retain no callback authorit
 These operations implement bounded native orchestration. A retained sheet or
 completed canonical edit does not establish fetched-resource completion,
 nonempty-media evaluation, rendering readiness, browser event-loop integration
-or JavaScript execution. The [Style](../src/dom_style.rs),
-[event](../src/dom_event.rs) and
-[Element task](../src/element_tasks.rs) modules define their admitted
+or JavaScript execution. The [Style](../src/internal/dom_style.rs),
+[event](../src/internal/dom_event.rs) and
+[Element task](../src/internal/element_tasks.rs) modules define their admitted
 operations and typed unavailable states; the
-[hosted lifecycle](../src/dom_lifecycle.rs) owns native creation and teardown. The
+[hosted lifecycle](../src/internal/dom_lifecycle.rs) owns native creation and teardown. The
 [DOM owner](../../surgeist-dom/README.md) defines canonical source continuations.
 
 ## Queues and host wakeups
@@ -754,11 +754,11 @@ bridge requests a future host turn; it must neither synchronously send or drain
 through the same proxy nor wait for that drain. Partial draining requests a
 continuation wake. A failed continuation is reported with remaining work so the
 host adapter can arrange another turn. The host owns the concrete scheduling
-mechanism; [proxy.rs](../src/proxy.rs) owns the delivery contract.
+mechanism; [proxy.rs](../src/internal/proxy.rs) owns the delivery contract.
 
 ## Resource values, subscriptions, and service mailboxes
 
-[ResourceState](../src/resource.rs) separates lifecycle status from whether a
+[ResourceState](../src/internal/resource.rs) separates lifecycle status from whether a
 value remains available and fresh. Loads and refreshes issue operation tokens;
 completion, failure, and cancellation must match the active resource, operation,
 and generation. Refreshing can retain an existing value. A failure policy can
@@ -766,13 +766,13 @@ retain that value as stale, so an error does not necessarily remove renderable
 data. Rejected transitions and checked counter overflow leave the resource
 unchanged.
 
-[CoordinationState](../src/coord.rs) owns subscription references. Target, scope,
+[CoordinationState](../src/internal/coord.rs) owns subscription references. Target, scope,
 generation-qualified observer, and priority all participate in a key. Repeated
 references and distinct scopes or priorities remain distinguishable, while
 aggregates provide a target-level view. Resource state does not keep a second
 observer count.
 
-[ServiceMailbox](../src/service.rs) is a bounded FIFO with explicit rejection or
+[ServiceMailbox](../src/internal/service.rs) is a bounded FIFO with explicit rejection or
 oldest-message eviction outcomes. Registration metadata describes service
 startup, shutdown, and restart choices; concrete service management stays with
 the adapter. Mailbox policy reports what happened to each push without implying
@@ -785,5 +785,5 @@ cross-descriptor validation. `App` owns that validated manifest. Snapshot
 construction uses a declared root and copies its binding declarations;
 subsequent entries must match those declarations. `SnapshotValue` carries opaque
 serialized text rather than a codec or schema implementation. The
-[descriptor](../src/descriptor.rs) and [snapshot](../src/snapshot.rs) modules
+[descriptor](../src/internal/descriptor.rs) and [snapshot](../src/internal/snapshot.rs) modules
 define the validation errors and successful construction paths.
