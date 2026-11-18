@@ -32,7 +32,7 @@ fn with_packet<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let mut session = ComputeSession::with_flow(&capture, Vec::new());
+    let mut session = ComputeSession::with_flow_unobserved(&capture, Vec::new());
     // The continuous native Block producer supports floats and numeric runs.
     // Retain its actual margin provenance in the same unpublished packet that
     // scope production uses, without entering the fragmentation source profile.

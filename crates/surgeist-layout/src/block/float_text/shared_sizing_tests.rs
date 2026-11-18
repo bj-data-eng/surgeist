@@ -306,7 +306,7 @@ fn unframed_full_size<S: LayoutScalar>() {
         ),
         request::<S>().sizing_request(),
     );
-    let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
     assert_eq!(
         super::super::float_context::Role::for_input(owner.node_input(0), input),
         super::super::float_context::Role::Shared
@@ -386,7 +386,7 @@ fn owner_sizes_shared_capture<S: LayoutScalar>() {
         ),
         request::<S>().sizing_request(),
     );
-    let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
     assert_eq!(
         super::super::float_context::Role::for_input(owner.node_input(100), input),
         super::super::float_context::Role::Owner

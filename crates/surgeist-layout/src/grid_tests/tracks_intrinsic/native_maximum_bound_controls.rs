@@ -48,7 +48,7 @@ fn actual_formal<S: LayoutScalar>(
     known_width: Option<S>,
 ) -> ComputeOutputOf<S> {
     tree.observed.borrow_mut().clear();
-    let mut session = crate::engine::ComputeSession::new(tree, Vec::new());
+    let mut session = crate::engine::ComputeSession::unobserved(tree, Vec::new());
     session
         .compute_child(0, formal_input(known_width))
         .expect("the native Grid query completes")

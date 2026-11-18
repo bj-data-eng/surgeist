@@ -366,6 +366,7 @@ impl From<crate::inline_wrapping::WrappingScopeError> for FitError {
 pub(crate) type WrappingClassifier<'a> = dyn BoxResolver + 'a;
 
 pub(crate) struct FitInput<'a> {
+    pub meter: crate::accounting::Meter,
     pub entry_funding: Option<super::scope_alignment::EntryFundingRef<'a>>,
     pub adjoining_displacement: f64,
     pub groups: crate::group_alignment::Snapshot,
@@ -2777,36 +2778,6 @@ where
     }
 }
 
-/// Line searches, the break opportunities they evaluate as candidates and the line searches that
-/// stopped early, counted on the current thread so a test can bound the work of one layout.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) struct CandidateWork {
-    pub(super) line_searches: usize,
-    pub(super) candidates: usize,
-    pub(super) early_stops: usize,
-}
-
-/// What one call of `observe_candidate_work` counts.
-#[cfg(test)]
-#[derive(Clone, Copy)]
-enum Observation {
-    LineSearch,
-    Candidate,
-    EarlyStop,
-}
-
-#[cfg(test)]
-thread_local! {
-    static CANDIDATE_WORK: std::cell::Cell<CandidateWork> =
-        const { std::cell::Cell::new(CandidateWork { line_searches: 0, candidates: 0, early_stops: 0 }) };
-}
-
-#[cfg(test)]
-pub(super) fn take_candidate_work() -> CandidateWork {
-    CANDIDATE_WORK.with(std::cell::Cell::take)
-}
-
 #[cfg(test)]
 thread_local! {
     static FULL_WALK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -2834,19 +2805,6 @@ fn full_walk_forced() -> bool {
 #[cfg(not(test))]
 const fn full_walk_forced() -> bool {
     false
-}
-
-#[cfg(test)]
-fn observe_candidate_work(observation: Observation) {
-    CANDIDATE_WORK.with(|cell| {
-        let mut work = cell.get();
-        match observation {
-            Observation::LineSearch => work.line_searches += 1,
-            Observation::Candidate => work.candidates += 1,
-            Observation::EarlyStop => work.early_stops += 1,
-        }
-        cell.set(work);
-    });
 }
 
 fn query_bands(

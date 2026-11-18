@@ -526,6 +526,7 @@ where
         crate::text_layout::run::Frame::Measurement
     };
     let context = crate::text_layout::run::Context {
+        meter: tree.meter(),
         scope_alignments,
         entry_funding: entry_funding.clone(),
         orientation,

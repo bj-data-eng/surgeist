@@ -414,6 +414,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         &[],
         &[],
         super::run::Context {
+            meter: crate::accounting::Meter::new(),
             entry_funding: None,
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 capture.scope_alignments.clone(),

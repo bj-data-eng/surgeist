@@ -228,6 +228,11 @@ mod fixture_variants;
 #[cfg(test)]
 use surgeist_text::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
 
+#[allow(
+    dead_code,
+    reason = "dimensions and handle methods are used as each boundary is wired"
+)]
+mod accounting;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/atomic_paragraph_metrics.rs"]
 mod atomic_paragraph_metrics;

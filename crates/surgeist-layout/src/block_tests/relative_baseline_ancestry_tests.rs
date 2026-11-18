@@ -99,7 +99,8 @@ fn ordinary_relative_child_exports_normal_baseline<S: LayoutScalar>(mode: Writin
         )
         .unwrap();
         {
-            let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+            let mut owner =
+                crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
             let request = normal_request(mode);
             let output = owner.compute_child(0, request).unwrap();
             // This is an operational ComputeOutput consumed by normal ancestors,

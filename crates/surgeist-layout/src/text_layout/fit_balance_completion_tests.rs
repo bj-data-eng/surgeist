@@ -60,6 +60,7 @@ pub(in super::super) fn fit_with_allocation(
     );
     super::super::fit(
         FitInput {
+            meter: crate::accounting::Meter::new(),
             entry_funding: None,
             adjoining_displacement: 0.0,
             inline_boxes: None,
@@ -515,7 +516,8 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
                 Vec::new(),
             )
             .unwrap();
-            let mut session = crate::engine::ComputeSession::with_flow(&flow, Vec::new());
+            let mut session =
+                crate::engine::ComputeSession::with_flow_unobserved(&flow, Vec::new());
             crate::engine::compute_root(&mut session, 0, {
                 let width = crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap();
                 let root_input = crate::LayoutTree::node_input(&tree, 0);

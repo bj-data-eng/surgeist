@@ -142,7 +142,7 @@ fn absorbed_directional_control<S: LayoutScalar>() {
             ),
         ),
     );
-    let mut computation = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+    let mut computation = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
     let packet = computation
         .probe_float_child(2, request, crate::engine::FloatChildTrial::Detached)
         .unwrap();

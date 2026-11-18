@@ -13,6 +13,7 @@ pub(crate) use session::ComputeSession;
 pub(crate) use session::{FloatChildPacket, FloatChildTrial};
 pub(crate) mod validation;
 
+use crate::accounting::{LayoutHostScope, Meter, with_host};
 use crate::error::LayoutResultOf;
 use crate::sizing::resolve::{ResolvedPreferredSize, resolve_preferred_sizing};
 use crate::{
@@ -66,6 +67,36 @@ pub fn measure_definite_inline_atomic_size<Tree>(
     container: Tree::Node,
     atomic: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, Size<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
+where
+    Tree: LayoutTree,
+{
+    // No host scope, so the call makes no ledger call.
+    measure_definite_inline_atomic_size_accounted(tree, container, atomic, request, None)
+}
+
+/// The same measurement, reporting its work counts to `host` when one is supplied.
+pub(crate) fn measure_definite_inline_atomic_size_accounted<Tree>(
+    tree: &Tree,
+    container: Tree::Node,
+    atomic: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+    host: Option<&LayoutHostScope>,
+) -> LayoutResultOf<Tree::Node, Size<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
+where
+    Tree: LayoutTree,
+{
+    with_host(host, |meter| {
+        measure_definite_inline_atomic_size_counted(tree, container, atomic, request, meter)
+    })
+}
+
+fn measure_definite_inline_atomic_size_counted<Tree>(
+    tree: &Tree,
+    container: Tree::Node,
+    atomic: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+    meter: Meter,
 ) -> LayoutResultOf<Tree::Node, Size<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
 where
     Tree: LayoutTree,
@@ -160,7 +191,7 @@ where
             )));
         }
     }
-    let mut session = session::ComputeSession::new(tree, Vec::new());
+    let mut session = session::ComputeSession::new(tree, Vec::new(), meter);
     let input = root::root_compute_input(&mut session, container, container_style, request)?.input;
     crate::block::measure_definite_inline_atomic(&mut session, container, atomic, input)
 }
@@ -185,6 +216,36 @@ pub fn compute_layout_invalidated<Tree>(
 where
     Tree: LayoutTree,
 {
+    // No host scope, so the call makes no ledger call.
+    compute_layout_invalidated_accounted(tree, root, request, changed_nodes, None)
+}
+
+/// The same computation, reporting its work counts to `host` when one is supplied.
+pub(crate) fn compute_layout_invalidated_accounted<Tree>(
+    tree: &Tree,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+    changed_nodes: &[Tree::Node],
+    host: Option<&LayoutHostScope>,
+) -> ComputeLayoutResult<Tree>
+where
+    Tree: LayoutTree,
+{
+    with_host(host, |meter| {
+        compute_layout_invalidated_counted(tree, root, request, changed_nodes, meter)
+    })
+}
+
+fn compute_layout_invalidated_counted<Tree>(
+    tree: &Tree,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+    changed_nodes: &[Tree::Node],
+    meter: Meter,
+) -> ComputeLayoutResult<Tree>
+where
+    Tree: LayoutTree,
+{
     let (graph, invalidated_nodes) =
         validation::validate_layout_request_with_text_graph(tree, root, changed_nodes, &[])?;
     let wrapping = crate::inline_wrapping::WrappingContext::new(
@@ -202,6 +263,7 @@ where
         invalidated_nodes,
         &graph,
         std::sync::Arc::new(wrapping),
+        meter,
     )
 }
 
@@ -212,11 +274,12 @@ fn compute_validated_layout<Tree>(
     invalidated_nodes: Vec<Tree::Node>,
     graph: &validation::ValidationGraph<Tree::Node>,
     wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
+    meter: Meter,
 ) -> ComputeLayoutResult<Tree>
 where
     Tree: LayoutTree,
 {
-    let mut session = session::ComputeSession::new(tree, invalidated_nodes);
+    let mut session = session::ComputeSession::new(tree, invalidated_nodes, meter);
     session.install_wrapping(wrapping, graph);
     run_session(session, root, request)
 }
@@ -245,6 +308,36 @@ pub fn compute_layout_with_flow_invalidated<Tree>(
 where
     Tree: LayoutTree,
 {
+    // No host scope, so the call makes no ledger call.
+    compute_layout_with_flow_invalidated_accounted(capture, root, request, changed_nodes, None)
+}
+
+/// The same computation, reporting its work counts to `host` when one is supplied.
+pub(crate) fn compute_layout_with_flow_invalidated_accounted<Tree>(
+    capture: &crate::LayoutFlowInput<'_, Tree>,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+    changed_nodes: &[Tree::Node],
+    host: Option<&LayoutHostScope>,
+) -> ComputeLayoutResult<Tree>
+where
+    Tree: LayoutTree,
+{
+    with_host(host, |meter| {
+        compute_layout_with_flow_invalidated_counted(capture, root, request, changed_nodes, meter)
+    })
+}
+
+fn compute_layout_with_flow_invalidated_counted<Tree>(
+    capture: &crate::LayoutFlowInput<'_, Tree>,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+    changed_nodes: &[Tree::Node],
+    meter: Meter,
+) -> ComputeLayoutResult<Tree>
+where
+    Tree: LayoutTree,
+{
     if root != capture.root {
         return Err(crate::LayoutErrorOf::new(
             crate::LayoutErrorSiteOf::Node(root),
@@ -268,13 +361,13 @@ where
             bound.mode(),
             crate::block_fragmentation::BoundMode::Block { .. }
         ) {
-            return crate::block_fragmentation::compute(capture, root, changed_nodes);
+            return crate::block_fragmentation::compute(capture, root, changed_nodes, meter);
         }
     }
     let mut invalidation_seeds = changed_nodes.to_vec();
     invalidation_seeds.extend(capture.invalidated.iter().copied());
     let invalidated = capture.graph.invalidation(&invalidation_seeds)?;
-    let session = session::ComputeSession::with_flow(capture, invalidated);
+    let session = session::ComputeSession::with_flow(capture, invalidated, meter);
     run_session(session, root, request)
 }
 
@@ -291,8 +384,9 @@ pub(crate) fn prepare_block_fragment_intrinsics<Tree: LayoutTree>(
     request: LayoutRootRequestOf<Tree::Scalar>,
     target: crate::LayoutTargetBasis,
     axes: crate::FlowAxes,
+    meter: &Meter,
 ) -> FragmentIntrinsicResult<Tree> {
-    let mut session = session::ComputeSession::new(tree, Vec::new());
+    let mut session = session::ComputeSession::new(tree, Vec::new(), meter.clone());
     session.bind_fragment_frame(target.clone(), Vec::new());
     let input = root::root_compute_input(&mut session, root, tree.node_input(root), request)?
         .input
@@ -318,6 +412,8 @@ pub(crate) struct BlockFrameBinding<Node, S: LayoutScalar> {
     pub(crate) allocations: Vec<crate::block_fragmentation::FragmentBoxAllocation<Node, S>>,
     pub(crate) intrinsics: std::sync::Arc<crate::block::intrinsic::FragmentContext<Node, S>>,
     pub(crate) dispatch: block_scope::Dispatch<Node, S>,
+    /// The accounting of the layout call this frame computes for.
+    pub(crate) meter: Meter,
 }
 
 /// Issue parent-local carrier origins from the same canonical inline contexts
@@ -335,9 +431,10 @@ pub(crate) fn prepare_block_carrier_path<Tree: LayoutTree>(
     frame: crate::BlockFragmentainerOf<Tree::Scalar>,
     intrinsics: std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>,
     binding: crate::block::content_insets::ContentInsetBinding<Tree::Node, Tree::Scalar>,
+    meter: &Meter,
 ) -> CarrierPathResult<Tree> {
     let root = path[0];
-    let mut session = session::ComputeSession::new(tree, Vec::new());
+    let mut session = session::ComputeSession::new(tree, Vec::new(), meter.clone());
     session.bind_fragment_frame_with_intrinsics(intrinsics.clone(), Vec::new());
     let input = intrinsics
         .entries
@@ -393,13 +490,14 @@ pub(crate) fn settle_block_carrier_origin<Tree: LayoutTree>(
     binding: &crate::block::content_insets::ContentInsetBinding<Tree::Node, Tree::Scalar>,
     node: Tree::Node,
     principal_parent: Option<crate::LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
+    meter: &Meter,
 ) -> LayoutResultOf<
     Tree::Node,
     crate::block::carrier::Origin<Tree::Scalar>,
     Tree::Scalar,
     Tree::MeasureError,
 > {
-    let session = session::ComputeSession::new(tree, Vec::new());
+    let session = session::ComputeSession::new(tree, Vec::new(), meter.clone());
     path.origin(&session, production, binding, node, principal_parent)
 }
 pub(crate) struct BlockScopeEntryRequest<Node, S: LayoutScalar> {
@@ -443,7 +541,7 @@ pub(crate) fn qualify_block_scope_entry<Tree: LayoutTree>(
     request: BlockScopeEntryRequest<Tree::Node, Tree::Scalar>,
 ) -> EntryQualificationResult<Tree> {
     let BlockScopeEntryRequest { pending, binding } = request;
-    let mut session = session::ComputeSession::new(tree, Vec::new());
+    let mut session = session::ComputeSession::new(tree, Vec::new(), binding.meter);
     session.bind_fragment_frame_with_intrinsics(binding.intrinsics, binding.allocations);
     session.install_block_scopes(pending.node, binding.dispatch)?;
     let context = crate::block::content::prepare(
@@ -472,7 +570,7 @@ pub(crate) fn qualify_block_scope_body<Tree: LayoutTree>(
     request: BlockScopeEntryRequest<Tree::Node, Tree::Scalar>,
 ) -> BodyQualificationResult<Tree> {
     let BlockScopeEntryRequest { pending, binding } = request;
-    let mut session = session::ComputeSession::new(tree, Vec::new());
+    let mut session = session::ComputeSession::new(tree, Vec::new(), binding.meter);
     session.bind_fragment_frame_with_intrinsics(binding.intrinsics, Vec::new());
     session.retain_block_bodies();
     let input = pending.input.with_run_mode(crate::RunMode::PerformLayout);
@@ -537,7 +635,7 @@ pub(crate) fn compute_block_content_frame<Tree: LayoutTree>(
     )
     .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
     let carrier_snapshot = binding.intrinsics.clone();
-    let mut session = session::ComputeSession::new(tree, invalidated);
+    let mut session = session::ComputeSession::new(tree, invalidated, binding.meter);
     session.bind_fragment_frame_with_intrinsics(binding.intrinsics, binding.allocations);
     session.install_block_scopes(root, binding.dispatch)?;
     session.retain_block_bodies();
@@ -631,7 +729,7 @@ pub(crate) fn compute_block_scope_root_frame<Tree: LayoutTree>(
         |_| false,
     )
     .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
-    let mut session = session::ComputeSession::new(tree, invalidated);
+    let mut session = session::ComputeSession::new(tree, invalidated, binding.meter);
     session.bind_fragment_frame_with_intrinsics(binding.intrinsics, binding.allocations);
     session.install_block_scopes(root, binding.dispatch)?;
     session.retain_block_bodies();

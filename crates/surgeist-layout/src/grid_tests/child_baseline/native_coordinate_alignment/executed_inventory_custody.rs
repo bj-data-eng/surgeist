@@ -52,7 +52,7 @@ fn performed_actor<S: LayoutScalar>(
         ),
     );
     let stage = GridSizingStage::COMPLETE;
-    let mut session = crate::engine::ComputeSession::new(tree, Vec::new());
+    let mut session = crate::engine::ComputeSession::unobserved(tree, Vec::new());
     // The existing private result owner retains the actual inventory instead of
     // discarding it at the public ComputeOutput boundary. No packet is patched.
     let invocation = GridInvocation {

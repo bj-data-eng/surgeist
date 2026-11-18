@@ -72,7 +72,7 @@ fn framed<S: LayoutScalar>() {
         AvailableSpaceOf::Definite(bound),
         SizingOperation::Normal,
     )));
-    let mut owner = crate::engine::ComputeSession::new(&tree, Vec::new());
+    let mut owner = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
     crate::engine::compute_root(&mut owner, 0, root_request).unwrap();
     let prior = owner.staged_unrounded(4).unwrap();
     let root = owner

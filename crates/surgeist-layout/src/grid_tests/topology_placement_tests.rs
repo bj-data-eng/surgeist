@@ -2417,7 +2417,7 @@ fn assert_lanes_intrinsic_auto_repeat_uses_authored_operation<S: LayoutScalar>()
     for (sizing_mode, expected_tracks) in
         [(SizingMode::InherentSize, 4), (SizingMode::ContentSize, 6)]
     {
-        let mut compute = crate::engine::ComputeSession::new(&fixture, Vec::new());
+        let mut compute = crate::engine::ComputeSession::unobserved(&fixture, Vec::new());
         let style = grid_container_projection!(compute.node_input(1));
         let input = request(sizing_mode);
         let constants = Constants::new(&compute, 1, &style, input).unwrap();

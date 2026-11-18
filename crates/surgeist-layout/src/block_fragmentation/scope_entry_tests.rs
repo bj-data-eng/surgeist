@@ -81,6 +81,7 @@ fn with_tree<
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
+        meter: crate::accounting::Meter::new(),
     };
     let driver = Driver::new(&environment, &scopes).unwrap();
     run(&driver);
@@ -103,7 +104,7 @@ fn pending<
         driver.environment.template.sizing_request(),
     );
     let mut session =
-        crate::engine::ComputeSession::new(driver.environment.capture.tree, Vec::new());
+        crate::engine::ComputeSession::unobserved(driver.environment.capture.tree, Vec::new());
     crate::block::scope::root(&mut session, 0, input).unwrap()
 }
 fn selection<
@@ -138,6 +139,7 @@ fn actual<
         crate::engine::BlockScopeEntryRequest {
             pending,
             binding: crate::engine::BlockFrameBinding {
+                meter: crate::accounting::Meter::new(),
                 allocations: Vec::new(),
                 intrinsics: driver
                     .environment
@@ -384,7 +386,7 @@ fn trimmed_margin_body<S: LayoutScalar>() {
             Size::new(Some(S::from_f64(100.0)), Some(S::from_f64(20.0))),
             PhysicalAxis::Vertical,
         );
-        let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+        let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
         let request = crate::block::scope::root(&mut session, 0, input).unwrap();
         let first = driver.body(&driver.stack[0], request, 0).unwrap();
         assert_eq!(
@@ -421,6 +423,7 @@ fn trimmed_margin_body<S: LayoutScalar>() {
             crate::engine::BlockScopeEntryRequest {
                 pending: request,
                 binding: crate::engine::BlockFrameBinding {
+                    meter: crate::accounting::Meter::new(),
                     allocations: Vec::new(),
                     intrinsics: driver
                         .environment

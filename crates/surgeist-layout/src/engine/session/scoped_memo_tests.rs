@@ -88,7 +88,7 @@ fn with_session<S: LayoutScalar, T>(
         |_| false,
     )
     .unwrap();
-    let mut session = ComputeSession::new(tree, invalidated);
+    let mut session = ComputeSession::unobserved(tree, invalidated);
     session.bind_fragment_frame(target.clone(), Vec::new());
     session
         .install_block_scopes(

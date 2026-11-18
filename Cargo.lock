@@ -4150,6 +4150,7 @@ dependencies = [
  "sha2",
  "surgeist-font",
  "surgeist-generator",
+ "surgeist-ledger",
  "surgeist-test",
  "surgeist-text",
 ]

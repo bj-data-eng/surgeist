@@ -774,7 +774,7 @@ fn inherited_lane_named_census<S: LayoutScalar>() {
             LengthAutoOf::px(n(100.0))
         );
 
-        let mut session = ComputeSession::new(&tree, Vec::new());
+        let mut session = ComputeSession::unobserved(&tree, Vec::new());
         let output = session.compute_child(0, input).unwrap();
         // Both actual children have fixed physical bodies. The descendant's
         // margin-box contribution is50+100=150. Central's shared First
@@ -805,7 +805,7 @@ fn inherited_lane_named_census<S: LayoutScalar>() {
     );
     assert_eq!(bad.child_count(11), 1);
     assert!(!bad.has_leaf_measurement(11));
-    let mut session = ComputeSession::new(&bad, Vec::new());
+    let mut session = ComputeSession::unobserved(&bad, Vec::new());
     let error = session.compute_child(0, input).unwrap_err();
     // The shared reference belongs to owner0, while the actual Lane
     // container1 is executing the unavailable query for its child11.
@@ -822,7 +822,7 @@ fn inherited_lane_named_census<S: LayoutScalar>() {
     ));
     // A real nonempty Flex is Unknown, not Absent. Retrying the original
     // supported input must still reproduce the independently qualified size.
-    let mut retry = ComputeSession::new(&good, Vec::new());
+    let mut retry = ComputeSession::unobserved(&good, Vec::new());
     assert_eq!(retry.compute_child(0, input).unwrap(), accepted.unwrap());
 }
 

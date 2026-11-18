@@ -154,7 +154,7 @@ fn required_basis<S: LayoutScalar>(error: &crate::LayoutErrorOf<u32, S, Infallib
 
 fn admitted_hypothetical<S: LayoutScalar>() {
     let local = scene::<S>(true, 2);
-    let mut owner = ComputeSession::new(&local, Vec::new());
+    let mut owner = ComputeSession::unobserved(&local, Vec::new());
     let frame = receiving_frame(&mut owner, false);
     let local_summary = summary(&mut owner, frame);
     let cut = local_summary.separation.expect("H10 precedes local Fh15");
@@ -170,7 +170,7 @@ fn admitted_hypothetical<S: LayoutScalar>() {
     // of a separation is distinct from the local introduced-zero case above;
     // its later settlement amount is covered by the public geometry tests.
     let inherited = scene::<S>(false, 2);
-    let mut owner = ComputeSession::new(&inherited, Vec::new());
+    let mut owner = ComputeSession::unobserved(&inherited, Vec::new());
     let frame = receiving_frame(&mut owner, true);
     let contact = summary(&mut owner, frame);
     assert!(contact.separation.is_none());
@@ -186,7 +186,7 @@ fn resident_frame_authority<S: LayoutScalar>() {
         .style(3, block(29.0, 0.0, Some(20.0)))
         .measure_with(2, zero::<S>);
     for variant in 0..3 {
-        let mut owner = ComputeSession::new(&tree, Vec::new());
+        let mut owner = ComputeSession::unobserved(&tree, Vec::new());
         let mut request = query::<S>(EntryPurpose::FramedEntry);
         if variant != 1 {
             install(&mut owner, request.incoming.as_ref().unwrap().clone());
@@ -227,14 +227,14 @@ fn resident_frame_authority<S: LayoutScalar>() {
 
 fn source_cut_authority<S: LayoutScalar>() {
     let tree = scene::<S>(true, 2);
-    let mut owner = ComputeSession::new(&tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(&tree, Vec::new());
     let frame = receiving_frame(&mut owner, false);
     let proof = summary(&mut owner, frame);
     proof.validate_separation(&mut owner).unwrap();
 
     // The target is still the same node, but is no longer at the issued cut.
     let reordered = tree.clone().children(0, [2, 1]);
-    let mut changed = ComputeSession::new(&reordered, Vec::new());
+    let mut changed = ComputeSession::unobserved(&reordered, Vec::new());
     required_basis(&proof.validate_separation(&mut changed).unwrap_err());
 
     // A changed relevant side cannot reuse the old left-float bound.
@@ -245,17 +245,17 @@ fn source_cut_authority<S: LayoutScalar>() {
             ..block(10.0, 0.0, Some(10.0))
         },
     );
-    let mut changed = ComputeSession::new(&wrong_side, Vec::new());
+    let mut changed = ComputeSession::unobserved(&wrong_side, Vec::new());
     required_basis(&proof.validate_separation(&mut changed).unwrap_err());
 }
 
 fn resident_cut_authority<S: LayoutScalar>() {
     let tree = scene::<S>(true, 2);
-    let mut producer = ComputeSession::new(&tree, Vec::new());
+    let mut producer = ComputeSession::unobserved(&tree, Vec::new());
     let frame = receiving_frame(&mut producer, false);
     let first = summary(&mut producer, frame.clone()).separation.unwrap();
     let other_tree = scene::<S>(true, 3);
-    let mut other_producer = ComputeSession::new(&other_tree, Vec::new());
+    let mut other_producer = ComputeSession::unobserved(&other_tree, Vec::new());
     let other_frame = receiving_frame(&mut other_producer, false);
     let other = summary(&mut other_producer, other_frame)
         .separation
@@ -267,7 +267,7 @@ fn resident_cut_authority<S: LayoutScalar>() {
     assert_eq!(first.relevant_bottom, other.relevant_bottom);
     assert!(!first.same_cut(other));
     for supplied in [Some(first), None, Some(other)] {
-        let mut owner = ComputeSession::new(&tree, Vec::new());
+        let mut owner = ComputeSession::unobserved(&tree, Vec::new());
         let installed = framed_request(frame.clone(), Some(first), EntryPurpose::Component);
         install(&mut owner, installed.incoming.unwrap());
         let request = framed_request(frame.clone(), supplied, EntryPurpose::Component);

@@ -169,7 +169,7 @@ fn lane<S: LayoutScalar>() {
         panic!("actual native float fixture has one admitted run");
     };
     let admitted = capture.associations.admitted_run(&capture.paragraphs, row);
-    let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
     let child_request = ComputeInputOf::for_child(
         RunMode::PerformLayout,
         SizingMode::InherentSize,

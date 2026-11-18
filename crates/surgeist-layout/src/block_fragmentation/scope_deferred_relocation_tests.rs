@@ -98,6 +98,7 @@ fn relocation_control<S: LayoutScalar>(capped: bool, page_before: bool) {
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
+        meter: crate::accounting::Meter::new(),
     };
 
     let resolved = Driver::new(&environment, &scopes)

@@ -118,7 +118,7 @@ fn empty_eligible_set<S: LayoutScalar>(children: Children, fixed: bool) {
                 for name in [BaselineName::Alphabetic, BaselineName::Central] {
                     for set in [NamedBaselineSet::First, NamedBaselineSet::Last] {
                         let demand = NamedBaselineDemand::Fact { name, set };
-                        let mut session = ComputeSession::new(&tree, Vec::new());
+                        let mut session = ComputeSession::unobserved(&tree, Vec::new());
                         let output = session
                             .compute_child(1, request(flow, run_mode, demand))
                             .unwrap();
@@ -155,7 +155,7 @@ fn nonempty_remains_unknown<S: LayoutScalar>() {
                         for name in [BaselineName::Alphabetic, BaselineName::Central] {
                             for set in [NamedBaselineSet::First, NamedBaselineSet::Last] {
                                 let demand = NamedBaselineDemand::Fact { name, set };
-                                let mut session = ComputeSession::new(&tree, Vec::new());
+                                let mut session = ComputeSession::unobserved(&tree, Vec::new());
                                 let output = session
                                     .compute_child(1, request(flow, run_mode, demand))
                                     .unwrap();
@@ -184,7 +184,7 @@ fn known_size_without_named_demand<S: LayoutScalar>() {
                 Children::Collapsed,
             ] {
                 let tree = fixture::<S>(flow, direction, children, true);
-                let mut session = ComputeSession::new(&tree, Vec::new());
+                let mut session = ComputeSession::unobserved(&tree, Vec::new());
                 let output = session
                     .compute_child(
                         1,
@@ -216,7 +216,7 @@ fn physical_last_zero_is_preserved<S: LayoutScalar>() {
             set: NamedBaselineSet::Last,
         },
     ] {
-        let mut session = ComputeSession::new(&tree, Vec::new());
+        let mut session = ComputeSession::unobserved(&tree, Vec::new());
         let output = session
             .compute_child(1, request(flow, RunMode::PerformLayout, demand))
             .unwrap();

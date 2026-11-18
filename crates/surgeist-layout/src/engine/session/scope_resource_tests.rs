@@ -417,7 +417,7 @@ fn pending_scope_descriptor_custody_survives_clones_and_retires_with_the_final_o
     let prior = crate::engine::compute_layout_with_flow(&flow, 0, request()).unwrap();
     publication(&prior, &fixture);
     let usage = fixture.binding.prepared.scope_alignment_usage();
-    let mut session = ComputeSession::with_flow(&flow, vec![]);
+    let mut session = ComputeSession::with_flow_unobserved(&flow, vec![]);
     stage(&mut session);
     let state = session.text.as_ref().unwrap();
     assert_eq!(state.pending.len(), 1);
@@ -459,7 +459,7 @@ fn global_bridge(work: usize) {
     let prior = crate::engine::compute_layout_with_flow(&flow, 0, request()).unwrap();
     publication(&prior, &fixture);
     let usage = fixture.binding.prepared.scope_alignment_usage();
-    let mut producer = ComputeSession::with_flow(&flow, vec![]);
+    let mut producer = ComputeSession::with_flow_unobserved(&flow, vec![]);
     stage(&mut producer);
     let frames = producer.canonical_frames(0).unwrap();
     let basis = producer.text_pass_basis(0, frames).unwrap();
@@ -474,7 +474,7 @@ fn global_bridge(work: usize) {
     let previous = basis.clone();
     // A fresh real same-flow session starts a work ledger at0. Its
     // actual private global bridge consumes the real native pass products.
-    let session = ComputeSession::with_flow(&flow, vec![]);
+    let session = ComputeSession::with_flow_unobserved(&flow, vec![]);
     let comparisons = WORK / PASS_WORK + usize::from(work > WORK);
     for _ in 0..comparisons {
         session
@@ -533,7 +533,7 @@ fn limits() -> text::ScopeAlignmentLimits {
 fn funded_session<'a>(
     flow: &'a LayoutFlowInput<'a, PublicLayoutTreeOf<f64>>,
 ) -> ComputeSession<'a, PublicLayoutTreeOf<f64>> {
-    let mut session = ComputeSession::with_flow(flow, vec![]);
+    let mut session = ComputeSession::with_flow_unobserved(flow, vec![]);
     session.entry_sources = Some(Arc::new(std::sync::Mutex::new(
         crate::engine::entry_sources::SourceMemo::new(None),
     )));

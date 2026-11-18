@@ -1,5 +1,6 @@
 use super::super::{formatted, roles};
 use super::*;
+use crate::accounting::LayoutWork;
 
 pub(super) struct AcceptedCandidate {
     candidate: EvaluatedCandidate,
@@ -128,8 +129,7 @@ where
         input: &FitInput<'_>,
         search: SequenceLineSearch<'_>,
     ) -> Result<Option<AcceptedCandidate>, FitError> {
-        #[cfg(test)]
-        observe_candidate_work(Observation::LineSearch);
+        input.meter.charge(LayoutWork::LineSearch, 1);
         let SequenceLineSearch {
             progress,
             constrained,
@@ -384,6 +384,7 @@ where
                 goal,
                 ..ScopedChoices::default()
             };
+            let mut candidate_work = input.meter.tally(LayoutWork::Candidate);
             for (index, (end, opportunity, kind, alternatives)) in
                 opportunities.iter().enumerate().skip(first)
             {
@@ -392,8 +393,7 @@ where
                 if *end < start || (*end == start && *kind != PreparedBreakKind::ParagraphEnd) {
                     continue;
                 }
-                #[cfg(test)]
-                observe_candidate_work(Observation::Candidate);
+                candidate_work.one();
                 let variants = (*kind != PreparedBreakKind::Discretionary)
                     .then_some(None)
                     .into_iter()
@@ -545,8 +545,6 @@ where
                     && choice.as_ref().is_some_and(|candidate| candidate.fits)
                     && self.advances_never_shrink(input, &query, &opportunities[index..])?
                 {
-                    #[cfg(test)]
-                    observe_candidate_work(Observation::EarlyStop);
                     break;
                 }
                 if !matches!(

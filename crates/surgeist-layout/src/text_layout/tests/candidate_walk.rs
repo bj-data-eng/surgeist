@@ -6,6 +6,7 @@
 //! the glyph count times ten and every expectation is derived from those widths.
 
 use super::*;
+use crate::accounting::{LayoutWork, TestHost};
 use crate::test_support::readback::{self, Phase};
 
 const WORD: &str = "XXX ";
@@ -43,6 +44,14 @@ impl Document {
 
     /// The placed lines as trimmed source text and physical bounds.
     fn lay_out<S: LayoutScalar>(&self) -> Vec<(String, surgeist_text::Rect)> {
+        self.lay_out_reporting::<S>(None)
+    }
+
+    /// The same layout, reporting the call's work to `host`.
+    fn lay_out_reporting<S: LayoutScalar>(
+        &self,
+        host: Option<&TestHost>,
+    ) -> Vec<(String, surgeist_text::Rect)> {
         let mut style = ahem_style(self.size, 10.0);
         style.letter_spacing = self.letter_spacing;
         style.word_spacing = self.word_spacing;
@@ -102,13 +111,15 @@ impl Document {
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(
+        let batch = crate::engine::compute_layout_with_flow_invalidated_accounted(
             &capture,
             0,
             request(self.width, {
                 let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
                 crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
+            &[],
+            host.map(TestHost::scope).as_ref(),
         )
         .unwrap();
         if self.float.is_some() {
@@ -142,12 +153,43 @@ fn words_on_widest_line(lines: &[(String, surgeist_text::Rect)]) -> usize {
         .unwrap()
 }
 
+/// The line searches and candidates one layout reports to its host scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CandidateWork {
+    line_searches: u64,
+    candidates: u64,
+}
+
+impl CandidateWork {
+    /// The most candidates `per_line` words per line allow over this many line searches.
+    fn per_search_bound(&self, per_line: usize) -> u64 {
+        (u64::try_from(per_line).unwrap() + 2) * self.line_searches
+    }
+
+    fn of(host: &TestHost) -> Self {
+        Self {
+            line_searches: host.work(LayoutWork::LineSearch),
+            candidates: host.work(LayoutWork::Candidate),
+        }
+    }
+}
+
 /// Laying out one document and counting the line searches and candidates it evaluates.
-fn candidate_work(document: &Document) -> (fit::CandidateWork, usize, usize) {
-    fit::take_candidate_work();
-    let lines = document.lay_out::<f64>();
-    let work = fit::take_candidate_work();
-    (work, lines.len(), words_on_widest_line(&lines))
+fn candidate_work(document: &Document) -> (CandidateWork, usize, usize) {
+    let host = TestHost::new();
+    let lines = document.lay_out_reporting::<f64>(Some(&host));
+    (
+        CandidateWork::of(&host),
+        lines.len(),
+        words_on_widest_line(&lines),
+    )
+}
+
+/// The work of one document with every line search forced to visit its whole opportunity window.
+fn full_walk_work(document: &Document) -> CandidateWork {
+    let host = TestHost::new();
+    fit::with_full_walk(|| document.lay_out_reporting::<f64>(Some(&host)));
+    CandidateWork::of(&host)
 }
 
 #[test]
@@ -163,8 +205,11 @@ fn auto_line_search_evaluates_only_the_words_that_fit_plus_the_first_that_does_n
         let (work, lines, per_line) = candidate_work(&document);
         assert_eq!(lines, count / 2, "{count} words: two words per 100px line");
         assert_eq!(per_line, 2);
-        assert!(work.line_searches >= lines, "{work:?}");
-        per_search_bound.push((work, (per_line + 2) * work.line_searches));
+        assert!(
+            usize::try_from(work.line_searches).unwrap() >= lines,
+            "{work:?}"
+        );
+        per_search_bound.push((work, work.per_search_bound(per_line)));
         candidates.push(work.candidates);
     }
     for (work, bound) in &per_search_bound {
@@ -189,7 +234,7 @@ fn assert_negative_spacing_keeps_the_full_walk(document: &mut Document, words_pe
     assert_eq!(per_line, words_per_line);
     assert_eq!(lines, count.div_ceil(words_per_line));
     assert!(
-        work.candidates > (per_line + 2) * work.line_searches,
+        work.candidates > work.per_search_bound(per_line),
         "{work:?} must keep the full walk"
     );
 }
@@ -222,14 +267,23 @@ fn word_spacing_that_moves_the_pen_backwards_keeps_the_full_candidate_walk() {
     let (work, lines, per_line) = candidate_work(&document);
     assert!(lines > 1);
     assert!(
-        work.candidates > (per_line + 2) * work.line_searches,
+        work.candidates > work.per_search_bound(per_line),
         "{work:?} must keep the full walk"
     );
 }
 
-/// The early stop counter of one document laid out as the layout runs it.
-fn early_stops(document: &Document) -> usize {
-    candidate_work(document).0.early_stops
+/// The candidates the early stop saves on one document: the forced full walk evaluates every
+/// candidate of the same line searches, so the early stop evaluates the difference less.
+fn candidates_saved_by_the_early_stop(document: &Document) -> u64 {
+    let (early, ..) = candidate_work(document);
+    let full = full_walk_work(document);
+    assert_eq!(
+        early.line_searches, full.line_searches,
+        "the early stop changes no line search"
+    );
+    full.candidates
+        .checked_sub(early.candidates)
+        .expect("the early stop never evaluates more candidates than the full walk")
 }
 
 #[test]
@@ -240,7 +294,10 @@ fn justified_text_without_negative_spacing_still_stops_the_line_search_early() {
     ] {
         let mut document = Document::words(50, 100.0);
         document.justification = Some(justification);
-        assert!(early_stops(&document) > 0, "{justification:?}");
+        assert!(
+            candidates_saved_by_the_early_stop(&document) > 0,
+            "{justification:?}"
+        );
     }
 }
 
@@ -254,7 +311,7 @@ fn justified_inter_character_text_with_negative_letter_spacing_keeps_the_full_ca
     document.size = 5.0;
     document.letter_spacing = -12.0;
     document.justification = Some(TextJustification::InterCharacter);
-    assert_eq!(early_stops(&document), 0);
+    assert_eq!(candidates_saved_by_the_early_stop(&document), 0);
 }
 
 #[test]
@@ -265,7 +322,7 @@ fn justified_inter_word_text_with_negative_letter_spacing_keeps_the_full_candida
     document.size = 5.0;
     document.letter_spacing = -12.0;
     document.justification = Some(TextJustification::InterWord);
-    assert_eq!(early_stops(&document), 0);
+    assert_eq!(candidates_saved_by_the_early_stop(&document), 0);
 }
 
 fn assert_trailing_space_hangs<S: LayoutScalar>() {

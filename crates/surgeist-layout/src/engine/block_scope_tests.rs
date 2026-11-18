@@ -59,7 +59,7 @@ fn suspension<S: LayoutScalar>() {
     )
     .target_basis();
     let id = {
-        let mut trial = ComputeSession::new(&tree, Vec::new());
+        let mut trial = ComputeSession::unobserved(&tree, Vec::new());
         trial.bind_fragment_frame(target.clone(), Vec::new());
         trial
             .install_block_scopes(
@@ -96,7 +96,7 @@ fn suspension<S: LayoutScalar>() {
     assert!(requests.borrow_mut().take(id).is_none());
     // A separately produced child body retains its own staging. The parent
     // consumes only the exact principal result, not a copied descendant tree.
-    let mut body = ComputeSession::new(&tree, Vec::new());
+    let mut body = ComputeSession::unobserved(&tree, Vec::new());
     let principal =
         crate::block::compute_block_scoped(&mut body, request.node, request.input).unwrap();
     assert_eq!(principal.size.height, S::from_f64(10.0));
@@ -108,7 +108,7 @@ fn suspension<S: LayoutScalar>() {
         entry: request,
         output: principal,
     };
-    let mut accepted = ComputeSession::new(&tree, Vec::new());
+    let mut accepted = ComputeSession::unobserved(&tree, Vec::new());
     accepted.bind_fragment_frame(target.clone(), Vec::new());
     accepted
         .install_block_scopes(
@@ -137,7 +137,7 @@ fn suspension<S: LayoutScalar>() {
     let mut other_view = ready;
     other_view.view = super::SourceViewId(1);
     for stale in [stale, other_view] {
-        let mut rejected = ComputeSession::new(&tree, Vec::new());
+        let mut rejected = ComputeSession::unobserved(&tree, Vec::new());
         rejected.bind_fragment_frame(target.clone(), Vec::new());
         rejected
             .install_block_scopes(
@@ -161,7 +161,7 @@ fn suspension<S: LayoutScalar>() {
 
     // The rejected trial is gone. Replay uses a new staging owner, while the
     // owned request still retains the original child context.
-    let mut replay = ComputeSession::new(&tree, Vec::new());
+    let mut replay = ComputeSession::unobserved(&tree, Vec::new());
     let output = crate::block::compute_block_scoped(&mut replay, 0, input).unwrap();
     assert_eq!(
         output.size,

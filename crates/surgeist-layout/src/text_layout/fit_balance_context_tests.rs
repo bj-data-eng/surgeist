@@ -237,6 +237,7 @@ fn fitting_ordinary_trials(
     );
     let lines = super::super::fit(
         FitInput {
+            meter: crate::accounting::Meter::new(),
             entry_funding: None,
             adjoining_displacement: 0.0,
             inline_boxes: None,
@@ -484,7 +485,7 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        let mut session = crate::engine::ComputeSession::with_flow(&flow, Vec::new());
+        let mut session = crate::engine::ComputeSession::with_flow_unobserved(&flow, Vec::new());
         crate::engine::compute_root(&mut session, 0, {
             let width = crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap();
             let root_input = crate::LayoutTree::node_input(&tree, 0);

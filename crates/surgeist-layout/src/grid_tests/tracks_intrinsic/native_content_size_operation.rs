@@ -44,7 +44,7 @@ fn query_content_subject<S: LayoutScalar>(
     );
     assert_eq!(input.known(), Size::NONE);
     assert_eq!(input.parent(), Size::NONE);
-    let mut session = crate::engine::ComputeSession::new(tree, Vec::new());
+    let mut session = crate::engine::ComputeSession::unobserved(tree, Vec::new());
     session
         .compute_child(0, input)
         .expect("the native Grid query completes")

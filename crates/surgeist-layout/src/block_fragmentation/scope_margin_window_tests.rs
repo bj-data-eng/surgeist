@@ -101,6 +101,7 @@ fn margin_window_with_entry<S: LayoutScalar>(capped: bool, prefix: f64, margin: 
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
+        meter: crate::accounting::Meter::new(),
     };
     let driver = Driver::new(&environment, &scopes).unwrap();
     let work = &driver.stack[0];

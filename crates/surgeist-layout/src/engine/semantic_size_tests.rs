@@ -210,7 +210,7 @@ fn known_size_baseline<S: LayoutScalar>() {
             ),
         )
         .unwrap();
-        let mut session = ComputeSession::with_flow(&flow, flow.invalidated.clone());
+        let mut session = ComputeSession::with_flow_unobserved(&flow, flow.invalidated.clone());
         let output = session.compute_child(0, input).unwrap();
         assert_eq!(output.size, Size::new(S::from_f64(30.0), S::from_f64(50.0)));
         assert_eq!(output.first_baselines.y, force.then_some(S::from_f64(16.0)));
@@ -219,7 +219,7 @@ fn known_size_baseline<S: LayoutScalar>() {
         // Size queries need not publish pending placements. A fresh
         // PerformLayout counterpart exposes the same semantic source/box receipt
         // through the existing owning session, without adding a test-only API.
-        let mut placed = ComputeSession::with_flow(&flow, flow.invalidated.clone());
+        let mut placed = ComputeSession::with_flow_unobserved(&flow, flow.invalidated.clone());
         let output = placed
             .compute_child(
                 0,

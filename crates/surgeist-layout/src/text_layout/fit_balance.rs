@@ -517,6 +517,7 @@ mod tests {
         );
         let lines = super::super::fit(
             FitInput {
+                meter: crate::accounting::Meter::new(),
                 entry_funding: None,
                 adjoining_displacement: 0.0,
                 inline_boxes: None,

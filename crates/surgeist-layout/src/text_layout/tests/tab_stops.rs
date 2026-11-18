@@ -320,6 +320,7 @@ fn intrinsic_with_indent(
         &[],
         &[],
         super::super::run::Context {
+            meter: crate::accounting::Meter::new(),
             entry_funding: None,
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 flow.scope_alignments.clone(),

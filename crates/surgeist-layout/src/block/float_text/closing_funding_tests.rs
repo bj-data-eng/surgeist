@@ -161,7 +161,7 @@ fn with_scene(
         })
         .expect("actual End3 line receipt");
     assert_eq!(line.feedback().advance, 13.0);
-    let mut computation = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+    let mut computation = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
     let request = ComputeInputOf::for_child(
         RunMode::PerformLayout,
         SizingMode::InherentSize,

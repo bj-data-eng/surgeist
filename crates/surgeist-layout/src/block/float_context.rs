@@ -365,7 +365,7 @@ mod tests {
                 ),
             ),
         );
-        let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+        let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
         let error = session.compute_child(0, input).unwrap_err();
         assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(5));
         assert!(matches!(
@@ -464,7 +464,7 @@ mod tests {
                 .children(2, [])
                 .style(1, block::<S>(100.0, None))
                 .style(2, floated(20.0, 30.0));
-            let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+            let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
             let input = ComputeInputOf::for_child(
                 crate::RunMode::ComputeSize,
                 crate::SizingMode::InherentSize,
@@ -554,7 +554,8 @@ mod tests {
                             } else {
                                 tree.children(2, []).style(2, floating)
                             };
-                            let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+                            let mut session =
+                                crate::engine::ComputeSession::unobserved(&tree, Vec::new());
                             let input = ComputeInputOf::for_child(
                                 crate::RunMode::ComputeSize,
                                 crate::SizingMode::InherentSize,

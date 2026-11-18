@@ -384,6 +384,7 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                     accepted: None,
                     carrier: None,
                     binding: crate::engine::BlockFrameBinding {
+                        meter: self.environment.meter.clone(),
                         allocations,
                         intrinsics,
                         dispatch,
@@ -409,6 +410,7 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                     frame: bounds,
                     axes: self.environment.axes,
                     binding: crate::engine::BlockFrameBinding {
+                        meter: self.environment.meter.clone(),
                         allocations,
                         intrinsics,
                         dispatch,
@@ -1044,6 +1046,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                 crate::engine::BlockScopeEntryRequest {
                     pending,
                     binding: crate::engine::BlockFrameBinding {
+                        meter: self.environment.meter.clone(),
                         allocations: Vec::new(),
                         intrinsics: intrinsics.clone(),
                         dispatch: dispatch.clone(),
@@ -1077,6 +1080,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                     accepted: None,
                     carrier: None,
                     binding: crate::engine::BlockFrameBinding {
+                        meter: self.environment.meter.clone(),
                         allocations: allocation,
                         intrinsics,
                         dispatch,

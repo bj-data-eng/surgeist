@@ -53,7 +53,7 @@ fn intrinsic_preference_owns_percent_basis<S: LayoutScalar>(
     );
     assert_eq!(input.known(), Size::NONE);
     assert_eq!(input.sizing_request().axes(), available);
-    let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+    let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
     let intrinsic = session
         .compute_child(0, input)
         .expect("intrinsic preferred Grid size is admitted with an external finite host");

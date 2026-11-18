@@ -198,7 +198,7 @@ fn assert_scalar_block_chain<S: LayoutScalar>(nodes: u32) {
     let width = S::from_f64(13.0);
     let tree =
         chain::<S>(Display::Block, nodes).measure(nodes - 1, Size::new(width, S::from_f64(7.0)));
-    let mut session = super::session::ComputeSession::new(&tree, Vec::new());
+    let mut session = super::session::ComputeSession::unobserved(&tree, Vec::new());
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let input = crate::ComputeInputOf::for_child(
         crate::RunMode::ComputeSize,

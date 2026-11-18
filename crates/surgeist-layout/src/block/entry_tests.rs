@@ -86,7 +86,7 @@ fn first_margin<S: LayoutScalar>() {
         } else {
             tree
         };
-        let mut session = ComputeSession::new(&tree, Vec::new());
+        let mut session = ComputeSession::unobserved(&tree, Vec::new());
         MEASUREMENTS.with(|value| value.set(0));
         let qualified = qualify(&mut session, 0, input(), PhysicalSide::Top).unwrap();
         if measured && !separating {
@@ -139,7 +139,7 @@ fn first_margin<S: LayoutScalar>() {
         )
         .style(1, last)
         .children(0, [1]);
-    let mut session = ComputeSession::new(&tree, Vec::new());
+    let mut session = ComputeSession::unobserved(&tree, Vec::new());
     assert_eq!(
         qualify(&mut session, 0, input(), PhysicalSide::Bottom).unwrap(),
         Qualification::RequiresBody
@@ -209,7 +209,7 @@ fn opaque_last_child_bottom_margin_requires_body_without_qualification_measureme
                         measured_ten::<S>
                     },
                 );
-            let mut session = ComputeSession::new(&tree, Vec::new());
+            let mut session = ComputeSession::unobserved(&tree, Vec::new());
             MEASUREMENTS.with(|value| value.set(0));
             assert_eq!(
                 qualify(&mut session, 0, input(), PhysicalSide::Top).unwrap(),

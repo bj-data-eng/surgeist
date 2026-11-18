@@ -402,7 +402,7 @@ fn cell_prefix_for<S: LayoutScalar>(binding: TextParagraphBinding<u32>) {
                 ),
             ),
         );
-        let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+        let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
         let packet = owner
             .probe_float_child(2, request, crate::engine::FloatChildTrial::Detached)
             .unwrap();

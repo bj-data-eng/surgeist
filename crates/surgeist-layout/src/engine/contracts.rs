@@ -18,6 +18,11 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     Traverse<Node: 'input>
 {
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<Self::Scalar>;
+    /// The accounting of the layout call this executor computes for. An executor outside a
+    /// layout call charges nothing.
+    fn meter(&self) -> crate::accounting::Meter {
+        crate::accounting::Meter::new()
+    }
     fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar>;
     /// Immutable normalized scope authority, separate from optional Text progress.
     fn wrapping_context(&self) -> Option<WrappingContextLoan<'_, Self::Node>> {
