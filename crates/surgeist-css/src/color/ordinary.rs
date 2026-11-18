@@ -328,14 +328,14 @@ fn drive<'owner, 'facts>(
     input: CssColorInput<'_>,
     banks: &mut [Vec<CssColorSlot<'owner>>; 3],
     limits: CssColorOrdinaryLimits,
+    actions: &mut usize,
 ) -> Result<CssColorParseOutcome<'facts>, CssColorResolveError> {
-    let mut actions = 0;
     loop {
         let action = match parse.step() {
             CssColorParseStep::Complete(outcome) => return Ok(outcome),
             CssColorParseStep::Pending(action) => action,
         };
-        action_count(&mut actions, limits.actions)?;
+        action_count(actions, limits.actions)?;
         parse = match action {
             CssColorParseAction::ReadInput(read) => {
                 let unit = input
@@ -389,6 +389,34 @@ pub fn parse_used_color<'source, 'facts>(
     expected: CssColorFactIdentity,
     limits: CssColorOrdinaryLimits,
 ) -> Result<CssColorOrdinaryResult<'source, 'facts>, CssColorResolveError> {
+    parse_used_color_counted(input, request, facts, expected, limits).0
+}
+
+/// [`parse_used_color`] with the actions its driver admitted, on every path.
+/// A refused action is not counted.
+pub(crate) fn parse_used_color_counted<'source, 'facts>(
+    input: CssColorInput<'source>,
+    request: CssColorGrammarRequest,
+    facts: &'facts CssColorFacts<'facts>,
+    expected: CssColorFactIdentity,
+    limits: CssColorOrdinaryLimits,
+) -> (
+    Result<CssColorOrdinaryResult<'source, 'facts>, CssColorResolveError>,
+    usize,
+) {
+    let mut actions = 0;
+    let result = parse_used_color_with(input, request, facts, expected, limits, &mut actions);
+    (result, actions)
+}
+
+fn parse_used_color_with<'source, 'facts>(
+    input: CssColorInput<'source>,
+    request: CssColorGrammarRequest,
+    facts: &'facts CssColorFacts<'facts>,
+    expected: CssColorFactIdentity,
+    limits: CssColorOrdinaryLimits,
+    actions: &mut usize,
+) -> Result<CssColorOrdinaryResult<'source, 'facts>, CssColorResolveError> {
     admit(
         CssColorOrdinaryResource::InputUnits,
         input.len(),
@@ -404,7 +432,7 @@ pub fn parse_used_color<'source, 'facts>(
         expected,
     )?;
     let mut banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
-    let parsed = match drive(parse, input, &mut banks, limits) {
+    let parsed = match drive(parse, input, &mut banks, limits, actions) {
         Ok(parsed) => parsed,
         Err(error) => {
             banks.iter_mut().for_each(Vec::clear);
