@@ -572,7 +572,9 @@ impl<'admit> CssSourceRetention<'admit> {
     /// steps this collector counted during the walk, which [`Self::steps`]
     /// reads. A step a limit refused is not counted. The walk's own result,
     /// a refusal included, is returned inside `Ok`. The collector's limits,
-    /// admission and figures are those of a walk without a host.
+    /// admission and figures are those of a walk without a host. Measuring
+    /// the retained payload afterwards ([`Self::complete_payload_bytes_with`])
+    /// takes no step and is not part of the charge.
     ///
     /// Each call charges the steps of its own walk, so a walk must not call
     /// `charge_walk` on the same collector: those steps would be charged
@@ -581,8 +583,9 @@ impl<'admit> CssSourceRetention<'admit> {
     /// # Errors
     ///
     /// A [`CssAccountingError`](crate::accounting::CssAccountingError) when
-    /// the host's operation does not admit the charge, or when the ledger
-    /// cannot open the phase; in the second case `walk` has not run.
+    /// the host's operation does not admit the charge, in place of the
+    /// walk's result: the walk has run and the collector keeps its steps.
+    /// Also when the ledger cannot open the phase; then `walk` has not run.
     pub fn charge_walk<T>(
         &mut self,
         host: &crate::accounting::CssHostScope,

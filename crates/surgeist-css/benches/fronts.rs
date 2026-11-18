@@ -12,9 +12,10 @@
 //! smallest value of that limit at which the call still succeeds, found once
 //! outside the timed region by doubling and bisection, the way the
 //! characterization adapter finds charged work. A dimension that no public limit
-//! reaches prints `-`. The parse, serialization, normalization, colour and retention cases "with a host"
-//! run the accounted front against a host operation with no caps; their volume is
-//! what one call charges to that operation. Run with
+//! reaches prints `-`. The parse, serialization, normalization and colour cases
+//! "with a host" run the accounted front, and the retention case "with a host"
+//! runs the walk through `charge_walk`, against a host operation with no caps;
+//! their volume is what one call charges to that operation. Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts`.
 
 use std::hint::black_box;
