@@ -238,7 +238,9 @@ fn prepare_data(store: &mut CssomStore, mut batch: CssomBatch) -> Result<Ready, 
         let (effects, effect_successor) =
             store.reserve_owner_effects(&batch, &store.state.revision)?;
         return Ok(Ready {
-            retained,
+            // An unchanged commit publishes nothing, so the holding stays that
+            // of the published state.
+            retained: store.retained,
             successor: None,
             history_summary: None,
             terminal_sheet: None,
