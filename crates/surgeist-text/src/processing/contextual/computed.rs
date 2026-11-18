@@ -22,12 +22,48 @@ pub enum ComputedLineBoundaryInput {
 /// A computed request that cannot denote the required original hard boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComputedLineBoundaryError {
+    /// The target scope, control or box does not exist.
     TargetBounds,
+    /// The target is not an inline box edge or an in-flow atomic box.
     TargetRole,
+    /// The boundary has no containing paragraph.
     MissingParagraph,
+    /// The target and its paragraph belong to different content domains.
     Domain,
+    /// The boundary falls inside a Unicode scalar value.
     InsideScalar,
+    /// The boundary falls inside a document delimiter.
     InsideDelimiter,
+}
+
+impl std::fmt::Display for ComputedLineBoundaryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::TargetBounds => "the computed boundary names a target that does not exist",
+            Self::TargetRole => {
+                "the computed boundary target is not an inline box edge or an in-flow atomic box"
+            }
+            Self::MissingParagraph => "the computed boundary has no containing paragraph",
+            Self::Domain => {
+                "the computed boundary target and its paragraph belong to different content domains"
+            }
+            Self::InsideScalar => "the computed boundary falls inside a Unicode scalar value",
+            Self::InsideDelimiter => "the computed boundary falls inside a document delimiter",
+        })
+    }
+}
+
+impl std::error::Error for ComputedLineBoundaryError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::TargetBounds
+            | Self::TargetRole
+            | Self::MissingParagraph
+            | Self::Domain
+            | Self::InsideScalar
+            | Self::InsideDelimiter => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

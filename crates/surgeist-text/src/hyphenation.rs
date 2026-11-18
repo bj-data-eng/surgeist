@@ -94,18 +94,94 @@ pub struct NativeHyphenationConvention {
 /// Invalid input, missing resource, or unsupported indication composition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HyphenationError {
+    /// The resource, or a cut it reports, cannot be mapped onto the retained text:
+    /// the query is inconsistent with the cut, or a cut's atoms have no origin
+    /// intersection or preceding atoms.
     InvalidResourceMapping,
+    /// A resource query length or offset is not representable.
     ResourceLengthOverflow,
+    /// Storage for a resource query or its observation could not be reserved.
     ResourceStorage,
+    /// The native convention names an invalid locale or script, or a script
+    /// that disagrees with its locale.
     InvalidConvention,
+    /// The native convention does not bind to the content locale: the content
+    /// has no locale, an invalid one, or one the convention does not match.
     InvalidConventionBinding,
+    /// A native logical-before replacement lists no alternatives.
     EmptyNativeAlternatives,
+    /// The style selects no font for the automatic hyphen.
     MissingPrimaryFont,
+    /// The continuation is inconsistent with the cut or placement it accompanies.
     InvalidContinuation,
+    /// An incoming indication has no receiving bidi authority.
     MissingReceivingBidiAuthority,
+    /// The indication cannot attach to a separator.
     UnsupportedIndicationSeparator,
+    /// The indication cannot be composed with the surrounding text.
     UnsupportedIndicationComposition,
+    /// No captured font query covers the indication.
     UncapturedIndicationFontQuery,
+}
+
+impl std::fmt::Display for HyphenationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::InvalidResourceMapping => {
+                "the hyphenation resource or a cut it reports cannot be mapped onto the retained text"
+            }
+            Self::ResourceLengthOverflow => {
+                "a hyphenation resource length or offset is not representable"
+            }
+            Self::ResourceStorage => {
+                "storage for a hyphenation resource query or its observation could not be reserved"
+            }
+            Self::InvalidConvention => {
+                "the native hyphenation convention has an invalid or inconsistent locale or script"
+            }
+            Self::InvalidConventionBinding => {
+                "the native hyphenation convention does not bind to the content locale"
+            }
+            Self::EmptyNativeAlternatives => {
+                "the native logical-before replacement lists no alternatives"
+            }
+            Self::MissingPrimaryFont => "the style selects no font for the automatic hyphen",
+            Self::InvalidContinuation => {
+                "the hyphenation continuation is inconsistent with the cut or placement it accompanies"
+            }
+            Self::MissingReceivingBidiAuthority => {
+                "an incoming hyphenation indication has no receiving bidi authority"
+            }
+            Self::UnsupportedIndicationSeparator => {
+                "the hyphenation indication cannot attach to a separator"
+            }
+            Self::UnsupportedIndicationComposition => {
+                "the hyphenation indication cannot be composed with the surrounding text"
+            }
+            Self::UncapturedIndicationFontQuery => {
+                "no captured font query covers the hyphenation indication"
+            }
+        })
+    }
+}
+
+impl std::error::Error for HyphenationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidResourceMapping
+            | Self::ResourceLengthOverflow
+            | Self::ResourceStorage
+            | Self::InvalidConvention
+            | Self::InvalidConventionBinding
+            | Self::EmptyNativeAlternatives
+            | Self::MissingPrimaryFont
+            | Self::InvalidContinuation
+            | Self::MissingReceivingBidiAuthority
+            | Self::UnsupportedIndicationSeparator
+            | Self::UnsupportedIndicationComposition
+            | Self::UncapturedIndicationFontQuery => None,
+        }
+    }
 }
 
 pub(crate) fn error(reason: HyphenationError) -> Error {

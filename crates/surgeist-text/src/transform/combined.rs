@@ -250,19 +250,17 @@ impl CombinedOutput {
 /// Missing authentic source facts or an unsupported downstream cell capability.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TextCombineError {
+    /// The preparation has no contextual capture from which to read
+    /// text-combine-upright.
     MissingCapture,
-    MissingMode {
-        scope: usize,
-    },
-    MissingWritingAxis {
-        domain: usize,
-    },
-    MissingInnerDirection {
-        scope: usize,
-    },
-    MissingScopeContext {
-        scope: usize,
-    },
+    /// The scope has no captured style, so no text-combine-upright mode.
+    MissingMode { scope: usize },
+    /// The domain has no captured writing axis.
+    MissingWritingAxis { domain: usize },
+    /// The scope has no captured horizontal inner direction.
+    MissingInnerDirection { scope: usize },
+    /// The captured context around the scope is incomplete.
+    MissingScopeContext { scope: usize },
     /// A demanded width-feature path cannot establish complete action evidence.
     UnqualifiedWidthObservation {
         /// Composition-container scope; this ordinal grants no authority.
@@ -274,6 +272,52 @@ pub enum TextCombineError {
     },
     /// The requested cell behavior is outside native preparation capability.
     UnsupportedCellPreparation,
+}
+
+impl std::fmt::Display for TextCombineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingCapture => {
+                f.write_str("the preparation has no contextual capture for text-combine-upright")
+            }
+            Self::MissingMode { scope } => {
+                write!(f, "scope {scope} has no captured text-combine-upright mode")
+            }
+            Self::MissingWritingAxis { domain } => {
+                write!(f, "domain {domain} has no captured writing axis")
+            }
+            Self::MissingInnerDirection { scope } => {
+                write!(
+                    f,
+                    "scope {scope} has no captured horizontal inner direction"
+                )
+            }
+            Self::MissingScopeContext { scope } => {
+                write!(f, "the captured context around scope {scope} is incomplete")
+            }
+            Self::UnqualifiedWidthObservation { scope, .. } => write!(
+                f,
+                "the width-feature path cannot establish complete evidence for scope {scope}"
+            ),
+            Self::UnsupportedCellPreparation => {
+                f.write_str("the requested cell behavior is outside native preparation capability")
+            }
+        }
+    }
+}
+
+impl std::error::Error for TextCombineError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::MissingCapture
+            | Self::MissingMode { .. }
+            | Self::MissingWritingAxis { .. }
+            | Self::MissingInnerDirection { .. }
+            | Self::MissingScopeContext { .. }
+            | Self::UnqualifiedWidthObservation { .. }
+            | Self::UnsupportedCellPreparation => None,
+        }
+    }
 }
 
 pub(crate) fn refused(reason: TextCombineError) -> crate::Error {

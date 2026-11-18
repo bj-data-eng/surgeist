@@ -57,9 +57,11 @@ impl ScopeAlignmentCensusFailure {
         (self.error, self.accounting)
     }
 }
+/// Prints only the census context; the refusal is [`std::error::Error::source`]
+/// and the reporter that walks the chain prints it.
 impl std::fmt::Display for ScopeAlignmentCensusFailure {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.error.fmt(formatter)
+        formatter.write_str("the scope-alignment census was refused")
     }
 }
 impl std::error::Error for ScopeAlignmentCensusFailure {

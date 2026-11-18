@@ -244,6 +244,10 @@ pub enum SourceContinuityOperation {
 }
 
 /// Typed atomic capture/view rejection or unavailable source context.
+///
+/// `SourceConnection`, `JointFlow` and `ComputedLineBoundary` wrap the typed
+/// reason of the declaration that was refused. Their messages state only the
+/// wrapping context, and `source()` returns the reason.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingError {
     /// Source context needed by the bounded qualifier to establish a complete
@@ -256,29 +260,48 @@ pub enum SourceProcessingError {
         after_origin: usize,
         operation: SourceContinuityOperation,
     },
+    /// A supplied source connection is invalid for the stated reason.
     SourceConnection {
         reason: SourceProcessingConnectionError,
     },
+    /// A supplied joint-flow declaration is invalid for the stated reason.
     JointFlow {
         reason: SourceProcessingJointFlowError,
     },
+    /// A computed line boundary request is invalid for the stated reason.
     ComputedLineBoundary {
         request: usize,
         reason: ComputedLineBoundaryError,
     },
+    /// A scope's declared boundary controls do not match its enter and exit events.
     ScopeBoundaries,
+    /// The producer did not capture the exterior context that trimming needs.
     IncompleteExterior,
+    /// The captured scopes and paragraphs are not properly nested.
     Nesting,
+    /// A captured occurrence is out of range, repeated, missing or out of position.
     Occurrence,
+    /// An origin's range is invalid, or the captured occurrences do not cover
+    /// the original source.
     OriginalCoverage,
+    /// The captured origins do not correspond to the original source.
     OriginCorrespondence,
+    /// The captured content domains are inconsistent with the captured scopes
+    /// and occurrences.
     Domain,
+    /// A document delimiter crosses a captured boundary, connection or content domain.
     DelimiterCrossing,
+    /// The captured connections do not join consecutive origins.
     Connection,
+    /// A captured boundary policy is duplicated, unused or missing.
     BoundaryPolicy,
+    /// A supplied replacement does not belong to any captured paragraph.
     Replacement,
+    /// A source range lies outside its paragraph.
     OutsideParagraph,
+    /// A paragraph view belongs to a different capture.
     ForeignParagraph,
+    /// A joint-flow handle belongs to a different capture.
     ForeignJointFlow,
     /// Actual required raw members in canonical flow order, not output IDs.
     MissingJointAnalysisAuthority {
@@ -286,6 +309,96 @@ pub enum SourceProcessingError {
         last_paragraph: usize,
         source: Range,
     },
+}
+
+impl std::fmt::Display for SourceProcessingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingSourceContinuity {
+                before_origin,
+                after_origin,
+                ..
+            } => write!(
+                f,
+                "the captured source context cannot establish the required continuity between origins {before_origin} and {after_origin}"
+            ),
+            Self::SourceConnection { .. } => f.write_str("a supplied source connection is invalid"),
+            Self::JointFlow { .. } => f.write_str("a supplied joint-flow declaration is invalid"),
+            Self::ComputedLineBoundary { request, .. } => {
+                write!(f, "computed line boundary request {request} is invalid")
+            }
+            Self::ScopeBoundaries => f.write_str(
+                "a scope's declared boundary controls do not match its enter and exit events",
+            ),
+            Self::IncompleteExterior => f.write_str(
+                "the producer did not capture the exterior context that trimming needs",
+            ),
+            Self::Nesting => f.write_str("the captured scopes and paragraphs are not properly nested"),
+            Self::Occurrence => f.write_str(
+                "a captured occurrence is out of range, repeated, missing or out of position",
+            ),
+            Self::OriginalCoverage => f.write_str(
+                "an origin's range is invalid or the captured occurrences do not cover the original source",
+            ),
+            Self::OriginCorrespondence => {
+                f.write_str("the captured origins do not correspond to the original source")
+            }
+            Self::Domain => f.write_str(
+                "the captured content domains are inconsistent with the captured scopes and occurrences",
+            ),
+            Self::DelimiterCrossing => f.write_str(
+                "a document delimiter crosses a captured boundary, connection or content domain",
+            ),
+            Self::Connection => {
+                f.write_str("the captured connections do not join consecutive origins")
+            }
+            Self::BoundaryPolicy => {
+                f.write_str("a captured boundary policy is duplicated, unused or missing")
+            }
+            Self::Replacement => {
+                f.write_str("a supplied replacement does not belong to any captured paragraph")
+            }
+            Self::OutsideParagraph => f.write_str("a source range lies outside its paragraph"),
+            Self::ForeignParagraph => f.write_str("the paragraph view belongs to a different capture"),
+            Self::ForeignJointFlow => {
+                f.write_str("the joint-flow handle belongs to a different capture")
+            }
+            Self::MissingJointAnalysisAuthority {
+                first_paragraph,
+                last_paragraph,
+                ..
+            } => write!(
+                f,
+                "the producer did not authorize joint analysis of paragraphs {first_paragraph} to {last_paragraph}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SourceProcessingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::SourceConnection { reason } => Some(reason),
+            Self::JointFlow { reason } => Some(reason),
+            Self::ComputedLineBoundary { reason, .. } => Some(reason),
+            Self::MissingSourceContinuity { .. }
+            | Self::ScopeBoundaries
+            | Self::IncompleteExterior
+            | Self::Nesting
+            | Self::Occurrence
+            | Self::OriginalCoverage
+            | Self::OriginCorrespondence
+            | Self::Domain
+            | Self::DelimiterCrossing
+            | Self::Connection
+            | Self::BoundaryPolicy
+            | Self::Replacement
+            | Self::OutsideParagraph
+            | Self::ForeignParagraph
+            | Self::ForeignJointFlow
+            | Self::MissingJointAnalysisAuthority { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -1049,29 +1049,42 @@ pub enum ProtocolContextField {
     Spacing,
 }
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
+///
+/// `InlineBoxFragmentation`, `InlineBoxEdge` and `WrappingScopeQuery` wrap the
+/// typed reason of the refused operation. Their messages state only the
+/// operation, and `source()` returns the reason.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
-    /// The request does not cover its exact issued semantic window.
+    /// The semantic window cannot be observed for this request and
+    /// preparation: the request does not cover its issued window, or a fact of
+    /// the preparation or capture is unusable (an alternative's source segment,
+    /// a mandatory occurrence with alternatives, a level that cannot be
+    /// represented).
     InvalidSemanticWindow,
-    InvalidSemanticAtomic {
-        occurrence: usize,
-    },
+    /// The atomic occurrence's kind differs from the kind issued for the window.
+    InvalidSemanticAtomic { occurrence: usize },
+    /// An inline-box fragmentation, or the components supplied for one, is
+    /// invalid for the wrapped reason.
     InlineBoxFragmentation(InlineBoxFragmentationError),
+    /// An inline-box edge operation is invalid for the wrapped reason.
     InlineBoxEdge(InlineBoxEdgeError),
-    InvalidSourceSegment {
-        segment: usize,
-    },
-    MismatchedSourceSegment {
-        expected: usize,
-        actual: usize,
-    },
-    WrappingScopeQuery {
-        reason: WrappingScopeQueryError,
-    },
+    /// The source segment is invalid for this preparation: it does not exist,
+    /// or its tables do not fit the request.
+    InvalidSourceSegment { segment: usize },
+    /// Two source segments that must agree differ. The roles of `expected` and
+    /// `actual` depend on the operation that compared them.
+    MismatchedSourceSegment { expected: usize, actual: usize },
+    /// A wrapping scope or incidence query is invalid for the wrapped reason.
+    WrappingScopeQuery { reason: WrappingScopeQueryError },
+    /// The measurement flow is invalid.
     InvalidMeasurementFlow,
-    /// The queried range does not belong to one canonical body bidi context.
+    /// The queried range does not belong to one canonical body bidi context,
+    /// or the bidi input behind the query is inconsistent.
     InvalidLineDirectionQuery,
+    /// The word portion is invalid for this preparation, or the presentation
+    /// boundary behind the request cannot be resolved.
     InvalidWordPortion,
+    /// A measurement termination cannot be placed.
     MeasurementNotPlaceable,
     /// A forced ending always produces a formatted line.
     NonFormattedForcedLine,
@@ -1079,198 +1092,608 @@ pub enum ProtocolError {
     NonFormattedInFlowContent,
     /// Complete semantic coverage has no formatted line that can lend geometry.
     NoFormattedLineGeometry,
+    /// The phrase portion request is invalid.
     InvalidPhrasePortion,
+    /// The conditional stage is invalid for this query.
     InvalidConditionalStage,
     /// Missing actual context for CSS Text Phase II: Trimming and Positioning.
     MissingPhaseTwoContext(PhaseTwoContext),
     /// The occurrence-qualified original seam is not represented by this line.
     OutsideFinalizedLine,
-    InvalidOriginSeam {
-        position: usize,
-    },
+    /// The original position lies outside the range of its origin.
+    InvalidOriginSeam { position: usize },
+    /// The handle was issued by a different preparation.
     ForeignPreparation {
         kind: ProtocolHandleKind,
         occurrence: usize,
     },
+    /// A handle belongs to a different selected line or preparation.
     ForeignSelectedLine,
-    ForeignFinalizedLine {
-        line: usize,
-    },
+    /// The finalized line, or the receipt numbered `line`, belongs to a
+    /// different preparation or placement.
+    ForeignFinalizedLine { line: usize },
+    /// The origin's range is invalid.
     InvalidOriginRange {
         origin: usize,
         local: Range,
         aggregate: Range,
     },
+    /// The text of the origin differs between the local and aggregate offsets.
     OriginTextMismatch {
         origin: usize,
         local: usize,
         aggregate: usize,
     },
-    IncompleteOriginCoverage {
-        expected: usize,
-        actual: usize,
-    },
-    MissingConnection {
-        before: usize,
-        after: usize,
-    },
-    InvalidConnection {
-        connection: usize,
-        at: usize,
-    },
-    InvalidControl {
-        control: usize,
-        at: usize,
-    },
-    InvalidBoundaryPolicy {
-        policy: usize,
-        at: usize,
-    },
+    /// The origins do not cover the source contiguously: `expected` is the
+    /// position at which coverage was due and `actual` the position found,
+    /// whether a gap or an overlap.
+    IncompleteOriginCoverage { expected: usize, actual: usize },
+    /// Consecutive origins have no connection between them.
+    MissingConnection { before: usize, after: usize },
+    /// The connection is invalid at the source position.
+    InvalidConnection { connection: usize, at: usize },
+    /// The control has an invalid source position.
+    InvalidControl { control: usize, at: usize },
+    /// The boundary policy is invalid or missing. `policy` is its ordinal, or
+    /// the policy count where a required policy is absent; `at` is its
+    /// location, which can be a connection position, a box index or the source
+    /// length.
+    InvalidBoundaryPolicy { policy: usize, at: usize },
     /// A second group claims the same defining occurrence.
-    DuplicateReplacement {
-        alternative: usize,
-        prior: usize,
-    },
-    InvalidReplacement {
-        alternative: usize,
-        source: Range,
-    },
+    DuplicateReplacement { alternative: usize, prior: usize },
+    /// The replacement does not match its defining soft hyphen or
+    /// discretionary break, its origin, or its insertion anchor.
+    InvalidReplacement { alternative: usize, source: Range },
+    /// The boundaries do not form a valid range in this preparation.
     InvalidBoundaryRange {
         start: usize,
         end: usize,
         participants: usize,
     },
-    ParticipantMismatch {
-        position: usize,
-    },
-    MissingAtomic {
-        occurrence: usize,
-    },
-    DuplicateAtomic {
-        occurrence: usize,
-    },
-    IllegalOpportunity {
-        opportunity: usize,
-    },
-    InvalidConditionalQuery {
-        start: usize,
-        ceiling: usize,
-    },
-    InvalidConditionalSelection {
-        start: usize,
-        end: usize,
-    },
-    InvalidConditionalContext {
-        purpose: ConditionalPurpose,
-    },
-    InvalidConditionalReceipt {
-        receipt: usize,
-        opportunity: usize,
-    },
+    /// The index, of a participant or of a presentation unit, does not match
+    /// the participants issued for the request.
+    ParticipantMismatch { position: usize },
+    /// No allocation was supplied for the atomic occurrence.
+    MissingAtomic { occurrence: usize },
+    /// The atomic occurrence appears more than once.
+    DuplicateAtomic { occurrence: usize },
+    /// The opportunity is not a legal cut for its segment or request.
+    IllegalOpportunity { opportunity: usize },
+    /// The conditional query is invalid.
+    InvalidConditionalQuery { start: usize, ceiling: usize },
+    /// The conditional selection is invalid.
+    InvalidConditionalSelection { start: usize, end: usize },
+    /// The line context is invalid for the conditional query's purpose.
+    InvalidConditionalContext { purpose: ConditionalPurpose },
+    /// The conditional receipt is invalid for the opportunity.
+    InvalidConditionalReceipt { receipt: usize, opportunity: usize },
+    /// A phantom disposition's line would retain a conditional prefix.
     RetainedConditionalPrefix {
         opportunity: usize,
         alternative: Option<usize>,
     },
+    /// The analysis does not support native wrapping relations.
     UnsupportedWrappingAnalysis,
-    MissingWrappingPolicy {
-        relation: usize,
-    },
-    ForeignWrappingRelation {
-        relation: usize,
-    },
-    DuplicateWrappingPolicy {
-        relation: usize,
-    },
-    ConflictingWrappingPolicy {
-        relation: usize,
-    },
+    /// The wrapping relation has no supplied policy.
+    MissingWrappingPolicy { relation: usize },
+    /// The wrapping relation belongs to a different analysis.
+    ForeignWrappingRelation { relation: usize },
+    /// The policy of the wrapping relation was supplied more than once.
+    DuplicateWrappingPolicy { relation: usize },
+    /// The wrapping relation received conflicting policies.
+    ConflictingWrappingPolicy { relation: usize },
+    /// The alternative does not belong to the opportunity.
     ForeignAlternative {
         alternative: usize,
         opportunity: usize,
     },
-    UnsupportedContext {
-        field: ProtocolContextField,
-    },
-    MismatchedContext {
-        field: ProtocolContextField,
-    },
-    InvalidAtomicGeometry {
-        occurrence: usize,
-    },
-    DuplicateSpacingSlot {
-        slot: usize,
-    },
-    MissingSpacingSlot {
-        slot: usize,
-    },
-    IneligibleSpacingSlot {
-        slot: usize,
-    },
-    UnexpectedAtomic {
-        occurrence: usize,
-    },
-    MissingAlternative {
-        opportunity: usize,
-    },
+    /// The context field is not supported.
+    UnsupportedContext { field: ProtocolContextField },
+    /// The context field is inconsistent with the prepared text or the request.
+    MismatchedContext { field: ProtocolContextField },
+    /// The allocation of the atomic occurrence is invalid.
+    InvalidAtomicGeometry { occurrence: usize },
+    /// The spacing slot was allocated more than once.
+    DuplicateSpacingSlot { slot: usize },
+    /// No allocation was supplied for the spacing slot.
+    MissingSpacingSlot { slot: usize },
+    /// The spacing slot is not eligible for the supplied allocation.
+    IneligibleSpacingSlot { slot: usize },
+    /// The atomic occurrence is not part of the selected line or semantic window.
+    UnexpectedAtomic { occurrence: usize },
+    /// No alternative was supplied for the opportunity.
+    MissingAlternative { opportunity: usize },
+    /// The anchor order is invalid at the position for the named occurrence.
     InvalidAnchorOrder {
         position: usize,
         kind: ProtocolHandleKind,
         occurrence: usize,
     },
-    MissingControl {
-        occurrence: usize,
-    },
-    MissingControlBoundaryGeometry {
-        occurrence: usize,
-    },
-    MissingBoundaryContext {
-        occurrence: usize,
-    },
-    DuplicateBoundaryContext {
-        occurrence: usize,
-    },
-    UnexpectedBoundaryContext {
-        occurrence: usize,
-    },
-    DuplicateControl {
-        occurrence: usize,
-    },
-    UnexpectedControl {
-        occurrence: usize,
-    },
-    InvalidControlGeometry {
-        occurrence: usize,
-    },
+    /// No allocation was supplied for the control.
+    MissingControl { occurrence: usize },
+    /// The control lacks boundary geometry, or carries it without being a
+    /// boundary endpoint.
+    MissingControlBoundaryGeometry { occurrence: usize },
+    /// No boundary context was supplied for the control endpoint.
+    MissingBoundaryContext { occurrence: usize },
+    /// The boundary context for the control duplicates an allocation of the same control.
+    DuplicateBoundaryContext { occurrence: usize },
+    /// The boundary context for the control was not demanded, or was supplied
+    /// out of order.
+    UnexpectedBoundaryContext { occurrence: usize },
+    /// The control was allocated more than once.
+    DuplicateControl { occurrence: usize },
+    /// The control is not part of the selected line or semantic window.
+    UnexpectedControl { occurrence: usize },
+    /// The geometry supplied for the control is invalid.
+    InvalidControlGeometry { occurrence: usize },
+    /// No line metrics are available for the selected line.
     MissingLineMetrics,
+    /// The line strut is invalid.
     InvalidLineStrut,
+    /// The analysis is not supported by the standalone operation.
     UnsupportedStandaloneAnalysis,
+    /// The position belongs to a different placement.
     ForeignPlacement,
-    OutsidePlacement {
-        index: usize,
-        coverage: Range,
-    },
+    /// The source position is outside the placement coverage, or faces away from it.
+    OutsidePlacement { index: usize, coverage: Range },
+    /// The source index is ambiguous at the given affinity.
     AmbiguousSourcePosition {
         index: usize,
         affinity: crate::Affinity,
     },
-    InvalidPlacedPosition {
-        position: usize,
-    },
+    /// The placed position is invalid.
+    InvalidPlacedPosition { position: usize },
+    /// The placement has no lines or source segments.
     EmptyPlacement,
-    IncompleteLineCoverage {
-        line: usize,
-    },
-    DuplicateLine {
-        line: usize,
-    },
-    InvalidFragment {
-        line: usize,
-        fragment: usize,
-    },
-    AtomicPlacementMismatch {
-        line: usize,
-        occurrence: usize,
-    },
+    /// The lines do not cover the content contiguously at the line, whether a
+    /// gap, an overlap or a line that runs backwards.
+    IncompleteLineCoverage { line: usize },
+    /// The line was supplied more than once.
+    DuplicateLine { line: usize },
+    /// The fragment of the line is invalid. No operation raises it.
+    InvalidFragment { line: usize, fragment: usize },
+    /// The atomic occurrence of the line does not match its placement.
+    AtomicPlacementMismatch { line: usize, occurrence: usize },
+}
+
+impl std::fmt::Display for ProtocolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSemanticWindow => f.write_str(
+                "the semantic window cannot be observed for this request and preparation",
+            ),
+            Self::InvalidSemanticAtomic { occurrence } => write!(
+                f,
+                "atomic occurrence {occurrence} does not match the kind issued for the semantic window"
+            ),
+            Self::InlineBoxFragmentation(_) => {
+                f.write_str("the inline-box fragmentation is invalid")
+            }
+            Self::InlineBoxEdge(_) => f.write_str("the inline-box edge operation is invalid"),
+            Self::InvalidSourceSegment { segment } => {
+                write!(
+                    f,
+                    "source segment {segment} is invalid for this preparation"
+                )
+            }
+            Self::MismatchedSourceSegment { expected, actual } => {
+                write!(f, "source segments {expected} and {actual} do not match")
+            }
+            Self::WrappingScopeQuery { .. } => {
+                f.write_str("the wrapping scope or incidence query is invalid")
+            }
+            Self::InvalidMeasurementFlow => f.write_str("the measurement flow is invalid"),
+            Self::InvalidLineDirectionQuery => f.write_str(
+                "the line direction query or the bidi body context behind it is invalid",
+            ),
+            Self::InvalidWordPortion => f.write_str(
+                "the word portion, or the presentation boundary behind the request, is invalid",
+            ),
+            Self::MeasurementNotPlaceable => {
+                f.write_str("a measurement termination cannot be placed")
+            }
+            Self::NonFormattedForcedLine => {
+                f.write_str("a forced line ending always produces a formatted line")
+            }
+            Self::NonFormattedInFlowContent => f.write_str(
+                "retained in-flow text, atomic or boundary content cannot be suppressed",
+            ),
+            Self::NoFormattedLineGeometry => {
+                f.write_str("complete semantic coverage has no formatted line to lend geometry")
+            }
+            Self::InvalidPhrasePortion => f.write_str("the phrase portion request is invalid"),
+            Self::InvalidConditionalStage => {
+                f.write_str("the conditional stage is invalid for this query")
+            }
+            Self::MissingPhaseTwoContext(_) => f.write_str(
+                "context required by CSS Text Phase II trimming and positioning is missing",
+            ),
+            Self::OutsideFinalizedLine => {
+                f.write_str("the original seam is not represented by this finalized line")
+            }
+            Self::InvalidOriginSeam { position } => write!(
+                f,
+                "original position {position} is outside the origin's range"
+            ),
+            Self::ForeignPreparation { kind, occurrence } => write!(
+                f,
+                "the {} handle {occurrence} was issued by a different preparation",
+                handle_kind_label(*kind)
+            ),
+            Self::ForeignSelectedLine => {
+                f.write_str("a handle belongs to a different selected line or preparation")
+            }
+            Self::ForeignFinalizedLine { line } => write!(
+                f,
+                "finalized line or receipt {line} belongs to a different preparation or placement"
+            ),
+            Self::InvalidOriginRange { origin, .. } => {
+                write!(f, "the range of origin {origin} is invalid")
+            }
+            Self::OriginTextMismatch {
+                origin,
+                local,
+                aggregate,
+            } => write!(
+                f,
+                "the text of origin {origin} differs between its local offset {local} and aggregate offset {aggregate}"
+            ),
+            Self::IncompleteOriginCoverage { expected, actual } => write!(
+                f,
+                "the origins do not cover the source contiguously: position {expected} was expected but {actual} was found"
+            ),
+            Self::MissingConnection { before, after } => {
+                write!(f, "origins {before} and {after} have no connection")
+            }
+            Self::InvalidConnection { connection, at } => {
+                write!(f, "connection {connection} at {at} is invalid")
+            }
+            Self::InvalidControl { control, at } => {
+                write!(
+                    f,
+                    "control {control} at {at} has an invalid source position"
+                )
+            }
+            Self::InvalidBoundaryPolicy { policy, at } => {
+                write!(
+                    f,
+                    "a boundary policy is invalid or missing (policy {policy}, location {at})"
+                )
+            }
+            Self::DuplicateReplacement { alternative, prior } => write!(
+                f,
+                "alternative {alternative} claims the defining occurrence that alternative {prior} already claims"
+            ),
+            Self::InvalidReplacement {
+                alternative,
+                source,
+            } => write!(
+                f,
+                "replacement {alternative} does not match its defining soft hyphen or discretionary break, its origin, or its insertion anchor (source range {}..{})",
+                source.start, source.end
+            ),
+            Self::InvalidBoundaryRange {
+                start,
+                end,
+                participants,
+            } => write!(
+                f,
+                "boundaries {start} to {end} are not a valid range in this preparation (participant count {participants})"
+            ),
+            Self::ParticipantMismatch { position } => write!(
+                f,
+                "index {position} does not match the participants issued for the request"
+            ),
+            Self::MissingAtomic { occurrence } => write!(
+                f,
+                "no allocation was supplied for atomic occurrence {occurrence}"
+            ),
+            Self::DuplicateAtomic { occurrence } => {
+                write!(f, "atomic occurrence {occurrence} appears more than once")
+            }
+            Self::IllegalOpportunity { opportunity } => write!(
+                f,
+                "opportunity {opportunity} is not a legal cut for its segment or request"
+            ),
+            Self::InvalidConditionalQuery { start, ceiling } => write!(
+                f,
+                "the conditional query from {start} with ceiling {ceiling} is invalid"
+            ),
+            Self::InvalidConditionalSelection { start, end } => write!(
+                f,
+                "the conditional selection from {start} to {end} is invalid"
+            ),
+            Self::InvalidConditionalContext { purpose } => write!(
+                f,
+                "the line context is invalid for a {} conditional query",
+                conditional_purpose_label(*purpose)
+            ),
+            Self::InvalidConditionalReceipt {
+                receipt,
+                opportunity,
+            } => write!(
+                f,
+                "conditional receipt {receipt} is invalid for opportunity {opportunity}"
+            ),
+            Self::RetainedConditionalPrefix {
+                opportunity,
+                alternative: None,
+            } => write!(
+                f,
+                "opportunity {opportunity} would retain a conditional prefix that a phantom disposition cannot retain"
+            ),
+            Self::RetainedConditionalPrefix {
+                opportunity,
+                alternative: Some(alternative),
+            } => write!(
+                f,
+                "alternative {alternative} of opportunity {opportunity} would retain a conditional prefix that a phantom disposition cannot retain"
+            ),
+            Self::UnsupportedWrappingAnalysis => {
+                f.write_str("the analysis does not support native wrapping relations")
+            }
+            Self::MissingWrappingPolicy { relation } => {
+                write!(f, "wrapping relation {relation} has no supplied policy")
+            }
+            Self::ForeignWrappingRelation { relation } => write!(
+                f,
+                "wrapping relation {relation} belongs to a different analysis"
+            ),
+            Self::DuplicateWrappingPolicy { relation } => write!(
+                f,
+                "wrapping relation {relation} has its policy supplied more than once"
+            ),
+            Self::ConflictingWrappingPolicy { relation } => {
+                write!(f, "wrapping relation {relation} has conflicting policies")
+            }
+            Self::ForeignAlternative {
+                alternative,
+                opportunity,
+            } => write!(
+                f,
+                "alternative {alternative} does not belong to opportunity {opportunity}"
+            ),
+            Self::UnsupportedContext { field } => write!(
+                f,
+                "the context field {} is not supported",
+                context_field_label(*field)
+            ),
+            Self::MismatchedContext { field } => write!(
+                f,
+                "the context field {} is inconsistent with the prepared text or the request",
+                context_field_label(*field)
+            ),
+            Self::InvalidAtomicGeometry { occurrence } => write!(
+                f,
+                "the allocation of atomic occurrence {occurrence} is invalid"
+            ),
+            Self::DuplicateSpacingSlot { slot } => {
+                write!(f, "spacing slot {slot} was allocated more than once")
+            }
+            Self::MissingSpacingSlot { slot } => {
+                write!(f, "no allocation was supplied for spacing slot {slot}")
+            }
+            Self::IneligibleSpacingSlot { slot } => write!(
+                f,
+                "spacing slot {slot} is not eligible for the supplied allocation"
+            ),
+            Self::UnexpectedAtomic { occurrence } => write!(
+                f,
+                "atomic occurrence {occurrence} is not part of the selected line or semantic window"
+            ),
+            Self::MissingAlternative { opportunity } => write!(
+                f,
+                "no alternative was supplied for opportunity {opportunity}"
+            ),
+            Self::InvalidAnchorOrder {
+                position,
+                kind,
+                occurrence,
+            } => write!(
+                f,
+                "the anchor order is invalid at position {position} for {} {occurrence}",
+                handle_kind_label(*kind)
+            ),
+            Self::MissingControl { occurrence } => {
+                write!(f, "no allocation was supplied for control {occurrence}")
+            }
+            Self::MissingControlBoundaryGeometry { occurrence } => write!(
+                f,
+                "control {occurrence} lacks boundary geometry or carries it without being a boundary endpoint"
+            ),
+            Self::MissingBoundaryContext { occurrence } => write!(
+                f,
+                "no boundary context was supplied for control endpoint {occurrence}"
+            ),
+            Self::DuplicateBoundaryContext { occurrence } => write!(
+                f,
+                "the boundary context for control {occurrence} duplicates an allocation of the same control"
+            ),
+            Self::UnexpectedBoundaryContext { occurrence } => write!(
+                f,
+                "the boundary context for control {occurrence} was not demanded, or was supplied out of order"
+            ),
+            Self::DuplicateControl { occurrence } => {
+                write!(f, "control {occurrence} was allocated more than once")
+            }
+            Self::UnexpectedControl { occurrence } => write!(
+                f,
+                "control {occurrence} is not part of the selected line or semantic window"
+            ),
+            Self::InvalidControlGeometry { occurrence } => write!(
+                f,
+                "the geometry supplied for control {occurrence} is invalid"
+            ),
+            Self::MissingLineMetrics => {
+                f.write_str("no line metrics are available for the selected line")
+            }
+            Self::InvalidLineStrut => f.write_str("the line strut is invalid"),
+            Self::UnsupportedStandaloneAnalysis => {
+                f.write_str("the analysis is not supported by the standalone operation")
+            }
+            Self::ForeignPlacement => f.write_str("the position belongs to a different placement"),
+            Self::OutsidePlacement { index, coverage } => write!(
+                f,
+                "source position {index} is outside the placement coverage {}..{} or faces away from it",
+                coverage.start, coverage.end
+            ),
+            Self::AmbiguousSourcePosition { index, .. } => {
+                write!(f, "source index {index} is ambiguous at the given affinity")
+            }
+            Self::InvalidPlacedPosition { position } => {
+                write!(f, "placed position {position} is invalid")
+            }
+            Self::EmptyPlacement => f.write_str("the placement has no lines or source segments"),
+            Self::IncompleteLineCoverage { line } => {
+                write!(
+                    f,
+                    "the lines do not cover the content contiguously at line {line}"
+                )
+            }
+            Self::DuplicateLine { line } => write!(f, "line {line} was supplied more than once"),
+            Self::InvalidFragment { line, fragment } => {
+                write!(f, "fragment {fragment} of line {line} is invalid")
+            }
+            Self::AtomicPlacementMismatch { line, occurrence } => write!(
+                f,
+                "atomic occurrence {occurrence} of line {line} does not match its placement"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ProtocolError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InlineBoxFragmentation(reason) => Some(reason),
+            Self::InlineBoxEdge(reason) => Some(reason),
+            Self::WrappingScopeQuery { reason } => Some(reason),
+            Self::InvalidSemanticWindow
+            | Self::InvalidSemanticAtomic { .. }
+            | Self::InvalidSourceSegment { .. }
+            | Self::MismatchedSourceSegment { .. }
+            | Self::InvalidMeasurementFlow
+            | Self::InvalidLineDirectionQuery
+            | Self::InvalidWordPortion
+            | Self::MeasurementNotPlaceable
+            | Self::NonFormattedForcedLine
+            | Self::NonFormattedInFlowContent
+            | Self::NoFormattedLineGeometry
+            | Self::InvalidPhrasePortion
+            | Self::InvalidConditionalStage
+            | Self::MissingPhaseTwoContext(_)
+            | Self::OutsideFinalizedLine
+            | Self::InvalidOriginSeam { .. }
+            | Self::ForeignPreparation { .. }
+            | Self::ForeignSelectedLine
+            | Self::ForeignFinalizedLine { .. }
+            | Self::InvalidOriginRange { .. }
+            | Self::OriginTextMismatch { .. }
+            | Self::IncompleteOriginCoverage { .. }
+            | Self::MissingConnection { .. }
+            | Self::InvalidConnection { .. }
+            | Self::InvalidControl { .. }
+            | Self::InvalidBoundaryPolicy { .. }
+            | Self::DuplicateReplacement { .. }
+            | Self::InvalidReplacement { .. }
+            | Self::InvalidBoundaryRange { .. }
+            | Self::ParticipantMismatch { .. }
+            | Self::MissingAtomic { .. }
+            | Self::DuplicateAtomic { .. }
+            | Self::IllegalOpportunity { .. }
+            | Self::InvalidConditionalQuery { .. }
+            | Self::InvalidConditionalSelection { .. }
+            | Self::InvalidConditionalContext { .. }
+            | Self::InvalidConditionalReceipt { .. }
+            | Self::RetainedConditionalPrefix { .. }
+            | Self::UnsupportedWrappingAnalysis
+            | Self::MissingWrappingPolicy { .. }
+            | Self::ForeignWrappingRelation { .. }
+            | Self::DuplicateWrappingPolicy { .. }
+            | Self::ConflictingWrappingPolicy { .. }
+            | Self::ForeignAlternative { .. }
+            | Self::UnsupportedContext { .. }
+            | Self::MismatchedContext { .. }
+            | Self::InvalidAtomicGeometry { .. }
+            | Self::DuplicateSpacingSlot { .. }
+            | Self::MissingSpacingSlot { .. }
+            | Self::IneligibleSpacingSlot { .. }
+            | Self::UnexpectedAtomic { .. }
+            | Self::MissingAlternative { .. }
+            | Self::InvalidAnchorOrder { .. }
+            | Self::MissingControl { .. }
+            | Self::MissingControlBoundaryGeometry { .. }
+            | Self::MissingBoundaryContext { .. }
+            | Self::DuplicateBoundaryContext { .. }
+            | Self::UnexpectedBoundaryContext { .. }
+            | Self::DuplicateControl { .. }
+            | Self::UnexpectedControl { .. }
+            | Self::InvalidControlGeometry { .. }
+            | Self::MissingLineMetrics
+            | Self::InvalidLineStrut
+            | Self::UnsupportedStandaloneAnalysis
+            | Self::ForeignPlacement
+            | Self::OutsidePlacement { .. }
+            | Self::AmbiguousSourcePosition { .. }
+            | Self::InvalidPlacedPosition { .. }
+            | Self::EmptyPlacement
+            | Self::IncompleteLineCoverage { .. }
+            | Self::DuplicateLine { .. }
+            | Self::InvalidFragment { .. }
+            | Self::AtomicPlacementMismatch { .. } => None,
+        }
+    }
+}
+
+/// The name of a handle kind inside a protocol message. The vocabulary type has
+/// no public `Display`; this match has no fallback arm, so a new kind does not
+/// compile until it has a name.
+const fn handle_kind_label(kind: ProtocolHandleKind) -> &'static str {
+    match kind {
+        ProtocolHandleKind::SourceSegment => "source segment",
+        ProtocolHandleKind::WordPortion => "word portion",
+        ProtocolHandleKind::Origin => "origin",
+        ProtocolHandleKind::Unit => "unit",
+        ProtocolHandleKind::Cell => "cell",
+        ProtocolHandleKind::Atomic => "atomic",
+        ProtocolHandleKind::Control => "control",
+        ProtocolHandleKind::ComputedLineBoundary => "computed line boundary",
+        ProtocolHandleKind::Boundary => "boundary",
+        ProtocolHandleKind::BoundaryIncidence => "boundary incidence",
+        ProtocolHandleKind::Opportunity => "opportunity",
+        ProtocolHandleKind::ConditionalOpportunity => "conditional opportunity",
+        ProtocolHandleKind::Alternative => "alternative",
+        ProtocolHandleKind::Fragment => "fragment",
+    }
+}
+
+/// The name of a line-context field inside a protocol message, matched without
+/// a fallback arm.
+const fn context_field_label(field: ProtocolContextField) -> &'static str {
+    match field {
+        ProtocolContextField::BaseDirection => "base direction",
+        ProtocolContextField::Orientation => "orientation",
+        ProtocolContextField::BaselineReference => "baseline reference",
+        ProtocolContextField::LineStart => "line start",
+        ProtocolContextField::LineEnd => "line end",
+        ProtocolContextField::TabStops => "tab stops",
+        ProtocolContextField::TabPreparation => "tab preparation",
+        ProtocolContextField::TabReference => "tab reference",
+        ProtocolContextField::TabMetrics => "tab metrics",
+        ProtocolContextField::CssParagraphBoundary => "CSS paragraph boundary",
+        ProtocolContextField::AlignmentInsets => "alignment insets",
+        ProtocolContextField::Spacing => "spacing",
+    }
+}
+
+/// The name of a conditional-query purpose inside a protocol message, matched
+/// without a fallback arm.
+const fn conditional_purpose_label(purpose: ConditionalPurpose) -> &'static str {
+    match purpose {
+        ConditionalPurpose::Overflow => "overflow",
+        ConditionalPurpose::MinContent => "min-content",
+    }
 }
 
 /// Actual structural fact consumed by native CSS Text Phase II (Trimming and

@@ -30,33 +30,30 @@ use std::{fmt, sync::Arc};
 /// A valid source request cannot invent a placed unit or an actual font lender.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceRangeFragmentError {
+    /// The requested range is empty.
     EmptyRange,
+    /// The requested range lies outside the captured range of its origin.
     OutsideOrigin {
         origin: usize,
         local: Range,
         captured: Range,
     },
-    OutsidePlacement {
-        aggregate: Range,
-    },
-    MissingOriginalMapping {
-        aggregate: Range,
-    },
-    AmbiguousOriginalMapping {
-        aggregate: Range,
-    },
-    MissingUnitGeometry {
-        line: usize,
-        unit: usize,
-    },
-    UnsupportedPartition {
-        line: usize,
-        unit: usize,
-    },
-    MissingFontMetrics {
-        line: usize,
-        unit: usize,
-    },
+    /// The aggregate range the request maps to lies outside the source the
+    /// placement covers.
+    OutsidePlacement { aggregate: Range },
+    /// The placement has no original mapping for the aggregate range, or for
+    /// the part of it that the payload names.
+    MissingOriginalMapping { aggregate: Range },
+    /// The original mappings around the aggregate range overlap; the payload is
+    /// the whole mapping piece, of which only the overlap is doubly mapped.
+    AmbiguousOriginalMapping { aggregate: Range },
+    /// The grapheme group of the line has no geometry for the range.
+    MissingUnitGeometry { line: usize, unit: usize },
+    /// The grapheme group of the line cannot be partitioned for the range.
+    UnsupportedPartition { line: usize, unit: usize },
+    /// No font metrics are available for the grapheme group of the line: its
+    /// font run is missing or it yields no metric piece.
+    MissingFontMetrics { line: usize, unit: usize },
     /// The actual retained font/native-layout reference for this inner EGC is missing.
     MissingCellReference {
         line: usize,
@@ -76,6 +73,89 @@ pub enum SourceRangeFragmentError {
         selection_unit: usize,
     },
 }
+
+impl fmt::Display for SourceRangeFragmentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyRange => f.write_str("the source range is empty"),
+            Self::OutsideOrigin {
+                origin,
+                local,
+                captured,
+            } => write!(
+                f,
+                "source range {}..{} lies outside the captured range {}..{} of origin {origin}",
+                local.start, local.end, captured.start, captured.end
+            ),
+            Self::OutsidePlacement { aggregate } => write!(
+                f,
+                "aggregate range {}..{} lies outside the source the placement covers",
+                aggregate.start, aggregate.end
+            ),
+            Self::MissingOriginalMapping { aggregate } => write!(
+                f,
+                "the placement has no original mapping for aggregate range {}..{}",
+                aggregate.start, aggregate.end
+            ),
+            Self::AmbiguousOriginalMapping { aggregate } => write!(
+                f,
+                "the original mappings of aggregate range {}..{} overlap one another",
+                aggregate.start, aggregate.end
+            ),
+            Self::MissingUnitGeometry { line, unit } => {
+                write!(
+                    f,
+                    "grapheme group {unit} of line {line} has no geometry for the requested range"
+                )
+            }
+            Self::UnsupportedPartition { line, unit } => write!(
+                f,
+                "grapheme group {unit} of line {line} cannot be partitioned for the requested range"
+            ),
+            Self::MissingFontMetrics { line, unit } => {
+                write!(
+                    f,
+                    "no font metrics are available for grapheme group {unit} of line {line}"
+                )
+            }
+            Self::MissingCellReference { line, cell, unit } => write!(
+                f,
+                "inner unit {unit} of cell {cell} on line {line} has no retained font or layout reference"
+            ),
+            Self::UnsupportedCellPartition { line, cell, unit } => write!(
+                f,
+                "the provider members of cell {cell} on line {line} cannot be partitioned into inner unit {unit}"
+            ),
+            Self::AmbiguousCellUnit {
+                line,
+                cell,
+                selection_unit,
+            } => write!(
+                f,
+                "source unit {selection_unit} of cell {cell} on line {line} has no unique inner-unit closure"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SourceRangeFragmentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::EmptyRange
+            | Self::OutsideOrigin { .. }
+            | Self::OutsidePlacement { .. }
+            | Self::MissingOriginalMapping { .. }
+            | Self::AmbiguousOriginalMapping { .. }
+            | Self::MissingUnitGeometry { .. }
+            | Self::UnsupportedPartition { .. }
+            | Self::MissingFontMetrics { .. }
+            | Self::MissingCellReference { .. }
+            | Self::UnsupportedCellPartition { .. }
+            | Self::AmbiguousCellUnit { .. } => None,
+        }
+    }
+}
+
 fn failure(reason: SourceRangeFragmentError) -> Error {
     let code = match reason {
         SourceRangeFragmentError::MissingFontMetrics { .. }

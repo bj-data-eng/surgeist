@@ -47,6 +47,22 @@ private implementation organization.
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
 
+## Error text
+
+Every public error type implements `Display` and `core::error::Error`.
+`Error` prints its message and nothing else; read the classification through
+`Error::code` and the typed reason through `Error::detail()`. The reason enums
+(`ProtocolError`, `SourceProcessingError`, `ScopeAlignmentError`,
+`FontMetricTableError` and the others `ErrorDetail` carries) print one lowercase
+clause that states the cause, with numbers as numbers and a range as
+`start..end`. A variant that wraps another error prints only its own context and
+returns the wrapped error from `source()`: the three `ProtocolError` wrappers
+(`InlineBoxFragmentation`, `InlineBoxEdge`, `WrappingScopeQuery`),
+`SourceProcessingError::{SourceConnection, JointFlow, ComputedLineBoundary}` and
+`FontMetricTableError::BaselineOutline`. `ScopeAlignmentCensusFailure` and
+`SemanticWindowFailure` do the same with the `Error` they hold, so a reporter
+that walks the chain prints each cause once.
+
 ## Word breaking
 
 `WordBreak::BreakWord` has effective Normal word breaking and Anywhere overflow

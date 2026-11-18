@@ -165,9 +165,11 @@ impl SemanticWindowFailure {
         self.usage
     }
 }
+/// Prints only the observation context; the refusal is
+/// [`std::error::Error::source`] and the reporter that walks the chain prints it.
 impl std::fmt::Display for SemanticWindowFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.error.fmt(f)
+        f.write_str("the semantic window observation was refused")
     }
 }
 impl std::error::Error for SemanticWindowFailure {

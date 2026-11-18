@@ -28,13 +28,58 @@ use std::{fmt, ops::Range, sync::Arc};
 /// Refusal of a global fragment capability, separate from local edge admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InlineBoxFragmentationError {
+    /// The domain was not fully captured.
     IncompleteTopology { domain: usize },
+    /// The paragraph of the section is not covered by the captured body.
     IncompleteBodyCoverage { section: usize, paragraph: usize },
+    /// A handle belongs to a different fragment family or preparation.
     ForeignFamily,
+    /// The control's context differs from the one its fragment family records.
     FamilyContextMismatch { control: usize },
+    /// The fragments belong to different bodies.
     DifferentBody,
+    /// The box incidence is invalid for fragmentation.
     InvalidIncidence,
 }
+
+impl fmt::Display for InlineBoxFragmentationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::IncompleteTopology { domain } => {
+                write!(f, "domain {domain} was not fully captured")
+            }
+            Self::IncompleteBodyCoverage { section, paragraph } => write!(
+                f,
+                "paragraph {paragraph} of section {section} is not covered by the captured body"
+            ),
+            Self::ForeignFamily => {
+                f.write_str("the handle belongs to a different fragment family or preparation")
+            }
+            Self::FamilyContextMismatch { control } => write!(
+                f,
+                "the context of control {control} differs from the fragment family's"
+            ),
+            Self::DifferentBody => f.write_str("the fragments belong to different bodies"),
+            Self::InvalidIncidence => {
+                f.write_str("the inline box incidence is invalid for fragmentation")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InlineBoxFragmentationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::IncompleteTopology { .. }
+            | Self::IncompleteBodyCoverage { .. }
+            | Self::ForeignFamily
+            | Self::FamilyContextMismatch { .. }
+            | Self::DifferentBody
+            | Self::InvalidIncidence => None,
+        }
+    }
+}
+
 pub(crate) fn invalid(reason: InlineBoxFragmentationError) -> crate::Error {
     crate::protocol::protocol_error(crate::ProtocolError::InlineBoxFragmentation(reason))
 }

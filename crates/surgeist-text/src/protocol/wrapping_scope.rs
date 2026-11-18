@@ -49,8 +49,37 @@ pub enum WrappingScopeQueryError {
     NonInlineScope,
     /// The scope belongs to another lexical domain.
     WrongDomain,
-    /// The executed correspondence does not represent this requested incidence.
+    /// The executed correspondence does not represent this requested
+    /// incidence, of a scope or of a control.
     UnrepresentedIncidence,
+}
+
+impl core::fmt::Display for WrappingScopeQueryError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::MissingCapture => "the prepared paragraph has no contextual capture",
+            Self::ForeignCapture => "the scope belongs to a different capture",
+            Self::NonInlineScope => "the scope is a content domain, not an inline box",
+            Self::WrongDomain => {
+                "the scope belongs to a different content domain than the prepared paragraph"
+            }
+            Self::UnrepresentedIncidence => {
+                "the prepared paragraph does not represent the requested incidence"
+            }
+        })
+    }
+}
+
+impl core::error::Error for WrappingScopeQueryError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::MissingCapture
+            | Self::ForeignCapture
+            | Self::NonInlineScope
+            | Self::WrongDomain
+            | Self::UnrepresentedIncidence => None,
+        }
+    }
 }
 
 fn refusal(reason: WrappingScopeQueryError) -> crate::Error {
