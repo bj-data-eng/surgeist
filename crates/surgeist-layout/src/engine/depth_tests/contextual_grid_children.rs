@@ -193,14 +193,20 @@ fn shallow_subgrid_grid_chain_inherits_parent_tracks() {
     );
 }
 
+// The deep chains run 24 levels on a 2 MiB stack. Their work is linear in the
+// depth, so only the native recursion through the nested subgrid wrappers
+// bounds them: each level adds native frames, and a recursive traversal
+// overflows the stack well before 24 levels.
+const DEEP_DEPTH: u32 = 24;
+
 #[test]
 fn deep_subgrid_grid_chain_inherits_parent_tracks_on_bounded_stack() {
     on_bounded_stack(
         "engine::depth_tests::contextual_grid_children::deep_subgrid_grid_chain_inherits_parent_tracks_on_bounded_stack",
         || {
             for span in [Span::Whole, Span::SecondColumnFirstRow] {
-                assert_subgrid_grid_chain::<f32>(10, span);
-                assert_subgrid_grid_chain::<f64>(10, span);
+                assert_subgrid_grid_chain::<f32>(DEEP_DEPTH, span);
+                assert_subgrid_grid_chain::<f64>(DEEP_DEPTH, span);
             }
         },
     );
