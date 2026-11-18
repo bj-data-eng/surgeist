@@ -493,6 +493,20 @@ mod tests {
     }
 
     #[test]
+    fn a_call_that_unwinds_ends_its_host_phase_and_reports_nothing() {
+        let host = TestHost::new();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_host(Some(&host.scope()), |meter| {
+                meter.charge(LayoutWork::LineSearch, 3);
+                panic!("intentional unwind");
+            })
+        }));
+        assert!(result.is_err());
+        assert_eq!(host.phases(), 1);
+        assert_eq!(host.work(LayoutWork::LineSearch), 0);
+    }
+
+    #[test]
     fn successive_calls_accumulate_in_the_host_scope() {
         let host = TestHost::new();
         for amount in [1, 2, 4] {
