@@ -156,10 +156,15 @@ fn authentic_queue_survives_current_authored_import_removal_output_drop_and_sess
         assert_eq!(record.dependencies, ImportDependencies::NoImports);
         assert_eq!(state.next_task, 2);
     }
+    let error = session
+        .style_execution()
+        .queue_parsed_style_notification(&mut session.dom(), &q, envelope(), &cancel())
+        .err()
+        .unwrap();
     assert!(
-        matches!(session.style_execution().queue_parsed_style_notification(
-        &mut session.dom(),&q,envelope(),&cancel()),Err(DomStyleParsedNotificationError::AlreadyQueued{task:actual}) if actual==task)
+        matches!(error, DomStyleParsedNotificationError::AlreadyQueued { task: actual } if actual == task)
     );
+    assert_eq!(error.to_string(), "original notification already queued");
     let current = owner.snapshot().unwrap();
     let mut edit = owner
         .batch(CssomEditGuard::from_snapshot(&current))
@@ -259,11 +264,15 @@ fn owner_removed_before_queue_releases_terminal_row_without_issuing_a_task() {
         2,
         "only the native task spent a serial"
     );
+    let error = session
+        .style_execution()
+        .queue_parsed_style_notification(&mut session.dom(), &q, envelope(), &cancel())
+        .err()
+        .unwrap();
     assert!(
-        matches!(session.style_execution().queue_parsed_style_notification(
-        &mut session.dom(),&q,envelope(),&cancel()),Err(DomStyleParsedNotificationError::ProcessingUnavailable{contribution})
-            if contribution==q.contribution())
+        matches!(error, DomStyleParsedNotificationError::ProcessingUnavailable { contribution } if contribution == q.contribution())
     );
+    assert_eq!(error.to_string(), "original processing receipt unavailable");
     assert_eq!(session.style_execution().waiting_resources().unwrap(), 0);
     let mut dispatcher = dispatcher();
     let mut events = context(&session);
@@ -362,10 +371,18 @@ fn wrong_phase_foreign_owner_and_cancellation_do_not_consume_queue_issuance() {
         .unwrap()
         .sheet
         .association();
+    let error = runtime
+        .queue_parsed_style_notification(&mut session.dom(), &q, envelope(), &cancel())
+        .err()
+        .unwrap();
     assert!(matches!(
-        runtime.queue_parsed_style_notification(&mut session.dom(), &q, envelope(), &cancel()),
-        Err(DomStyleParsedNotificationError::RenderingIncomplete { association }) if association == expected
+        error,
+        DomStyleParsedNotificationError::RenderingIncomplete { association } if association == expected
     ));
+    assert_eq!(
+        error.to_string(),
+        "original rendering continuation unavailable"
+    );
     assert_eq!(
         session.parsed_html_style_prefix(id).unwrap().phase(),
         DomParsedHtmlStylePhase::ReadScriptBlockingPending

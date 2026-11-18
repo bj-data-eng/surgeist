@@ -31,8 +31,12 @@ impl From<DomParsedHtmlStyleSubjectError> for DomStyleParsedSubjectError {
 impl std::fmt::Display for DomStyleParsedSubjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(e) => e.fmt(f),
-            Self::Subject(e) => e.fmt(f),
+            Self::Runtime(_) => {
+                f.write_str("the Style runtime refused the parsed subject transition")
+            }
+            Self::Subject(_) => {
+                f.write_str("canonical parsed Style subject transition was refused")
+            }
         }
     }
 }

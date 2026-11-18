@@ -135,11 +135,13 @@ impl DomElementTask {
 pub enum DomElementTaskRuntimeError {
     /// Standalone intake already transferred unknown external task obligations.
     PretransferredSession,
-    /// A foreign canonical owner, replaced task owner or invalid target kind.
+    /// A foreign canonical owner, replaced task owner, invalid target kind, or a
+    /// retained task state that does not match the request or outcome.
     Binding,
     /// The original durable session has released this permission's owner.
     OwnerDisposed,
-    /// The original task state is temporarily borrowed by another operation.
+    /// The task state, or the hosted state this operation needs, is temporarily
+    /// borrowed by another operation.
     Busy,
     /// A transfer predates another already consumed transfer from this DOM.
     OutOfOrderTransfer,
@@ -158,7 +160,27 @@ pub enum DomElementTaskRuntimeError {
 }
 impl fmt::Display for DomElementTaskRuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DOM element-task operation refused: {self:?}")
+        f.write_str(match self {
+            Self::PretransferredSession => {
+                "standalone intake already transferred element-task obligations that this session cannot recover"
+            }
+            Self::Binding => "the element-task owner, DOM or task binding is missing or does not match, or the retained task state does not match",
+            Self::OwnerDisposed => "the session that owns the element-task state was disposed",
+            Self::Busy => {
+                "the state needed by the element-task operation is already borrowed by another operation"
+            }
+            Self::OutOfOrderTransfer => {
+                "the task transfer is older than a transfer from the same DOM that was already consumed"
+            }
+            Self::Dom(_) => "the canonical DOM refused the element-task operation",
+            Self::Admission => "element-task admission refused the operation",
+            Self::IdentityExhausted => {
+                "an element-task count, size or work total cannot be represented"
+            }
+            Self::Dispatch(_) => "shared event dispatch refused the element task",
+            Self::SourceEvent(_) => "the Source event executor refused the element-task step",
+            Self::Hosted(_) => "the native hosted lifecycle refused the element-task operation",
+        })
     }
 }
 impl std::error::Error for DomElementTaskRuntimeError {
@@ -168,7 +190,13 @@ impl std::error::Error for DomElementTaskRuntimeError {
             Self::Dispatch(error) => Some(error),
             Self::SourceEvent(error) => Some(error),
             Self::Hosted(error) => Some(error),
-            _ => None,
+            Self::PretransferredSession
+            | Self::Binding
+            | Self::OwnerDisposed
+            | Self::Busy
+            | Self::OutOfOrderTransfer
+            | Self::Admission
+            | Self::IdentityExhausted => None,
         }
     }
 }

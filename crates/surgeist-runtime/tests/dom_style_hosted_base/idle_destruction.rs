@@ -597,6 +597,14 @@ fn assert_released(fixture: &mut IdleDocument, cleanup: DomHostedOperationId) {
     assert!(
         matches!(fixture.styles.snapshot(root), Err(DomStyleRuntimeError::RootReleasedForHostedDestruction { root: actual, cleanup: original, withdrawal_revision }) if actual == root && original == cleanup && &withdrawal_revision == fixture.idle_cssom.revision())
     );
+    let released = match fixture.styles.snapshot(root) {
+        Err(error) => error,
+        Ok(_) => panic!("withdrawn custody refuses the snapshot"),
+    };
+    assert_eq!(
+        released.to_string(),
+        "the root's execution custody was withdrawn for its hosted cleanup"
+    );
     assert!(
         matches!(fixture.styles.sheet_sets(&fixture.session.dom(), root, &cancel()), Err(DomStyleRuntimeError::RootReleasedForHostedDestruction { root: actual, cleanup: original, withdrawal_revision }) if actual == root && original == cleanup && &withdrawal_revision == fixture.idle_cssom.revision())
     );

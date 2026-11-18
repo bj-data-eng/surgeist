@@ -12,8 +12,10 @@ pub enum DomStyleParsedMetaError {
 impl std::fmt::Display for DomStyleParsedMetaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(error) => write!(f, "parsed association Runtime refused: {error}"),
-            Self::Meta(error) => write!(f, "parsed association execution refused: {error}"),
+            Self::Runtime(_) => f.write_str("the Style runtime refused the parsed Meta operation"),
+            Self::Meta(_) => f.write_str(
+                "the canonical parsed Meta qualification or producer preparation was refused",
+            ),
         }
     }
 }
@@ -53,8 +55,10 @@ pub enum DomStyleParsedAdmissionError {
 impl std::fmt::Display for DomStyleParsedAdmissionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(error) => write!(f, "parsed Session intake refused: {error}"),
-            Self::Association(error) => error.fmt(f),
+            Self::Runtime(_) => f.write_str("the Style runtime refused the parsed Session intake"),
+            Self::Association(_) => f.write_str(
+                "the canonical parsed association classification or admission was refused",
+            ),
         }
     }
 }
@@ -89,8 +93,12 @@ pub enum DomStyleParsedInstallError {
 impl std::fmt::Display for DomStyleParsedInstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(error) => write!(f, "parsed Session installation refused: {error}"),
-            Self::Installation(error) => error.fmt(f),
+            Self::Runtime(_) => {
+                f.write_str("the Style runtime refused the parsed Session installation")
+            }
+            Self::Installation(_) => {
+                f.write_str("the canonical structural installation was refused")
+            }
         }
     }
 }

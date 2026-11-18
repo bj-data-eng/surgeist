@@ -61,40 +61,93 @@ pub enum DocumentScriptNativeError {
     Hosted(DomHostedRuntimeError),
     /// The canonical DOM refused the operation.
     Dom(DomError),
-    /// Requested adapter backing exceeds the configured storage limit.
+    /// Requested adapter backing or a pending count exceeds the configured
+    /// limit, or cannot be sized.
     StorageLimit,
-    /// The original native owner is already loaned.
+    /// A native owner or retained record the operation needs is already in use
+    /// or unavailable.
     Busy,
-    /// The permit does not belong to the receiving attachment.
+    /// The permit, origin or Realm does not belong to the receiving attachment.
     ForeignPermit,
-    /// The original attachment has stopped or expired.
+    /// The original attachment has stopped, expired or no longer has scripting
+    /// enabled, or a record it retained is gone.
     Revoked,
-    /// The selected native Source has an unfinished synchronous obligation.
+    /// A native Source or hosted operation has an unfinished synchronous
+    /// obligation.
     SourcePending,
-    /// This hook lacks the selected native event's exact Source authority.
+    /// The pending Source operation, event, retained frame or delegated node the
+    /// operation needs is missing, unfinished or does not match this hook.
     SourceAccess,
-    /// The native node's creation Global is unavailable in this attachment.
+    /// The creation Global of a node or registry is unavailable in this
+    /// attachment.
     CreationGlobalUnavailable,
     /// The exact native Global already has a creation realm.
     CreationRealmAlreadyRegistered,
     /// This Global retains definitions whose original executable custody is
     /// absent from the new realm.
     CustomElementRegistryCustodyUnavailable(surgeist_dom::custom_element::DomRegistryId),
-    /// The guest binding budget refused installation in the creation realm.
+    /// The guest binding budget refused installation in the creation realm, or
+    /// its count cannot be represented.
     CreationRealmWorkLimit,
-    /// A previously admitted projected node lost its managed pin record.
+    /// Adapter custody state is missing, inconsistent with what was admitted, or
+    /// already failed.
     ProjectionCustody,
-    /// The result cannot be represented in the supported service profile.
+    /// A size, count or accounting total cannot be represented or does not
+    /// balance in the supported service profile.
     RepresentationExhausted,
     /// This attachment did not enable the callable Window timer profile.
     WindowTimersDisabled,
-    /// The registered Window's current CSP requires an unavailable Trusted Types reader.
+    /// Trusted Types policy evaluation is unavailable for the registered Window's
+    /// current CSP.
     TrustedTypesPolicyUnavailable,
 }
 
 impl fmt::Display for DocumentScriptNativeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "native document scripting refused: {self:?}")
+        f.write_str(match self {
+            Self::Hosted(_) => "the native hosted lifecycle refused the operation",
+            Self::Dom(_) => "the canonical DOM refused the operation",
+            Self::StorageLimit => {
+                "the requested adapter storage or pending count exceeds the configured limit or cannot be sized"
+            }
+            Self::Busy => {
+                "a native owner or retained record needed by the operation is already in use or unavailable"
+            }
+            Self::ForeignPermit => "the permit, origin or Realm does not belong to this attachment",
+            Self::Revoked => {
+                "the attachment has stopped, expired or no longer has scripting enabled, or a record it retained is gone"
+            }
+            Self::SourcePending => {
+                "a native Source or hosted operation has an unfinished synchronous obligation"
+            }
+            Self::SourceAccess => {
+                "the pending Source operation, event, retained frame or delegated node the operation needs is missing, unfinished or does not match this hook"
+            }
+            Self::CreationGlobalUnavailable => {
+                "the creation Global is unavailable in this attachment"
+            }
+            Self::CreationRealmAlreadyRegistered => {
+                "the native Global already has a creation realm"
+            }
+            Self::CustomElementRegistryCustodyUnavailable(_) => {
+                "the Global retains custom element definitions whose executable custody is absent from this realm"
+            }
+            Self::CreationRealmWorkLimit => {
+                "guest binding work for the creation realm was refused or cannot be represented"
+            }
+            Self::ProjectionCustody => {
+                "adapter custody state is missing, inconsistent with what was admitted, or already failed"
+            }
+            Self::RepresentationExhausted => {
+                "a size, count or accounting total cannot be represented or does not balance in the supported service profile"
+            }
+            Self::WindowTimersDisabled => {
+                "this attachment did not enable the Window timer profile"
+            }
+            Self::TrustedTypesPolicyUnavailable => {
+                "the Trusted Types policy evaluation is unavailable for the Window's current CSP"
+            }
+        })
     }
 }
 
@@ -103,7 +156,20 @@ impl std::error::Error for DocumentScriptNativeError {
         match self {
             Self::Hosted(error) => Some(error),
             Self::Dom(error) => Some(error),
-            _ => None,
+            Self::StorageLimit
+            | Self::Busy
+            | Self::ForeignPermit
+            | Self::Revoked
+            | Self::SourcePending
+            | Self::SourceAccess
+            | Self::CreationGlobalUnavailable
+            | Self::CreationRealmAlreadyRegistered
+            | Self::CustomElementRegistryCustodyUnavailable(_)
+            | Self::CreationRealmWorkLimit
+            | Self::ProjectionCustody
+            | Self::RepresentationExhausted
+            | Self::WindowTimersDisabled
+            | Self::TrustedTypesPolicyUnavailable => None,
         }
     }
 }
@@ -134,8 +200,8 @@ pub enum DocumentScriptError {
 impl fmt::Display for DocumentScriptError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Native(error) => error.fmt(f),
-            Self::Script(error) => error.fmt(f),
+            Self::Native(_) => f.write_str("a native entry or owner operation was refused"),
+            Self::Script(_) => f.write_str("the bindings execution outcome is an error"),
         }
     }
 }
@@ -512,12 +578,36 @@ pub struct EnableDocumentScriptFailure {
     pub error: DocumentScriptError,
 }
 
+impl fmt::Display for EnableDocumentScriptFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("enabling document scripting failed and returned the unpublished owner")
+    }
+}
+
+impl std::error::Error for EnableDocumentScriptFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
 /// A refused preparation returns the exact original Session.
 pub struct PrepareDocumentScriptFailure {
     /// The original native owner.
     pub session: DomSession,
     /// The native phase's refusal.
     pub error: DocumentScriptNativeError,
+}
+
+impl fmt::Display for PrepareDocumentScriptFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("preparing document scripting failed and returned the original Session")
+    }
+}
+
+impl std::error::Error for PrepareDocumentScriptFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
 }
 
 impl fmt::Debug for PrepareDocumentScriptFailure {

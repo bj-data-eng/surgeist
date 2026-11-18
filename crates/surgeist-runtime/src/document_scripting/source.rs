@@ -45,7 +45,8 @@ impl Drop for ActiveGuard<'_> {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DocumentScriptEventError {
-    /// The script owner or its Source capability refused entry.
+    /// The script owner, its Source capability or the engine refused the
+    /// operation.
     Access(DocumentScriptError),
     /// The original native event adapter refused servicing.
     Service(DomSourceRuntimeError),
@@ -58,10 +59,14 @@ pub enum DocumentScriptEventError {
 impl fmt::Display for DocumentScriptEventError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Access(error) => error.fmt(f),
-            Self::Service(error) => error.fmt(f),
-            Self::Task(error) => error.fmt(f),
-            Self::Guest(error) => error.fmt(f),
+            Self::Access(_) => f.write_str(
+                "the script owner, its Source capability or the engine refused the operation",
+            ),
+            Self::Service(_) => f.write_str("the native event adapter refused servicing"),
+            Self::Task(_) => f.write_str("the element-task owner refused delivery or completion"),
+            Self::Guest(_) => {
+                f.write_str("the attached registry or guest invocation refused delivery")
+            }
         }
     }
 }

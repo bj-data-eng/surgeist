@@ -138,8 +138,10 @@ pub enum DomSourceDriveError {
 impl std::fmt::Display for DomSourceDriveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Source(error) => write!(f, "Source drive refused: {error}"),
-            Self::Meta(error) => write!(f, "Source native Meta drive refused: {error}"),
+            Self::Source(_) => f.write_str("the Source driver refused the operation"),
+            Self::Meta(_) => f.write_str(
+                "the native Meta composition of the Source driver refused the operation",
+            ),
         }
     }
 }
@@ -207,14 +209,26 @@ pub enum DomSourceRuntimeError {
     Hosted(DomHostedRuntimeError),
     /// The named native installation refused its actual input or target.
     NativeInstallation(DomNativeHtmlInstallError),
-    /// The processor or original Source controller refused a reached CSP pragma.
+    /// The meta CSP pragma could not be processed: its processor is unavailable
+    /// or busy, or the processor or original Source controller refused it.
     MetaCsp(
         surgeist_dom::meta::DomSourceMetaCspError<crate::trusted_types_csp::PolicyListCapacity>,
     ),
 }
 impl std::fmt::Display for DomSourceRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Source operation refused: {self:?}")
+        f.write_str(match self {
+            Self::SourceEvent(_) => "the Source event adapter refused the Source operation",
+            Self::Inline(_) => "the inline style producer refused the Source operation",
+            Self::Dom(_) => "the canonical DOM refused the Source operation",
+            Self::Style(_) => "the Style runtime refused the Source operation",
+            Self::ElementTasks(_) => "the element-task owner refused the Source operation",
+            Self::Hosted(_) => "the hosted lifecycle owner refused the Source operation",
+            Self::NativeInstallation(_) => {
+                "the native HTML installation refused the Source operation"
+            }
+            Self::MetaCsp(_) => "the meta CSP pragma could not be processed",
+        })
     }
 }
 impl std::error::Error for DomSourceRuntimeError {

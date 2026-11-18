@@ -31,8 +31,8 @@ impl From<DomParsedHtmlStyleSuccessorError> for DomStyleParsedSuccessorError {
 impl std::fmt::Display for DomStyleParsedSuccessorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(error) => error.fmt(f),
-            Self::Successor(error) => error.fmt(f),
+            Self::Runtime(_) => f.write_str("the Style runtime refused the parsed successor"),
+            Self::Successor(_) => f.write_str("the canonical parsed successor was refused"),
         }
     }
 }

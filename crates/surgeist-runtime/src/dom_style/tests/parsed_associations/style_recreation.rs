@@ -599,9 +599,29 @@ fn queued_old_and_new_invocations_preserve_fifo_names_and_precise_later_meta_req
     })
     .unwrap();
     for _ in 0..2 {
-        assert!(
-            matches!(DomStyleRuntime::run_networking(&mut session.dom(),&mut dispatcher,&mut context,dispatch_limits(),&cancel()).unwrap(),
-            DomStyleNetworkingProgress::OriginalSynchronousPending{task,requirement:DomParsedHtmlStyleNotificationRequirement::Occurrence{kind:Kind::ChangePreferred,..}} if task==old_task)
+        let DomStyleNetworkingProgress::OriginalSynchronousPending { task, requirement } =
+            DomStyleRuntime::run_networking(
+                &mut session.dom(),
+                &mut dispatcher,
+                &mut context,
+                dispatch_limits(),
+                &cancel(),
+            )
+            .unwrap()
+        else {
+            panic!("the original synchronous execution must remain pending");
+        };
+        assert_eq!(task, old_task);
+        assert!(matches!(
+            requirement,
+            DomParsedHtmlStyleNotificationRequirement::Occurrence {
+                kind: Kind::ChangePreferred,
+                ..
+            }
+        ));
+        assert_eq!(
+            crate::DomEventDispatchError::ParsedSynchronousPending { requirement }.to_string(),
+            "original parsed synchronous execution is pending"
         );
     }
     assert!(context.events.is_empty());

@@ -239,6 +239,16 @@ pub struct DomEventCallbackError {
     /// Caller-owned diagnostic code, interpreted by the composing application.
     pub code: u64,
 }
+impl std::fmt::Display for DomEventCallbackError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the listener callback reported failure code {}",
+            self.code
+        )
+    }
+}
+impl std::error::Error for DomEventCallbackError {}
 /// Why a listener invocation reported failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomEventListenerFailureKind {
@@ -285,9 +295,11 @@ pub enum DomEventResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomEventDispatchError {
-    /// Canonical identity or source-coherence validation failed before the next step.
+    /// The canonical DOM refused the dispatch: identity or source validation,
+    /// or cancellation.
     Dom(DomError),
-    /// Actual hosted source or global association could not be qualified.
+    /// The hosted source or Global state refused the dispatch: its association
+    /// could not be qualified, or a hosted operation has not completed.
     Hosted(DomHostedError),
     /// Finite admission refused work; no callback ran for a new event.
     Admission(DomEventResource),
@@ -302,15 +314,19 @@ pub enum DomEventDispatchError {
     Uninitialized,
     /// This invocation already produced its one completion receipt.
     AlreadyCompleted,
-    /// The affine invocation was terminally abandoned.
+    /// The affine invocation was terminally abandoned, or its retained custody is
+    /// gone.
     Abandoned,
-    /// Resume requires an event retained by this exact registry.
+    /// The continuation does not match the state this dispatcher retained: a
+    /// foreign registry, a missing or mismatched retained frame, or a path whose
+    /// final target is not a node.
     WrongContinuation,
     /// The standalone target belongs to another dispatcher registry.
     WrongTargetRegistry,
     /// The selected host refused execution; this event cannot produce a receipt.
     HostRefused(DomEventHostError),
-    /// Registry/generation/order identity exhausted rather than wrapping.
+    /// Registry, generation or order identity, or the registration capacity, is
+    /// exhausted rather than wrapping.
     IdentityExhausted,
     /// A canonical event-parent chain repeated a node.
     CyclicPath,
@@ -318,32 +334,51 @@ pub enum DomEventDispatchError {
 impl std::fmt::Display for DomEventDispatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Dom(error) => write!(f, "native DOM event dispatch: {error}"),
-            Self::Hosted(error) => write!(f, "native DOM event hosted endpoint: {error}"),
+            Self::Dom(_) => f.write_str(
+                "the canonical DOM refused the native DOM event dispatch",
+            ),
+            Self::Hosted(_) => f.write_str(
+                "the hosted source or Global state refused the native DOM event dispatch",
+            ),
             Self::Admission(resource) => write!(
                 f,
-                "native DOM event dispatch admission refused {resource:?}"
+                "native DOM event dispatch admission refused {}",
+                resource_phrase(*resource)
             ),
-            Self::ParsedSynchronousPending { requirement } => write!(
-                f,
-                "original parsed synchronous execution is pending: {requirement:?}"
-            ),
+            Self::ParsedSynchronousPending { .. } => {
+                f.write_str("original parsed synchronous execution is pending")
+            }
             Self::AlreadyDispatching => f.write_str("native DOM event is already dispatching"),
             Self::Uninitialized => f.write_str("native DOM event is uninitialized"),
             Self::AlreadyCompleted => f.write_str("native DOM event already completed dispatch"),
-            Self::Abandoned => f.write_str("native DOM event source task was abandoned"),
-            Self::WrongContinuation => {
-                f.write_str("native DOM event continuation is not retained by this dispatcher")
-            }
+            Self::Abandoned => f.write_str("native DOM event invocation was abandoned"),
+            Self::WrongContinuation => f.write_str(
+                "native DOM event dispatch continuation does not match the state this dispatcher retained",
+            ),
             Self::WrongTargetRegistry => {
                 f.write_str("standalone EventTarget belongs to another dispatcher")
             }
-            Self::HostRefused(error) => write!(f, "native DOM event host refused: {}", error.code),
-            Self::IdentityExhausted => {
-                f.write_str("native DOM event registration identity is exhausted")
-            }
+            Self::HostRefused(_) => f.write_str("native DOM event host refused execution"),
+            Self::IdentityExhausted => f.write_str(
+                "native DOM event registry or registration identity or capacity is exhausted",
+            ),
             Self::CyclicPath => f.write_str("native DOM event parent path contains a cycle"),
         }
+    }
+}
+/// The admission domain as it reads inside a message.
+fn resource_phrase(resource: DomEventResource) -> &'static str {
+    match resource {
+        DomEventResource::Storage => "event, target, listener and invocation storage",
+        DomEventResource::Registrations => "listener registration storage",
+        DomEventResource::PendingEvents => "running and retained dispatch state",
+        DomEventResource::NestedDispatches => "active nested execution",
+        DomEventResource::PathItems => "event path storage",
+        DomEventResource::SnapshotListeners => "the listener snapshot of an invoke step",
+        DomEventResource::FailureRecords => "callback error output",
+        DomEventResource::Callbacks => "callback execution count",
+        DomEventResource::Work => "traversal and listener work",
+        DomEventResource::Allocation => "a fallible allocation",
     }
 }
 impl std::error::Error for DomEventDispatchError {
@@ -351,7 +386,17 @@ impl std::error::Error for DomEventDispatchError {
         match self {
             Self::Dom(error) => Some(error),
             Self::Hosted(error) => Some(error),
-            _ => None,
+            Self::HostRefused(error) => Some(error),
+            Self::Admission(_)
+            | Self::ParsedSynchronousPending { .. }
+            | Self::AlreadyDispatching
+            | Self::Uninitialized
+            | Self::AlreadyCompleted
+            | Self::Abandoned
+            | Self::WrongContinuation
+            | Self::WrongTargetRegistry
+            | Self::IdentityExhausted
+            | Self::CyclicPath => None,
         }
     }
 }
@@ -518,6 +563,16 @@ pub struct DomEventHostError {
     /// Caller-owned host diagnostic code.
     pub code: u64,
 }
+impl std::fmt::Display for DomEventHostError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the host refused to run the listener, code {}",
+            self.code
+        )
+    }
+}
+impl std::error::Error for DomEventHostError {}
 /// Affine permission to execute one already-selected external listener. It owns
 /// no session, dispatcher or composition borrow. The original event owner keeps
 /// its dispatch and Source scope alive; this token cannot outlive that authority.

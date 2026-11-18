@@ -282,10 +282,12 @@ fn rendering_checks_actual_session_phase_cancellation_and_cumulative_original_wo
     let (mut session, installed) = ready("<!doctype html><style>x{}</style>", finite);
     let id = installed.pending_association().unwrap();
     let qualification = request(&session, id);
+    let error = render(&mut session, &qualification, finite).err().unwrap();
     assert!(matches!(
-        render(&mut session, &qualification, finite),
-        Err(DomStyleParsedPrefixError::ProcessingUnavailable { contribution }) if contribution == id
+        error,
+        DomStyleParsedPrefixError::ProcessingUnavailable { contribution } if contribution == id
     ));
+    assert_eq!(error.to_string(), "original creation receipt unavailable");
     assert_eq!(
         session.parsed_html_style_prefix(id).unwrap().phase(),
         DomParsedHtmlStylePhase::CreateSheetPending

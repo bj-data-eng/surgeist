@@ -35,7 +35,13 @@ impl From<DomParsedHtmlTerminalError> for DomStyleParsedTerminalError {
 }
 impl std::fmt::Display for DomStyleParsedTerminalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "original contribution settlement refused: {self:?}")
+        f.write_str(match self {
+            Self::Runtime(_) => "the Style runtime refused to settle the parsed contribution",
+            Self::Terminal(_) => "canonical parsed HTML settlement refused the contribution",
+            Self::TailPending { .. } => {
+                "a processing, delivery or cleanup row of the same contribution remains"
+            }
+        })
     }
 }
 impl std::error::Error for DomStyleParsedTerminalError {
@@ -43,7 +49,7 @@ impl std::error::Error for DomStyleParsedTerminalError {
         match self {
             Self::Runtime(error) => Some(error),
             Self::Terminal(error) => Some(error),
-            _ => None,
+            Self::TailPending { .. } => None,
         }
     }
 }

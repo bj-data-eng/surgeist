@@ -29,8 +29,12 @@ impl From<DomParsedHtmlFrontierError> for DomStyleParsedFrontierError {
 impl std::fmt::Display for DomStyleParsedFrontierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(error) => error.fmt(f),
-            Self::Frontier(error) => error.fmt(f),
+            Self::Runtime(_) => {
+                f.write_str("the Style runtime refused the parsed synchronous-end validation")
+            }
+            Self::Frontier(_) => f.write_str(
+                "the canonical parsed owner refused admission or reported remaining execution",
+            ),
         }
     }
 }

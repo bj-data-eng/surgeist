@@ -36,14 +36,18 @@ pub enum AttributePolicyError {
 impl fmt::Display for AttributePolicyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Dom(error) => error.fmt(f),
+            Self::Dom(_) => f.write_str(
+                "the native lease, registration or Source controller refused the policy lookup",
+            ),
             Self::ContainerUnavailable => {
                 f.write_str("the registered Global's CSP container is unavailable")
             }
             Self::ProcessorUnavailable => {
                 f.write_str("the associated CSP processor is unavailable")
             }
-            Self::Csp(error) => error.fmt(f),
+            Self::Csp(_) => {
+                f.write_str("the selected CSP processor could not qualify the associated artifact")
+            }
         }
     }
 }
@@ -225,5 +229,40 @@ impl<'policies> AttributeMismatch<'_, 'policies> {
     /// The final enforcement decision, available after the policy scan.
     pub fn blocked(&self) -> Option<bool> {
         self.decision.blocked()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_dom_arm_states_its_own_context_and_chains_the_dom_error() {
+        let error = AttributePolicyError::Dom(DomError::StaleRange);
+        assert_eq!(
+            error.to_string(),
+            "the native lease, registration or Source controller refused the policy lookup"
+        );
+        assert_eq!(
+            Error::source(&error).unwrap().to_string(),
+            DomError::StaleRange.to_string()
+        );
+    }
+
+    #[test]
+    fn a_caller_interruption_is_routed_to_the_dom_arm() {
+        // The protocol error that routes to the `Csp` arm has no constructor outside
+        // the HTML crate, so only the interruption routing can be exercised here.
+        let routed =
+            AttributePolicyError::from(HtmlCspError::<DomError>::Interrupted(DomError::StaleRange));
+        assert!(matches!(
+            routed,
+            AttributePolicyError::Dom(DomError::StaleRange)
+        ));
+        let routed = AttributePolicyError::from(DomError::Cancelled);
+        assert!(matches!(
+            routed,
+            AttributePolicyError::Dom(DomError::Cancelled)
+        ));
     }
 }

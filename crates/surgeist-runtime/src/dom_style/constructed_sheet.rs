@@ -57,7 +57,13 @@ pub enum DomConstructedSheetError {
 
 impl std::fmt::Display for DomConstructedSheetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::Hosted(_) => "the hosted runtime refused the constructed stylesheet operation",
+            Self::Style(_) => "the Style runtime refused the constructed stylesheet operation",
+            Self::Construction(_) => {
+                "the native Document or CSSOM producer refused to construct the stylesheet"
+            }
+        })
     }
 }
 

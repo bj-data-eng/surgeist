@@ -36,9 +36,11 @@ impl From<DomParsedHtmlStyleSheetError> for DomStyleParsedSheetError {
 impl std::fmt::Display for DomStyleParsedSheetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(e) => e.fmt(f),
-            Self::Sheet(e) => e.fmt(f),
-            Self::Css(e) => e.fmt(f),
+            Self::Runtime(_) => {
+                f.write_str("the Style runtime refused the parsed sheet processing")
+            }
+            Self::Sheet(_) => f.write_str("canonical parsed sheet processing refused the sheet"),
+            Self::Css(_) => f.write_str("the CSS input of the parsed sheet was refused"),
         }
     }
 }

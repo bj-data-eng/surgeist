@@ -26,8 +26,12 @@ pub enum DomStyleMetaError {
 impl std::fmt::Display for DomStyleMetaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(error) => write!(f, "native Meta Runtime preparation refused: {error}"),
-            Self::Meta(error) => write!(f, "native Meta preparation refused: {error}"),
+            Self::Runtime(_) => {
+                f.write_str("the Style runtime refused the native Meta preparation")
+            }
+            Self::Meta(_) => {
+                f.write_str("canonical or producer preparation refused the native Meta batch")
+            }
         }
     }
 }

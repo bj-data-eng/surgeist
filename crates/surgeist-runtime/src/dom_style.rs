@@ -114,13 +114,15 @@ pub enum DomStyleRuntimeError {
     PendingParsedAssociations(surgeist_dom::installation::DomParsedHtmlAssociationId),
     /// Canonical source admission or qualification failed.
     Dom(DomError),
-    /// The CSSOM owner refused its actual mutation.
+    /// The CSSOM owner refused its actual mutation or read.
     Cssom(surgeist_cssom::CssomError),
     /// Real CSS input preparation/parsing failed, including cancellation.
     Css(surgeist_css::source::CssUtf16InputError<DomError>),
-    /// Runtime's own finite bank/work/identity admission failed.
+    /// Runtime's own finite bank/work/identity admission failed, or a guest
+    /// accounting step mapped to it failed.
     Admission,
-    /// A caller replaced an actual owner or supplied a conflicting binding.
+    /// An owner the operation needs is borrowed or was replaced, or the caller
+    /// supplied a conflicting binding.
     Binding,
     /// Source reply is inconsistent with the retained operation.
     Protocol,
@@ -128,11 +130,11 @@ pub enum DomStyleRuntimeError {
     Dispatch(crate::dom_event::DomEventDispatchError),
     /// The durable original session has ended.
     SessionUnavailable,
-    /// Execution permission and canonical view belong to different sessions.
+    /// The canonical view belongs to a different session than the Style runtime.
     WrongSession,
     /// A new session cannot reconstruct preexisting root/task custody.
     PreboundSession,
-    /// The actual Document has no bound stylesheet association owner.
+    /// The root has no bound stylesheet association owner.
     SheetSetRootUnavailable {
         /// Exact live Document for which ownership is unavailable.
         root: NodeId,
@@ -167,14 +169,64 @@ pub enum DomStyleRuntimeError {
     SourcePending(DomSourceOperationId),
     /// The exact retained CSSOM resource is temporarily unavailable or refused work.
     Resource(DomStyleCssomRootError),
-    /// Actual bound trusted event executor refused Style attestation.
+    /// The bound trusted Source event executor refused the Style event dispatch.
     EventExecutor(crate::DomSourceEventRuntimeError),
-    /// The original hosted issuer refused Style event timing qualification.
+    /// The hosted runtime refused a Style operation, including event timing
+    /// qualification.
     EventClock(crate::DomHostedRuntimeError),
 }
 impl std::fmt::Display for DomStyleRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Style runtime operation refused: {self:?}")
+        f.write_str(match self {
+            Self::PendingParsedAssociations(_) => {
+                "parsed HTML association inputs remain pending under canonical DOM custody"
+            }
+            Self::Dom(_) => "the canonical DOM refused the Style runtime operation",
+            Self::Cssom(_) => "the CSSOM owner refused the operation",
+            Self::Css(_) => "the CSS input could not be prepared or parsed",
+            Self::Admission => "the Style operation was refused admission or an accounting step failed",
+            Self::Binding => {
+                "an owner needed by the Style operation is borrowed, replaced or conflicts with the supplied binding"
+            }
+            Self::Protocol => {
+                "a Source reply, retained operation or permit is inconsistent with the original request"
+            }
+            Self::Dispatch(_) => "shared DOM event dispatch refused the Style task",
+            Self::SessionUnavailable => "the session that owns the Style runtime has ended",
+            Self::WrongSession => {
+                "the DOM view belongs to a different session than the Style runtime"
+            }
+            Self::PreboundSession => {
+                "the DOM already has Style CSSOM roots that a new session cannot reconstruct"
+            }
+            Self::SheetSetRootUnavailable { .. } => {
+                "the root has no bound stylesheet association owner"
+            }
+            Self::SheetSetDocumentRequired { .. } => {
+                "the root is not a Document, which preference history requires"
+            }
+            Self::RootReleasedForHostedDestruction { .. } => {
+                "the root's execution custody was withdrawn for its hosted cleanup"
+            }
+            Self::RootWorkPending { .. } => {
+                "retained processing, notification or cleanup work for the root still needs its execution custody"
+            }
+            Self::StaleSheetSetObservation => {
+                "the canonical, preference or producer state changed since the sheet-set observation"
+            }
+            Self::SheetSetPublicationPending => {
+                "a staged or committed Source publication holds exclusive custody"
+            }
+            Self::SheetSetOutputLimit => {
+                "the preference or producer output could not be admitted"
+            }
+            Self::SourcePending(_) => "a canonical Source operation is already pending",
+            Self::Resource(_) => {
+                "the retained CSSOM root resource is unavailable or refused the work"
+            }
+            Self::EventExecutor(_) => "the Source event executor refused the Style event dispatch",
+            Self::EventClock(_) => "the hosted runtime refused the Style operation",
+        })
     }
 }
 impl std::error::Error for DomStyleRuntimeError {
@@ -187,7 +239,21 @@ impl std::error::Error for DomStyleRuntimeError {
             Self::Resource(error) => Some(error),
             Self::EventExecutor(error) => Some(error),
             Self::EventClock(error) => Some(error),
-            _ => None,
+            Self::PendingParsedAssociations(_)
+            | Self::Admission
+            | Self::Binding
+            | Self::Protocol
+            | Self::SessionUnavailable
+            | Self::WrongSession
+            | Self::PreboundSession
+            | Self::SheetSetRootUnavailable { .. }
+            | Self::SheetSetDocumentRequired { .. }
+            | Self::RootReleasedForHostedDestruction { .. }
+            | Self::RootWorkPending { .. }
+            | Self::StaleSheetSetObservation
+            | Self::SheetSetPublicationPending
+            | Self::SheetSetOutputLimit
+            | Self::SourcePending(_) => None,
         }
     }
 }
@@ -1690,12 +1756,22 @@ pub enum DomSessionCreateFailure {
 impl std::fmt::Display for DomSessionCreateFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Events(error) => std::fmt::Display::fmt(error, f),
-            Self::SourceEvents(error) => std::fmt::Display::fmt(error, f),
-            Self::Style(error) => std::fmt::Display::fmt(error, f),
-            Self::Parsed(error) => std::fmt::Display::fmt(error, f),
-            Self::ElementTasks(error) => std::fmt::Display::fmt(error, f),
-            Self::Hosted(error) => std::fmt::Display::fmt(error, f),
+            Self::Events(_) => {
+                f.write_str("session creation was refused by the shared Event object storage")
+            }
+            Self::SourceEvents(_) => {
+                f.write_str("session creation was refused by the Source event executor")
+            }
+            Self::Style(_) => f.write_str("session creation was refused by the Style owner"),
+            Self::Parsed(_) => {
+                f.write_str("session creation was refused by the parsed association admission")
+            }
+            Self::ElementTasks(_) => {
+                f.write_str("session creation was refused by the element-task owner")
+            }
+            Self::Hosted(_) => {
+                f.write_str("session creation was refused by the hosted lifecycle owner")
+            }
         }
     }
 }
@@ -1757,7 +1833,7 @@ impl std::fmt::Debug for DomSessionCreateError {
 }
 impl std::fmt::Display for DomSessionCreateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.error, f)
+        f.write_str("creating the DOM session failed and returned the original DOM")
     }
 }
 impl std::error::Error for DomSessionCreateError {

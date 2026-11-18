@@ -78,7 +78,45 @@ pub enum DomSourceEventRuntimeError {
 }
 impl std::fmt::Display for DomSourceEventRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Source event refused: {self:?}")
+        match self {
+            Self::Dom(_) => f.write_str("the canonical DOM refused the Source event step"),
+            Self::Dispatch(_) => {
+                f.write_str("the native event dispatcher refused the Source event entry")
+            }
+            Self::Admission(resource) => write!(
+                f,
+                "the Source event adapter refused admission for {}",
+                resource_phrase(*resource)
+            ),
+            Self::LimitReduction(resource) => write!(
+                f,
+                "a policy update tried to lower the Source event adapter limit for {}",
+                resource_phrase(*resource)
+            ),
+            Self::ExpiredOwner => {
+                f.write_str("the session that owns the Source event adapter was dropped")
+            }
+            Self::ForeignOwner => f.write_str(
+                "the DOM view belongs to another canonical owner than the Source event adapter",
+            ),
+            Self::PreboundSession => {
+                f.write_str("the DOM already has an executor bound to its Source event owner")
+            }
+            Self::Busy => {
+                f.write_str("the Source event owner is already borrowed by another operation")
+            }
+            Self::Protocol => {
+                f.write_str("a Source event request, receipt or retained phase is inconsistent")
+            }
+        }
+    }
+}
+/// The adapter's admission domain as it reads inside a message.
+fn resource_phrase(resource: DomSourceEventResource) -> &'static str {
+    match resource {
+        DomSourceEventResource::Jobs => "retained event jobs",
+        DomSourceEventResource::StorageBytes => "retained payload storage",
+        DomSourceEventResource::Work => "cumulative adapter work",
     }
 }
 impl std::error::Error for DomSourceEventRuntimeError {
@@ -86,7 +124,13 @@ impl std::error::Error for DomSourceEventRuntimeError {
         match self {
             Self::Dom(error) => Some(error),
             Self::Dispatch(error) => Some(error),
-            _ => None,
+            Self::Admission(_)
+            | Self::LimitReduction(_)
+            | Self::ExpiredOwner
+            | Self::ForeignOwner
+            | Self::PreboundSession
+            | Self::Busy
+            | Self::Protocol => None,
         }
     }
 }
