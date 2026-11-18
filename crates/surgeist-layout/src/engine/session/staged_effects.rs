@@ -117,6 +117,31 @@ struct Capture {
     incomplete: bool,
 }
 
+#[cfg(test)]
+thread_local! {
+    static DEEPEST_CAPTURE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The most preparation captures that were open at once on this thread since the
+/// last call, for tests of how deeply preparations nest.
+#[cfg(test)]
+pub(crate) fn take_deepest_capture() -> usize {
+    DEEPEST_CAPTURE.with(std::cell::Cell::take)
+}
+
+/// A session that is dropped with a capture open, other than by a panic, has
+/// left it unclosed.
+#[cfg(test)]
+impl<Node, S: LayoutScalar> Drop for EffectLog<Node, S> {
+    fn drop(&mut self) {
+        assert!(
+            self.open == 0 || std::thread::panicking(),
+            "{} captures were left open",
+            self.open
+        );
+    }
+}
+
 /// Records the writes staged while at least one capture is open. Captures nest.
 pub(super) struct EffectLog<Node, S: LayoutScalar> {
     effects: Vec<StagedEffect<Node, S>>,
@@ -176,6 +201,7 @@ impl<Node: Copy, S: LayoutScalar> EffectLog<Node, S> {
     /// Opens a capture and returns where its writes begin.
     pub(super) fn begin(&mut self, kind: CaptureKind) -> usize {
         self.open += 1;
+
         if !self.broken {
             if self.captures.try_reserve(1).is_ok() {
                 self.captures.push(Capture {
@@ -185,6 +211,15 @@ impl<Node: Copy, S: LayoutScalar> EffectLog<Node, S> {
             } else {
                 self.broken = true;
             }
+        }
+        #[cfg(test)]
+        {
+            let preparing = self
+                .captures
+                .iter()
+                .filter(|capture| capture.kind == CaptureKind::Preparation)
+                .count();
+            DEEPEST_CAPTURE.with(|deepest| deepest.set(deepest.get().max(preparing)));
         }
         self.effects.len()
     }

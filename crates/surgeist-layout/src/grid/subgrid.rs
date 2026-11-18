@@ -2242,12 +2242,56 @@ struct WrapperFrame<'input, Node, S: LayoutScalar> {
     /// The children visited so far.
     child_count: usize,
     tail: WrapperTail<S>,
+    /// Which fold records the traversal this wrapper belongs to.
+    fold_slot: usize,
+}
+
+/// A wrapper whose level is being prepared: its standalone track resolution is
+/// suspended while the subgrid items it traverses are visited.
+struct PrepareFrame<'input, Node, S: LayoutScalar> {
+    pending: Box<PendingLevel<'input, Node, S>>,
+    tail: WrapperTail<S>,
+    /// The fold of the traversal this wrapper belongs to.
+    fold_slot: usize,
+    /// The fold of the traversal the resolution waits on, once it has started
+    /// one.
+    active_fold: Option<usize>,
+}
+
+/// A frame of the traversal's stack.
+enum LevelFrame<'input, Node, S: LayoutScalar> {
+    Prepare(PrepareFrame<'input, Node, S>),
+    Visit(Box<WrapperFrame<'input, Node, S>>),
+}
+
+/// The fold of `slot`: the one the traversal was started with, or one of the
+/// folds of the nested traversals its levels started.
+fn fold_of<'a, 'input, Node, S: LayoutScalar, M>(
+    slot: usize,
+    outer: &'a mut SubgridIntrinsicFold<'input, Node, S>,
+    folds: &'a mut [SubgridIntrinsicFold<'input, Node, S>],
+    node: Node,
+) -> LayoutResultOf<Node, &'a mut SubgridIntrinsicFold<'input, Node, S>, S, M>
+where
+    Node: Copy,
+{
+    match slot.checked_sub(1) {
+        None => Ok(outer),
+        Some(index) => folds
+            .get_mut(index)
+            .ok_or_else(|| minimum_source_error(node)),
+    }
 }
 
 /// Visits the children of a wrapper and of every wrapper below it in source
-/// order, with the wrappers' frames on a heap stack instead of the native one.
-/// A wrapper's preparation, with the effect capture around it, runs to
-/// completion inside one call.
+/// order, with the wrappers' frames on a heap stack instead of the native one,
+/// so that the depth of the nesting does not bound the traversal.
+///
+/// A wrapper whose standalone track resolution needs subgrid items traversed
+/// waits in a frame while those items are visited above it. The effect capture
+/// of its preparation stays open while it waits, and every capture closes in
+/// the order the native recursion closed it, innermost first, also when an
+/// error leaves frames waiting.
 pub(super) fn visit_wrapper_levels<'input, Tree, M>(
     tree: &mut Tree,
     root: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
@@ -2256,62 +2300,48 @@ pub(super) fn visit_wrapper_levels<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let mut frames: Vec<WrapperFrame<'input, Tree::Node, Tree::Scalar>> = Vec::new();
-    enter_wrapper_level(tree, &mut frames, root, fold)?;
-    while let Some(frame) = frames.last_mut() {
-        let mut entered = None;
-        while entered.is_none() && frame.slot < frame.level.child_slots() {
-            let slot = frame.slot;
-            frame.slot += 1;
-            let Some(child) = frame.level.child::<Tree, M>(slot)? else {
-                continue;
-            };
-            let execution = child.execution;
-            entered = Some(subgrid_traversal_child_enter(
-                tree,
-                child.node,
-                execution.child_style,
-                execution.child_container,
-                execution.area,
-                child.area_size,
-                execution
-                    .subgrid_item
-                    .ok_or_else(|| minimum_source_error(child.node))?,
-                child.child_axis,
-                child.minimum_source.flow_axes,
-                frame.tail.gap,
-                Some(child.column_geometry),
-                Some(child.row_geometry),
-                execution.grid.named_columns,
-                execution.grid.named_rows,
-                execution.grid.area_facts,
-                child.align_self,
-                execution.grid.query,
-                child.minimum_source,
-                child.prepared,
-                child.traversal,
-                fold,
-                frame.tail.context,
-            )?);
-        }
-        match entered {
-            Some(ChildEntry::Done) => frame.child_count += 1,
-            Some(ChildEntry::Wrapper(entry)) => {
-                enter_wrapper_level(tree, &mut frames, *entry, fold)?;
+    let mut frames: Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>> = Vec::new();
+    let mut folds: Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>> = Vec::new();
+    let result = drive_wrapper_levels::<Tree, M>(tree, root, fold, &mut frames, &mut folds);
+    if result.is_err() {
+        while let Some(frame) = frames.pop() {
+            if let LevelFrame::Prepare(prepare) = frame {
+                tree.end_effect_capture(prepare.pending.capture());
             }
-            None => leave_wrapper_level(&mut frames, fold),
+        }
+    }
+    result
+}
+
+fn drive_wrapper_levels<'input, Tree, M>(
+    tree: &mut Tree,
+    root: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
+    outer: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
+    frames: &mut Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>>,
+    folds: &mut Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    begin_wrapper_level::<Tree, M>(tree, frames, folds, outer, root, 0)?;
+    while let Some(top) = frames.last() {
+        match top {
+            LevelFrame::Visit(_) => step_visit::<Tree, M>(tree, frames, folds, outer)?,
+            LevelFrame::Prepare(_) => step_prepare::<Tree, M>(tree, frames, folds, outer)?,
         }
     }
     Ok(())
 }
 
-/// Prepares the level of a wrapper the traversal entered and pushes its frame.
+/// Begins the level of a wrapper the traversal entered, and pushes its frame.
 /// A wrapper with nothing to visit is left at once.
-fn enter_wrapper_level<'input, Tree, M>(
+fn begin_wrapper_level<'input, Tree, M>(
     tree: &mut Tree,
-    frames: &mut Vec<WrapperFrame<'input, Tree::Node, Tree::Scalar>>,
+    frames: &mut Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>>,
+    folds: &mut Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>>,
+    outer: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
     entry: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
-    fold: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
+    fold_slot: usize,
 ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -2332,41 +2362,206 @@ where
         frame_checkpoint,
         leaf_checkpoint,
     };
-    let Some(level) = WrapperLevel::prepare::<Tree, M>(tree, node, request.as_input())? else {
-        fold.finish_wrapper(context, span_len, true, frame_checkpoint, leaf_checkpoint);
-        if let Some(parent) = frames.last_mut() {
-            parent.child_count += 1;
-        }
-        return Ok(());
-    };
+    let begun = WrapperLevel::begin::<Tree, M>(tree, node, request.as_input())?;
     frames.try_reserve(1).map_err(|_| allocation_error(node))?;
-    frames.push(WrapperFrame {
-        level,
-        slot: 0,
-        child_count: 0,
-        tail,
-    });
+    match begun {
+        LevelBegun::Empty => {
+            leave_empty_wrapper::<Tree, M>(frames, folds, outer, node, tail, fold_slot)?;
+        }
+        LevelBegun::Ready(level) => frames.push(LevelFrame::Visit(Box::new(WrapperFrame {
+            level: *level,
+            slot: 0,
+            child_count: 0,
+            tail,
+            fold_slot,
+        }))),
+        LevelBegun::Resolving(pending) => frames.push(LevelFrame::Prepare(PrepareFrame {
+            pending,
+            tail,
+            fold_slot,
+            active_fold: None,
+        })),
+    }
     Ok(())
 }
 
-/// Leaves the innermost wrapper once its children are visited.
-fn leave_wrapper_level<'input, Node: Copy + Eq, S: LayoutScalar>(
-    frames: &mut Vec<WrapperFrame<'input, Node, S>>,
-    fold: &mut SubgridIntrinsicFold<'input, Node, S>,
-) {
-    let Some(frame) = frames.pop() else {
-        return;
-    };
-    fold.finish_wrapper(
-        frame.tail.context,
-        frame.tail.span_len,
-        frame.child_count == 0,
-        frame.tail.frame_checkpoint,
-        frame.tail.leaf_checkpoint,
+/// Leaves a wrapper that had no children to visit.
+fn leave_empty_wrapper<'input, Tree, M>(
+    frames: &mut [LevelFrame<'input, Tree::Node, Tree::Scalar>],
+    folds: &mut [SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>],
+    outer: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
+    node: Tree::Node,
+    tail: WrapperTail<Tree::Scalar>,
+    fold_slot: usize,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    fold_of::<_, _, M>(fold_slot, outer, folds, node)?.finish_wrapper(
+        tail.context,
+        tail.span_len,
+        true,
+        tail.frame_checkpoint,
+        tail.leaf_checkpoint,
     );
-    if let Some(parent) = frames.last_mut() {
+    if let Some(LevelFrame::Visit(parent)) = frames.last_mut() {
         parent.child_count += 1;
     }
+    Ok(())
+}
+
+/// Visits the next child of the innermost wrapper, or leaves the wrapper once
+/// its children are visited.
+fn step_visit<'input, Tree, M>(
+    tree: &mut Tree,
+    frames: &mut Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>>,
+    folds: &mut Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>>,
+    outer: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let Some(LevelFrame::Visit(frame)) = frames.last_mut() else {
+        return Ok(());
+    };
+    let fold_slot = frame.fold_slot;
+    let mut entered = None;
+    while entered.is_none() && frame.slot < frame.level.child_slots() {
+        let slot = frame.slot;
+        frame.slot += 1;
+        let Some(child) = frame.level.child::<Tree, M>(slot)? else {
+            continue;
+        };
+        let execution = child.execution;
+        let fold = fold_of::<_, _, M>(fold_slot, outer, folds, child.node)?;
+        entered = Some(subgrid_traversal_child_enter(
+            tree,
+            child.node,
+            execution.child_style,
+            execution.child_container,
+            execution.area,
+            child.area_size,
+            execution
+                .subgrid_item
+                .ok_or_else(|| minimum_source_error(child.node))?,
+            child.child_axis,
+            child.minimum_source.flow_axes,
+            frame.tail.gap,
+            Some(child.column_geometry),
+            Some(child.row_geometry),
+            execution.grid.named_columns,
+            execution.grid.named_rows,
+            execution.grid.area_facts,
+            child.align_self,
+            execution.grid.query,
+            child.minimum_source,
+            child.prepared,
+            child.traversal,
+            fold,
+            frame.tail.context,
+        )?);
+    }
+    match entered {
+        Some(ChildEntry::Done) => frame.child_count += 1,
+        Some(ChildEntry::Wrapper(entry)) => {
+            begin_wrapper_level::<Tree, M>(tree, frames, folds, outer, *entry, fold_slot)?;
+        }
+        None => {
+            let Some(LevelFrame::Visit(frame)) = frames.pop() else {
+                return Ok(());
+            };
+            let node = frame.level.node();
+            fold_of::<_, _, M>(frame.fold_slot, outer, folds, node)?.finish_wrapper(
+                frame.tail.context,
+                frame.tail.span_len,
+                frame.child_count == 0,
+                frame.tail.frame_checkpoint,
+                frame.tail.leaf_checkpoint,
+            );
+            if let Some(LevelFrame::Visit(parent)) = frames.last_mut() {
+                parent.child_count += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Advances the innermost wrapper's suspended track resolution: computes a
+/// child it asks for, visits the next subgrid item of the traversal it waits
+/// on, or completes the resolution.
+fn step_prepare<'input, Tree, M>(
+    tree: &mut Tree,
+    frames: &mut Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>>,
+    folds: &mut Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>>,
+    outer: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let Some(LevelFrame::Prepare(prepare)) = frames.last_mut() else {
+        return Ok(());
+    };
+    let node = prepare.pending.node();
+    if let Some(active) = prepare.active_fold {
+        let Some(fold) = active.checked_sub(1).and_then(|index| folds.get_mut(index)) else {
+            return Err(minimum_source_error(node));
+        };
+        match prepare.pending.next_wrapper::<Tree, M>(tree, fold)? {
+            Some(entry) => {
+                begin_wrapper_level::<Tree, M>(tree, frames, folds, outer, *entry, active)?;
+            }
+            None => {
+                let Some(fold) = folds.pop() else {
+                    return Err(minimum_source_error(node));
+                };
+                prepare.active_fold = None;
+                prepare
+                    .pending
+                    .finish_traversal::<Tree, M>(tree, fold.finish())?;
+            }
+        }
+        return Ok(());
+    }
+    match prepare.pending.advance::<Tree, M>(tree)? {
+        PendingStep::Child(child, request) => {
+            let output = tree.compute_child(child, request)?;
+            prepare.pending.accept(output)?;
+        }
+        PendingStep::Traversal(facts) => {
+            folds.try_reserve(1).map_err(|_| allocation_error(node))?;
+            folds.push(SubgridIntrinsicFold::new(IntrinsicMinTrackFacts::Known(
+                &facts,
+            )));
+            prepare.active_fold = Some(folds.len());
+        }
+        PendingStep::Done => {
+            let Some(LevelFrame::Prepare(prepare)) = frames.pop() else {
+                return Ok(());
+            };
+            let PrepareFrame {
+                pending,
+                tail,
+                fold_slot,
+                ..
+            } = prepare;
+            match pending.finish::<Tree, M>(tree)? {
+                Some(level) => {
+                    frames.try_reserve(1).map_err(|_| allocation_error(node))?;
+                    frames.push(LevelFrame::Visit(Box::new(WrapperFrame {
+                        level,
+                        slot: 0,
+                        child_count: 0,
+                        tail,
+                        fold_slot,
+                    })));
+                }
+                None => {
+                    leave_empty_wrapper::<Tree, M>(frames, folds, outer, node, tail, fold_slot)?
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[expect(
