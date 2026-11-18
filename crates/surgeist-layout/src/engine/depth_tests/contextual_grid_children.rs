@@ -5,6 +5,7 @@ use crate::{
     MinSizeOf, Overflow, PreferredSizeOf, ScrollbarWidthOf, SizeContainment, SubgridTrack,
     TrackComponentOf,
 };
+use crate::{LayoutTree, Traverse};
 
 fn subgrid<S: LayoutScalar>() -> Vec<TrackComponentOf<S>> {
     vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
@@ -291,6 +292,17 @@ fn shallow_subgrid_lanes_chain_inherits_parent_lanes() {
     );
 }
 
+#[test]
+fn deep_subgrid_lanes_chain_inherits_parent_lanes_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_grid_children::deep_subgrid_lanes_chain_inherits_parent_lanes_on_bounded_stack",
+        || {
+            assert_subgrid_lanes_chain::<f32>(DEEP_DEPTH);
+            assert_subgrid_lanes_chain::<f64>(DEEP_DEPTH);
+        },
+    );
+}
+
 // One-axis Grid chain. Node 0 is a 70x40 Grid with fixed 30px and 40px
 // columns and one fixed 40px row. Nodes 1..=depth are Grid items that inherit
 // only the column axis (`grid-template-columns: subgrid`); their rows are
@@ -301,6 +313,14 @@ fn shallow_subgrid_lanes_chain_inherits_parent_lanes() {
 // in the second. The non-inherited row axis makes each level a standalone
 // Grid for its minimum.
 fn standalone_minimum_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    standalone_minimum_chain_with(depth, |_| {})
+}
+
+// The same chain with `innermost` changing the style of the last level.
+fn standalone_minimum_chain_with<S: LayoutScalar>(
+    depth: u32,
+    innermost: impl Fn(&mut NodeInputOf<S>),
+) -> PublicLayoutTreeOf<S> {
     let mut tree = PublicLayoutTreeOf::new().style(
         0,
         NodeInputOf {
@@ -312,21 +332,20 @@ fn standalone_minimum_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S
         },
     );
     for node in 1..=depth {
-        tree = tree
-            .style(
-                node,
-                NodeInputOf {
-                    display: Display::Grid,
-                    grid_column: GridPlacement::try_lines(1, 3).unwrap(),
-                    grid_row: GridPlacement::try_lines(1, 2).unwrap(),
-                    align_self: Some(AlignItems::Start),
-                    min_size: Size::new(MinSizeOf::AUTO, MinSizeOf::MIN_CONTENT),
-                    grid_template_columns: subgrid(),
-                    grid_template_rows: fixed_tracks([20.0, 30.0]),
-                    ..NodeInputOf::default()
-                },
-            )
-            .children(node - 1, [node]);
+        let mut style = NodeInputOf {
+            display: Display::Grid,
+            grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+            grid_row: GridPlacement::try_lines(1, 2).unwrap(),
+            align_self: Some(AlignItems::Start),
+            min_size: Size::new(MinSizeOf::AUTO, MinSizeOf::MIN_CONTENT),
+            grid_template_columns: subgrid(),
+            grid_template_rows: fixed_tracks([20.0, 30.0]),
+            ..NodeInputOf::default()
+        };
+        if node == depth {
+            innermost(&mut style);
+        }
+        tree = tree.style(node, style).children(node - 1, [node]);
     }
     for (leaf, line) in [(depth + 1, 1), (depth + 2, 2)] {
         tree = tree.style(
@@ -366,6 +385,17 @@ fn shallow_one_axis_subgrid_chain_clamps_to_standalone_minimum() {
         || {
             assert_standalone_minimum_chain::<f32>(3);
             assert_standalone_minimum_chain::<f64>(3);
+        },
+    );
+}
+
+#[test]
+fn deep_one_axis_subgrid_chain_clamps_to_standalone_minimum_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_grid_children::deep_one_axis_subgrid_chain_clamps_to_standalone_minimum_on_bounded_stack",
+        || {
+            assert_standalone_minimum_chain::<f32>(DEEP_DEPTH);
+            assert_standalone_minimum_chain::<f64>(DEEP_DEPTH);
         },
     );
 }
@@ -832,4 +862,105 @@ fn hidden_items_in_a_subgrid_chain_leave_the_reuse_on_and_the_layout_the_same() 
         .unwrap()
         .join()
         .unwrap();
+}
+
+// Each level of a nested subgrid sizing prepares its wrapper inside its parent's
+// preparation, so the effect captures of the levels are open together. They nest
+// as the levels do, however the sizing stacks them.
+#[test]
+fn nested_subgrid_sizing_keeps_one_capture_open_per_level() {
+    let depth = 6;
+    let tree = standalone_minimum_chain::<f32>(depth);
+    crate::engine::take_deepest_capture();
+    compute_layout(&tree, 0, standalone()).expect("one-axis subgrid chain layout");
+    let deepest = crate::engine::take_deepest_capture();
+    assert!(
+        deepest >= depth as usize,
+        "{deepest} preparation captures were open at once for a chain of {depth} levels"
+    );
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LeafFailure;
+
+/// A document whose one leaf cannot be measured.
+struct FailingLeaf {
+    tree: PublicLayoutTreeOf<f32>,
+    leaf: u32,
+}
+
+impl Traverse for FailingLeaf {
+    type Node = u32;
+    type Scalar = f32;
+    type Children<'a>
+        = <PublicLayoutTreeOf<f32> as Traverse>::Children<'a>
+    where
+        Self: 'a;
+
+    fn children(&self, node: u32) -> Self::Children<'_> {
+        Traverse::children(&self.tree, node)
+    }
+
+    fn child_count(&self, node: u32) -> usize {
+        self.tree.child_count(node)
+    }
+
+    fn child(&self, node: u32, index: usize) -> u32 {
+        self.tree.child(node, index)
+    }
+}
+
+impl LayoutTree for FailingLeaf {
+    type MeasureError = LeafFailure;
+
+    fn node_input(&self, node: u32) -> &NodeInputOf<f32> {
+        self.tree.node_input(node)
+    }
+
+    fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, f32> {
+        self.tree.layout_input(node)
+    }
+
+    fn has_leaf_measurement(&self, node: u32) -> bool {
+        node == self.leaf
+    }
+
+    fn measure_leaf(
+        &self,
+        node: u32,
+        _input: crate::LeafMeasureInputOf<f32>,
+    ) -> Option<Result<Size<f32>, LeafFailure>> {
+        (node == self.leaf).then_some(Err(LeafFailure))
+    }
+}
+
+// A failure while the deepest level collects its contributions arrives with the
+// captures of the levels above it open, and each closes on the way out: a
+// session dropped with a capture open fails its test.
+#[test]
+fn a_failure_in_the_innermost_subgrid_level_closes_the_captures_of_every_level() {
+    let depth = 6;
+    // The innermost level sizes its rows from its leaves, so its sizing computes
+    // them, and the one that cannot be measured fails it.
+    let document = FailingLeaf {
+        tree: standalone_minimum_chain_with::<f32>(depth, |style| {
+            style.grid_template_rows = vec![TrackComponentOf::AUTO, TrackComponentOf::AUTO];
+        }),
+        leaf: depth + 2,
+    };
+    crate::engine::take_deepest_capture();
+    let error =
+        compute_layout(&document, 0, standalone()).expect_err("the leaf cannot be measured");
+    let deepest = crate::engine::take_deepest_capture();
+    assert!(
+        matches!(
+            error.kind(),
+            crate::LayoutErrorKindOf::Measurement(LeafFailure)
+        ),
+        "{error:?}"
+    );
+    assert!(
+        deepest >= depth as usize,
+        "the failure arrived with {deepest} preparation captures open for a chain of {depth} levels"
+    );
 }

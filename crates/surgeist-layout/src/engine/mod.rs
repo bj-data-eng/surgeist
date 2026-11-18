@@ -10,6 +10,8 @@ pub(crate) use rounding::FragmentAnchor;
 mod session;
 #[cfg(test)]
 pub(crate) use session::ComputeSession;
+#[cfg(test)]
+pub(crate) use session::take_deepest_capture;
 pub(crate) use session::{CaptureKind, StagedEffects};
 pub(crate) use session::{FloatChildPacket, FloatChildTrial};
 pub(crate) mod validation;

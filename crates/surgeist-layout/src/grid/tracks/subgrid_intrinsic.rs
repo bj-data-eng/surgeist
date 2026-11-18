@@ -695,16 +695,10 @@ pub(super) struct SubgridIntrinsicContributionInput<'input, 'a, Node, S: LayoutS
     pub(super) tracks: &'a [TrackSizingOf<S>],
     pub(super) sizes: &'a mut [S],
     pub(super) base_floors: &'a mut [S],
-    pub(super) column_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
-    pub(super) row_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
-    pub(super) container_gap: LogicalSizeOf<S>,
     pub(super) available: Size<AxisSizingRequestOf<S>>,
     pub(super) children: &'a [Node],
     pub(super) placed_areas: &'a [Option<GridArea<S>>],
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
-    pub(super) named_columns: &'a NamedGridLines,
-    pub(super) named_rows: &'a NamedGridLines,
-    pub(super) area_facts: Option<&'a GridAreaNameFacts>,
     pub(super) column_sizes: &'a [S],
     pub(super) row_sizes: &'a [S],
     pub(super) query: IntrinsicGridQuery<'a, S>,
@@ -742,79 +736,70 @@ impl<Node: Copy, S: LayoutScalar> SubgridIntrinsicContributionReport<Node, S> {
 pub(super) type SubgridIntrinsicContributionResult<Node, S, M> =
     LayoutResultOf<Node, SubgridIntrinsicContributionReport<Node, S>, S, M>;
 
-pub(super) fn apply_subgrid_intrinsic_contributions<'input, Tree, M>(
+/// What the subgrid contributions of one axis begin with.
+pub(super) enum SubgridContributionStart<Node, S: LayoutScalar> {
+    /// The axis has no subgrid contributions to collect.
+    Empty(SubgridIntrinsicContributionReport<Node, S>),
+    /// The subgrid items are traversed first, with the intrinsic-minimum facts
+    /// of the axis's tracks.
+    Traverse { facts: Vec<bool> },
+}
+
+fn empty_subgrid_contributions<Node: Copy, S: LayoutScalar>(
+    input: &SubgridIntrinsicContributionInput<'_, '_, Node, S>,
+) -> SubgridIntrinsicContributionReport<Node, S> {
+    SubgridIntrinsicContributionReport {
+        row_contributions: Vec::new(),
+        receipts: Vec::new(),
+        ancestor_baseline_group: AncestorBaselineGroup::reduce(
+            input.owner,
+            input.axis,
+            grid_axis_physical_axis(input.constants.flow_axes, input.axis),
+            grid_baseline_reference(input.grid.style.baseline_references, input.axis),
+            input.tracks.len(),
+            core::iter::empty::<AncestorBaselineMember<Node, S>>(),
+        ),
+    }
+}
+
+pub(super) fn start_subgrid_intrinsic_contributions<Node: Copy, S: LayoutScalar>(
+    input: &SubgridIntrinsicContributionInput<'_, '_, Node, S>,
+) -> SubgridContributionStart<Node, S> {
+    if input.tracks.is_empty() || input.subgrid_report.items.is_empty() {
+        return SubgridContributionStart::Empty(empty_subgrid_contributions(input));
+    }
+    SubgridContributionStart::Traverse {
+        facts: input
+            .tracks
+            .iter()
+            .map(|track| {
+                track_minimum_is_intrinsic(
+                    track,
+                    match input.axis {
+                        GridAxisKind::Column => input.grid.track_basis.inline,
+                        GridAxisKind::Row => input.grid.track_basis.block,
+                    },
+                )
+            })
+            .collect(),
+    }
+}
+
+/// The contributions of the axis's subgrid items, from the report of their
+/// traversal.
+pub(super) fn finish_subgrid_intrinsic_contributions<'input, Tree, M>(
     tree: &mut Tree,
     input: SubgridIntrinsicContributionInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
+    traversal: Result<
+        SubgridTraversalReport<'input, <Tree as Traverse>::Node, Tree::Scalar>,
+        SubgridTraversalError,
+    >,
 ) -> SubgridIntrinsicContributionResult<<Tree as Traverse>::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    if input.tracks.is_empty() || input.subgrid_report.items.is_empty() {
-        return Ok(SubgridIntrinsicContributionReport {
-            row_contributions: Vec::new(),
-            receipts: Vec::new(),
-            ancestor_baseline_group: AncestorBaselineGroup::reduce(
-                input.owner,
-                input.axis,
-                grid_axis_physical_axis(input.constants.flow_axes, input.axis),
-                grid_baseline_reference(input.grid.style.baseline_references, input.axis),
-                input.tracks.len(),
-                core::iter::empty::<AncestorBaselineMember<<Tree as Traverse>::Node, Tree::Scalar>>(
-                ),
-            ),
-        });
-    }
-
-    let intrinsic_min_track_facts = input
-        .tracks
-        .iter()
-        .map(|track| {
-            track_minimum_is_intrinsic(
-                track,
-                match input.axis {
-                    GridAxisKind::Column => input.grid.track_basis.inline,
-                    GridAxisKind::Row => input.grid.track_basis.block,
-                },
-            )
-        })
-        .collect::<Vec<_>>();
-    let Ok(report) = collect_grid_subgrid_intrinsic_traversal(
-        tree,
-        GridSubgridIntrinsicTraversalInput {
-            grid: input.grid,
-            axis: input.axis,
-            containing_flow_axes: input.constants.flow_axes,
-            children: input.children,
-            placed_areas: input.placed_areas,
-            subgrid_report: input.subgrid_report,
-            placements: input.placements,
-            named_columns: input.named_columns,
-            named_rows: input.named_rows,
-            area_facts: input.area_facts,
-            parent_gap: Size::new(input.container_gap.inline, input.container_gap.block),
-            column_gutters: input.column_gutters,
-            row_gutters: input.row_gutters,
-            column_sizes: input.column_sizes,
-            row_sizes: input.row_sizes,
-            container_size: input.constants.node_inner_size,
-            intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&intrinsic_min_track_facts),
-            query: input.query,
-        },
-    )?
-    else {
-        return Ok(SubgridIntrinsicContributionReport {
-            row_contributions: Vec::new(),
-            receipts: Vec::new(),
-            ancestor_baseline_group: AncestorBaselineGroup::reduce(
-                input.owner,
-                input.axis,
-                grid_axis_physical_axis(input.constants.flow_axes, input.axis),
-                grid_baseline_reference(input.grid.style.baseline_references, input.axis),
-                input.tracks.len(),
-                core::iter::empty::<AncestorBaselineMember<<Tree as Traverse>::Node, Tree::Scalar>>(
-                ),
-            ),
-        });
+    let Ok(report) = traversal else {
+        return Ok(empty_subgrid_contributions(&input));
     };
 
     for (index, lower_bound) in report.edge_lower_bounds.into_iter().enumerate() {

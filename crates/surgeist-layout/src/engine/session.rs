@@ -3,6 +3,8 @@ mod memo;
 mod staged_effects;
 #[cfg(test)]
 pub(crate) use memo::compute_ordinary_with_request_trace;
+#[cfg(test)]
+pub(crate) use staged_effects::take_deepest_capture;
 pub(crate) use staged_effects::{CaptureKind, StagedEffect, StagedEffects};
 mod requests;
 
