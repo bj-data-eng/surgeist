@@ -22,7 +22,8 @@
 //! [`CssParseReport`], retained syntax plus ordered recovery diagnostics; and
 //! [`CssValidationFailure`], the diagnostics of a rejected clean-report check. It also holds
 //! [`CssAccountedParser`], the same front door charged to a host's ledger scope, and
-//! [`CssAccounted`], a sheet, rule or rule graph whose serialization is charged the same way.
+//! [`CssAccounted`], a sheet, rule or rule graph whose serialization and normalization are
+//! charged the same way.
 //! Every other public item has exactly one path, in the module that owns its domain, and a
 //! root path to a module item does not resolve.
 //!

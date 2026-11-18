@@ -575,3 +575,35 @@ fn a_host_cap_on_normalized_declarations_replaces_the_result() {
     );
     assert_eq!(normalized(&ledger), [0, 0, 0]);
 }
+
+#[test]
+fn a_normalization_refused_for_rule_depth_is_charged_the_rules_above_it() {
+    // The nested rule is at depth one, beyond a depth limit of zero.
+    let sheet = sheet("a { color: red; & b { width: 1px } }");
+    let limits = CssNormalizationLimits::try_new(0, usize::MAX, usize::MAX, usize::MAX).unwrap();
+    let (ledger, host) = open_host();
+    let refused = sheet
+        .accounted(&host)
+        .normalize(limits)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        refused.exhausted_limit(),
+        Some((CssNormalizationResource::RuleDepth, 0))
+    );
+    assert_eq!(normalized(&ledger), [1, 1, 1]);
+}
+
+#[test]
+fn a_plain_normalization_after_an_accounted_one_charges_nothing() {
+    let sheet = sheet(SOURCES[2]);
+    let (ledger, host) = open_host();
+    sheet
+        .accounted(&host)
+        .normalize(CssNormalizationLimits::default())
+        .unwrap()
+        .unwrap();
+    let after = normalized(&ledger);
+    let _ = sheet.normalize(CssNormalizationLimits::default());
+    assert_eq!(normalized(&ledger), after);
+}

@@ -18,26 +18,26 @@ use crate::serialization::{
 ///
 /// `accounted` on [`CssSheet`], [`CssRule`] and [`CssRuleGraphInput`] makes
 /// one. Each method does exactly what the method of the same name on the
-/// value does, and returns its result inside `Ok`. When the call returns it
-/// charges the host's operation once, in the `css-serialize` scope, with
-/// [`CssWork::SerializedInputNode`](crate::accounting::CssWork::SerializedInputNode),
-/// [`CssWork::SerializedProjectionNode`](crate::accounting::CssWork::SerializedProjectionNode)
-/// and [`CssWork::SerializedByte`](crate::accounting::CssWork::SerializedByte):
-/// the input nodes, projection nodes and bytes the call admitted against its
-/// limits. The call runs inside one phase of that scope. The number of ledger
-/// calls does not depend on the value.
+/// value does, and returns its result inside `Ok`. The call runs inside one
+/// phase of its front's scope, and when it returns it charges that scope once
+/// with what the call admitted against its limits. The number of ledger calls
+/// does not depend on the value.
+///
+/// - The serialization methods charge the `css-serialize` scope with
+///   [`CssWork::SerializedInputNode`](crate::accounting::CssWork::SerializedInputNode),
+///   [`CssWork::SerializedProjectionNode`](crate::accounting::CssWork::SerializedProjectionNode)
+///   and [`CssWork::SerializedByte`](crate::accounting::CssWork::SerializedByte):
+///   the input nodes, projection nodes and bytes. Shortest-form comparisons
+///   that a serialization makes run outside its limits and are not charged.
+/// - [`normalize`](CssAccounted::normalize) on a sheet charges the
+///   `css-normalize` scope with
+///   [`CssWork::NormalizedRule`](crate::accounting::CssWork::NormalizedRule),
+///   [`CssWork::NormalizedDeclaration`](crate::accounting::CssWork::NormalizedDeclaration)
+///   and [`CssWork::NormalizedContribution`](crate::accounting::CssWork::NormalizedContribution):
+///   the rules, declarations and longhand contributions.
 ///
 /// A call that a limit refuses is charged the work admitted before the
-/// refusal and returns the refusal inside `Ok`. Shortest-form comparisons
-/// that a serialization makes run outside its limits and are not charged.
-///
-/// [`normalize`](CssAccounted::normalize) on a sheet charges the
-/// `css-normalize` scope instead, with
-/// [`CssWork::NormalizedRule`](crate::accounting::CssWork::NormalizedRule),
-/// [`CssWork::NormalizedDeclaration`](crate::accounting::CssWork::NormalizedDeclaration)
-/// and [`CssWork::NormalizedContribution`](crate::accounting::CssWork::NormalizedContribution):
-/// the rules, declarations and longhand contributions the normalizer admitted
-/// against its limits, inside one phase of that scope.
+/// refusal and returns the refusal inside `Ok`.
 ///
 /// Serialization of a single value or declaration is not charged on its own:
 /// its own work is a few hundred nanoseconds, and one charge would add a large
@@ -48,7 +48,7 @@ use crate::serialization::{
 ///
 /// Each method returns a [`CssAccountingError`] in place of its result when
 /// the host's operation does not admit the charge, or when the ledger cannot
-/// open the phase; in the second case nothing is serialized.
+/// open the phase; in the second case the value's own method has not run.
 ///
 /// ```
 /// use surgeist_css::accounting::{CssFront, CssHostScope, CssLimits, CssWork};
