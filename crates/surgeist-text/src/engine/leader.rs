@@ -313,7 +313,7 @@ fn analyze_combination(source: Source, input: LeaderPatternInput) -> Result<Anal
             SourceProcessingEvent::ExitScope(0),
         ],
     };
-    let processed = Arc::new(crate::processing::process_leader_capture(
+    let processed = Arc::new(crate::processing::contextual::process_leader_capture(
         capture,
         input.tab_reference.as_ref(),
     )?);

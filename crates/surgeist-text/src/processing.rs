@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 pub(crate) mod contextual;
 pub(crate) mod lexical;
 pub(crate) mod lexical_inventory;
-pub(crate) use contextual::process_leader_capture;
 pub use contextual::{
     CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedConnection,
     CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
