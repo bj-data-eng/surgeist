@@ -291,6 +291,17 @@ fn shallow_subgrid_lanes_chain_inherits_parent_lanes() {
     );
 }
 
+#[test]
+fn deep_subgrid_lanes_chain_inherits_parent_lanes_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_grid_children::deep_subgrid_lanes_chain_inherits_parent_lanes_on_bounded_stack",
+        || {
+            assert_subgrid_lanes_chain::<f32>(DEEP_DEPTH);
+            assert_subgrid_lanes_chain::<f64>(DEEP_DEPTH);
+        },
+    );
+}
+
 // One-axis Grid chain. Node 0 is a 70x40 Grid with fixed 30px and 40px
 // columns and one fixed 40px row. Nodes 1..=depth are Grid items that inherit
 // only the column axis (`grid-template-columns: subgrid`); their rows are
@@ -366,6 +377,17 @@ fn shallow_one_axis_subgrid_chain_clamps_to_standalone_minimum() {
         || {
             assert_standalone_minimum_chain::<f32>(3);
             assert_standalone_minimum_chain::<f64>(3);
+        },
+    );
+}
+
+#[test]
+fn deep_one_axis_subgrid_chain_clamps_to_standalone_minimum_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_grid_children::deep_one_axis_subgrid_chain_clamps_to_standalone_minimum_on_bounded_stack",
+        || {
+            assert_standalone_minimum_chain::<f32>(DEEP_DEPTH);
+            assert_standalone_minimum_chain::<f64>(DEEP_DEPTH);
         },
     );
 }
