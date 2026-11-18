@@ -12,11 +12,11 @@ const A1: u32 = 20;
 const INLINE_NODES: [u32; 3] = [30, 31, 32];
 
 fn atomic_domain() -> (PublicLayoutTreeOf<f64>, Vec<TextParagraphBinding<u32>>) {
-    atomic_domain_kind(text::InlineBoxKind::InFlow)
+    atomic_domain_kind(text::source::InlineBoxKind::InFlow)
 }
 
 fn atomic_domain_kind(
-    kind: text::InlineBoxKind,
+    kind: text::source::InlineBoxKind,
 ) -> (PublicLayoutTreeOf<f64>, Vec<TextParagraphBinding<u32>>) {
     atomic_domain_shape(kind, DomainShape::Atomic)
 }
@@ -32,7 +32,7 @@ enum DomainShape {
 }
 
 fn atomic_domain_shape(
-    kind: text::InlineBoxKind,
+    kind: text::source::InlineBoxKind,
     shape: DomainShape,
 ) -> (PublicLayoutTreeOf<f64>, Vec<TextParagraphBinding<u32>>) {
     let two_domains = matches!(shape, DomainShape::SeveralDeferred);
@@ -52,52 +52,52 @@ fn atomic_domain_shape(
     let atomic_conflict = matches!(shape, DomainShape::PlainAtomicConflict);
     let mut base = ahem_style(10.0, 10.0);
     base.locale = Some("ja".into());
-    let owner = text::Style {
-        word_space_transform: text::WordSpaceTransform::SpaceAutoPhrase,
+    let owner = text::style::Style {
+        word_space_transform: text::style::WordSpaceTransform::SpaceAutoPhrase,
         ..base.clone()
     };
     let mut source = Source::new(JAPANESE);
-    let whole = text::Range::new(0, JAPANESE.encode_utf16().count());
+    let whole = text::source::Range::new(0, JAPANESE.encode_utf16().count());
     source.span(whole, owner.clone());
     // Distinct occurrences have the same anchor and real box metrics.
     for node in [A0, A1] {
-        source.inline_box(text::InlineBox::new(
-            text::Id::from_u64(u64::from(node)),
+        source.inline_box(text::source::InlineBox::new(
+            text::source::Id::from_u64(u64::from(node)),
             kind,
             0,
-            text::Size::new(100.0, 10.0),
+            text::geometry::Size::new(100.0, 10.0),
         ));
     }
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let domain = |atomic| {
         if plain_child {
-            text::SourceProcessingScope::Block {
+            text::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Complete,
-                trim: text::WhiteSpaceTrim::default(),
+                topology: text::capture::SourceProcessingTopology::Complete,
+                trim: text::capture::WhiteSpaceTrim::default(),
                 base_style: base.clone(),
                 used_direction: ParagraphBaseDirection::LeftToRight,
             }
-        } else if kind == text::InlineBoxKind::InFlow {
-            text::SourceProcessingScope::AtomicBlock {
+        } else if kind == text::source::InlineBoxKind::InFlow {
+            text::capture::SourceProcessingScope::AtomicBlock {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Complete,
-                trim: text::WhiteSpaceTrim::default(),
+                topology: text::capture::SourceProcessingTopology::Complete,
+                trim: text::capture::WhiteSpaceTrim::default(),
                 base_style: base.clone(),
                 used_direction: ParagraphBaseDirection::LeftToRight,
                 atomic,
             }
         } else {
-            text::SourceProcessingScope::OutOfFlowBlock {
+            text::capture::SourceProcessingScope::OutOfFlowBlock {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Complete,
-                trim: text::WhiteSpaceTrim::default(),
+                topology: text::capture::SourceProcessingTopology::Complete,
+                trim: text::capture::WhiteSpaceTrim::default(),
                 base_style: base.clone(),
                 used_direction: ParagraphBaseDirection::LeftToRight,
                 atomic,
@@ -105,12 +105,12 @@ fn atomic_domain_shape(
         }
     };
     let mut scopes = vec![
-        text::SourceProcessingScope::Block {
+        text::capture::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: text::SourceProcessingTopology::Complete,
-            trim: text::WhiteSpaceTrim::default(),
+            topology: text::capture::SourceProcessingTopology::Complete,
+            trim: text::capture::WhiteSpaceTrim::default(),
             base_style: base.clone(),
             used_direction: ParagraphBaseDirection::LeftToRight,
         },
@@ -121,13 +121,13 @@ fn atomic_domain_shape(
     }
     let owner_scope = scopes.len();
     let start = if two_domains { 2 } else { 0 };
-    scopes.push(text::SourceProcessingScope::Inline {
+    scopes.push(text::capture::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
-        trim: text::WhiteSpaceTrim::default(),
+        trim: text::capture::WhiteSpaceTrim::default(),
         style: Some(owner),
-        boundaries: Some(text::SourceProcessingScopeBoundaries {
+        boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
             start,
             end: start + 1,
         }),
@@ -135,22 +135,22 @@ fn atomic_domain_shape(
     let mut controls = Vec::new();
     if two_domains {
         controls.extend([
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 0,
                 kind: ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 0,
                 kind: ParagraphControlKind::InlineBoundaryEnd,
             },
         ]);
     }
     controls.extend([
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 0,
             kind: ParagraphControlKind::InlineBoundaryStart,
         },
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: whole.end,
             kind: ParagraphControlKind::InlineBoundaryEnd,
         },
@@ -160,34 +160,34 @@ fn atomic_domain_shape(
         E::EnterParagraph(0),
         E::Atomic {
             atomic: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Atomic {
             atomic: 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::EnterScope(1),
         E::EnterParagraph(1),
     ];
     if two_domains {
         let empty_inline = scopes.len();
-        scopes.push(text::SourceProcessingScope::Inline {
+        scopes.push(text::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
-            trim: text::WhiteSpaceTrim::default(),
+            trim: text::capture::WhiteSpaceTrim::default(),
             style: None,
-            boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+            boundaries: Some(text::capture::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
         });
         events.extend([
             E::EnterScope(empty_inline),
             E::Control {
                 control: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Control {
                 control: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(empty_inline),
             E::ExitParagraph(1),
@@ -202,15 +202,15 @@ fn atomic_domain_shape(
         E::EnterScope(owner_scope),
         E::Control {
             control: start,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Origin {
             origin: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Control {
             control: start + 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::ExitScope(owner_scope),
         E::ExitParagraph(child_paragraph),
@@ -235,22 +235,22 @@ fn atomic_domain_shape(
         let inline = scopes.len();
         let boundary = controls.len();
         controls.extend([
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 0,
                 kind: ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: whole.end,
                 kind: ParagraphControlKind::InlineBoundaryEnd,
             },
         ]);
-        scopes.push(text::SourceProcessingScope::Inline {
+        scopes.push(text::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
-            trim: text::WhiteSpaceTrim::default(),
+            trim: text::capture::WhiteSpaceTrim::default(),
             style: None,
-            boundaries: Some(text::SourceProcessingScopeBoundaries {
+            boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
                 start: boundary,
                 end: boundary + 1,
             }),
@@ -265,7 +265,7 @@ fn atomic_domain_shape(
                 E::EnterScope(inline),
                 E::Control {
                     control: boundary,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
             ],
         );
@@ -279,37 +279,37 @@ fn atomic_domain_shape(
             [
                 E::Control {
                     control: boundary + 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(inline),
             ],
         );
     }
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: whole,
                 aggregate: whole,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls,
             boundary_policies: (0..2)
                 .flat_map(|atomic| {
                     [
-                        text::ParagraphBoundaryDefinition::AtomicBefore(atomic),
-                        text::ParagraphBoundaryDefinition::AtomicAfter(atomic),
+                        text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(atomic),
+                        text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(atomic),
                     ]
                 })
-                .map(|definition| text::ParagraphBoundaryPolicy {
+                .map(|definition| text::paragraph::ParagraphBoundaryPolicy {
                     definition,
                     preceding_wrap: Wrap::Word,
                     following_wrap: Wrap::Word,
@@ -319,9 +319,9 @@ fn atomic_domain_shape(
             replacements: vec![],
             scopes,
             paragraphs: (0..=child_paragraph)
-                .map(|_| text::SourceProcessingParagraph {
+                .map(|_| text::capture::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             events,
@@ -335,15 +335,15 @@ fn atomic_domain_shape(
     let mut prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                text::AnalysisTypography::HorizontalComposition,
+                text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let analyzed =
                 crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
             system
-                .prepare(&analyzed, text::PreparationOptions::default())
+                .prepare(&analyzed, text::prepared::PreparationOptions::default())
                 .unwrap()
         })
         .collect();
@@ -365,7 +365,7 @@ fn atomic_domain_shape(
     for (atomic, node) in atomics.iter().zip([A0, A1]) {
         assert_eq!(
             atomic.view().original_box().id(),
-            text::Id::from_u64(u64::from(node))
+            text::source::Id::from_u64(u64::from(node))
         );
         assert_eq!(atomic.view().original_box().index(), 0);
     }
@@ -461,7 +461,7 @@ fn atomic_domain_shape(
             node,
             NodeInputOf {
                 display: Display::InlineBlock,
-                position: if kind == text::InlineBoxKind::OutOfFlow {
+                position: if kind == text::source::InlineBoxKind::OutOfFlow {
                     Position::Absolute
                 } else {
                     Position::Relative
@@ -656,7 +656,7 @@ fn later_same_anchor_atomic_rejects_the_earlier_atomics_content_domain() {
 
 #[test]
 fn out_of_flow_content_domain_keeps_its_exact_same_anchor_atomic_custody() {
-    let (tree, bindings) = atomic_domain_kind(text::InlineBoxKind::OutOfFlow);
+    let (tree, bindings) = atomic_domain_kind(text::source::InlineBoxKind::OutOfFlow);
     LayoutFlowInput::try_new(
         &tree,
         0,
@@ -751,7 +751,10 @@ fn deferred_child_content_cannot_reverse_its_actual_boundary_controls() {
 
 #[test]
 fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
-    for kind in [text::InlineBoxKind::InFlow, text::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        text::source::InlineBoxKind::InFlow,
+        text::source::InlineBoxKind::OutOfFlow,
+    ] {
         let (tree, bindings) = atomic_domain_shape(kind, DomainShape::SeveralDeferred);
         assert_eq!(bindings.len(), 3);
         assert_eq!(bindings[1].prepared.origin_views().len(), 0);
@@ -797,8 +800,10 @@ fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
 
 #[test]
 fn deferred_entry_cannot_donate_a_later_inline_parent_to_an_earlier_atomic() {
-    let (tree, bindings) =
-        atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::LaterInlineParent);
+    let (tree, bindings) = atomic_domain_shape(
+        text::source::InlineBoxKind::InFlow,
+        DomainShape::LaterInlineParent,
+    );
     let Err(error) = LayoutFlowInput::try_new(
         &tree,
         0,
@@ -823,8 +828,10 @@ fn deferred_entry_cannot_donate_a_later_inline_parent_to_an_earlier_atomic() {
 
 #[test]
 fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
-    let (tree, bindings) =
-        atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::ClosedParent);
+    let (tree, bindings) = atomic_domain_shape(
+        text::source::InlineBoxKind::InFlow,
+        DomainShape::ClosedParent,
+    );
     let parent_members = bindings[0]
         .prepared
         .captured_owner()
@@ -870,7 +877,7 @@ fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
 #[test]
 fn plain_block_subtree_root_keeps_its_own_flow_without_an_outside_parent_association() {
     let (tree, mut bindings) =
-        atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::PlainBlock);
+        atomic_domain_shape(text::source::InlineBoxKind::InFlow, DomainShape::PlainBlock);
     let child = bindings.remove(1);
     let capture = LayoutFlowInput::try_new(
         &tree,
@@ -931,8 +938,10 @@ fn atomic_content_root_cannot_guess_its_missing_nominated_atomic_binding() {
 
 #[test]
 fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
-    let (tree, bindings) =
-        atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::PlainBlockWrapper);
+    let (tree, bindings) = atomic_domain_shape(
+        text::source::InlineBoxKind::InFlow,
+        DomainShape::PlainBlockWrapper,
+    );
     let capture = LayoutFlowInput::try_new(
         &tree,
         0,
@@ -985,7 +994,7 @@ fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
 #[test]
 fn plain_block_definition_cannot_reuse_an_actual_prepared_atomic_container() {
     let (tree, bindings) = atomic_domain_shape(
-        text::InlineBoxKind::InFlow,
+        text::source::InlineBoxKind::InFlow,
         DomainShape::PlainAtomicConflict,
     );
     let Err(error) = LayoutFlowInput::try_new(

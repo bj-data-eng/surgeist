@@ -7,7 +7,7 @@ use super::{
     protocol_error, selection::require_prepared,
 };
 use crate::engine::analysis::scope::ScopeCutIndex;
-use crate::{Result, processing::CapturedScope};
+use crate::{Result, processing::contextual::CapturedScope};
 
 /// One authenticated original placement of an existing prepared boundary.
 /// It grants no additional break opportunity, selection or placement authority.

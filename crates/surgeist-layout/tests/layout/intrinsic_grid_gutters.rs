@@ -626,8 +626,20 @@ impl<S: LayoutScalar> LayoutTree for WrappingColumnGrid<S> {
     }
 }
 
-fn prepare_wrapping_text() -> surgeist_text::PreparedText {
-    use surgeist_text::*;
+fn prepare_wrapping_text() -> surgeist_text::prepared::PreparedText {
+    use surgeist_text::{
+        System,
+        analyzed::AnalyzedSource,
+        paragraph::{
+            ParagraphBaseDirection, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
+            ParagraphConnection, ParagraphConnectionKind, ParagraphInput, ParagraphOrigin,
+            ParagraphOriginKind, ParagraphStrut,
+        },
+        prepared::PreparationOptions,
+        processing::DocumentSegmentBreaks,
+        source::{Range, Source},
+        style::{Font, LineHeight, Style},
+    };
     let style = Style {
         font: Font::new().family("Ahem"),
         size: 5.0,
@@ -638,7 +650,7 @@ fn prepare_wrapping_text() -> surgeist_text::PreparedText {
     let second = Source::new("AAAA");
     let analyzed = AnalyzedSource::from_paragraph(
         ParagraphInput {
-            terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: surgeist_text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: Source::new("AAAAA\u{200b}AAAA"),
             base_style: style.clone(),
@@ -675,7 +687,7 @@ fn prepare_wrapping_text() -> surgeist_text::PreparedText {
             replacements: vec![],
             anchor_order: vec![],
         },
-        surgeist_text::AnalysisTypography::HorizontalComposition,
+        surgeist_text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = System::default();
@@ -846,7 +858,8 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 let fragment = entry.fragment();
                 let finalized = fragment.finalized_fragment();
                 let view = finalized.view();
-                let surgeist_text::FinalizedFragmentOwner::Origin(origin) = view.owner() else {
+                let surgeist_text::finalized::FinalizedFragmentOwner::Origin(origin) = view.owner()
+                else {
                     panic!("authored A/ZWSP units retain their original source owner")
                 };
                 (
@@ -874,8 +887,8 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 (
                     3,
                     origins[0].clone(),
-                    surgeist_text::Range::new(index, index + 1),
-                    surgeist_text::Range::new(index, index + 1),
+                    surgeist_text::source::Range::new(index, index + 1),
+                    surgeist_text::source::Range::new(index, index + 1),
                     0,
                     Point::new(S::ZERO, S::from_f64(7.0)),
                     ScrollRectOf::try_new(
@@ -892,8 +905,8 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 (
                     4,
                     origins[1].clone(),
-                    surgeist_text::Range::new(index, index + 1),
-                    surgeist_text::Range::new(6 + index, 7 + index),
+                    surgeist_text::source::Range::new(index, index + 1),
+                    surgeist_text::source::Range::new(6 + index, 7 + index),
                     usize::from(minimum),
                     Point::new(S::ZERO, S::from_f64(if minimum { 17.0 } else { 7.0 })),
                     ScrollRectOf::try_new(

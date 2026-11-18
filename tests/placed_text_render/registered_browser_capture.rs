@@ -61,7 +61,7 @@ fn main() {
     println!("Qualified one registered browser capture through Native Render");
 }
 
-fn verify_render(placed: &surgeist_text::Layout) {
+fn verify_render(placed: &surgeist_text::layout::Layout) {
     let units: Vec<_> = "\n  basis  definite\n".encode_utf16().collect();
     assert_eq!(placed.source().text().code_units(), units);
     let prepared = render::text_layout::prepare_text_layout(

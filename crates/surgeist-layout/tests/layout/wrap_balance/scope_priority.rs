@@ -10,7 +10,12 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
             direction,
             vertical_align: l::VerticalAlignOf::Baseline,
             atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
-                t::BidiLevel::try_new(if direction == l::Direction::Ltr { 0 } else { 1 }).unwrap(),
+                t::supplied_line::BidiLevel::try_new(if direction == l::Direction::Ltr {
+                    0
+                } else {
+                    1
+                })
+                .unwrap(),
                 l::InlineBreakOpportunity::Allowed,
             )),
             size: l::Size::new(
@@ -90,14 +95,16 @@ fn compute<S: l::LayoutScalar>(
                 edges: l::WrapEdges::AUTO,
                 // The actual pair has these same Baseline metrics. The witness
                 // identifies that contribution; it must not duplicate it.
-                metric_contribution: Some(l::InlineBoxMetricContribution::Strut(t::LineBoxStrut {
-                    scope: None,
-                    metrics: t::LineStrut {
-                        baseline: 8.0,
-                        line_extent: 10.0,
+                metric_contribution: Some(l::InlineBoxMetricContribution::Strut(
+                    t::allocation::LineBoxStrut {
+                        scope: None,
+                        metrics: t::allocation::LineStrut {
+                            baseline: 8.0,
+                            line_extent: 10.0,
+                        },
+                        alignment: t::allocation::LineBoxAlignment::Baseline,
                     },
-                    alignment: t::LineBoxAlignment::Baseline,
-                })),
+                )),
             }],
             child_order: Vec::new(),
         },

@@ -76,8 +76,16 @@ fn binding(
             ["A\u{301}", "B"]
         },
         [
-            style(text::WordBreak::Normal, text::LineBreak::Anywhere, false),
-            style(text::WordBreak::KeepAll, text::LineBreak::Anywhere, false),
+            style(
+                text::style::WordBreak::Normal,
+                text::style::LineBreak::Anywhere,
+                false,
+            ),
+            style(
+                text::style::WordBreak::KeepAll,
+                text::style::LineBreak::Anywhere,
+                false,
+            ),
         ],
         font,
         nested,
@@ -94,12 +102,15 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
     );
     assert_eq!(
         p.prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
-        [text::Range::new(0, 2), text::Range::new(2, 3)]
+        [
+            text::source::Range::new(0, 2),
+            text::source::Range::new(2, 3)
+        ]
     );
     for (index, origin) in p.origins.iter().enumerate() {
         assert_eq!(
             origin.origin.view().source().id(),
-            Some(text::Id::from_u64(75001 + index as u64))
+            Some(text::source::Id::from_u64(75001 + index as u64))
         );
         assert_eq!(origin.origin.view().source().revision(), 23);
     }
@@ -116,23 +127,23 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
     let participants = p.prepared.participants().collect::<Vec<_>>();
     let at = |range| {
         participants.iter().position(|participant| matches!(
-        participant, text::PreparedParticipant::Text(unit) if unit.view().source_range() == range
+        participant, text::prepared::PreparedParticipant::Text(unit) if unit.view().source_range() == range
     )).unwrap()
     };
-    let base = at(text::Range::new(0, 1));
-    let mark = at(text::Range::new(1, 2));
-    let following = at(text::Range::new(2, 3));
+    let base = at(text::source::Range::new(0, 1));
+    let mark = at(text::source::Range::new(1, 2));
+    let following = at(text::source::Range::new(2, 3));
     for offer in p.prepared.opportunity_views() {
         let end = offer.boundary().view().participant_offset();
         assert_eq!(base < end, mark < end);
-        if offer.kind() == text::PreparedBreakKind::Allowed {
+        if offer.kind() == text::prepared::PreparedBreakKind::Allowed {
             assert!(mark < end && end <= following);
         }
     }
     let ordinary = p
         .prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
         .expect("actual Anywhere endpoint2 remains available")
         .handle();
     let start = p.prepared.boundary_views().next().unwrap().handle();
@@ -144,9 +155,9 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
             &start,
             None,
             &ordinary,
-            text::ConditionalPurpose::MinContent,
+            text::conditional::ConditionalPurpose::MinContent,
             &[],
-            surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
+            surgeist_text::conditional::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .unwrap();
     assert!(search.phrase_portions().is_empty());
@@ -174,7 +185,7 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
     let scopes = captured
         .scope_intersections()
         .map(|row| row.scope())
-        .filter(|scope| scope.role() == text::ScopeRole::Inline)
+        .filter(|scope| scope.role() == text::capture::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), if nested { 3 } else { 2 });
     let pairs: &[(u32, u32)] = if nested {
@@ -250,7 +261,7 @@ fn prove_controls<S: LayoutScalar>(font: &[u8], rtl: bool) {
             &p,
             font,
             SOURCE,
-            &[text::Range::new(0, 3)],
+            &[text::source::Range::new(0, 3)],
             &[(35, 10.0), (100, 0.0), (36, 10.0)],
         );
         assert_eq!(lines[0].feedback().baseline, 8.0);
@@ -284,7 +295,7 @@ where
                 crate::SizingOperation::MaxContent,
             ),
             vec![whole],
-            vec![text::Range::new(0, 3)],
+            vec![text::source::Range::new(0, 3)],
         ),
         (
             crate::AxisSizingRequestOf::new(
@@ -292,7 +303,10 @@ where
                 crate::SizingOperation::MinContent,
             ),
             vec![first, 10.0],
-            vec![text::Range::new(0, 2), text::Range::new(2, 3)],
+            vec![
+                text::source::Range::new(0, 2),
+                text::source::Range::new(2, 3),
+            ],
         ),
         (
             crate::AxisSizingRequestOf::new(
@@ -302,7 +316,10 @@ where
                 crate::SizingOperation::Normal,
             ),
             vec![first, 10.0],
-            vec![text::Range::new(0, 2), text::Range::new(2, 3)],
+            vec![
+                text::source::Range::new(0, 2),
+                text::source::Range::new(2, 3),
+            ],
         ),
         (
             crate::AxisSizingRequestOf::new(
@@ -312,7 +329,10 @@ where
                 crate::SizingOperation::Normal,
             ),
             vec![first, 10.0],
-            vec![text::Range::new(0, 2), text::Range::new(2, 3)],
+            vec![
+                text::source::Range::new(0, 2),
+                text::source::Range::new(2, 3),
+            ],
         ),
     ] {
         let batch = compute_layout_with_flow_invalidated(
@@ -369,7 +389,7 @@ where
             let fragment = row.fragment();
             if matches!(
                 fragment.finalized_fragment().view().owner(),
-                text::FinalizedFragmentOwner::Control(_)
+                text::finalized::FinalizedFragmentOwner::Control(_)
             ) {
                 let view = fragment.finalized_fragment().view();
                 assert!(view.origin().is_none());
@@ -397,7 +417,7 @@ where
             assert!(request.alternative.is_none() && request.incoming.is_none());
             let last = request.participants.last().unwrap().clone();
             assert_eq!(
-                line.prefix_at(&text::TextSeam::AfterParticipant(last))
+                line.prefix_at(&text::finalized::TextSeam::AfterParticipant(last))
                     .unwrap()
                     .advance(),
                 advances[index]
@@ -440,9 +460,9 @@ where
         assert_eq!(
             glyphs,
             [
-                (35, text::Range::new(0, 2), 10.0),
-                (36, text::Range::new(2, 3), 10.0),
-                (100, text::Range::new(0, 2), 0.0),
+                (35, text::source::Range::new(0, 2), 10.0),
+                (36, text::source::Range::new(2, 3), 10.0),
+                (100, text::source::Range::new(0, 2), 0.0),
             ]
         );
         let root = readback::single_box_output(&batch, 0, Phase::Unrounded);
@@ -559,11 +579,11 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
                 qualify_source(&p, rtl, false);
                 assert_eq!(
                     p.origins[0].origin.view().local_range(),
-                    text::Range::new(0, 1)
+                    text::source::Range::new(0, 1)
                 );
                 assert_eq!(
                     p.origins[1].origin.view().local_range(),
-                    text::Range::new(0, 2)
+                    text::source::Range::new(0, 2)
                 );
                 let edges = if positive {
                     vec![

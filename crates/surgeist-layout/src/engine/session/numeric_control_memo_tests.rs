@@ -237,7 +237,7 @@ fn numeric_control_memo_keeps_named_demand_distinct_from_known_size_observation(
                 NodeInputOf {
                     display: Display::InlineBlock,
                     atomic_inline_participation: Some(AtomicInlineParticipation::new(
-                        surgeist_text::BidiLevel::try_new(0).unwrap(),
+                        surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
                         InlineBreakOpportunity::Allowed,
                     )),
                     inline_baseline_context: named,
@@ -292,7 +292,7 @@ fn numeric_control_memo_failed_measurement_never_completes() {
                 NodeInputOf {
                     display: Display::InlineBlock,
                     atomic_inline_participation: Some(AtomicInlineParticipation::new(
-                        surgeist_text::BidiLevel::try_new(0).unwrap(),
+                        surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
                         InlineBreakOpportunity::Allowed,
                     )),
                     ..NodeInputOf::default()

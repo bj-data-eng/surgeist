@@ -378,7 +378,7 @@ pub(super) struct CapturedRunContext<'a, 'input, Node, S: LayoutScalar> {
     pub(super) adjoining_margin: S,
     pub(super) constants: &'a Constants<S>,
     pub(super) input: ComputeInputOf<S>,
-    pub(super) orientation: surgeist_text::LineOrientation,
+    pub(super) orientation: surgeist_text::selection::LineOrientation,
     pub(super) provider_enabled: bool,
     pub(super) line_box_context: crate::line_box::LineBoxContext,
     pub(super) tail: crate::text_layout::fit::TailContext,
@@ -611,23 +611,23 @@ where
                 source_index,
                 kind,
                 endpoint,
-                allocation: surgeist_text::ControlAllocation {
+                allocation: surgeist_text::allocation::ControlAllocation {
                     occurrence: binding.occurrence.clone(),
                     boundary,
-                    strut: strut.map(|(metrics, alignment)| surgeist_text::ControlStrut {
+                    strut: strut.map(|(metrics, alignment)| surgeist_text::allocation::ControlStrut {
                         baseline: metrics.baseline().to_f64(),
                         line_extent: metrics.line_extent().to_f64(),
                         alignment: match alignment {
                             crate::VerticalAlignOf::Baseline => {
-                                surgeist_text::LineBoxAlignment::Baseline
+                                surgeist_text::allocation::LineBoxAlignment::Baseline
                             }
-                            crate::VerticalAlignOf::Top => surgeist_text::LineBoxAlignment::Top,
+                            crate::VerticalAlignOf::Top => surgeist_text::allocation::LineBoxAlignment::Top,
                             crate::VerticalAlignOf::Bottom => {
-                                surgeist_text::LineBoxAlignment::Bottom
+                                surgeist_text::allocation::LineBoxAlignment::Bottom
                             }
                             crate::VerticalAlignOf::Shift(offset) => {
-                                surgeist_text::LineBoxAlignment::Shift(
-                                    surgeist_text::BaselineShift::try_new(offset.get().to_f64())
+                                surgeist_text::allocation::LineBoxAlignment::Shift(
+                                    surgeist_text::source::BaselineShift::try_new(offset.get().to_f64())
                                         .expect("a finite Layout scalar widens to finite Text coordinates"),
                                 )
                             }
@@ -737,13 +737,14 @@ where
                         .map(|next| (next - cursor_block).to_f64()),
                 })
             },
-            clear: |block, request: &surgeist_text::LineSelectionRequest| {
+            clear: |block, request: &surgeist_text::selection::LineSelectionRequest| {
                 let clear = request
                     .participants
                     .iter()
                     .rev()
                     .find_map(|participant| {
-                        let surgeist_text::PreparedParticipant::Control(control) = participant
+                        let surgeist_text::prepared::PreparedParticipant::Control(control) =
+                            participant
                         else {
                             return None;
                         };
@@ -764,7 +765,7 @@ where
                 // clearance and must not replace the fitter's f64 position.
                 Ok((cleared > query).then(|| cleared.to_f64() - cursor_block.to_f64()))
             },
-            replay: |line: &surgeist_text::FinalizedLine, replay| match encounters
+            replay: |line: &surgeist_text::finalized::FinalizedLine, replay| match encounters
                 .borrow_mut()
                 .replay(
                     container,

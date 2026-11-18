@@ -80,36 +80,36 @@ pub(super) fn rtl_font() -> Vec<u8> {
 
 fn profile_line<S: l::LayoutScalar>(
     parent: &Captured,
-    kind: t::InlineBoxKind,
+    kind: t::source::InlineBoxKind,
     align: l::VerticalAlignOf<S>,
     containing: l::Direction,
-    text_align: t::Alignment,
-) -> t::FinalizedLine {
+    text_align: t::options::Alignment,
+) -> t::finalized::FinalizedLine {
     let p = &parent.prepared;
-    let rtl = p.analyzed_source().direction() == t::Direction::RightToLeft;
+    let rtl = p.analyzed_source().direction() == t::style::Direction::RightToLeft;
     let end = p
         .opportunity_views()
-        .find(|row| row.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|row| row.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let mut atomic = allocation(parent, kind);
-    if let t::AtomicLineAllocation::InFlow { alignment, .. } = &mut atomic.allocation {
+    if let t::allocation::AtomicLineAllocation::InFlow { alignment, .. } = &mut atomic.allocation {
         *alignment = match align {
-            l::VerticalAlignOf::Baseline => t::LineBoxAlignment::Baseline,
-            l::VerticalAlignOf::Top => t::LineBoxAlignment::Top,
-            l::VerticalAlignOf::Bottom => t::LineBoxAlignment::Bottom,
-            l::VerticalAlignOf::Shift(offset) => t::LineBoxAlignment::Shift(
-                t::BaselineShift::try_new(offset.get().to_f64())
+            l::VerticalAlignOf::Baseline => t::allocation::LineBoxAlignment::Baseline,
+            l::VerticalAlignOf::Top => t::allocation::LineBoxAlignment::Top,
+            l::VerticalAlignOf::Bottom => t::allocation::LineBoxAlignment::Bottom,
+            l::VerticalAlignOf::Shift(offset) => t::allocation::LineBoxAlignment::Shift(
+                t::source::BaselineShift::try_new(offset.get().to_f64())
                     .expect("a finite Layout shift widens to finite Text units"),
             ),
         };
     }
-    p.select(t::LineSelectionRequest {
+    p.select(t::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
-        termination: t::PreparedTermination::Ordinary(end),
+        termination: t::selection::PreparedTermination::Ordinary(end),
         participants: p.participants().collect(),
         alternative: None,
         incoming: None,
@@ -118,33 +118,33 @@ fn profile_line<S: l::LayoutScalar>(
         boundary_context: vec![],
         line_strut: None,
         line_box_struts: vec![],
-        context: t::LineContext {
-            alignment_insets: t::LineAlignmentInsets::ZERO,
-            formatted_line: t::FormattedLineContext::default(),
+        context: t::selection::LineContext {
+            alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+            formatted_line: t::selection::FormattedLineContext::default(),
             base_direction: if rtl {
-                t::ParagraphBaseDirection::RightToLeft
+                t::paragraph::ParagraphBaseDirection::RightToLeft
             } else {
-                t::ParagraphBaseDirection::LeftToRight
+                t::paragraph::ParagraphBaseDirection::LeftToRight
             },
             line_box_direction: if containing == l::Direction::Ltr {
-                t::LineBoxDirection::LeftToRight
+                t::selection::LineBoxDirection::LeftToRight
             } else {
-                t::LineBoxDirection::RightToLeft
+                t::selection::LineBoxDirection::RightToLeft
             },
-            orientation: t::LineOrientation::SidewaysClockwise,
-            start: t::LineStart::Paragraph,
-            end: t::LineEnd::Paragraph,
+            orientation: t::selection::LineOrientation::SidewaysClockwise,
+            start: t::selection::LineStart::Paragraph,
+            end: t::selection::LineEnd::Paragraph,
             available_inline: Some(40.0),
             indent: 0.0,
             alignment: text_align,
-            tabs: t::TabContext::NoTabs,
-            spacing: t::SpacingPolicy::None,
+            tabs: t::tabs::TabContext::NoTabs,
+            spacing: t::spacing::SpacingPolicy::None,
         },
     })
     .unwrap()
-    .finalize(surgeist_text::LineAllocations {
-        spacing: t::SpacingAllocations::None,
-        scopes: surgeist_text::ScopeAllocations::None,
+    .finalize(surgeist_text::scope_alignment::LineAllocations {
+        spacing: t::spacing::SpacingAllocations::None,
+        scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
     })
     .unwrap()
 }
@@ -155,22 +155,25 @@ fn matrix<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
-        let advance = if kind == t::InlineBoxKind::InFlow {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
+        let advance = if kind == t::source::InlineBoxKind::InFlow {
             34.0
         } else {
             20.0
         };
         for body in [
-            t::ParagraphBaseDirection::LeftToRight,
-            t::ParagraphBaseDirection::RightToLeft,
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::paragraph::ParagraphBaseDirection::RightToLeft,
         ] {
-            let raw = if body == t::ParagraphBaseDirection::LeftToRight {
+            let raw = if body == t::paragraph::ParagraphBaseDirection::LeftToRight {
                 "AB"
             } else {
                 "\u{5d0}\u{5d1}"
@@ -178,12 +181,12 @@ fn matrix<S: l::LayoutScalar>() {
             let parent = capture(
                 &bytes,
                 raw,
-                Some((kind, t::Id::from_u64(2))),
+                Some((kind, t::source::Id::from_u64(2))),
                 body,
-                t::LineOrientation::SidewaysClockwise,
+                t::selection::LineOrientation::SidewaysClockwise,
                 10.0,
             );
-            let level = if body == t::ParagraphBaseDirection::LeftToRight {
+            let level = if body == t::paragraph::ParagraphBaseDirection::LeftToRight {
                 0
             } else {
                 1
@@ -197,19 +200,25 @@ fn matrix<S: l::LayoutScalar>() {
             for direction in [l::Direction::Ltr, l::Direction::Rtl] {
                 // An all-auto positioned box anchors its inline-start margin
                 // edge. In RTL that is the bottom edge, not the physical top.
-                let positioned_extent =
-                    if kind == t::InlineBoxKind::OutOfFlow && direction == l::Direction::Rtl {
-                        14.0
-                    } else {
-                        0.0
-                    };
+                let positioned_extent = if kind == t::source::InlineBoxKind::OutOfFlow
+                    && direction == l::Direction::Rtl
+                {
+                    14.0
+                } else {
+                    0.0
+                };
                 for (align, in_flow_x) in [
                     (l::VerticalAlignOf::Baseline, 32.0),
                     (l::VerticalAlignOf::Top, 34.0),
                     (l::VerticalAlignOf::Bottom, 30.0),
                 ] {
-                    let qualified =
-                        profile_line::<S>(&parent, kind, align, direction, t::Alignment::Start);
+                    let qualified = profile_line::<S>(
+                        &parent,
+                        kind,
+                        align,
+                        direction,
+                        t::options::Alignment::Start,
+                    );
                     assert_eq!(
                         (
                             qualified.feedback().advance,
@@ -226,24 +235,24 @@ fn matrix<S: l::LayoutScalar>() {
                     } else {
                         40.0 - advance
                     };
-                    let x = if kind == t::InlineBoxKind::OutOfFlow {
+                    let x = if kind == t::source::InlineBoxKind::OutOfFlow {
                         34.0
                     } else {
                         in_flow_x
                     };
                     let box_y = shift + 10.0 - positioned_extent;
-                    let border = t::Rect::new(x, box_y, 6.0, 14.0);
+                    let border = t::geometry::Rect::new(x, box_y, 6.0, 14.0);
                     let text = placed(&batch, 0);
                     assert_eq!(text.inline_boxes()[0].rect(), border);
                     let actual = receipt(&batch, 1);
                     let expected = explicit(
                         &parent,
                         actual,
-                        t::LineAnchor {
+                        t::placement::LineAnchor {
                             inline_origin: 0.0,
                             baseline: 32.0,
                         },
-                        t::AtomicPlacement {
+                        t::placement::AtomicPlacement {
                             occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                             border,
                             content: border,
@@ -252,7 +261,7 @@ fn matrix<S: l::LayoutScalar>() {
                     );
                     assert_eq!(text.key(), expected.key());
                     let ids = if level == 0 { [35, 36] } else { [36, 35] };
-                    let second = if kind == t::InlineBoxKind::InFlow {
+                    let second = if kind == t::source::InlineBoxKind::InFlow {
                         24.0
                     } else {
                         10.0
@@ -260,7 +269,7 @@ fn matrix<S: l::LayoutScalar>() {
                     let glyphs = text
                         .run_views()
                         .flat_map(|run| {
-                            assert_eq!(run.glyph_basis(), t::GlyphBasis::Clockwise);
+                            assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Clockwise);
                             run.glyphs()
                                 .map(|g| (g.id(), run.origin().y + g.pen()))
                                 .collect::<Vec<_>>()
@@ -273,8 +282,8 @@ fn matrix<S: l::LayoutScalar>() {
                     );
                     assert_eq!(placed(&batch, 2).lines()[0].baseline(), box_y + 4.0);
                     assert_eq!(
-                        text.hit(t::Point::new(x + 1.0, box_y + 2.0)),
-                        t::Hit::InlineBox(t::Id::from_u64(2))
+                        text.hit(t::geometry::Point::new(x + 1.0, box_y + 2.0)),
+                        t::layout::Hit::InlineBox(t::source::Id::from_u64(2))
                     );
                 }
                 for (alignment, residual) in [
@@ -296,14 +305,14 @@ fn matrix<S: l::LayoutScalar>() {
                         input.text_align_last = l::TextAlignLast::Auto;
                     });
                     let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
-                    let x = if kind == t::InlineBoxKind::InFlow {
+                    let x = if kind == t::source::InlineBoxKind::InFlow {
                         32.0
                     } else {
                         34.0
                     };
                     assert_eq!(
                         placed(&batch, 0).inline_boxes()[0].rect(),
-                        t::Rect::new(x, residual + 10.0 - positioned_extent, 6.0, 14.0)
+                        t::geometry::Rect::new(x, residual + 10.0 - positioned_extent, 6.0, 14.0)
                     );
                 }
             }
@@ -316,18 +325,21 @@ fn guards<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(2))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(2))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -359,7 +371,7 @@ fn guards<S: l::LayoutScalar>() {
     );
     box_root.size = l::Size::new(px(40.0), px(40.0));
     let mut host = Host::<S>::new(box_root);
-    let mut input = child_input(t::InlineBoxKind::InFlow);
+    let mut input = child_input(t::source::InlineBoxKind::InFlow);
     input.display = l::Display::Block;
     host.push(Some(0), l::LayoutInputOf::box_input(input));
     l::compute_layout(&host, 0, {

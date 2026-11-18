@@ -21,34 +21,34 @@ fn cell_binding_with_inner_override(
 ) -> TextParagraphBinding<u32> {
     assert_eq!(value.encode_utf16().count(), original_count);
     let mut style = crate::test_support::text::ahem_style(10.0, 10.0);
-    style.white_space = text::WhiteSpace::Preserve;
-    style.text_combine_upright = text::TextCombineUpright::All;
-    let mut source = text::Source::new(value);
-    source.span(text::Range::new(0, original_count), style.clone());
+    style.white_space = text::style::WhiteSpace::Preserve;
+    style.text_combine_upright = text::style::TextCombineUpright::All;
+    let mut source = text::source::Source::new(value);
+    source.span(text::source::Range::new(0, original_count), style.clone());
     // Sideways composition uses the real horizontal Alphabetic font reference;
     // Ahem supplies its ordinary 8/-2 metrics and Alphabetic zero fallback.
-    let reference = text::ScopeFontReference {
-        script: text::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-        axis: text::FontBaselineAxis::HorizontalY,
-        baseline: text::FontBaseline::Alphabetic,
+    let reference = text::scope_alignment::ScopeFontReference {
+        script: text::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+        axis: text::font::FontBaselineAxis::HorizontalY,
+        baseline: text::font::FontBaseline::Alphabetic,
     };
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let mut root_style = style.clone();
-    root_style.text_combine_upright = text::TextCombineUpright::None;
+    root_style.text_combine_upright = text::style::TextCombineUpright::None;
     let mut events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
         E::EnterScope(1),
         E::Control {
             control: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
     ];
     for origin in 0..original_count {
         if inner_override && origin == 1 {
             events.push(E::Control {
                 control: 2,
-                affinity: text::Affinity::Before,
+                affinity: text::layout::Affinity::Before,
             });
         }
         if origin > 0 {
@@ -56,107 +56,114 @@ fn cell_binding_with_inner_override(
         }
         events.push(E::Origin {
             origin,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         });
     }
     events.extend([
         E::Control {
             control: 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::ExitScope(1),
         E::ExitParagraph(0),
         E::ExitScope(0),
     ]);
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: (0..original_count)
-                .map(|index| text::ParagraphOrigin {
+                .map(|index| text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: text::Range::new(index, index + 1),
-                    aggregate: text::Range::new(index, index + 1),
-                    kind: text::ParagraphOriginKind::Authored,
+                    local: text::source::Range::new(index, index + 1),
+                    aggregate: text::source::Range::new(index, index + 1),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             connections: (0..original_count - 1)
-                .map(|index| text::SourceProcessingConnection {
+                .map(|index| text::capture::SourceProcessingConnection {
                     before_origin: index,
                     after_origin: index + 1,
-                    kind: text::ParagraphConnectionKind::Continuous,
+                    kind: text::paragraph::ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
             controls: {
                 let mut controls = vec![
-                    text::ParagraphControl {
+                    text::paragraph::ParagraphControl {
                         at: 0,
-                        kind: text::ParagraphControlKind::InlineBoundaryStart,
+                        kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                     },
-                    text::ParagraphControl {
+                    text::paragraph::ParagraphControl {
                         at: original_count,
-                        kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                        kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                     },
                 ];
                 if inner_override {
-                    controls.push(text::ParagraphControl {
+                    controls.push(text::paragraph::ParagraphControl {
                         at: 1,
-                        kind: text::ParagraphControlKind::RightToLeftOverride,
+                        kind: text::paragraph::ParagraphControlKind::RightToLeftOverride,
                     });
                 }
                 controls
             },
             boundary_policies: (0..original_count - 1)
-                .map(|index| text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(index),
-                    preceding_wrap: text::Wrap::Word,
-                    following_wrap: text::Wrap::Word,
-                    ancestor_wrap: text::Wrap::Word,
+                .map(|index| text::paragraph::ParagraphBoundaryPolicy {
+                    definition: text::paragraph::ParagraphBoundaryDefinition::Connection(index),
+                    preceding_wrap: text::style::Wrap::Word,
+                    following_wrap: text::style::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 })
                 .collect(),
             replacements: Vec::new(),
             computed_line_boundaries: Vec::new(),
-            scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
+            scope_alignment_limits: Some(text::scope_alignment::ScopeAlignmentLimits::new(
                 10_000, 100, 4_194_304, 16_777_216,
             )),
             scopes: vec![
-                text::SourceProcessingScope::Block {
-                    topology: text::SourceProcessingTopology::Complete,
+                text::capture::SourceProcessingScope::Block {
+                    topology: text::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: root_style,
-                    used_direction: text::ParagraphBaseDirection::LeftToRight,
-                    writing_axis: Some(text::SourceWritingAxis::Vertical),
-                    horizontal_inner_direction: Some(text::ParagraphBaseDirection::LeftToRight),
+                    used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    writing_axis: Some(text::capture::SourceWritingAxis::Vertical),
+                    horizontal_inner_direction: Some(
+                        text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    ),
                     font_reference: Some(reference),
                 },
-                text::SourceProcessingScope::Inline {
-                    horizontal_inner_direction: Some(text::ParagraphBaseDirection::LeftToRight),
+                text::capture::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: Some(
+                        text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    ),
                     alignment_boundary: None,
                     font_reference: Some(reference),
                     trim: Default::default(),
                     style: Some(style),
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::AllocatedContributions,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::AllocatedContributions,
             }],
             events,
             joint_flows: Vec::new(),
         })
         .unwrap(),
     );
-    let domain = text::AnalyzedDomain::from_processed_paragraph(
+    let domain = text::analyzed::AnalyzedDomain::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(
         domain.outputs().next().unwrap().clone(),
-        text::Wrap::Word,
+        text::style::Wrap::Word,
     );
     assert_eq!(analyzed.combined_cells().len(), 1);
     let mut system = text::System::default();
@@ -169,8 +176,8 @@ fn cell_binding_with_inner_override(
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default()
-                .with_orientation(text::LineOrientation::SidewaysClockwise),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::SidewaysClockwise),
         )
         .unwrap();
     let origins: Vec<_> = prepared
@@ -186,16 +193,16 @@ fn cell_binding_with_inner_override(
     for (index, row) in origins.iter().enumerate() {
         assert!(cell.source_cell().source_pieces().any(|piece| {
             Some(piece.origin_position()) == row.origin.view().capture_position()
-                && piece.local() == text::Range::new(index, index + 1)
+                && piece.local() == text::source::Range::new(index, index + 1)
         }));
     }
     let controls = prepared
         .control_views()
         .map(|view| TextControlBinding {
             node: match view.kind() {
-                text::ParagraphControlKind::InlineBoundaryStart => 20,
-                text::ParagraphControlKind::InlineBoundaryEnd => 21,
-                text::ParagraphControlKind::RightToLeftOverride => 22,
+                text::paragraph::ParagraphControlKind::InlineBoundaryStart => 20,
+                text::paragraph::ParagraphControlKind::InlineBoundaryEnd => 21,
+                text::paragraph::ParagraphControlKind::RightToLeftOverride => 22,
                 _ => panic!("the Cell fixture declares only its actual controls"),
             },
             occurrence: view.handle(),
@@ -221,53 +228,53 @@ fn cell_binding_with_inner_override(
     }
 }
 
-fn finalized(prepared: &text::PreparedText) -> text::FinalizedLine {
+fn finalized(prepared: &text::prepared::PreparedText) -> text::finalized::FinalizedLine {
     let segment = prepared.source_segments().next().unwrap();
     prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
             participants: prepared.participants().collect(),
-            termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+            termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
             alternative: None,
             incoming: None,
             atomics: Vec::new(),
             controls: prepared
                 .control_views()
-                .map(|view| text::ControlAllocation {
+                .map(|view| text::allocation::ControlAllocation {
                     occurrence: view.handle(),
-                    boundary: Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
-                    strut: Some(text::ControlStrut {
+                    boundary: Some(text::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    strut: Some(text::allocation::ControlStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
-                        alignment: text::LineBoxAlignment::Baseline,
+                        alignment: text::allocation::LineBoxAlignment::Baseline,
                     }),
                 })
                 .collect(),
             boundary_context: Vec::new(),
             line_strut: None,
             line_box_struts: Vec::new(),
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
                 orientation: prepared.orientation(),
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(30.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -281,9 +288,9 @@ fn cell_prefix_for<S: LayoutScalar>(binding: TextParagraphBinding<u32>) {
     let line = finalized(&binding.prepared);
     assert_eq!(line.feedback().advance, 10.0);
     let origin = &binding.origins[0].origin;
-    let origin_seam = |local| text::TextSeam::Origin {
+    let origin_seam = |local| text::finalized::TextSeam::Origin {
         origin: origin.clone(),
-        local: text::SourcePosition::try_new(origin.view().source().text(), local).unwrap(),
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), local).unwrap(),
     };
     let after = AcceptedFloatPrefix::Seam(origin_seam(1));
     assert_eq!(

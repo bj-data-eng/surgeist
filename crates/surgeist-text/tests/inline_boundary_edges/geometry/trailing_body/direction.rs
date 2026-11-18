@@ -4,8 +4,8 @@ use super::*;
 #[test]
 fn closing_only_body_cannot_inherit_pre_break_strong_direction() {
     let p = prepare_capture(
-        t::Source::identified("A", t::Id::from_u64(1_646_407), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("A", t::source::Id::from_u64(1_646_407), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -34,7 +34,7 @@ fn closing_only_body_cannot_inherit_pre_break_strong_direction() {
     let segment = p.source_segments().next().unwrap();
     let forced = p
         .opportunity_views()
-        .find(|v| v.kind() == t::PreparedBreakKind::Forced)
+        .find(|v| v.kind() == t::prepared::PreparedBreakKind::Forced)
         .expect("actual captured mandatory break")
         .handle();
     let tail_start = forced.view().boundary();
@@ -53,7 +53,7 @@ fn closing_only_body_cannot_inherit_pre_break_strong_direction() {
         .unwrap();
     assert_eq!(
         first.paragraph_strong_direction(),
-        Some(t::ParagraphBaseDirection::LeftToRight)
+        Some(t::paragraph::ParagraphBaseDirection::LeftToRight)
     );
     assert!(first.has_eligible_strong());
     let tail = p.line_direction_facts(&segment, &tail_start, &end).unwrap();
@@ -68,7 +68,7 @@ fn closing_only_body_cannot_inherit_pre_break_strong_direction() {
             .unwrap_err()
             .detail(),
         Some(t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::InvalidLineDirectionQuery
+            reason: t::prepared::ProtocolError::InvalidLineDirectionQuery
         })
     ));
 }

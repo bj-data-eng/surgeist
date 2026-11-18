@@ -5,7 +5,10 @@
 #[path = "../src/test_fonts.rs"]
 mod test_fonts;
 
-use surgeist_text::{ErrorCode, ErrorDetail, FontData, FontMetricTable, System};
+use surgeist_text::{
+    ErrorCode, ErrorDetail, System,
+    font::{FontData, FontMetricTable},
+};
 use test_fonts::{
     remove_tables, replace_tables, table, two_face_collection, u16_at, variable_ahem,
     variable_ahem_with_tuple,

@@ -10,7 +10,7 @@ use crate::protocol::paragraph::{
 use crate::{
     Result,
     analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
-    processing::{CapturedJointFlow, ProcessedSource},
+    processing::{ProcessedSource, contextual::CapturedJointFlow},
     range::Range,
 };
 use std::sync::Arc;
@@ -31,11 +31,12 @@ pub(crate) fn missing_joint(first: usize, last: usize, source: Range) -> crate::
         "indivisible source content needs actual joint output authority",
     )
     .with_detail(crate::ErrorDetail::SourceProcessing {
-        reason: crate::processing::SourceProcessingError::MissingJointAnalysisAuthority {
-            first_paragraph: first,
-            last_paragraph: last,
-            source,
-        },
+        reason:
+            crate::processing::contextual::SourceProcessingError::MissingJointAnalysisAuthority {
+                first_paragraph: first,
+                last_paragraph: last,
+                source,
+            },
     })
 }
 
@@ -374,7 +375,7 @@ pub(crate) fn analyze(
     }
     Ok(AnalyzedDomain {
         processed: Arc::clone(&processed),
-        domain: crate::processing::CapturedScope {
+        domain: crate::processing::contextual::CapturedScope {
             capture: Arc::clone(&capture),
             index: capture.domain_scopes[domain],
         },

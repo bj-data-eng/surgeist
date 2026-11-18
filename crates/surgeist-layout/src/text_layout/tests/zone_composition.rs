@@ -2,9 +2,12 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
-    HyphenateCharacter, HyphenationProvenance, HyphenationResource, Hyphens, LineEnd, OverflowWrap,
-    PreparedAlternativeDefinition, PreparedBreakKind, PreparedTermination, Range,
-    SpacingAllocations, Text, WhiteSpace,
+    hyphenation::{HyphenateCharacter, HyphenationProvenance, HyphenationResource, Hyphens},
+    prepared::{PreparedAlternativeDefinition, PreparedBreakKind},
+    selection::{LineEnd, PreparedTermination},
+    source::{Range, Text},
+    spacing::SpacingAllocations,
+    style::{OverflowWrap, WhiteSpace},
 };
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -72,7 +75,7 @@ fn paragraph() -> PreparedParagraph {
     short.wrap = Wrap::Word;
     short.overflow_wrap = OverflowWrap::Normal;
     let mut tall = short.clone();
-    tall.line_height = surgeist_text::LineHeight::Absolute(20.0);
+    tall.line_height = surgeist_text::style::LineHeight::Absolute(20.0);
     PreparedParagraph::new(
         vec![
             ParagraphPart::text(1, Source::new("X "), short.clone()),
@@ -132,13 +135,13 @@ fn qualify_reference(paragraph: &PreparedParagraph) {
     request.alternative = None;
     request.context.available_inline = Some(100.0);
     request.context.end = LineEnd::Soft;
-    request.context.spacing = surgeist_text::SpacingPolicy::None;
+    request.context.spacing = surgeist_text::spacing::SpacingPolicy::None;
     let line = p
         .select(request)
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     // Ahem ascent8/descent2 at 10px; only the short prefix participates.
@@ -153,7 +156,7 @@ fn qualify_reference(paragraph: &PreparedParagraph) {
     );
     assert_eq!(line.measurements().alignment().advance(), 10.0);
     assert!(line.edge_units().any(|edge| edge.disposition()
-        == surgeist_text::LineEdgeDisposition::Removed
+        == surgeist_text::finalized::LineEdgeDisposition::Removed
         && edge.source_pieces().collect::<Vec<_>>() == [Range::new(1, 2)]));
     assert!(
         line.run_views().all(|run| run.face().bytes() == AHEM
@@ -273,7 +276,7 @@ fn check<S: LayoutScalar>(zone: f64, allowed: bool) {
         assert_eq!(placed.baseline(), baseline);
         assert_eq!(
             placed.bounds(),
-            surgeist_text::Rect::new(x, top, width, height)
+            surgeist_text::geometry::Rect::new(x, top, width, height)
         );
         let finalized = batch
             .final_inline_fragments()

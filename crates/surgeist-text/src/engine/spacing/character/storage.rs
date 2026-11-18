@@ -12,7 +12,7 @@ pub(crate) enum GapArenaOwnership {
 pub(super) fn require_ledger(ledger: &Ledger) -> Result<()> {
     if ledger.is_none() {
         return Err(crate::engine::scope_alignment::refusal(
-            crate::processing::ScopeAlignmentError::LimitsRequired,
+            crate::processing::contextual::ScopeAlignmentError::LimitsRequired,
         ));
     }
     Ok(())
@@ -89,9 +89,11 @@ impl Graph {
 }
 
 fn overflow() -> crate::Error {
-    crate::engine::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-        kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
-    })
+    crate::engine::scope_alignment::refusal(
+        crate::processing::contextual::ScopeAlignmentError::Overflow {
+            kind: crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
+        },
+    )
 }
 
 pub(crate) fn visit_gap_allocations(

@@ -14,10 +14,13 @@ use crate::{
     layout::Affinity,
     options::Alignment,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentError, ScopeAlignmentLimitKind,
-        ScopeAlignmentLimits, SourceProcessingConnection, SourceProcessingEnvelope,
-        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            ContextualSourceInput, ScopeAlignmentError, ScopeAlignmentLimitKind,
+            ScopeAlignmentLimits, SourceProcessingConnection, SourceProcessingEnvelope,
+            SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+            SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         FormattedLineContext, LineAlignmentInsets, LineAllocations, LineBoxDirection, LineContext,

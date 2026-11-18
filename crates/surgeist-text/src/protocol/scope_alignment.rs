@@ -15,7 +15,7 @@ use crate::{
         EffectiveFontInstance, FontBaseline, FontBaselineOutcome, UprightMetricProvenance,
         UprightMetricReference,
     },
-    processing::{CapturedScope, ScopeFontReference},
+    processing::contextual::{CapturedScope, ScopeFontReference},
     source::BaselineShift,
 };
 
@@ -92,7 +92,9 @@ impl PreparedText {
     pub fn scope_alignment_retention(&self) -> Option<ScopeAlignmentRetention> {
         self.inner.scope_alignment.retention
     }
-    pub fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
+    pub fn scope_alignment_usage(
+        &self,
+    ) -> Option<crate::processing::contextual::ScopeAlignmentUsage> {
         self.inner.scope_alignment.usage
     }
     pub fn scope_metrics(&self, scope: &CapturedScope) -> Result<PreparedScopeMetrics<'_>> {
@@ -178,7 +180,9 @@ impl SelectedLine {
     pub fn scope_alignment_retention(&self) -> Option<ScopeAlignmentRetention> {
         self.inner.scopes.retention
     }
-    pub fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
+    pub fn scope_alignment_usage(
+        &self,
+    ) -> Option<crate::processing::contextual::ScopeAlignmentUsage> {
         self.inner.scopes.usage
     }
     pub fn scopes(&self) -> impl ExactSizeIterator<Item = SelectedScope> + '_ {
@@ -278,7 +282,9 @@ impl super::FinalizedLine {
     pub fn scope_alignment_retention(&self) -> Option<ScopeAlignmentRetention> {
         self.inner.data.scope_retention
     }
-    pub fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
+    pub fn scope_alignment_usage(
+        &self,
+    ) -> Option<crate::processing::contextual::ScopeAlignmentUsage> {
         self.inner.data.scope_usage
     }
     /// Applied inherited component of this actual canonical request row.

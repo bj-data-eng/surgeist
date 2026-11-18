@@ -7,7 +7,7 @@ use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::*;
 use surgeist_text as text;
 
-fn finalized(prepared: &text::PreparedText) -> text::FinalizedLine {
+fn finalized(prepared: &text::prepared::PreparedText) -> text::finalized::FinalizedLine {
     let segment = prepared.source_segments().next().unwrap();
     let participants = prepared.participants().collect::<Vec<_>>();
     // A generated Wbr contributes through its real Text participant. Only
@@ -15,33 +15,33 @@ fn finalized(prepared: &text::PreparedText) -> text::FinalizedLine {
     let controls = participants
         .iter()
         .filter_map(|participant| {
-            let text::PreparedParticipant::Control(occurrence) = participant else {
+            let text::prepared::PreparedParticipant::Control(occurrence) = participant else {
                 return None;
             };
             assert!(matches!(
                 occurrence.view().kind(),
-                text::ParagraphControlKind::InlineBoundaryStart
-                    | text::ParagraphControlKind::InlineBoundaryEnd
+                text::paragraph::ParagraphControlKind::InlineBoundaryStart
+                    | text::paragraph::ParagraphControlKind::InlineBoundaryEnd
             ));
-            Some(text::ControlAllocation {
+            Some(text::allocation::ControlAllocation {
                 occurrence: occurrence.clone(),
-                boundary: Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
-                strut: Some(text::ControlStrut {
+                boundary: Some(text::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                strut: Some(text::allocation::ControlStrut {
                     baseline: 8.0,
                     line_extent: 10.0,
-                    alignment: text::LineBoxAlignment::Baseline,
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 }),
             })
         })
         .collect();
     prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
             participants,
-            termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+            termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
             alternative: None,
             incoming: None,
             atomics: Vec::new(),
@@ -49,25 +49,25 @@ fn finalized(prepared: &text::PreparedText) -> text::FinalizedLine {
             boundary_context: Vec::new(),
             line_strut: None,
             line_box_struts: Vec::new(),
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
                 orientation: prepared.orientation(),
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(30.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -94,11 +94,11 @@ fn generated_prefix<S: LayoutScalar>() {
         .prepared
         .participants()
         .find(|participant| {
-            matches!(participant, text::PreparedParticipant::Text(unit)
+            matches!(participant, text::prepared::PreparedParticipant::Text(unit)
             if unit.view().controls().any(|control| control == generated))
         })
         .expect("actual generated Wbr Text participant");
-    let text::PreparedParticipant::Text(unit) = &text else {
+    let text::prepared::PreparedParticipant::Text(unit) = &text else {
         unreachable!()
     };
     assert!(unit.view().empty_origin().is_none());
@@ -112,12 +112,17 @@ fn generated_prefix<S: LayoutScalar>() {
     assert_eq!(line.feedback().advance, 10.0);
     for (seam, expected) in [
         (
-            text::TextSeam::BeforeParticipant(text.clone()),
+            text::finalized::TextSeam::BeforeParticipant(text.clone()),
             (0.0, false),
         ),
-        (text::TextSeam::AfterParticipant(text), (10.0, true)),
         (
-            text::TextSeam::BeforeParticipant(text::PreparedParticipant::Control(end)),
+            text::finalized::TextSeam::AfterParticipant(text),
+            (10.0, true),
+        ),
+        (
+            text::finalized::TextSeam::BeforeParticipant(
+                text::prepared::PreparedParticipant::Control(end),
+            ),
             (10.0, true),
         ),
     ] {

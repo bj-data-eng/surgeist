@@ -50,7 +50,7 @@ fn premises() {
 }
 
 struct Paragraph {
-    prepared: text::PreparedText,
+    prepared: text::prepared::PreparedText,
     original: Source,
     binding: TextParagraphBinding<u32>,
 }
@@ -58,38 +58,38 @@ fn paragraph(control: bool) -> Paragraph {
     let original = Source::new("X");
     let mut source = original.clone();
     if !control {
-        source.inline_box(text::InlineBox::new(
-            text::Id::from_u64(2),
-            text::InlineBoxKind::InFlow,
+        source.inline_box(text::source::InlineBox::new(
+            text::source::Id::from_u64(2),
+            text::source::InlineBoxKind::InFlow,
             1,
-            text::Size::new(4.0, 20.0),
+            text::geometry::Size::new(4.0, 20.0),
         ));
     }
-    let style = text::Style {
-        white_space: text::WhiteSpace::Preserve,
-        wrap: text::Wrap::None,
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
+        wrap: text::style::Wrap::None,
         ..ahem_style(10.0, 10.0)
     };
-    let range = text::Range::new(0, 1);
-    let input = text::ParagraphInput {
+    let range = text::source::Range::new(0, 1);
+    let input = text::paragraph::ParagraphInput {
         source,
         base_style: style,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+        paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![text::ParagraphOrigin {
+        origins: vec![text::paragraph::ParagraphOrigin {
             text_node: None,
             source: original.clone(),
             local: range,
             aggregate: range,
-            kind: text::ParagraphOriginKind::Authored,
+            kind: text::paragraph::ParagraphOriginKind::Authored,
         }],
         controls: if control {
-            vec![text::ParagraphControl {
+            vec![text::paragraph::ParagraphControl {
                 at: 1,
-                kind: text::ParagraphControlKind::ForcedBreak,
+                kind: text::paragraph::ParagraphControlKind::ForcedBreak,
             }]
         } else {
             vec![]
@@ -100,35 +100,36 @@ fn paragraph(control: bool) -> Paragraph {
             vec![]
         } else {
             [
-                text::ParagraphBoundaryDefinition::AtomicBefore(0),
-                text::ParagraphBoundaryDefinition::AtomicAfter(0),
+                text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
             ]
             .into_iter()
-            .map(|definition| text::ParagraphBoundaryPolicy {
+            .map(|definition| text::paragraph::ParagraphBoundaryPolicy {
                 definition,
-                preceding_wrap: text::Wrap::None,
-                following_wrap: text::Wrap::None,
-                ancestor_wrap: text::Wrap::None,
+                preceding_wrap: text::style::Wrap::None,
+                following_wrap: text::style::Wrap::None,
+                ancestor_wrap: text::style::Wrap::None,
             })
             .collect()
         },
-        anchor_order: vec![text::ParagraphAnchor {
+        anchor_order: vec![text::paragraph::ParagraphAnchor {
             item: if control {
-                text::ParagraphAnchorItem::Control(0)
+                text::paragraph::ParagraphAnchorItem::Control(0)
             } else {
-                text::ParagraphAnchorItem::Atomic(0)
+                text::paragraph::ParagraphAnchorItem::Atomic(0)
             },
-            affinity: text::Affinity::Before,
+            affinity: text::layout::Affinity::Before,
         }],
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
         input,
-        text::AnalysisTypography::Upright {
+        text::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::LeftToRight,
         },
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::None);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::None);
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
@@ -136,7 +137,8 @@ fn paragraph(control: bool) -> Paragraph {
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(text::LineOrientation::Vertical),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::Vertical),
         )
         .unwrap();
     let binding = TextParagraphBinding {
@@ -295,9 +297,12 @@ fn qualify<S: LayoutScalar>(control: bool) {
     assert_eq!(layout.source().text(), paragraph.original.text());
     let original = paragraph.prepared.origin_views().next().unwrap();
     assert_eq!(original.source(), &paragraph.original);
-    assert_eq!(original.local_range(), text::Range::new(0, 1));
-    assert_eq!(original.aggregate_range(), text::Range::new(0, 1));
-    assert_eq!(layout.orientation(), text::LineOrientation::Vertical);
+    assert_eq!(original.local_range(), text::source::Range::new(0, 1));
+    assert_eq!(original.aggregate_range(), text::source::Range::new(0, 1));
+    assert_eq!(
+        layout.orientation(),
+        text::selection::LineOrientation::Vertical
+    );
     assert_eq!(layout.lines().len(), 1);
     // Physical right edge after the actual block spacer is C-(C-16)=16.
     // The real centered10px strut sets Central16-5=11. Child Central is2,
@@ -336,7 +341,7 @@ fn qualify<S: LayoutScalar>(control: bool) {
     } else {
         assert_eq!(
             layout.inline_boxes()[0].rect(),
-            text::Rect::new(9.0, 10.0, 4.0, 20.0)
+            text::geometry::Rect::new(9.0, 10.0, 4.0, 20.0)
         );
         let output = readback::single_box_output(&batch, 2, Phase::Unrounded);
         let pair = output.named_baselines.get(BaselineName::Central);

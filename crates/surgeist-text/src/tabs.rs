@@ -1,6 +1,13 @@
 //! Captured CSS tab values and resource demand.
+//!
+//! [`TabSize`] is a finite, nonnegative CSS `tab-size`, kept symbolic until preparation;
+//! [`ParagraphTabReference`] is the nearest block style and its used direction; [`TabPreparation`] says which
+//! real tab operation preparation must make ready for every selectable tab; [`TabContext`] is the actual tab
+//! context.
+
 use crate::{Result, error::TextNumericError, protocol::ParagraphBaseDirection, style::Style};
 pub(crate) mod cell;
+pub use crate::protocol::TabContext;
 
 /// Finite, nonnegative CSS `tab-size`, kept symbolic until preparation.
 #[derive(Clone, Copy, Debug, PartialEq)]

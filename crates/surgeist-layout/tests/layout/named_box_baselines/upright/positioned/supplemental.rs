@@ -52,7 +52,7 @@ fn attach<S: l::LayoutScalar>(
     let occurrence = parent.prepared.atomic_views().next().unwrap().handle();
     assert_eq!(
         occurrence.view().original_box().id(),
-        t::Id::from_u64(u64::from(atomic))
+        t::source::Id::from_u64(u64::from(atomic))
     );
     let text = host.push(
         Some(atomic),
@@ -110,7 +110,7 @@ fn compute_space<S: l::LayoutScalar>(
 fn receipt<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     source: u32,
-) -> t::FinalizedLine {
+) -> t::finalized::FinalizedLine {
     batch
         .unrounded_inline_fragments()
         .iter()
@@ -127,26 +127,26 @@ fn nonformatted<S: l::LayoutScalar>() {
     qualify_child::<S>(&child);
     let parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
         true,
-        t::Id::from_u64(1),
+        t::source::Id::from_u64(1),
     );
     let line = selected_parent(&parent);
     assert!(!line.has_in_flow_content());
     let completion = line.nonformatted().unwrap();
     let atomic = parent.prepared.atomic_views().next().unwrap().handle();
-    let standalone = t::Layout::from_finalized_lines(t::PlacementRequest {
+    let standalone = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: parent.prepared.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
-        entries: vec![t::PlacementEntry::NonFormatted(
-            t::NonFormattedLinePlacement {
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![t::placement::PlacementEntry::NonFormatted(
+            t::placement::NonFormattedLinePlacement {
                 line: completion,
-                origin: t::Point::new(100.0, 0.0),
-                orientation: t::LineOrientation::Vertical,
-                atomics: vec![t::AtomicPlacement {
+                origin: t::geometry::Point::new(100.0, 0.0),
+                orientation: t::selection::LineOrientation::Vertical,
+                atomics: vec![t::placement::AtomicPlacement {
                     occurrence: atomic.clone(),
-                    border: t::Rect::new(34.0, 0.0, 6.0, 14.0),
-                    content: t::Rect::new(34.0, 0.0, 6.0, 14.0),
+                    border: t::geometry::Rect::new(34.0, 0.0, 6.0, 14.0),
+                    content: t::geometry::Rect::new(34.0, 0.0, 6.0, 14.0),
                     baseline: 36.0,
                 }],
             },
@@ -171,14 +171,14 @@ fn nonformatted<S: l::LayoutScalar>() {
         let completions = text.nonformatted_lines().collect::<Vec<_>>();
         assert_eq!(completions.len(), 1);
         let actual = completions[0];
-        assert_eq!(actual.origin, t::Point::new(static_x, 0.0));
+        assert_eq!(actual.origin, t::geometry::Point::new(static_x, 0.0));
         assert_eq!(actual.atomics.len(), 1);
         assert_eq!(
             actual.atomics[0],
-            t::AtomicPlacement {
+            t::placement::AtomicPlacement {
                 occurrence: atomic.clone(),
-                border: t::Rect::new(child_x, 0.0, 6.0, 14.0),
-                content: t::Rect::new(child_x, 0.0, 6.0, 14.0),
+                border: t::geometry::Rect::new(child_x, 0.0, 6.0, 14.0),
+                content: t::geometry::Rect::new(child_x, 0.0, 6.0, 14.0),
                 baseline: b,
             }
         );
@@ -210,9 +210,9 @@ fn inset_precedence<S: l::LayoutScalar>() {
     qualify_child::<S>(&child);
     let parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
         false,
-        t::Id::from_u64(2),
+        t::source::Id::from_u64(2),
     );
     qualify_parent(&parent);
     for (mode, c) in [
@@ -238,7 +238,7 @@ fn inset_precedence<S: l::LayoutScalar>() {
                 assert_eq!(node(entries, 2).location, l::Point::new(n(x), n(y)));
                 assert_eq!(node(entries, 2).size, l::Size::new(n(6.0), n(14.0)));
             }
-            let border = t::Rect::new(x, y, 6.0, 14.0);
+            let border = t::geometry::Rect::new(x, y, 6.0, 14.0);
             let expected = explicit_parent(&parent, receipt(&batch, 1), c, border, border, x + 2.0);
             assert_eq!(placed(&batch, 0).key(), expected.key());
             assert_eq!(placed(&batch, 2).lines()[0].baseline(), x + 2.0);
@@ -252,9 +252,9 @@ fn physical_content<S: l::LayoutScalar>() {
     qualify_child::<S>(&child);
     let parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
         false,
-        t::Id::from_u64(2),
+        t::source::Id::from_u64(2),
     );
     qualify_parent(&parent);
     for (mode, c, raw_x, x, b) in [
@@ -298,8 +298,8 @@ fn physical_content<S: l::LayoutScalar>() {
         );
         assert_eq!(geometry.content_box().size(), l::Size::new(n(3.0), n(9.0)));
         assert_eq!(geometry.physical_range().x().maximum(), n(1.0));
-        let border = t::Rect::new(x, 4.0, 6.0, 14.0);
-        let content = t::Rect::new(x + 2.0, 7.0, 3.0, 9.0);
+        let border = t::geometry::Rect::new(x, 4.0, 6.0, 14.0);
+        let content = t::geometry::Rect::new(x + 2.0, 7.0, 3.0, 9.0);
         let expected = explicit_parent(&parent, receipt(&batch, 1), c, border, content, b);
         assert_eq!(placed(&batch, 0).key(), expected.key());
         assert_eq!(placed(&batch, 2).lines()[0].baseline(), b);
@@ -329,9 +329,9 @@ fn fractional_replay<S: l::LayoutScalar>() {
     qualify_child::<S>(&child);
     let parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
         false,
-        t::Id::from_u64(3),
+        t::source::Id::from_u64(3),
     );
     qualify_parent(&parent);
     for (mode, c, x, b) in [
@@ -344,25 +344,27 @@ fn fractional_replay<S: l::LayoutScalar>() {
             node(crate::layout::observation::phase(&cold, false), 1).location,
             l::Point::new(n(7.25), n(9.5))
         );
-        let border = t::Rect::new(x, 14.0, 6.0, 14.0);
+        let border = t::geometry::Rect::new(x, 14.0, 6.0, 14.0);
         let line = receipt(&cold, 2);
-        let expected = t::Layout::from_finalized_lines(t::PlacementRequest {
+        let expected = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
             prepared: parent.prepared.clone(),
-            coverage: t::PlacementCoverage::WholeParagraph,
-            entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-                line,
-                anchor: t::LineAnchor {
-                    inline_origin: 10.0,
-                    baseline: c,
+            coverage: t::placement::PlacementCoverage::WholeParagraph,
+            entries: vec![t::placement::PlacementEntry::Formatted(
+                t::placement::LinePlacement {
+                    line,
+                    anchor: t::placement::LineAnchor {
+                        inline_origin: 10.0,
+                        baseline: c,
+                    },
+                    orientation: t::selection::LineOrientation::Vertical,
+                    atomics: vec![t::placement::AtomicPlacement {
+                        occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
+                        border,
+                        content: border,
+                        baseline: b,
+                    }],
                 },
-                orientation: t::LineOrientation::Vertical,
-                atomics: vec![t::AtomicPlacement {
-                    occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
-                    border,
-                    content: border,
-                    baseline: b,
-                }],
-            })],
+            )],
         })
         .unwrap();
         assert_eq!(placed(&cold, 1).key(), expected.key());
@@ -406,7 +408,7 @@ fn fractional_replay<S: l::LayoutScalar>() {
         assert_eq!(placed(&changed, 1).key(), placed(&fresh, 1).key());
         assert_eq!(
             placed(&changed, 1).inline_boxes()[0].rect(),
-            t::Rect::new(x, 14.0, 6.0, 18.0)
+            t::geometry::Rect::new(x, 14.0, 6.0, 18.0)
         );
         assert_eq!(placed(&changed, 1).lines().len(), 1);
         assert_eq!(receipt(&changed, 2).feedback().advance, 8.0);
@@ -421,9 +423,9 @@ fn sizing<S: l::LayoutScalar>() {
     qualify_child::<S>(&child);
     let parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
         false,
-        t::Id::from_u64(2),
+        t::source::Id::from_u64(2),
     );
     qualify_parent(&parent);
     for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
@@ -434,7 +436,7 @@ fn sizing<S: l::LayoutScalar>() {
             assert_eq!(placed(&batch, 0).lines().len(), columns);
             assert_eq!(
                 placed(&batch, 0).inline_boxes()[0].rect().size,
-                t::Size::new(6.0, 14.0)
+                t::geometry::Size::new(6.0, 14.0)
             );
         }
         for (inline, width, height, columns) in [
@@ -462,7 +464,7 @@ fn sizing<S: l::LayoutScalar>() {
             assert_eq!(placed(&batch, 0).lines().len(), columns);
             assert_eq!(
                 placed(&batch, 0).inline_boxes()[0].rect().size,
-                t::Size::new(6.0, 14.0)
+                t::geometry::Size::new(6.0, 14.0)
             );
         }
         let (host, mut bindings) = scene::<S>(&parent, &child, mode);
@@ -482,7 +484,7 @@ fn sizing<S: l::LayoutScalar>() {
         } else {
             (2.0, 0.0, 2.0)
         };
-        let border = t::Rect::new(x, 4.0, 6.0, 14.0);
+        let border = t::geometry::Rect::new(x, 4.0, 6.0, 14.0);
         let expected = explicit_parent(&parent, line, c, border, border, b);
         assert_eq!(placed(&batch, 0).key(), expected.key());
     }

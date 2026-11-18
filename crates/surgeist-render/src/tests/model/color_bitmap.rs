@@ -317,19 +317,19 @@ fn assert_registered_adapter(bytes: Vec<u8>, size: f32, ink: Rect) {
         .unwrap();
     let input = system
         .layout(
-            text::Source::new("X"),
-            text::Style {
-                font: text::Font::new().family("Ahem"),
+            text::source::Source::new("X"),
+            text::style::Style {
+                font: text::style::Font::new().family("Ahem"),
                 size,
-                line_height: text::LineHeight::Absolute(f64::from(size)),
+                line_height: text::style::LineHeight::Absolute(f64::from(size)),
                 // Intrinsic red color/image pixels must not become this blue
                 // foreground. GPU qualification follows headless admission.
-                brush: text::Brush::color(0.0, 0.0, 1.0, 1.0),
-                ..text::Style::default()
+                brush: text::style::Brush::color(0.0, 0.0, 1.0, 1.0),
+                ..text::style::Style::default()
             },
-            text::Options {
+            text::options::Options {
                 quantize: false,
-                ..text::Options::default()
+                ..text::options::Options::default()
             },
         )
         .unwrap();

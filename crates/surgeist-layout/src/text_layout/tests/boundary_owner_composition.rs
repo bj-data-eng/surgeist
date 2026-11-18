@@ -17,9 +17,13 @@ const PHRASE: &[u8] =
     include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
-fn style(word: text::WordBreak, line: text::LineBreak, phrase_font: bool) -> text::Style {
-    text::Style {
-        font: text::Font::new().family(if phrase_font {
+fn style(
+    word: text::style::WordBreak,
+    line: text::style::LineBreak,
+    phrase_font: bool,
+) -> text::style::Style {
+    text::style::Style {
+        font: text::style::Font::new().family(if phrase_font {
             "Surgeist Phrase Ahem"
         } else {
             "Ahem"
@@ -27,9 +31,9 @@ fn style(word: text::WordBreak, line: text::LineBreak, phrase_font: bool) -> tex
         locale: Some("ja".into()),
         word_break: word,
         line_break: line,
-        overflow_wrap: text::OverflowWrap::Normal,
-        hyphens: text::Hyphens::None,
-        white_space: text::WhiteSpace::Preserve,
+        overflow_wrap: text::style::OverflowWrap::Normal,
+        hyphens: text::hyphenation::Hyphens::None,
+        white_space: text::style::WhiteSpace::Preserve,
         wrap: Wrap::Word,
         ..ahem_style(10.0, 10.0)
     }
@@ -37,14 +41,14 @@ fn style(word: text::WordBreak, line: text::LineBreak, phrase_font: bool) -> tex
 
 fn capture(
     parts: [&str; 2],
-    styles: [text::Style; 2],
+    styles: [text::style::Style; 2],
     font: &[u8],
     nested: bool,
     ancestor: Wrap,
     rtl: bool,
     endpoints: bool,
 ) -> TextParagraphBinding<u32> {
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let direction = if rtl {
         ParagraphBaseDirection::RightToLeft
     } else {
@@ -54,44 +58,44 @@ fn capture(
     let lengths = parts.map(|s| s.encode_utf16().count());
     let end = lengths[0] + lengths[1];
     let mut source = Source::new(parts.concat());
-    source.span(text::Range::new(0, lengths[0]), styles[0].clone());
-    source.span(text::Range::new(lengths[0], end), styles[1].clone());
-    let base = text::Style {
+    source.span(text::source::Range::new(0, lengths[0]), styles[0].clone());
+    source.span(text::source::Range::new(lengths[0], end), styles[1].clone());
+    let base = text::style::Style {
         wrap: ancestor,
         ..styles[0].clone()
     };
-    let mut scopes = vec![text::SourceProcessingScope::Block {
+    let mut scopes = vec![text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
+        topology: text::capture::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base.clone(),
         used_direction: direction,
     }];
     let mut controls = Vec::new();
-    let mut add_scope = |scope_style: text::Style, start, end| {
+    let mut add_scope = |scope_style: text::style::Style, start, end| {
         let scope = scopes.len();
         let first = controls.len();
         if endpoints {
             controls.extend([
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: start,
                     kind: ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: end,
                     kind: ParagraphControlKind::InlineBoundaryEnd,
                 },
             ]);
         }
-        scopes.push(text::SourceProcessingScope::Inline {
+        scopes.push(text::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
             style: Some(scope_style),
-            boundaries: endpoints.then_some(text::SourceProcessingScopeBoundaries {
+            boundaries: endpoints.then_some(text::capture::SourceProcessingScopeBoundaries {
                 start: first,
                 end: first + 1,
             }),
@@ -103,11 +107,11 @@ fn capture(
     let after = add_scope(styles[1].clone(), lengths[0], end);
     let control = |control| E::Control {
         control,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let origin = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     if let Some((scope, start)) = outer {
@@ -151,57 +155,59 @@ fn capture(
     let originals = parts
         .into_iter()
         .enumerate()
-        .map(|(index, part)| Source::identified(part, text::Id::from_u64(75001 + index as u64), 23))
+        .map(|(index, part)| {
+            Source::identified(part, text::source::Id::from_u64(75001 + index as u64), 23)
+        })
         .collect::<Vec<_>>();
     let origins = originals
         .iter()
         .enumerate()
-        .map(|(index, original)| text::ParagraphOrigin {
+        .map(|(index, original)| text::paragraph::ParagraphOrigin {
             text_node: None,
             source: original.clone(),
-            local: text::Range::new(0, lengths[index]),
+            local: text::source::Range::new(0, lengths[index]),
             aggregate: if index == 0 {
-                text::Range::new(0, lengths[0])
+                text::source::Range::new(0, lengths[0])
             } else {
-                text::Range::new(lengths[0], end)
+                text::source::Range::new(lengths[0], end)
             },
-            kind: text::ParagraphOriginKind::Authored,
+            kind: text::paragraph::ParagraphOriginKind::Authored,
         })
         .collect();
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins,
-            connections: vec![text::SourceProcessingConnection {
+            connections: vec![text::capture::SourceProcessingConnection {
                 before_origin: 0,
                 after_origin: 1,
-                kind: text::ParagraphConnectionKind::Continuous,
+                kind: text::paragraph::ParagraphConnectionKind::Continuous,
             }],
             controls,
-            boundary_policies: vec![text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(0),
+            boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+                definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
                 preceding_wrap: local_wrap[0],
                 following_wrap: local_wrap[1],
                 ancestor_wrap: ancestor,
             }],
             replacements: vec![],
             scopes,
-            paragraphs: vec![text::SourceProcessingParagraph {
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
                 base_direction: direction,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     // The only cross-origin NCA is the captured outer inline (nested) or block
@@ -212,12 +218,12 @@ fn capture(
         .map(|r| {
             let wrap = match (r.before(), r.after()) {
                 (
-                    text::WrappingNeighbor::Text { origin: a, .. },
-                    text::WrappingNeighbor::Text { origin: b, .. },
+                    text::analyzed::WrappingNeighbor::Text { origin: a, .. },
+                    text::analyzed::WrappingNeighbor::Text { origin: b, .. },
                 ) if a == b => local_wrap[a],
                 _ => ancestor,
             };
-            text::WrappingPolicy {
+            text::analyzed::WrappingPolicy {
                 relation: r.handle(),
                 ancestor_wrap: wrap,
             }
@@ -226,8 +232,8 @@ fn capture(
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     for r in analyzed.wrapping_relations() {
         if let (
-            text::WrappingNeighbor::Text { origin: a, .. },
-            text::WrappingNeighbor::Text { origin: b, .. },
+            text::analyzed::WrappingNeighbor::Text { origin: a, .. },
+            text::analyzed::WrappingNeighbor::Text { origin: b, .. },
         ) = (r.before(), r.after())
         {
             assert_eq!(
@@ -241,7 +247,7 @@ fn capture(
         .register_fonts(font.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let members = prepared
         .captured_owner()
@@ -253,7 +259,7 @@ fn capture(
     let inline = captured
         .scope_intersections()
         .map(|i| i.scope())
-        .filter(|s| s.role() == text::ScopeRole::Inline)
+        .filter(|s| s.role() == text::capture::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(inline.len(), if nested { 3 } else { 2 });
     for scope in &inline {
@@ -434,9 +440,9 @@ fn qualify<S: LayoutScalar>(
     p: &TextParagraphBinding<u32>,
     font: &[u8],
     source: &str,
-    ranges: &[text::Range],
+    ranges: &[text::source::Range],
     expected_glyphs: &[(u32, f32)],
-) -> Vec<text::FinalizedLine> {
+) -> Vec<text::finalized::FinalizedLine> {
     assert_eq!(batch.placed_text().len(), 1);
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
@@ -450,7 +456,7 @@ fn qualify<S: LayoutScalar>(
     for (index, origin) in p.origins.iter().enumerate() {
         assert_eq!(
             origin.origin.view().source().id(),
-            Some(text::Id::from_u64(75001 + index as u64))
+            Some(text::source::Id::from_u64(75001 + index as u64))
         );
         assert_eq!(origin.origin.view().source().revision(), 23);
         assert!(
@@ -476,12 +482,13 @@ fn qualify<S: LayoutScalar>(
         let r = selected.request();
         assert!(r.alternative.is_none());
         assert!(r.incoming.is_none());
-        let text::PreparedTermination::Ordinary(offer) = &r.termination else {
+        let text::selection::PreparedTermination::Ordinary(offer) = &r.termination else {
             panic!("ordinary owned opportunity required")
         };
         assert!(matches!(
             offer.view().kind(),
-            text::PreparedBreakKind::Allowed | text::PreparedBreakKind::ParagraphEnd
+            text::prepared::PreparedBreakKind::Allowed
+                | text::prepared::PreparedBreakKind::ParagraphEnd
         ));
         let mut raw = 0.0;
         for run in line.run_views() {
@@ -502,7 +509,7 @@ fn qualify<S: LayoutScalar>(
                     assert_eq!(font, PHRASE);
                     assert_eq!(
                         glyph.range(),
-                        text::Range::new(1, 2),
+                        text::source::Range::new(1, 2),
                         "actual named CJK punctuation source, not script coverage"
                     );
                 }
@@ -547,7 +554,7 @@ fn assert_pair<S: LayoutScalar>(
     let ordinary = p
         .prepared
         .opportunity_views()
-        .filter(|o| o.kind() == text::PreparedBreakKind::Allowed)
+        .filter(|o| o.kind() == text::prepared::PreparedBreakKind::Allowed)
         .collect::<Vec<_>>();
     if let Some(cut) = cut {
         assert!(!ordinary.is_empty());
@@ -561,8 +568,13 @@ fn assert_pair<S: LayoutScalar>(
         assert!(ordinary.is_empty());
     }
     let ranges = cut.map_or_else(
-        || vec![text::Range::new(0, end)],
-        |cut| vec![text::Range::new(0, cut), text::Range::new(cut, end)],
+        || vec![text::source::Range::new(0, end)],
+        |cut| {
+            vec![
+                text::source::Range::new(0, cut),
+                text::source::Range::new(cut, end),
+            ]
+        },
     );
     let actual = compute::<S>(
         p,
@@ -589,7 +601,7 @@ fn assert_pair<S: LayoutScalar>(
     if let Some(cut) = cut {
         let selected = lines[0].selected_line();
         let r = selected.request();
-        assert_eq!(r.context.end, text::LineEnd::Soft);
+        assert_eq!(r.context.end, text::selection::LineEnd::Soft);
         assert_eq!(r.end.view().source_before().get(), cut);
         assert_eq!(r.end.view().source_after().get(), cut);
     }
@@ -622,7 +634,7 @@ fn assert_pair<S: LayoutScalar>(
 #[test]
 fn following_word_break_survives_sibling_nested_and_bidi_composition() {
     fn lane<S: LayoutScalar>() {
-        use text::WordBreak::{BreakAll, KeepAll, Normal};
+        use text::style::WordBreak::{BreakAll, KeepAll, Normal};
         for nested in [false, true] {
             for rtl in [false, true] {
                 for (parts, before, after, cut) in [
@@ -634,8 +646,8 @@ fn following_word_break_survives_sibling_nested_and_bidi_composition() {
                     let p = capture(
                         parts,
                         [
-                            style(before, text::LineBreak::Strict, true),
-                            style(after, text::LineBreak::Strict, true),
+                            style(before, text::style::LineBreak::Strict, true),
+                            style(after, text::style::LineBreak::Strict, true),
                         ],
                         PHRASE,
                         nested,
@@ -662,7 +674,7 @@ fn following_word_break_survives_sibling_nested_and_bidi_composition() {
 #[test]
 fn following_strictness_keeps_named_cjk_requirements_and_word_mode_precedence() {
     fn lane<S: LayoutScalar>() {
-        use text::{
+        use text::style::{
             LineBreak::{Loose, Normal, Strict},
             WordBreak::{BreakAll, KeepAll},
         };
@@ -709,7 +721,7 @@ fn following_strictness_keeps_named_cjk_requirements_and_word_mode_precedence() 
 #[test]
 fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings() {
     fn lane<S: LayoutScalar>() {
-        use text::LineBreak::{Anywhere, Strict};
+        use text::style::LineBreak::{Anywhere, Strict};
         // Both original Ahem cmap records map NBSP to153 (not SPACE3); its
         // retained hmtx contribution is1000/1000em, qualified in nominal().
         for nested in [false, true] {
@@ -722,8 +734,8 @@ fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings(
                     let p = capture(
                         ["\u{a0}", "A"],
                         [
-                            style(text::WordBreak::KeepAll, before, false),
-                            style(text::WordBreak::KeepAll, after, false),
+                            style(text::style::WordBreak::KeepAll, before, false),
+                            style(text::style::WordBreak::KeepAll, after, false),
                         ],
                         AHEM,
                         nested,
@@ -734,8 +746,8 @@ fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings(
                     assert_pair::<S>(&p, AHEM, "\u{a0}A", cut, rtl, &[(153, 10.0), (35, 10.0)]);
                 }
                 let styles = [
-                    style(text::WordBreak::KeepAll, Anywhere, false),
-                    style(text::WordBreak::KeepAll, Strict, false),
+                    style(text::style::WordBreak::KeepAll, Anywhere, false),
+                    style(text::style::WordBreak::KeepAll, Strict, false),
                 ];
                 let old = capture(
                     ["\u{a0}", "A"],
@@ -802,8 +814,16 @@ fn cross_origin_combining_unit_is_whole_with_anywhere_and_real_mark_attachment()
                 let p = capture(
                     ["A", "\u{301}B"],
                     [
-                        style(text::WordBreak::Normal, text::LineBreak::Anywhere, false),
-                        style(text::WordBreak::KeepAll, text::LineBreak::Anywhere, false),
+                        style(
+                            text::style::WordBreak::Normal,
+                            text::style::LineBreak::Anywhere,
+                            false,
+                        ),
+                        style(
+                            text::style::WordBreak::KeepAll,
+                            text::style::LineBreak::Anywhere,
+                            false,
+                        ),
                     ],
                     &font,
                     nested,
@@ -813,7 +833,10 @@ fn cross_origin_combining_unit_is_whole_with_anywhere_and_real_mark_attachment()
                 );
                 assert_eq!(
                     p.prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
-                    [text::Range::new(0, 2), text::Range::new(2, 3)]
+                    [
+                        text::source::Range::new(0, 2),
+                        text::source::Range::new(2, 3)
+                    ]
                 );
                 assert_pair::<S>(
                     &p,
@@ -832,7 +855,7 @@ fn cross_origin_combining_unit_is_whole_with_anywhere_and_real_mark_attachment()
 
 #[test]
 fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
-    use text::{LineBreak, OverflowWrap::*, WordBreak};
+    use text::style::{LineBreak, OverflowWrap::*, WordBreak};
 
     fn lane<S: LayoutScalar>() {
         // At 35px only the unbroken four-glyph Ahem word overflows.
@@ -845,7 +868,7 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
             (Normal, BreakWord, &[3][..], &[][..], Some(3), 40.0),
         ] {
             for (nested, rtl) in [(false, false), (false, true), (true, false), (true, true)] {
-                let mode = |overflow_wrap| text::Style {
+                let mode = |overflow_wrap| text::style::Style {
                     overflow_wrap,
                     ..style(WordBreak::Normal, LineBreak::Normal, false)
                 };
@@ -864,11 +887,14 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                     offer.boundary().view().participant_offset() > start.view().participant_offset()
                 });
                 let terminal = ordinary.next().unwrap();
-                assert_eq!(terminal.kind(), text::PreparedBreakKind::ParagraphEnd);
+                assert_eq!(
+                    terminal.kind(),
+                    text::prepared::PreparedBreakKind::ParagraphEnd
+                );
                 assert!(ordinary.next().is_none());
                 for (purpose, expected) in [
-                    (text::ConditionalPurpose::Overflow, overflow),
-                    (text::ConditionalPurpose::MinContent, intrinsic),
+                    (text::conditional::ConditionalPurpose::Overflow, overflow),
+                    (text::conditional::ConditionalPurpose::MinContent, intrinsic),
                 ] {
                     let choices = prepared
                         .source_segments()
@@ -880,7 +906,9 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                             &terminal.handle(),
                             purpose,
                             &[],
-                            text::ConditionalLineContext::Unframed { inline_boxes: None },
+                            text::conditional::ConditionalLineContext::Unframed {
+                                inline_boxes: None,
+                            },
                         )
                         .unwrap()
                         .begin(&[])
@@ -929,9 +957,12 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                         .map(|line| line.range())
                         .collect::<Vec<_>>();
                     let expected = if let Some(cut) = expected_cut {
-                        vec![text::Range::new(0, cut), text::Range::new(cut, 4)]
+                        vec![
+                            text::source::Range::new(0, cut),
+                            text::source::Range::new(cut, 4),
+                        ]
                     } else {
-                        vec![text::Range::new(0, 4)]
+                        vec![text::source::Range::new(0, 4)]
                     };
                     assert_eq!(
                         ranges, expected,
@@ -947,15 +978,18 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                         if fragment.line_index() == 0
                             && let Some(cut) = expected_cut
                         {
-                            let text::PreparedTermination::Conditional(offer) =
+                            let text::selection::PreparedTermination::Conditional(offer) =
                                 &request.termination
                             else {
                                 panic!("the overflowing word requires an issued conditional cut");
                             };
                             assert_eq!(offer.boundary().view().source_after().get(), cut);
-                            assert_eq!(offer.purpose(), text::ConditionalPurpose::Overflow);
+                            assert_eq!(
+                                offer.purpose(),
+                                text::conditional::ConditionalPurpose::Overflow
+                            );
                         } else {
-                            assert_eq!(request.context.end, text::LineEnd::Paragraph);
+                            assert_eq!(request.context.end, text::selection::LineEnd::Paragraph);
                         }
                     }
                 }
@@ -999,10 +1033,14 @@ fn disappearing_space_uses_its_own_box_for_soft_fit_and_plaintext() {
                     styles[space_box] = space_wrap;
                     let paragraph = capture(
                         parts,
-                        styles.map(|wrap| text::Style {
+                        styles.map(|wrap| text::style::Style {
                             wrap,
-                            white_space: text::WhiteSpace::Collapse,
-                            ..style(text::WordBreak::Normal, text::LineBreak::Normal, false)
+                            white_space: text::style::WhiteSpace::Collapse,
+                            ..style(
+                                text::style::WordBreak::Normal,
+                                text::style::LineBreak::Normal,
+                                false,
+                            )
                         }),
                         AHEM,
                         nested,
@@ -1015,7 +1053,7 @@ fn disappearing_space_uses_its_own_box_for_soft_fit_and_plaintext() {
                     let ordinary = paragraph
                         .prepared
                         .opportunity_views()
-                        .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                        .filter(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
                         .map(|offer| offer.boundary().view().source_after().get())
                         .collect();
                     assert_eq!(
@@ -1041,9 +1079,12 @@ fn disappearing_space_uses_its_own_box_for_soft_fit_and_plaintext() {
                     assert_eq!(layout.source().text().code_units(), [65, 32, 65]);
                     super::whitespace_modes::assert_copy(layout, 3, "A A");
                     let expected = if expected_cut.is_some() {
-                        vec![text::Range::new(0, 2), text::Range::new(2, 3)]
+                        vec![
+                            text::source::Range::new(0, 2),
+                            text::source::Range::new(2, 3),
+                        ]
                     } else {
-                        vec![text::Range::new(0, 3)]
+                        vec![text::source::Range::new(0, 3)]
                     };
                     assert_eq!(
                         ranges, expected,

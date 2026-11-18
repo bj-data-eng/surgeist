@@ -22,7 +22,10 @@ use crate::{
 };
 use std::mem::size_of;
 use surgeist_font::ResourceId;
-use surgeist_text::{FinalizedLeaderPattern, GlyphFrame, LeaderPaintGroup};
+use surgeist_text::{
+    geometry::GlyphFrame,
+    leader::{FinalizedLeaderPattern, LeaderPaintGroup},
+};
 
 /// Preserved originating cause at an actual finalized leader run.
 #[derive(Debug)]

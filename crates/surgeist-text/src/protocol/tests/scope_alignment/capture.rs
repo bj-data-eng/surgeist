@@ -6,10 +6,14 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentBoundary, ScopeAlignmentError,
-        ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference, ScopeRole,
-        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-        SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError,
+            ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference, ScopeRole,
+            SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+            process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection,

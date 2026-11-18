@@ -565,38 +565,38 @@ pub(super) fn prepare_label(
     face: &surgeist_font::FontFace,
     label: &str,
     direction: layout::Direction,
-) -> Result<text::PreparedText, Error> {
-    let text_style = text::Style {
-        font: text::Font::new().family("Ahem"),
+) -> Result<text::prepared::PreparedText, Error> {
+    let text_style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Collapse,
-        wrap: text::Wrap::Word,
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Collapse,
+        wrap: text::style::Wrap::Word,
         locale: Some("en".to_owned()),
-        ..text::Style::default()
+        ..text::style::Style::default()
     };
-    let original = text::Source::new(label);
-    let mut source = text::Source::new("");
+    let original = text::source::Source::new(label);
+    let mut source = text::source::Source::new("");
     let range = source.push(original.text().clone());
     source.span(range, text_style.clone());
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source,
             base_style: text_style,
             base_direction: match direction {
-                layout::Direction::Ltr => text::ParagraphBaseDirection::LeftToRight,
-                layout::Direction::Rtl => text::ParagraphBaseDirection::RightToLeft,
+                layout::Direction::Ltr => text::paragraph::ParagraphBaseDirection::LeftToRight,
+                layout::Direction::Rtl => text::paragraph::ParagraphBaseDirection::RightToLeft,
             },
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: original,
-                local: text::Range::new(0, range.len()),
+                local: text::source::Range::new(0, range.len()),
                 aggregate: range,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: Vec::new(),
             controls: Vec::new(),
@@ -604,20 +604,20 @@ pub(super) fn prepare_label(
             replacements: Vec::new(),
             anchor_order: Vec::new(),
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .map_err(invalid)?;
     let wraps = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
-            ancestor_wrap: text::Wrap::Word,
+            ancestor_wrap: text::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(wraps).map_err(invalid)?;
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .map_err(invalid)?;
     let mut saw_font = false;
     for unit in prepared.unit_views() {
@@ -625,7 +625,7 @@ pub(super) fn prepare_label(
             let instance = instance.map_err(invalid)?;
             if instance.face().admitted_face() != face
                 || instance.axis_count() != 0
-                || instance.synthesis() != text::FontSynthesis::default()
+                || instance.synthesis() != text::font::FontSynthesis::default()
             {
                 return Err(invalid("prepared text selected a different effective face"));
             }
@@ -763,7 +763,7 @@ pub(super) fn verify_word_ranges(
             return Err(invalid(format!("missing source origin for {path}")));
         };
         for word in &bound.words {
-            let range = text::Range::new(word.start, word.end);
+            let range = text::source::Range::new(word.start, word.end);
             let selected = placement
                 .layout()
                 .source_range_fragments(participation.origin(), range)
@@ -780,7 +780,7 @@ pub(super) fn verify_word_ranges(
                     )));
                 }
                 for piece in unit.pieces() {
-                    let text::SourceRangeGeometry::Line(piece) = piece else {
+                    let text::range_fragments::SourceRangeGeometry::Line(piece) = piece else {
                         return Err(invalid(format!(
                             "unexpected non-line word geometry for {path}"
                         )));

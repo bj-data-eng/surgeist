@@ -778,17 +778,17 @@ pub(crate) fn scope_allocation_roots(
                 .as_ref()
                 .ok_or_else(|| {
                     crate::engine::scope_alignment::refusal(
-                        crate::processing::ScopeAlignmentError::MissingCapture,
+                        crate::processing::contextual::ScopeAlignmentError::MissingCapture,
                     )
                 })?;
             if !Arc::ptr_eq(&topology.capture, &scope.capture) {
                 return Err(crate::engine::scope_alignment::refusal(
-                    crate::processing::ScopeAlignmentError::ForeignCapture,
+                    crate::processing::contextual::ScopeAlignmentError::ForeignCapture,
                 ));
             }
             if scope.capture.scopes[scope.index].domain != topology.domain {
                 return Err(crate::engine::scope_alignment::refusal(
-                    crate::processing::ScopeAlignmentError::WrongDomain,
+                    crate::processing::contextual::ScopeAlignmentError::WrongDomain,
                 ));
             }
         }

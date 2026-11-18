@@ -2,10 +2,10 @@
 //! isolate controls affect levels and custody without becoming source glyphs.
 use super::*;
 
-fn captured_isolate() -> t::PreparedText {
+fn captured_isolate() -> t::prepared::PreparedText {
     let p = prepare_capture(
-        t::Source::identified("abcABC", t::Id::from_u64(1_646_101), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("abcABC", t::source::Id::from_u64(1_646_101), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 2), (2, 3), (3, 4), (4, 6)],
         &[
             (K::InlineBoundaryStart, 2),
@@ -33,20 +33,23 @@ fn captured_isolate() -> t::PreparedText {
     );
     assert_eq!(
         p.analyzed_source().source().text(),
-        &t::Text::from("abcABC")
+        &t::source::Text::from("abcABC")
     );
-    assert_eq!(p.analyzed_source().direction(), t::Direction::LeftToRight);
+    assert_eq!(
+        p.analyzed_source().direction(),
+        t::style::Direction::LeftToRight
+    );
     assert_eq!(
         p.unit_views()
             .map(|u| (u.source_range(), u.level().get()))
             .collect::<Vec<_>>(),
         [
-            (t::Range::new(0, 1), 0),
-            (t::Range::new(1, 2), 0),
-            (t::Range::new(2, 3), 2),
-            (t::Range::new(3, 4), 2),
-            (t::Range::new(4, 5), 0),
-            (t::Range::new(5, 6), 0),
+            (t::source::Range::new(0, 1), 0),
+            (t::source::Range::new(1, 2), 0),
+            (t::source::Range::new(2, 3), 2),
+            (t::source::Range::new(3, 4), 2),
+            (t::source::Range::new(4, 5), 0),
+            (t::source::Range::new(5, 6), 0),
         ]
     );
     // X5a starts the isolate at odd level1. Its two Latin L units get
@@ -66,7 +69,7 @@ fn captured_isolate() -> t::PreparedText {
     p
 }
 
-fn qualify_authority(p: &t::PreparedText) {
+fn qualify_authority(p: &t::prepared::PreparedText) {
     let owner = p.captured_owner().expect("real source output authority");
     assert!(owner.joint_flow().is_none());
     let members = owner.members().collect::<Vec<_>>();
@@ -75,10 +78,10 @@ fn qualify_authority(p: &t::PreparedText) {
     assert_eq!(owner.facts_owner(), *raw);
     let domain = owner.domain();
     assert_eq!(raw.domain(), domain);
-    assert_eq!(domain.role(), t::ScopeRole::Domain);
+    assert_eq!(domain.role(), t::capture::ScopeRole::Domain);
     assert_eq!(
         domain.domain_topology(),
-        t::SourceProcessingTopology::Complete
+        t::capture::SourceProcessingTopology::Complete
     );
     // Complete actual domain paragraph inventory agrees with this preparation's
     // owning raw member; no exterior paragraph is assumed from a source hull.
@@ -86,7 +89,7 @@ fn qualify_authority(p: &t::PreparedText) {
         .flow_events()
         .unwrap()
         .filter_map(|e| match e {
-            t::CapturedFlowEvent::ParagraphStart(paragraph) => Some(paragraph),
+            t::capture::CapturedFlowEvent::ParagraphStart(paragraph) => Some(paragraph),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -96,10 +99,10 @@ fn qualify_authority(p: &t::PreparedText) {
             .map(|v| v.aggregate_range())
             .collect::<Vec<_>>(),
         [
-            t::Range::new(0, 2),
-            t::Range::new(2, 3),
-            t::Range::new(3, 4),
-            t::Range::new(4, 6),
+            t::source::Range::new(0, 2),
+            t::source::Range::new(2, 3),
+            t::source::Range::new(3, 4),
+            t::source::Range::new(4, 6),
         ]
     );
     let mut segments = p.source_segments();
@@ -136,13 +139,13 @@ fn qualify_authority(p: &t::PreparedText) {
     }
     let c = p
         .origin_views()
-        .find(|v| v.aggregate_range() == t::Range::new(2, 3))
+        .find(|v| v.aggregate_range() == t::source::Range::new(2, 3))
         .unwrap()
         .capture_position()
         .unwrap();
     let a = p
         .origin_views()
-        .find(|v| v.aggregate_range() == t::Range::new(3, 4))
+        .find(|v| v.aggregate_range() == t::source::Range::new(3, 4))
         .unwrap()
         .capture_position()
         .unwrap();
@@ -173,12 +176,12 @@ fn a_rli_group_keeps_one_captured_box_fragment_and_no_pseudo_source_glyphs() {
     assert_eq!(
         packet(&output),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 23.0),
-            (t::Range::new(3, 4), 35, 33.0),
-            (t::Range::new(4, 5), 36, 48.0),
-            (t::Range::new(5, 6), 37, 58.0),
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 23.0),
+            (t::source::Range::new(3, 4), 35, 33.0),
+            (t::source::Range::new(4, 5), 36, 48.0),
+            (t::source::Range::new(5, 6), 37, 58.0),
         ]
     );
     strip(&output, &p, K::InlineBoundaryStart, (20.0, 23.0));
@@ -205,8 +208,8 @@ fn a_rli_group_keeps_one_captured_box_fragment_and_no_pseudo_source_glyphs() {
         fragment.nearest_common_ancestor(&fragment).unwrap(),
         fragment
     );
-    let c = unit(&p, t::Range::new(2, 3));
-    let a = unit(&p, t::Range::new(3, 4));
+    let c = unit(&p, t::source::Range::new(2, 3));
+    let a = unit(&p, t::source::Range::new(3, 4));
     let mut members = texts(&pieces[0]);
     members.sort_by_key(|u| u.view().source_range().start);
     assert_eq!(members, [c, a]);
@@ -223,16 +226,18 @@ fn a_rli_group_keeps_one_captured_box_fragment_and_no_pseudo_source_glyphs() {
         (20.0, 23.0)
     );
     assert_eq!(pieces[0].end_edge().unwrap().strip_interval(), (43.0, 48.0));
-    let replay = output.with_spacing(t::SpacingAllocations::None).unwrap();
+    let replay = output
+        .with_spacing(t::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(
         packet(&replay),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 23.0),
-            (t::Range::new(3, 4), 35, 33.0),
-            (t::Range::new(4, 5), 36, 48.0),
-            (t::Range::new(5, 6), 37, 58.0),
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 23.0),
+            (t::source::Range::new(3, 4), 35, 33.0),
+            (t::source::Range::new(4, 5), 36, 48.0),
+            (t::source::Range::new(5, 6), 37, 58.0),
         ]
     );
     let replay_pieces = owned(&replay, &owner);
@@ -258,6 +263,9 @@ fn a_rli_group_keeps_one_captured_box_fragment_and_no_pseudo_source_glyphs() {
     assert_eq!(views[0].fragment(), fragment);
     assert_eq!(views[0].family(), &family);
     assert_eq!(views[0].line_index(), 0);
-    assert_eq!(views[0].anchor(), t::Point::new(0.0, 8.0));
-    assert_eq!(views[0].orientation(), t::LineOrientation::Horizontal);
+    assert_eq!(views[0].anchor(), t::geometry::Point::new(0.0, 8.0));
+    assert_eq!(
+        views[0].orientation(),
+        t::selection::LineOrientation::Horizontal
+    );
 }

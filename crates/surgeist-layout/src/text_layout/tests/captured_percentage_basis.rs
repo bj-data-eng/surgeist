@@ -43,7 +43,7 @@ fn captured_percent_source<S: LayoutScalar>(
     assert_eq!(lines.len(), 1);
     assert_eq!(
         lines[0].range(),
-        text::Range::new(0, if left { 2 } else { 1 })
+        text::source::Range::new(0, if left { 2 } else { 1 })
     );
     assert_eq!(lines[0].baseline(), 10.0);
     let mut glyph_count = 0;
@@ -76,9 +76,9 @@ fn captured_percent_source<S: LayoutScalar>(
         let view = issued.view();
         assert_eq!(
             view.owner(),
-            text::FinalizedFragmentOwner::Origin(association.origin.clone())
+            text::finalized::FinalizedFragmentOwner::Origin(association.origin.clone())
         );
-        assert_eq!(view.local_range(), Some(text::Range::new(0, 1)));
+        assert_eq!(view.local_range(), Some(text::source::Range::new(0, 1)));
         assert_eq!(row.baseline().y, custody_n::<S>(10.0));
         assert_eq!(row.rect().unwrap().origin().y, custody_n::<S>(2.0));
         let line = issued.finalized_line();
@@ -156,12 +156,12 @@ fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: b
                 ParagraphPart::text(1, Source::new("X"), style.clone()),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: text::Size::new(10.0, 10.4),
+                    size: text::geometry::Size::new(10.0, 10.4),
                 },
             ],
             style,
-            text::ParagraphBaseDirection::LeftToRight,
-            text::ParagraphTerminalEdge::Unknown,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphTerminalEdge::Unknown,
         )
     };
     let mut host = CustodyHost::<S>::new(captured_percent_fixture(&p, left));

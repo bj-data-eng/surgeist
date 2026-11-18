@@ -3,7 +3,7 @@
 
 use crate::{
     layout::Affinity,
-    processing::{
+    processing::contextual::{
         CapturedDomainDefinition, ContextualSourceInput, SourceProcessingEvent,
         SourceProcessingScope, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
     },

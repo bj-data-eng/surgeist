@@ -49,11 +49,11 @@ pub(super) struct LineProof {
     available: f64,
     bands: LineBands,
     flow: LineFlow,
-    feedback: surgeist_text::LineFeedback,
-    fit: surgeist_text::InlineMeasure,
-    margin_fit: surgeist_text::MarginEdgeFit,
-    alignment: surgeist_text::InlineMeasure,
-    metrics: surgeist_text::Rect,
+    feedback: surgeist_text::finalized::LineFeedback,
+    fit: surgeist_text::finalized::InlineMeasure,
+    margin_fit: surgeist_text::finalized::MarginEdgeFit,
+    alignment: surgeist_text::finalized::InlineMeasure,
+    metrics: surgeist_text::geometry::Rect,
 }
 
 impl LineProof {
@@ -266,7 +266,7 @@ where
         &FinalizedLine,
         Band,
         f64,
-        &[surgeist_text::LineBoxStrut],
+        &[surgeist_text::allocation::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
     X: FnMut(EncounterReset) -> Result<(), FitError>,
@@ -337,7 +337,7 @@ where
         &FinalizedLine,
         Band,
         f64,
-        &[surgeist_text::LineBoxStrut],
+        &[surgeist_text::allocation::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
     X: FnMut(EncounterReset) -> Result<(), FitError>,
@@ -505,11 +505,14 @@ mod tests {
         meter: &crate::accounting::Meter,
     ) -> (PreparedParagraph, Vec<FittedLine>) {
         let mut style = ahem_style(10.0, 10.0);
-        style.wrap = surgeist_text::Wrap::Word;
-        style.white_space = surgeist_text::WhiteSpace::PreserveBreaks;
-        style.hyphens = surgeist_text::Hyphens::None;
-        let paragraph =
-            PreparedParagraph::plain(1, surgeist_text::Source::new(groups.join("\n")), style);
+        style.wrap = surgeist_text::style::Wrap::Word;
+        style.white_space = surgeist_text::style::WhiteSpace::PreserveBreaks;
+        style.hyphens = surgeist_text::hyphenation::Hyphens::None;
+        let paragraph = PreparedParagraph::plain(
+            1,
+            surgeist_text::source::Source::new(groups.join("\n")),
+            style,
+        );
         let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
             crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
                 Vec::new(),

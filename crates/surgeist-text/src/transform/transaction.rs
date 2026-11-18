@@ -212,7 +212,7 @@ impl<'borrow, 'source> TransformWork<'borrow, 'source> {
     fn source_error(&self, error: crate::Error) -> MappingError {
         if let Some(crate::ErrorDetail::SourceProcessing {
             reason:
-                crate::processing::SourceProcessingError::MissingSourceContinuity {
+                crate::processing::contextual::SourceProcessingError::MissingSourceContinuity {
                     before_origin,
                     after_origin,
                     ..
@@ -563,9 +563,9 @@ fn prefix_window(
             break;
         }
         if let Some(edge) = missing {
-            return Err(
-                edge.unavailable(crate::processing::SourceContinuityOperation::Transformation)
-            );
+            return Err(edge.unavailable(
+                crate::processing::contextual::SourceContinuityOperation::Transformation,
+            ));
         }
         context::push(&mut values, (next, value))?;
         position = next;
@@ -645,7 +645,7 @@ fn word_facts(
             if guaranteed {
                 if let Some(edge) = missing {
                     return Err(edge.unavailable(
-                        crate::processing::SourceContinuityOperation::Transformation,
+                        crate::processing::contextual::SourceContinuityOperation::Transformation,
                     ));
                 }
                 context::push(&mut values, (slot, value))?;
@@ -663,7 +663,7 @@ fn word_facts(
                 }
                 if let Some(edge) = missing {
                     return Err(edge.unavailable(
-                        crate::processing::SourceContinuityOperation::Transformation,
+                        crate::processing::contextual::SourceContinuityOperation::Transformation,
                     ));
                 }
                 values = extended;
@@ -946,7 +946,7 @@ fn semantic_window(
                     .find(|(start, end, _)| before < *end && *start <= slot)
                 {
                     return Err(edge.unavailable(
-                        crate::processing::SourceContinuityOperation::Transformation,
+                        crate::processing::contextual::SourceContinuityOperation::Transformation,
                     ));
                 }
             }
@@ -1280,9 +1280,9 @@ fn close_units(shared: &RefCell<TransformWork<'_, '_>>, owned: &[usize]) -> Resu
                     .family_boundary(interval.first, true, head, Purpose::Mapped)?;
             if !left_proven || unresolved.is_some() {
                 if reached_start {
-                    return Err(unresolved
-                        .expect("unqualified source state")
-                        .unavailable(crate::processing::SourceContinuityOperation::Segmentation));
+                    return Err(unresolved.expect("unqualified source state").unavailable(
+                        crate::processing::contextual::SourceContinuityOperation::Segmentation,
+                    ));
                 }
                 reached_start = grow_boundary(
                     shared,
@@ -1300,8 +1300,9 @@ fn close_units(shared: &RefCell<TransformWork<'_, '_>>, owned: &[usize]) -> Resu
                         .iter()
                         .any(|(first, last, own)| own == *edge && known.crosses(*first, *last))
                 }) {
-                    return Err(edge
-                        .unavailable(crate::processing::SourceContinuityOperation::Segmentation));
+                    return Err(edge.unavailable(
+                        crate::processing::contextual::SourceContinuityOperation::Segmentation,
+                    ));
                 }
             }
             let internal_right =
@@ -1619,7 +1620,7 @@ fn selection_dependencies(
     let capture = &topology.capture;
     let mut active_scopes = context::filled(capture.scopes.len(), false)?;
     if capture.scopes[capture.domain_scopes[topology.domain]].writing_axis
-        == Some(crate::processing::SourceWritingAxis::Horizontal)
+        == Some(crate::processing::contextual::SourceWritingAxis::Horizontal)
     {
         return Ok(Some(active_scopes));
     }
@@ -1650,8 +1651,8 @@ fn selection_dependencies(
     }
     let mut boxes = Vec::new();
     for &order in &capture.flow_orders[topology.domain] {
-        if let crate::processing::SourceProcessingEvent::EnterScope(scope)
-        | crate::processing::SourceProcessingEvent::ExitScope(scope) =
+        if let crate::processing::contextual::SourceProcessingEvent::EnterScope(scope)
+        | crate::processing::contextual::SourceProcessingEvent::ExitScope(scope) =
             capture.events[order].event
             && capture.scopes[scope].definition.is_none()
         {
@@ -1816,7 +1817,7 @@ fn selection_dependencies(
                         };
                         if let Some(edge) = missing {
                             return Err(edge.unavailable(
-                                crate::processing::SourceContinuityOperation::Combination,
+                                crate::processing::contextual::SourceContinuityOperation::Combination,
                             ));
                         }
                         if next.is_multiple_of(2)
@@ -1869,9 +1870,9 @@ fn selection_dependencies(
                 .find(|(first, last, _)| *first <= slot && slot <= *last)
                 .map(|(_, _, edge)| *edge)
             {
-                return Err(
-                    edge.unavailable(crate::processing::SourceContinuityOperation::Combination)
-                );
+                return Err(edge.unavailable(
+                    crate::processing::contextual::SourceContinuityOperation::Combination,
+                ));
             }
             shared.borrow_mut().cohort[slot] = true;
             shared.borrow_mut().read(slot)?;
@@ -1932,9 +1933,9 @@ fn selection_dependencies(
                     .find(|(start, end, _)| *start <= at && at <= *end)
                     .map(|(_, _, edge)| *edge)
                 {
-                    return Err(
-                        edge.unavailable(crate::processing::SourceContinuityOperation::Combination)
-                    );
+                    return Err(edge.unavailable(
+                        crate::processing::contextual::SourceContinuityOperation::Combination,
+                    ));
                 }
                 if !at.is_multiple_of(2)
                     || shared

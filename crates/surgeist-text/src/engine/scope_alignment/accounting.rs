@@ -7,7 +7,7 @@ use crate::engine::layout::data::{
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
 use crate::{
     Result,
-    processing::{ScopeAlignmentError, ScopeAlignmentLimitKind},
+    processing::contextual::{ScopeAlignmentError, ScopeAlignmentLimitKind},
 };
 
 pub(crate) type Ledger = Option<ScopeAlignmentBudget>;

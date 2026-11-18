@@ -59,33 +59,33 @@ fn literal_woff1() -> Vec<u8> {
     wire
 }
 
-fn style() -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style() -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     }
 }
 
-fn analysis() -> t::AnalyzedSource {
-    let source = t::Source::new("AX\nXA");
-    let input = t::ParagraphInput {
+fn analysis() -> t::analyzed::AnalyzedSource {
+    let source = t::source::Source::new("AX\nXA");
+    let input = t::paragraph::ParagraphInput {
         source: source.clone(),
         base_style: style(),
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: t::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: t::ParagraphStrut::DefaultFont,
-        terminal_edge: t::ParagraphTerminalEdge::BlockEnd,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: t::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![t::ParagraphOrigin {
+        origins: vec![t::paragraph::ParagraphOrigin {
             text_node: None,
             source,
-            local: t::Range::new(0, 5),
-            aggregate: t::Range::new(0, 5),
-            kind: t::ParagraphOriginKind::Authored,
+            local: t::source::Range::new(0, 5),
+            aggregate: t::source::Range::new(0, 5),
+            kind: t::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -93,27 +93,29 @@ fn analysis() -> t::AnalyzedSource {
         replacements: vec![],
         anchor_order: vec![],
     };
-    let analyzed =
-        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = t::analyzed::AnalyzedSource::from_paragraph(
+        input,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| t::WrappingPolicy {
+        .map(|relation| t::analyzed::WrappingPolicy {
             relation: relation.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     analyzed.with_wrapping_policies(policies).unwrap()
 }
 
 fn finish(
-    p: &t::PreparedText,
-    start: t::PreparedBoundary,
-    opportunity: t::PreparedOpportunity,
-    line_start: t::LineStart,
-    line_end: t::LineEnd,
-) -> t::FinalizedLine {
+    p: &t::prepared::PreparedText,
+    start: t::prepared::PreparedBoundary,
+    opportunity: t::prepared::PreparedOpportunity,
+    line_start: t::selection::LineStart,
+    line_end: t::selection::LineEnd,
+) -> t::finalized::FinalizedLine {
     let end = opportunity.view().boundary();
     let from = start.view().participant_offset();
     let to = end.view().participant_offset();
@@ -125,21 +127,23 @@ fn finish(
     let controls = participants
         .iter()
         .filter_map(|part| match part {
-            t::PreparedParticipant::Control(occurrence) => Some(t::ControlAllocation {
-                occurrence: occurrence.clone(),
-                strut: None,
-                boundary: None,
-            }),
+            t::prepared::PreparedParticipant::Control(occurrence) => {
+                Some(t::allocation::ControlAllocation {
+                    occurrence: occurrence.clone(),
+                    strut: None,
+                    boundary: None,
+                })
+            }
             _ => None,
         })
         .collect();
-    p.select(t::LineSelectionRequest {
+    p.select(t::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start,
         end,
         participants,
-        termination: t::PreparedTermination::Ordinary(opportunity),
+        termination: t::selection::PreparedTermination::Ordinary(opportunity),
         alternative: None,
         incoming: None,
         atomics: vec![],
@@ -147,31 +151,31 @@ fn finish(
         boundary_context: vec![],
         line_box_struts: vec![],
         line_strut: None,
-        context: t::LineContext {
-            alignment_insets: t::LineAlignmentInsets::ZERO,
-            formatted_line: t::FormattedLineContext::default(),
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            line_box_direction: t::LineBoxDirection::LeftToRight,
-            orientation: t::LineOrientation::Horizontal,
+        context: t::selection::LineContext {
+            alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+            formatted_line: t::selection::FormattedLineContext::default(),
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            line_box_direction: t::selection::LineBoxDirection::LeftToRight,
+            orientation: t::selection::LineOrientation::Horizontal,
             start: line_start,
             end: line_end,
             available_inline: Some(20.0),
             indent: 0.0,
-            alignment: t::Alignment::Start,
-            tabs: t::TabContext::NoTabs,
-            spacing: t::SpacingPolicy::None,
+            alignment: t::options::Alignment::Start,
+            tabs: t::tabs::TabContext::NoTabs,
+            spacing: t::spacing::SpacingPolicy::None,
         },
     })
     .unwrap()
-    .finalize(t::LineAllocations {
-        spacing: t::SpacingAllocations::None,
-        scopes: t::ScopeAllocations::None,
+    .finalize(t::scope_alignment::LineAllocations {
+        spacing: t::spacing::SpacingAllocations::None,
+        scopes: t::scope_alignment::ScopeAllocations::None,
     })
     .unwrap()
 }
 
 fn check_lines(
-    p: &t::PreparedText,
+    p: &t::prepared::PreparedText,
     face: &FontFace,
     publication: &CataloguePublication,
     ids: [u32; 2],
@@ -180,12 +184,12 @@ fn check_lines(
     let start = p.boundary_views().next().unwrap().handle();
     let first = p
         .opportunity_views()
-        .find(|offer| offer.kind() == t::PreparedBreakKind::Forced)
+        .find(|offer| offer.kind() == t::prepared::PreparedBreakKind::Forced)
         .unwrap()
         .handle();
     let last = p
         .opportunity_views()
-        .find(|offer| offer.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let middle = first.view().boundary();
@@ -193,13 +197,19 @@ fn check_lines(
     assert_eq!(middle.view().source_after().get(), 3);
     assert_eq!(last.view().boundary().view().source_after().get(), 5);
 
-    let first = finish(p, start, first, t::LineStart::Paragraph, t::LineEnd::Forced);
+    let first = finish(
+        p,
+        start,
+        first,
+        t::selection::LineStart::Paragraph,
+        t::selection::LineEnd::Forced,
+    );
     let last = finish(
         p,
         middle,
         last,
-        t::LineStart::Continuation,
-        t::LineEnd::Paragraph,
+        t::selection::LineStart::Continuation,
+        t::selection::LineEnd::Paragraph,
     );
     for (line, start, expected) in [(first, 0, ids), (last, 3, [ids[1], ids[0]])] {
         assert_eq!(line.prepared_text().font_catalogue_identity(), publication);
@@ -233,8 +243,12 @@ fn check_lines(
         assert_eq!(
             glyphs,
             [
-                (t::Range::new(start, start + 1), expected[0], 10.0),
-                (t::Range::new(start + 1, start + 2), expected[1], 10.0)
+                (t::source::Range::new(start, start + 1), expected[0], 10.0),
+                (
+                    t::source::Range::new(start + 1, start + 2),
+                    expected[1],
+                    10.0
+                )
             ]
         );
     }
@@ -254,7 +268,7 @@ fn equivalent_raw_and_literal_woff1_drive_the_same_literal_lines() {
         let mut system = t::System::default();
         system.register_font_resource(resource).unwrap();
         let prepared = system
-            .prepare(&analysis(), t::PreparationOptions::default())
+            .prepare(&analysis(), t::prepared::PreparationOptions::default())
             .unwrap();
         let publication = system.font_catalogue_identity().clone();
         drop(system);
@@ -278,14 +292,14 @@ fn original_ahem_woff2_keeps_its_source_and_face_across_refresh_and_finalization
 
     let analyzed = analysis();
     let old = system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     let before = system.font_catalogue_identity().clone();
     system.refresh_fonts().unwrap();
     let after = system.font_catalogue_identity().clone();
     assert_ne!(before, after);
     let fresh = system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     assert_ne!(old, fresh);
     let later = FontResource::decode(TTF.to_vec(), common::FONT_LIMITS).unwrap();
@@ -321,9 +335,9 @@ fn compressed_decode_and_budget_refusals_keep_a_warm_text_layout() {
     system
         .register_fonts(WOFF2.to_vec(), woff2_limits(2 << 20))
         .unwrap();
-    let source = t::Source::new("AX");
+    let source = t::source::Source::new("AX");
     let first = system
-        .layout(source.clone(), style(), t::Options::default())
+        .layout(source.clone(), style(), t::options::Options::default())
         .unwrap();
     let prior = system.font_catalogue_identity().clone();
     let stats = system.stats();
@@ -350,7 +364,7 @@ fn compressed_decode_and_budget_refusals_keep_a_warm_text_layout() {
     assert_eq!(system.registered_font_faces().count(), 1);
 
     let again = system
-        .layout(source, style(), t::Options::default())
+        .layout(source, style(), t::options::Options::default())
         .unwrap();
     assert_eq!(first.key(), again.key());
     assert_eq!(system.stats().layout_hits(), stats.layout_hits() + 1);

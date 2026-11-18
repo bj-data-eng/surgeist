@@ -6,7 +6,10 @@
 //! functional metric-contribution candidate present in the shared workspace.
 //! No execution or historical RED is claimed. Only public API is used.
 use surgeist_layout::*;
-use surgeist_text::{BidiLevel, LineBoxAlignment, LineBoxStrut, LineStrut};
+use surgeist_text::{
+    allocation::{LineBoxAlignment, LineBoxStrut, LineStrut},
+    supplied_line::BidiLevel,
+};
 
 struct NumericTree<S: LayoutScalar> {
     inputs: Vec<LayoutInputOf<S>>,

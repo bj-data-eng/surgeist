@@ -247,89 +247,95 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
 
 #[test]
 fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_proxy() {
-    use crate::processing::{SourceBoxSide, SourceProcessingEvent as E};
+    use crate::processing::contextual::{SourceBoxSide, SourceProcessingEvent as E};
     let original = source("AB");
     let processed = std::sync::Arc::new(
-        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
-            joint_flows: Vec::new(),
-            scope_alignment_limits: None,
-            source: original.clone(),
-            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: crate::processing::SourceProcessingEnvelope::Complete,
-            origins: [Range::new(0, 1), Range::new(1, 2)]
-                .into_iter()
-                .map(|range| crate::protocol::paragraph::ParagraphOrigin {
-                    text_node: None,
-                    source: original.clone(),
-                    local: range,
-                    aggregate: range,
-                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
-                })
-                .collect(),
-            connections: vec![crate::processing::SourceProcessingConnection {
-                before_origin: 0,
-                after_origin: 1,
-                kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
-            }],
-            boundary_policies: vec![crate::protocol::paragraph::ParagraphBoundaryPolicy {
-                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(0),
-                preceding_wrap: crate::style::Wrap::Word,
-                following_wrap: crate::style::Wrap::Word,
-                ancestor_wrap: crate::style::Wrap::Word,
-            }],
-            controls: vec![],
-            replacements: vec![],
-            computed_line_boundaries: vec![crate::processing::ComputedLineBoundaryInput::Scope {
-                scope: 1,
-                side: SourceBoxSide::Before,
-            }],
-            scopes: vec![
-                crate::processing::SourceProcessingScope::Block {
-                    writing_axis: None,
-                    horizontal_inner_direction: None,
-                    font_reference: None,
-                    topology: crate::processing::SourceProcessingTopology::Complete,
-                    trim: Default::default(),
-                    base_style: own_style(),
-                    used_direction: ParagraphBaseDirection::LeftToRight,
-                },
-                crate::processing::SourceProcessingScope::Inline {
-                    horizontal_inner_direction: None,
-                    alignment_boundary: None,
-                    font_reference: None,
-                    trim: Default::default(),
-                    style: None,
-                    boundaries: None,
-                },
-            ],
-            paragraphs: vec![crate::processing::SourceProcessingParagraph {
-                base_direction: ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: ParagraphStrut::DefaultFont,
-            }],
-            events: vec![
-                E::EnterScope(0),
-                E::EnterParagraph(0),
-                E::Origin {
-                    origin: 0,
-                    affinity: Affinity::After,
-                },
-                E::Connection(0),
-                E::EnterScope(1),
-                E::Origin {
-                    origin: 1,
-                    affinity: Affinity::After,
-                },
-                E::ExitScope(1),
-                E::ExitParagraph(0),
-                E::ExitScope(0),
-            ],
-        })
+        crate::processing::contextual::process_contextual_source(
+            crate::processing::contextual::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
+                source: original.clone(),
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: crate::processing::contextual::SourceProcessingEnvelope::Complete,
+                origins: [Range::new(0, 1), Range::new(1, 2)]
+                    .into_iter()
+                    .map(|range| crate::protocol::paragraph::ParagraphOrigin {
+                        text_node: None,
+                        source: original.clone(),
+                        local: range,
+                        aggregate: range,
+                        kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
+                    })
+                    .collect(),
+                connections: vec![crate::processing::contextual::SourceProcessingConnection {
+                    before_origin: 0,
+                    after_origin: 1,
+                    kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+                }],
+                boundary_policies: vec![crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                    definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                        0,
+                    ),
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
+                }],
+                controls: vec![],
+                replacements: vec![],
+                computed_line_boundaries: vec![
+                    crate::processing::contextual::ComputedLineBoundaryInput::Scope {
+                        scope: 1,
+                        side: SourceBoxSide::Before,
+                    },
+                ],
+                scopes: vec![
+                    crate::processing::contextual::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: None,
+                        topology: crate::processing::contextual::SourceProcessingTopology::Complete,
+                        trim: Default::default(),
+                        base_style: own_style(),
+                        used_direction: ParagraphBaseDirection::LeftToRight,
+                    },
+                    crate::processing::contextual::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
+                        alignment_boundary: None,
+                        font_reference: None,
+                        trim: Default::default(),
+                        style: None,
+                        boundaries: None,
+                    },
+                ],
+                paragraphs: vec![crate::processing::contextual::SourceProcessingParagraph {
+                    base_direction: ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: ParagraphStrut::DefaultFont,
+                }],
+                events: vec![
+                    E::EnterScope(0),
+                    E::EnterParagraph(0),
+                    E::Origin {
+                        origin: 0,
+                        affinity: Affinity::After,
+                    },
+                    E::Connection(0),
+                    E::EnterScope(1),
+                    E::Origin {
+                        origin: 1,
+                        affinity: Affinity::After,
+                    },
+                    E::ExitScope(1),
+                    E::ExitParagraph(0),
+                    E::ExitScope(0),
+                ],
+            },
+        )
         .unwrap(),
     );
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(
         cause.target(),
-        crate::processing::CapturedComputedLineBoundaryTarget::Scope {
+        crate::processing::contextual::CapturedComputedLineBoundaryTarget::Scope {
             scope: processed.captured_scope(1).unwrap(),
             side: SourceBoxSide::Before
         }

@@ -199,7 +199,7 @@ fn validate_occurrence<'a>(
     tree: &'a TestTree,
     parent: usize,
     occurrence: &LoweredOccurrence,
-) -> Result<(bool, &'a surgeist_text::PreparedOrigin), Error> {
+) -> Result<(bool, &'a surgeist_text::prepared::PreparedOrigin), Error> {
     let (source, wrapper, text) = (occurrence.source, occurrence.wrapper, occurrence.text);
     let path = occurrence.path;
     let [source_node, wrapper_node, text_node] =
@@ -274,7 +274,7 @@ fn validate_visible_text(
     tree: &TestTree,
     batch: &layout::CompletedLayoutBatch<usize>,
     occurrence: &LoweredOccurrence,
-    origin: &surgeist_text::PreparedOrigin,
+    origin: &surgeist_text::prepared::PreparedOrigin,
     single_line: bool,
 ) -> Result<f64, Error> {
     let (wrapper, text) = (occurrence.wrapper, occurrence.text);
@@ -401,8 +401,8 @@ fn validate_text_output(
 fn validate_fragments(
     path: SourcePath,
     text_node: &TestNode,
-    mut issued_lines: Vec<(Vec<surgeist_text::FinalizedFragment>, f64)>,
-    origin: &surgeist_text::PreparedOrigin,
+    mut issued_lines: Vec<(Vec<surgeist_text::finalized::FinalizedFragment>, f64)>,
+    origin: &surgeist_text::prepared::PreparedOrigin,
 ) -> Result<Vec<layout::ScrollRect>, Error> {
     let actual = text_node
         .unrounded_inline_fragments
@@ -425,7 +425,7 @@ fn validate_fragments(
         let (issued, baseline) = issued_lines.get_mut(fragment.line_index())
             .ok_or_else(|| invalid(format!("visible source {path} has a foreign fragment line")))?;
         let position = issued.iter().position(|candidate| candidate == handle);
-        if !matches!(handle.view().owner(), surgeist_text::FinalizedFragmentOwner::Origin(owner) if &owner == origin)
+        if !matches!(handle.view().owner(), surgeist_text::finalized::FinalizedFragmentOwner::Origin(owner) if &owner == origin)
             || f64::from(fragment.baseline().y) != *baseline
             || position.is_none()
         {

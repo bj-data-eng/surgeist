@@ -1,3 +1,8 @@
+//! Paragraph-level layout options.
+//!
+//! [`Options`] holds them and [`ValidatedOptions`] holds intrinsically valid standalone options; [`Alignment`],
+//! [`TextAlignLast`], [`TextOverflow`] and [`Indent`] are its value types.
+
 use crate::{
     Error, ErrorCode, ErrorDetail, Result,
     error::NumericRequirement,

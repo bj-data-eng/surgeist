@@ -64,7 +64,7 @@ fn pretty_text_stages_tail_then_body_without_transferring_shortness_f64() {
     text_profiles::<f64>();
 }
 
-fn semantic_prefix(before: &t::FinalizedLine, after: &t::FinalizedLine) {
+fn semantic_prefix(before: &t::finalized::FinalizedLine, after: &t::finalized::FinalizedLine) {
     assert_eq!(before.prepared_text(), after.prepared_text());
     assert_eq!(
         before.selected_line().request(),
@@ -83,15 +83,17 @@ fn semantic_prefix(before: &t::FinalizedLine, after: &t::FinalizedLine) {
     assert_eq!(a.alignment(), b.alignment());
     assert_eq!(a.min_content_contribution(), b.min_content_contribution());
     assert_eq!(a.max_content_contribution(), b.max_content_contribution());
-    let slots = |line: &t::FinalizedLine| {
+    let slots = |line: &t::finalized::FinalizedLine| {
         line.spacing_slots()
             .map(|feedback| {
                 (
                     feedback.slot.pieces().collect::<Vec<_>>(),
                     feedback.slot.participants().cloned().collect::<Vec<_>>(),
                     match feedback.slot.target() {
-                        t::SpacingSlotTarget::Separator(unit) => unit.pieces().collect::<Vec<_>>(),
-                        t::SpacingSlotTarget::Boundary { .. } => {
+                        t::spacing::SpacingSlotTarget::Separator(unit) => {
+                            unit.pieces().collect::<Vec<_>>()
+                        }
+                        t::spacing::SpacingSlotTarget::Boundary { .. } => {
                             panic!("existing Spaces candidates are complete separator units")
                         }
                     },
@@ -144,7 +146,7 @@ fn long_and_justified<S: l::LayoutScalar>() {
             assert_eq!(line.measurements().alignment().advance(), 60.0);
             assert!(line.spacing_slots().any(|slot| matches!(
                 slot.disposition,
-                t::SpacingSlotDisposition::Retained { .. }
+                t::spacing::SpacingSlotDisposition::Retained { .. }
             )));
             assert_eq!(
                 line.selected_line().request().context.available_inline,
@@ -192,7 +194,8 @@ fn source_and_cache<S: l::LayoutScalar>() {
     assert_eq!(old.receipts(&packet), old_receipts);
     rows(&old, &packet, &[(4, 30.0), (8, 40.0)]);
 
-    let mut fixture = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
+    let mut fixture =
+        Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
     let auto = fixture.compute(&[]);
     assert_float(&fixture, &auto, false);
     auto.apply_to(&mut fixture.host).unwrap();
@@ -217,7 +220,8 @@ fn source_and_cache<S: l::LayoutScalar>() {
             "positive warm proof is the eligible float leaf"
         );
         warm.apply_to(&mut fixture.host).unwrap();
-        let mut fresh = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
+        let mut fresh =
+            Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
         fresh.root(|r| r.text_wrap_style = style);
         assert_float(&fresh, &fresh.compute(&[]), repaired);
         retained.push((selected, repaired));
@@ -252,17 +256,17 @@ fn forced_body<S: l::LayoutScalar>() {
         assert_eq!(
             request.context.end,
             if i == 2 {
-                t::LineEnd::Forced
+                t::selection::LineEnd::Forced
             } else if i == 4 {
-                t::LineEnd::Paragraph
+                t::selection::LineEnd::Paragraph
             } else {
-                t::LineEnd::Soft
+                t::selection::LineEnd::Soft
             }
         );
         let published = packet.placed_text()[0].layout().lines()[i];
         assert_eq!(
             published.bounds(),
-            t::Rect::new(0.0, 10.0 * i as f64, 60.0, 10.0)
+            t::geometry::Rect::new(0.0, 10.0 * i as f64, 60.0, 10.0)
         );
         assert_eq!(published.baseline(), 8.0 + 10.0 * i as f64);
     }

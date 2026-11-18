@@ -4,112 +4,112 @@ use std::cell::RefCell;
 
 fn atomic_capture(
     system: &mut t::System,
-    orientation: t::LineOrientation,
-    kind: t::InlineBoxKind,
+    orientation: t::selection::LineOrientation,
+    kind: t::source::InlineBoxKind,
     id: u64,
 ) -> Captured {
     let raw = "AB";
     let style = style(10.0, 10.0);
-    let mut source = t::Source::new(raw);
-    source.inline_box(t::InlineBox::new(
-        t::Id::from_u64(id),
+    let mut source = t::source::Source::new(raw);
+    source.inline_box(t::source::InlineBox::new(
+        t::source::Id::from_u64(id),
         kind,
         1,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
     ));
-    let ranges = [t::Range::new(0, 1), t::Range::new(1, 2)];
-    use t::SourceProcessingEvent as E;
+    let ranges = [t::source::Range::new(0, 1), t::source::Range::new(1, 2)];
+    use t::capture::SourceProcessingEvent as E;
     let mut events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
         E::Origin {
             origin: 0,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         },
     ];
     events.extend([
         E::Atomic {
             atomic: 0,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         },
         E::Connection(0),
         E::Origin {
             origin: 1,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         },
     ]);
     let boundaries = [
-        t::ParagraphBoundaryDefinition::AtomicBefore(0),
-        t::ParagraphBoundaryDefinition::AtomicAfter(0),
-        t::ParagraphBoundaryDefinition::Connection(0),
+        t::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+        t::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
+        t::paragraph::ParagraphBoundaryDefinition::Connection(0),
     ];
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins: ranges
                 .into_iter()
-                .map(|range| t::ParagraphOrigin {
+                .map(|range| t::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: range,
                     aggregate: range,
-                    kind: t::ParagraphOriginKind::Authored,
+                    kind: t::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             controls: vec![],
-            connections: vec![t::SourceProcessingConnection {
+            connections: vec![t::capture::SourceProcessingConnection {
                 before_origin: 0,
                 after_origin: 1,
-                kind: t::ParagraphConnectionKind::Continuous,
+                kind: t::paragraph::ParagraphConnectionKind::Continuous,
             }],
             boundary_policies: boundaries
                 .into_iter()
-                .map(|definition| t::ParagraphBoundaryPolicy {
+                .map(|definition| t::paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: t::Wrap::Word,
-                    following_wrap: t::Wrap::Word,
-                    ancestor_wrap: t::Wrap::Word,
+                    preceding_wrap: t::style::Wrap::Word,
+                    following_wrap: t::style::Wrap::Word,
+                    ancestor_wrap: t::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: t::ParagraphBaseDirection::LeftToRight,
+                used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    let analysis = t::AnalyzedSource::from_processed_paragraph(
+    let analysis = t::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analysis
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| t::WrappingPolicy {
+        .map(|row| t::analyzed::WrappingPolicy {
             relation: row.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analysis = analysis.with_wrapping_policies(policies).unwrap();
-    let options = t::PreparationOptions::default()
+    let options = t::prepared::PreparationOptions::default()
         .with_orientation(orientation)
         .with_baseline_reference(ALPHA);
     let prepared = system
@@ -158,11 +158,11 @@ fn named_context() -> l::InlineBaselineContext {
 fn clockwise(mode: l::WritingMode) -> bool {
     mode != l::WritingMode::HorizontalTb
 }
-fn orientation(mode: l::WritingMode) -> t::LineOrientation {
+fn orientation(mode: l::WritingMode) -> t::selection::LineOrientation {
     if clockwise(mode) {
-        t::LineOrientation::SidewaysClockwise
+        t::selection::LineOrientation::SidewaysClockwise
     } else {
-        t::LineOrientation::Horizontal
+        t::selection::LineOrientation::Horizontal
     }
 }
 fn axis(mode: l::WritingMode) -> l::PhysicalAxis {
@@ -226,7 +226,7 @@ fn attach<S: l::LayoutScalar>(
             .unwrap()
             .original_box()
             .id(),
-        t::Id::from_u64(u64::from(atomic))
+        t::source::Id::from_u64(u64::from(atomic))
     );
     let last = host.push(
         Some(container),
@@ -307,7 +307,7 @@ fn compute<S: l::LayoutScalar>(
 fn receipt<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     source: u32,
-) -> t::FinalizedLine {
+) -> t::finalized::FinalizedLine {
     batch
         .unrounded_inline_fragments()
         .iter()
@@ -336,14 +336,14 @@ fn knowledge<S: l::LayoutScalar>() {
         &mut system,
         "A\nB",
         style(5.0, 6.0),
-        t::LineOrientation::Horizontal,
+        t::selection::LineOrientation::Horizontal,
         false,
     );
     let child_cw = capture(
         &mut system,
         "A\nB",
         style(5.0, 6.0),
-        t::LineOrientation::SidewaysClockwise,
+        t::selection::LineOrientation::SidewaysClockwise,
         false,
     );
     for (child, cw) in [(&child_h, false), (&child_cw, true)] {
@@ -453,7 +453,7 @@ fn knowledge<S: l::LayoutScalar>() {
             );
             assert_eq!(
                 placed(&batch, 0).inline_boxes()[0].rect(),
-                t::Rect::new(x, y, 6.0, 14.0)
+                t::geometry::Rect::new(x, y, 6.0, 14.0)
             );
             custody(&batch, 2, child);
         }
@@ -467,19 +467,21 @@ fn used_alphabetic_distinguishes_absent_unknown_axes_and_unused_edge_alignment()
 
 fn explicit(
     parent: &Captured,
-    line: t::FinalizedLine,
-    anchor: t::LineAnchor,
-    atomic: t::AtomicPlacement,
-) -> t::Layout {
-    t::Layout::from_finalized_lines(t::PlacementRequest {
+    line: t::finalized::FinalizedLine,
+    anchor: t::placement::LineAnchor,
+    atomic: t::placement::AtomicPlacement,
+) -> t::layout::Layout {
+    t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: parent.prepared.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
-        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-            line,
-            anchor,
-            orientation: parent.prepared.orientation(),
-            atomics: vec![atomic],
-        })],
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![t::placement::PlacementEntry::Formatted(
+            t::placement::LinePlacement {
+                line,
+                anchor,
+                orientation: parent.prepared.orientation(),
+                atomics: vec![atomic],
+            },
+        )],
     })
     .unwrap()
 }
@@ -493,14 +495,14 @@ fn positioned<S: l::LayoutScalar>() {
             &mut system,
             "A\nB",
             style(5.0, 6.0),
-            t::LineOrientation::Horizontal,
+            t::selection::LineOrientation::Horizontal,
             false,
         ),
         capture(
             &mut system,
             "A\nB",
             style(5.0, 6.0),
-            t::LineOrientation::SidewaysClockwise,
+            t::selection::LineOrientation::SidewaysClockwise,
             false,
         ),
     ];
@@ -513,16 +515,16 @@ fn positioned<S: l::LayoutScalar>() {
         let parent = atomic_capture(
             &mut system,
             orientation(mode),
-            t::InlineBoxKind::OutOfFlow,
+            t::source::InlineBoxKind::OutOfFlow,
             2,
         );
         let qualified = select(
             &parent,
             parent.prepared.boundary_views().next().unwrap().handle(),
             terminal(&parent.prepared),
-            vec![t::AtomicAllocation {
+            vec![t::allocation::AtomicAllocation {
                 occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
-                allocation: t::AtomicLineAllocation::OutOfFlow,
+                allocation: t::allocation::AtomicLineAllocation::OutOfFlow,
             }],
             40.0,
         );
@@ -575,7 +577,7 @@ fn positioned<S: l::LayoutScalar>() {
                     } else {
                         (34.0, 10.0)
                     };
-                    let border = t::Rect::new(x, y, 6.0, 14.0);
+                    let border = t::geometry::Rect::new(x, y, 6.0, 14.0);
                     let numeric = if !cw {
                         y + if child_cw { 14.0 } else { 4.0 }
                     } else {
@@ -594,11 +596,11 @@ fn positioned<S: l::LayoutScalar>() {
                     let expected = explicit(
                         &parent,
                         line,
-                        t::LineAnchor {
+                        t::placement::LineAnchor {
                             inline_origin: 0.0,
                             baseline: common(mode),
                         },
-                        t::AtomicPlacement {
+                        t::placement::AtomicPlacement {
                             occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                             border,
                             content: border,
@@ -680,7 +682,7 @@ fn fitting<S: l::LayoutScalar>() {
             parent
                 .prepared
                 .opportunity_views()
-                .any(|row| row.kind() == t::PreparedBreakKind::Allowed)
+                .any(|row| row.kind() == t::prepared::PreparedBreakKind::Allowed)
         );
         let whole = select(
             &parent,
@@ -811,7 +813,7 @@ fn fitting<S: l::LayoutScalar>() {
         let raw = system
             .prepare(
                 &parent.prepared.analyzed_source(),
-                t::PreparationOptions::default().with_orientation(orientation(mode)),
+                t::prepared::PreparationOptions::default().with_orientation(orientation(mode)),
             )
             .unwrap();
         assert_eq!(raw.baseline_reference(), None);
@@ -844,7 +846,7 @@ fn same_text<S: l::LayoutScalar>(
         let other = placed(b, row.container());
         assert_eq!(row.layout().source(), other.source());
         assert_eq!(row.layout().key(), other.key());
-        let positions = |text: &t::Layout| {
+        let positions = |text: &t::layout::Layout| {
             text.positions()
                 .map(|p| {
                     (
@@ -946,19 +948,22 @@ fn replay<S: l::LayoutScalar>() {
             false,
         );
         qualify_child_text(&child, &bytes, cw);
-        for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+        for kind in [
+            t::source::InlineBoxKind::InFlow,
+            t::source::InlineBoxKind::OutOfFlow,
+        ] {
             let parent = atomic_capture(&mut system, orientation(mode), kind, 2);
             let make_input = || {
                 let mut input = child_input::<S>(
                     cw,
-                    if kind == t::InlineBoxKind::InFlow {
+                    if kind == t::source::InlineBoxKind::InFlow {
                         named_context()
                     } else {
                         l::InlineBaselineContext::Physical
                     },
                 );
                 input.baseline_source = l::BaselineSource::First;
-                if kind == t::InlineBoxKind::OutOfFlow {
+                if kind == t::source::InlineBoxKind::OutOfFlow {
                     input.position = l::Position::Absolute;
                 }
                 input
@@ -1028,7 +1033,7 @@ fn replay<S: l::LayoutScalar>() {
                     .collect::<Vec<_>>()
             );
             same_text(&changed, &fresh);
-            let inflow = kind == t::InlineBoxKind::InFlow;
+            let inflow = kind == t::source::InlineBoxKind::InFlow;
             let b = common(mode);
             let (x, y) = if !cw {
                 (10.0, if inflow { 3.0 } else { 0.0 })
@@ -1041,7 +1046,7 @@ fn replay<S: l::LayoutScalar>() {
             };
             assert_eq!(
                 placed(&changed, 0).inline_boxes()[0].rect(),
-                t::Rect::new(x, y, 6.0, 18.0)
+                t::geometry::Rect::new(x, y, 6.0, 18.0)
             );
             let line = receipt(&changed, 1);
             assert_eq!(

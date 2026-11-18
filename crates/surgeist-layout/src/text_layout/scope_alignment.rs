@@ -7,8 +7,11 @@ use crate::{
 };
 use std::{mem::size_of, sync::Arc};
 use surgeist_text::{
-    CapturedScope, PreparedText, ScopeAlignmentBoundary, ScopeAlignmentError,
-    ScopeAlignmentLimitKind, ScopeAlignmentLimits,
+    capture::CapturedScope,
+    prepared::PreparedText,
+    scope_alignment::{
+        ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
+    },
 };
 
 /// One actual scope's resolved alignment, supplied before Layout computation.
@@ -27,9 +30,9 @@ pub type TextScopeAlignmentInput = TextScopeAlignmentInputOf<DefaultScalar>;
 /// been proved. Equality checks consistency; it never establishes ownership.
 pub(super) fn intrinsic_alignment<S: LayoutScalar>(
     row: &TextScopeAlignmentInputOf<S>,
-    alignment: surgeist_text::LineBoxAlignment,
-) -> surgeist_text::Result<surgeist_text::LineBoxAlignment> {
-    use surgeist_text::LineBoxAlignment as A;
+    alignment: surgeist_text::allocation::LineBoxAlignment,
+) -> surgeist_text::Result<surgeist_text::allocation::LineBoxAlignment> {
+    use surgeist_text::allocation::LineBoxAlignment as A;
     let agrees = match (alignment, row.alignment) {
         (A::Baseline, _) => true,
         (A::Top, VerticalAlignOf::Top) | (A::Bottom, VerticalAlignOf::Bottom) => true,
@@ -50,7 +53,7 @@ pub(crate) fn nominated_endpoint<'a, Node: Copy + Eq, S: LayoutScalar>(
     resources: &'a ScopeAlignmentResources<S>,
     associations: &super::capture::ScopeAssociations<Node>,
     node: Node,
-    occurrence: &surgeist_text::PreparedControl,
+    occurrence: &surgeist_text::prepared::PreparedControl,
 ) -> surgeist_text::Result<Option<&'a TextScopeAlignmentInputOf<S>>> {
     let Some(control) = occurrence.captured_control() else {
         return Ok(None);
@@ -108,7 +111,7 @@ impl<S: LayoutScalar> TextScopeAlignmentInputOf<S> {
         let height = NonNegativeFiniteOf::new(height).map_err(|_| {
             numeric(
                 own.line_height(),
-                surgeist_text::TextNumericError::OutOfRange,
+                surgeist_text::geometry::TextNumericError::OutOfRange,
             )
         })?;
         let offset =
@@ -154,7 +157,7 @@ impl<S: LayoutScalar> TextScopeAlignmentInputOf<S> {
         let size = NonNegativeFiniteOf::new(size).map_err(|_| {
             numeric(
                 f64::from(actual.font_size()),
-                surgeist_text::TextNumericError::OutOfRange,
+                surgeist_text::geometry::TextNumericError::OutOfRange,
             )
         })?;
         let offset = if superscript {
@@ -191,7 +194,9 @@ fn require_prepared_scope(
     {
         return Err(refusal(ScopeAlignmentError::ForeignCapture));
     }
-    if captured.domain() != scope.domain() || scope.role() != surgeist_text::ScopeRole::Inline {
+    if captured.domain() != scope.domain()
+        || scope.role() != surgeist_text::capture::ScopeRole::Inline
+    {
         return Err(refusal(ScopeAlignmentError::WrongDomain));
     }
     if !captured.members().any(|member| {
@@ -208,14 +213,23 @@ fn require_prepared_scope(
 
 fn scalar_context<S: LayoutScalar>(value: f64) -> surgeist_text::Result<S> {
     if !value.is_finite() {
-        return Err(numeric(value, surgeist_text::TextNumericError::NonFinite));
+        return Err(numeric(
+            value,
+            surgeist_text::geometry::TextNumericError::NonFinite,
+        ));
     }
     let result = S::from_f64(value);
     if !result.is_finite() {
-        return Err(numeric(value, surgeist_text::TextNumericError::OutOfRange));
+        return Err(numeric(
+            value,
+            surgeist_text::geometry::TextNumericError::OutOfRange,
+        ));
     }
     if value != 0.0 && result == S::ZERO {
-        return Err(numeric(value, surgeist_text::TextNumericError::NonZeroLost));
+        return Err(numeric(
+            value,
+            surgeist_text::geometry::TextNumericError::NonZeroLost,
+        ));
     }
     Ok(result)
 }
@@ -232,12 +246,14 @@ fn normalization_error(
         }
         BaselineOffsetResolutionError::NonFinite => {
             if input.is_finite() {
-                surgeist_text::TextNumericError::OutOfRange
+                surgeist_text::geometry::TextNumericError::OutOfRange
             } else {
-                surgeist_text::TextNumericError::NonFinite
+                surgeist_text::geometry::TextNumericError::NonFinite
             }
         }
-        BaselineOffsetResolutionError::NonZeroLost => surgeist_text::TextNumericError::NonZeroLost,
+        BaselineOffsetResolutionError::NonZeroLost => {
+            surgeist_text::geometry::TextNumericError::NonZeroLost
+        }
     };
     // This enum reports the operation, not a failed numeric result. Retain its
     // named input instead of fabricating a zero result.
@@ -247,7 +263,7 @@ fn normalization_error(
     )
     .with_detail(surgeist_text::ErrorDetail::InvalidTextNumeric {
         field,
-        phase: surgeist_text::TextNumericPhase::Selection,
+        phase: surgeist_text::geometry::TextNumericPhase::Selection,
         category,
         value: input,
     })
@@ -261,14 +277,17 @@ pub(crate) fn refusal(reason: ScopeAlignmentError) -> surgeist_text::Error {
     .with_detail(surgeist_text::ErrorDetail::ScopeAlignment { reason })
 }
 
-fn numeric(value: f64, category: surgeist_text::TextNumericError) -> surgeist_text::Error {
+fn numeric(
+    value: f64,
+    category: surgeist_text::geometry::TextNumericError,
+) -> surgeist_text::Error {
     surgeist_text::Error::new(
         surgeist_text::ErrorCode::InvalidTextNumeric,
         "scope alignment numeric operation refused",
     )
     .with_detail(surgeist_text::ErrorDetail::InvalidTextNumeric {
         field: "scope alignment",
-        phase: surgeist_text::TextNumericPhase::Selection,
+        phase: surgeist_text::geometry::TextNumericPhase::Selection,
         category,
         value,
     })
@@ -337,7 +356,7 @@ impl<S: LayoutScalar> ScopeAlignmentSnapshot<S> {
                     }));
                 }
             }
-            if row.scope.role() != surgeist_text::ScopeRole::Inline {
+            if row.scope.role() != surgeist_text::capture::ScopeRole::Inline {
                 return Err(refusal(ScopeAlignmentError::WrongDomain));
             }
             let class = row
@@ -524,7 +543,7 @@ impl AdmissionWork {
             retained: ScopeCensus::default(),
         };
         for row in rows {
-            if row.scope.role() != surgeist_text::ScopeRole::Inline {
+            if row.scope.role() != surgeist_text::capture::ScopeRole::Inline {
                 return Err(refusal(ScopeAlignmentError::WrongDomain));
             }
             if row.scope.alignment_boundary().is_none() {
@@ -907,8 +926,8 @@ impl<'a> EntryFundingRef<'a> {
     fn operation(self) -> surgeist_text::Result<ScopeOperation<'a>> {
         self.facts
             .begin(
-                surgeist_text::ScopeAlignmentCensusInput::Product(
-                    surgeist_text::ScopeAlignmentProduct::Prepared(self.prepared),
+                surgeist_text::scope_alignment::ScopeAlignmentCensusInput::Product(
+                    surgeist_text::scope_alignment::ScopeAlignmentProduct::Prepared(self.prepared),
                 ),
                 0,
             )?
@@ -1110,7 +1129,7 @@ pub(crate) trait ScopeAlignmentFacts {
     fn retain_payload(&self, census: ScopeCensus) -> surgeist_text::Result<ScopeLease>;
     fn begin<'a>(
         &'a self,
-        input: surgeist_text::ScopeAlignmentCensusInput<'a>,
+        input: surgeist_text::scope_alignment::ScopeAlignmentCensusInput<'a>,
         outputs: usize,
     ) -> surgeist_text::Result<Option<ScopeOperation<'a>>>;
     fn alignment(
@@ -1139,7 +1158,7 @@ impl<S: LayoutScalar> ScopeAlignmentFacts for ScopeAlignmentResources<S> {
     }
     fn begin<'a>(
         &'a self,
-        input: surgeist_text::ScopeAlignmentCensusInput<'a>,
+        input: surgeist_text::scope_alignment::ScopeAlignmentCensusInput<'a>,
         outputs: usize,
     ) -> surgeist_text::Result<Option<ScopeOperation<'a>>> {
         ScopeAlignmentResources::begin(self, input, outputs)
@@ -1170,7 +1189,7 @@ impl<S: LayoutScalar> ScopeAlignmentFacts for ScopeAlignmentResources<S> {
                 BaselineOffsetOf::try_new(offset.get().to_f64()).map_err(|_| {
                     numeric(
                         offset.get().to_f64(),
-                        surgeist_text::TextNumericError::NonFinite,
+                        surgeist_text::geometry::TextNumericError::NonFinite,
                     )
                 })?,
             ),
@@ -1181,7 +1200,9 @@ impl<S: LayoutScalar> ScopeAlignmentFacts for ScopeAlignmentResources<S> {
 use super::fit::FitError;
 use crate::inline::{InlineLineMetricGroupsOf, InlineMetricContributionOf};
 use surgeist_text::{
-    LineBoxAlignment, ScopeAllocation, ScopeAllocations, SelectedLine, SelectedScope,
+    allocation::LineBoxAlignment,
+    scope_alignment::{ScopeAllocation, ScopeAllocations, SelectedScope},
+    selection::SelectedLine,
 };
 
 struct ScopeNode {
@@ -1281,7 +1302,7 @@ impl<'a> AllocationBudget<'a> {
 /// Allocate from exact selected custody before the first geometry publication.
 pub(crate) enum ScopeAllocationInput<'a> {
     Selected(&'a SelectedLine),
-    Finalized(&'a surgeist_text::FinalizedLine),
+    Finalized(&'a surgeist_text::finalized::FinalizedLine),
 }
 pub(crate) struct AllocatedScopes {
     allocations: ScopeAllocations,
@@ -1306,11 +1327,11 @@ pub(crate) fn allocate(
     let (selected, product) = match input {
         ScopeAllocationInput::Selected(line) => (
             line.clone(),
-            surgeist_text::ScopeAlignmentProduct::Selected(line),
+            surgeist_text::scope_alignment::ScopeAlignmentProduct::Selected(line),
         ),
         ScopeAllocationInput::Finalized(line) => (
             line.selected_line(),
-            surgeist_text::ScopeAlignmentProduct::Finalized(line),
+            surgeist_text::scope_alignment::ScopeAlignmentProduct::Finalized(line),
         ),
     };
     let mut selected_scopes = selected.scopes();
@@ -1322,7 +1343,7 @@ pub(crate) fn allocate(
     };
     let operation = facts
         .begin(
-            surgeist_text::ScopeAlignmentCensusInput::Product(product),
+            surgeist_text::scope_alignment::ScopeAlignmentCensusInput::Product(product),
             0,
         )?
         .ok_or_else(|| {
@@ -1364,7 +1385,7 @@ pub(crate) fn allocate(
         if parent.domain() != captured.domain() {
             return Err(refusal(ScopeAlignmentError::WrongDomain).into());
         }
-        if parent.role() == surgeist_text::ScopeRole::Inline {
+        if parent.role() == surgeist_text::capture::ScopeRole::Inline {
             let mut actual = None;
             for (candidate, node) in nodes.iter().enumerate() {
                 budget.work(1)?;
@@ -1541,7 +1562,7 @@ pub(crate) fn allocate(
     for node in nodes {
         allocations.push(ScopeAllocation {
             scope: node.scope,
-            displacement: surgeist_text::BaselineShift::try_new(node.own)?,
+            displacement: surgeist_text::source::BaselineShift::try_new(node.own)?,
         });
     }
     let census = ScopeCensus {
@@ -1613,7 +1634,7 @@ fn text_alignment(alignment: LineBoxAlignment) -> surgeist_text::Result<Vertical
 fn shifted(value: f64) -> surgeist_text::Result<VerticalAlignOf<f64>> {
     Ok(VerticalAlignOf::Shift(
         BaselineOffsetOf::try_new(value)
-            .map_err(|_| numeric(value, surgeist_text::TextNumericError::NonFinite))?,
+            .map_err(|_| numeric(value, surgeist_text::geometry::TextNumericError::NonFinite))?,
     ))
 }
 fn include(
@@ -1640,13 +1661,13 @@ fn finish(
             error.value(),
             match error.reason() {
                 crate::LayoutTextNumericError::NonFinite => {
-                    surgeist_text::TextNumericError::NonFinite
+                    surgeist_text::geometry::TextNumericError::NonFinite
                 }
                 crate::LayoutTextNumericError::OutOfRange => {
-                    surgeist_text::TextNumericError::OutOfRange
+                    surgeist_text::geometry::TextNumericError::OutOfRange
                 }
                 crate::LayoutTextNumericError::NonZeroLost => {
-                    surgeist_text::TextNumericError::NonZeroLost
+                    surgeist_text::geometry::TextNumericError::NonZeroLost
                 }
             },
         )
@@ -1657,10 +1678,16 @@ fn finish(
 fn sum(base: f64, delta: f64) -> surgeist_text::Result<f64> {
     let value = base + delta;
     if !value.is_finite() {
-        return Err(numeric(value, surgeist_text::TextNumericError::NonFinite));
+        return Err(numeric(
+            value,
+            surgeist_text::geometry::TextNumericError::NonFinite,
+        ));
     }
     if (delta != 0.0 && value == base) || (base != 0.0 && value == delta) {
-        return Err(numeric(delta, surgeist_text::TextNumericError::NonZeroLost));
+        return Err(numeric(
+            delta,
+            surgeist_text::geometry::TextNumericError::NonZeroLost,
+        ));
     }
     Ok(if value == 0.0 { 0.0 } else { value })
 }
@@ -1670,7 +1697,7 @@ fn sum(base: f64, delta: f64) -> surgeist_text::Result<f64> {
 pub(crate) struct ScopeBasis(Option<Arc<ScopeProof>>);
 #[derive(Debug)]
 struct ScopeProof {
-    rows: Vec<surgeist_text::ScopeFrameAllocation>,
+    rows: Vec<surgeist_text::scope_alignment::ScopeFrameAllocation>,
     _lease: ScopeLease,
 }
 impl PartialEq for ScopeBasis {
@@ -1720,8 +1747,10 @@ impl ScopeBases {
             .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
         let operation = resources
             .begin(
-                surgeist_text::ScopeAlignmentCensusInput::Product(
-                    surgeist_text::ScopeAlignmentProduct::Finalized(&line.finalized),
+                surgeist_text::scope_alignment::ScopeAlignmentCensusInput::Product(
+                    surgeist_text::scope_alignment::ScopeAlignmentProduct::Finalized(
+                        &line.finalized,
+                    ),
                 ),
                 0,
             )?
@@ -1821,7 +1850,7 @@ pub(crate) fn admit_key_comparison(
 }
 
 pub(crate) fn admit_frame_comparisons(
-    line: &surgeist_text::FinalizedLine,
+    line: &surgeist_text::finalized::FinalizedLine,
     others: impl Iterator<Item = usize>,
     facts: &dyn ScopeAlignmentFacts,
 ) -> surgeist_text::Result<()> {
@@ -1832,7 +1861,7 @@ pub(crate) fn admit_frame_comparisons(
 }
 
 pub(crate) fn basis(
-    line: &surgeist_text::FinalizedLine,
+    line: &surgeist_text::finalized::FinalizedLine,
     facts: &dyn ScopeAlignmentFacts,
 ) -> Result<ScopeBasis, FitError> {
     let rows = line.scope_allocations();
@@ -1845,8 +1874,8 @@ pub(crate) fn basis(
         .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
     let operation = facts
         .begin(
-            surgeist_text::ScopeAlignmentCensusInput::Product(
-                surgeist_text::ScopeAlignmentProduct::Finalized(line),
+            surgeist_text::scope_alignment::ScopeAlignmentCensusInput::Product(
+                surgeist_text::scope_alignment::ScopeAlignmentProduct::Finalized(line),
             ),
             0,
         )?
@@ -1858,13 +1887,14 @@ pub(crate) fn basis(
     let retained = operation.input_union()?;
     facts.materialize(limits, retained.records, rows.len())?;
     facts.visit(limits, rows.len())?;
-    let (mut values, census) = reserve_buffer::<surgeist_text::ScopeFrameAllocation>(
-        limits,
-        retained,
-        facts.retention(),
-        rows.len(),
-        size_of::<ScopeProof>(),
-    )?;
+    let (mut values, census) =
+        reserve_buffer::<surgeist_text::scope_alignment::ScopeFrameAllocation>(
+            limits,
+            retained,
+            facts.retention(),
+            rows.len(),
+            size_of::<ScopeProof>(),
+        )?;
     values.extend_from_slice(rows);
     let lease = facts.retain_payload(census)?;
     Ok(ScopeBasis(Some(Arc::new(ScopeProof {
@@ -1874,7 +1904,7 @@ pub(crate) fn basis(
 }
 
 pub(crate) fn matches(
-    line: &surgeist_text::FinalizedLine,
+    line: &surgeist_text::finalized::FinalizedLine,
     allocations: &ScopeAllocations,
     facts: &dyn ScopeAlignmentFacts,
 ) -> Result<bool, FitError> {
@@ -1950,7 +1980,7 @@ mod numeric_tests {
         let error = scalar_context::<S>(f64::INFINITY).unwrap_err();
         assert!(
             matches!(error.detail(), Some(surgeist_text::ErrorDetail::InvalidTextNumeric {
-            category: surgeist_text::TextNumericError::NonFinite, value, ..
+            category: surgeist_text::geometry::TextNumericError::NonFinite, value, ..
         }) if *value == f64::INFINITY)
         );
     }
@@ -1959,10 +1989,13 @@ mod numeric_tests {
     fn scope_numeric_scalar_context_preserves_f32_categories() {
         scalar_lane::<f32>();
         for (input, category) in [
-            (f64::MAX, surgeist_text::TextNumericError::OutOfRange),
+            (
+                f64::MAX,
+                surgeist_text::geometry::TextNumericError::OutOfRange,
+            ),
             (
                 f64::MIN_POSITIVE,
-                surgeist_text::TextNumericError::NonZeroLost,
+                surgeist_text::geometry::TextNumericError::NonZeroLost,
             ),
         ] {
             let error = scalar_context::<f32>(input).unwrap_err();

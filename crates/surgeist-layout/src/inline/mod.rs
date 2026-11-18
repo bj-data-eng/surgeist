@@ -14,7 +14,7 @@ use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
 #[cfg(test)]
 use std::cell::Cell;
 use std::ops::Range;
-use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
+use surgeist_text::supplied_line::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 
 /// Numerical failure and an actual external band refusal retain separate causes.
 #[derive(Debug)]
@@ -373,7 +373,7 @@ struct SelectedInlineUnitOf<S: LayoutScalar> {
 
 #[derive(Clone, PartialEq)]
 struct SelectedInlineLineOf<S: LayoutScalar> {
-    ending: surgeist_text::LineEnd,
+    ending: surgeist_text::selection::LineEnd,
     next_cursor: InlineSourceCursor,
     alignment: TextAlign,
     indent: S,
@@ -436,8 +436,8 @@ enum NumericLineDisposition {
 }
 
 impl NumericLineDisposition {
-    fn for_line(ending: surgeist_text::LineEnd, has_in_flow_content: bool) -> Self {
-        if ending == surgeist_text::LineEnd::Forced || has_in_flow_content {
+    fn for_line(ending: surgeist_text::selection::LineEnd, has_in_flow_content: bool) -> Self {
+        if ending == surgeist_text::selection::LineEnd::Forced || has_in_flow_content {
             Self::Formatted
         } else {
             Self::NonFormatted
@@ -446,11 +446,11 @@ impl NumericLineDisposition {
 }
 
 impl SelectedInlineLineEnd {
-    fn line_end(self) -> surgeist_text::LineEnd {
+    fn line_end(self) -> surgeist_text::selection::LineEnd {
         match self {
-            Self::Soft => surgeist_text::LineEnd::Soft,
-            Self::Forced => surgeist_text::LineEnd::Forced,
-            Self::Paragraph => surgeist_text::LineEnd::Paragraph,
+            Self::Soft => surgeist_text::selection::LineEnd::Soft,
+            Self::Forced => surgeist_text::selection::LineEnd::Forced,
+            Self::Paragraph => surgeist_text::selection::LineEnd::Paragraph,
         }
     }
 }
@@ -1000,7 +1000,7 @@ fn selected_from_summary<S: LayoutScalar>(
         .collect();
 
     SelectedInlineLineOf {
-        ending: surgeist_text::LineEnd::Paragraph,
+        ending: surgeist_text::selection::LineEnd::Paragraph,
         next_cursor: InlineSourceCursor::default(),
         alignment: TextAlign::Start,
         indent: S::ZERO,
@@ -1556,10 +1556,14 @@ fn for_each_unowned_box_metric<S: LayoutScalar>(
                     return Err(WrappingScopeError::InvalidBoxMetrics.into());
                 }
                 let alignment = match strut.alignment {
-                    surgeist_text::LineBoxAlignment::Baseline => InlineControlAlignment::Baseline,
-                    surgeist_text::LineBoxAlignment::Top => InlineControlAlignment::Top,
-                    surgeist_text::LineBoxAlignment::Bottom => InlineControlAlignment::Bottom,
-                    surgeist_text::LineBoxAlignment::Shift(offset) => {
+                    surgeist_text::allocation::LineBoxAlignment::Baseline => {
+                        InlineControlAlignment::Baseline
+                    }
+                    surgeist_text::allocation::LineBoxAlignment::Top => InlineControlAlignment::Top,
+                    surgeist_text::allocation::LineBoxAlignment::Bottom => {
+                        InlineControlAlignment::Bottom
+                    }
+                    surgeist_text::allocation::LineBoxAlignment::Shift(offset) => {
                         InlineControlAlignment::Shift(
                             crate::BaselineOffsetOf::try_new(crate::group_alignment::scalar::<S>(
                                 offset.get(),
@@ -2282,10 +2286,10 @@ fn selected_line_inline_start<S: LayoutScalar>(
     axes: FlowAxes,
     alignment: TextAlign,
     direction: Direction,
-    insets: surgeist_text::LineAlignmentInsets,
+    insets: surgeist_text::allocation::LineAlignmentInsets,
 ) -> Result<S, crate::inline_wrapping::NumericWrappingError> {
     let old = ordinary_line_inline_start(line, axes, alignment, direction);
-    if insets == surgeist_text::LineAlignmentInsets::ZERO {
+    if insets == surgeist_text::allocation::LineAlignmentInsets::ZERO {
         return Ok(old);
     }
     let capacity = crate::group_alignment::canonical_capacity::<S>(
@@ -2399,7 +2403,7 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     flow_axes: FlowAxes,
     text_align: TextAlign,
     direction: Direction,
-    insets: surgeist_text::LineAlignmentInsets,
+    insets: surgeist_text::allocation::LineAlignmentInsets,
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
 ) -> Result<ResolvedInlineSlots<S>, crate::inline_wrapping::NumericWrappingError> {
     let line_inline_start =
@@ -2688,10 +2692,14 @@ impl NumericWalkControl {
             max_formatted,
         }
     }
-    fn stop(self, ending: surgeist_text::LineEnd, count: usize) -> Option<NumericWalkOutcome> {
+    fn stop(
+        self,
+        ending: surgeist_text::selection::LineEnd,
+        count: usize,
+    ) -> Option<NumericWalkOutcome> {
         if self.max_formatted.is_some_and(|limit| count > limit) {
             Some(NumericWalkOutcome::CountExceeded)
-        } else if self.stop_at_group && ending != surgeist_text::LineEnd::Soft {
+        } else if self.stop_at_group && ending != surgeist_text::selection::LineEnd::Soft {
             Some(NumericWalkOutcome::GroupComplete)
         } else {
             None
@@ -3086,7 +3094,7 @@ where
                     .groups
                     .insets::<S>(flow.line_box_context.resolve(None))?
             } else {
-                surgeist_text::LineAlignmentInsets::ZERO
+                surgeist_text::allocation::LineAlignmentInsets::ZERO
             },
         )?;
         let line_inline_end = line_inline_start + line.used_inline_extent;
@@ -3121,7 +3129,7 @@ where
 
 #[derive(Clone, Copy, PartialEq)]
 struct NumericGroupTerminal<S: LayoutScalar> {
-    ending: surgeist_text::LineEnd,
+    ending: surgeist_text::selection::LineEnd,
     cursor: InlineSourceCursor,
     control: Option<ForcedLineBreakControlOf<S>>,
 }
@@ -3166,7 +3174,7 @@ fn numeric_reference_groups<S: LayoutScalar>(
     lines: &[SelectedInlineLineOf<S>],
 ) -> Result<Vec<NumericReferenceGroup<S>>, crate::inline_wrapping::NumericWrappingError> {
     lines
-        .split_inclusive(|line| line.ending != surgeist_text::LineEnd::Soft)
+        .split_inclusive(|line| line.ending != surgeist_text::selection::LineEnd::Soft)
         .map(|group| {
             let last = group
                 .last()
@@ -3522,7 +3530,7 @@ fn finish_numeric_run<S: LayoutScalar, BandError>(
                 .groups
                 .insets::<S>(input.line_box_context.resolve(None))?
         } else {
-            surgeist_text::LineAlignmentInsets::ZERO
+            surgeist_text::allocation::LineAlignmentInsets::ZERO
         };
     let mut post_line_clear_intents = Vec::new();
     let mut line_bands = Vec::new();
@@ -3542,7 +3550,7 @@ fn finish_numeric_run<S: LayoutScalar, BandError>(
                 input.flow_axes,
                 line.alignment,
                 line_direction,
-                surgeist_text::LineAlignmentInsets::ZERO,
+                surgeist_text::allocation::LineAlignmentInsets::ZERO,
                 input.wrapping.as_ref(),
             )?;
             if let Some(receipt) = parent_edges::accepted(
@@ -4367,7 +4375,7 @@ fn validate_receiver<S: LayoutScalar>(
 fn validate_carried_reference<S: LayoutScalar>(
     strut: Option<ReferencedInlineStrutOf<S>>,
     expected: crate::InlineBaselineContext,
-    ending: surgeist_text::LineEnd,
+    ending: surgeist_text::selection::LineEnd,
     content: bool,
 ) -> Result<(), crate::inline_wrapping::NumericWrappingError> {
     if NumericLineDisposition::for_line(ending, content) == NumericLineDisposition::NonFormatted {

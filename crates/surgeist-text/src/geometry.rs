@@ -1,3 +1,12 @@
+//! Points, sizes, rectangles, glyph frames and numeric-category diagnostics.
+//!
+//! [`Point`], [`Rect`] and [`Size`] are in the coordinate frame documented by their owning operation;
+//! [`GlyphFrame`] is the executed physical frame of a glyph run and [`GlyphBasis`] gives the outline axes of
+//! its glyphs. [`TextNumericError`] names the category which a geometry value failed to preserve and
+//! [`TextNumericPhase`] the operation at which it was rejected; [`NumericRequirement`] names the requirement
+//! (finite, finite and nonnegative, finite and greater than zero, or unit interval) the value had to meet.
+
+pub use crate::error::{NumericRequirement, TextNumericError, TextNumericPhase};
 /// Outline axes of the glyphs in an admitted uniform run.
 ///
 /// Glyph offsets use font x to the right and converted font y downward. The

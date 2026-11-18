@@ -45,28 +45,28 @@ impl<S: l::LayoutScalar> l::LayoutTree for Root<S> {
 }
 
 struct Fixture<S: l::LayoutScalar> {
-    capture: Arc<t::ProcessedSource>,
-    prepared: t::PreparedText,
-    scopes: [t::CapturedScope; 2],
+    capture: Arc<t::processing::ProcessedSource>,
+    prepared: t::prepared::PreparedText,
+    scopes: [t::capture::CapturedScope; 2],
     tree: Root<S>,
 }
 impl<S: l::LayoutScalar> Fixture<S> {
     fn new(direction: l::Direction, force: bool) -> Self {
-        use t::SourceProcessingEvent as E;
+        use t::capture::SourceProcessingEvent as E;
         let base = if direction == l::Direction::Ltr {
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
-            t::ParagraphBaseDirection::RightToLeft
+            t::paragraph::ParagraphBaseDirection::RightToLeft
         };
-        let style = t::Style {
-            font: t::Font::new().family("Ahem"),
+        let style = t::style::Style {
+            font: t::style::Font::new().family("Ahem"),
             size: 10.0,
-            line_height: t::LineHeight::Absolute(10.0),
-            wrap: t::Wrap::None,
-            hyphens: t::Hyphens::None,
-            ..t::Style::default()
+            line_height: t::style::LineHeight::Absolute(10.0),
+            wrap: t::style::Wrap::None,
+            hyphens: t::hyphenation::Hyphens::None,
+            ..t::style::Style::default()
         };
-        let inline = || t::SourceProcessingScope::Inline {
+        let inline = || t::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
@@ -75,31 +75,31 @@ impl<S: l::LayoutScalar> Fixture<S> {
             boundaries: None,
         };
         let capture = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
-                source: t::Source::identified("", t::Id::from_u64(658300), 51),
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
+                source: t::source::Source::identified("", t::source::Id::from_u64(658300), 51),
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
                 origins: vec![],
                 controls: vec![],
                 connections: vec![],
                 boundary_policies: vec![],
                 replacements: vec![],
                 computed_line_boundaries: if force {
-                    vec![t::ComputedLineBoundaryInput::Scope {
+                    vec![t::capture::ComputedLineBoundaryInput::Scope {
                         scope: 2,
-                        side: t::SourceBoxSide::Before,
+                        side: t::capture::SourceBoxSide::Before,
                     }]
                 } else {
                     vec![]
                 },
                 scopes: vec![
-                    t::SourceProcessingScope::Block {
+                    t::capture::SourceProcessingScope::Block {
                         writing_axis: None,
                         horizontal_inner_direction: None,
                         font_reference: None,
-                        topology: t::SourceProcessingTopology::Complete,
+                        topology: t::capture::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style,
                         used_direction: base,
@@ -107,9 +107,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
                     inline(),
                     inline(),
                 ],
-                paragraphs: vec![t::SourceProcessingParagraph {
+                paragraphs: vec![t::capture::SourceProcessingParagraph {
                     base_direction: base,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events: vec![
                     E::EnterScope(0),
@@ -141,17 +141,17 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert!(capture.captured_origin(0).is_none());
         assert!(capture.captured_control(0).is_none());
         assert!(capture.captured_atomic(0).is_none());
-        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
             capture.paragraphs().next().unwrap(),
-            t::AnalysisTypography::HorizontalComposition,
+            t::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let missing = analyzed
             .wrapping_relations()
             .filter(|r| r.ancestor_wrap().is_none())
-            .map(|r| t::WrappingPolicy {
+            .map(|r| t::analyzed::WrappingPolicy {
                 relation: r.handle(),
-                ancestor_wrap: t::Wrap::None,
+                ancestor_wrap: t::style::Wrap::None,
             })
             .collect();
         let analyzed = analyzed.with_wrapping_policies(missing).unwrap();
@@ -160,7 +160,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
             .unwrap();
         let prepared = fonts
-            .prepare(&analyzed, t::PreparationOptions::default())
+            .prepare(&analyzed, t::prepared::PreparationOptions::default())
             .unwrap();
         assert_eq!(
             prepared
@@ -170,7 +170,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 .collect::<Vec<_>>(),
             vec![capture.captured_paragraph(0).unwrap()]
         );
-        assert_eq!(prepared.terminal_edge(), t::ParagraphTerminalEdge::BlockEnd);
+        assert_eq!(
+            prepared.terminal_edge(),
+            t::paragraph::ParagraphTerminalEdge::BlockEnd
+        );
         assert_eq!(prepared.origin_views().count(), 0);
         assert_eq!(prepared.control_views().count(), 0);
         assert_eq!(prepared.atomic_views().count(), 0);
@@ -235,13 +238,13 @@ impl<S: l::LayoutScalar> Fixture<S> {
                         wrap_inside: l::WrapInside::Auto,
                         edges: l::WrapEdges::AUTO,
                         metric_contribution: Some(l::InlineBoxMetricContribution::Strut(
-                            t::LineBoxStrut {
+                            t::allocation::LineBoxStrut {
                                 scope: None,
-                                metrics: t::LineStrut {
+                                metrics: t::allocation::LineStrut {
                                     baseline,
                                     line_extent,
                                 },
-                                alignment: t::LineBoxAlignment::Baseline,
+                                alignment: t::allocation::LineBoxAlignment::Baseline,
                             },
                         )),
                     },
@@ -254,10 +257,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
             ],
         }
     }
-    fn inventory_facts(&self, force: bool) -> Vec<t::PreparedBoundaryIncidence> {
+    fn inventory_facts(&self, force: bool) -> Vec<t::observation::PreparedBoundaryIncidence> {
         assert_eq!(
             self.prepared.analyzed_source().source().id(),
-            Some(t::Id::from_u64(658300))
+            Some(t::source::Id::from_u64(658300))
         );
         assert_eq!(self.prepared.analyzed_source().source().revision(), 51);
         assert!(
@@ -289,11 +292,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 .collect::<Vec<_>>(),
             if force {
                 vec![
-                    (t::PreparedBreakKind::Forced, 1, 0, 0),
-                    (t::PreparedBreakKind::ParagraphEnd, 1, 0, 0),
+                    (t::prepared::PreparedBreakKind::Forced, 1, 0, 0),
+                    (t::prepared::PreparedBreakKind::ParagraphEnd, 1, 0, 0),
                 ]
             } else {
-                vec![(t::PreparedBreakKind::ParagraphEnd, 0, 0, 0)]
+                vec![(t::prepared::PreparedBreakKind::ParagraphEnd, 0, 0, 0)]
             }
         );
         if !force {
@@ -303,7 +306,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         }
         let participants = self.prepared.participants().collect::<Vec<_>>();
         assert_eq!(participants.len(), 1);
-        let t::PreparedParticipant::ComputedLineBoundary(group) = &participants[0] else {
+        let t::prepared::PreparedParticipant::ComputedLineBoundary(group) = &participants[0] else {
             panic!("only the Text semantic anchor may participate")
         };
         let boundary = offers[0].view().boundary();
@@ -316,9 +319,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let cause = self.capture.captured_computed_line_boundary(0).unwrap();
         assert_eq!(
             cause.target(),
-            t::CapturedComputedLineBoundaryTarget::Scope {
+            t::capture::CapturedComputedLineBoundaryTarget::Scope {
                 scope: self.scopes[1].clone(),
-                side: t::SourceBoxSide::Before
+                side: t::capture::SourceBoxSide::Before
             }
         );
         assert_eq!(group.view().causes().collect::<Vec<_>>(), [cause]);
@@ -329,8 +332,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert_eq!(incidences.len(), 1);
         assert_eq!(incidences[0].boundary(), boundary);
         for (scope, expected) in self.scopes.iter().zip([
-            t::CapturedScopeIncidence::Inside,
-            t::CapturedScopeIncidence::AtBefore,
+            t::observation::CapturedScopeIncidence::Inside,
+            t::observation::CapturedScopeIncidence::AtBefore,
         ]) {
             assert_eq!(
                 self.prepared
@@ -352,24 +355,28 @@ impl<S: l::LayoutScalar> Fixture<S> {
     }
 }
 
-fn metric(baseline: f64, line_extent: f64) -> t::LineBoxStrut {
-    t::LineBoxStrut {
+fn metric(baseline: f64, line_extent: f64) -> t::allocation::LineBoxStrut {
+    t::allocation::LineBoxStrut {
         scope: None,
-        metrics: t::LineStrut {
+        metrics: t::allocation::LineStrut {
             baseline,
             line_extent,
         },
-        alignment: t::LineBoxAlignment::Baseline,
+        alignment: t::allocation::LineBoxAlignment::Baseline,
     }
 }
 
-fn expected_metric(scope: &t::CapturedScope, baseline: f64, line_extent: f64) -> t::LineBoxStrut {
+fn expected_metric(
+    scope: &t::capture::CapturedScope,
+    baseline: f64,
+    line_extent: f64,
+) -> t::allocation::LineBoxStrut {
     let mut strut = metric(baseline, line_extent);
     strut.scope = Some(scope.clone());
     strut
 }
 
-fn assert_struts(actual: &[t::LineBoxStrut], expected: &[t::LineBoxStrut]) {
+fn assert_struts(actual: &[t::allocation::LineBoxStrut], expected: &[t::allocation::LineBoxStrut]) {
     assert_eq!(actual.len(), expected.len());
     for wanted in expected {
         assert_eq!(actual.iter().filter(|item| *item == wanted).count(), 1);
@@ -436,7 +443,7 @@ fn assert_semantic_output<S: l::LayoutScalar>(
         fixture.prepared.analyzed_source().identity()
     );
     assert_eq!(layout.source(), fixture.prepared.analyzed_source().source());
-    assert_eq!(layout.source().id(), Some(t::Id::from_u64(658300)));
+    assert_eq!(layout.source().id(), Some(t::source::Id::from_u64(658300)));
     assert_eq!(layout.source().revision(), 51);
     assert!(layout.source().text().code_units().is_empty());
     assert_eq!(
@@ -446,9 +453,9 @@ fn assert_semantic_output<S: l::LayoutScalar>(
     // The actual Forced ending prevents phantom disposition despite no glyph.
     let lines = layout.lines();
     assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].range(), t::Range::new(0, 0));
+    assert_eq!(lines[0].range(), t::source::Range::new(0, 0));
     assert_eq!(lines[0].baseline(), 16.0);
-    assert_eq!(lines[0].bounds().size, t::Size::new(30.0, 20.0));
+    assert_eq!(lines[0].bounds().size, t::geometry::Size::new(30.0, 20.0));
     assert_eq!(layout.metrics().line_count(), 1);
     assert_eq!(layout.metrics().first_baseline(), Some(16.0));
     assert_eq!(layout.metrics().last_baseline(), Some(16.0));
@@ -481,7 +488,10 @@ fn assert_semantic_output<S: l::LayoutScalar>(
     let placement = completions[0];
     assert!(placement.origin.x.is_finite());
     assert_eq!(placement.origin.y, 20.0);
-    assert_eq!(placement.orientation, t::LineOrientation::Horizontal);
+    assert_eq!(
+        placement.orientation,
+        t::selection::LineOrientation::Horizontal
+    );
     assert!(placement.atomics.is_empty());
     let end = placement.line.finalized_line();
     assert_eq!(end.prepared_text(), fixture.prepared);
@@ -492,10 +502,10 @@ fn assert_semantic_output<S: l::LayoutScalar>(
         .opportunity_views()
         .map(|v| v.handle())
         .collect::<Vec<_>>();
-    assert_eq!(request.context.end, t::LineEnd::Paragraph);
+    assert_eq!(request.context.end, t::selection::LineEnd::Paragraph);
     assert_eq!(
         request.termination,
-        t::PreparedTermination::Ordinary(offers[1].clone())
+        t::selection::PreparedTermination::Ordinary(offers[1].clone())
     );
     assert_eq!(request.start, offers[0].view().boundary());
     assert_eq!(request.end, offers[1].view().boundary());
@@ -527,16 +537,18 @@ fn assert_semantic_output<S: l::LayoutScalar>(
 
     // The retained receiver alone is not WholeParagraph. This uses the actual
     // output capability, without a fabricated first-line accessor or source node.
-    let incomplete = t::Layout::from_finalized_lines(t::PlacementRequest {
+    let incomplete = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: fixture.prepared.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
-        entries: vec![t::PlacementEntry::NonFormatted((*placement).clone())],
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![t::placement::PlacementEntry::NonFormatted(
+            (*placement).clone(),
+        )],
     })
     .unwrap_err();
     assert!(matches!(
         incomplete.detail(),
         Some(t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::IncompleteLineCoverage { line: 0 }
+            reason: t::prepared::ProtocolError::IncompleteLineCoverage { line: 0 }
         })
     ));
 }
@@ -692,21 +704,21 @@ fn neutral_node_free_metadata_does_not_publish_text_from_scope_struts() {
 }
 
 struct SharedGap<S: l::LayoutScalar> {
-    capture: Arc<t::ProcessedSource>,
-    prepared: Vec<t::PreparedText>,
-    scopes: Vec<t::CapturedScope>,
+    capture: Arc<t::processing::ProcessedSource>,
+    prepared: Vec<t::prepared::PreparedText>,
+    scopes: Vec<t::capture::CapturedScope>,
     tree: Root<S>,
 }
 
 impl<S: l::LayoutScalar> SharedGap<S> {
     fn new(direction: l::Direction) -> Self {
-        use t::SourceProcessingEvent as E;
+        use t::capture::SourceProcessingEvent as E;
         let base = if direction == l::Direction::Ltr {
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
-            t::ParagraphBaseDirection::RightToLeft
+            t::paragraph::ParagraphBaseDirection::RightToLeft
         };
-        let inline = || t::SourceProcessingScope::Inline {
+        let inline = || t::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
@@ -715,41 +727,41 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             boundaries: None,
         };
         let capture = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
-                source: t::Source::identified("", t::Id::from_u64(658301), 52),
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
+                source: t::source::Source::identified("", t::source::Id::from_u64(658301), 52),
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
                 origins: vec![],
                 controls: vec![],
                 connections: vec![],
                 boundary_policies: vec![],
                 replacements: vec![],
                 computed_line_boundaries: vec![
-                    t::ComputedLineBoundaryInput::Scope {
+                    t::capture::ComputedLineBoundaryInput::Scope {
                         scope: 2,
-                        side: t::SourceBoxSide::Before,
+                        side: t::capture::SourceBoxSide::Before,
                     },
-                    t::ComputedLineBoundaryInput::Scope {
+                    t::capture::ComputedLineBoundaryInput::Scope {
                         scope: 4,
-                        side: t::SourceBoxSide::Before,
+                        side: t::capture::SourceBoxSide::Before,
                     },
                 ],
                 scopes: vec![
-                    t::SourceProcessingScope::Block {
+                    t::capture::SourceProcessingScope::Block {
                         writing_axis: None,
                         horizontal_inner_direction: None,
                         font_reference: None,
-                        topology: t::SourceProcessingTopology::Complete,
+                        topology: t::capture::SourceProcessingTopology::Complete,
                         trim: Default::default(),
-                        base_style: t::Style {
-                            font: t::Font::new().family("Ahem"),
+                        base_style: t::style::Style {
+                            font: t::style::Font::new().family("Ahem"),
                             size: 10.0,
-                            line_height: t::LineHeight::Absolute(10.0),
-                            wrap: t::Wrap::None,
-                            hyphens: t::Hyphens::None,
-                            ..t::Style::default()
+                            line_height: t::style::LineHeight::Absolute(10.0),
+                            wrap: t::style::Wrap::None,
+                            hyphens: t::hyphenation::Hyphens::None,
+                            ..t::style::Style::default()
                         },
                         used_direction: base,
                     },
@@ -759,9 +771,9 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                     inline(),
                 ],
                 paragraphs: (0..3)
-                    .map(|_| t::SourceProcessingParagraph {
+                    .map(|_| t::capture::SourceProcessingParagraph {
                         base_direction: base,
-                        paragraph_strut: t::ParagraphStrut::DefaultFont,
+                        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                     })
                     .collect(),
                 events: vec![
@@ -800,23 +812,23 @@ impl<S: l::LayoutScalar> SharedGap<S> {
         let prepared = capture
             .paragraphs()
             .map(|paragraph| {
-                let analyzed = t::AnalyzedSource::from_processed_paragraph(
+                let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
                     paragraph,
-                    t::AnalysisTypography::HorizontalComposition,
+                    t::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap();
                 let policies = analyzed
                     .wrapping_relations()
                     .filter(|row| row.ancestor_wrap().is_none())
-                    .map(|row| t::WrappingPolicy {
+                    .map(|row| t::analyzed::WrappingPolicy {
                         relation: row.handle(),
-                        ancestor_wrap: t::Wrap::None,
+                        ancestor_wrap: t::style::Wrap::None,
                     })
                     .collect();
                 fonts
                     .prepare(
                         &analyzed.with_wrapping_policies(policies).unwrap(),
-                        t::PreparationOptions::default(),
+                        t::prepared::PreparationOptions::default(),
                     )
                     .unwrap()
             })
@@ -906,7 +918,7 @@ impl<S: l::LayoutScalar> SharedGap<S> {
         }
     }
 
-    fn facts(&self) -> Vec<Vec<t::PreparedBoundaryIncidence>> {
+    fn facts(&self) -> Vec<Vec<t::observation::PreparedBoundaryIncidence>> {
         assert!(self.capture.source().text().code_units().is_empty());
         assert!(self.capture.processed_text().code_units().is_empty());
         assert!(self.capture.captured_origin(0).is_none());
@@ -949,11 +961,11 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                     })
                     .collect::<Vec<_>>(),
                 if i == 1 {
-                    vec![(t::PreparedBreakKind::ParagraphEnd, 0, 0, 0)]
+                    vec![(t::prepared::PreparedBreakKind::ParagraphEnd, 0, 0, 0)]
                 } else {
                     vec![
-                        (t::PreparedBreakKind::Forced, 1, 0, 0),
-                        (t::PreparedBreakKind::ParagraphEnd, 1, 0, 0),
+                        (t::prepared::PreparedBreakKind::Forced, 1, 0, 0),
+                        (t::prepared::PreparedBreakKind::ParagraphEnd, 1, 0, 0),
                     ]
                 }
             );
@@ -963,7 +975,8 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             }
             let participants = p.participants().collect::<Vec<_>>();
             assert_eq!(participants.len(), 1);
-            let t::PreparedParticipant::ComputedLineBoundary(group) = &participants[0] else {
+            let t::prepared::PreparedParticipant::ComputedLineBoundary(group) = &participants[0]
+            else {
                 panic!("real computed participant required");
             };
             let cause_index = if i == 0 { 0 } else { 1 };
@@ -975,9 +988,9 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             assert_eq!(cause.paragraph(), paragraphs[i]);
             assert_eq!(
                 cause.target(),
-                t::CapturedComputedLineBoundaryTarget::Scope {
+                t::capture::CapturedComputedLineBoundaryTarget::Scope {
                     scope: self.scopes[pair_start + 1].clone(),
-                    side: t::SourceBoxSide::Before,
+                    side: t::capture::SourceBoxSide::Before,
                 }
             );
             assert_eq!(group.view().causes().collect::<Vec<_>>(), vec![cause]);
@@ -996,17 +1009,17 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             assert_eq!(pin.len(), 1);
             for (scope, relation) in self.scopes.iter().zip(if i == 0 {
                 [
-                    t::CapturedScopeIncidence::Inside,
-                    t::CapturedScopeIncidence::AtBefore,
-                    t::CapturedScopeIncidence::Before,
-                    t::CapturedScopeIncidence::Before,
+                    t::observation::CapturedScopeIncidence::Inside,
+                    t::observation::CapturedScopeIncidence::AtBefore,
+                    t::observation::CapturedScopeIncidence::Before,
+                    t::observation::CapturedScopeIncidence::Before,
                 ]
             } else {
                 [
-                    t::CapturedScopeIncidence::After,
-                    t::CapturedScopeIncidence::After,
-                    t::CapturedScopeIncidence::Inside,
-                    t::CapturedScopeIncidence::AtBefore,
+                    t::observation::CapturedScopeIncidence::After,
+                    t::observation::CapturedScopeIncidence::After,
+                    t::observation::CapturedScopeIncidence::Inside,
+                    t::observation::CapturedScopeIncidence::AtBefore,
                 ]
             }) {
                 assert_eq!(
@@ -1099,7 +1112,7 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                 self.prepared[paragraph].analyzed_source().identity()
             );
             assert_eq!(layout.source(), self.capture.source());
-            assert_eq!(layout.source().id(), Some(t::Id::from_u64(658301)));
+            assert_eq!(layout.source().id(), Some(t::source::Id::from_u64(658301)));
             assert_eq!(layout.source().revision(), 52);
             assert_eq!(
                 layout
@@ -1110,16 +1123,19 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             );
             let lines = layout.lines();
             assert_eq!(lines.len(), 1);
-            assert_eq!(lines[0].range(), t::Range::new(0, 0));
+            assert_eq!(lines[0].range(), t::source::Range::new(0, 0));
             assert_eq!(lines[0].bounds().origin.y, top);
-            assert_eq!(lines[0].bounds().size, t::Size::new(30.0, height));
+            assert_eq!(lines[0].bounds().size, t::geometry::Size::new(30.0, height));
             assert_eq!(lines[0].baseline(), top + baseline);
             assert_eq!(layout.metrics().line_count(), 1);
             let tails = layout.nonformatted_lines().collect::<Vec<_>>();
             assert_eq!(tails.len(), 1);
             assert_eq!(tails[0].origin.y, top + height);
             assert!(tails[0].origin.x.is_finite());
-            assert_eq!(tails[0].orientation, t::LineOrientation::Horizontal);
+            assert_eq!(
+                tails[0].orientation,
+                t::selection::LineOrientation::Horizontal
+            );
             assert!(tails[0].atomics.is_empty());
             let tail = tails[0].line.finalized_line();
             assert_eq!(tail.prepared_text(), self.prepared[paragraph]);
@@ -1142,10 +1158,10 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                 .opportunity_views()
                 .map(|view| view.handle())
                 .collect::<Vec<_>>();
-            assert_eq!(request.context.end, t::LineEnd::Paragraph);
+            assert_eq!(request.context.end, t::selection::LineEnd::Paragraph);
             assert_eq!(
                 request.termination,
-                t::PreparedTermination::Ordinary(offers[1].clone())
+                t::selection::PreparedTermination::Ordinary(offers[1].clone())
             );
             assert_eq!(request.start, offers[0].view().boundary());
             assert_eq!(request.end, offers[1].view().boundary());
@@ -1254,39 +1270,39 @@ impl<S: l::LayoutScalar> l::LayoutTree for SemanticBlockTree<S> {
 }
 
 struct BlockFence<S: l::LayoutScalar> {
-    capture: Arc<t::ProcessedSource>,
-    prepared: Vec<t::PreparedText>,
-    scopes: Vec<t::CapturedScope>,
+    capture: Arc<t::processing::ProcessedSource>,
+    prepared: Vec<t::prepared::PreparedText>,
+    scopes: Vec<t::capture::CapturedScope>,
     tree: SemanticBlockTree<S>,
 }
 impl<S: l::LayoutScalar> BlockFence<S> {
     fn new(direction: l::Direction) -> Self {
-        use t::SourceProcessingEvent as E;
+        use t::capture::SourceProcessingEvent as E;
         let base = if direction == l::Direction::Ltr {
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
-            t::ParagraphBaseDirection::RightToLeft
+            t::paragraph::ParagraphBaseDirection::RightToLeft
         };
-        let style = t::Style {
-            font: t::Font::new().family("Ahem"),
+        let style = t::style::Style {
+            font: t::style::Font::new().family("Ahem"),
             size: 10.0,
-            line_height: t::LineHeight::Absolute(10.0),
-            wrap: t::Wrap::None,
-            hyphens: t::Hyphens::None,
-            ..t::Style::default()
+            line_height: t::style::LineHeight::Absolute(10.0),
+            wrap: t::style::Wrap::None,
+            hyphens: t::hyphenation::Hyphens::None,
+            ..t::style::Style::default()
         };
-        let mut source = t::Source::identified("X", t::Id::from_u64(658302), 53);
-        source.span(t::Range::new(0, 1), style.clone());
-        let block = || t::SourceProcessingScope::Block {
+        let mut source = t::source::Source::identified("X", t::source::Id::from_u64(658302), 53);
+        source.span(t::source::Range::new(0, 1), style.clone());
+        let block = || t::capture::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: t::SourceProcessingTopology::Complete,
+            topology: t::capture::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style.clone(),
             used_direction: base,
         };
-        let inline = || t::SourceProcessingScope::Inline {
+        let inline = || t::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
@@ -1295,38 +1311,38 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             boundaries: None,
         };
         let capture = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
-                origins: vec![t::ParagraphOrigin {
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
+                origins: vec![t::paragraph::ParagraphOrigin {
                     text_node: None,
                     source,
-                    local: t::Range::new(0, 1),
-                    aggregate: t::Range::new(0, 1),
-                    kind: t::ParagraphOriginKind::Authored,
+                    local: t::source::Range::new(0, 1),
+                    aggregate: t::source::Range::new(0, 1),
+                    kind: t::paragraph::ParagraphOriginKind::Authored,
                 }],
                 controls: vec![],
                 connections: vec![],
                 boundary_policies: vec![],
                 replacements: vec![],
                 computed_line_boundaries: vec![
-                    t::ComputedLineBoundaryInput::Scope {
+                    t::capture::ComputedLineBoundaryInput::Scope {
                         scope: 2,
-                        side: t::SourceBoxSide::Before,
+                        side: t::capture::SourceBoxSide::Before,
                     },
-                    t::ComputedLineBoundaryInput::Scope {
+                    t::capture::ComputedLineBoundaryInput::Scope {
                         scope: 5,
-                        side: t::SourceBoxSide::Before,
+                        side: t::capture::SourceBoxSide::Before,
                     },
                 ],
                 scopes: vec![block(), inline(), inline(), block(), inline(), inline()],
                 paragraphs: (0..3)
-                    .map(|_| t::SourceProcessingParagraph {
+                    .map(|_| t::capture::SourceProcessingParagraph {
                         base_direction: base,
-                        paragraph_strut: t::ParagraphStrut::DefaultFont,
+                        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                     })
                     .collect(),
                 events: vec![
@@ -1341,7 +1357,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
                     E::EnterParagraph(1),
                     E::Origin {
                         origin: 0,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::ExitParagraph(1),
                     E::ExitScope(3),
@@ -1367,23 +1383,23 @@ impl<S: l::LayoutScalar> BlockFence<S> {
         let prepared = capture
             .paragraphs()
             .map(|paragraph| {
-                let analyzed = t::AnalyzedSource::from_processed_paragraph(
+                let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
                     paragraph,
-                    t::AnalysisTypography::HorizontalComposition,
+                    t::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap();
                 let policies = analyzed
                     .wrapping_relations()
                     .filter(|row| row.ancestor_wrap().is_none())
-                    .map(|row| t::WrappingPolicy {
+                    .map(|row| t::analyzed::WrappingPolicy {
                         relation: row.handle(),
-                        ancestor_wrap: t::Wrap::None,
+                        ancestor_wrap: t::style::Wrap::None,
                     })
                     .collect();
                 fonts
                     .prepare(
                         &analyzed.with_wrapping_policies(policies).unwrap(),
-                        t::PreparationOptions::default(),
+                        t::prepared::PreparationOptions::default(),
                     )
                     .unwrap()
             })
@@ -1505,7 +1521,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             ],
         }
     }
-    fn facts(&self) -> Vec<Vec<t::PreparedBoundaryIncidence>> {
+    fn facts(&self) -> Vec<Vec<t::observation::PreparedBoundaryIncidence>> {
         assert_eq!(self.capture.source().text().code_units(), [88]);
         assert_eq!(self.capture.processed_text().code_units(), [88]);
         assert!(self.capture.captured_control(0).is_none());
@@ -1541,12 +1557,12 @@ impl<S: l::LayoutScalar> BlockFence<S> {
                 .map(|view| view.handle())
                 .collect::<Vec<_>>();
             let expected = if i == 1 {
-                vec![(t::PreparedBreakKind::ParagraphEnd, 1, 1, 1)]
+                vec![(t::prepared::PreparedBreakKind::ParagraphEnd, 1, 1, 1)]
             } else {
                 let at = if i == 0 { 0 } else { 1 };
                 vec![
-                    (t::PreparedBreakKind::Forced, 1, at, at),
-                    (t::PreparedBreakKind::ParagraphEnd, 1, at, at),
+                    (t::prepared::PreparedBreakKind::Forced, 1, at, at),
+                    (t::prepared::PreparedBreakKind::ParagraphEnd, 1, at, at),
                 ]
             };
             assert_eq!(
@@ -1567,8 +1583,8 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             if i == 1 {
                 assert_eq!(p.origin_views().count(), 1);
                 let origin = p.origin_views().next().unwrap();
-                assert_eq!(origin.local_range(), t::Range::new(0, 1));
-                assert_eq!(origin.aggregate_range(), t::Range::new(0, 1));
+                assert_eq!(origin.local_range(), t::source::Range::new(0, 1));
+                assert_eq!(origin.aggregate_range(), t::source::Range::new(0, 1));
                 assert!(self.capture.captured_origin(0).is_some());
                 assert_eq!(p.participants().count(), 1);
                 continue;
@@ -1576,7 +1592,8 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             assert_eq!(p.origin_views().count(), 0);
             let participants = p.participants().collect::<Vec<_>>();
             assert_eq!(participants.len(), 1);
-            let t::PreparedParticipant::ComputedLineBoundary(group) = &participants[0] else {
+            let t::prepared::PreparedParticipant::ComputedLineBoundary(group) = &participants[0]
+            else {
                 panic!("parent semantic work must be the actual computed participant");
             };
             let pair = if i == 0 { 0 } else { 2 };
@@ -1587,9 +1604,9 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             assert_eq!(cause.paragraph(), paragraphs[i]);
             assert_eq!(
                 cause.target(),
-                t::CapturedComputedLineBoundaryTarget::Scope {
+                t::capture::CapturedComputedLineBoundaryTarget::Scope {
                     scope: self.scopes[pair + 1].clone(),
-                    side: t::SourceBoxSide::Before
+                    side: t::capture::SourceBoxSide::Before
                 }
             );
             assert_eq!(group.view().causes().collect::<Vec<_>>(), vec![cause]);
@@ -1609,12 +1626,12 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             assert_eq!(
                 p.incidence_scope_relation(&pin[0], &self.scopes[pair])
                     .unwrap(),
-                t::CapturedScopeIncidence::Inside
+                t::observation::CapturedScopeIncidence::Inside
             );
             assert_eq!(
                 p.incidence_scope_relation(&pin[0], &self.scopes[pair + 1])
                     .unwrap(),
-                t::CapturedScopeIncidence::AtBefore
+                t::observation::CapturedScopeIncidence::AtBefore
             );
             pins.push(pin);
         }
@@ -1673,9 +1690,9 @@ impl<S: l::LayoutScalar> BlockFence<S> {
         );
         assert_eq!(batch.placed_text().len(), 3);
         for (i, container, nodes, range, top, height, baseline) in [
-            (0, 0, vec![], t::Range::new(0, 0), 0.0, 20.0, 16.0),
-            (1, 1, vec![2], t::Range::new(0, 1), 20.0, 10.0, 8.0),
-            (2, 0, vec![], t::Range::new(1, 1), 30.0, 10.0, 8.0),
+            (0, 0, vec![], t::source::Range::new(0, 0), 0.0, 20.0, 16.0),
+            (1, 1, vec![2], t::source::Range::new(0, 1), 20.0, 10.0, 8.0),
+            (2, 0, vec![], t::source::Range::new(1, 1), 30.0, 10.0, 8.0),
         ] {
             let entry = &batch.placed_text()[i];
             assert_eq!(entry.container(), container);
@@ -1691,7 +1708,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             assert_eq!(lines.len(), 1);
             assert_eq!(lines[0].range(), range);
             assert_eq!(lines[0].bounds().origin.y, top);
-            assert_eq!(lines[0].bounds().size, t::Size::new(30.0, height));
+            assert_eq!(lines[0].bounds().size, t::geometry::Size::new(30.0, height));
             assert_eq!(lines[0].baseline(), top + baseline);
             if i == 1 {
                 assert_eq!(layout.nonformatted_lines().count(), 0);
@@ -1751,10 +1768,10 @@ impl<S: l::LayoutScalar> BlockFence<S> {
                 .opportunity_views()
                 .map(|view| view.handle())
                 .collect::<Vec<_>>();
-            assert_eq!(request.context.end, t::LineEnd::Paragraph);
+            assert_eq!(request.context.end, t::selection::LineEnd::Paragraph);
             assert_eq!(
                 request.termination,
-                t::PreparedTermination::Ordinary(offers[1].clone())
+                t::selection::PreparedTermination::Ordinary(offers[1].clone())
             );
             assert_eq!(request.start, offers[0].view().boundary());
             assert_eq!(request.end, offers[1].view().boundary());
@@ -1793,7 +1810,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
                     .map(|g| (g.range(), g.id(), g.advance()))
                     .collect::<Vec<_>>())
                 .collect::<Vec<_>>(),
-            vec![(t::Range::new(0, 1), 58, 10.0)]
+            vec![(t::source::Range::new(0, 1), 58, 10.0)]
         );
     }
 }
@@ -2023,21 +2040,21 @@ fn same_empty_native_gap_does_not_order_independent_captures_by_binding_vector()
 
 impl<S: l::LayoutScalar> Fixture<S> {
     fn two_cuts(direction: l::Direction, duplicate_requests: bool) -> Self {
-        use t::SourceProcessingEvent as E;
+        use t::capture::SourceProcessingEvent as E;
         let base = if direction == l::Direction::Ltr {
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
-            t::ParagraphBaseDirection::RightToLeft
+            t::paragraph::ParagraphBaseDirection::RightToLeft
         };
-        let before = t::ComputedLineBoundaryInput::Scope {
+        let before = t::capture::ComputedLineBoundaryInput::Scope {
             scope: 2,
-            side: t::SourceBoxSide::Before,
+            side: t::capture::SourceBoxSide::Before,
         };
-        let after = t::ComputedLineBoundaryInput::Scope {
+        let after = t::capture::ComputedLineBoundaryInput::Scope {
             scope: 2,
-            side: t::SourceBoxSide::After,
+            side: t::capture::SourceBoxSide::After,
         };
-        let inline = || t::SourceProcessingScope::Inline {
+        let inline = || t::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
@@ -2046,12 +2063,12 @@ impl<S: l::LayoutScalar> Fixture<S> {
             boundaries: None,
         };
         let capture = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
-                source: t::Source::identified("", t::Id::from_u64(658303), 54),
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
+                source: t::source::Source::identified("", t::source::Id::from_u64(658303), 54),
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
                 origins: vec![],
                 controls: vec![],
                 connections: vec![],
@@ -2063,28 +2080,28 @@ impl<S: l::LayoutScalar> Fixture<S> {
                     vec![before, after]
                 },
                 scopes: vec![
-                    t::SourceProcessingScope::Block {
+                    t::capture::SourceProcessingScope::Block {
                         writing_axis: None,
                         horizontal_inner_direction: None,
                         font_reference: None,
-                        topology: t::SourceProcessingTopology::Complete,
+                        topology: t::capture::SourceProcessingTopology::Complete,
                         trim: Default::default(),
-                        base_style: t::Style {
-                            font: t::Font::new().family("Ahem"),
+                        base_style: t::style::Style {
+                            font: t::style::Font::new().family("Ahem"),
                             size: 10.0,
-                            line_height: t::LineHeight::Absolute(10.0),
-                            wrap: t::Wrap::None,
-                            hyphens: t::Hyphens::None,
-                            ..t::Style::default()
+                            line_height: t::style::LineHeight::Absolute(10.0),
+                            wrap: t::style::Wrap::None,
+                            hyphens: t::hyphenation::Hyphens::None,
+                            ..t::style::Style::default()
                         },
                         used_direction: base,
                     },
                     inline(),
                     inline(),
                 ],
-                paragraphs: vec![t::SourceProcessingParagraph {
+                paragraphs: vec![t::capture::SourceProcessingParagraph {
                     base_direction: base,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events: vec![
                     E::EnterScope(0),
@@ -2103,17 +2120,17 @@ impl<S: l::LayoutScalar> Fixture<S> {
             capture.captured_scope(1).unwrap(),
             capture.captured_scope(2).unwrap(),
         ];
-        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
             capture.paragraphs().next().unwrap(),
-            t::AnalysisTypography::HorizontalComposition,
+            t::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let policies = analyzed
             .wrapping_relations()
             .filter(|row| row.ancestor_wrap().is_none())
-            .map(|row| t::WrappingPolicy {
+            .map(|row| t::analyzed::WrappingPolicy {
                 relation: row.handle(),
-                ancestor_wrap: t::Wrap::None,
+                ancestor_wrap: t::style::Wrap::None,
             })
             .collect();
         let mut fonts = t::System::default();
@@ -2123,7 +2140,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let prepared = fonts
             .prepare(
                 &analyzed.with_wrapping_policies(policies).unwrap(),
-                t::PreparationOptions::default(),
+                t::prepared::PreparationOptions::default(),
             )
             .unwrap();
         Self {
@@ -2146,7 +2163,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
             },
         }
     }
-    fn two_cut_facts(&self, duplicates: bool) -> Vec<Vec<t::PreparedBoundaryIncidence>> {
+    fn two_cut_facts(
+        &self,
+        duplicates: bool,
+    ) -> Vec<Vec<t::observation::PreparedBoundaryIncidence>> {
         assert!(self.capture.source().text().code_units().is_empty());
         assert!(self.capture.processed_text().code_units().is_empty());
         assert_eq!(
@@ -2166,13 +2186,16 @@ impl<S: l::LayoutScalar> Fixture<S> {
             self.capture.captured_computed_line_boundary(1).unwrap(),
         ];
         assert_ne!(causes[0], causes[1]);
-        for (i, side) in [t::SourceBoxSide::Before, t::SourceBoxSide::After]
-            .into_iter()
-            .enumerate()
+        for (i, side) in [
+            t::capture::SourceBoxSide::Before,
+            t::capture::SourceBoxSide::After,
+        ]
+        .into_iter()
+        .enumerate()
         {
             assert_eq!(
                 causes[i].target(),
-                t::CapturedComputedLineBoundaryTarget::Scope {
+                t::capture::CapturedComputedLineBoundaryTarget::Scope {
                     scope: self.scopes[1].clone(),
                     side
                 }
@@ -2220,9 +2243,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 })
                 .collect::<Vec<_>>(),
             vec![
-                (t::PreparedBreakKind::Forced, 1, 0, 0),
-                (t::PreparedBreakKind::Forced, 2, 0, 0),
-                (t::PreparedBreakKind::ParagraphEnd, 2, 0, 0),
+                (t::prepared::PreparedBreakKind::Forced, 1, 0, 0),
+                (t::prepared::PreparedBreakKind::Forced, 2, 0, 0),
+                (t::prepared::PreparedBreakKind::ParagraphEnd, 2, 0, 0),
             ]
         );
         assert_ne!(offers[0].view().boundary(), offers[1].view().boundary());
@@ -2230,7 +2253,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert!(offers[2].view().computed_line_boundary().is_none());
         let mut pins = vec![];
         for i in 0..2 {
-            let t::PreparedParticipant::ComputedLineBoundary(group) = &participants[i] else {
+            let t::prepared::PreparedParticipant::ComputedLineBoundary(group) = &participants[i]
+            else {
                 panic!("each distinct logical cut needs its computed participant");
             };
             assert_eq!(
@@ -2253,16 +2277,16 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 self.prepared
                     .incidence_scope_relation(&pin[0], &self.scopes[0])
                     .unwrap(),
-                t::CapturedScopeIncidence::Inside
+                t::observation::CapturedScopeIncidence::Inside
             );
             assert_eq!(
                 self.prepared
                     .incidence_scope_relation(&pin[0], &self.scopes[1])
                     .unwrap(),
                 if i == 0 {
-                    t::CapturedScopeIncidence::AtBefore
+                    t::observation::CapturedScopeIncidence::AtBefore
                 } else {
-                    t::CapturedScopeIncidence::AtAfter
+                    t::observation::CapturedScopeIncidence::AtAfter
                 }
             );
             pins.push(pin);
@@ -2287,8 +2311,16 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 .map(|line| (line.range(), line.bounds().size, line.baseline()))
                 .collect::<Vec<_>>(),
             vec![
-                (t::Range::new(0, 0), t::Size::new(30.0, 20.0), 16.0),
-                (t::Range::new(0, 0), t::Size::new(30.0, 34.0), 36.0),
+                (
+                    t::source::Range::new(0, 0),
+                    t::geometry::Size::new(30.0, 20.0),
+                    16.0
+                ),
+                (
+                    t::source::Range::new(0, 0),
+                    t::geometry::Size::new(30.0, 34.0),
+                    36.0
+                ),
             ]
         );
         assert_eq!(layout.metrics().line_count(), 2);
@@ -2329,12 +2361,12 @@ impl<S: l::LayoutScalar> Fixture<S> {
             .opportunity_views()
             .map(|view| view.handle())
             .collect::<Vec<_>>();
-        assert_eq!(request.context.end, t::LineEnd::Paragraph);
+        assert_eq!(request.context.end, t::selection::LineEnd::Paragraph);
         assert_eq!(request.start, offers[1].view().boundary());
         assert_eq!(request.end, offers[2].view().boundary());
         assert_eq!(
             request.termination,
-            t::PreparedTermination::Ordinary(offers[2].clone())
+            t::selection::PreparedTermination::Ordinary(offers[2].clone())
         );
         assert!(request.participants.is_empty());
         assert!(request.controls.is_empty());

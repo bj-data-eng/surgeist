@@ -8,7 +8,7 @@ fn registered_layout(
     source: &str,
     spacing: f64,
     alpha: f32,
-) -> surgeist_text::Layout {
+) -> surgeist_text::layout::Layout {
     use surgeist_text as text;
     let mut system = text::System::default();
     system
@@ -16,18 +16,18 @@ fn registered_layout(
         .unwrap();
     system
         .layout(
-            text::Source::new(source),
-            text::Style {
-                font: text::Font::new().family("Ahem"),
+            text::source::Source::new(source),
+            text::style::Style {
+                font: text::style::Font::new().family("Ahem"),
                 size,
-                line_height: text::LineHeight::Absolute(f64::from(size)),
+                line_height: text::style::LineHeight::Absolute(f64::from(size)),
                 letter_spacing: spacing,
-                brush: text::Brush::color(0.0, 0.0, 1.0, alpha),
-                ..text::Style::default()
+                brush: text::style::Brush::color(0.0, 0.0, 1.0, alpha),
+                ..text::style::Style::default()
             },
-            text::Options {
+            text::options::Options {
                 quantize: false,
-                ..text::Options::default()
+                ..text::options::Options::default()
             },
         )
         .unwrap()

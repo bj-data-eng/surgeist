@@ -16,7 +16,10 @@ use super::fixtures::{
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
-use surgeist_text::{Id, ParagraphReplacement, ParagraphReplacementDefinition, Source, Text};
+use surgeist_text::{
+    paragraph::{ParagraphReplacement, ParagraphReplacementDefinition},
+    source::{Id, Source, Text},
+};
 
 fn assert_fri08_c07_t02_scroll_source_root_paths<S: LayoutScalar>() {
     let scalar = S::from_f64;
@@ -257,14 +260,14 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
             ParagraphPart::text(1, Source::new("X"), ahem_style(10.0, 10.0)),
             ParagraphPart::Atomic {
                 node: 2,
-                size: surgeist_text::Size::new(10.0, 20.0),
+                size: surgeist_text::geometry::Size::new(10.0, 20.0),
             },
         ],
         ahem_style(10.0, 10.0),
         if parent_flow.direction() == Direction::Rtl {
-            surgeist_text::ParagraphBaseDirection::RightToLeft
+            surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft
         } else {
-            surgeist_text::ParagraphBaseDirection::LeftToRight
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight
         },
     );
     let inner = PreparedParagraph::new(
@@ -272,15 +275,15 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
             ParagraphPart::text(3, Source::new("X"), ahem_style(5.0, 10.0)),
             ParagraphPart::Control {
                 node: 4,
-                kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
             },
             ParagraphPart::text(5, Source::new("X"), ahem_style(5.0, 10.0)),
         ],
         ahem_style(5.0, 10.0),
         if child_flow.direction() == Direction::Rtl {
-            surgeist_text::ParagraphBaseDirection::RightToLeft
+            surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft
         } else {
-            surgeist_text::ParagraphBaseDirection::LeftToRight
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight
         },
     );
     let line_break = LineBreakInputOf::new()
@@ -450,7 +453,7 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
             .participants
             .iter()
             .find_map(|participant| {
-                if let surgeist_text::PreparedParticipant::Text(unit) = participant {
+                if let surgeist_text::prepared::PreparedParticipant::Text(unit) = participant {
                     Some(unit.view())
                 } else {
                     None
@@ -496,8 +499,8 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
         assert!(matches!(
             source.detail(),
             Some(surgeist_text::ErrorDetail::InvalidTextProtocol {
-                reason: surgeist_text::ProtocolError::UnsupportedContext {
-                    field: surgeist_text::ProtocolContextField::Orientation
+                reason: surgeist_text::prepared::ProtocolError::UnsupportedContext {
+                    field: surgeist_text::prepared::ProtocolContextField::Orientation
                 }
             })
         ));
@@ -637,15 +640,15 @@ fn fri06_c03_atomic_baseline_absent_inner_uses_positive_and_negative_margin_edge
                 ),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(10.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 10.0),
                 },
                 ParagraphPart::Atomic {
                     node: 3,
-                    size: surgeist_text::Size::new(10.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 10.0),
                 },
             ],
             ahem_style(10.0, 10.0),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let text = paragraph.text_input(1);
         let positive = NodeInputOf {
@@ -724,31 +727,31 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 ),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(10.0, 20.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 20.0),
                 },
                 ParagraphPart::Atomic {
                     node: 3,
-                    size: surgeist_text::Size::new(10.0, 25.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 25.0),
                 },
                 ParagraphPart::Atomic {
                     node: 4,
-                    size: surgeist_text::Size::new(10.0, 30.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 30.0),
                 },
                 ParagraphPart::Atomic {
                     node: 5,
-                    size: surgeist_text::Size::new(10.0, 35.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 35.0),
                 },
                 ParagraphPart::Control {
                     node: 6,
-                    kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
                 ParagraphPart::Control {
                     node: 7,
-                    kind: surgeist_text::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
                 ParagraphPart::Control {
                     node: 8,
-                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
                 },
                 ParagraphPart::text(
                     9,
@@ -757,7 +760,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 ),
             ],
             ahem_style(10.0, 10.0),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let text = paragraph.text_input(1);
         let top_with_margins = NodeInputOf {
@@ -902,7 +905,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
             .atomic_slots()
             .find(|slot| slot.occurrence.view().original_box().id() == Id::from_u64(2))
             .unwrap();
-        let surgeist_text::AtomicLineAllocation::InFlow {
+        let surgeist_text::allocation::AtomicLineAllocation::InFlow {
             flow, box_geometry, ..
         } = top_slot.allocation
         else {
@@ -986,11 +989,11 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 ),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(10.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 10.0),
                 },
                 ParagraphPart::Control {
                     node: 3,
-                    kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
                 ParagraphPart::text(
                     4,
@@ -999,7 +1002,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 ),
                 ParagraphPart::Control {
                     node: 5,
-                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
                 },
                 ParagraphPart::text(
                     7,
@@ -1008,7 +1011,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 ),
             ],
             ahem_style(10.0, 10.0),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch = prepared_mixed_batch(
             crate::test_support::requests::NativeRootFrameOf::new(
@@ -1592,12 +1595,12 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
                 ParagraphPart::text(1, Source::new("XX"), ahem_style(10.0, 10.0)),
                 ParagraphPart::Control {
                     node: 2,
-                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
                 },
                 ParagraphPart::text(3, Source::new("X"), ahem_style(6.0, 10.0)),
             ],
             ahem_style(10.0, 10.0),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch = prepared_mixed_batch(
             crate::test_support::requests::NativeRootFrameOf::new(
@@ -1993,9 +1996,9 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 )],
                 ahem_style(10.0, 10.0),
                 if child_direction == Direction::Rtl {
-                    surgeist_text::ParagraphBaseDirection::RightToLeft
+                    surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft
                 } else {
-                    surgeist_text::ParagraphBaseDirection::LeftToRight
+                    surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight
                 },
             );
             let tree = public_layout_tree(
@@ -3022,7 +3025,7 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
                 ahem_style(5.25, 10.0),
             )],
             ahem_style(5.25, 10.0),
-            surgeist_text::ParagraphBaseDirection::RightToLeft,
+            surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft,
         );
         let batch = prepared_front_door_batch(
             crate::test_support::requests::NativeRootFrameOf::new(
@@ -3163,7 +3166,7 @@ fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scala
                 ),
                 ParagraphPart::Atomic {
                     node: 3,
-                    size: surgeist_text::Size::new(20.0, 6.0),
+                    size: surgeist_text::geometry::Size::new(20.0, 6.0),
                 },
                 ParagraphPart::text(
                     5,
@@ -3172,8 +3175,8 @@ fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scala
                 ),
             ],
             ahem_style(10.0, 10.0),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
-            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
         );
         let after = PreparedParagraph::plain(
             7,
@@ -3282,7 +3285,7 @@ fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scala
         {
             assert_eq!(fragments[index].0, node);
             assert_eq!(fragments[index].1, origin);
-            assert_eq!(fragments[index].2, surgeist_text::Range::new(0, 1));
+            assert_eq!(fragments[index].2, surgeist_text::source::Range::new(0, 1));
             if node == 7 {
                 assert_eq!(fragments[index].4.y, S::from_f64(17.0));
             }
@@ -3336,16 +3339,16 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 ParagraphPart::text(1, Source::new("X\u{200b}"), style.clone()),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(8.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(8.0, 10.0),
                 },
                 ParagraphPart::Atomic {
                     node: 3,
-                    size: surgeist_text::Size::new(8.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(8.0, 10.0),
                 },
                 ParagraphPart::text(4, Source::new("XXX"), ahem_style(5.0, 10.0)),
             ],
             style.clone(),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch = prepared_mixed_batch(
             crate::test_support::requests::NativeRootFrameOf::new(
@@ -3410,16 +3413,16 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 ParagraphPart::text(1, Source::new("X"), style.clone()),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(10.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 10.0),
                 },
                 ParagraphPart::Control {
                     node: 4,
-                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
                 },
                 ParagraphPart::text(3, Source::new("X"), style.clone()),
             ],
             style.clone(),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let forced = prepared_mixed_batch(
             crate::test_support::requests::NativeRootFrameOf::new(
@@ -3468,16 +3471,16 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
             vec![
                 ParagraphPart::Atomic {
                     node: 1,
-                    size: surgeist_text::Size::new(40.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(40.0, 10.0),
                 },
                 ParagraphPart::Control {
                     node: 3,
-                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
                 },
                 ParagraphPart::text(2, Source::new("X"), ahem_style(5.0, 10.0)),
             ],
             style.clone(),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let progress = prepared_mixed_batch(
             crate::test_support::requests::NativeRootFrameOf::new(
@@ -3528,16 +3531,16 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 ParagraphPart::text(1, Source::new("X\u{200b}"), style.clone()),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(20.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(20.0, 10.0),
                 },
                 ParagraphPart::Control {
                     node: 4,
-                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
                 },
                 ParagraphPart::text(3, Source::new("XXX"), ahem_style(5.0, 10.0)),
             ],
             style,
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let run = |available: crate::AxisSizingRequestOf<S>| {
             prepared_mixed_batch(
@@ -3602,7 +3605,7 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
 fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let mut collapse = ahem_style(5.0, 10.0);
-        collapse.white_space = surgeist_text::WhiteSpace::Collapse;
+        collapse.white_space = surgeist_text::style::WhiteSpace::Collapse;
         // Source RLO admits the actual odd text level; nested LRE supplies the
         // even box context. These are captured characters, not supplied levels.
         let paragraph = PreparedParagraph::new(
@@ -3614,7 +3617,7 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
                 ),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(10.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 10.0),
                 },
                 ParagraphPart::text(
                     3,
@@ -3628,7 +3631,7 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
                 ),
                 ParagraphPart::Atomic {
                     node: 5,
-                    size: surgeist_text::Size::new(10.0, 10.0),
+                    size: surgeist_text::geometry::Size::new(10.0, 10.0),
                 },
                 ParagraphPart::text(
                     6,
@@ -3637,7 +3640,7 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
                 ),
             ],
             ahem_style(10.0, 10.0),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch = prepared_mixed_batch(
             crate::test_support::requests::NativeRootFrameOf::new(
@@ -3683,9 +3686,30 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
         );
         let rows = super::fixtures::origin_fragment_associations(batch.final_inline_fragments());
         for (node, local, line, x, y, width) in [
-            (1, surgeist_text::Range::new(1, 2), 0, 10.0, 2.0, 10.0),
-            (4, surgeist_text::Range::new(0, 1), 1, 15.0, 17.5, 5.0),
-            (6, surgeist_text::Range::new(1, 2), 1, 0.0, 17.5, 5.0),
+            (
+                1,
+                surgeist_text::source::Range::new(1, 2),
+                0,
+                10.0,
+                2.0,
+                10.0,
+            ),
+            (
+                4,
+                surgeist_text::source::Range::new(0, 1),
+                1,
+                15.0,
+                17.5,
+                5.0,
+            ),
+            (
+                6,
+                surgeist_text::source::Range::new(1, 2),
+                1,
+                0.0,
+                17.5,
+                5.0,
+            ),
         ] {
             let row = rows
                 .iter()
@@ -3720,10 +3744,10 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
         // RLO/LRE/PDF and suppressed whitespace retain their actual source
         // intersections and metric anchors rather than masquerading as X rows.
         for (node, length, visible) in [
-            (1, 3, Some(surgeist_text::Range::new(1, 2))),
+            (1, 3, Some(surgeist_text::source::Range::new(1, 2))),
             (3, 2, None),
-            (4, 2, Some(surgeist_text::Range::new(0, 1))),
-            (6, 3, Some(surgeist_text::Range::new(1, 2))),
+            (4, 2, Some(surgeist_text::source::Range::new(0, 1))),
+            (6, 3, Some(surgeist_text::source::Range::new(1, 2))),
         ] {
             let source_rows = rows.iter().filter(|row| row.0 == node).collect::<Vec<_>>();
             assert_eq!(source_rows.first().unwrap().2.start, 0);
@@ -3744,7 +3768,7 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
             paragraph
                 .prepared
                 .unit_views()
-                .find(|unit| unit.source_range() == surgeist_text::Range::new(1, 2))
+                .find(|unit| unit.source_range() == surgeist_text::source::Range::new(1, 2))
                 .unwrap()
                 .level(),
             BidiLevel::try_new(1).unwrap()
@@ -3801,7 +3825,7 @@ fn fri06_c08_r1_bidi_range_four_variants_preserve_complete_unit_geometry() {
 
 #[test]
 fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_both_scalars() {
-    use surgeist_text::{SuppliedInlineParticipant as Participant, SuppliedLine};
+    use surgeist_text::supplied_line::{SuppliedInlineParticipant as Participant, SuppliedLine};
     for edge in [
         InlineWhitespaceEdge::DiscardAtBoth,
         InlineWhitespaceEdge::Preserve,
@@ -4035,7 +4059,7 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
 ) -> CompletedLayoutBatchOf<u32, S> {
     // Ahem's 16px cell plus authored 4px letter spacing gives two real 20px
     // clusters. Ahem ascent/descent 12.8/3.2 and 20px line height give 14.8/5.2.
-    let style = surgeist_text::Style {
+    let style = surgeist_text::style::Style {
         letter_spacing: 4.0,
         ..ahem_style(16.0, 20.0)
     };
@@ -4044,27 +4068,27 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
             ParagraphPart::text(3, Source::new("XX"), style.clone()),
             ParagraphPart::Control {
                 node: 8,
-                kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+                kind: surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             },
             ParagraphPart::Atomic {
                 node: 4,
-                size: surgeist_text::Size::new(28.0, 16.0),
+                size: surgeist_text::geometry::Size::new(28.0, 16.0),
             },
             ParagraphPart::Atomic {
                 node: 5,
-                size: surgeist_text::Size::new(32.0, 16.0),
+                size: surgeist_text::geometry::Size::new(32.0, 16.0),
             },
             ParagraphPart::Atomic {
                 node: 6,
-                size: surgeist_text::Size::new(36.0, 16.0),
+                size: surgeist_text::geometry::Size::new(36.0, 16.0),
             },
             ParagraphPart::Atomic {
                 node: 7,
-                size: surgeist_text::Size::new(40.0, 16.0),
+                size: surgeist_text::geometry::Size::new(40.0, 16.0),
             },
         ],
         style,
-        surgeist_text::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let strut = InlineBoundaryInputOf::contribution(
         InlineBoundaryKind::Start,
@@ -4098,7 +4122,7 @@ fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
         // Actual Hebrew source resolves the RTL line. Ahem's real cell is16px.
         // L2 puts the atomic before it; full tracking values0/24 add a12px
         // gap to that atomic's logical extent, separately from its28px border.
-        let style = surgeist_text::Style {
+        let style = surgeist_text::style::Style {
             letter_spacing: 24.0,
             ..ahem_style(16.0, 20.0)
         };
@@ -4107,11 +4131,11 @@ fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
                 ParagraphPart::text(3, Source::new("א"), style.clone()),
                 ParagraphPart::Atomic {
                     node: 4,
-                    size: surgeist_text::Size::new(28.0, 16.0),
+                    size: surgeist_text::geometry::Size::new(28.0, 16.0),
                 },
             ],
             style,
-            surgeist_text::ParagraphBaseDirection::RightToLeft,
+            surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft,
         );
         let atomic = fri06_c08_native_atomic(28.0, 16.0);
         let left = NodeInputOf {
@@ -4265,11 +4289,11 @@ fn fri06_c08_float_line_empty_inline_keeps_integral_float_height_at_62() {
                 ParagraphPart::text(3, Source::new("X"), style.clone()),
                 ParagraphPart::Control {
                     node: 4,
-                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                    kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
                 },
             ],
             style,
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let metrics = InlineMetricsOf::from_ascent_descent(
             crate::InlineBaselineContext::Physical,
@@ -4296,7 +4320,7 @@ fn fri06_c08_float_line_empty_inline_keeps_integral_float_height_at_62() {
 #[test]
 fn fri06_c08_float_line_nonterminal_mixed_inline_keeps_integral_float_height_at_62() {
     fn assert_lane<S: LayoutScalar>() {
-        let style = surgeist_text::Style {
+        let style = surgeist_text::style::Style {
             letter_spacing: 4.0,
             ..ahem_style(16.0, 20.0)
         };
@@ -4305,12 +4329,12 @@ fn fri06_c08_float_line_nonterminal_mixed_inline_keeps_integral_float_height_at_
                 ParagraphPart::text(3, Source::new("XX"), style.clone()),
                 ParagraphPart::Atomic {
                     node: 4,
-                    size: surgeist_text::Size::new(28.0, 16.0),
+                    size: surgeist_text::geometry::Size::new(28.0, 16.0),
                 },
             ],
             style,
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
-            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
         );
         let atomic = fri06_c08_native_atomic(28.0, 16.0);
         let terminal = NodeInputOf {
@@ -4459,11 +4483,11 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
             // Strong Hebrew source establishes actual level one instead of
             // supplied glyph levels. Actual line edges suppress outer halves;
             // each text/atomic boundary averages its full tracking with zero.
-            let first_style = surgeist_text::Style {
+            let first_style = surgeist_text::style::Style {
                 letter_spacing: 3.265625,
                 ..ahem_style(16.0, 20.0)
             };
-            let last_style = surgeist_text::Style {
+            let last_style = surgeist_text::style::Style {
                 letter_spacing: 5.67578125,
                 ..ahem_style(16.0, 20.0)
             };
@@ -4472,12 +4496,12 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     ParagraphPart::text(1, Source::new("אבג"), first_style.clone()),
                     ParagraphPart::Atomic {
                         node: 2,
-                        size: surgeist_text::Size::new(20.0, 40.0),
+                        size: surgeist_text::geometry::Size::new(20.0, 40.0),
                     },
                     ParagraphPart::text(3, Source::new("אבגד"), last_style),
                 ],
                 first_style,
-                surgeist_text::ParagraphBaseDirection::RightToLeft,
+                surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft,
             );
             let atomic = NodeInputOf {
                 display: Display::InlineBlock,
@@ -4549,7 +4573,8 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 .find(|slot| slot.occurrence == occurrence)
                 .unwrap();
             assert_eq!(slot.origin.x, 103.8359375);
-            let surgeist_text::AtomicLineAllocation::InFlow { box_geometry, .. } = slot.allocation
+            let surgeist_text::allocation::AtomicLineAllocation::InFlow { box_geometry, .. } =
+                slot.allocation
             else {
                 panic!("the actual percentage-sized atomic remains in flow")
             };
@@ -4797,7 +4822,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 // Text16 plus that gap and atomics28+32 is98.53125>88,
                 // preserving the intended three actual float-band lines in
                 // either visual order. No outer tracking half is retained.
-                let style = surgeist_text::Style {
+                let style = surgeist_text::style::Style {
                     letter_spacing: 45.0625,
                     ..ahem_style(16.0, 20.0)
                 };
@@ -4814,26 +4839,26 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                         ),
                         ParagraphPart::Atomic {
                             node: 4,
-                            size: surgeist_text::Size::new(28.0, 16.0),
+                            size: surgeist_text::geometry::Size::new(28.0, 16.0),
                         },
                         ParagraphPart::Atomic {
                             node: 5,
-                            size: surgeist_text::Size::new(32.0, 16.0),
+                            size: surgeist_text::geometry::Size::new(32.0, 16.0),
                         },
                         ParagraphPart::Atomic {
                             node: 6,
-                            size: surgeist_text::Size::new(36.0, 16.0),
+                            size: surgeist_text::geometry::Size::new(36.0, 16.0),
                         },
                         ParagraphPart::Atomic {
                             node: 7,
-                            size: surgeist_text::Size::new(40.0, 16.0),
+                            size: surgeist_text::geometry::Size::new(40.0, 16.0),
                         },
                     ],
                     style,
                     if direction == Direction::Rtl {
-                        surgeist_text::ParagraphBaseDirection::RightToLeft
+                        surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft
                     } else {
-                        surgeist_text::ParagraphBaseDirection::LeftToRight
+                        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight
                     },
                 );
                 let mut children = vec![
@@ -5010,7 +5035,7 @@ fn fri06_c07_sideways_lr_rtl_all_atomic_odd_bidi_keeps_visual_placement_both_sca
 #[test]
 fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot_gaps_both_scalars()
 {
-    use surgeist_text::{SuppliedInlineParticipant as Participant, SuppliedLine};
+    use surgeist_text::supplied_line::{SuppliedInlineParticipant as Participant, SuppliedLine};
     let participants = [0, 1, 2, 2, 1, 0].map(|level| Participant::Text {
         level: BidiLevel::try_new(level).unwrap(),
         edge: InlineWhitespaceEdge::Preserve,
@@ -5128,7 +5153,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
         ParagraphReplacement::resolved_native_logical_before(
             ParagraphReplacementDefinition::Source {
                 origin: 0,
-                source: surgeist_text::Range::new(3, 4),
+                source: surgeist_text::source::Range::new(3, 4),
             },
             4,
             vec![Text::from("-")],
@@ -5300,7 +5325,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
         }
         // The unselected residual SHY produces no paint glyph. Seven actual
         // Ahem X outlines carry35px; original SHY source custody remains below.
-        let shy_range = surgeist_text::Range::new(3, 4);
+        let shy_range = surgeist_text::source::Range::new(3, 4);
         let visible = glyphs
             .iter()
             .filter(|glyph| glyph.0 != shy_range)
@@ -5308,12 +5333,15 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
         assert_eq!(
             visible.iter().map(|glyph| glyph.0).collect::<Vec<_>>(),
             [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7), (7, 8)]
-                .map(|(start, end)| surgeist_text::Range::new(start, end))
+                .map(|(start, end)| surgeist_text::source::Range::new(start, end))
         );
         for glyph in visible {
             assert_eq!(glyph.1, 58); // Ahem's actual X glyph.
             assert_eq!(glyph.2, 5.0);
-            assert_eq!(glyph.4, Some(surgeist_text::Rect::new(0.0, -4.0, 5.0, 5.0)));
+            assert_eq!(
+                glyph.4,
+                Some(surgeist_text::geometry::Rect::new(0.0, -4.0, 5.0, 5.0))
+            );
         }
         let shy = glyphs
             .iter()
@@ -5335,7 +5363,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
                 .iter()
                 .all(|row| matches!(
                     row.fragment().finalized_fragment().view().owner(),
-                    surgeist_text::FinalizedFragmentOwner::Origin(_)
+                    surgeist_text::finalized::FinalizedFragmentOwner::Origin(_)
                 ))
         );
         let feedback = finalized.feedback();
@@ -5424,10 +5452,13 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
         assert_eq!(completions[0].origin.y, 20.0);
         let selected = completion.selected_line();
         let request = selected.request();
-        assert_eq!(request.context.end, surgeist_text::LineEnd::Paragraph);
+        assert_eq!(
+            request.context.end,
+            surgeist_text::selection::LineEnd::Paragraph
+        );
         assert!(matches!(&request.termination,
-            surgeist_text::PreparedTermination::Ordinary(offer)
-                if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+            surgeist_text::selection::PreparedTermination::Ordinary(offer)
+                if offer.view().kind() == surgeist_text::prepared::PreparedBreakKind::ParagraphEnd));
         assert_eq!(request.start, request.end);
         let forced = mandatory
             .final_inline_fragments()
@@ -5440,7 +5471,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
         assert_eq!(completion.prepared_text(), forced.prepared_text());
         assert_eq!(
             forced.selected_line().request().context.end,
-            surgeist_text::LineEnd::Forced
+            surgeist_text::selection::LineEnd::Forced
         );
         assert_eq!(request.start, forced.selected_line().request().end);
         let overwide = prepared_source_batch(
@@ -5517,7 +5548,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
 
 #[test]
 fn supplied_line_edge_decisions_retain_every_logical_slot_without_fabricated_geometry() {
-    use surgeist_text::{SuppliedInlineParticipant as Participant, SuppliedLine};
+    use surgeist_text::supplied_line::{SuppliedInlineParticipant as Participant, SuppliedLine};
     let participants = [
         InlineWhitespaceEdge::DiscardAtLineStart,
         InlineWhitespaceEdge::Preserve,
@@ -5596,7 +5627,7 @@ fn prepared_text_intrinsic_uses_actual_selected_replacement_min_and_unselected_m
                     ParagraphReplacement::resolved_native_logical_before(
                         ParagraphReplacementDefinition::Source {
                             origin: 0,
-                            source: surgeist_text::Range::new(3, 4),
+                            source: surgeist_text::source::Range::new(3, 4),
                         },
                         4,
                         vec![Text::from("-")],
@@ -5633,7 +5664,7 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
                 ParagraphPart::text(2, Source::new("XX"), style.clone()),
             ],
             style.clone(),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch =
             |paragraph: &PreparedParagraph, direction, available: crate::AxisSizingRequestOf<S>| {
@@ -5691,7 +5722,7 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
                 ParagraphPart::text(2, Source::new("ב"), rtl_style.clone()),
             ],
             rtl_style,
-            surgeist_text::ParagraphBaseDirection::RightToLeft,
+            surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft,
         );
         let selected = batch(
             &bidi,
@@ -5724,7 +5755,7 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
                 ParagraphPart::text(2, Source::new("X"), style.clone()),
             ],
             style.clone(),
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let selected = batch(
             &mandatory,
@@ -5761,12 +5792,12 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
                 ParagraphPart::text(3, Source::new("XXX"), style.clone()),
             ],
             style,
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
             vec![
                 ParagraphReplacement::resolved_native_logical_before(
                     ParagraphReplacementDefinition::Source {
                         origin: 0,
-                        source: surgeist_text::Range::new(3, 4),
+                        source: surgeist_text::source::Range::new(3, 4),
                     },
                     4,
                     vec![Text::from("-")],
@@ -5826,12 +5857,12 @@ fn fri06_c02_scroll_uses_actual_source_and_replacement_fragment_rects_both_scala
                 ParagraphPart::text(2, Source::new("XX"), style.clone()),
             ],
             style,
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
             vec![
                 ParagraphReplacement::resolved_native_logical_before(
                     ParagraphReplacementDefinition::Source {
                         origin: 0,
-                        source: surgeist_text::Range::new(3, 4),
+                        source: surgeist_text::source::Range::new(3, 4),
                     },
                     4,
                     vec![Text::from("-")],
@@ -5896,7 +5927,7 @@ fn fri06_c02_scroll_uses_actual_source_and_replacement_fragment_rects_both_scala
             .filter(|entry| {
                 matches!(
                     entry.fragment().finalized_fragment().view().owner(),
-                    surgeist_text::FinalizedFragmentOwner::Alternative(_)
+                    surgeist_text::finalized::FinalizedFragmentOwner::Alternative(_)
                 )
             })
             .collect();

@@ -149,19 +149,19 @@ fn alternate_tab_cut_keeps_actual_css_grid_and_percentage_containing_width() {
     // Balance cuts after B: natural25, then C SPACE D30 (residual20/30).
     // Population variance625 ->25, still2 lines. Every request retains60,
     // first indent15 from the actual percentage resolver, and tab origin0.
-    let base = text::Style {
-        white_space: text::WhiteSpace::Collapse,
-        wrap: text::Wrap::Word,
-        word_break: text::WordBreak::Normal,
-        hyphens: text::Hyphens::None,
-        tab_size: text::TabSize::length(10.0).unwrap(),
+    let base = text::style::Style {
+        white_space: text::style::WhiteSpace::Collapse,
+        wrap: text::style::Wrap::Word,
+        word_break: text::style::WordBreak::Normal,
+        hyphens: text::hyphenation::Hyphens::None,
+        tab_size: text::tabs::TabSize::length(10.0).unwrap(),
         ..ahem_style(10.0, 10.0)
     };
-    let mut source = text::Source::new("A\tB C D");
+    let mut source = text::source::Source::new("A\tB C D");
     source.span(
-        text::Range::new(1, 2),
-        text::Style {
-            white_space: text::WhiteSpace::Preserve,
+        text::source::Range::new(1, 2),
+        text::style::Style {
+            white_space: text::style::WhiteSpace::Preserve,
             ..base.clone()
         },
     );
@@ -185,7 +185,7 @@ fn alternate_tab_cut_keeps_actual_css_grid_and_percentage_containing_width() {
     for (batch, lines) in [(&auto, &auto_lines), (&balanced, &balanced_lines)] {
         assert_eq!(
             batch.placed_text()[0].layout().source().text(),
-            &text::Text::from("A\tB C D")
+            &text::source::Text::from("A\tB C D")
         );
         for (index, line) in lines.iter().enumerate() {
             assert_eq!(line.prepared_text(), paragraph.prepared);
@@ -343,7 +343,7 @@ fn fitting_ordinary_trials(
             // alternatives. Their exploration is not conditional-stage entry.
             assert_eq!(
                 alternative.view().availability(),
-                text::PreparedAlternativeAvailability::Ordinary,
+                text::prepared::PreparedAlternativeAvailability::Ordinary,
                 "{wrap_style:?}: {request:?}"
             );
             assert_eq!(
@@ -375,7 +375,7 @@ fn fitting_ordinary_trials(
             );
             assert_eq!(
                 alternative.view().availability(),
-                text::PreparedAlternativeAvailability::Ordinary,
+                text::prepared::PreparedAlternativeAvailability::Ordinary,
                 "{wrap_style:?}: {request:?}"
             );
             assert!(
@@ -399,25 +399,25 @@ fn balancing_real_phrase_suffix_never_restores_normal_or_emergency_while_ordinar
     // Auto cut7 gives60/30 (residual0/30, variance225). Balance cut5 gives
     // AA SPACE A =40 and A SPACE phrase=50 (20/10, variance25).
     // The whole30px phrase fits real60 at every reachable ordinary prefix.
-    let japanese = text::Style {
-        font: text::Font::new().family("Surgeist Phrase Ahem"),
+    let japanese = text::style::Style {
+        font: text::style::Font::new().family("Surgeist Phrase Ahem"),
         locale: Some("ja".into()),
-        word_break: text::WordBreak::AutoPhrase,
-        overflow_wrap: text::OverflowWrap::Anywhere,
-        white_space: text::WhiteSpace::Collapse,
-        wrap: text::Wrap::Word,
-        hyphens: text::Hyphens::None,
+        word_break: text::style::WordBreak::AutoPhrase,
+        overflow_wrap: text::style::OverflowWrap::Anywhere,
+        white_space: text::style::WhiteSpace::Collapse,
+        wrap: text::style::Wrap::Word,
+        hyphens: text::hyphenation::Hyphens::None,
         ..ahem_style(10.0, 10.0)
     };
-    let prefix = text::Style {
+    let prefix = text::style::Style {
         locale: Some("en-US".into()),
-        word_break: text::WordBreak::Normal,
+        word_break: text::style::WordBreak::Normal,
         ..japanese.clone()
     };
     let paragraph = PreparedParagraph::with_registered_font(
         vec![
-            ParagraphPart::text(1, text::Source::new("AA A A "), prefix),
-            ParagraphPart::text(2, text::Source::new("日本へ"), japanese.clone()),
+            ParagraphPart::text(1, text::source::Source::new("AA A A "), prefix),
+            ParagraphPart::text(2, text::source::Source::new("日本へ"), japanese.clone()),
         ],
         japanese,
         ParagraphBaseDirection::LeftToRight,
@@ -448,11 +448,11 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
     // its own mode in the pending paragraph and convergence basis.
     let paragraph = PreparedParagraph::plain(
         1,
-        text::Source::new("AAA BB C"),
-        text::Style {
-            white_space: text::WhiteSpace::Collapse,
-            wrap: text::Wrap::Word,
-            hyphens: text::Hyphens::None,
+        text::source::Source::new("AAA BB C"),
+        text::style::Style {
+            white_space: text::style::WhiteSpace::Collapse,
+            wrap: text::style::Wrap::Word,
+            hyphens: text::hyphenation::Hyphens::None,
             ..ahem_style(10.0, 10.0)
         },
     );
@@ -528,7 +528,10 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
             .entries
             .iter()
             .map(|entry| {
-                assert!(matches!(entry, text::PlacementEntry::Formatted(_)));
+                assert!(matches!(
+                    entry,
+                    text::placement::PlacementEntry::Formatted(_)
+                ));
                 entry.finalized_line().clone()
             })
             .collect::<Vec<_>>();
@@ -570,17 +573,21 @@ fn balancing_fitting_words_keeps_ordinary_hyphen_trials_out_of_conditional_stage
     // Auto first AAAAAA SPACE A SPACE A SPACE A =60 (cut13), last45.
     // Balance first AAAAAA SPACE A SPACE A =50 (cut11), last A SPACE associate55.
     // Residual0/15 variance56.25 ->10/5 variance6.25; all whole words fit60.
-    let style = text::Style {
-        white_space: text::WhiteSpace::Collapse,
-        wrap: text::Wrap::Word,
-        word_break: text::WordBreak::Normal,
-        overflow_wrap: text::OverflowWrap::Anywhere,
-        hyphens: text::Hyphens::Auto,
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Collapse,
+        wrap: text::style::Wrap::Word,
+        word_break: text::style::WordBreak::Normal,
+        overflow_wrap: text::style::OverflowWrap::Anywhere,
+        hyphens: text::hyphenation::Hyphens::Auto,
         locale: Some("en-US".into()),
-        hyphenate_character: text::HyphenateCharacter::String("A".into()),
+        hyphenate_character: text::hyphenation::HyphenateCharacter::String("A".into()),
         ..ahem_style(5.0, 10.0)
     };
-    let paragraph = PreparedParagraph::plain(1, text::Source::new("AAAAAA A A A associate"), style);
+    let paragraph = PreparedParagraph::plain(
+        1,
+        text::source::Source::new("AAAAAA A A A associate"),
+        style,
+    );
     let word = paragraph
         .prepared
         .word_views()
@@ -597,7 +604,7 @@ fn balancing_fitting_words_keeps_ordinary_hyphen_trials_out_of_conditional_stage
             .any(|offer| offer.kind() == PreparedBreakKind::Discretionary
                 && offer.alternatives().any(|alternative| matches!(
                     alternative.definition(),
-                    text::PreparedAlternativeDefinition::Automatic { .. }
+                    text::prepared::PreparedAlternativeDefinition::Automatic { .. }
                 ))),
         "the fixture has actual ordinary automatic-hyphen alternatives, not only a dormant resource"
     );
@@ -621,11 +628,11 @@ fn paragraph_tail_repairs_only_its_pair_and_rejects_transferring_the_shortness()
     ] {
         let paragraph = PreparedParagraph::plain(
             1,
-            text::Source::new(source),
-            text::Style {
-                white_space: text::WhiteSpace::Collapse,
-                wrap: text::Wrap::Word,
-                hyphens: text::Hyphens::None,
+            text::source::Source::new(source),
+            text::style::Style {
+                white_space: text::style::WhiteSpace::Collapse,
+                wrap: text::style::Wrap::Word,
+                hyphens: text::hyphenation::Hyphens::None,
                 ..ahem_style(10.0, 10.0)
             },
         );

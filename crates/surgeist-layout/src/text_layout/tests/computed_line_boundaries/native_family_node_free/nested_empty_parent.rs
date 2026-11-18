@@ -12,7 +12,7 @@ enum NestedNomination {
 }
 
 fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: NestedNomination) {
-    let mut input = empty_input(false, text::ParagraphStrut::DefaultFont);
+    let mut input = empty_input(false, text::paragraph::ParagraphStrut::DefaultFont);
     input.computed_line_boundaries.clear();
     assert!(input.source.text().is_empty());
     assert!(input.origins.is_empty());
@@ -22,7 +22,7 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         input
             .scopes
             .iter()
-            .filter(|scope| matches!(scope, text::SourceProcessingScope::Block { .. }))
+            .filter(|scope| matches!(scope, text::capture::SourceProcessingScope::Block { .. }))
             .count(),
         1
     );
@@ -30,36 +30,38 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         input
             .scopes
             .iter()
-            .filter(|scope| matches!(scope, text::SourceProcessingScope::Inline { .. }))
+            .filter(|scope| matches!(scope, text::capture::SourceProcessingScope::Inline { .. }))
             .count(),
         1
     );
     let root_scope = input
         .scopes
         .iter()
-        .position(|scope| matches!(scope, text::SourceProcessingScope::Block { .. }))
+        .position(|scope| matches!(scope, text::capture::SourceProcessingScope::Block { .. }))
         .unwrap();
     let parent_scope = input
         .scopes
         .iter()
-        .position(|scope| matches!(scope, text::SourceProcessingScope::Inline { .. }))
+        .position(|scope| matches!(scope, text::capture::SourceProcessingScope::Inline { .. }))
         .unwrap();
     assert!(matches!(
         &input.scopes[parent_scope],
-        text::SourceProcessingScope::Inline {
+        text::capture::SourceProcessingScope::Inline {
             boundaries: None,
             ..
         }
     ));
     let child_scope = input.scopes.len();
-    input.scopes.push(text::SourceProcessingScope::Inline {
-        horizontal_inner_direction: None,
-        alignment_boundary: None,
-        font_reference: None,
-        trim: Default::default(),
-        style: None,
-        boundaries: None,
-    });
+    input
+        .scopes
+        .push(text::capture::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
+            trim: Default::default(),
+            style: None,
+            boundaries: None,
+        });
     // These are real nested source occurrences BEFORE processing, not synthetic
     // CapturedScopes or a post-capture change to their parent relationships.
     input.events = vec![
@@ -138,7 +140,7 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
     let scopes = member
         .scope_intersections()
         .map(|intersection| intersection.scope())
-        .filter(|scope| scope.role() == text::ScopeRole::Inline)
+        .filter(|scope| scope.role() == text::capture::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
     // Derive issued P/C by their real parents, not assumed captured ordinals.
@@ -153,8 +155,8 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         .unwrap()
         .clone();
     assert_ne!(parent, child_scope);
-    assert_eq!(parent.role(), text::ScopeRole::Inline);
-    assert_eq!(child_scope.role(), text::ScopeRole::Inline);
+    assert_eq!(parent.role(), text::capture::ScopeRole::Inline);
+    assert_eq!(child_scope.role(), text::capture::ScopeRole::Inline);
     assert_eq!(parent.parent(), Some(domain.clone()));
     assert_eq!(child_scope.parent(), Some(parent.clone()));
     for scope in [&parent, &child_scope] {

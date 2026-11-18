@@ -8,9 +8,9 @@ use crate::*;
 use surgeist_text as text;
 
 fn selected_line(
-    prepared: &text::PreparedText,
-    start: text::PreparedBoundary,
-    end: text::PreparedOpportunity,
+    prepared: &text::prepared::PreparedText,
+    start: text::prepared::PreparedBoundary,
+    end: text::prepared::PreparedOpportunity,
 ) -> FinalizedLine {
     let from = start.view().participant_offset();
     let boundary = end.view().boundary();
@@ -19,49 +19,49 @@ fn selected_line(
     let controls = participants
         .iter()
         .filter_map(|participant| match participant {
-            PreparedParticipant::Control(occurrence) => Some(text::ControlAllocation {
+            PreparedParticipant::Control(occurrence) => Some(text::allocation::ControlAllocation {
                 occurrence: occurrence.clone(),
                 boundary: None,
-                strut: Some(text::ControlStrut {
+                strut: Some(text::allocation::ControlStrut {
                     baseline: 8.0,
                     line_extent: 10.0,
-                    alignment: text::LineBoxAlignment::Baseline,
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 }),
             }),
             _ => None,
         })
         .collect();
     prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start,
             end: boundary,
             participants,
-            termination: text::PreparedTermination::Ordinary(end.clone()),
+            termination: text::selection::PreparedTermination::Ordinary(end.clone()),
             alternative: None,
             incoming: None,
-            context: text::LineContext {
-                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::Horizontal,
+            context: text::selection::LineContext {
+                alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::Horizontal,
                 start: if from == 0 {
-                    text::LineStart::Paragraph
+                    text::selection::LineStart::Paragraph
                 } else {
-                    text::LineStart::Continuation
+                    text::selection::LineStart::Continuation
                 },
-                end: if end.view().kind() == text::PreparedBreakKind::Forced {
+                end: if end.view().kind() == text::prepared::PreparedBreakKind::Forced {
                     LineEnd::Forced
                 } else {
                     LineEnd::Paragraph
                 },
                 available_inline: Some(100.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
             atomics: Vec::new(),
             controls,
@@ -70,9 +70,9 @@ fn selected_line(
             line_box_struts: Vec::new(),
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -101,16 +101,16 @@ fn lane<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);
     let paragraph = PreparedParagraph::new(
         vec![
-            ParagraphPart::text(1, text::Source::new("A"), style.clone()),
+            ParagraphPart::text(1, text::source::Source::new("A"), style.clone()),
             ParagraphPart::Control {
                 node: 3,
-                kind: text::ParagraphControlKind::ForcedBreak,
+                kind: text::paragraph::ParagraphControlKind::ForcedBreak,
             },
-            ParagraphPart::text(4, text::Source::new("B "), style.clone()),
-            ParagraphPart::text(6, text::Source::new("C"), style.clone()),
+            ParagraphPart::text(4, text::source::Source::new("B "), style.clone()),
+            ParagraphPart::text(6, text::source::Source::new("C"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = paragraph.binding(0);
     binding.nodes = vec![1, 2, 3, 4, 5, 6];
@@ -249,13 +249,13 @@ fn lane<S: LayoutScalar>() {
     let forced = paragraph
         .prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::Forced)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::Forced)
         .unwrap()
         .handle();
     let terminal = paragraph
         .prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let initial = paragraph.prepared.boundary_views().next().unwrap().handle();

@@ -85,7 +85,7 @@ impl<S: LayoutScalar> CachedTree<S> {
 fn paragraph(
     node: u32,
     source: &str,
-    style: text::Style,
+    style: text::style::Style,
     body: ParagraphBaseDirection,
 ) -> PreparedParagraph {
     PreparedParagraph::at_boundary(
@@ -96,7 +96,7 @@ fn paragraph(
         )],
         style,
         body,
-        text::ParagraphTerminalEdge::Unknown,
+        text::paragraph::ParagraphTerminalEdge::Unknown,
     )
 }
 
@@ -227,13 +227,13 @@ fn glyphs<S: LayoutScalar>(
 
 fn frames<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> Vec<(text::Range, text::LineContext, bool)> {
+) -> Vec<(text::source::Range, text::selection::LineContext, bool)> {
     let mut result = Vec::new();
     for entry in batch.final_inline_fragments() {
         let line = entry.fragment().finalized_fragment().finalized_line();
         let selected = line.selected_line();
         let request = selected.request();
-        let range = text::Range::new(
+        let range = text::source::Range::new(
             request.start.view().source_after().get(),
             request.end.view().source_before().get(),
         );
@@ -242,7 +242,7 @@ fn frames<S: LayoutScalar>(
             request.context.clone(),
             matches!(
                 &request.termination,
-                text::PreparedTermination::Conditional(_)
+                text::selection::PreparedTermination::Conditional(_)
             ),
         );
         if !result.contains(&row) {
@@ -264,19 +264,19 @@ fn opposed<S: LayoutScalar>() {
             Direction::Ltr,
             LineBoxDirectionPolicy::Normal,
             vec![5.0, 15.0],
-            text::LineBoxDirection::LeftToRight,
+            text::selection::LineBoxDirection::LeftToRight,
         ),
         (
             Direction::Rtl,
             LineBoxDirectionPolicy::Normal,
             vec![15.0, 25.0],
-            text::LineBoxDirection::RightToLeft,
+            text::selection::LineBoxDirection::RightToLeft,
         ),
         (
             Direction::Rtl,
             LineBoxDirectionPolicy::Plaintext,
             vec![5.0, 15.0],
-            text::LineBoxDirection::LeftToRight,
+            text::selection::LineBoxDirection::LeftToRight,
         ),
     ] {
         let batch = compute::<S>(&p, 40.0, container, policy, 5.0);
@@ -308,10 +308,10 @@ fn normalized_policy_changes_geometry_without_changing_body_uba() {
 }
 
 fn conditional<S: LayoutScalar>() {
-    let style = text::Style {
+    let style = text::style::Style {
         wrap: Wrap::Word,
-        overflow_wrap: text::OverflowWrap::Anywhere,
-        line_break: text::LineBreak::Auto,
+        overflow_wrap: text::style::OverflowWrap::Anywhere,
+        line_break: text::style::LineBreak::Auto,
         ..ahem_style(10.0, 10.0)
     };
     let p = paragraph(1, "123A", style, ParagraphBaseDirection::LeftToRight);
@@ -331,16 +331,16 @@ fn conditional<S: LayoutScalar>() {
     );
     let facts = frames(&batch);
     assert_eq!(facts.len(), 2);
-    assert_eq!(facts[0].0, text::Range::new(0, 2));
+    assert_eq!(facts[0].0, text::source::Range::new(0, 2));
     assert!(facts[0].2);
     assert_eq!(
         facts[0].1.line_box_direction,
-        text::LineBoxDirection::RightToLeft
+        text::selection::LineBoxDirection::RightToLeft
     );
-    assert_eq!(facts[1].0, text::Range::new(2, 4));
+    assert_eq!(facts[1].0, text::source::Range::new(2, 4));
     assert_eq!(
         facts[1].1.line_box_direction,
-        text::LineBoxDirection::LeftToRight
+        text::selection::LineBoxDirection::LeftToRight
     );
 }
 
@@ -384,7 +384,7 @@ fn chronology<S: LayoutScalar>() {
                     PreferredSizeOf::px(S::from_f64(10.0)),
                 ),
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
-                    text::BidiLevel::try_new(0).unwrap(),
+                    text::supplied_line::BidiLevel::try_new(0).unwrap(),
                     InlineBreakOpportunity::Allowed,
                 )),
                 ..NodeInputOf::default()
@@ -474,8 +474,8 @@ fn accepted_history_crosses_declared_runs_and_numeric_lines_but_resets_in_a_chil
 }
 
 fn preserved_space<S: LayoutScalar>() {
-    let style = text::Style {
-        white_space: text::WhiteSpace::Preserve,
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
         wrap: Wrap::Word,
         ..ahem_style(10.0, 10.0)
     };
@@ -497,7 +497,7 @@ fn preserved_space<S: LayoutScalar>() {
     let line = entry.fragment().finalized_fragment().finalized_line();
     assert_eq!(
         line.selected_line().request().context.end,
-        text::LineEnd::Soft
+        text::selection::LineEnd::Soft
     );
     assert_eq!(line.feedback().advance, 20.0);
     assert_eq!(line.measurements().alignment().advance(), 10.0);
@@ -602,8 +602,8 @@ fn intrinsic<S: LayoutScalar>(
                     next_transition: None,
                 })
             },
-            clear: |_, _: &text::LineSelectionRequest| Ok(None),
-            replay: |_: &text::FinalizedLine, _| Ok(Vec::new()),
+            clear: |_, _: &text::selection::LineSelectionRequest| Ok(None),
+            replay: |_: &text::finalized::FinalizedLine, _| Ok(Vec::new()),
             accept: || Ok(()),
         },
     )
@@ -611,9 +611,9 @@ fn intrinsic<S: LayoutScalar>(
 }
 
 fn independent_intrinsics<S: LayoutScalar>() {
-    let style = text::Style {
+    let style = text::style::Style {
         wrap: Wrap::Word,
-        overflow_wrap: text::OverflowWrap::Anywhere,
+        overflow_wrap: text::style::OverflowWrap::Anywhere,
         ..ahem_style(10.0, 10.0)
     };
     let p = paragraph(1, "123A", style, ParagraphBaseDirection::LeftToRight);
@@ -681,10 +681,10 @@ fn independent_intrinsics<S: LayoutScalar>() {
                 assert_eq!(
                     directions,
                     [
-                        text::LineBoxDirection::RightToLeft,
-                        text::LineBoxDirection::RightToLeft,
-                        text::LineBoxDirection::RightToLeft,
-                        text::LineBoxDirection::LeftToRight
+                        text::selection::LineBoxDirection::RightToLeft,
+                        text::selection::LineBoxDirection::RightToLeft,
+                        text::selection::LineBoxDirection::RightToLeft,
+                        text::selection::LineBoxDirection::LeftToRight
                     ]
                 );
             } else {
@@ -696,7 +696,7 @@ fn independent_intrinsics<S: LayoutScalar>() {
                         .request()
                         .context
                         .line_box_direction,
-                    text::LineBoxDirection::LeftToRight
+                    text::selection::LineBoxDirection::LeftToRight
                 );
             }
         }
@@ -712,8 +712,8 @@ fn intrinsic_chronology_is_local_and_query_order_does_not_change_finite_lines() 
 }
 
 fn forced_and_full_context<S: LayoutScalar>() {
-    let style = text::Style {
-        white_space: text::WhiteSpace::Preserve,
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
         wrap: Wrap::Word,
         ..ahem_style(10.0, 10.0)
     };
@@ -739,9 +739,10 @@ fn forced_and_full_context<S: LayoutScalar>() {
         [(0, 0.0), (2, 0.0), (2, 10.0)]
     );
     assert!(
-        frames(&batch).iter().all(
-            |(_, context, _)| context.line_box_direction == text::LineBoxDirection::LeftToRight
-        )
+        frames(&batch)
+            .iter()
+            .all(|(_, context, _)| context.line_box_direction
+                == text::selection::LineBoxDirection::LeftToRight)
     );
     // RLM is actual strong semantic body text with no advance; the later A line
     // uses the full paragraph's R direction, not a fresh suffix first-strong scan.
@@ -755,9 +756,10 @@ fn forced_and_full_context<S: LayoutScalar>() {
     );
     assert_eq!(batch.placed_text()[0].layout().lines().len(), 2);
     assert!(
-        frames(&batch).iter().all(
-            |(_, context, _)| context.line_box_direction == text::LineBoxDirection::RightToLeft
-        )
+        frames(&batch)
+            .iter()
+            .all(|(_, context, _)| context.line_box_direction
+                == text::selection::LineBoxDirection::RightToLeft)
     );
     assert_eq!(
         glyphs(&batch, 0)
@@ -826,7 +828,7 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                             PreferredSizeOf::px(S::from_f64(10.0)),
                         ),
                         atomic_inline_participation: Some(AtomicInlineParticipation::new(
-                            text::BidiLevel::try_new(0).unwrap(),
+                            text::supplied_line::BidiLevel::try_new(0).unwrap(),
                             InlineBreakOpportunity::Allowed,
                         )),
                         ..NodeInputOf::default()
@@ -871,9 +873,9 @@ fn numeric_overflow_cases<S: LayoutScalar>(
             assert_eq!(
                 prefix[0].1.line_box_direction,
                 if resolved_rtl {
-                    text::LineBoxDirection::RightToLeft
+                    text::selection::LineBoxDirection::RightToLeft
                 } else {
-                    text::LineBoxDirection::LeftToRight
+                    text::selection::LineBoxDirection::LeftToRight
                 }
             );
             let atomic = readback::single_box_output(&batch, 3, Phase::Unrounded);

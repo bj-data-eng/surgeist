@@ -95,9 +95,9 @@ fn chi_font() -> Vec<u8> {
     output
 }
 
-fn upright(mut authored: text::Style) -> (text::Layout, text::System, Vec<u8>) {
+fn upright(mut authored: text::style::Style) -> (text::layout::Layout, text::System, Vec<u8>) {
     authored.size = 10.0;
-    authored.line_height = text::LineHeight::Absolute(10.0);
+    authored.line_height = text::style::LineHeight::Absolute(10.0);
     let bytes = chi_font();
     assert_eq!(checksum(&bytes), 0xb1b0_afba);
     for tag in [*b"glyf", *b"loca", *b"maxp", *b"hmtx", *b"hhea"] {
@@ -146,12 +146,12 @@ fn upright(mut authored: text::Style) -> (text::Layout, text::System, Vec<u8>) {
     let cross = instance
         .upright_metrics(
             &catalogue,
-            text::FontBaselineScript::from_iso15924(*b"Hani").unwrap(),
+            text::font::FontBaselineScript::from_iso15924(*b"Hani").unwrap(),
         )
         .unwrap();
     assert_eq!(
         cross.reference(),
-        text::UprightMetricReference::NominalVerticalPenX
+        text::font::UprightMetricReference::NominalVerticalPenX
     );
     assert_eq!(
         (
@@ -161,41 +161,52 @@ fn upright(mut authored: text::Style) -> (text::Layout, text::System, Vec<u8>) {
         ),
         (0.0, -5.0, 5.0)
     );
-    let typography = text::AnalysisTypography::Upright {
-        computed_direction: text::ParagraphBaseDirection::RightToLeft,
+    let typography = text::analyzed::AnalysisTypography::Upright {
+        computed_direction: text::paragraph::ParagraphBaseDirection::RightToLeft,
     };
-    let analyzed = text::AnalyzedSource::new(
-        text::Source::identified("\u{4e00}\u{4e00}", text::Id::from_u64(7811544), 7),
+    let analyzed = text::analyzed::AnalyzedSource::new(
+        text::source::Source::identified(
+            "\u{4e00}\u{4e00}",
+            text::source::Id::from_u64(7811544),
+            7,
+        ),
         authored,
         typography,
     )
     .unwrap();
     assert_eq!(analyzed.typography(), typography);
-    assert_eq!(analyzed.direction(), text::Direction::LeftToRight);
+    assert_eq!(analyzed.direction(), text::style::Direction::LeftToRight);
     assert_eq!(
         analyzed.graphemes().collect::<Vec<_>>(),
-        [text::Range::new(0, 1), text::Range::new(1, 2)]
+        [
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2)
+        ]
     );
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(text::LineOrientation::Vertical),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::Vertical),
         )
         .unwrap();
-    assert_eq!(prepared.orientation(), text::LineOrientation::Vertical);
+    assert_eq!(
+        prepared.orientation(),
+        text::selection::LineOrientation::Vertical
+    );
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
     let end = prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(end),
+            termination: text::selection::PreparedTermination::Ordinary(end),
             participants: prepared.participants().collect(),
             alternative: None,
             incoming: None,
@@ -204,25 +215,25 @@ fn upright(mut authored: text::Style) -> (text::Layout, text::System, Vec<u8>) {
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::Vertical,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::Vertical,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 20.0);
@@ -233,7 +244,7 @@ fn upright(mut authored: text::Style) -> (text::Layout, text::System, Vec<u8>) {
     assert_eq!(
         line.run_views()
             .flat_map(|run| {
-                assert_eq!(run.glyph_basis(), text::GlyphBasis::Unrotated);
+                assert_eq!(run.glyph_basis(), text::geometry::GlyphBasis::Unrotated);
                 run.glyphs()
                     .map(|glyph| {
                         (
@@ -249,36 +260,44 @@ fn upright(mut authored: text::Style) -> (text::Layout, text::System, Vec<u8>) {
             })
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(0, 1), 274, -5.0, 8.0, 10.0, 0.0),
-            (text::Range::new(1, 2), 274, -5.0, 8.0, 10.0, 10.0),
+            (text::source::Range::new(0, 1), 274, -5.0, 8.0, 10.0, 0.0),
+            (text::source::Range::new(1, 2), 274, -5.0, 8.0, 10.0, 10.0),
         ]
     );
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 20.0,
-                baseline: 100.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 20.0,
+                    baseline: 100.0,
+                },
+                orientation: text::selection::LineOrientation::Vertical,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Vertical,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
     assert_eq!(layout.source().text().code_units(), [0x4e00, 0x4e00]);
-    assert_eq!(layout.source().id(), Some(text::Id::from_u64(7811544)));
+    assert_eq!(
+        layout.source().id(),
+        Some(text::source::Id::from_u64(7811544))
+    );
     assert_eq!(layout.source().revision(), 7);
     assert_eq!(layout.analyzed_source().identity(), analyzed.identity());
-    assert_eq!(layout.bounds(), text::Rect::new(95.0, 20.0, 10.0, 20.0));
+    assert_eq!(
+        layout.bounds(),
+        text::geometry::Rect::new(95.0, 20.0, 10.0, 20.0)
+    );
     let runs = layout.run_views().collect::<Vec<_>>();
     assert_eq!(runs.len(), 1);
-    assert_eq!(runs[0].origin(), text::Point::new(100.0, 20.0));
-    assert_eq!(runs[0].glyph_basis(), text::GlyphBasis::Unrotated);
+    assert_eq!(runs[0].origin(), text::geometry::Point::new(100.0, 20.0));
+    assert_eq!(runs[0].glyph_basis(), text::geometry::GlyphBasis::Unrotated);
     assert!(runs[0].face().is_same_face(&face.face()));
     assert_eq!(runs[0].face().catalogue_identity(), &catalogue);
-    assert_eq!(runs[0].range(), text::Range::new(0, 2));
+    assert_eq!(runs[0].range(), text::source::Range::new(0, 2));
     (layout, system, bytes)
 }
 
@@ -377,10 +396,10 @@ fn upright_asymmetric_outlines_keep_raw_axes_and_vertical_pens_through_outer_pla
 
 #[test]
 fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_once() {
-    let authored = text::Style {
-        underline: text::Decoration::solid()
-            .with_offset(text::DecorationOffset::try_absolute(-2.0).unwrap())
-            .with_thickness(text::DecorationThickness::try_absolute(1.0).unwrap()),
+    let authored = text::style::Style {
+        underline: text::style::Decoration::solid()
+            .with_offset(text::style::DecorationOffset::try_absolute(-2.0).unwrap())
+            .with_thickness(text::style::DecorationThickness::try_absolute(1.0).unwrap()),
         ..style()
     };
     let (input, system, _bytes) = upright(authored);
@@ -389,7 +408,7 @@ fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_
     assert_eq!(decorations.len(), 1);
     assert_eq!(
         decorations[0].rect(),
-        text::Rect::new(97.0, 20.0, 1.0, 20.0)
+        text::geometry::Rect::new(97.0, 20.0, 1.0, 20.0)
     );
     let outer = Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap();
     let scene = prepare_text_layout(
@@ -471,25 +490,29 @@ fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_
 fn upright_native_synthesis_uses_original_font_axes_once_before_outer_scaling() {
     for (font, italic, bold) in [
         (
-            text::Font::new().family("Ahem").style(text::Slant::Italic),
-            true,
-            false,
-        ),
-        (
-            text::Font::new().family("Ahem").weight(text::Weight::Bold),
-            false,
-            true,
-        ),
-        (
-            text::Font::new()
+            text::style::Font::new()
                 .family("Ahem")
-                .weight(text::Weight::Bold)
-                .style(text::Slant::Italic),
+                .style(text::style::Slant::Italic),
+            true,
+            false,
+        ),
+        (
+            text::style::Font::new()
+                .family("Ahem")
+                .weight(text::style::Weight::Bold),
+            false,
+            true,
+        ),
+        (
+            text::style::Font::new()
+                .family("Ahem")
+                .weight(text::style::Weight::Bold)
+                .style(text::style::Slant::Italic),
             true,
             true,
         ),
     ] {
-        let (input, system, bytes) = upright(text::Style { font, ..style() });
+        let (input, system, bytes) = upright(text::style::Style { font, ..style() });
         let source_run = input.run_views().next().unwrap();
         let instance = source_run.effective_instance().unwrap();
         assert_eq!(instance.x_shear() > 0.0, italic);

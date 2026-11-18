@@ -3,13 +3,13 @@
 use super::TextParagraphBinding;
 use super::scope_alignment::{EntryBacking, EntryFunding, ScopeAlignmentFacts, ScopeLease};
 use crate::{LayoutScalar, NodeOutputOf, Point};
-use surgeist_text::{PlacementCoverage, PlacementEntry, PlacementRequest};
+use surgeist_text::placement::{PlacementCoverage, PlacementEntry, PlacementRequest};
 
 enum RunLookup<'a, Node> {
     Exact(&'a [Node]),
     Starting(&'a [Node]),
-    Segment(&'a surgeist_text::PreparedSourceSegment),
-    EmptySegment(&'a surgeist_text::PreparedSourceSegment),
+    Segment(&'a surgeist_text::prepared::PreparedSourceSegment),
+    EmptySegment(&'a surgeist_text::prepared::PreparedSourceSegment),
 }
 
 /// In-place sorting with fallible comparisons and moves. A refused inspection
@@ -68,12 +68,12 @@ pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
 pub(crate) struct PendingParagraph<Node> {
     pub binding_index: usize,
     pub inline_boxes: super::AdmittedInlineBoxes,
-    pub segment: surgeist_text::PreparedSourceSegment,
+    pub segment: surgeist_text::prepared::PreparedSourceSegment,
     pub line_box_start: crate::line_box::LineBoxContext,
     pub line_box_end: crate::line_box::LineBoxContext,
     pub container: Node,
     pub nodes: Vec<Node>,
-    pub prepared: surgeist_text::PreparedText,
+    pub prepared: surgeist_text::prepared::PreparedText,
     pub entries: Vec<PlacementEntry>,
     pub wrap_style: crate::TextWrapStyle,
     pub program: Option<std::sync::Arc<super::fit::SelectionProgram>>,
@@ -86,7 +86,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub encounters: Vec<Vec<super::fit::EncounterBasis>>,
     pub zones: Vec<super::fit::ZoneBasis>,
     pub phrases: Vec<Vec<super::fit::PhraseBasis>>,
-    pub outflows: Vec<(usize, surgeist_text::PreparedAtomic, Node)>,
+    pub outflows: Vec<(usize, surgeist_text::prepared::PreparedAtomic, Node)>,
     pub indent: crate::text_indent::ResolvedTextIndent<f64>,
     pub indent_start: crate::text_indent::IndentLineState,
     pub indent_end: crate::text_indent::IndentLineState,
@@ -103,12 +103,12 @@ pub(crate) struct LineBasis {
     zone: super::fit::ZoneBasis,
     phrases: Vec<super::fit::PhraseBasis>,
     encounters: Vec<super::fit::EncounterBasis>,
-    request: surgeist_text::LineSelectionRequest,
+    request: surgeist_text::selection::LineSelectionRequest,
     amounts: Vec<f64>,
     scopes: super::scope_alignment::ScopeBasis,
-    anchor: surgeist_text::LineAnchor,
-    orientation: surgeist_text::LineOrientation,
-    atomics: Vec<surgeist_text::AtomicPlacement>,
+    anchor: surgeist_text::placement::LineAnchor,
+    orientation: surgeist_text::selection::LineOrientation,
+    atomics: Vec<surgeist_text::placement::AtomicPlacement>,
     bands: super::fit::LineBands,
     flow: super::fit::LineFlow,
 }
@@ -206,7 +206,7 @@ impl<Node, S: LayoutScalar> PassBasis<Node, S> {
 #[derive(Clone)]
 pub(crate) struct ScopeFragmentGroup<Node, S: LayoutScalar> {
     pub container: Node,
-    pub prepared: surgeist_text::PreparedText,
+    pub prepared: surgeist_text::prepared::PreparedText,
     pub nodes: Vec<Node>,
     pub fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
 }
@@ -274,7 +274,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         &self,
         container: Node,
         nodes: &[Node],
-        segment: &surgeist_text::PreparedSourceSegment,
+        segment: &surgeist_text::prepared::PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
         mode: crate::AxisSizingRequestOf<f64>,
     ) -> surgeist_text::Result<super::formatted::FormattedTailSnapshot> {
@@ -294,7 +294,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         &mut self,
         container: Node,
         nodes: &[Node],
-        segment: &surgeist_text::PreparedSourceSegment,
+        segment: &surgeist_text::prepared::PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
         mode: crate::AxisSizingRequestOf<f64>,
         uses: super::formatted::FormattedTailUses,
@@ -585,7 +585,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         }
     }
 
-    fn entry_anchor(&self) -> surgeist_text::Result<Option<&'input surgeist_text::PreparedText>> {
+    fn entry_anchor(
+        &self,
+    ) -> surgeist_text::Result<Option<&'input surgeist_text::prepared::PreparedText>> {
         let limits = self.scope_resources.key_limits()?;
         for binding in self.paragraphs {
             if let Some(limits) = limits {
@@ -597,7 +599,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         }
         if limits.is_some() {
             return Err(super::scope_alignment::refusal(
-                surgeist_text::ScopeAlignmentError::MissingCapture,
+                surgeist_text::scope_alignment::ScopeAlignmentError::MissingCapture,
             ));
         }
         Ok(self.paragraphs.first().map(|binding| &binding.prepared))
@@ -720,7 +722,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn entry_run_from_segment(
         &self,
         container: Node,
-        segment: &surgeist_text::PreparedSourceSegment,
+        segment: &surgeist_text::prepared::PreparedSourceSegment,
         funding: Option<&EntryFunding<S>>,
     ) -> surgeist_text::Result<Option<super::AdmittedRun<'input, Node>>> {
         self.entry_lookup(container, RunLookup::Segment(segment), funding)
@@ -729,7 +731,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn entry_semantic_run(
         &self,
         container: Node,
-        segment: &surgeist_text::PreparedSourceSegment,
+        segment: &surgeist_text::prepared::PreparedSourceSegment,
         funding: Option<&EntryFunding<S>>,
     ) -> surgeist_text::Result<Option<super::AdmittedRun<'input, Node>>> {
         self.entry_lookup(container, RunLookup::EmptySegment(segment), funding)
@@ -889,7 +891,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn semantic_run(
         &self,
         container: Node,
-        segment: &surgeist_text::PreparedSourceSegment,
+        segment: &surgeist_text::prepared::PreparedSourceSegment,
     ) -> Option<super::AdmittedRun<'input, Node>> {
         self.ordinary_run(container, RunLookup::EmptySegment(segment))
     }
@@ -928,7 +930,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub fn record_scope_fragments(
         &mut self,
         container: Node,
-        prepared: surgeist_text::PreparedText,
+        prepared: surgeist_text::prepared::PreparedText,
         nodes: Vec<Node>,
         fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
     ) {
@@ -1052,16 +1054,16 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                             anchor: match placement {
                                 PlacementEntry::Formatted(line) => line.anchor,
                                 PlacementEntry::NonFormatted(line) => match line.orientation {
-                                    surgeist_text::LineOrientation::Horizontal => {
-                                        surgeist_text::LineAnchor {
+                                    surgeist_text::selection::LineOrientation::Horizontal => {
+                                        surgeist_text::placement::LineAnchor {
                                             inline_origin: line.origin.x,
                                             baseline: line.origin.y,
                                         }
                                     }
-                                    surgeist_text::LineOrientation::SidewaysClockwise
-                                    | surgeist_text::LineOrientation::SidewaysCounterclockwise
-                                    | surgeist_text::LineOrientation::Vertical => {
-                                        surgeist_text::LineAnchor {
+                                    surgeist_text::selection::LineOrientation::SidewaysClockwise
+                                    | surgeist_text::selection::LineOrientation::SidewaysCounterclockwise
+                                    | surgeist_text::selection::LineOrientation::Vertical => {
+                                        surgeist_text::placement::LineAnchor {
                                             inline_origin: line.origin.y,
                                             baseline: line.origin.x,
                                         }
@@ -1157,13 +1159,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                             ),
                         )
                     })?;
-                let border = surgeist_text::Rect::new(
+                let border = surgeist_text::geometry::Rect::new(
                     frame.origin.x,
                     frame.origin.y,
                     frame.output.size.width.to_f64(),
                     frame.output.size.height.to_f64(),
                 );
-                let content = surgeist_text::Rect::new(
+                let content = surgeist_text::geometry::Rect::new(
                     placement_add(node, frame.origin.x, content.origin().x.to_f64())?,
                     placement_add(node, frame.origin.y, content.origin().y.to_f64())?,
                     content.size().width.to_f64(),
@@ -1172,10 +1174,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 // Absolute layout records an already-physical block-axis
                 // coordinate within the child; translate without reflection.
                 let cross_origin = match paragraph.prepared.orientation() {
-                    surgeist_text::LineOrientation::Horizontal => frame.origin.y,
-                    surgeist_text::LineOrientation::Vertical
-                    | surgeist_text::LineOrientation::SidewaysClockwise
-                    | surgeist_text::LineOrientation::SidewaysCounterclockwise => frame.origin.x,
+                    surgeist_text::selection::LineOrientation::Horizontal => frame.origin.y,
+                    surgeist_text::selection::LineOrientation::Vertical
+                    | surgeist_text::selection::LineOrientation::SidewaysClockwise
+                    | surgeist_text::selection::LineOrientation::SidewaysCounterclockwise => {
+                        frame.origin.x
+                    }
                 };
                 let baseline = placement_add(node, cross_origin, baseline)?;
                 let baseline = (baseline + 0.5).floor();
@@ -1183,7 +1187,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     PlacementEntry::Formatted(line) => &mut line.atomics,
                     PlacementEntry::NonFormatted(line) => &mut line.atomics,
                 };
-                atomics.push(surgeist_text::AtomicPlacement {
+                atomics.push(surgeist_text::placement::AtomicPlacement {
                     occurrence,
                     border,
                     content,
@@ -1240,7 +1244,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 }
             }
             pending.retain(|paragraph| paragraph.binding_index != index);
-            let layout = surgeist_text::Layout::from_finalized_lines(PlacementRequest {
+            let layout = surgeist_text::layout::Layout::from_finalized_lines(PlacementRequest {
                 prepared: binding.prepared.clone(),
                 coverage: PlacementCoverage::WholeParagraph,
                 entries,

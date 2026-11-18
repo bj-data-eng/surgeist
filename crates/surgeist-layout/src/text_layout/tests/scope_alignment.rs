@@ -59,20 +59,20 @@ fn font_premises() {
     assert_eq!(word(subtable, 16 + 6 * segments + 2 * segment), 0);
 }
 
-fn reference() -> text::ScopeFontReference {
-    text::ScopeFontReference {
-        script: text::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-        axis: text::FontBaselineAxis::HorizontalY,
-        baseline: text::FontBaseline::Alphabetic,
+fn reference() -> text::scope_alignment::ScopeFontReference {
+    text::scope_alignment::ScopeFontReference {
+        script: text::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+        axis: text::font::FontBaselineAxis::HorizontalY,
+        baseline: text::font::FontBaseline::Alphabetic,
     }
 }
 
-fn authored(size: f32) -> text::Style {
-    text::Style {
-        white_space: text::WhiteSpace::Preserve,
-        word_break: text::WordBreak::BreakAll,
-        wrap: text::Wrap::Word,
-        hyphens: text::Hyphens::None,
+fn authored(size: f32) -> text::style::Style {
+    text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
+        word_break: text::style::WordBreak::BreakAll,
+        wrap: text::style::Wrap::Word,
+        hyphens: text::hyphenation::Hyphens::None,
         ..ahem_style(size, f64::from(size))
     }
 }
@@ -92,12 +92,12 @@ enum Shape {
 
 struct Case {
     binding: TextParagraphBinding<u32>,
-    scopes: Vec<text::CapturedScope>,
+    scopes: Vec<text::capture::CapturedScope>,
     shape: Shape,
     child: Option<TextParagraphBinding<u32>>,
 }
 
-fn prepare(analyzed: &text::AnalyzedSource, scale: f32) -> text::PreparedText {
+fn prepare(analyzed: &text::analyzed::AnalyzedSource, scale: f32) -> text::prepared::PreparedText {
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
@@ -105,9 +105,12 @@ fn prepare(analyzed: &text::AnalyzedSource, scale: f32) -> text::PreparedText {
     system
         .prepare(
             analyzed,
-            text::PreparationOptions::try_new(scale, text::TabPreparation::FontAdvance)
-                .unwrap()
-                .with_baseline_reference(text::FontBaseline::Alphabetic),
+            text::prepared::PreparationOptions::try_new(
+                scale,
+                text::tabs::TabPreparation::FontAdvance,
+            )
+            .unwrap()
+            .with_baseline_reference(text::font::FontBaseline::Alphabetic),
         )
         .unwrap()
 }
@@ -115,7 +118,7 @@ fn prepare(analyzed: &text::AnalyzedSource, scale: f32) -> text::PreparedText {
 impl Case {
     fn new(
         shape: Shape,
-        outer: text::ScopeAlignmentBoundary,
+        outer: text::scope_alignment::ScopeAlignmentBoundary,
         base_size: f32,
         inner: &str,
         scale: f32,
@@ -126,19 +129,19 @@ impl Case {
             base_size,
             inner,
             scale,
-            text::ScopeAlignmentLimits::new(10000, 100, 4_194_304, 16 << 20),
+            text::scope_alignment::ScopeAlignmentLimits::new(10000, 100, 4_194_304, 16 << 20),
         )
     }
 
     fn new_with_limits(
         shape: Shape,
-        outer: text::ScopeAlignmentBoundary,
+        outer: text::scope_alignment::ScopeAlignmentBoundary,
         base_size: f32,
         inner: &str,
         scale: f32,
-        limits: text::ScopeAlignmentLimits,
+        limits: text::scope_alignment::ScopeAlignmentLimits,
     ) -> Self {
-        use text::SourceProcessingEvent as E;
+        use text::capture::SourceProcessingEvent as E;
         let base = authored(base_size);
         let small = authored(10.0);
         let nested = matches!(shape, Shape::Nested | Shape::GlyphFreeParent);
@@ -156,71 +159,75 @@ impl Case {
             runs.push((3, inner, small.clone()));
         }
         let raw = runs.iter().map(|(_, raw, _)| *raw).collect::<String>();
-        let mut source = text::Source::identified(raw.as_str(), text::Id::from_u64(1578001), 7);
+        let mut source =
+            text::source::Source::identified(raw.as_str(), text::source::Id::from_u64(1578001), 7);
         let mut cursor = 0;
         let origins = runs
             .iter()
             .map(|(node, raw, style)| {
                 let start = cursor;
                 cursor += raw.encode_utf16().count();
-                source.span(text::Range::new(start, cursor), style.clone());
-                text::ParagraphOrigin {
+                source.span(text::source::Range::new(start, cursor), style.clone());
+                text::paragraph::ParagraphOrigin {
                     text_node: None,
-                    source: text::Source::identified(
+                    source: text::source::Source::identified(
                         *raw,
-                        text::Id::from_u64(1578100 + u64::from(*node)),
+                        text::source::Id::from_u64(1578100 + u64::from(*node)),
                         7,
                     ),
-                    local: text::Range::new(0, raw.encode_utf16().count()),
-                    aggregate: text::Range::new(start, cursor),
-                    kind: text::ParagraphOriginKind::Authored,
+                    local: text::source::Range::new(0, raw.encode_utf16().count()),
+                    aggregate: text::source::Range::new(start, cursor),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 }
             })
             .collect::<Vec<_>>();
         if matches!(shape, Shape::Atomic | Shape::OutOfFlow) {
-            source.inline_box(text::InlineBox::new(
-                text::Id::from_u64(90),
+            source.inline_box(text::source::InlineBox::new(
+                text::source::Id::from_u64(90),
                 if shape == Shape::Atomic {
-                    text::InlineBoxKind::InFlow
+                    text::source::InlineBoxKind::InFlow
                 } else {
-                    text::InlineBoxKind::OutOfFlow
+                    text::source::InlineBoxKind::OutOfFlow
                 },
                 cursor,
-                text::Size::new(6.0, 10.0),
+                text::geometry::Size::new(6.0, 10.0),
             ));
         }
         let mut controls = vec![
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 1,
                 kind: ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: cursor,
                 kind: ParagraphControlKind::InlineBoundaryEnd,
             },
         ];
         let mut scopes = vec![
-            text::SourceProcessingScope::Block {
+            text::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: Some(reference()),
-                topology: text::SourceProcessingTopology::Complete,
+                topology: text::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: base,
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
-            text::SourceProcessingScope::Inline {
+            text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: Some(outer),
                 font_reference: Some(reference()),
                 trim: Default::default(),
                 style: Some(outer_style),
-                boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                    start: 0,
+                    end: 1,
+                }),
             },
         ];
         if nested {
             controls.extend([
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: if shape == Shape::GlyphFreeParent {
                         1
                     } else {
@@ -228,53 +235,56 @@ impl Case {
                     },
                     kind: ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: cursor,
                     kind: ParagraphControlKind::InlineBoundaryEnd,
                 },
             ]);
-            scopes.push(text::SourceProcessingScope::Inline {
+            scopes.push(text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
-                alignment_boundary: Some(text::ScopeAlignmentBoundary::NonInitial),
+                alignment_boundary: Some(text::scope_alignment::ScopeAlignmentBoundary::NonInitial),
                 font_reference: Some(reference()),
                 trim: Default::default(),
                 style: Some(small),
-                boundaries: Some(text::SourceProcessingScopeBoundaries { start: 2, end: 3 }),
+                boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                    start: 2,
+                    end: 3,
+                }),
             });
         }
         if shape == Shape::ForcedControl {
-            controls.push(text::ParagraphControl {
+            controls.push(text::paragraph::ParagraphControl {
                 at: cursor,
                 kind: ParagraphControlKind::ForcedBreak,
             });
         }
         if numeric_child {
             controls.extend([
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: cursor,
                     kind: ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: cursor,
                     kind: ParagraphControlKind::InlineBoundaryEnd,
                 },
             ]);
-            scopes.push(text::SourceProcessingScope::Inline {
+            scopes.push(text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 style: None,
                 trim: Default::default(),
                 boundaries: (shape == Shape::NumericChild)
-                    .then_some(text::SourceProcessingScopeBoundaries { start: 2, end: 3 }),
+                    .then_some(text::capture::SourceProcessingScopeBoundaries { start: 2, end: 3 }),
             });
         }
         if shape == Shape::Dormant {
             // Real empty capture, no source/control/metric occurrence. Missing
             // dormant font context must not become an eager resolver demand.
-            scopes.push(text::SourceProcessingScope::Inline {
+            scopes.push(text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
-                alignment_boundary: Some(text::ScopeAlignmentBoundary::NonInitial),
+                alignment_boundary: Some(text::scope_alignment::ScopeAlignmentBoundary::NonInitial),
                 font_reference: None,
                 style: None,
                 trim: Default::default(),
@@ -286,19 +296,19 @@ impl Case {
             E::EnterParagraph(0),
             E::Origin {
                 origin: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Connection(0),
             E::EnterScope(1),
             E::Control {
                 control: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
         ];
         if shape != Shape::GlyphFreeParent {
             events.push(E::Origin {
                 origin: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             });
         }
         if nested {
@@ -309,15 +319,15 @@ impl Case {
                 E::EnterScope(2),
                 E::Control {
                     control: 2,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Origin {
                     origin: origins.len() - 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Control {
                     control: 3,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(2),
             ]);
@@ -325,13 +335,13 @@ impl Case {
         if matches!(shape, Shape::Atomic | Shape::OutOfFlow) {
             events.push(E::Atomic {
                 atomic: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             });
         }
         if shape == Shape::ForcedControl {
             events.push(E::Control {
                 control: 2,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             });
         }
         if numeric_child {
@@ -339,11 +349,11 @@ impl Case {
                 E::EnterScope(2),
                 E::Control {
                     control: 2,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Control {
                     control: 3,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(2),
             ]);
@@ -351,7 +361,7 @@ impl Case {
         events.extend([
             E::Control {
                 control: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(1),
         ]);
@@ -369,46 +379,46 @@ impl Case {
             })
             .collect();
         let mut definitions = (0..origins.len() - 1)
-            .map(text::ParagraphBoundaryDefinition::Connection)
+            .map(text::paragraph::ParagraphBoundaryDefinition::Connection)
             .collect::<Vec<_>>();
         if matches!(shape, Shape::Atomic | Shape::OutOfFlow) {
             definitions.extend([
-                text::ParagraphBoundaryDefinition::AtomicBefore(0),
-                text::ParagraphBoundaryDefinition::AtomicAfter(0),
+                text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
             ]);
         }
         let input_control_count = controls.len();
         let processed = Arc::new(
-            text::process_contextual_source(text::ContextualSourceInput {
+            text::capture::process_contextual_source(text::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: Some(limits),
                 source,
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: text::SourceProcessingEnvelope::Complete,
+                segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: text::capture::SourceProcessingEnvelope::Complete,
                 connections: (0..origins.len() - 1)
-                    .map(|i| text::SourceProcessingConnection {
+                    .map(|i| text::capture::SourceProcessingConnection {
                         before_origin: i,
                         after_origin: i + 1,
-                        kind: text::ParagraphConnectionKind::Continuous,
+                        kind: text::paragraph::ParagraphConnectionKind::Continuous,
                     })
                     .collect(),
                 origins,
                 controls,
                 boundary_policies: definitions
                     .into_iter()
-                    .map(|definition| text::ParagraphBoundaryPolicy {
+                    .map(|definition| text::paragraph::ParagraphBoundaryPolicy {
                         definition,
-                        preceding_wrap: text::Wrap::Word,
-                        following_wrap: text::Wrap::Word,
-                        ancestor_wrap: text::Wrap::Word,
+                        preceding_wrap: text::style::Wrap::Word,
+                        following_wrap: text::style::Wrap::Word,
+                        ancestor_wrap: text::style::Wrap::Word,
                     })
                     .collect(),
                 replacements: vec![],
                 computed_line_boundaries: vec![],
                 scopes,
-                paragraphs: vec![text::SourceProcessingParagraph {
+                paragraphs: vec![text::capture::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events,
             })
@@ -426,13 +436,13 @@ impl Case {
         if nested {
             assert_eq!(scopes[2].parent(), Some(scopes[1].clone()));
         }
-        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let analyzed =
-            crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+            crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
         let prepared = prepare(&analyzed, scale);
         let binding = TextParagraphBinding {
             inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
@@ -478,22 +488,22 @@ impl Case {
         let child = if shape == Shape::Atomic {
             // Actual independent child paragraph: size5 gives Alpha4. A fixed
             // height10 box therefore has real before4/after6, not fake metrics.
-            let source = text::Source::new("X");
-            let range = text::Range::new(0, 1);
-            let child = text::AnalyzedSource::from_paragraph(
-                text::ParagraphInput {
-                    terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            let source = text::source::Source::new("X");
+            let range = text::source::Range::new(0, 1);
+            let child = text::analyzed::AnalyzedSource::from_paragraph(
+                text::paragraph::ParagraphInput {
+                    terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
                     source: source.clone(),
                     base_style: authored(5.0),
-                    segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                    segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                     tab_reference: None,
-                    origins: vec![text::ParagraphOrigin {
+                    origins: vec![text::paragraph::ParagraphOrigin {
                         source,
                         local: range,
                         aggregate: range,
-                        kind: text::ParagraphOriginKind::Authored,
+                        kind: text::paragraph::ParagraphOriginKind::Authored,
                         text_node: None,
                     }],
                     connections: vec![],
@@ -502,7 +512,7 @@ impl Case {
                     replacements: vec![],
                     anchor_order: vec![],
                 },
-                text::AnalysisTypography::HorizontalComposition,
+                text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let prepared = prepare(&child, 1.0);
@@ -678,7 +688,9 @@ fn solve<S: LayoutScalar>(
     )
 }
 
-fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
+fn lines<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<text::finalized::FinalizedLine> {
     let prepared = batch
         .placed_text()
         .iter()
@@ -702,7 +714,7 @@ fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::F
     lines.into_iter().map(Option::unwrap).collect()
 }
 
-fn placed<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> &text::Layout {
+fn placed<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> &text::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -715,14 +727,17 @@ fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) ->
     readback::single_box_output(batch, node, Phase::Final)
 }
 
-fn error_is<S: LayoutScalar>(error: &LayoutErrorOf<u32, S>, expected: text::ScopeAlignmentError) {
+fn error_is<S: LayoutScalar>(
+    error: &LayoutErrorOf<u32, S>,
+    expected: text::scope_alignment::ScopeAlignmentError,
+) {
     assert!(
         matches!(error.kind(), LayoutErrorKindOf::Text(error) if matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment { reason }) if *reason == expected)),
         "{error:?}"
     );
 }
 
-fn raw(layout: &text::Layout) {
+fn raw(layout: &text::layout::Layout) {
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
         assert_eq!(run.face().index(), 0);
@@ -734,7 +749,7 @@ fn raw(layout: &text::Layout) {
     }
 }
 
-fn glyph_references(layout: &text::Layout) -> Vec<(text::Range, f64)> {
+fn glyph_references(layout: &text::layout::Layout) -> Vec<(text::source::Range, f64)> {
     // X has zero native offsets and Alpha=font zero in this actual Ahem.
     // Observe individual source glyphs, allowing valid same-frame run coalescing.
     layout
@@ -749,24 +764,24 @@ fn glyph_references(layout: &text::Layout) -> Vec<(text::Range, f64)> {
         .collect()
 }
 
-fn source_custody(layout: &text::Layout) {
+fn source_custody(layout: &text::layout::Layout) {
     let endpoint = |index, affinity| {
         layout
             .positions()
-            .find(|position| position.source_cursor() == text::Cursor::new(index, affinity))
+            .find(|position| position.source_cursor() == text::layout::Cursor::new(index, affinity))
             .unwrap()
     };
     let selection = layout
         .position_selection(
-            &endpoint(0, text::Affinity::After),
-            &endpoint(layout.source().text().len(), text::Affinity::Before),
+            &endpoint(0, text::layout::Affinity::After),
+            &endpoint(layout.source().text().len(), text::layout::Affinity::Before),
         )
         .unwrap();
     assert_eq!(selection.source_text(), layout.source().text());
     assert_eq!(selection.plaintext(), layout.source().text());
 }
 
-fn own(line: &text::FinalizedLine, scope: &text::CapturedScope) -> (f64, f64) {
+fn own(line: &text::finalized::FinalizedLine, scope: &text::capture::CapturedScope) -> (f64, f64) {
     let row = line
         .scope_allocations()
         .iter()
@@ -779,7 +794,7 @@ fn own(line: &text::FinalizedLine, scope: &text::CapturedScope) -> (f64, f64) {
 fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mismatch() {
     let case = Case::new(
         Shape::Single,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         10.0,
         "",
         1.0,
@@ -828,7 +843,7 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
         if error.code == text::ErrorCode::ScopeAlignmentRefused));
     error_is(
         &error,
-        text::ScopeAlignmentError::MissingAllocation { scope: 1 },
+        text::scope_alignment::ScopeAlignmentError::MissingAllocation { scope: 1 },
     );
     assert_eq!(
         readback::continuous_custody(&prior, Phase::Final).as_slice(),
@@ -839,7 +854,7 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
     assert_eq!(glyph_references(placed(&prior)), prior_glyphs);
     assert_eq!(
         prior_line
-            .with_spacing(text::SpacingAllocations::None)
+            .with_spacing(text::spacing::SpacingAllocations::None)
             .unwrap()
             .feedback(),
         prior_feedback,
@@ -847,11 +862,11 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
     for (rows, expected) in [
         (
             vec![valid.clone(), valid],
-            text::ScopeAlignmentError::DuplicateAllocation { scope: 1 },
+            text::scope_alignment::ScopeAlignmentError::DuplicateAllocation { scope: 1 },
         ),
         (
             vec![case.row(1, VerticalAlignOf::Baseline)],
-            text::ScopeAlignmentError::BoundaryMismatch { scope: 1 },
+            text::scope_alignment::ScopeAlignmentError::BoundaryMismatch { scope: 1 },
         ),
     ] {
         let error = match LayoutFlowInput::try_new(
@@ -868,7 +883,7 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
     }
     let foreign = Case::new(
         Shape::Single,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         10.0,
         "",
         1.0,
@@ -883,10 +898,13 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
         Ok(_) => panic!("foreign capture admitted"),
         Err(error) => error,
     };
-    error_is(&error, text::ScopeAlignmentError::ForeignCapture);
+    error_is(
+        &error,
+        text::scope_alignment::ScopeAlignmentError::ForeignCapture,
+    );
     let initial = Case::new(
         Shape::Single,
-        text::ScopeAlignmentBoundary::Initial,
+        text::scope_alignment::ScopeAlignmentBoundary::Initial,
         10.0,
         "",
         1.0,
@@ -904,7 +922,7 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
     };
     error_is(
         &error,
-        text::ScopeAlignmentError::BoundaryMismatch { scope: 1 },
+        text::scope_alignment::ScopeAlignmentError::BoundaryMismatch { scope: 1 },
     );
 }
 
@@ -912,7 +930,7 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
 fn dormant_classified_scope_without_occurrences_needs_no_row_or_font_context() {
     let case = Case::new(
         Shape::Dormant,
-        text::ScopeAlignmentBoundary::Initial,
+        text::scope_alignment::ScopeAlignmentBoundary::Initial,
         10.0,
         "",
         1.0,
@@ -926,7 +944,7 @@ fn dormant_classified_scope_without_occurrences_needs_no_row_or_font_context() {
             .unwrap_err()
             .detail(),
         Some(text::ErrorDetail::ScopeAlignment {
-            reason: text::ScopeAlignmentError::MissingMetrics { scope: 2 }
+            reason: text::scope_alignment::ScopeAlignmentError::MissingMetrics { scope: 2 }
         })
     ));
     let tree = case.tree::<f64>(100.0, VerticalAlignOf::Baseline);
@@ -952,7 +970,7 @@ fn signed<S: LayoutScalar>() {
     for delta in [-4.0, 0.0, 3.0] {
         let case = Case::new(
             Shape::Single,
-            text::ScopeAlignmentBoundary::NonInitial,
+            text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
             10.0,
             "",
             1.0,
@@ -971,11 +989,13 @@ fn signed<S: LayoutScalar>() {
         assert_eq!(
             positions,
             [
-                (text::Range::new(0, 1), before),
-                (text::Range::new(1, 2), before - delta)
+                (text::source::Range::new(0, 1), before),
+                (text::source::Range::new(1, 2), before - delta)
             ]
         );
-        let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+        let replay = line
+            .with_spacing(text::spacing::SpacingAllocations::None)
+            .unwrap();
         assert_eq!(replay.scope_allocations(), line.scope_allocations());
         assert_eq!(replay.feedback(), line.feedback());
         let warm = solve(&case, &tree, vec![case.row(1, shifted(delta))], 100.0).unwrap();
@@ -1001,7 +1021,7 @@ fn glyph_free_parent_size_and_own_line_height_supply_actual_normalization_contex
     font_premises();
     let case = Case::new(
         Shape::GlyphFreeParent,
-        text::ScopeAlignmentBoundary::Initial,
+        text::scope_alignment::ScopeAlignmentBoundary::Initial,
         10.0,
         "X",
         1.0,
@@ -1040,8 +1060,8 @@ fn glyph_free_parent_size_and_own_line_height_supply_actual_normalization_contex
     assert_eq!(
         glyph_references(placed(&batch)),
         [
-            (text::Range::new(0, 1), 8.0),
-            (text::Range::new(1, 2), 12.0)
+            (text::source::Range::new(0, 1), 8.0),
+            (text::source::Range::new(1, 2), 12.0)
         ]
     );
     raw(placed(&batch));
@@ -1071,7 +1091,7 @@ fn glyph_free_parent_size_and_own_line_height_supply_actual_normalization_contex
 fn nested_fragments_recompute_selected_scope_frames_from_real_legal_cuts() {
     let case = Case::new(
         Shape::Nested,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         10.0,
         "XX",
         1.0,
@@ -1099,7 +1119,10 @@ fn nested_fragments_recompute_selected_scope_frames_from_real_legal_cuts() {
             .iter()
             .map(|line| line.range())
             .collect::<Vec<_>>(),
-        [text::Range::new(0, 2), text::Range::new(2, 4)]
+        [
+            text::source::Range::new(0, 2),
+            text::source::Range::new(2, 4)
+        ]
     );
     assert_eq!(own(&lines[1], &case.scopes[1]), (3.0, 3.0));
     assert_eq!(own(&lines[1], &case.scopes[2]), (2.0, 5.0));
@@ -1127,7 +1150,7 @@ fn f64_tiny_offset_survives_native_frames_and_scale_does_not_multiply_allocated_
     ] {
         let case = Case::new(
             Shape::Single,
-            text::ScopeAlignmentBoundary::NonInitial,
+            text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
             10.0,
             "",
             scale,
@@ -1162,7 +1185,7 @@ fn edges<S: LayoutScalar>() {
     ] {
         let case = Case::new(
             Shape::Nested,
-            text::ScopeAlignmentBoundary::NonInitial,
+            text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
             20.0,
             "X",
             1.0,
@@ -1185,9 +1208,9 @@ fn edges<S: LayoutScalar>() {
         assert_eq!(
             glyph_references(placed(&batch)),
             [
-                (text::Range::new(0, 1), 16.0),
-                (text::Range::new(1, 2), 13.0),
-                (text::Range::new(2, 3), inner_reference)
+                (text::source::Range::new(0, 1), 16.0),
+                (text::source::Range::new(1, 2), 13.0),
+                (text::source::Range::new(2, 3), inner_reference)
             ]
         );
         raw(placed(&batch));
@@ -1199,7 +1222,7 @@ fn edges<S: LayoutScalar>() {
         for shape in [Shape::Atomic, Shape::ForcedControl] {
             let case = Case::new(
                 shape,
-                text::ScopeAlignmentBoundary::NonInitial,
+                text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
                 20.0,
                 "",
                 1.0,
@@ -1219,7 +1242,7 @@ fn edges<S: LayoutScalar>() {
                 // line-under margin edge; the local Alpha4 remains separate.
                 assert_eq!(slot.origin.y, top + 10.0);
                 assert_eq!(slot.scope_displacement.get(), 0.0);
-                let text::AtomicLineAllocation::InFlow {
+                let text::allocation::AtomicLineAllocation::InFlow {
                     flow,
                     box_geometry,
                     alignment: actual_alignment,
@@ -1233,8 +1256,8 @@ fn edges<S: LayoutScalar>() {
                 assert_eq!(
                     actual_alignment,
                     match alignment {
-                        VerticalAlignOf::Top => text::LineBoxAlignment::Top,
-                        VerticalAlignOf::Bottom => text::LineBoxAlignment::Bottom,
+                        VerticalAlignOf::Top => text::allocation::LineBoxAlignment::Top,
+                        VerticalAlignOf::Bottom => text::allocation::LineBoxAlignment::Bottom,
                         _ => unreachable!(),
                     }
                 );
@@ -1264,7 +1287,7 @@ fn edges<S: LayoutScalar>() {
             assert_eq!(
                 glyph_references(placed(&batch))
                     .into_iter()
-                    .find(|(range, _)| *range == text::Range::new(1, 2))
+                    .find(|(range, _)| *range == text::source::Range::new(1, 2))
                     .unwrap()
                     .1,
                 13.0
@@ -1283,7 +1306,7 @@ fn nested_scope_and_existing_atomic_control_top_bottom_escape_ancestor_shift_in_
 fn scoped_oof_static_anchor_moves_once_without_enlarging_the_line_or_absolute_box() {
     let case = Case::new(
         Shape::OutOfFlow,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         20.0,
         "",
         1.0,
@@ -1302,7 +1325,7 @@ fn scoped_oof_static_anchor_moves_once_without_enlarging_the_line_or_absolute_bo
     assert_eq!(
         glyph_references(placed(&batch))
             .into_iter()
-            .find(|(range, _)| *range == text::Range::new(1, 2))
+            .find(|(range, _)| *range == text::source::Range::new(1, 2))
             .unwrap()
             .1,
         13.0
@@ -1318,7 +1341,7 @@ fn scoped_oof_static_anchor_moves_once_without_enlarging_the_line_or_absolute_bo
 fn accepted_scoped_envelope_and_float_band_are_replayed_together() {
     let case = Case::new(
         Shape::Single,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         10.0,
         "",
         1.0,
@@ -1349,13 +1372,13 @@ fn accepted_scoped_envelope_and_float_band_are_replayed_together() {
     assert_eq!(output(&batch, 95).size, Size::new(10.0, 10.0));
     assert_eq!(
         placed(&batch).lines()[0].bounds(),
-        text::Rect::new(10.0, 0.0, 20.0, 13.0)
+        text::geometry::Rect::new(10.0, 0.0, 20.0, 13.0)
     );
     assert_eq!(
         glyph_references(placed(&batch)),
         [
-            (text::Range::new(0, 1), 11.0),
-            (text::Range::new(1, 2), 8.0)
+            (text::source::Range::new(0, 1), 11.0),
+            (text::source::Range::new(1, 2), 8.0)
         ]
     );
     let replay = solve(&case, &tree, rows(), 30.0).unwrap();
@@ -1371,7 +1394,7 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
     for shape in [Shape::NumericChild, Shape::NativePairChild] {
         let case = Case::new(
             shape,
-            text::ScopeAlignmentBoundary::NonInitial,
+            text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
             10.0,
             "",
             1.0,
@@ -1386,7 +1409,7 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                 .unwrap_err()
                 .detail(),
             Some(text::ErrorDetail::ScopeAlignment {
-                reason: text::ScopeAlignmentError::MissingMetrics { scope: 2 }
+                reason: text::scope_alignment::ScopeAlignmentError::MissingMetrics { scope: 2 }
             })
         ));
         for node in [22, 23] {
@@ -1407,14 +1430,16 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
         }
         let tree = case.tree::<f64>(100.0, VerticalAlignOf::Baseline);
         let wrapping = |wrong_end: bool| {
-            let contribution = Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
-                scope: None, // Source attribution is issued by actual association.
-                metrics: text::LineStrut {
-                    baseline: 6.0,
-                    line_extent: 14.0,
+            let contribution = Some(InlineBoxMetricContribution::Strut(
+                text::allocation::LineBoxStrut {
+                    scope: None, // Source attribution is issued by actual association.
+                    metrics: text::allocation::LineStrut {
+                        baseline: 6.0,
+                        line_extent: 14.0,
+                    },
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
-                alignment: text::LineBoxAlignment::Baseline,
-            }));
+            ));
             let mut scopes = vec![if shape == Shape::NumericChild && !wrong_end {
                 WrappingScopeInput::Captured {
                     scope: case.scopes[2].clone(),
@@ -1496,10 +1521,10 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                 .unwrap();
             assert_eq!(
                 allocation.strut,
-                Some(text::ControlStrut {
+                Some(text::allocation::ControlStrut {
                     baseline: 6.0,
                     line_extent: 14.0,
-                    alignment: text::LineBoxAlignment::Baseline,
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 })
             );
             let slot = line
@@ -1512,8 +1537,8 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
         assert_eq!(
             glyph_references(placed(&batch)),
             [
-                (text::Range::new(0, 1), 11.0),
-                (text::Range::new(1, 2), 8.0)
+                (text::source::Range::new(0, 1), 11.0),
+                (text::source::Range::new(1, 2), 8.0)
             ]
         );
         let error =
@@ -1543,7 +1568,7 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
             let prior_controls = controls();
             let foreign = Case::new(
                 shape,
-                text::ScopeAlignmentBoundary::NonInitial,
+                text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
                 10.0,
                 "",
                 1.0,
@@ -1551,11 +1576,11 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
             for (assertion, expected) in [
                 (
                     case.scopes[1].clone(),
-                    text::ScopeAlignmentError::BoundaryMismatch { scope: 2 },
+                    text::scope_alignment::ScopeAlignmentError::BoundaryMismatch { scope: 2 },
                 ),
                 (
                     foreign.scopes[2].clone(),
-                    text::ScopeAlignmentError::ForeignCapture,
+                    text::scope_alignment::ScopeAlignmentError::ForeignCapture,
                 ),
             ] {
                 // A supplied owner is a checked assertion, never an authority
@@ -1595,13 +1620,15 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                 assert_eq!(line.selected_line().request(), &request);
                 assert_eq!(controls(), prior_controls);
                 assert_eq!(glyph_references(placed(&batch)), prior_glyphs);
-                let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+                let replay = line
+                    .with_spacing(text::spacing::SpacingAllocations::None)
+                    .unwrap();
                 assert_eq!(replay.feedback(), prior_feedback);
                 assert_eq!(replay.scope_allocations(), prior_frames.as_slice());
             }
         }
         assert_eq!(
-            line.with_spacing(text::SpacingAllocations::None)
+            line.with_spacing(text::spacing::SpacingAllocations::None)
                 .unwrap()
                 .feedback(),
             line.feedback()

@@ -40,105 +40,105 @@ impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
     }
 }
 struct Fixture<S: l::LayoutScalar> {
-    capture: Arc<t::ProcessedSource>,
-    prepared: t::PreparedText,
+    capture: Arc<t::processing::ProcessedSource>,
+    prepared: t::prepared::PreparedText,
     binding: l::TextParagraphBinding<u32>,
     tree: Tree<S>,
 }
 impl<S: l::LayoutScalar> Fixture<S> {
-    fn new(direction: l::Direction, wrap: t::Wrap, forced_groups: bool) -> Self {
-        use t::SourceProcessingEvent as E;
+    fn new(direction: l::Direction, wrap: t::style::Wrap, forced_groups: bool) -> Self {
+        use t::capture::SourceProcessingEvent as E;
         let raw = if forced_groups {
             "AAA BB CAAA BB C"
         } else {
             "AAA BB C"
         };
         let base = if direction == l::Direction::Ltr {
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
-            t::ParagraphBaseDirection::RightToLeft
+            t::paragraph::ParagraphBaseDirection::RightToLeft
         };
-        let style = t::Style {
-            font: t::Font::new().family("Ahem"),
+        let style = t::style::Style {
+            font: t::style::Font::new().family("Ahem"),
             size: 10.0,
-            line_height: t::LineHeight::Absolute(10.0),
-            white_space: t::WhiteSpace::Collapse,
+            line_height: t::style::LineHeight::Absolute(10.0),
+            white_space: t::style::WhiteSpace::Collapse,
             wrap,
-            word_break: t::WordBreak::Normal,
-            overflow_wrap: t::OverflowWrap::Normal,
-            hyphens: t::Hyphens::None,
-            ..t::Style::default()
+            word_break: t::style::WordBreak::Normal,
+            overflow_wrap: t::style::OverflowWrap::Normal,
+            hyphens: t::hyphenation::Hyphens::None,
+            ..t::style::Style::default()
         };
-        let mut source = t::Source::identified(
+        let mut source = t::source::Source::identified(
             raw,
-            t::Id::from_u64(if forced_groups { 658401 } else { 658400 }),
+            t::source::Id::from_u64(if forced_groups { 658401 } else { 658400 }),
             55,
         );
-        source.span(t::Range::new(0, raw.len()), style.clone());
+        source.span(t::source::Range::new(0, raw.len()), style.clone());
         let ranges = if forced_groups {
-            vec![t::Range::new(0, 8), t::Range::new(8, 16)]
+            vec![t::source::Range::new(0, 8), t::source::Range::new(8, 16)]
         } else {
-            vec![t::Range::new(0, 8)]
+            vec![t::source::Range::new(0, 8)]
         };
         let mut events = vec![
             E::EnterScope(0),
             E::EnterParagraph(0),
             E::Origin {
                 origin: 0,
-                affinity: t::Affinity::After,
+                affinity: t::layout::Affinity::After,
             },
         ];
         if forced_groups {
             events.extend([
                 E::Control {
                     control: 0,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::Connection(0),
                 E::Origin {
                     origin: 1,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
             ]);
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let capture = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
                 origins: ranges
                     .iter()
-                    .map(|range| t::ParagraphOrigin {
+                    .map(|range| t::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: source.clone(),
                         local: *range,
                         aggregate: *range,
-                        kind: t::ParagraphOriginKind::Authored,
+                        kind: t::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect(),
                 controls: if forced_groups {
-                    vec![t::ParagraphControl {
+                    vec![t::paragraph::ParagraphControl {
                         at: 8,
-                        kind: t::ParagraphControlKind::ForcedBreak,
+                        kind: t::paragraph::ParagraphControlKind::ForcedBreak,
                     }]
                 } else {
                     vec![]
                 },
                 connections: if forced_groups {
-                    vec![t::SourceProcessingConnection {
+                    vec![t::capture::SourceProcessingConnection {
                         before_origin: 0,
                         after_origin: 1,
-                        kind: t::ParagraphConnectionKind::Continuous,
+                        kind: t::paragraph::ParagraphConnectionKind::Continuous,
                     }]
                 } else {
                     vec![]
                 },
                 boundary_policies: if forced_groups {
-                    vec![t::ParagraphBoundaryPolicy {
-                        definition: t::ParagraphBoundaryDefinition::Connection(0),
+                    vec![t::paragraph::ParagraphBoundaryPolicy {
+                        definition: t::paragraph::ParagraphBoundaryDefinition::Connection(0),
                         preceding_wrap: wrap,
                         following_wrap: wrap,
                         ancestor_wrap: wrap,
@@ -148,32 +148,32 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 replacements: vec![],
                 computed_line_boundaries: vec![],
-                scopes: vec![t::SourceProcessingScope::Block {
+                scopes: vec![t::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: t::SourceProcessingTopology::Complete,
+                    topology: t::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style,
                     used_direction: base,
                 }],
-                paragraphs: vec![t::SourceProcessingParagraph {
+                paragraphs: vec![t::capture::SourceProcessingParagraph {
                     base_direction: base,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events,
             })
             .unwrap(),
         );
-        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
             capture.paragraphs().next().unwrap(),
-            t::AnalysisTypography::HorizontalComposition,
+            t::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let policies = analyzed
             .wrapping_relations()
             .filter(|r| r.ancestor_wrap().is_none())
-            .map(|r| t::WrappingPolicy {
+            .map(|r| t::analyzed::WrappingPolicy {
                 relation: r.handle(),
                 ancestor_wrap: wrap,
             })
@@ -185,7 +185,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let prepared = fonts
             .prepare(
                 &analyzed.with_wrapping_policies(policies).unwrap(),
-                t::PreparationOptions::default(),
+                t::prepared::PreparationOptions::default(),
             )
             .unwrap();
         assert_eq!(
@@ -237,7 +237,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             let control = prepared.control_views().next().unwrap().handle();
             assert!(matches!(
                 control.view().kind(),
-                t::ParagraphControlKind::ForcedBreak
+                t::paragraph::ParagraphControlKind::ForcedBreak
             ));
             assert_eq!(control.captured_control(), capture.captured_control(0));
             inputs.push(l::LayoutInputOf::line_break(
@@ -325,7 +325,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
     fn assert_lines(
         &self,
         batch: &l::CompletedLayoutBatchOf<u32, S>,
-        expected: &[(t::Range, f64, t::LineEnd)],
+        expected: &[(t::source::Range, f64, t::selection::LineEnd)],
         direction: l::Direction,
     ) {
         assert_eq!(batch.placed_text().len(), 1);
@@ -340,11 +340,13 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert_eq!(layout.source(), self.capture.source());
         assert_eq!(
             layout.source().id(),
-            Some(t::Id::from_u64(if self.binding.controls.is_empty() {
-                658400
-            } else {
-                658401
-            }))
+            Some(t::source::Id::from_u64(
+                if self.binding.controls.is_empty() {
+                    658400
+                } else {
+                    658401
+                }
+            ))
         );
         assert_eq!(layout.source().revision(), 55);
         assert_eq!(
@@ -394,21 +396,22 @@ impl<S: l::LayoutScalar> Fixture<S> {
             assert_eq!(request.context.end, *end);
             assert_eq!(request.start.view().source_after().get(), range.start);
             assert_eq!(request.end.view().source_after().get(), range.end);
-            let t::PreparedTermination::Ordinary(offer) = &request.termination else {
+            let t::selection::PreparedTermination::Ordinary(offer) = &request.termination else {
                 panic!("current ordinary wrapping uses actual ordinary/mandatory capabilities");
             };
             assert_eq!(
                 offer.view().kind(),
                 match end {
-                    t::LineEnd::Soft => t::PreparedBreakKind::Allowed,
-                    t::LineEnd::Forced => t::PreparedBreakKind::Forced,
-                    t::LineEnd::Paragraph => t::PreparedBreakKind::ParagraphEnd,
+                    t::selection::LineEnd::Soft => t::prepared::PreparedBreakKind::Allowed,
+                    t::selection::LineEnd::Forced => t::prepared::PreparedBreakKind::Forced,
+                    t::selection::LineEnd::Paragraph =>
+                        t::prepared::PreparedBreakKind::ParagraphEnd,
                 }
             );
             assert!(request.alternative.is_none());
             assert!(request.incoming.is_none());
             let published = layout.lines()[i];
-            assert_eq!(published.bounds().size, t::Size::new(60.0, 10.0));
+            assert_eq!(published.bounds().size, t::geometry::Size::new(60.0, 10.0));
             assert_eq!(published.baseline(), 8.0 + 10.0 * i as f64);
             let mut glyph_ranges = vec![];
             for run in line.run_views() {
@@ -425,7 +428,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             }
             // Every selected internal SPACE is one Ahem cell. Only the actual
             // collapsing trailing SPACE at a soft edge is removed from painting.
-            let painted_end = if *end == t::LineEnd::Soft {
+            let painted_end = if *end == t::selection::LineEnd::Soft {
                 range.end - 1
             } else {
                 range.end
@@ -433,10 +436,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
             assert_eq!(
                 glyph_ranges,
                 (range.start..painted_end)
-                    .map(|at| t::Range::new(at, at + 1))
+                    .map(|at| t::source::Range::new(at, at + 1))
                     .collect::<Vec<_>>()
             );
-            if *end == t::LineEnd::Forced {
+            if *end == t::selection::LineEnd::Forced {
                 assert_eq!(request.controls.len(), 1);
                 assert_eq!(
                     request.controls[0].occurrence,
@@ -468,9 +471,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
 }
 fn characterize<S: l::LayoutScalar>(
     direction: l::Direction,
-    wrap: t::Wrap,
+    wrap: t::style::Wrap,
     forced: bool,
-    expected: &[(t::Range, f64, t::LineEnd)],
+    expected: &[(t::source::Range, f64, t::selection::LineEnd)],
 ) {
     let fixture = Fixture::<S>::new(direction, wrap, forced);
     let before = fixture
@@ -501,33 +504,61 @@ fn characterize<S: l::LayoutScalar>(
 #[test]
 fn current_ordinary_wrapping_uses_full_fitting_prefix_then_remaining_word() {
     let expected = [
-        (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
-        (t::Range::new(7, 8), 10.0, t::LineEnd::Paragraph),
+        (
+            t::source::Range::new(0, 7),
+            60.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(7, 8),
+            10.0,
+            t::selection::LineEnd::Paragraph,
+        ),
     ];
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        characterize::<f32>(direction, t::Wrap::Word, false, &expected);
-        characterize::<f64>(direction, t::Wrap::Word, false, &expected);
+        characterize::<f32>(direction, t::style::Wrap::Word, false, &expected);
+        characterize::<f64>(direction, t::style::Wrap::Word, false, &expected);
     }
 }
 #[test]
 fn actual_forced_control_separates_two_equivalent_ordinary_wrapping_groups() {
     let expected = [
-        (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
-        (t::Range::new(7, 8), 10.0, t::LineEnd::Forced),
-        (t::Range::new(8, 15), 60.0, t::LineEnd::Soft),
-        (t::Range::new(15, 16), 10.0, t::LineEnd::Paragraph),
+        (
+            t::source::Range::new(0, 7),
+            60.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(7, 8),
+            10.0,
+            t::selection::LineEnd::Forced,
+        ),
+        (
+            t::source::Range::new(8, 15),
+            60.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(15, 16),
+            10.0,
+            t::selection::LineEnd::Paragraph,
+        ),
     ];
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        characterize::<f32>(direction, t::Wrap::Word, true, &expected);
-        characterize::<f64>(direction, t::Wrap::Word, true, &expected);
+        characterize::<f32>(direction, t::style::Wrap::Word, true, &expected);
+        characterize::<f64>(direction, t::style::Wrap::Word, true, &expected);
     }
 }
 #[test]
 fn nowrap_preserves_the_same_real_source_on_one_overflowing_line() {
-    let expected = [(t::Range::new(0, 8), 80.0, t::LineEnd::Paragraph)];
+    let expected = [(
+        t::source::Range::new(0, 8),
+        80.0,
+        t::selection::LineEnd::Paragraph,
+    )];
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        characterize::<f32>(direction, t::Wrap::None, false, &expected);
-        characterize::<f64>(direction, t::Wrap::None, false, &expected);
+        characterize::<f32>(direction, t::style::Wrap::None, false, &expected);
+        characterize::<f64>(direction, t::style::Wrap::None, false, &expected);
     }
 }
 
@@ -550,7 +581,7 @@ fn assert_real_capacity_and_tab_basis<S: l::LayoutScalar>(
     fixture: &Fixture<S>,
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     count: usize,
-) -> Vec<t::TabContext> {
+) -> Vec<t::tabs::TabContext> {
     let mut tabs = vec![None; count];
     for fragment in batch.final_inline_fragments() {
         let l::InlineFragmentOwner::Node(node) = fragment.owner() else {
@@ -571,7 +602,10 @@ fn assert_real_capacity_and_tab_basis<S: l::LayoutScalar>(
         // A selection goal cannot replace the actual 60px fit/tab/percent frame.
         assert_eq!(context.available_inline, Some(60.0));
         assert_eq!(context.indent, 0.0);
-        assert_eq!(context.orientation, t::LineOrientation::Horizontal);
+        assert_eq!(
+            context.orientation,
+            t::selection::LineOrientation::Horizontal
+        );
         let slot = &mut tabs[fragment.fragment().line_index()];
         if let Some(previous) = slot {
             assert_eq!(*previous, context.tabs);
@@ -621,10 +655,10 @@ fn compute_changed_wrap_style<S: l::LayoutScalar>(
 
 fn balance_transition<S: l::LayoutScalar>(
     direction: l::Direction,
-    wrap: t::Wrap,
+    wrap: t::style::Wrap,
     forced_groups: bool,
-    auto_expected: &[(t::Range, f64, t::LineEnd)],
-    balance_expected: &[(t::Range, f64, t::LineEnd)],
+    auto_expected: &[(t::source::Range, f64, t::selection::LineEnd)],
+    balance_expected: &[(t::source::Range, f64, t::selection::LineEnd)],
 ) {
     let mut fixture = Fixture::<S>::new(direction, wrap, forced_groups);
     assert_eq!(
@@ -688,45 +722,109 @@ fn balance_transition<S: l::LayoutScalar>(
 #[test]
 fn balance_uses_two_real_word_lines_with_natural_measures_thirty_and_forty() {
     let auto = [
-        (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
-        (t::Range::new(7, 8), 10.0, t::LineEnd::Paragraph),
+        (
+            t::source::Range::new(0, 7),
+            60.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(7, 8),
+            10.0,
+            t::selection::LineEnd::Paragraph,
+        ),
     ];
     let balanced = [
-        (t::Range::new(0, 4), 30.0, t::LineEnd::Soft),
-        (t::Range::new(4, 8), 40.0, t::LineEnd::Paragraph),
+        (
+            t::source::Range::new(0, 4),
+            30.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(4, 8),
+            40.0,
+            t::selection::LineEnd::Paragraph,
+        ),
     ];
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        balance_transition::<f32>(direction, t::Wrap::Word, false, &auto, &balanced);
-        balance_transition::<f64>(direction, t::Wrap::Word, false, &auto, &balanced);
+        balance_transition::<f32>(direction, t::style::Wrap::Word, false, &auto, &balanced);
+        balance_transition::<f64>(direction, t::style::Wrap::Word, false, &auto, &balanced);
     }
 }
 
 #[test]
 fn balance_preserves_each_actual_forced_group_and_its_two_line_count() {
     let auto = [
-        (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
-        (t::Range::new(7, 8), 10.0, t::LineEnd::Forced),
-        (t::Range::new(8, 15), 60.0, t::LineEnd::Soft),
-        (t::Range::new(15, 16), 10.0, t::LineEnd::Paragraph),
+        (
+            t::source::Range::new(0, 7),
+            60.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(7, 8),
+            10.0,
+            t::selection::LineEnd::Forced,
+        ),
+        (
+            t::source::Range::new(8, 15),
+            60.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(15, 16),
+            10.0,
+            t::selection::LineEnd::Paragraph,
+        ),
     ];
     let balanced = [
-        (t::Range::new(0, 4), 30.0, t::LineEnd::Soft),
-        (t::Range::new(4, 8), 40.0, t::LineEnd::Forced),
-        (t::Range::new(8, 12), 30.0, t::LineEnd::Soft),
-        (t::Range::new(12, 16), 40.0, t::LineEnd::Paragraph),
+        (
+            t::source::Range::new(0, 4),
+            30.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(4, 8),
+            40.0,
+            t::selection::LineEnd::Forced,
+        ),
+        (
+            t::source::Range::new(8, 12),
+            30.0,
+            t::selection::LineEnd::Soft,
+        ),
+        (
+            t::source::Range::new(12, 16),
+            40.0,
+            t::selection::LineEnd::Paragraph,
+        ),
     ];
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        balance_transition::<f32>(direction, t::Wrap::Word, true, &auto, &balanced);
-        balance_transition::<f64>(direction, t::Wrap::Word, true, &auto, &balanced);
+        balance_transition::<f32>(direction, t::style::Wrap::Word, true, &auto, &balanced);
+        balance_transition::<f64>(direction, t::style::Wrap::Word, true, &auto, &balanced);
     }
 }
 
 #[test]
 fn balance_keeps_actual_nowrap_source_on_its_original_overflowing_line() {
-    let unchanged = [(t::Range::new(0, 8), 80.0, t::LineEnd::Paragraph)];
+    let unchanged = [(
+        t::source::Range::new(0, 8),
+        80.0,
+        t::selection::LineEnd::Paragraph,
+    )];
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        balance_transition::<f32>(direction, t::Wrap::None, false, &unchanged, &unchanged);
-        balance_transition::<f64>(direction, t::Wrap::None, false, &unchanged, &unchanged);
+        balance_transition::<f32>(
+            direction,
+            t::style::Wrap::None,
+            false,
+            &unchanged,
+            &unchanged,
+        );
+        balance_transition::<f64>(
+            direction,
+            t::style::Wrap::None,
+            false,
+            &unchanged,
+            &unchanged,
+        );
     }
 }
 

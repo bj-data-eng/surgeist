@@ -1,17 +1,31 @@
 //! Signed box flow and source-less strips retain separate interaction geometry.
 use super::*;
 
-fn components(narrow: bool, margin: f64, border: f64, padding: f64) -> t::InlineBoxEdgeComponents {
+fn components(
+    narrow: bool,
+    margin: f64,
+    border: f64,
+    padding: f64,
+) -> t::inline_box::InlineBoxEdgeComponents {
     if narrow {
         // All authored values in these cases are exact in both scalar lanes.
-        t::InlineBoxEdgeComponents::from_f32(margin as f32, border as f32, padding as f32).unwrap()
+        t::inline_box::InlineBoxEdgeComponents::from_f32(
+            margin as f32,
+            border as f32,
+            padding as f32,
+        )
+        .unwrap()
     } else {
-        t::InlineBoxEdgeComponents::from_f64(margin, border, padding).unwrap()
+        t::inline_box::InlineBoxEdgeComponents::from_f64(margin, border, padding).unwrap()
     }
 }
 
-fn captured(out_of_flow: bool) -> t::PreparedText {
-    let mut source = t::Source::identified(t::Text::from("A"), t::Id::from_u64(1_635_101), 1);
+fn captured(out_of_flow: bool) -> t::prepared::PreparedText {
+    let mut source = t::source::Source::identified(
+        t::source::Text::from("A"),
+        t::source::Id::from_u64(1_635_101),
+        1,
+    );
     let mut body = vec![
         E::EnterScope(1),
         control(0),
@@ -22,20 +36,20 @@ fn captured(out_of_flow: bool) -> t::PreparedText {
     if out_of_flow {
         // A real Source OOF occurrence after the real closing scope. Its declared
         // external size is not an in-flow allocation and must not donate advance.
-        source.inline_box(t::InlineBox::new(
-            t::Id::from_u64(1_635_199),
-            t::InlineBoxKind::OutOfFlow,
+        source.inline_box(t::source::InlineBox::new(
+            t::source::Id::from_u64(1_635_199),
+            t::source::InlineBoxKind::OutOfFlow,
             1,
-            t::Size::new(7.0, 9.0),
+            t::geometry::Size::new(7.0, 9.0),
         ));
         body.push(E::Atomic {
             atomic: 0,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         });
     }
     let prepared = prepare_capture(
         source,
-        block(style(t::WhiteSpace::Preserve), false, false),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 1)],
         &[(0, 1)],
@@ -46,7 +60,11 @@ fn captured(out_of_flow: bool) -> t::PreparedText {
     prepared
 }
 
-fn execute(p: &t::PreparedText, narrow: bool, signed: bool) -> t::FinalizedLine {
+fn execute(
+    p: &t::prepared::PreparedText,
+    narrow: bool,
+    signed: bool,
+) -> t::finalized::FinalizedLine {
     let start = p
         .control_views()
         .find(|v| *v.kind() == K::InlineBoundaryStart)
@@ -60,12 +78,12 @@ fn execute(p: &t::PreparedText, narrow: bool, signed: bool) -> t::FinalizedLine 
     let owner = start.captured_control().unwrap().scope();
     assert_eq!(end.captured_control().unwrap().scope(), owner);
     let parent = owner.parent().unwrap();
-    assert_eq!(parent.role(), t::ScopeRole::Domain);
+    assert_eq!(parent.role(), t::capture::ScopeRole::Domain);
     let context = p
         .inline_box_edge_context(
-            t::InlineBoxSource::captured(owner),
-            t::InlineBoxSource::captured(parent),
-            t::LineEdgeSide::Start,
+            t::inline_box::InlineBoxSource::captured(owner),
+            t::inline_box::InlineBoxSource::captured(parent),
+            t::finalized::LineEdgeSide::Start,
         )
         .unwrap();
     let mut input = request(
@@ -75,7 +93,7 @@ fn execute(p: &t::PreparedText, narrow: bool, signed: bool) -> t::FinalizedLine 
         &[],
         100.0,
     );
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     for allocation in &mut input.controls {
         let is_start = allocation.occurrence == start;
         assert!(is_start || allocation.occurrence == end);
@@ -84,7 +102,7 @@ fn execute(p: &t::PreparedText, narrow: bool, signed: bool) -> t::FinalizedLine 
             (true, false) => components(narrow, -4.0, 1.0, 2.0),
             (false, _) => components(narrow, 0.0, 0.0, 0.0),
         };
-        allocation.boundary = Some(t::InlineBoundaryAllocation::box_edge(
+        allocation.boundary = Some(t::allocation::InlineBoundaryAllocation::box_edge(
             context.clone(),
             value,
         ));
@@ -92,13 +110,16 @@ fn execute(p: &t::PreparedText, narrow: bool, signed: bool) -> t::FinalizedLine 
     input.atomics = p
         .atomic_views()
         .map(|view| {
-            assert_eq!(view.original_box().kind(), t::InlineBoxKind::OutOfFlow);
-            assert_eq!(view.original_box().id(), t::Id::from_u64(1_635_199));
+            assert_eq!(
+                view.original_box().kind(),
+                t::source::InlineBoxKind::OutOfFlow
+            );
+            assert_eq!(view.original_box().id(), t::source::Id::from_u64(1_635_199));
             assert_eq!(view.source_position().get(), 1);
             assert!(view.capture_position().is_some());
-            t::AtomicAllocation {
+            t::allocation::AtomicAllocation {
                 occurrence: view.handle(),
-                allocation: t::AtomicLineAllocation::OutOfFlow,
+                allocation: t::allocation::AtomicLineAllocation::OutOfFlow,
             }
         })
         .collect();
@@ -106,7 +127,7 @@ fn execute(p: &t::PreparedText, narrow: bool, signed: bool) -> t::FinalizedLine 
     finalize(p, input)
 }
 
-fn packet(line: &t::FinalizedLine, expected_x: f64) {
+fn packet(line: &t::finalized::FinalizedLine, expected_x: f64) {
     let mut actual = Vec::new();
     for run in line.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -120,7 +141,7 @@ fn packet(line: &t::FinalizedLine, expected_x: f64) {
                     .glyph_outline(glyph.id(), run.face().catalogue_identity())
                     .unwrap()
                     .bounds(),
-                Some(t::Rect::new(0.0, -8.0, 10.0, 10.0))
+                Some(t::geometry::Rect::new(0.0, -8.0, 10.0, 10.0))
             );
             actual.push((
                 glyph.range(),
@@ -134,28 +155,30 @@ fn packet(line: &t::FinalizedLine, expected_x: f64) {
     }
     assert_eq!(
         actual,
-        [(t::Range::new(0, 1), 35, expected_x, 0.0, 0.0, 10.0)]
+        [(t::source::Range::new(0, 1), 35, expected_x, 0.0, 0.0, 10.0)]
     );
 }
 
-fn placed(p: &t::PreparedText, line: t::FinalizedLine) -> t::Layout {
+fn placed(p: &t::prepared::PreparedText, line: t::finalized::FinalizedLine) -> t::layout::Layout {
     assert_eq!(
         line.atomic_slots().len(),
         0,
         "this helper places no external OOF geometry"
     );
-    t::Layout::from_finalized_lines(t::PlacementRequest {
+    t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: p.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
-        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-            line,
-            anchor: t::LineAnchor {
-                inline_origin: 0.0,
-                baseline: 8.0,
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![t::placement::PlacementEntry::Formatted(
+            t::placement::LinePlacement {
+                line,
+                anchor: t::placement::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: 8.0,
+                },
+                orientation: t::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: t::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap()
 }
@@ -191,7 +214,7 @@ fn source_and_strip_case(narrow: bool) {
         );
         let fragment = line
             .fragment_views()
-            .find(|f| f.owner() == t::FinalizedFragmentOwner::Control(slot.control()))
+            .find(|f| f.owner() == t::finalized::FinalizedFragmentOwner::Control(slot.control()))
             .unwrap();
         assert_eq!(
             (
@@ -207,28 +230,32 @@ fn source_and_strip_case(narrow: bool) {
                 && fragment.processed_range().is_none()
         );
     }
-    let replay = line.with_spacing(t::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(t::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(replay.feedback().advance, 15.0);
     packet(&replay, 6.0);
     // A later operation leaves the previous accepted zero-component product usable.
     assert_eq!(prior.feedback().advance, 10.0);
     packet(
-        &prior.with_spacing(t::SpacingAllocations::None).unwrap(),
+        &prior
+            .with_spacing(t::spacing::SpacingAllocations::None)
+            .unwrap(),
         0.0,
     );
     let layout = placed(&p, replay);
     let owner = p.origin_views().next().unwrap().handle();
     let query = layout
-        .source_range_fragments(&owner, t::Range::new(0, 1))
+        .source_range_fragments(&owner, t::source::Range::new(0, 1))
         .unwrap();
     assert_eq!(query.origin(), &owner);
-    assert_eq!(query.local_range(), t::Range::new(0, 1));
+    assert_eq!(query.local_range(), t::source::Range::new(0, 1));
     let pieces = query
         .units()
         .flat_map(|unit| {
             unit.pieces()
                 .map(|piece| {
-                    let t::SourceRangeGeometry::Line(piece) = piece else {
+                    let t::range_fragments::SourceRangeGeometry::Line(piece) = piece else {
                         panic!("ordinary A retains ordinary source geometry")
                     };
                     (piece.advance_edges(), piece.rect())
@@ -236,9 +263,15 @@ fn source_and_strip_case(narrow: bool) {
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    assert_eq!(pieces, [((6.0, 16.0), t::Rect::new(6.0, 0.0, 10.0, 10.0))]);
-    assert_eq!(layout.source().id(), Some(t::Id::from_u64(1_635_101)));
-    assert_eq!(layout.source().text(), &t::Text::from("A"));
+    assert_eq!(
+        pieces,
+        [((6.0, 16.0), t::geometry::Rect::new(6.0, 0.0, 10.0, 10.0))]
+    );
+    assert_eq!(
+        layout.source().id(),
+        Some(t::source::Id::from_u64(1_635_101))
+    );
+    assert_eq!(layout.source().text(), &t::source::Text::from("A"));
     // Strip endpoints retain source-level Before/After, not flow-start/flow-end.
     for (left, right, source) in [(3.0, 6.0, 0), (16.0, 19.0, 1)] {
         // Generic hit testing first chooses a source cursor. The glyph's
@@ -247,13 +280,13 @@ fn source_and_strip_case(narrow: bool) {
         // closing-left control sides; exact movement reaches their other sides.
         let (cursor, movement) = if source == 0 {
             (
-                t::Cursor::new(0, t::Affinity::Before),
-                t::Movement::PreviousCluster,
+                t::layout::Cursor::new(0, t::layout::Affinity::Before),
+                t::layout::Movement::PreviousCluster,
             )
         } else {
             (
-                t::Cursor::new(1, t::Affinity::After),
-                t::Movement::NextCluster,
+                t::layout::Cursor::new(1, t::layout::Affinity::After),
+                t::layout::Movement::NextCluster,
             )
         };
         let mut matching = layout
@@ -274,11 +307,11 @@ fn source_and_strip_case(narrow: bool) {
         };
         assert_eq!(
             before.source_cursor(),
-            t::Cursor::new(source, t::Affinity::After)
+            t::layout::Cursor::new(source, t::layout::Affinity::After)
         );
         assert_eq!(
             after.source_cursor(),
-            t::Cursor::new(source, t::Affinity::Before)
+            t::layout::Cursor::new(source, t::layout::Affinity::Before)
         );
         assert_eq!(
             layout.position_geometry(&before).unwrap().rect().origin.x,
@@ -331,12 +364,17 @@ fn static_site_case(narrow: bool) {
         .unwrap();
     assert_eq!(end.strip_interval(), (16.0, 19.0));
     assert_eq!(end.flow_interval(), (16.0, 15.0));
-    let replay = line.with_spacing(t::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(t::spacing::SpacingAllocations::None)
+        .unwrap();
     for output in [&line, &replay] {
         let slots = output.atomic_slots().collect::<Vec<_>>();
         assert_eq!(slots.len(), 1);
         assert_eq!(slots[0].occurrence, occurrence);
-        assert_eq!(slots[0].allocation, t::AtomicLineAllocation::OutOfFlow);
+        assert_eq!(
+            slots[0].allocation,
+            t::allocation::AtomicLineAllocation::OutOfFlow
+        );
         assert_eq!(
             slots[0].origin.x, 15.0,
             "the real subsequent OOF static site follows signed flow, not strip end19"
@@ -362,10 +400,15 @@ fn signed_margins_and_source_less_strips_do_not_donate_ax_character_bounds() {
     use accesskit::{NodeId, Role, TextPosition, TextSelection};
     let p = captured(false);
     let layout = placed(&p, execute(&p, false, true));
-    let mut state = t::Accessibility::new(10);
+    let mut state = t::accessibility::Accessibility::new(10);
     let parent = NodeId(1000);
     let update = layout
-        .accessibility_update(&mut state, parent, parent, t::Point::new(100.0, 200.0))
+        .accessibility_update(
+            &mut state,
+            parent,
+            parent,
+            t::geometry::Point::new(100.0, 200.0),
+        )
         .unwrap();
     let paragraph = &update.nodes.iter().find(|(id, _)| *id == parent).unwrap().1;
     assert_eq!(paragraph.role(), Role::Paragraph);
@@ -422,9 +465,9 @@ fn signed_margins_and_source_less_strips_do_not_donate_ax_character_bounds() {
         layout
             .access_selection(
                 &state,
-                t::Selection::new(
-                    t::Cursor::new(0, t::Affinity::After),
-                    t::Cursor::new(1, t::Affinity::Before),
+                t::layout::Selection::new(
+                    t::layout::Cursor::new(0, t::layout::Affinity::After),
+                    t::layout::Cursor::new(1, t::layout::Affinity::Before),
                 )
             )
             .unwrap(),

@@ -4,9 +4,15 @@
 //! scalars excluding Hangul, otherwise SPACE. The 2012 draft is its precedent,
 //! not a claim that current standards mandate that particular UA choice.
 use surgeist_text::{
-    Affinity, DocumentSegmentBreakError, DocumentSegmentBreaks, ErrorCode, ErrorDetail, Id,
-    InlineBox, InlineBoxKind, PlaintextItem, ProcessedSource, Range, Size, Source, SourcePosition,
-    Style, Text, WhiteSpace, process_source_whitespace,
+    ErrorCode, ErrorDetail,
+    geometry::Size,
+    layout::Affinity,
+    processing::{
+        DocumentSegmentBreakError, DocumentSegmentBreaks, PlaintextItem, ProcessedSource,
+        process_source_whitespace,
+    },
+    source::{Id, InlineBox, InlineBoxKind, Range, Source, SourcePosition, Text},
+    style::{Style, WhiteSpace},
 };
 
 fn style(mode: WhiteSpace) -> Style {

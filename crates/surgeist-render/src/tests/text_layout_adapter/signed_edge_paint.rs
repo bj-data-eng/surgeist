@@ -1,26 +1,29 @@
 //! Signed endpoint flow relocates the owned A without painting its margins or strips.
 use super::*;
 
-fn line_with_components(p: &text::PreparedText, signed: bool) -> text::FinalizedLine {
+fn line_with_components(
+    p: &text::prepared::PreparedText,
+    signed: bool,
+) -> text::finalized::FinalizedLine {
     let start = p
         .control_views()
-        .find(|v| *v.kind() == text::ParagraphControlKind::InlineBoundaryStart)
+        .find(|v| *v.kind() == text::paragraph::ParagraphControlKind::InlineBoundaryStart)
         .unwrap()
         .handle();
     let end = p
         .control_views()
-        .find(|v| *v.kind() == text::ParagraphControlKind::InlineBoundaryEnd)
+        .find(|v| *v.kind() == text::paragraph::ParagraphControlKind::InlineBoundaryEnd)
         .unwrap()
         .handle();
     let owner = start.captured_control().unwrap().scope();
     assert_eq!(end.captured_control().unwrap().scope(), owner);
     let parent = owner.parent().unwrap();
-    assert_eq!(parent.role(), text::ScopeRole::Domain);
+    assert_eq!(parent.role(), text::capture::ScopeRole::Domain);
     let context = p
         .inline_box_edge_context(
-            text::InlineBoxSource::captured(owner),
-            text::InlineBoxSource::captured(parent),
-            text::LineEdgeSide::Start,
+            text::inline_box::InlineBoxSource::captured(owner),
+            text::inline_box::InlineBoxSource::captured(parent),
+            text::finalized::LineEdgeSide::Start,
         )
         .unwrap();
     let mut segments = p.source_segments();
@@ -31,7 +34,7 @@ fn line_with_components(p: &text::PreparedText, signed: bool) -> text::Finalized
     let controls = participants
         .iter()
         .filter_map(|part| {
-            let text::PreparedParticipant::Control(occurrence) = part else {
+            let text::prepared::PreparedParticipant::Control(occurrence) = part else {
                 return None;
             };
             let is_start = *occurrence == start;
@@ -41,22 +44,23 @@ fn line_with_components(p: &text::PreparedText, signed: bool) -> text::Finalized
                 (true, false) => (-4.0, 1.0, 2.0),
                 (false, _) => (0.0, 0.0, 0.0),
             };
-            Some(text::ControlAllocation {
+            Some(text::allocation::ControlAllocation {
                 occurrence: occurrence.clone(),
                 strut: None,
-                boundary: Some(text::InlineBoundaryAllocation::box_edge(
+                boundary: Some(text::allocation::InlineBoundaryAllocation::box_edge(
                     context.clone(),
-                    text::InlineBoxEdgeComponents::from_f64(margin, border, padding).unwrap(),
+                    text::inline_box::InlineBoxEdgeComponents::from_f64(margin, border, padding)
+                        .unwrap(),
                 )),
             })
         })
         .collect();
-    let request = text::LineSelectionRequest {
+    let request = text::selection::LineSelectionRequest {
         inline_boxes: None,
         start: segment.start(),
         end: segment.end(),
         segment,
-        termination: text::PreparedTermination::Ordinary(end_offer),
+        termination: text::selection::PreparedTermination::Ordinary(end_offer),
         participants,
         alternative: None,
         incoming: None,
@@ -65,28 +69,28 @@ fn line_with_components(p: &text::PreparedText, signed: bool) -> text::Finalized
         boundary_context: vec![],
         line_box_struts: vec![],
         line_strut: None,
-        context: text::LineContext {
-            alignment_insets: text::LineAlignmentInsets::ZERO,
-            formatted_line: text::FormattedLineContext::default(),
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            line_box_direction: text::LineBoxDirection::LeftToRight,
-            orientation: text::LineOrientation::Horizontal,
-            start: text::LineStart::Paragraph,
-            end: text::LineEnd::Paragraph,
+        context: text::selection::LineContext {
+            alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+            formatted_line: text::selection::FormattedLineContext::default(),
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+            orientation: text::selection::LineOrientation::Horizontal,
+            start: text::selection::LineStart::Paragraph,
+            end: text::selection::LineEnd::Paragraph,
             available_inline: Some(32.0),
             indent: 0.0,
-            alignment: text::Alignment::Start,
-            tabs: text::TabContext::NoTabs,
-            spacing: text::SpacingPolicy::None,
+            alignment: text::options::Alignment::Start,
+            tabs: text::tabs::TabContext::NoTabs,
+            spacing: text::spacing::SpacingPolicy::None,
         },
     };
     assert!(p.boundary_context_demand(&request).unwrap().is_none());
     let line = p
         .select(request)
         .unwrap()
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, if signed { 25.0 } else { 20.0 });
@@ -102,7 +106,7 @@ fn line_with_components(p: &text::PreparedText, signed: bool) -> text::Finalized
                     .glyph_outline(glyph.id(), run.face().catalogue_identity())
                     .unwrap()
                     .bounds(),
-                Some(text::Rect::new(0.0, -8.0, 10.0, 10.0))
+                Some(text::geometry::Rect::new(0.0, -8.0, 10.0, 10.0))
             );
             glyphs.push((
                 glyph.range(),
@@ -118,8 +122,15 @@ fn line_with_components(p: &text::PreparedText, signed: bool) -> text::Finalized
     assert_eq!(
         glyphs,
         [
-            (text::Range::new(0, 1), 35, 0.0, 0.0, 0.0, 10.0),
-            (text::Range::new(1, 2), 35, expected_second, 0.0, 0.0, 10.0),
+            (text::source::Range::new(0, 1), 35, 0.0, 0.0, 0.0, 10.0),
+            (
+                text::source::Range::new(1, 2),
+                35,
+                expected_second,
+                0.0,
+                0.0,
+                10.0
+            ),
         ]
     );
     let opening = line.control_slots().find(|s| s.control() == start).unwrap();
@@ -139,19 +150,24 @@ fn line_with_components(p: &text::PreparedText, signed: bool) -> text::Finalized
     line
 }
 
-fn place_signed_pair(p: &text::PreparedText, line: text::FinalizedLine) -> text::Layout {
-    text::Layout::from_finalized_lines(text::PlacementRequest {
+fn place_signed_pair(
+    p: &text::prepared::PreparedText,
+    line: text::finalized::FinalizedLine,
+) -> text::layout::Layout {
+    text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared: p.clone(),
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 0.0,
-                baseline: BASELINE,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: BASELINE,
+                },
+                orientation: text::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap()
 }
@@ -196,14 +212,21 @@ fn signed_box_flow_retracts_without_clipping_or_painting_the_retained_ahem_packe
     let p = captured_pair(&mut system, false);
     let prior = line_with_components(&p, false);
     let signed = line_with_components(&p, true);
-    let signed = signed.with_spacing(text::SpacingAllocations::None).unwrap();
+    let signed = signed
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(signed.feedback().advance, 25.0);
-    let prior = prior.with_spacing(text::SpacingAllocations::None).unwrap();
+    let prior = prior
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(prior.feedback().advance, 20.0);
     let layouts = [place_signed_pair(&p, prior), place_signed_pair(&p, signed)];
     for layout in &layouts {
-        assert_eq!(layout.source().id(), Some(text::Id::from_u64(640725)));
-        assert_eq!(layout.source().text(), &text::Text::from("AA"));
+        assert_eq!(
+            layout.source().id(),
+            Some(text::source::Id::from_u64(640725))
+        );
+        assert_eq!(layout.source().text(), &text::source::Text::from("AA"));
     }
     let publication = layouts[0]
         .run_views()

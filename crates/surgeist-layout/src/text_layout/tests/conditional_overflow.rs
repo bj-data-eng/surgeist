@@ -6,7 +6,12 @@
 //! adopted Surgeist ordering, not a universal browser-coordinate oracle.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use surgeist_text::{FinalizedLine, LineEnd, OverflowWrap, Range, Wrap};
+use surgeist_text::{
+    finalized::FinalizedLine,
+    selection::LineEnd,
+    source::Range,
+    style::{OverflowWrap, Wrap},
+};
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -16,7 +21,7 @@ struct LineFact {
     end: LineEnd,
     advance: f64,
     occupied: (f64, f64),
-    allocation: surgeist_text::Rect,
+    allocation: surgeist_text::geometry::Rect,
     baseline: f64,
 }
 
@@ -38,14 +43,14 @@ fn line(
         },
         advance,
         occupied: (0.0, advance),
-        allocation: surgeist_text::Rect::new(x, top, width, 10.0),
+        allocation: surgeist_text::geometry::Rect::new(x, top, width, 10.0),
         baseline: top + 8.0,
     }
 }
 
 fn facts<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-    prepared: &surgeist_text::PreparedText,
+    prepared: &surgeist_text::prepared::PreparedText,
     source: &str,
 ) -> Vec<LineFact> {
     assert_eq!(batch.placed_text().len(), 1);
@@ -123,7 +128,7 @@ fn paragraph<S: LayoutScalar>(
     style.wrap = wrap;
     let paragraph = PreparedParagraph::plain(
         1,
-        Source::identified(source, surgeist_text::Id::from_u64(42), 7),
+        Source::identified(source, surgeist_text::source::Id::from_u64(42), 7),
         style,
     );
     let width = match available.space() {
@@ -372,8 +377,8 @@ fn native_break_word_min_content_retains_the_ordinary_forty_pixel_word() {
 fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinctions() {
     fn check<S: LayoutScalar>() {
         for (hyphens, ordinary_minimum) in [
-            (surgeist_text::Hyphens::Manual, 30.0),
-            (surgeist_text::Hyphens::None, 50.0),
+            (surgeist_text::hyphenation::Hyphens::Manual, 30.0),
+            (surgeist_text::hyphenation::Hyphens::None, 50.0),
         ] {
             for (overflow, minimum) in [
                 (OverflowWrap::Normal, ordinary_minimum),
@@ -382,8 +387,9 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
             ] {
                 let mut style = ahem_style(10.0, 10.0);
                 style.hyphens = hyphens;
-                style.hyphenate_character =
-                    surgeist_text::HyphenateCharacter::String(surgeist_text::Text::from(""));
+                style.hyphenate_character = surgeist_text::hyphenation::HyphenateCharacter::String(
+                    surgeist_text::source::Text::from(""),
+                );
                 style.overflow_wrap = overflow;
                 let short = PreparedParagraph::plain(1, Source::new("AA\u{ad}AA"), style.clone());
                 assert_eq!(
@@ -395,7 +401,7 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                 let alternatives: Vec<_> = paragraph.prepared.alternative_views().collect();
                 assert_eq!(
                     alternatives.len(),
-                    usize::from(hyphens == surgeist_text::Hyphens::Manual)
+                    usize::from(hyphens == surgeist_text::hyphenation::Hyphens::Manual)
                 );
                 assert!(
                     alternatives

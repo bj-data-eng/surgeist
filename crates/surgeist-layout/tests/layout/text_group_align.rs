@@ -1,7 +1,7 @@
 //! Numeric native groups: literal alignment oracles, no Text preparation proxy.
 use std::{convert::Infallible, slice};
 use surgeist_layout as l;
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 #[derive(Clone)]
 struct Tree<S: l::LayoutScalar> {

@@ -11,9 +11,12 @@ use crate::{
     layout::{Affinity, Layout},
     options::Alignment,
     processing::{
-        ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
-        SourceProcessingJointFlow, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            SourceProcessingConnection, SourceProcessingEvent, SourceProcessingJointFlow,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+            WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         FinalizedLine, FormattedLineContext, LineAlignmentInsets, LineAllocations, LineAnchor,

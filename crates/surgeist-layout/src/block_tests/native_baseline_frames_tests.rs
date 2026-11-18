@@ -64,39 +64,39 @@ fn font_premises() {
 }
 
 struct Paragraph {
-    prepared: text::PreparedText,
-    original: text::Source,
+    prepared: text::prepared::PreparedText,
+    original: text::source::Source,
 }
 impl Paragraph {
     fn new(raw: &str, mode: WritingMode) -> Self {
-        Self::at_boundary(raw, mode, text::ParagraphTerminalEdge::BlockEnd)
+        Self::at_boundary(raw, mode, text::paragraph::ParagraphTerminalEdge::BlockEnd)
     }
     fn at_boundary(
         raw: &str,
         mode: WritingMode,
-        terminal_edge: text::ParagraphTerminalEdge,
+        terminal_edge: text::paragraph::ParagraphTerminalEdge,
     ) -> Self {
         font_premises();
-        let original = text::Source::new(raw);
-        let range = text::Range::new(0, original.text().len());
-        let input = text::ParagraphInput {
+        let original = text::source::Source::new(raw);
+        let range = text::source::Range::new(0, original.text().len());
+        let input = text::paragraph::ParagraphInput {
             source: original.clone(),
-            base_style: text::Style {
-                white_space: text::WhiteSpace::Preserve,
-                wrap: text::Wrap::None,
+            base_style: text::style::Style {
+                white_space: text::style::WhiteSpace::Preserve,
+                wrap: text::style::Wrap::None,
                 ..ahem_style(10.0, 10.0)
             },
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             terminal_edge,
             tab_reference: None,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: original.clone(),
                 local: range,
                 aggregate: range,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -105,31 +105,34 @@ impl Paragraph {
             anchor_order: vec![],
         };
         let typography = if name(mode) == BaselineName::Central {
-            text::AnalysisTypography::Upright {
-                computed_direction: text::ParagraphBaseDirection::LeftToRight,
+            text::analyzed::AnalysisTypography::Upright {
+                computed_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             }
         } else {
-            text::AnalysisTypography::HorizontalComposition
+            text::analyzed::AnalysisTypography::HorizontalComposition
         };
         let analyzed = in_flat_wrapping_context(
-            text::AnalyzedSource::from_paragraph(input, typography).unwrap(),
-            text::Wrap::None,
+            text::analyzed::AnalyzedSource::from_paragraph(input, typography).unwrap(),
+            text::style::Wrap::None,
         );
         let mut system = text::System::default();
         system
             .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
             .unwrap();
         let orientation = match mode {
-            WritingMode::HorizontalTb => text::LineOrientation::Horizontal,
-            WritingMode::SidewaysRl => text::LineOrientation::SidewaysClockwise,
-            WritingMode::VerticalRl | WritingMode::VerticalLr => text::LineOrientation::Vertical,
+            WritingMode::HorizontalTb => text::selection::LineOrientation::Horizontal,
+            WritingMode::SidewaysRl => text::selection::LineOrientation::SidewaysClockwise,
+            WritingMode::VerticalRl | WritingMode::VerticalLr => {
+                text::selection::LineOrientation::Vertical
+            }
             WritingMode::SidewaysLr => {
                 panic!("this fixture uses only admitted native Text profiles")
             }
         };
-        let mut options = text::PreparationOptions::default().with_orientation(orientation);
+        let mut options =
+            text::prepared::PreparationOptions::default().with_orientation(orientation);
         if name(mode) == BaselineName::Alphabetic {
-            options = options.with_baseline_reference(text::FontBaseline::Alphabetic);
+            options = options.with_baseline_reference(text::font::FontBaseline::Alphabetic);
         }
         Self {
             prepared: system.prepare(&analyzed, options).unwrap(),
@@ -141,7 +144,7 @@ impl Paragraph {
         assert_eq!(origin.source(), &self.original);
         assert_eq!(
             origin.local_range(),
-            text::Range::new(0, self.original.text().len())
+            text::source::Range::new(0, self.original.text().len())
         );
         TextParagraphBinding {
             inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
@@ -463,9 +466,9 @@ fn mixed_numeric_and_native<S: LayoutScalar>() {
         // A following ordinary sibling means this preparation does not reach
         // its containing block end. Only the final Native run owns BlockEnd.
         let terminal = if numeric_first {
-            text::ParagraphTerminalEdge::BlockEnd
+            text::paragraph::ParagraphTerminalEdge::BlockEnd
         } else {
-            text::ParagraphTerminalEdge::NonBlockBoundary
+            text::paragraph::ParagraphTerminalEdge::NonBlockBoundary
         };
         let paragraph = Paragraph::at_boundary("X", mode, terminal);
         let binding = paragraph.binding();
@@ -530,9 +533,9 @@ fn unknown_and_absent<S: LayoutScalar>() {
     for opaque_leaf in [false, true] {
         for native_first in [false, true] {
             let terminal = if native_first {
-                text::ParagraphTerminalEdge::NonBlockBoundary
+                text::paragraph::ParagraphTerminalEdge::NonBlockBoundary
             } else {
-                text::ParagraphTerminalEdge::BlockEnd
+                text::paragraph::ParagraphTerminalEdge::BlockEnd
             };
             let paragraph = Paragraph::at_boundary("X", mode, terminal);
             let binding = paragraph.binding();
@@ -819,26 +822,26 @@ fn actual_native_measurement_cache_retains_local_facts_and_separates_size_demand
 
 fn wrapping_paragraph() -> Paragraph {
     font_premises();
-    let original = text::Source::new("X X");
-    let range = text::Range::new(0, 3);
-    let input = text::ParagraphInput {
+    let original = text::source::Source::new("X X");
+    let range = text::source::Range::new(0, 3);
+    let input = text::paragraph::ParagraphInput {
         source: original.clone(),
-        base_style: text::Style {
-            white_space: text::WhiteSpace::Collapse,
-            wrap: text::Wrap::Word,
+        base_style: text::style::Style {
+            white_space: text::style::WhiteSpace::Collapse,
+            wrap: text::style::Wrap::Word,
             ..ahem_style(10.0, 10.0)
         },
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+        paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        origins: vec![text::ParagraphOrigin {
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+        origins: vec![text::paragraph::ParagraphOrigin {
             text_node: None,
             source: original.clone(),
             local: range,
             aggregate: range,
-            kind: text::ParagraphOriginKind::Authored,
+            kind: text::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -847,14 +850,14 @@ fn wrapping_paragraph() -> Paragraph {
         anchor_order: vec![],
     };
     let analyzed = in_flat_wrapping_context(
-        text::AnalyzedSource::from_paragraph(
+        text::analyzed::AnalyzedSource::from_paragraph(
             input,
-            text::AnalysisTypography::Upright {
-                computed_direction: text::ParagraphBaseDirection::LeftToRight,
+            text::analyzed::AnalysisTypography::Upright {
+                computed_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             },
         )
         .unwrap(),
-        text::Wrap::Word,
+        text::style::Wrap::Word,
     );
     let mut system = text::System::default();
     system
@@ -864,8 +867,8 @@ fn wrapping_paragraph() -> Paragraph {
         prepared: system
             .prepare(
                 &analyzed,
-                text::PreparationOptions::default()
-                    .with_orientation(text::LineOrientation::Vertical),
+                text::prepared::PreparationOptions::default()
+                    .with_orientation(text::selection::LineOrientation::Vertical),
             )
             .unwrap(),
         original,

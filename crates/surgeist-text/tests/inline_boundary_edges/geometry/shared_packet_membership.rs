@@ -1,15 +1,15 @@
 //! Real source members remain distinct while their actual provider packet is shared.
 use super::*;
 
-fn captured_siblings(mark: bool) -> (t::PreparedText, Vec<u8>) {
+fn captured_siblings(mark: bool) -> (t::prepared::PreparedText, Vec<u8>) {
     let bytes = font::ligature();
     let p = prepare_capture(
-        t::Source::identified(
+        t::source::Source::identified(
             if mark { "A\u{301}B" } else { "AAB" },
-            t::Id::from_u64(if mark { 1_646_101 } else { 1_646_102 }),
+            t::source::Id::from_u64(if mark { 1_646_101 } else { 1_646_102 }),
             1,
         ),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1), (1, 2), (2, 3)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -38,14 +38,18 @@ fn captured_siblings(mark: bool) -> (t::PreparedText, Vec<u8>) {
     (p, bytes)
 }
 
-fn unit_at(p: &t::PreparedText, source: t::Range) -> t::PreparedUnit {
+fn unit_at(p: &t::prepared::PreparedText, source: t::source::Range) -> t::prepared::PreparedUnit {
     let mut found = p.unit_views().filter(|unit| unit.source_range() == source);
     let unit = found.next().expect("actual authored source unit").handle();
     assert!(found.next().is_none());
     unit
 }
 
-fn owner_at(p: &t::PreparedText, start_index: usize, end_index: usize) -> t::InlineBoxSource {
+fn owner_at(
+    p: &t::prepared::PreparedText,
+    start_index: usize,
+    end_index: usize,
+) -> t::inline_box::InlineBoxSource {
     let start = p
         .control_views()
         .nth(start_index)
@@ -61,18 +65,24 @@ fn owner_at(p: &t::PreparedText, start_index: usize, end_index: usize) -> t::Inl
         .captured_control()
         .unwrap();
     let scope = start.scope();
-    assert_eq!(scope.role(), t::ScopeRole::Inline);
+    assert_eq!(scope.role(), t::capture::ScopeRole::Inline);
     assert_eq!(scope.entry_control(), Some(start));
     assert_eq!(scope.exit_control(), Some(end));
     assert_eq!(
         scope.domain_topology(),
-        t::SourceProcessingTopology::Complete
+        t::capture::SourceProcessingTopology::Complete
     );
-    assert_eq!(scope.parent().unwrap().role(), t::ScopeRole::Domain);
-    t::InlineBoxSource::captured(scope)
+    assert_eq!(
+        scope.parent().unwrap().role(),
+        t::capture::ScopeRole::Domain
+    );
+    t::inline_box::InlineBoxSource::captured(scope)
 }
 
-fn packet(line: &t::FinalizedLine, bytes: &[u8]) -> Vec<(u32, f32, f64, f32, t::Range)> {
+fn packet(
+    line: &t::finalized::FinalizedLine,
+    bytes: &[u8],
+) -> Vec<(u32, f32, f64, f32, t::source::Range)> {
     line.run_views()
         .flat_map(|run| {
             assert_eq!(run.face().bytes(), bytes);
@@ -94,7 +104,10 @@ fn packet(line: &t::FinalizedLine, bytes: &[u8]) -> Vec<(u32, f32, f64, f32, t::
         .collect()
 }
 
-fn owned(line: &t::FinalizedLine, owner: &t::InlineBoxSource) -> t::FinalizedInlineBoxPiece {
+fn owned(
+    line: &t::finalized::FinalizedLine,
+    owner: &t::inline_box::InlineBoxSource,
+) -> t::inline_box::FinalizedInlineBoxPiece {
     let mut found = line
         .inline_box_pieces()
         .unwrap()
@@ -104,11 +117,11 @@ fn owned(line: &t::FinalizedLine, owner: &t::InlineBoxSource) -> t::FinalizedInl
     piece
 }
 
-fn text_members(piece: &t::FinalizedInlineBoxPiece) -> Vec<t::PreparedUnit> {
+fn text_members(piece: &t::inline_box::FinalizedInlineBoxPiece) -> Vec<t::prepared::PreparedUnit> {
     piece
         .members()
         .filter_map(|member| match member.participant() {
-            Some(t::PreparedParticipant::Text(unit)) => {
+            Some(t::prepared::PreparedParticipant::Text(unit)) => {
                 assert_eq!(member.unit_source_range(), unit.view().source_range());
                 Some(unit.clone())
             }
@@ -139,29 +152,29 @@ fn shared_packet(mark: bool) {
     assert_eq!(
         analysis.graphemes().collect::<Vec<_>>(),
         if mark {
-            vec![t::Range::new(0, 2), t::Range::new(2, 3)]
+            vec![t::source::Range::new(0, 2), t::source::Range::new(2, 3)]
         } else {
             vec![
-                t::Range::new(0, 1),
-                t::Range::new(1, 2),
-                t::Range::new(2, 3),
+                t::source::Range::new(0, 1),
+                t::source::Range::new(1, 2),
+                t::source::Range::new(2, 3),
             ]
         }
     );
     assert!(p.unit_views().all(|unit| unit.level().get() == 0));
     let units = [
-        unit_at(&p, t::Range::new(0, 1)),
-        unit_at(&p, t::Range::new(1, 2)),
-        unit_at(&p, t::Range::new(2, 3)),
+        unit_at(&p, t::source::Range::new(0, 1)),
+        unit_at(&p, t::source::Range::new(1, 2)),
+        unit_at(&p, t::source::Range::new(2, 3)),
     ];
     assert_eq!(
         p.origin_views()
             .map(|v| v.aggregate_range())
             .collect::<Vec<_>>(),
         [
-            t::Range::new(0, 1),
-            t::Range::new(1, 2),
-            t::Range::new(2, 3)
+            t::source::Range::new(0, 1),
+            t::source::Range::new(1, 2),
+            t::source::Range::new(2, 3)
         ]
     );
     let left = owner_at(&p, 0, 1);
@@ -179,8 +192,8 @@ fn shared_packet(mark: bool) {
     assert!(basis_request.inline_boxes.is_none());
     let baseline = finalize(&p, basis_request);
     let expected = [
-        (58, 10.0, 0.0, 0.0, t::Range::new(0, 2)),
-        (36, 10.0, 10.0, 0.0, t::Range::new(2, 3)),
+        (58, 10.0, 0.0, 0.0, t::source::Range::new(0, 2)),
+        (36, 10.0, 10.0, 0.0, t::source::Range::new(2, 3)),
     ];
     assert_eq!(packet(&baseline, &bytes), expected);
     assert_eq!(baseline.feedback().advance, 20.0);
@@ -207,7 +220,7 @@ fn shared_packet(mark: bool) {
             piece
                 .members()
                 .filter_map(|m| match m.participant() {
-                    Some(t::PreparedParticipant::Text(u)) => Some(u.clone()),
+                    Some(t::prepared::PreparedParticipant::Text(u)) => Some(u.clone()),
                     _ => None,
                 })
                 .collect::<Vec<_>>(),
@@ -216,9 +229,9 @@ fn shared_packet(mark: bool) {
         selected_fragments.push(piece.fragment());
     }
     let line = selected
-        .finalize(t::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: t::ScopeAllocations::None,
+        .finalize(t::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: t::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     let a = owned(&line, &left);

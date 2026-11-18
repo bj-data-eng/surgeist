@@ -227,17 +227,17 @@ pub(crate) fn prepare_resources(
         .expect("active scope capture");
     let capture = &topology.capture;
     let visits = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+        crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
         shaped.scope_glyph_custody.len(),
         shaped.scope_relations.len(),
     )?;
     let visits = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+        crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
         visits,
         analyzed.paragraph.anchor_order.len(),
     )?;
     budget.work(checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+        crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
         visits,
         tables.alternatives.len(),
     )?)?;
@@ -246,7 +246,7 @@ pub(crate) fn prepare_resources(
         budget.work(1)?;
         for &target in &data.targets {
             budget.work(checked_sum(
-                crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                 1,
                 active.len(),
             )?)?;
@@ -310,7 +310,7 @@ pub(crate) fn prepare_resources(
         let mut current = Some(target);
         while let Some(scope) = current {
             budget.work(checked_sum(
-                crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                 demands.len(),
                 1,
             )?)?;

@@ -10,12 +10,12 @@ fn n<S: LayoutScalar>(value: f64) -> S {
 }
 
 fn prepared_words() -> PreparedParagraph {
-    let style = text::Style {
-        white_space: text::WhiteSpace::Collapse,
-        wrap: text::Wrap::Word,
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Collapse,
+        wrap: text::style::Wrap::Word,
         ..ahem_style(10.0, 10.0)
     };
-    PreparedParagraph::plain(2, text::Source::new("AAA BBB"), style)
+    PreparedParagraph::plain(2, text::source::Source::new("AAA BBB"), style)
 }
 
 fn qualify_intrinsics<S: LayoutScalar>(paragraph: &PreparedParagraph) {
@@ -79,7 +79,7 @@ fn qualify_intrinsics<S: LayoutScalar>(paragraph: &PreparedParagraph) {
         }
         assert_eq!(
             batch.placed_text()[0].layout().source().text(),
-            &text::Text::from("AAA BBB")
+            &text::source::Text::from("AAA BBB")
         );
     }
 }
@@ -153,17 +153,20 @@ fn assert_lines<S: LayoutScalar>(
         .unwrap();
     assert_eq!(placed.nodes(), &[2]);
     let layout = placed.layout();
-    assert_eq!(layout.source().text(), &text::Text::from("AAA BBB"));
+    assert_eq!(layout.source().text(), &text::source::Text::from("AAA BBB"));
     let origin = paragraph.origin(2);
-    assert_eq!(origin.view().source().text(), &text::Text::from("AAA BBB"));
-    assert_eq!(origin.view().local_range(), text::Range::new(0, 7));
+    assert_eq!(
+        origin.view().source().text(),
+        &text::source::Text::from("AAA BBB")
+    );
+    assert_eq!(origin.view().local_range(), text::source::Range::new(0, 7));
     let expected_lines = if wrapped { 2 } else { 1 };
     assert_eq!(
         layout.lines().len(),
         expected_lines,
         "actual word-wrapped Text line count"
     );
-    let mut finalized: Vec<(usize, text::FinalizedLine)> = Vec::new();
+    let mut finalized: Vec<(usize, text::finalized::FinalizedLine)> = Vec::new();
     for entry in batch.final_inline_fragments() {
         if entry.owner() != &InlineFragmentOwner::Node(2) {
             continue;
@@ -228,7 +231,7 @@ fn assert_lines<S: LayoutScalar>(
                 let range = glyph.range();
                 // A blank space need not publish a glyph; its original source
                 // is retained independently in the actual selected mapping.
-                if range != text::Range::new(3, 4) {
+                if range != text::source::Range::new(3, 4) {
                     word_glyphs.push(range);
                 }
             }
@@ -244,7 +247,7 @@ fn assert_lines<S: LayoutScalar>(
             word_glyphs,
             expected
                 .into_iter()
-                .map(|at| text::Range::new(at, at + 1))
+                .map(|at| text::source::Range::new(at, at + 1))
                 .collect::<Vec<_>>(),
             "line{index}: AAA/BBB source-to-glyph correspondence"
         );

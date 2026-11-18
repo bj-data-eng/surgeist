@@ -178,44 +178,45 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
 }
 
 struct Advanced<S: l::LayoutScalar> {
-    capture: Arc<t::ProcessedSource>,
-    prepared: t::PreparedText,
+    capture: Arc<t::processing::ProcessedSource>,
+    prepared: t::prepared::PreparedText,
     binding: l::TextParagraphBinding<u32>,
     host: Host<S>,
     width: f64,
     float: Option<u32>,
 }
 impl<S: l::LayoutScalar> Advanced<S> {
-    fn new(groups: &[&str], width: f64, tall: Option<t::Range>, with_float: bool) -> Self {
+    fn new(groups: &[&str], width: f64, tall: Option<t::source::Range>, with_float: bool) -> Self {
         Self::with_revision(groups, width, tall, with_float, 3)
     }
     fn with_revision(
         groups: &[&str],
         width: f64,
-        tall: Option<t::Range>,
+        tall: Option<t::source::Range>,
         with_float: bool,
         revision: u64,
     ) -> Self {
-        use t::SourceProcessingEvent as E;
+        use t::capture::SourceProcessingEvent as E;
         let raw = groups.concat();
-        let base = t::Style {
-            font: t::Font::new().family("Ahem"),
+        let base = t::style::Style {
+            font: t::style::Font::new().family("Ahem"),
             size: 10.0,
-            line_height: t::LineHeight::Absolute(10.0),
-            white_space: t::WhiteSpace::Collapse,
-            wrap: t::Wrap::Word,
-            word_break: t::WordBreak::Normal,
-            overflow_wrap: t::OverflowWrap::Normal,
-            hyphens: t::Hyphens::None,
-            ..t::Style::default()
+            line_height: t::style::LineHeight::Absolute(10.0),
+            white_space: t::style::WhiteSpace::Collapse,
+            wrap: t::style::Wrap::Word,
+            word_break: t::style::WordBreak::Normal,
+            overflow_wrap: t::style::OverflowWrap::Normal,
+            hyphens: t::hyphenation::Hyphens::None,
+            ..t::style::Style::default()
         };
-        let mut source = t::Source::identified(raw.as_str(), t::Id::from_u64(147104), revision);
-        source.span(t::Range::new(0, raw.len()), base.clone());
+        let mut source =
+            t::source::Source::identified(raw.as_str(), t::source::Id::from_u64(147104), revision);
+        source.span(t::source::Range::new(0, raw.len()), base.clone());
         if let Some(range) = tall {
             source.span(
                 range,
-                t::Style {
-                    line_height: t::LineHeight::Absolute(30.0),
+                t::style::Style {
+                    line_height: t::style::LineHeight::Absolute(30.0),
                     ..base.clone()
                 },
             );
@@ -224,7 +225,7 @@ impl<S: l::LayoutScalar> Advanced<S> {
         let ranges = groups
             .iter()
             .map(|group| {
-                let range = t::Range::new(at, at + group.len());
+                let range = t::source::Range::new(at, at + group.len());
                 at = range.end;
                 range
             })
@@ -235,69 +236,69 @@ impl<S: l::LayoutScalar> Advanced<S> {
                 events.extend([
                     E::Control {
                         control: i - 1,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::Connection(i - 1),
                 ]);
             }
             events.push(E::Origin {
                 origin: i,
-                affinity: t::Affinity::After,
+                affinity: t::layout::Affinity::After,
             });
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let capture = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
                 origins: ranges
                     .iter()
-                    .map(|&range| t::ParagraphOrigin {
+                    .map(|&range| t::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: source.clone(),
                         local: range,
                         aggregate: range,
-                        kind: t::ParagraphOriginKind::Authored,
+                        kind: t::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect(),
                 controls: ranges
                     .iter()
                     .take(groups.len() - 1)
-                    .map(|range| t::ParagraphControl {
+                    .map(|range| t::paragraph::ParagraphControl {
                         at: range.end,
-                        kind: t::ParagraphControlKind::ForcedBreak,
+                        kind: t::paragraph::ParagraphControlKind::ForcedBreak,
                     })
                     .collect(),
                 connections: (1..groups.len())
-                    .map(|i| t::SourceProcessingConnection {
+                    .map(|i| t::capture::SourceProcessingConnection {
                         before_origin: i - 1,
                         after_origin: i,
-                        kind: t::ParagraphConnectionKind::Continuous,
+                        kind: t::paragraph::ParagraphConnectionKind::Continuous,
                     })
                     .collect(),
                 boundary_policies: (1..groups.len())
-                    .map(|i| t::ParagraphBoundaryPolicy {
-                        definition: t::ParagraphBoundaryDefinition::Connection(i - 1),
-                        preceding_wrap: t::Wrap::Word,
-                        following_wrap: t::Wrap::Word,
-                        ancestor_wrap: t::Wrap::Word,
+                    .map(|i| t::paragraph::ParagraphBoundaryPolicy {
+                        definition: t::paragraph::ParagraphBoundaryDefinition::Connection(i - 1),
+                        preceding_wrap: t::style::Wrap::Word,
+                        following_wrap: t::style::Wrap::Word,
+                        ancestor_wrap: t::style::Wrap::Word,
                     })
                     .collect(),
-                scopes: vec![t::SourceProcessingScope::Block {
+                scopes: vec![t::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: t::SourceProcessingTopology::Complete,
+                    topology: t::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: base,
-                    used_direction: t::ParagraphBaseDirection::LeftToRight,
+                    used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
                 }],
-                paragraphs: vec![t::SourceProcessingParagraph {
-                    base_direction: t::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                paragraphs: vec![t::capture::SourceProcessingParagraph {
+                    base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 replacements: vec![],
                 computed_line_boundaries: vec![],
@@ -305,17 +306,17 @@ impl<S: l::LayoutScalar> Advanced<S> {
             })
             .unwrap(),
         );
-        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
             capture.paragraphs().next().unwrap(),
-            t::AnalysisTypography::HorizontalComposition,
+            t::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let policies = analyzed
             .wrapping_relations()
             .filter(|r| r.ancestor_wrap().is_none())
-            .map(|r| t::WrappingPolicy {
+            .map(|r| t::analyzed::WrappingPolicy {
                 relation: r.handle(),
-                ancestor_wrap: t::Wrap::Word,
+                ancestor_wrap: t::style::Wrap::Word,
             })
             .collect();
         let mut fonts = t::System::default();
@@ -325,7 +326,7 @@ impl<S: l::LayoutScalar> Advanced<S> {
         let prepared = fonts
             .prepare(
                 &analyzed.with_wrapping_policies(policies).unwrap(),
-                t::PreparationOptions::default(),
+                t::prepared::PreparationOptions::default(),
             )
             .unwrap();
         let origin_handles = prepared
@@ -455,7 +456,10 @@ impl<S: l::LayoutScalar> Advanced<S> {
         };
         l::compute_layout_with_flow_invalidated(&flow, 0, request, changed).unwrap()
     }
-    fn receipts(&self, batch: &l::CompletedLayoutBatchOf<u32, S>) -> Vec<t::FinalizedLine> {
+    fn receipts(
+        &self,
+        batch: &l::CompletedLayoutBatchOf<u32, S>,
+    ) -> Vec<t::finalized::FinalizedLine> {
         assert_eq!(batch.placed_text().len(), 1);
         let layout = batch.placed_text()[0].layout();
         assert_eq!(layout.source(), self.capture.source());
@@ -496,9 +500,9 @@ impl<S: l::LayoutScalar> Advanced<S> {
             .map(|line| {
                 let natural = line
                     .selected_line()
-                    .finalize(surgeist_text::LineAllocations {
-                        spacing: t::SpacingAllocations::None,
-                        scopes: surgeist_text::ScopeAllocations::None,
+                    .finalize(surgeist_text::scope_alignment::LineAllocations {
+                        spacing: t::spacing::SpacingAllocations::None,
+                        scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
                     })
                     .unwrap();
                 (
@@ -595,11 +599,11 @@ fn count_profile<S: l::LayoutScalar>() {
     let receipts = fixture.receipts(&balanced);
     assert_eq!(
         receipts[5].selected_line().request().context.end,
-        t::LineEnd::Forced
+        t::selection::LineEnd::Forced
     );
     assert_eq!(
         receipts[11].selected_line().request().context.end,
-        t::LineEnd::Paragraph
+        t::selection::LineEnd::Paragraph
     );
     assert_eq!(
         receipts[5].selected_line().request().controls[0].occurrence,
@@ -637,7 +641,7 @@ fn assert_float<S: l::LayoutScalar>(
         .zip(fixture.receipts(batch))
         .zip(expected)
     {
-        assert_eq!(line.bounds(), t::Rect::new(x, y, width, height));
+        assert_eq!(line.bounds(), t::geometry::Rect::new(x, y, width, height));
         assert_eq!(line.baseline(), baseline);
         assert_eq!(
             receipt.selected_line().request().context.available_inline,
@@ -667,7 +671,8 @@ fn assert_float<S: l::LayoutScalar>(
     );
 }
 fn float_replay<S: l::LayoutScalar>() {
-    let mut fixture = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
+    let mut fixture =
+        Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
     let auto = fixture.compute(&[]);
     assert_float(&fixture, &auto, false);
     assert!(
@@ -700,7 +705,8 @@ fn float_replay<S: l::LayoutScalar>() {
         "warm proof requires an actual eligible float leaf CacheOf answer"
     );
     warm.apply_to(&mut fixture.host).unwrap();
-    let mut fresh = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
+    let mut fresh =
+        Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
     fresh.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
     let fresh_batch = fresh.compute(&[]);
     assert_float(&fresh, &fresh_batch, true);

@@ -38,9 +38,9 @@ fn assert_interrupted_scene<S: LayoutScalar>(
     assert_eq!(
         actual,
         [
-            (text::Range::new(0, 1), 35, 5.0, 8.0, 10.0),
-            (text::Range::new(1, 2), 36, 5.0, 26.0, 20.0),
-            (text::Range::new(2, 3), 37, 5.0, 38.0, 10.0),
+            (text::source::Range::new(0, 1), 35, 5.0, 8.0, 10.0),
+            (text::source::Range::new(1, 2), 36, 5.0, 26.0, 20.0),
+            (text::source::Range::new(2, 3), 37, 5.0, 38.0, 10.0),
         ]
     );
     for phase in [Phase::Unrounded, Phase::Final] {
@@ -81,7 +81,10 @@ fn assert_interrupted_scene<S: LayoutScalar>(
                 .into_iter()
                 .map(|row| row.0)
                 .collect::<Vec<_>>(),
-            [text::Range::new(0, 1), text::Range::new(2, 3)]
+            [
+                text::source::Range::new(0, 1),
+                text::source::Range::new(2, 3)
+            ]
         );
     }
 }

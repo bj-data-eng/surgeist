@@ -7,97 +7,97 @@ fn central() -> l::InlineBaselineContext {
 }
 
 struct Native {
-    prepared: t::PreparedText,
-    source: t::Source,
+    prepared: t::prepared::PreparedText,
+    source: t::source::Source,
 }
 
-fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Native {
+fn native(raw: &str, height: f64, forced: bool, whitespace: t::style::WhiteSpace) -> Native {
     let bytes = chi_font();
     qualify_font(&bytes);
-    let source = t::Source::new(raw);
+    let source = t::source::Source::new(raw);
     let len = raw.encode_utf16().count();
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 4.0,
-        line_height: t::LineHeight::Absolute(height),
+        line_height: t::style::LineHeight::Absolute(height),
         white_space: whitespace,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     };
-    use t::SourceProcessingEvent as E;
+    use t::capture::SourceProcessingEvent as E;
     let mut events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
         E::Origin {
             origin: 0,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         },
     ];
     let controls = if forced {
         events.push(E::Control {
             control: 0,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         });
-        vec![t::ParagraphControl {
+        vec![t::paragraph::ParagraphControl {
             at: len,
-            kind: t::ParagraphControlKind::ForcedBreak,
+            kind: t::paragraph::ParagraphControlKind::ForcedBreak,
         }]
     } else {
         vec![]
     };
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let capture = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
-            origins: vec![t::ParagraphOrigin {
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![t::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: t::Range::new(0, len),
-                aggregate: t::Range::new(0, len),
-                kind: t::ParagraphOriginKind::Authored,
+                local: t::source::Range::new(0, len),
+                aggregate: t::source::Range::new(0, len),
+                kind: t::paragraph::ParagraphOriginKind::Authored,
             }],
             controls,
             connections: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: t::ParagraphBaseDirection::LeftToRight,
+                used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    let typography = t::AnalysisTypography::Upright {
-        computed_direction: t::ParagraphBaseDirection::RightToLeft,
+    let typography = t::analyzed::AnalysisTypography::Upright {
+        computed_direction: t::paragraph::ParagraphBaseDirection::RightToLeft,
     };
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         capture.paragraphs().next().unwrap(),
         typography,
     )
     .unwrap();
     assert_eq!(analyzed.typography(), typography);
-    assert_eq!(analyzed.direction(), t::Direction::LeftToRight);
+    assert_eq!(analyzed.direction(), t::style::Direction::LeftToRight);
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| t::WrappingPolicy {
+        .map(|r| t::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(wrapping).unwrap();
@@ -108,7 +108,8 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
     let prepared = system
         .prepare(
             &analyzed,
-            t::PreparationOptions::default().with_orientation(t::LineOrientation::Vertical),
+            t::prepared::PreparationOptions::default()
+                .with_orientation(t::selection::LineOrientation::Vertical),
         )
         .unwrap();
     assert_eq!(
@@ -125,14 +126,14 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
     Native { prepared, source }
 }
 
-fn control_allocation(control: t::PreparedControl) -> t::ControlAllocation {
-    t::ControlAllocation {
+fn control_allocation(control: t::prepared::PreparedControl) -> t::allocation::ControlAllocation {
+    t::allocation::ControlAllocation {
         occurrence: control,
         boundary: None,
-        strut: Some(t::ControlStrut {
+        strut: Some(t::allocation::ControlStrut {
             baseline: 8.0,
             line_extent: 10.0,
-            alignment: t::LineBoxAlignment::Baseline,
+            alignment: t::allocation::LineBoxAlignment::Baseline,
         }),
     }
 }
@@ -141,12 +142,12 @@ fn qualify(native: &Native, expected: (f64, f64, f64)) {
     let prepared = &native.prepared;
     let forced = prepared
         .opportunity_views()
-        .find(|o| o.kind() == t::PreparedBreakKind::Forced)
+        .find(|o| o.kind() == t::prepared::PreparedBreakKind::Forced)
         .map(|o| o.handle());
     let end = forced.clone().unwrap_or_else(|| {
         prepared
             .opportunity_views()
-            .find(|o| o.kind() == t::PreparedBreakKind::ParagraphEnd)
+            .find(|o| o.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
             .unwrap()
             .handle()
     });
@@ -157,13 +158,13 @@ fn qualify(native: &Native, expected: (f64, f64, f64)) {
         .map(|c| control_allocation(c.handle()))
         .collect();
     let line = prepared
-        .select(t::LineSelectionRequest {
+        .select(t::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
             participants: prepared.participants().take(to).collect(),
-            termination: t::PreparedTermination::Ordinary(end),
+            termination: t::selection::PreparedTermination::Ordinary(end),
             alternative: None,
             incoming: None,
             atomics: vec![],
@@ -171,29 +172,29 @@ fn qualify(native: &Native, expected: (f64, f64, f64)) {
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: t::LineContext {
-                alignment_insets: t::LineAlignmentInsets::ZERO,
-                formatted_line: t::FormattedLineContext::default(),
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::Vertical,
-                start: t::LineStart::Paragraph,
+            context: t::selection::LineContext {
+                alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: t::selection::FormattedLineContext::default(),
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: t::selection::LineBoxDirection::LeftToRight,
+                orientation: t::selection::LineOrientation::Vertical,
+                start: t::selection::LineStart::Paragraph,
                 end: if forced.is_some() {
-                    t::LineEnd::Forced
+                    t::selection::LineEnd::Forced
                 } else {
-                    t::LineEnd::Paragraph
+                    t::selection::LineEnd::Paragraph
                 },
                 available_inline: None,
                 indent: 0.0,
-                alignment: t::Alignment::Start,
-                tabs: t::TabContext::NoTabs,
-                spacing: t::SpacingPolicy::None,
+                alignment: t::options::Alignment::Start,
+                tabs: t::tabs::TabContext::NoTabs,
+                spacing: t::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -304,7 +305,7 @@ fn compute<S: l::LayoutScalar>(
     .unwrap()
 }
 
-fn placed<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) -> &t::Layout {
+fn placed<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) -> &t::layout::Layout {
     assert_eq!(batch.placed_text().len(), 1);
     batch.placed_text()[0].layout()
 }
@@ -318,7 +319,7 @@ fn central_pair<S: l::LayoutScalar>(
 }
 
 fn controls_and_completion<S: l::LayoutScalar>() {
-    let native = native("\u{4e00}", 4.0, true, t::WhiteSpace::Preserve);
+    let native = native("\u{4e00}", 4.0, true, t::style::WhiteSpace::Preserve);
     qualify(&native, (8.0, 10.0, 4.0));
     for (mode, center, completion_x) in [
         (l::WritingMode::VerticalRl, 32.0, 30.0),
@@ -339,13 +340,16 @@ fn controls_and_completion<S: l::LayoutScalar>() {
         assert_eq!((pair.first(), pair.last()), (fact, fact));
         let completions = text.nonformatted_lines().collect::<Vec<_>>();
         assert_eq!(completions.len(), 1);
-        assert_eq!(completions[0].origin, t::Point::new(completion_x, 0.0));
+        assert_eq!(
+            completions[0].origin,
+            t::geometry::Point::new(completion_x, 0.0)
+        );
         let receipt = completions[0].line.finalized_line();
         assert!(!receipt.has_in_flow_content());
         assert_eq!(receipt.prepared_text(), native.prepared);
         assert_eq!(
             receipt.selected_line().request().context.end,
-            t::LineEnd::Paragraph
+            t::selection::LineEnd::Paragraph
         );
         assert!(receipt.selected_line().request().participants.is_empty());
         let control = &binding.controls[0];
@@ -379,7 +383,7 @@ fn controls_and_completion<S: l::LayoutScalar>() {
 }
 
 fn nonformatted_has_no_authority<S: l::LayoutScalar>() {
-    let native = native(" ", 4.0, false, t::WhiteSpace::Collapse);
+    let native = native(" ", 4.0, false, t::style::WhiteSpace::Collapse);
     qualify(&native, (2.0, 4.0, 0.0));
     for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
         let mut host = host::<S>(mode, 15.0);
@@ -423,7 +427,7 @@ fn incoming<S: l::LayoutScalar>(
 }
 
 fn fractional_minima<S: l::LayoutScalar>() {
-    let native = native("\u{4e00}", 10.5, false, t::WhiteSpace::Preserve);
+    let native = native("\u{4e00}", 10.5, false, t::style::WhiteSpace::Preserve);
     qualify(&native, (5.25, 10.5, 4.0));
     for (mode, nearest, constrained) in [
         (l::WritingMode::VerticalRl, 35.0, 24.0),
@@ -440,7 +444,7 @@ fn fractional_minima<S: l::LayoutScalar>() {
             assert_eq!(text.lines()[0].baseline(), center);
             assert_eq!(
                 text.lines()[0].bounds(),
-                t::Rect::new(center - 5.25, 0.0, 10.5, 15.0)
+                t::geometry::Rect::new(center - 5.25, 0.0, 10.5, 15.0)
             );
             assert_eq!(text.source(), &native.source);
             if let Some(float) = float {
@@ -593,7 +597,12 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
 }
 
 fn late_refusal<S: l::LayoutScalar>() {
-    let native = native("\u{4e00}\u{4e00}", 10.5, false, t::WhiteSpace::Preserve);
+    let native = native(
+        "\u{4e00}\u{4e00}",
+        10.5,
+        false,
+        t::style::WhiteSpace::Preserve,
+    );
     qualify(&native, (5.25, 10.5, 8.0));
     for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
         let mut inner = host::<S>(mode, 4.0);
@@ -613,7 +622,7 @@ fn late_refusal<S: l::LayoutScalar>() {
                 .iter()
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
-            [t::Range::new(0, 1), t::Range::new(1, 2)]
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
         );
         assert_eq!(text.source(), &native.source);
         old.apply_to(&mut host.inner).unwrap();
@@ -746,7 +755,7 @@ fn late_refusal<S: l::LayoutScalar>() {
         // Separately placed results issue distinct position identities. Compare
         // their source observations and geometry, while the retained snapshot
         // above must preserve its exact original handles.
-        let positions = |text: &t::Layout| {
+        let positions = |text: &t::layout::Layout| {
             text.positions()
                 .map(|position| {
                     (

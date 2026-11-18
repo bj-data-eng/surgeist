@@ -22,8 +22,11 @@ readback directly; Text has no dependency on Render.
 
 ## Public surface
 
-All public exports are defined by [src/lib.rs](../src/lib.rs); its modules are
-private implementation organization.
+The public surface is the public modules declared in [src/lib.rs](../src/lib.rs),
+whose crate documentation lists what each holds. The crate root holds only
+`System`, `Error`, `ErrorCode`, `ErrorDetail` and `Result`; every other item has
+one path through its module, such as `layout::Layout`. The source column below
+names implementation files.
 
 | Area | Main types and entry points | Source |
 | --- | --- | --- |

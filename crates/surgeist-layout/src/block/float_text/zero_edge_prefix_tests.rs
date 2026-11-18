@@ -28,7 +28,7 @@ fn fitting_float_after_nominal_prefix<S: LayoutScalar>() {
         let fixture = Fixture::new(
             "A B C D",
             (0, 7),
-            surgeist_text::WhiteSpace::Collapse,
+            surgeist_text::style::WhiteSpace::Collapse,
             false,
             false,
         );
@@ -86,7 +86,7 @@ fn fitting_float_after_nominal_prefix<S: LayoutScalar>() {
         let layout = placed.layout();
         assert_eq!(
             layout.source().text(),
-            &surgeist_text::Text::from("A B C D")
+            &surgeist_text::source::Text::from("A B C D")
         );
         let receipt = batch
             .final_inline_fragments()
@@ -101,8 +101,8 @@ fn fitting_float_after_nominal_prefix<S: LayoutScalar>() {
             })
             .expect("the actual opening allocation retains its line receipt");
         let prefix = receipt
-            .prefix_at(&surgeist_text::TextSeam::AfterParticipant(
-                surgeist_text::PreparedParticipant::Control(opening),
+            .prefix_at(&surgeist_text::finalized::TextSeam::AfterParticipant(
+                surgeist_text::prepared::PreparedParticipant::Control(opening),
             ))
             .unwrap();
         assert_eq!(prefix.advance(), 0.0);

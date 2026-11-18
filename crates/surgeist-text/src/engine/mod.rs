@@ -353,7 +353,7 @@ pub(crate) fn complete_analysis(
 
 pub(crate) fn analyze_domain(
     processed: Arc<crate::processing::ProcessedSource>,
-    member: crate::processing::ProcessedParagraph,
+    member: crate::processing::contextual::ProcessedParagraph,
     typography: AnalysisTypography,
 ) -> crate::Result<crate::analyzed::AnalyzedDomain> {
     crate::transform::domain::analyze(processed, member.data(), typography)

@@ -16,7 +16,7 @@ fn preserved_soft_budget<S: LayoutScalar>() {
     let first = &lines[0];
     assert_eq!(
         first.selected_line().request().context.end,
-        surgeist_text::LineEnd::Soft
+        surgeist_text::selection::LineEnd::Soft
     );
     assert_eq!(
         first
@@ -49,8 +49,8 @@ fn preserved_soft_budget<S: LayoutScalar>() {
     assert_eq!(
         glyphs,
         [
-            (surgeist_text::Range::new(0, 1), 58, 10.0, 0.0),
-            (surgeist_text::Range::new(1, 2), 3, 10.0, 10.0)
+            (surgeist_text::source::Range::new(0, 1), 58, 10.0, 0.0),
+            (surgeist_text::source::Range::new(1, 2), 3, 10.0, 10.0)
         ]
     );
     let slots: Vec<_> = first.spacing_slots().collect();
@@ -62,12 +62,14 @@ fn preserved_soft_budget<S: LayoutScalar>() {
     let unit = paragraph
         .prepared
         .unit_views()
-        .find(|unit| unit.source_range() == surgeist_text::Range::new(1, 2))
+        .find(|unit| unit.source_range() == surgeist_text::source::Range::new(1, 2))
         .unwrap()
         .handle();
     assert_eq!(
         slots[0].slot.participants().cloned().collect::<Vec<_>>(),
-        [surgeist_text::PreparedParticipant::Text(unit.clone())]
+        [surgeist_text::prepared::PreparedParticipant::Text(
+            unit.clone()
+        )]
     );
     assert_eq!(
         slots[0]
@@ -77,8 +79,8 @@ fn preserved_soft_budget<S: LayoutScalar>() {
             .collect::<Vec<_>>(),
         [SpacingSlotOwner::Source {
             origin: paragraph.origin(1),
-            local: surgeist_text::Range::new(1, 2),
-            aggregate: surgeist_text::Range::new(1, 2),
+            local: surgeist_text::source::Range::new(1, 2),
+            aggregate: surgeist_text::source::Range::new(1, 2),
         }]
     );
     assert_eq!(
@@ -92,9 +94,9 @@ fn preserved_soft_budget<S: LayoutScalar>() {
     assert_eq!(layout.source().text().code_units(), &[88, 32, 89, 89, 89]);
     assert_eq!(
         layout
-            .cursor(surgeist_text::Cursor::new(
+            .cursor(surgeist_text::layout::Cursor::new(
                 1,
-                surgeist_text::Affinity::Before
+                surgeist_text::layout::Affinity::Before
             ))
             .unwrap()
             .rect()
@@ -103,9 +105,9 @@ fn preserved_soft_budget<S: LayoutScalar>() {
         10.0
     );
     let end = layout
-        .cursor(surgeist_text::Cursor::new(
+        .cursor(surgeist_text::layout::Cursor::new(
             2,
-            surgeist_text::Affinity::Before,
+            surgeist_text::layout::Affinity::Before,
         ))
         .unwrap()
         .rect()

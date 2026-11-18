@@ -9,14 +9,14 @@ const BYTES: usize = 16 << 20;
 const PAGE: usize = 1024;
 
 fn source() -> (
-    text::PreparedText,
+    text::prepared::PreparedText,
     Arc<ScopeAlignmentSnapshot<f64>>,
-    text::ScopeAlignmentLimits,
+    text::scope_alignment::ScopeAlignmentLimits,
 ) {
-    let limits = text::ScopeAlignmentLimits::new(RECORDS, 100, WORK, BYTES);
+    let limits = text::scope_alignment::ScopeAlignmentLimits::new(RECORDS, 100, WORK, BYTES);
     let case = Case::new_with_limits(
         Shape::Single,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         10.0,
         "",
         1.0,
@@ -37,17 +37,24 @@ fn source() -> (
         limits,
     )
 }
-fn input(prepared: &text::PreparedText) -> text::ScopeAlignmentCensusInput<'_> {
-    text::ScopeAlignmentCensusInput::Product(text::ScopeAlignmentProduct::Prepared(prepared))
+fn input(
+    prepared: &text::prepared::PreparedText,
+) -> text::scope_alignment::ScopeAlignmentCensusInput<'_> {
+    text::scope_alignment::ScopeAlignmentCensusInput::Product(
+        text::scope_alignment::ScopeAlignmentProduct::Prepared(prepared),
+    )
 }
 fn census(
-    prepared: &text::PreparedText,
-    limits: text::ScopeAlignmentLimits,
-) -> text::ScopeAlignmentCensus {
-    text::scope_alignment_census(
+    prepared: &text::prepared::PreparedText,
+    limits: text::scope_alignment::ScopeAlignmentLimits,
+) -> text::scope_alignment::ScopeAlignmentCensus {
+    text::scope_alignment::scope_alignment_census(
         input(prepared),
-        text::ScopeAlignmentProducts::Mixed(&[]),
-        text::ScopeAlignmentAllowance::new(limits.records(), limits.payload_bytes()),
+        text::scope_alignment::ScopeAlignmentProducts::Mixed(&[]),
+        text::scope_alignment::ScopeAlignmentAllowance::new(
+            limits.records(),
+            limits.payload_bytes(),
+        ),
     )
     .unwrap()
 }
@@ -59,7 +66,7 @@ fn owner(snapshot: &Arc<ScopeAlignmentSnapshot<f64>>) -> ScopeAlignmentResources
 }
 fn remaining_records(
     facts: &ScopeAlignmentResources<f64>,
-    limits: text::ScopeAlignmentLimits,
+    limits: text::scope_alignment::ScopeAlignmentLimits,
 ) -> usize {
     // Actual zero-byte logical descriptor rows exercise admission without
     // inventing a live-payload declaration or reading a private counter.
@@ -70,7 +77,7 @@ fn remaining_records(
             Err(error) => {
                 assert!(
                     matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
-                    reason: text::ScopeAlignmentError::Limit {kind: text::ScopeAlignmentLimitKind::Records, required, limit},
+                    reason: text::scope_alignment::ScopeAlignmentError::Limit {kind: text::scope_alignment::ScopeAlignmentLimitKind::Records, required, limit},
                 }) if *required == RECORDS + 1 && *limit == RECORDS)
                 );
                 return rows.len();
@@ -128,8 +135,8 @@ fn completed_new_record_exhaustion_survives_discarded_logical_rows() {
         Err(error) => error,
         Ok(_) => panic!("completed scratch cannot refund earlier materialization"),
     };
-    let expected = text::ScopeAlignmentError::Limit {
-        kind: text::ScopeAlignmentLimitKind::Records,
+    let expected = text::scope_alignment::ScopeAlignmentError::Limit {
+        kind: text::scope_alignment::ScopeAlignmentLimitKind::Records,
         required: RECORDS + observed.usage().records(),
         limit: RECORDS,
     };
@@ -151,11 +158,11 @@ fn native_prepared_and_semantic_products_do_not_activate_a_scope_budget() {
     let paragraph = crate::test_support::text::PreparedParagraph::new(
         vec![crate::test_support::text::ParagraphPart::text(
             10,
-            text::Source::new("X"),
+            text::source::Source::new("X"),
             style.clone(),
         )],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     assert!(paragraph.prepared.scope_alignment_retention().is_none());
     let tree = PublicLayoutTreeOf::<f64>::new()
@@ -186,14 +193,14 @@ fn native_prepared_and_semantic_products_do_not_activate_a_scope_budget() {
     let segment = paragraph.prepared.source_segments().next().unwrap();
     let proof = paragraph
         .prepared
-        .semantic_window(&text::SemanticWindowRequest::new(segment))
+        .semantic_window(&text::observation::SemanticWindowRequest::new(segment))
         .unwrap();
     assert!(proof.scope_alignment_usage().is_none());
     assert!(
         facts
             .begin(
-                text::ScopeAlignmentCensusInput::Product(
-                    text::ScopeAlignmentProduct::SemanticWindow(&proof)
+                text::scope_alignment::ScopeAlignmentCensusInput::Product(
+                    text::scope_alignment::ScopeAlignmentProduct::SemanticWindow(&proof)
                 ),
                 1
             )
@@ -221,10 +228,10 @@ fn failed_census_cause_wins_while_late_exhaustion_and_new_records_remain() {
     tail_values.resize(tail, 0);
     assert_eq!(operation.allowance().unwrap().payload_bytes(), retained);
     drop(operation);
-    let refusal = text::scope_alignment_census(
+    let refusal = text::scope_alignment::scope_alignment_census(
         input(&prepared),
-        text::ScopeAlignmentProducts::Mixed(&[]),
-        text::ScopeAlignmentAllowance::new(limits.records(), retained),
+        text::scope_alignment::ScopeAlignmentProducts::Mixed(&[]),
+        text::scope_alignment::ScopeAlignmentAllowance::new(limits.records(), retained),
     )
     .unwrap_err();
     let partial = refusal.accounting().unwrap();
@@ -244,7 +251,7 @@ fn failed_census_cause_wins_while_late_exhaustion_and_new_records_remain() {
     assert_eq!(error.message, refusal.error().message);
     assert!(
         matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
-        reason: text::ScopeAlignmentError::Limit {kind: text::ScopeAlignmentLimitKind::PayloadBytes, limit, ..},
+        reason: text::scope_alignment::ScopeAlignmentError::Limit {kind: text::scope_alignment::ScopeAlignmentLimitKind::PayloadBytes, limit, ..},
     }) if *limit == retained)
     );
     let required = WORK + partial.usage().structural_work();

@@ -71,7 +71,7 @@ fn nested_tail_trace<S: LayoutScalar>() -> Vec<Event<S>> {
 fn check_report<S: LayoutScalar>(
     report: &MixedInlineRunReportOf<S>,
     atoms: &[(usize, f64, f64, f64)],
-    cuts: &[(usize, surgeist_text::LineEnd)],
+    cuts: &[(usize, surgeist_text::selection::LineEnd)],
     extent: f64,
 ) {
     let height = 7.0 * cuts.len() as f64;
@@ -139,7 +139,7 @@ fn pretty_body_receiver_preserves_fixed_guards_winner_and_program_trace() {
     fn lane<S: LayoutScalar>() {
         let query = query::<S>(&[30.0, 30.0, 20.0, 50.0]);
         let (report, trace) = run(query.clone());
-        use surgeist_text::LineEnd::{Forced, Paragraph, Soft};
+        use surgeist_text::selection::LineEnd::{Forced, Paragraph, Soft};
         check_report(
             &report,
             &[
@@ -185,7 +185,7 @@ fn pretty_body_receiver_preserves_fixed_guards_winner_and_program_trace() {
 fn pretty_nested_tail_receiver_retains_saved_phase_and_full_program_replay() {
     fn lane<S: LayoutScalar>() {
         let (report, trace) = run(query::<S>(&[60.0, 30.0, 30.0, 10.0]));
-        use surgeist_text::LineEnd::{Forced, Paragraph, Soft};
+        use surgeist_text::selection::LineEnd::{Forced, Paragraph, Soft};
         check_report(
             &report,
             &[

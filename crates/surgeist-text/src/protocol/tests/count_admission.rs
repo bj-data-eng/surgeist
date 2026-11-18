@@ -7,9 +7,12 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-        SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+            SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+            WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         AtomicAllocation, AtomicLineAllocation, ParagraphBaseDirection, ParagraphInput,
@@ -330,7 +333,7 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: crate::processing::SourceProcessingTopology::Unknown,
+                    topology: crate::processing::contextual::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
                     base_style: style(),
@@ -339,7 +342,7 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: crate::processing::SourceProcessingTopology::Unknown,
+                    topology: crate::processing::contextual::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
                     base_style: style(),

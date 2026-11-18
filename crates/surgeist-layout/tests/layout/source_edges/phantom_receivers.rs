@@ -60,85 +60,91 @@ impl<S: layout::LayoutScalar> layout::LayoutTree for ReceiverTree<S> {
         self.inputs[node as usize].as_view()
     }
 }
-fn receiver_metric() -> text::LineBoxStrut {
+fn receiver_metric() -> text::allocation::LineBoxStrut {
     // Actual host-supplied used S geometry, not an inferred descendant/font strut.
-    text::LineBoxStrut {
+    text::allocation::LineBoxStrut {
         scope: None,
-        metrics: text::LineStrut {
+        metrics: text::allocation::LineStrut {
             baseline: 16.0,
             line_extent: 20.0,
         },
-        alignment: text::LineBoxAlignment::Baseline,
+        alignment: text::allocation::LineBoxAlignment::Baseline,
     }
 }
-fn receiver_input(kind: ReceiverKind, direction: layout::Direction) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+fn receiver_input(
+    kind: ReceiverKind,
+    direction: layout::Direction,
+) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let mut raw = source(true, direction);
-    raw.computed_line_boundaries = vec![text::ComputedLineBoundaryInput::Scope {
+    raw.computed_line_boundaries = vec![text::capture::ComputedLineBoundaryInput::Scope {
         scope: 1,
-        side: text::SourceBoxSide::Before,
+        side: text::capture::SourceBoxSide::Before,
     }];
     raw.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
         E::Origin {
             origin: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Connection(0),
         E::Origin {
             origin: 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::EnterScope(1),
     ];
     match kind {
         ReceiverKind::Atomic { .. } => {
-            raw.source.inline_box(text::InlineBox::new(
-                text::Id::from_u64(659800),
-                text::InlineBoxKind::InFlow,
+            raw.source.inline_box(text::source::InlineBox::new(
+                text::source::Id::from_u64(659800),
+                text::source::InlineBoxKind::InFlow,
                 2,
-                text::Size::new(0.0, 0.0),
+                text::geometry::Size::new(0.0, 0.0),
             ));
             raw.events.push(E::Atomic {
                 atomic: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             });
             for definition in [
-                text::ParagraphBoundaryDefinition::AtomicBefore(0),
-                text::ParagraphBoundaryDefinition::AtomicAfter(0),
+                text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
             ] {
-                raw.boundary_policies.push(text::ParagraphBoundaryPolicy {
-                    definition,
-                    preceding_wrap: text::Wrap::None,
-                    following_wrap: text::Wrap::None,
-                    ancestor_wrap: text::Wrap::None,
-                });
+                raw.boundary_policies
+                    .push(text::paragraph::ParagraphBoundaryPolicy {
+                        definition,
+                        preceding_wrap: text::style::Wrap::None,
+                        following_wrap: text::style::Wrap::None,
+                        ancestor_wrap: text::style::Wrap::None,
+                    });
             }
         }
         ReceiverKind::Endpoints { .. } => {
             raw.controls = vec![
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 2,
-                    kind: text::ParagraphControlKind::InlineBoundaryStart,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 2,
-                    kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
             ];
-            let text::SourceProcessingScope::Inline { boundaries, .. } = &mut raw.scopes[1] else {
+            let text::capture::SourceProcessingScope::Inline { boundaries, .. } =
+                &mut raw.scopes[1]
+            else {
                 unreachable!()
             };
-            *boundaries = Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 });
+            *boundaries = Some(text::capture::SourceProcessingScopeBoundaries { start: 0, end: 1 });
             raw.events.extend([
                 E::Control {
                     control: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Control {
                     control: 1,
-                    affinity: text::Affinity::Before,
+                    affinity: text::layout::Affinity::Before,
                 },
             ]);
         }
@@ -164,17 +170,18 @@ fn signed_atomic_margin<S: layout::LayoutScalar>(
     }
 }
 fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: layout::Direction) {
-    let processed =
-        Arc::new(text::process_contextual_source(receiver_input(kind, direction)).unwrap());
-    assert_eq!(processed.source().text(), &text::Text::from("AB"));
+    let processed = Arc::new(
+        text::capture::process_contextual_source(receiver_input(kind, direction)).unwrap(),
+    );
+    assert_eq!(processed.source().text(), &text::source::Text::from("AB"));
     assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
     let scope = processed.captured_scope(1).unwrap();
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(
         cause.target(),
-        text::CapturedComputedLineBoundaryTarget::Scope {
+        text::capture::CapturedComputedLineBoundaryTarget::Scope {
             scope: scope.clone(),
-            side: text::SourceBoxSide::Before,
+            side: text::capture::SourceBoxSide::Before,
         }
     );
     assert_eq!(cause.source_position().get(), 2);
@@ -184,7 +191,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     let prepared = normal_prepare(&processed);
     let forced = prepared
         .opportunity_views()
-        .find(|o| o.kind() == text::PreparedBreakKind::Forced)
+        .find(|o| o.kind() == text::prepared::PreparedBreakKind::Forced)
         .unwrap();
     let forced_boundary = forced.boundary();
     let pin = prepared
@@ -208,9 +215,9 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
         .map(|(i, view)| {
             assert_eq!(
                 view.source().id(),
-                Some(text::Id::from_u64(656001 + i as u64))
+                Some(text::source::Id::from_u64(656001 + i as u64))
             );
-            assert_eq!(view.aggregate_range(), text::Range::new(i, i + 1));
+            assert_eq!(view.aggregate_range(), text::source::Range::new(i, i + 1));
             inputs.push(layout::LayoutInputOf::inline_text(
                 layout::TextParticipation::new(view.handle()),
             ));
@@ -226,7 +233,10 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
         ReceiverKind::Atomic { cancel_margins } => {
             assert_eq!(prepared.atomic_views().count(), 1);
             let view = prepared.atomic_views().next().unwrap();
-            assert_eq!(view.original_box().size(), text::Size::new(0.0, 0.0));
+            assert_eq!(
+                view.original_box().size(),
+                text::geometry::Size::new(0.0, 0.0)
+            );
             assert_eq!(view.capture_position(), processed.captured_atomic(0));
             inputs.push(layout::LayoutInputOf::box_input(layout::NodeInputOf {
                 display: layout::Display::InlineBlock,
@@ -361,9 +371,12 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     assert_eq!(
         placed.lines().iter().map(|l| l.range()).collect::<Vec<_>>(),
         if real {
-            vec![text::Range::new(0, 2), text::Range::new(2, 2)]
+            vec![
+                text::source::Range::new(0, 2),
+                text::source::Range::new(2, 2),
+            ]
         } else {
-            vec![text::Range::new(0, 2)]
+            vec![text::source::Range::new(0, 2)]
         }
     );
     assert_eq!(
@@ -423,11 +436,11 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                 // FinalizedLine. Use its real committed atomic observation.
                 let boxes = placed.inline_boxes();
                 assert_eq!(boxes.len(), 1);
-                assert_eq!(boxes[0].id(), text::Id::from_u64(659800));
-                assert_eq!(boxes[0].kind(), text::InlineBoxKind::InFlow);
+                assert_eq!(boxes[0].id(), text::source::Id::from_u64(659800));
+                assert_eq!(boxes[0].kind(), text::source::InlineBoxKind::InFlow);
                 assert_eq!(boxes[0].index(), 2);
                 assert_eq!(boxes[0].line(), 1);
-                assert_eq!(boxes[0].rect().size, text::Size::new(0.0, 0.0));
+                assert_eq!(boxes[0].rect().size, text::geometry::Size::new(0.0, 0.0));
                 let atomic = batch
                     .node_layout(3)
                     .unwrap()
@@ -449,7 +462,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                 let line = receiving.fragment().finalized_fragment().finalized_line();
                 let selection = line.selected_line();
                 let request = selection.request();
-                assert_eq!(request.context.end, text::LineEnd::Paragraph);
+                assert_eq!(request.context.end, text::selection::LineEnd::Paragraph);
                 assert_eq!(line.measurements().fit().advance(), kind.advance());
                 assert_eq!(request.controls.len(), 2);
                 assert!(request.atomics.is_empty());
@@ -511,17 +524,17 @@ fn zero_inline_edges_with_only_vertical_struts_leave_receiver_phantom() {
 // Missing public controls: actual selected source text and consecutive mandatory
 // endings, using the same real capture/normal preparation/Layout front door.
 struct SemanticReceiverFixture<S: layout::LayoutScalar> {
-    processed: Arc<text::ProcessedSource>,
-    prepared: text::PreparedText,
+    processed: Arc<text::processing::ProcessedSource>,
+    prepared: text::prepared::PreparedText,
     tree: ReceiverTree<S>,
     binding: layout::TextParagraphBinding<u32>,
     wrapping: layout::WrappingInput<u32>,
 }
 fn semantic_receiver_fixture<S: layout::LayoutScalar>(
-    input: text::ContextualSourceInput,
+    input: text::capture::ContextualSourceInput,
     direction: layout::Direction,
 ) -> SemanticReceiverFixture<S> {
-    let processed = Arc::new(text::process_contextual_source(input).unwrap());
+    let processed = Arc::new(text::capture::process_contextual_source(input).unwrap());
     let prepared = normal_prepare(&processed);
     let px = |value| {
         layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(S::from_f64(value)).unwrap())
@@ -555,10 +568,12 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
                 processed.captured_control(index)
             );
             let kind = match view.kind() {
-                text::ParagraphControlKind::InlineBoundaryStart => {
+                text::paragraph::ParagraphControlKind::InlineBoundaryStart => {
                     layout::InlineBoundaryKind::Start
                 }
-                text::ParagraphControlKind::InlineBoundaryEnd => layout::InlineBoundaryKind::End,
+                text::paragraph::ParagraphControlKind::InlineBoundaryEnd => {
+                    layout::InlineBoundaryKind::End
+                }
                 _ => panic!("this actual fixture supplies only its inline endpoints"),
             };
             inputs.push(layout::LayoutInputOf::inline_boundary(
@@ -652,68 +667,76 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
 fn retained_receiver_input(
     space: bool,
     direction: layout::Direction,
-) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let mut raw = source(true, direction);
-    let text::SourceProcessingScope::Block { base_style, .. } = &raw.scopes[0] else {
+    let text::capture::SourceProcessingScope::Block { base_style, .. } = &raw.scopes[0] else {
         unreachable!()
     };
     let base_style = base_style.clone();
     let mut selected_style = base_style.clone();
-    selected_style.white_space = text::WhiteSpace::Preserve;
+    selected_style.white_space = text::style::WhiteSpace::Preserve;
     // A real internal boundary, rather than a suppressed outer half, cancels
     // the two one-em glyphs in the retained zero-advance text receiver.
     selected_style.letter_spacing = if space { 0.0 } else { -20.0 };
     let tail = if space { " " } else { "XX" };
     let tail_len = tail.encode_utf16().count();
-    let mut aggregate =
-        text::Source::identified(format!("AB{tail}"), text::Id::from_u64(659900), 1);
-    aggregate.span(text::Range::new(0, 2), base_style);
-    aggregate.span(text::Range::new(2, 2 + tail_len), selected_style.clone());
+    let mut aggregate = text::source::Source::identified(
+        format!("AB{tail}"),
+        text::source::Id::from_u64(659900),
+        1,
+    );
+    aggregate.span(text::source::Range::new(0, 2), base_style);
+    aggregate.span(
+        text::source::Range::new(2, 2 + tail_len),
+        selected_style.clone(),
+    );
     raw.source = aggregate;
-    raw.origins.push(text::ParagraphOrigin {
+    raw.origins.push(text::paragraph::ParagraphOrigin {
         text_node: None,
-        source: text::Source::identified(tail, text::Id::from_u64(659903), 1),
-        local: text::Range::new(0, tail_len),
-        aggregate: text::Range::new(2, 2 + tail_len),
-        kind: text::ParagraphOriginKind::Authored,
+        source: text::source::Source::identified(tail, text::source::Id::from_u64(659903), 1),
+        local: text::source::Range::new(0, tail_len),
+        aggregate: text::source::Range::new(2, 2 + tail_len),
+        kind: text::paragraph::ParagraphOriginKind::Authored,
     });
-    raw.connections.push(text::SourceProcessingConnection {
-        before_origin: 1,
-        after_origin: 2,
-        kind: text::ParagraphConnectionKind::Continuous,
-    });
-    raw.boundary_policies.push(text::ParagraphBoundaryPolicy {
-        definition: text::ParagraphBoundaryDefinition::Connection(1),
-        preceding_wrap: text::Wrap::None,
-        following_wrap: text::Wrap::None,
-        ancestor_wrap: text::Wrap::None,
-    });
-    let text::SourceProcessingScope::Inline { style, .. } = &mut raw.scopes[1] else {
+    raw.connections
+        .push(text::capture::SourceProcessingConnection {
+            before_origin: 1,
+            after_origin: 2,
+            kind: text::paragraph::ParagraphConnectionKind::Continuous,
+        });
+    raw.boundary_policies
+        .push(text::paragraph::ParagraphBoundaryPolicy {
+            definition: text::paragraph::ParagraphBoundaryDefinition::Connection(1),
+            preceding_wrap: text::style::Wrap::None,
+            following_wrap: text::style::Wrap::None,
+            ancestor_wrap: text::style::Wrap::None,
+        });
+    let text::capture::SourceProcessingScope::Inline { style, .. } = &mut raw.scopes[1] else {
         unreachable!()
     };
     *style = Some(selected_style);
-    raw.computed_line_boundaries = vec![text::ComputedLineBoundaryInput::Scope {
+    raw.computed_line_boundaries = vec![text::capture::ComputedLineBoundaryInput::Scope {
         scope: 1,
-        side: text::SourceBoxSide::Before,
+        side: text::capture::SourceBoxSide::Before,
     }];
     raw.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
         E::Origin {
             origin: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Connection(0),
         E::Origin {
             origin: 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::EnterScope(1),
         E::Connection(1),
         E::Origin {
             origin: 2,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::ExitScope(1),
         E::ExitParagraph(0),
@@ -726,7 +749,7 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
     let tail_len = if space { 1 } else { 2 };
     assert_eq!(
         f.processed.source().text(),
-        &text::Text::from(if space { "AB " } else { "ABXX" })
+        &text::source::Text::from(if space { "AB " } else { "ABXX" })
     );
     assert_eq!(f.prepared.origin_views().count(), 3);
     assert_eq!(f.prepared.control_views().count(), 0);
@@ -734,7 +757,7 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
     let origin = f.binding.origins[2].origin.clone();
     assert_eq!(
         origin.view().source().id(),
-        Some(text::Id::from_u64(659903))
+        Some(text::source::Id::from_u64(659903))
     );
     assert_eq!(origin.view().source().revision(), 1);
     let offers = f
@@ -751,8 +774,11 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
             ))
             .collect::<Vec<_>>(),
         [
-            (text::PreparedBreakKind::Forced, 3),
-            (text::PreparedBreakKind::ParagraphEnd, 3 + tail_len)
+            (text::prepared::PreparedBreakKind::Forced, 3),
+            (
+                text::prepared::PreparedBreakKind::ParagraphEnd,
+                3 + tail_len
+            )
         ]
     );
     let pin = f
@@ -792,7 +818,10 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
             .iter()
             .map(|line| line.range())
             .collect::<Vec<_>>(),
-        [text::Range::new(0, 2), text::Range::new(2, 2 + tail_len)]
+        [
+            text::source::Range::new(0, 2),
+            text::source::Range::new(2, 2 + tail_len)
+        ]
     );
     assert_eq!(
         placed
@@ -859,11 +888,20 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
             ));
         }
         let expected = if space {
-            vec![(text::Range::new(0, 1), text::Range::new(2, 3))]
+            vec![(
+                text::source::Range::new(0, 1),
+                text::source::Range::new(2, 3),
+            )]
         } else {
             vec![
-                (text::Range::new(0, 1), text::Range::new(2, 3)),
-                (text::Range::new(1, 2), text::Range::new(3, 4)),
+                (
+                    text::source::Range::new(0, 1),
+                    text::source::Range::new(2, 3),
+                ),
+                (
+                    text::source::Range::new(1, 2),
+                    text::source::Range::new(3, 4),
+                ),
             ]
         };
         assert_eq!(coverage, expected);
@@ -876,11 +914,11 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
         .collect::<Vec<_>>();
     cells.sort_by_key(|cell| cell.0.start);
     let expected_cells = if space {
-        vec![(text::Range::new(2, 3), 10.0)]
+        vec![(text::source::Range::new(2, 3), 10.0)]
     } else {
         vec![
-            (text::Range::new(2, 3), -10.0),
-            (text::Range::new(3, 4), 10.0),
+            (text::source::Range::new(2, 3), -10.0),
+            (text::source::Range::new(3, 4), 10.0),
         ]
     };
     assert_eq!(cells, expected_cells);
@@ -890,10 +928,13 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
         if space { 10.0 } else { 0.0 }
     );
     let selected = line.selected_line();
-    assert_eq!(selected.request().context.end, text::LineEnd::Paragraph);
+    assert_eq!(
+        selected.request().context.end,
+        text::selection::LineEnd::Paragraph
+    );
     assert_eq!(
         selected.request().termination,
-        text::PreparedTermination::Ordinary(offers[1].clone())
+        text::selection::PreparedTermination::Ordinary(offers[1].clone())
     );
     let glyphs = line
         .run_views()
@@ -907,11 +948,11 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
     // Every retained glyph has its real one-em provider advance. The two X
     // units have one actual internal gap(-20), so their logical total is0.
     let expected = if space {
-        vec![(text::Range::new(2, 3), 10.0)]
+        vec![(text::source::Range::new(2, 3), 10.0)]
     } else {
         vec![
-            (text::Range::new(2, 3), 10.0),
-            (text::Range::new(3, 4), 10.0),
+            (text::source::Range::new(2, 3), 10.0),
+            (text::source::Range::new(3, 4), 10.0),
         ]
     };
     assert_eq!(glyphs, expected);
@@ -949,13 +990,13 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
         direction,
     );
     input.computed_line_boundaries = vec![
-        text::ComputedLineBoundaryInput::Scope {
+        text::capture::ComputedLineBoundaryInput::Scope {
             scope: 1,
-            side: text::SourceBoxSide::Before,
+            side: text::capture::SourceBoxSide::Before,
         },
-        text::ComputedLineBoundaryInput::Scope {
+        text::capture::ComputedLineBoundaryInput::Scope {
             scope: 1,
-            side: text::SourceBoxSide::After,
+            side: text::capture::SourceBoxSide::After,
         },
     ];
     let f = semantic_receiver_fixture::<S>(input, direction);
@@ -986,9 +1027,9 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
             })
             .collect::<Vec<_>>(),
         [
-            (text::PreparedBreakKind::Forced, 3, 2),
-            (text::PreparedBreakKind::Forced, 6, 2),
-            (text::PreparedBreakKind::ParagraphEnd, 6, 2),
+            (text::prepared::PreparedBreakKind::Forced, 3, 2),
+            (text::prepared::PreparedBreakKind::Forced, 6, 2),
+            (text::prepared::PreparedBreakKind::ParagraphEnd, 6, 2),
         ]
     );
     let pins = offers
@@ -1004,8 +1045,8 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
         })
         .collect::<Vec<_>>();
     for (pin, expected) in pins.iter().zip([
-        text::CapturedScopeIncidence::AtBefore,
-        text::CapturedScopeIncidence::AtAfter,
+        text::observation::CapturedScopeIncidence::AtBefore,
+        text::observation::CapturedScopeIncidence::AtAfter,
     ]) {
         assert_eq!(pin.len(), 1);
         assert_eq!(
@@ -1033,7 +1074,7 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
     )
     .unwrap();
     let placed = batch.placed_text()[0].layout();
-    assert_eq!(placed.source().text(), &text::Text::from("AB"));
+    assert_eq!(placed.source().text(), &text::source::Text::from("AB"));
     assert_eq!(
         placed
             .lines()
@@ -1041,8 +1082,8 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
             .map(|line| (line.range(), line.baseline(), line.bounds().size.height))
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(0, 2), 8.0, 10.0),
-            (text::Range::new(2, 2), 26.0, 20.0),
+            (text::source::Range::new(0, 2), 8.0, 10.0),
+            (text::source::Range::new(2, 2), 26.0, 20.0),
         ]
     );
     let root = batch
@@ -1064,10 +1105,13 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
     assert!(!line.has_in_flow_content());
     assert_eq!(line.measurements().fit().advance(), 0.0);
     let selected = line.selected_line();
-    assert_eq!(selected.request().context.end, text::LineEnd::Forced);
+    assert_eq!(
+        selected.request().context.end,
+        text::selection::LineEnd::Forced
+    );
     assert_eq!(
         selected.request().termination,
-        text::PreparedTermination::Ordinary(offers[1].clone())
+        text::selection::PreparedTermination::Ordinary(offers[1].clone())
     );
     assert_eq!(selected.request().controls.len(), 2);
     assert!(
@@ -1079,10 +1123,13 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
     assert_eq!(tail[0].origin.y, 30.0);
     let final_line = tail[0].line.finalized_line();
     let selected = final_line.selected_line();
-    assert_eq!(selected.request().context.end, text::LineEnd::Paragraph);
+    assert_eq!(
+        selected.request().context.end,
+        text::selection::LineEnd::Paragraph
+    );
     assert_eq!(
         selected.request().termination,
-        text::PreparedTermination::Ordinary(offers[2].clone())
+        text::selection::PreparedTermination::Ordinary(offers[2].clone())
     );
     assert_eq!(selected.request().start, offers[1].view().boundary());
     assert_eq!(selected.request().end, offers[2].view().boundary());

@@ -1,12 +1,24 @@
+//! Authored text: exact UTF-16 text, ranges, sources with spans and boxes, and edits.
+//!
+//! [`Text`] is immutable exact UTF-16 source text, including isolated surrogate code units, and [`Range`] is a
+//! UTF-16 code-unit range in it ([`SourceRange`] is a pair of [`SourcePosition`] values). A
+//! [`Source`] is text plus resolved style [`Span`] overrides and [`InlineBox`] boxes laid out with the text;
+//! [`ValidatedSource`], [`SourceIdentity`] and [`SourceRevision`] belong to it, and [`Edit`] and [`TextEdit`]
+//! change it. [`Id`] is a stable caller-provided identity, [`FirstLetterSelection`] holds the adjacent UTF-16
+//! ranges selected from an eligible line head, and [`BaselineShift`], [`InlineBoxKind`] and [`VerticalAlign`]
+//! describe inline boxes.
+
+pub use crate::edit::{Edit, TextEdit};
+pub use crate::engine::analysis::first_letter::FirstLetterSelection;
+pub use crate::id::Id;
+pub use crate::range::{Range, SourcePosition, SourceRange};
+pub use crate::text::Text;
 use crate::{
     Error, ErrorCode, ErrorDetail, Result,
     error::NumericRequirement,
     geometry::Size,
-    id::Id,
     range,
-    range::{Range, SourcePosition, SourceRange},
     style::{Style, ValidatedStyle},
-    text::Text,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

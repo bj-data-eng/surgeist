@@ -2,34 +2,36 @@
 //! Actual child orientation remains independent of the containing writing mode.
 use super::*;
 
-fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
+fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
-    let mut source = text::Source::identified("\u{3a7}\u{3a7}", text::Id::from_u64(1558001), 13);
-    source.inline_box(text::InlineBox::new(
-        text::Id::from_u64(2),
+    let mut source =
+        text::source::Source::identified("\u{3a7}\u{3a7}", text::source::Id::from_u64(1558001), 13);
+    source.inline_box(text::source::InlineBox::new(
+        text::source::Id::from_u64(2),
         kind,
         1,
-        text::Size::new(6.0, 14.0),
+        text::geometry::Size::new(6.0, 14.0),
     ));
-    let child_source = text::Source::identified("\u{3a7}", text::Id::from_u64(1558002), 17);
+    let child_source =
+        text::source::Source::identified("\u{3a7}", text::source::Id::from_u64(1558002), 17);
     let parent = prepare(
         &mut system,
         &source,
         true,
-        text::LineOrientation::SidewaysClockwise,
+        text::selection::LineOrientation::SidewaysClockwise,
     );
     let child = prepare(
         &mut system,
         &child_source,
         false,
-        text::LineOrientation::Horizontal,
+        text::selection::LineOrientation::Horizontal,
     );
     assert_eq!(
         parent.analyzed_source().typography(),
-        text::AnalysisTypography::HorizontalComposition
+        text::analyzed::AnalysisTypography::HorizontalComposition
     );
     let origins = parent
         .origin_views()
@@ -48,12 +50,12 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
             }),
             layout::LayoutInput::inline_text(layout::TextParticipation::new(origins[0].clone())),
             layout::LayoutInput::box_input(layout::NodeInput {
-                display: if kind == text::InlineBoxKind::InFlow {
+                display: if kind == text::source::InlineBoxKind::InFlow {
                     layout::Display::InlineBlock
                 } else {
                     layout::Display::Block
                 },
-                position: if kind == text::InlineBoxKind::InFlow {
+                position: if kind == text::source::InlineBoxKind::InFlow {
                     layout::Position::Relative
                 } else {
                     layout::Position::Absolute
@@ -128,15 +130,15 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
     // left line-under border, so in-flow x=C. Absolute all-auto placement
     // instead uses the static flow-start edge: right40 or left0.
     let (cross, child_x) = match (mode, kind) {
-        (layout::WritingMode::VerticalRl, text::InlineBoxKind::InFlow) => (32.0, 32.0),
-        (layout::WritingMode::VerticalLr, text::InlineBoxKind::InFlow) => (2.0, 2.0),
-        (layout::WritingMode::VerticalRl, text::InlineBoxKind::OutOfFlow) => (32.0, 34.0),
-        (layout::WritingMode::VerticalLr, text::InlineBoxKind::OutOfFlow) => (2.0, 0.0),
+        (layout::WritingMode::VerticalRl, text::source::InlineBoxKind::InFlow) => (32.0, 32.0),
+        (layout::WritingMode::VerticalLr, text::source::InlineBoxKind::InFlow) => (2.0, 2.0),
+        (layout::WritingMode::VerticalRl, text::source::InlineBoxKind::OutOfFlow) => (32.0, 34.0),
+        (layout::WritingMode::VerticalLr, text::source::InlineBoxKind::OutOfFlow) => (2.0, 0.0),
         _ => unreachable!("this witness covers precisely the two vertical writing modes"),
     };
     let (following, advance) = match kind {
-        text::InlineBoxKind::InFlow => (24.0, 34.0),
-        text::InlineBoxKind::OutOfFlow => (10.0, 20.0),
+        text::source::InlineBoxKind::InFlow => (24.0, 34.0),
+        text::source::InlineBoxKind::OutOfFlow => (10.0, 20.0),
     };
     let view = batch
         .node_layout(ATOMIC_NODE)
@@ -155,11 +157,11 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
     assert_eq!(child_layout.source(), &child_source);
     assert_eq!(
         parent_layout.orientation(),
-        text::LineOrientation::SidewaysClockwise
+        text::selection::LineOrientation::SidewaysClockwise
     );
     assert_eq!(
         child_layout.orientation(),
-        text::LineOrientation::Horizontal
+        text::selection::LineOrientation::Horizontal
     );
     assert_eq!(parent_layout.lines().len(), 1);
     assert_eq!(child_layout.lines().len(), 1);
@@ -185,8 +187,11 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
                 run.face().catalogue_identity(),
                 parent.font_catalogue_identity()
             );
-            assert_eq!(run.orientation(), text::LineOrientation::SidewaysClockwise);
-            assert_eq!(run.glyph_basis(), text::GlyphBasis::Clockwise);
+            assert_eq!(
+                run.orientation(),
+                text::selection::LineOrientation::SidewaysClockwise
+            );
+            assert_eq!(run.glyph_basis(), text::geometry::GlyphBasis::Clockwise);
             assert_eq!(run.origin().x, cross);
             run.glyphs()
                 .map(|glyph| {
@@ -205,9 +210,18 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
         child_run.face().catalogue_identity(),
         child.font_catalogue_identity()
     );
-    assert_eq!(child_run.orientation(), text::LineOrientation::Horizontal);
-    assert_eq!(child_run.glyph_basis(), text::GlyphBasis::Unrotated);
-    assert_eq!(child_run.origin(), text::Point::new(child_x, 18.0));
+    assert_eq!(
+        child_run.orientation(),
+        text::selection::LineOrientation::Horizontal
+    );
+    assert_eq!(
+        child_run.glyph_basis(),
+        text::geometry::GlyphBasis::Unrotated
+    );
+    assert_eq!(
+        child_run.origin(),
+        text::geometry::Point::new(child_x, 18.0)
+    );
     assert_eq!(
         child_run
             .glyphs()
@@ -224,14 +238,17 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
     let boxes = parent_layout.inline_boxes();
     assert_eq!(boxes.len(), 1);
     assert_eq!(boxes[0].kind(), kind);
-    assert_eq!(boxes[0].rect(), text::Rect::new(child_x, 10.0, 6.0, 14.0));
     assert_eq!(
-        parent_layout.hit(text::Point::new(child_x + 1.0, 15.0)),
-        text::Hit::InlineBox(text::Id::from_u64(2))
+        boxes[0].rect(),
+        text::geometry::Rect::new(child_x, 10.0, 6.0, 14.0)
+    );
+    assert_eq!(
+        parent_layout.hit(text::geometry::Point::new(child_x + 1.0, 15.0)),
+        text::layout::Hit::InlineBox(text::source::Id::from_u64(2))
     );
     for (origin, local, y) in [
-        (&origins[0], text::Range::new(0, 1), 0.0),
-        (&origins[1], text::Range::new(1, 2), following),
+        (&origins[0], text::source::Range::new(0, 1), 0.0),
+        (&origins[1], text::source::Range::new(1, 2), following),
     ] {
         assert_eq!(
             parent_layout
@@ -240,22 +257,22 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
                 .units()
                 .flat_map(|unit| unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>())
                 .collect::<Vec<_>>(),
-            [text::Rect::new(cross - 2.0, y, 10.0, 10.0)]
+            [text::geometry::Rect::new(cross - 2.0, y, 10.0, 10.0)]
         );
     }
     assert_eq!(
         parent_layout
-            .cursor(text::Cursor::new(0, text::Affinity::After))
+            .cursor(text::layout::Cursor::new(0, text::layout::Affinity::After))
             .unwrap()
             .rect(),
-        text::Rect::new(cross - 2.0, 0.0, 10.0, 1.0)
+        text::geometry::Rect::new(cross - 2.0, 0.0, 10.0, 1.0)
     );
     assert_eq!(
         child_layout
-            .cursor(text::Cursor::new(0, text::Affinity::After))
+            .cursor(text::layout::Cursor::new(0, text::layout::Affinity::After))
             .unwrap()
             .rect(),
-        text::Rect::new(child_x, 10.0, 1.0, 10.0)
+        text::geometry::Rect::new(child_x, 10.0, 1.0, 10.0)
     );
     let before_paint = system.stats();
     // The outer scale and translation do not commute with the parent's CW
@@ -316,7 +333,10 @@ fn native_vertical_writing_modes_keep_clockwise_parent_and_horizontal_atomic_chi
         layout::WritingMode::VerticalRl,
         layout::WritingMode::VerticalLr,
     ] {
-        for kind in [text::InlineBoxKind::InFlow, text::InlineBoxKind::OutOfFlow] {
+        for kind in [
+            text::source::InlineBoxKind::InFlow,
+            text::source::InlineBoxKind::OutOfFlow,
+        ] {
             composition(mode, kind);
         }
     }

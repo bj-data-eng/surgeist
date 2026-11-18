@@ -615,7 +615,7 @@ pub struct LineStrut {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineBoxStrut {
     /// Authentic captured owner of this own-box contribution; None is common line.
-    pub scope: Option<crate::processing::CapturedScope>,
+    pub scope: Option<crate::processing::contextual::CapturedScope>,
     pub metrics: LineStrut,
     pub alignment: LineBoxAlignment,
 }
@@ -627,7 +627,8 @@ pub enum PreparedAlternativeAvailability {
     AutoPhraseSuppressed,
 }
 
-/// An actual ordinary opportunity or an interval-bound conditional capability.
+/// An actual ordinary opportunity, an interval-bound conditional capability,
+/// or a measurement trial that is never placeable.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedTermination {
     Ordinary(PreparedOpportunity),

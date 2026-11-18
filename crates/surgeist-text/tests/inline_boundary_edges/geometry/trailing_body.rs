@@ -3,14 +3,14 @@
 use super::*;
 
 fn trailing_request(
-    p: &t::PreparedText,
-    start: t::PreparedBoundary,
-    end: t::PreparedOpportunity,
-    opening: &t::PreparedControl,
-    closing: &t::PreparedControl,
-    context: &t::InlineBoxEdgeContext,
-) -> t::LineSelectionRequest {
-    let edge = |control: &t::PreparedControl| {
+    p: &t::prepared::PreparedText,
+    start: t::prepared::PreparedBoundary,
+    end: t::prepared::PreparedOpportunity,
+    opening: &t::prepared::PreparedControl,
+    closing: &t::prepared::PreparedControl,
+    context: &t::inline_box::InlineBoxEdgeContext,
+) -> t::selection::LineSelectionRequest {
+    let edge = |control: &t::prepared::PreparedControl| {
         let width = if control == opening {
             0.0
         } else {
@@ -20,13 +20,13 @@ fn trailing_request(
             );
             5.0
         };
-        t::InlineBoundaryAllocation::box_edge(
+        t::allocation::InlineBoundaryAllocation::box_edge(
             context.clone(),
-            t::InlineBoxEdgeComponents::from_f64(0.0, width, 0.0).unwrap(),
+            t::inline_box::InlineBoxEdgeComponents::from_f64(0.0, width, 0.0).unwrap(),
         )
     };
     let mut input = request(p, start, end, &[], 100.0);
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     assert!(input.inline_boxes.is_none());
     for row in &mut input.controls {
         if &row.occurrence == opening || &row.occurrence == closing {
@@ -40,7 +40,7 @@ fn trailing_request(
         let boundary = edge(&occurrence);
         input
             .boundary_context
-            .push(t::InlineBoundaryContextAllocation {
+            .push(t::allocation::InlineBoundaryContextAllocation {
                 occurrence,
                 boundary,
             });
@@ -54,8 +54,8 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
     // forced_break_chronology_does_not_relocate_a_later_closing_endpoint case,
     // with no later glyph. No newline/source scalar or empty origin is invented.
     let p = prepare_capture(
-        t::Source::identified("A", t::Id::from_u64(1_646_404), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("A", t::source::Id::from_u64(1_646_404), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -73,10 +73,13 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
         ],
         AHEM,
     );
-    assert_eq!(p.analyzed_source().source().text(), &t::Text::from("A"));
+    assert_eq!(
+        p.analyzed_source().source().text(),
+        &t::source::Text::from("A")
+    );
     assert_eq!(
         p.analyzed_source().processed_source().processed_text(),
-        &t::Text::from("A")
+        &t::source::Text::from("A")
     );
     assert_eq!(p.source_segments().len(), 1);
     let originals = p
@@ -84,8 +87,14 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     assert_eq!(originals.len(), 1);
-    assert_eq!(originals[0].view().aggregate_range(), t::Range::new(0, 1));
-    assert_eq!(originals[0].view().source().text(), &t::Text::from("A"));
+    assert_eq!(
+        originals[0].view().aggregate_range(),
+        t::source::Range::new(0, 1)
+    );
+    assert_eq!(
+        originals[0].view().source().text(),
+        &t::source::Text::from("A")
+    );
     let controls = p
         .control_views()
         .map(|view| view.handle())
@@ -95,7 +104,7 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
     let force = &controls[1];
     let closing = &controls[2];
     let scope = opening.captured_control().unwrap().scope();
-    assert_eq!(scope.role(), t::ScopeRole::Inline);
+    assert_eq!(scope.role(), t::capture::ScopeRole::Inline);
     assert_eq!(scope.entry_control(), opening.captured_control());
     assert_eq!(scope.exit_control(), closing.captured_control());
     assert_eq!(force.captured_control().unwrap().scope(), scope);
@@ -111,16 +120,20 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
     );
     assert!(closing.captured_control().unwrap().event_position() < scope.exit_position());
     let domain = scope.parent().unwrap();
-    assert_eq!(domain.role(), t::ScopeRole::Domain);
-    let owner = t::InlineBoxSource::captured(scope.clone());
-    let root = t::InlineBoxSource::captured(domain);
+    assert_eq!(domain.role(), t::capture::ScopeRole::Domain);
+    let owner = t::inline_box::InlineBoxSource::captured(scope.clone());
+    let root = t::inline_box::InlineBoxSource::captured(domain);
     let context = p
-        .inline_box_edge_context(owner.clone(), root.clone(), t::LineEdgeSide::Start)
+        .inline_box_edge_context(
+            owner.clone(),
+            root.clone(),
+            t::finalized::LineEdgeSide::Start,
+        )
         .unwrap();
 
     let mut forced = p
         .opportunity_views()
-        .filter(|view| view.kind() == t::PreparedBreakKind::Forced)
+        .filter(|view| view.kind() == t::prepared::PreparedBreakKind::Forced)
         .map(|view| view.handle());
     let first_end = forced
         .next()
@@ -144,17 +157,17 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
     assert!(
         second_input
             .participants
-            .contains(&t::PreparedParticipant::Control(closing.clone()))
+            .contains(&t::prepared::PreparedParticipant::Control(closing.clone()))
     );
     assert!(
         !second_input
             .participants
-            .contains(&t::PreparedParticipant::Control(force.clone()))
+            .contains(&t::prepared::PreparedParticipant::Control(force.clone()))
     );
     assert!(
         second_input.participants.iter().all(|part| match part {
-            t::PreparedParticipant::Control(control) => control == closing,
-            t::PreparedParticipant::Text(unit) =>
+            t::prepared::PreparedParticipant::Control(control) => control == closing,
+            t::prepared::PreparedParticipant::Text(unit) =>
                 unit.view().source_range().is_empty() && unit.view().processed_range().is_empty(),
             _ => false,
         }),
@@ -166,7 +179,7 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
     let local_second = finalize(&p, second_input.clone());
     assert!(local_first.inline_box_pieces().is_none());
     assert!(local_second.inline_box_pieces().is_none());
-    assert_eq!(ids(&local_first), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(ids(&local_first), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(local_first.feedback().advance, 10.0);
     assert_eq!(local_second.feedback().advance, 5.0);
     assert!(ids(&local_second).is_empty());
@@ -189,7 +202,7 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
     second_input.inline_boxes = Some(family.clone());
     let first = finalize(&p, first_input);
     let second = finalize(&p, second_input);
-    assert_eq!(ids(&first), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(ids(&first), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(first.feedback().advance, 10.0);
     assert!(ids(&second).is_empty());
     assert_eq!(second.feedback().advance, 5.0);
@@ -233,15 +246,18 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
             .unwrap_err()
             .detail(),
         Some(t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::InlineBoxFragmentation(
-                t::InlineBoxFragmentationError::DifferentBody
+            reason: t::prepared::ProtocolError::InlineBoxFragmentation(
+                t::inline_box::InlineBoxFragmentationError::DifferentBody
             )
         })
     ));
     // Old publications and source capability aliases coexist unchanged.
     assert_eq!(local_first.feedback().advance, 10.0);
     assert_eq!(local_second.feedback().advance, 5.0);
-    assert_eq!(originals[0].view().source().text(), &t::Text::from("A"));
+    assert_eq!(
+        originals[0].view().source().text(),
+        &t::source::Text::from("A")
+    );
 }
 
 #[path = "trailing_body/supplement.rs"]

@@ -11,46 +11,46 @@ mod hanging_punctuation {
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 const KERN: &[u8] = include_bytes!("fixtures/fonts/kern-ahem/KernAhem.ttf");
-const LTR: t::ParagraphBaseDirection = t::ParagraphBaseDirection::LeftToRight;
-const BOX_LTR: t::LineBoxDirection = t::LineBoxDirection::LeftToRight;
-const BOX_RTL: t::LineBoxDirection = t::LineBoxDirection::RightToLeft;
+const LTR: t::paragraph::ParagraphBaseDirection = t::paragraph::ParagraphBaseDirection::LeftToRight;
+const BOX_LTR: t::selection::LineBoxDirection = t::selection::LineBoxDirection::LeftToRight;
+const BOX_RTL: t::selection::LineBoxDirection = t::selection::LineBoxDirection::RightToLeft;
 type Measures = (f64, f64, f64, f64);
 
 fn punctuation(
     first: bool,
-    end: Option<t::HangingPunctuationEnd>,
+    end: Option<t::style::HangingPunctuationEnd>,
     last: bool,
-) -> t::HangingPunctuation {
-    t::HangingPunctuation::new(first, end, last)
+) -> t::style::HangingPunctuation {
+    t::style::HangingPunctuation::new(first, end, last)
 }
-fn style(value: t::HangingPunctuation) -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style(value: t::style::HangingPunctuation) -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
         hanging_punctuation: value,
-        ..t::Style::default()
+        ..t::style::Style::default()
     }
 }
-fn input(value: &str, base: t::Style) -> t::ParagraphInput {
-    let source = t::Source::identified(value, t::Id::from_u64(71072), 4);
+fn input(value: &str, base: t::style::Style) -> t::paragraph::ParagraphInput {
+    let source = t::source::Source::identified(value, t::source::Id::from_u64(71072), 4);
     let len = source.text().len();
-    t::ParagraphInput {
+    t::paragraph::ParagraphInput {
         source: source.clone(),
         base_style: base,
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: LTR,
-        paragraph_strut: t::ParagraphStrut::DefaultFont,
-        terminal_edge: t::ParagraphTerminalEdge::BlockEnd,
+        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: t::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![t::ParagraphOrigin {
+        origins: vec![t::paragraph::ParagraphOrigin {
             text_node: None,
             source,
-            local: t::Range::new(0, len),
-            aggregate: t::Range::new(0, len),
-            kind: t::ParagraphOriginKind::Authored,
+            local: t::source::Range::new(0, len),
+            aggregate: t::source::Range::new(0, len),
+            kind: t::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -59,16 +59,18 @@ fn input(value: &str, base: t::Style) -> t::ParagraphInput {
         anchor_order: vec![],
     }
 }
-fn prepare(value: t::ParagraphInput, bytes: &[u8]) -> t::PreparedText {
+fn prepare(value: t::paragraph::ParagraphInput, bytes: &[u8]) -> t::prepared::PreparedText {
     let wrap = value.base_style.wrap;
     let source = value.source.clone();
-    let analyzed =
-        t::AnalyzedSource::from_paragraph(value, t::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = t::analyzed::AnalyzedSource::from_paragraph(
+        value,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| t::WrappingPolicy {
+        .map(|r| t::analyzed::WrappingPolicy {
             relation: r.handle(),
             ancestor_wrap: wrap,
         })
@@ -79,45 +81,47 @@ fn prepare(value: t::ParagraphInput, bytes: &[u8]) -> t::PreparedText {
         .register_fonts(bytes.to_vec(), crate::common::FONT_LIMITS)
         .unwrap();
     let p = system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(p.analyzed_source().source(), &source);
     p
 }
 fn request(
-    p: &t::PreparedText,
+    p: &t::prepared::PreparedText,
     width: f64,
     first: Option<bool>,
     last: Option<bool>,
-) -> t::LineSelectionRequest {
+) -> t::selection::LineSelectionRequest {
     let end = p
         .opportunity_views()
-        .find(|o| o.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|o| o.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let participants = p.participants().collect::<Vec<_>>();
     let controls = participants
         .iter()
         .filter_map(|part| match part {
-            t::PreparedParticipant::Control(c) => Some(t::ControlAllocation {
-                occurrence: c.clone(),
-                strut: None,
-                boundary: matches!(
-                    c.view().kind(),
-                    t::ParagraphControlKind::InlineBoundaryStart
-                        | t::ParagraphControlKind::InlineBoundaryEnd
-                )
-                .then_some(t::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
-            }),
+            t::prepared::PreparedParticipant::Control(c) => {
+                Some(t::allocation::ControlAllocation {
+                    occurrence: c.clone(),
+                    strut: None,
+                    boundary: matches!(
+                        c.view().kind(),
+                        t::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | t::paragraph::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(t::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                })
+            }
             _ => None,
         })
         .collect();
-    t::LineSelectionRequest {
+    t::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
-        termination: t::PreparedTermination::Ordinary(end),
+        termination: t::selection::PreparedTermination::Ordinary(end),
         participants,
         alternative: None,
         incoming: None,
@@ -126,33 +130,37 @@ fn request(
         boundary_context: vec![],
         line_box_struts: Vec::new(),
         line_strut: None,
-        context: t::LineContext {
-            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-            base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
-                t::ParagraphBaseDirection::RightToLeft
+        context: t::selection::LineContext {
+            alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+            base_direction: if p.analyzed_source().direction() == t::style::Direction::RightToLeft {
+                t::paragraph::ParagraphBaseDirection::RightToLeft
             } else {
                 LTR
             },
             line_box_direction: BOX_LTR,
-            formatted_line: t::FormattedLineContext::new(first, last),
-            orientation: t::LineOrientation::Horizontal,
-            start: t::LineStart::Paragraph,
-            end: t::LineEnd::Paragraph,
+            formatted_line: t::selection::FormattedLineContext::new(first, last),
+            orientation: t::selection::LineOrientation::Horizontal,
+            start: t::selection::LineStart::Paragraph,
+            end: t::selection::LineEnd::Paragraph,
             available_inline: Some(width),
             indent: 0.0,
-            alignment: t::Alignment::Start,
-            tabs: t::TabContext::NoTabs,
-            spacing: t::SpacingPolicy::None,
+            alignment: t::options::Alignment::Start,
+            tabs: t::tabs::TabContext::NoTabs,
+            spacing: t::spacing::SpacingPolicy::None,
         },
     }
 }
-fn finish(p: &t::PreparedText, r: t::LineSelectionRequest) -> t::Result<t::FinalizedLine> {
-    p.select(r)?.finalize(surgeist_text::LineAllocations {
-        spacing: t::SpacingAllocations::None,
-        scopes: surgeist_text::ScopeAllocations::None,
-    })
+fn finish(
+    p: &t::prepared::PreparedText,
+    r: t::selection::LineSelectionRequest,
+) -> t::Result<t::finalized::FinalizedLine> {
+    p.select(r)?
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
+        })
 }
-fn measures(line: &t::FinalizedLine) -> Measures {
+fn measures(line: &t::finalized::FinalizedLine) -> Measures {
     let m = line.measurements();
     (
         m.fit().advance(),
@@ -161,11 +169,14 @@ fn measures(line: &t::FinalizedLine) -> Measures {
         m.max_content_contribution().advance(),
     )
 }
-fn usage(line: &t::FinalizedLine) -> (bool, bool) {
+fn usage(line: &t::finalized::FinalizedLine) -> (bool, bool) {
     let u = line.measurements().formatted_line_usage();
     (u.first(), u.last())
 }
-fn glyphs(line: &t::FinalizedLine, bytes: &[u8]) -> Vec<(t::Range, u32, f32, f32, f64, f64)> {
+fn glyphs(
+    line: &t::finalized::FinalizedLine,
+    bytes: &[u8],
+) -> Vec<(t::source::Range, u32, f32, f32, f64, f64)> {
     line.run_views()
         .flat_map(|run| {
             assert_eq!(run.face().bytes(), bytes);
@@ -188,33 +199,35 @@ fn glyphs(line: &t::FinalizedLine, bytes: &[u8]) -> Vec<(t::Range, u32, f32, f32
         })
         .collect()
 }
-fn placed(p: &t::PreparedText, line: t::FinalizedLine) -> t::Layout {
+fn placed(p: &t::prepared::PreparedText, line: t::finalized::FinalizedLine) -> t::layout::Layout {
     let r = line.selected_line();
     let r = r.request();
-    t::Layout::from_finalized_lines(t::PlacementRequest {
+    t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: p.clone(),
-        coverage: t::PlacementCoverage::Range {
+        coverage: t::placement::PlacementCoverage::Range {
             start: r.start.clone(),
             end: r.end.clone(),
         },
-        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-            line,
-            anchor: t::LineAnchor {
-                inline_origin: 0.0,
-                baseline: 8.0,
+        entries: vec![t::placement::PlacementEntry::Formatted(
+            t::placement::LinePlacement {
+                line,
+                anchor: t::placement::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: 8.0,
+                },
+                orientation: t::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: t::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap()
 }
-fn carets(layout: &t::Layout, expected: &[f64]) {
+fn carets(layout: &t::layout::Layout, expected: &[f64]) {
     for (index, x) in expected.iter().copied().enumerate() {
-        for affinity in [t::Affinity::Before, t::Affinity::After] {
+        for affinity in [t::layout::Affinity::Before, t::layout::Affinity::After] {
             assert_eq!(
                 layout
-                    .cursor(t::Cursor::new(index, affinity))
+                    .cursor(t::layout::Cursor::new(index, affinity))
                     .unwrap()
                     .rect()
                     .origin
@@ -224,14 +237,14 @@ fn carets(layout: &t::Layout, expected: &[f64]) {
         }
     }
 }
-fn demand(error: &t::Error, expected: t::PhaseTwoContext) {
+fn demand(error: &t::Error, expected: t::prepared::PhaseTwoContext) {
     assert!(
         matches!(error.detail(), Some(t::ErrorDetail::InvalidTextProtocol { reason:
-        t::ProtocolError::MissingPhaseTwoContext(actual) }) if *actual == expected),
+        t::prepared::ProtocolError::MissingPhaseTwoContext(actual) }) if *actual == expected),
         "{error:?}"
     );
 }
-fn unit_ranges(line: &t::FinalizedLine) -> Vec<(usize, usize)> {
+fn unit_ranges(line: &t::finalized::FinalizedLine) -> Vec<(usize, usize)> {
     line.edge_units()
         .filter_map(|e| e.punctuation_unit().map(|r| (r.start(), r.end())))
         .collect()
@@ -239,7 +252,7 @@ fn unit_ranges(line: &t::FinalizedLine) -> Vec<(usize, usize)> {
 
 #[test]
 fn force_and_allow_measurements_retain_actual_glyphs_source_and_carets() {
-    use t::HangingPunctuationEnd::{AllowEnd, ForceEnd};
+    use t::style::HangingPunctuationEnd::{AllowEnd, ForceEnd};
     for (end, width, expected) in [
         (None, 25.0, (20.0, 20.0, 20.0, 20.0)),
         (None, 15.0, (20.0, 20.0, 20.0, 20.0)),
@@ -259,8 +272,8 @@ fn force_and_allow_measurements_retain_actual_glyphs_source_and_carets() {
         assert_eq!(
             glyphs(&line, AHEM),
             [
-                (t::Range::new(0, 1), 35, 10.0, 0.0, 0.0, 0.0),
-                (t::Range::new(1, 2), 16, 10.0, 0.0, 10.0, 10.0)
+                (t::source::Range::new(0, 1), 35, 10.0, 0.0, 0.0, 0.0),
+                (t::source::Range::new(1, 2), 16, 10.0, 0.0, 10.0, 10.0)
             ]
         );
         if end.is_some() {
@@ -271,21 +284,21 @@ fn force_and_allow_measurements_retain_actual_glyphs_source_and_carets() {
         carets(&layout, &[0.0, 10.0, 20.0]);
         let a = layout
             .positions()
-            .find(|p| p.source_cursor() == t::Cursor::new(0, t::Affinity::After))
+            .find(|p| p.source_cursor() == t::layout::Cursor::new(0, t::layout::Affinity::After))
             .unwrap();
         let b = layout
             .positions()
-            .find(|p| p.source_cursor() == t::Cursor::new(2, t::Affinity::Before))
+            .find(|p| p.source_cursor() == t::layout::Cursor::new(2, t::layout::Affinity::Before))
             .unwrap();
         let selected = layout.position_selection(&a, &b).unwrap();
-        assert_eq!(selected.source_text(), &t::Text::from("A."));
-        assert_eq!(selected.plaintext(), &t::Text::from("A."));
+        assert_eq!(selected.source_text(), &t::source::Text::from("A."));
+        assert_eq!(selected.plaintext(), &t::source::Text::from("A."));
         #[cfg(feature = "text-accessibility")]
         {
-            let mut state = t::Accessibility::new(200);
+            let mut state = t::accessibility::Accessibility::new(200);
             let parent = accesskit::NodeId(100);
             let update = layout
-                .accessibility_update(&mut state, parent, parent, t::Point::default())
+                .accessibility_update(&mut state, parent, parent, t::geometry::Point::default())
                 .unwrap();
             let nodes = update
                 .nodes
@@ -321,19 +334,25 @@ fn force_and_allow_measurements_retain_actual_glyphs_source_and_carets() {
                 [0.0, 10.0]
             );
             let anchor = layout
-                .access_position(&state, t::Cursor::new(0, t::Affinity::After))
+                .access_position(
+                    &state,
+                    t::layout::Cursor::new(0, t::layout::Affinity::After),
+                )
                 .unwrap()
                 .unwrap();
             let focus = layout
-                .access_position(&state, t::Cursor::new(2, t::Affinity::Before))
+                .access_position(
+                    &state,
+                    t::layout::Cursor::new(2, t::layout::Affinity::Before),
+                )
                 .unwrap()
                 .unwrap();
             let selection = layout
                 .access_selection(
                     &state,
-                    t::Selection::new(
-                        t::Cursor::new(0, t::Affinity::After),
-                        t::Cursor::new(2, t::Affinity::Before),
+                    t::layout::Selection::new(
+                        t::layout::Cursor::new(0, t::layout::Affinity::After),
+                        t::layout::Cursor::new(2, t::layout::Affinity::Before),
                     ),
                 )
                 .unwrap()
@@ -373,8 +392,8 @@ fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
         );
     }
     for (text, first, role) in [
-        ("(A", true, t::PhaseTwoContext::FirstFormattedLine),
-        ("A)", false, t::PhaseTwoContext::LastFormattedLine),
+        ("(A", true, t::prepared::PhaseTwoContext::FirstFormattedLine),
+        ("A)", false, t::prepared::PhaseTwoContext::LastFormattedLine),
     ] {
         for zero in [false, true] {
             // Zero advance comes from the actual punctuation font metric,
@@ -408,7 +427,7 @@ fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
                     if first {
                         [
                             (
-                                t::Range::new(0, 1),
+                                t::source::Range::new(0, 1),
                                 10,
                                 punctuation_advance,
                                 0.0,
@@ -416,7 +435,7 @@ fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
                                 start,
                             ),
                             (
-                                t::Range::new(1, 2),
+                                t::source::Range::new(1, 2),
                                 35,
                                 10.0,
                                 0.0,
@@ -426,9 +445,9 @@ fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
                         ]
                     } else {
                         [
-                            (t::Range::new(0, 1), 35, 10.0, 0.0, 0.0, 0.0),
+                            (t::source::Range::new(0, 1), 35, 10.0, 0.0, 0.0, 0.0),
                             (
-                                t::Range::new(1, 2),
+                                t::source::Range::new(1, 2),
                                 11,
                                 punctuation_advance,
                                 0.0,
@@ -459,7 +478,7 @@ fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
                     carets(&placed(&p, line), &[-10.0, 0.0, 10.0]);
                 } else if zero {
                     let layout = placed(&p, line);
-                    assert_eq!(layout.source().text(), &t::Text::from(text));
+                    assert_eq!(layout.source().text(), &t::source::Text::from(text));
                     carets(
                         &layout,
                         if first {
@@ -477,7 +496,7 @@ fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
             "AA",
             style(punctuation(
                 true,
-                Some(t::HangingPunctuationEnd::ForceEnd),
+                Some(t::style::HangingPunctuationEnd::ForceEnd),
                 true,
             )),
         ),
@@ -493,7 +512,7 @@ fn last_is_demanded_when_only_min_content_exposes_the_quote() {
     let p = prepare(input("A\" ", style(punctuation(false, None, true))), AHEM);
     demand(
         &finish(&p, request(&p, 35.0, None, None)).unwrap_err(),
-        t::PhaseTwoContext::LastFormattedLine,
+        t::prepared::PhaseTwoContext::LastFormattedLine,
     );
     for (last, min) in [(false, 20.0), (true, 10.0)] {
         let line = finish(&p, request(&p, 35.0, None, Some(last))).unwrap();
@@ -537,7 +556,7 @@ fn one_punctuation_tcu_per_edge_and_opposed_frame_use_actual_visual_edges() {
             "A.,",
             style(punctuation(
                 false,
-                Some(t::HangingPunctuationEnd::ForceEnd),
+                Some(t::style::HangingPunctuationEnd::ForceEnd),
                 false,
             )),
         ),
@@ -572,14 +591,14 @@ fn one_punctuation_tcu_per_edge_and_opposed_frame_use_actual_visual_edges() {
 fn compound_unconditional_period_and_preserved_space_have_per_measure_terminal_chains() {
     let base = style(punctuation(
         false,
-        Some(t::HangingPunctuationEnd::ForceEnd),
+        Some(t::style::HangingPunctuationEnd::ForceEnd),
         false,
     ));
     let p = prepare(input("A. A", base.clone()), AHEM);
     let end = p
         .opportunity_views()
         .find(|o| {
-            o.kind() == t::PreparedBreakKind::Allowed
+            o.kind() == t::prepared::PreparedBreakKind::Allowed
                 && o.boundary().view().source_after().get() == 3
         })
         .unwrap()
@@ -587,8 +606,8 @@ fn compound_unconditional_period_and_preserved_space_have_per_measure_terminal_c
     let mut r = request(&p, 40.0, None, None);
     r.end = end.view().boundary();
     r.participants.truncate(r.end.view().participant_offset());
-    r.termination = t::PreparedTermination::Ordinary(end);
-    r.context.end = t::LineEnd::Soft;
+    r.termination = t::selection::PreparedTermination::Ordinary(end);
+    r.context.end = t::selection::LineEnd::Soft;
     let line = finish(&p, r).unwrap();
     assert_eq!(line.feedback().advance, 30.0);
     assert_eq!(measures(&line), (10.0, 10.0, 10.0, 10.0));
@@ -618,30 +637,31 @@ fn actual_selected_inline_bp_blocks_only_its_edge_and_is_counted_once() {
     ] {
         let mut value = input("\"", style(punctuation(true, None, true)));
         value.controls = vec![
-            t::ParagraphControl {
+            t::paragraph::ParagraphControl {
                 at: 0,
-                kind: t::ParagraphControlKind::InlineBoundaryStart,
+                kind: t::paragraph::ParagraphControlKind::InlineBoundaryStart,
             },
-            t::ParagraphControl {
+            t::paragraph::ParagraphControl {
                 at: 1,
-                kind: t::ParagraphControlKind::InlineBoundaryEnd,
+                kind: t::paragraph::ParagraphControlKind::InlineBoundaryEnd,
             },
         ];
         value.anchor_order = (0..2)
-            .map(|i| t::ParagraphAnchor {
-                item: t::ParagraphAnchorItem::Control(i),
-                affinity: t::Affinity::After,
+            .map(|i| t::paragraph::ParagraphAnchor {
+                item: t::paragraph::ParagraphAnchorItem::Control(i),
+                affinity: t::layout::Affinity::After,
             })
             .collect();
         let p = prepare(value, AHEM);
         let mut r = request(&p, 40.0, first, last);
         for allocation in &mut r.controls {
             let bp = match allocation.occurrence.view().kind() {
-                t::ParagraphControlKind::InlineBoundaryStart => start_bp,
-                t::ParagraphControlKind::InlineBoundaryEnd => end_bp,
+                t::paragraph::ParagraphControlKind::InlineBoundaryStart => start_bp,
+                t::paragraph::ParagraphControlKind::InlineBoundaryEnd => end_bp,
                 _ => unreachable!(),
             };
-            allocation.boundary = Some(t::InlineBoundaryAllocation::contribution(bp).unwrap());
+            allocation.boundary =
+                Some(t::allocation::InlineBoundaryAllocation::contribution(bp).unwrap());
         }
         let line = finish(&p, r).unwrap();
         assert_eq!(line.feedback().advance, 10.0 + start_bp + end_bp);
@@ -671,32 +691,32 @@ fn incoming_offselected_joining_context_is_not_used_punctuation_padding() {
     assert_eq!(font.charmap().map('一').unwrap().to_u32(), 36);
     let mut value = input(
         ")一",
-        t::Style {
-            word_break: t::WordBreak::BreakAll,
+        t::style::Style {
+            word_break: t::style::WordBreak::BreakAll,
             ..style(punctuation(false, None, true))
         },
     );
     value.controls = vec![
-        t::ParagraphControl {
+        t::paragraph::ParagraphControl {
             at: 1,
-            kind: t::ParagraphControlKind::InlineBoundaryStart,
+            kind: t::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
-        t::ParagraphControl {
+        t::paragraph::ParagraphControl {
             at: 2,
-            kind: t::ParagraphControlKind::InlineBoundaryEnd,
+            kind: t::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
     value.anchor_order = (0..2)
-        .map(|i| t::ParagraphAnchor {
-            item: t::ParagraphAnchorItem::Control(i),
-            affinity: t::Affinity::Before,
+        .map(|i| t::paragraph::ParagraphAnchor {
+            item: t::paragraph::ParagraphAnchorItem::Control(i),
+            affinity: t::layout::Affinity::Before,
         })
         .collect();
     let p = prepare(value, &bytes);
     let end = p
         .opportunity_views()
         .find(|o| {
-            o.kind() == t::PreparedBreakKind::Allowed
+            o.kind() == t::prepared::PreparedBreakKind::Allowed
                 && o.boundary().view().participant_offset() == 1
         })
         .unwrap_or_else(|| {
@@ -715,53 +735,55 @@ fn incoming_offselected_joining_context_is_not_used_punctuation_padding() {
         .handle();
     let mut r = request(&p, 40.0, None, None);
     r.end = end.view().boundary();
-    r.termination = t::PreparedTermination::Ordinary(end);
+    r.termination = t::selection::PreparedTermination::Ordinary(end);
     r.participants.truncate(1);
     r.controls.clear();
-    r.context.end = t::LineEnd::Soft;
+    r.context.end = t::selection::LineEnd::Soft;
     let first = p.boundary_context_demand(&r).unwrap().unwrap();
     assert_eq!(
         *first.view().kind(),
-        t::ParagraphControlKind::InlineBoundaryStart
+        t::paragraph::ParagraphControlKind::InlineBoundaryStart
     );
     assert_eq!(first.view().source_position().get(), 1);
     // The demanded Start is outside selected source0..1. Joining context
     // supplies no used decoration on this selected fragment's physical edge.
     assert!(p.select(r.clone()).is_err());
-    r.boundary_context.push(t::InlineBoundaryContextAllocation {
-        occurrence: first.clone(),
-        boundary: t::InlineBoundaryAllocation::contribution(5.0).unwrap(),
-    });
+    r.boundary_context
+        .push(t::allocation::InlineBoundaryContextAllocation {
+            occurrence: first.clone(),
+            boundary: t::allocation::InlineBoundaryAllocation::contribution(5.0).unwrap(),
+        });
     assert!(p.boundary_context_demand(&r).unwrap().is_none());
-    r.context.formatted_line = t::FormattedLineContext::new(None, Some(true));
+    r.context.formatted_line = t::selection::FormattedLineContext::new(None, Some(true));
     let positive = finish(&p, r.clone()).unwrap();
     assert_eq!(positive.feedback().advance, 10.0);
     assert_eq!(measures(&positive), (0.0, 0.0, 0.0, 0.0));
     assert_eq!(usage(&positive), (false, true));
     assert!(positive.control_slots().next().is_none());
     assert_eq!(glyphs(&positive, &bytes)[0].5, 0.0);
-    r.context.formatted_line = t::FormattedLineContext::default();
+    r.context.formatted_line = t::selection::FormattedLineContext::default();
     demand(
         &finish(&p, r.clone()).unwrap_err(),
-        t::PhaseTwoContext::LastFormattedLine,
+        t::prepared::PhaseTwoContext::LastFormattedLine,
     );
-    r.boundary_context[0].boundary = t::InlineBoundaryAllocation::CONTRIBUTION_ZERO;
+    r.boundary_context[0].boundary = t::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO;
     let farther = p.boundary_context_demand(&r).unwrap().unwrap();
     assert_ne!(farther, first);
     assert_eq!(
         *farther.view().kind(),
-        t::ParagraphControlKind::InlineBoundaryEnd
+        t::paragraph::ParagraphControlKind::InlineBoundaryEnd
     );
-    r.boundary_context.push(t::InlineBoundaryContextAllocation {
-        occurrence: farther,
-        boundary: t::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
-    });
+    r.boundary_context
+        .push(t::allocation::InlineBoundaryContextAllocation {
+            occurrence: farther,
+            boundary: t::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
+        });
     assert!(p.boundary_context_demand(&r).unwrap().is_none());
     demand(
         &finish(&p, r.clone()).unwrap_err(),
-        t::PhaseTwoContext::LastFormattedLine,
+        t::prepared::PhaseTwoContext::LastFormattedLine,
     );
-    r.context.formatted_line = t::FormattedLineContext::new(None, Some(true));
+    r.context.formatted_line = t::selection::FormattedLineContext::new(None, Some(true));
     let open = finish(&p, r).unwrap();
     assert_eq!(open.feedback().advance, 10.0);
     assert_eq!(measures(&open), (0.0, 0.0, 0.0, 0.0));
@@ -780,19 +802,27 @@ fn authored_declarations_and_resolved_role_identity_are_retained() {
         h.finish()
     }
     let declarations = [
-        t::HangingPunctuation::default(),
+        t::style::HangingPunctuation::default(),
         punctuation(true, None, false),
-        punctuation(false, Some(t::HangingPunctuationEnd::ForceEnd), false),
-        punctuation(false, Some(t::HangingPunctuationEnd::AllowEnd), false),
+        punctuation(
+            false,
+            Some(t::style::HangingPunctuationEnd::ForceEnd),
+            false,
+        ),
+        punctuation(
+            false,
+            Some(t::style::HangingPunctuationEnd::AllowEnd),
+            false,
+        ),
         punctuation(false, None, true),
-        punctuation(true, Some(t::HangingPunctuationEnd::AllowEnd), true),
+        punctuation(true, Some(t::style::HangingPunctuationEnd::AllowEnd), true),
     ];
     for (i, decl) in declarations.iter().copied().enumerate() {
         let p = prepare(input("A.", style(decl)), AHEM);
         assert_eq!(p.analyzed_source().style().hanging_punctuation, decl);
         assert_eq!(
             p.analyzed_source().source().id(),
-            Some(t::Id::from_u64(71072))
+            Some(t::source::Id::from_u64(71072))
         );
         for other in &declarations[..i] {
             assert_ne!(decl, *other);
@@ -805,7 +835,7 @@ fn authored_declarations_and_resolved_role_identity_are_retained() {
     let no = finish(&p, request(&p, 40.0, Some(false), None)).unwrap();
     assert_eq!(
         yes.selected_line().request().context.formatted_line,
-        t::FormattedLineContext::new(Some(true), None)
+        t::selection::FormattedLineContext::new(Some(true), None)
     );
     assert_eq!(measures(&yes), measures(&yes_again));
     assert_ne!(measures(&yes), measures(&no));
@@ -814,16 +844,16 @@ fn authored_declarations_and_resolved_role_identity_are_retained() {
     system
         .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
         .unwrap();
-    let source = t::Source::identified("A.", t::Id::from_u64(71073), 9);
-    let options = t::Options {
+    let source = t::source::Source::identified("A.", t::source::Id::from_u64(71073), 9);
+    let options = t::options::Options {
         width: Some(15.0),
-        ..t::Options::default()
+        ..t::options::Options::default()
     };
     let before = system.stats();
     let old = system
         .layout(
             source.clone(),
-            style(t::HangingPunctuation::default()),
+            style(t::style::HangingPunctuation::default()),
             options,
         )
         .unwrap();
@@ -832,7 +862,7 @@ fn authored_declarations_and_resolved_role_identity_are_retained() {
     let before = system.stats();
     let force = style(punctuation(
         false,
-        Some(t::HangingPunctuationEnd::ForceEnd),
+        Some(t::style::HangingPunctuationEnd::ForceEnd),
         false,
     ));
     let changed = system
@@ -856,7 +886,7 @@ fn authored_declarations_and_resolved_role_identity_are_retained() {
 #[test]
 fn literal_kerning_feature_and_parent_carets_qualify_actual_hanging_contributions() {
     for (kern, advance, raw, offset) in [(true, 9.0, 18.0, -1.0), (false, 10.0, 20.0, 0.0)] {
-        let font = t::Font::new().family("Surgeist Kern Ahem");
+        let font = t::style::Font::new().family("Surgeist Kern Ahem");
         let font = if kern {
             font
         } else {
@@ -865,15 +895,25 @@ fn literal_kerning_feature_and_parent_carets_qualify_actual_hanging_contribution
         for (end, width, alignment, max) in [
             (None, 25.0, raw, raw),
             (
-                Some(t::HangingPunctuationEnd::ForceEnd),
+                Some(t::style::HangingPunctuationEnd::ForceEnd),
                 25.0,
                 advance,
                 advance,
             ),
-            (Some(t::HangingPunctuationEnd::AllowEnd), 25.0, raw, raw),
-            (Some(t::HangingPunctuationEnd::AllowEnd), 15.0, 15.0, raw),
+            (
+                Some(t::style::HangingPunctuationEnd::AllowEnd),
+                25.0,
+                raw,
+                raw,
+            ),
+            (
+                Some(t::style::HangingPunctuationEnd::AllowEnd),
+                15.0,
+                15.0,
+                raw,
+            ),
         ] {
-            let base = t::Style {
+            let base = t::style::Style {
                 font: font.clone(),
                 ..style(punctuation(false, end, false))
             };
@@ -885,9 +925,16 @@ fn literal_kerning_feature_and_parent_carets_qualify_actual_hanging_contribution
             assert_eq!(
                 glyphs(&line, KERN),
                 [
-                    (t::Range::new(0, 1), 35, advance as f32, 0.0, 0.0, 0.0),
                     (
-                        t::Range::new(1, 2),
+                        t::source::Range::new(0, 1),
+                        35,
+                        advance as f32,
+                        0.0,
+                        0.0,
+                        0.0
+                    ),
+                    (
+                        t::source::Range::new(1, 2),
                         16,
                         advance as f32,
                         offset,
@@ -903,8 +950,8 @@ fn literal_kerning_feature_and_parent_carets_qualify_actual_hanging_contribution
             assert_eq!(
                 units,
                 [
-                    (t::Range::new(0, 1), advance),
-                    (t::Range::new(1, 2), advance)
+                    (t::source::Range::new(0, 1), advance),
+                    (t::source::Range::new(1, 2), advance)
                 ]
             );
             carets(&placed(&p, line), &[0.0, advance, raw]);
@@ -930,11 +977,11 @@ fn source_built_shared_glyph_is_qualified_before_only_period_tcu_hangs() {
         );
     }
     let mut original_carets = None;
-    for end in [None, Some(t::HangingPunctuationEnd::ForceEnd)] {
+    for end in [None, Some(t::style::HangingPunctuationEnd::ForceEnd)] {
         let p = prepare(input("A.", style(punctuation(false, end, false))), &bytes);
         assert_eq!(
             p.analyzed_source().graphemes().collect::<Vec<_>>(),
-            [t::Range::new(0, 1), t::Range::new(1, 2)]
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
         );
         // The original glyph table gives one 10px X draw; the existing actual
         // provider contribution contract divides it across two eligible atoms.
@@ -942,12 +989,15 @@ fn source_built_shared_glyph_is_qualified_before_only_period_tcu_hangs() {
             p.unit_views()
                 .map(|u| (u.source_range(), u.advance()))
                 .collect::<Vec<_>>(),
-            [(t::Range::new(0, 1), 5.0), (t::Range::new(1, 2), 5.0)]
+            [
+                (t::source::Range::new(0, 1), 5.0),
+                (t::source::Range::new(1, 2), 5.0)
+            ]
         );
         let line = finish(&p, request(&p, 20.0, None, None)).unwrap();
         assert_eq!(
             glyphs(&line, &bytes),
-            [(t::Range::new(0, 2), 58, 10.0, 0.0, 0.0, 0.0)]
+            [(t::source::Range::new(0, 2), 58, 10.0, 0.0, 0.0, 0.0)]
         );
         assert_eq!(line.feedback().advance, 10.0);
         let m = if end.is_some() { 5.0 } else { 10.0 };
@@ -956,11 +1006,11 @@ fn source_built_shared_glyph_is_qualified_before_only_period_tcu_hangs() {
         assert_eq!(rows.len(), 2);
         assert_eq!(
             rows[0].source_pieces().collect::<Vec<_>>(),
-            [t::Range::new(0, 1)]
+            [t::source::Range::new(0, 1)]
         );
         assert_eq!(
             rows[1].source_pieces().collect::<Vec<_>>(),
-            [t::Range::new(1, 2)]
+            [t::source::Range::new(1, 2)]
         );
         if end.is_some() {
             assert_eq!(rows[0].excluded_contribution(), 0.0);
@@ -970,8 +1020,8 @@ fn source_built_shared_glyph_is_qualified_before_only_period_tcu_hangs() {
         let layout = placed(&p, line);
         let cursors = (0..=2)
             .flat_map(|index| {
-                [t::Affinity::Before, t::Affinity::After]
-                    .map(move |affinity| t::Cursor::new(index, affinity))
+                [t::layout::Affinity::Before, t::layout::Affinity::After]
+                    .map(move |affinity| t::layout::Cursor::new(index, affinity))
             })
             .collect::<Vec<_>>();
         let actual = cursors
@@ -1011,11 +1061,18 @@ fn complete_marked_tcu_uses_effective_properties_and_base_owner_without_glyph_gu
         ("\"\u{20dd}A", punctuation(true, None, false)),
         (
             "B.\u{20dd}",
-            punctuation(false, Some(t::HangingPunctuationEnd::ForceEnd), false),
+            punctuation(
+                false,
+                Some(t::style::HangingPunctuationEnd::ForceEnd),
+                false,
+            ),
         ),
     ] {
         let p = prepare(input(text, style(decl)), &bytes);
-        let none = prepare(input(text, style(t::HangingPunctuation::default())), &bytes);
+        let none = prepare(
+            input(text, style(t::style::HangingPunctuation::default())),
+            &bytes,
+        );
         let baseline = finish(&none, request(&none, 40.0, None, None)).unwrap();
         assert_eq!(baseline.feedback().advance, 20.0);
         assert_eq!(
@@ -1034,40 +1091,42 @@ fn complete_marked_tcu_uses_effective_properties_and_base_owner_without_glyph_gu
     for base_first in [false, true] {
         let mut value = input("(\u{301}A", style(punctuation(base_first, None, false)));
         value.source.span(
-            t::Range::new(1, 2),
-            t::Style {
-                brush: t::Brush::color(0.2, 0.4, 0.6, 1.0),
+            t::source::Range::new(1, 2),
+            t::style::Style {
+                brush: t::style::Brush::color(0.2, 0.4, 0.6, 1.0),
                 ..style(punctuation(!base_first, None, false))
             },
         );
         value.origins = [(0, 1), (1, 2), (2, 3)]
             .into_iter()
             .enumerate()
-            .map(|(i, (a, b))| t::ParagraphOrigin {
+            .map(|(i, (a, b))| t::paragraph::ParagraphOrigin {
                 text_node: None,
-                source: t::Source::identified(
-                    t::Text::from_code_units(value.source.text().code_units()[a..b].to_vec()),
-                    t::Id::from_u64(72000 + i as u64),
+                source: t::source::Source::identified(
+                    t::source::Text::from_code_units(
+                        value.source.text().code_units()[a..b].to_vec(),
+                    ),
+                    t::source::Id::from_u64(72000 + i as u64),
                     3,
                 ),
-                local: t::Range::new(0, b - a),
-                aggregate: t::Range::new(a, b),
-                kind: t::ParagraphOriginKind::Authored,
+                local: t::source::Range::new(0, b - a),
+                aggregate: t::source::Range::new(a, b),
+                kind: t::paragraph::ParagraphOriginKind::Authored,
             })
             .collect();
         value.connections = [1, 2]
             .into_iter()
-            .map(|at| t::ParagraphConnection {
+            .map(|at| t::paragraph::ParagraphConnection {
                 at,
-                kind: t::ParagraphConnectionKind::Continuous,
+                kind: t::paragraph::ParagraphConnectionKind::Continuous,
             })
             .collect();
         value.boundary_policies = (0..2)
-            .map(|i| t::ParagraphBoundaryPolicy {
-                definition: t::ParagraphBoundaryDefinition::Connection(i),
-                preceding_wrap: t::Wrap::Word,
-                following_wrap: t::Wrap::Word,
-                ancestor_wrap: t::Wrap::Word,
+            .map(|i| t::paragraph::ParagraphBoundaryPolicy {
+                definition: t::paragraph::ParagraphBoundaryDefinition::Connection(i),
+                preceding_wrap: t::style::Wrap::Word,
+                following_wrap: t::style::Wrap::Word,
+                ancestor_wrap: t::style::Wrap::Word,
             })
             .collect();
         let p = prepare(value, &bytes);
@@ -1085,10 +1144,10 @@ fn complete_marked_tcu_uses_effective_properties_and_base_owner_without_glyph_gu
         for (i, origin) in origins.iter().enumerate() {
             assert_eq!(
                 origin.view().source().id(),
-                Some(t::Id::from_u64(72000 + i as u64))
+                Some(t::source::Id::from_u64(72000 + i as u64))
             );
             let pieces = layout
-                .source_range_fragments(origin, t::Range::new(0, 1))
+                .source_range_fragments(origin, t::source::Range::new(0, 1))
                 .unwrap();
             assert!(!pieces.units().collect::<Vec<_>>().is_empty());
         }
@@ -1115,7 +1174,7 @@ fn effective_space_mark_unit_cannot_recover_raw_ideographic_space_permission() {
     );
     demand(
         &finish(&p, request(&p, 40.0, None, None)).unwrap_err(),
-        t::PhaseTwoContext::FirstFormattedLine,
+        t::prepared::PhaseTwoContext::FirstFormattedLine,
     );
     let line = finish(&p, request(&p, 40.0, Some(true), None)).unwrap();
     assert_eq!(line.feedback().advance, 20.0);
@@ -1126,9 +1185,12 @@ fn effective_space_mark_unit_cannot_recover_raw_ideographic_space_permission() {
     let p = prepare(input(text, style(punctuation(true, None, false))), &bytes);
     assert_eq!(
         p.analyzed_source().graphemes().collect::<Vec<_>>(),
-        [t::Range::new(0, 2), t::Range::new(2, 3)]
+        [t::source::Range::new(0, 2), t::source::Range::new(2, 3)]
     );
-    let none = prepare(input(text, style(t::HangingPunctuation::default())), &bytes);
+    let none = prepare(
+        input(text, style(t::style::HangingPunctuation::default())),
+        &bytes,
+    );
     let baseline = finish(&none, request(&none, 40.0, None, None)).unwrap();
     let line = finish(&p, request(&p, 40.0, None, None)).unwrap();
     assert_eq!(measures(&line), measures(&baseline));
@@ -1145,31 +1207,33 @@ fn effective_space_mark_unit_cannot_recover_raw_ideographic_space_permission() {
 #[test]
 fn hanging_computed_indication_retains_alternative_and_original_source_custody() {
     for force in [false, true] {
-        let base = t::Style {
+        let base = t::style::Style {
             locale: Some("en-US".into()),
-            hyphens: t::Hyphens::Manual,
-            hyphenate_character: t::HyphenateCharacter::String(t::Text::from(".")),
-            hyphenate_limit_chars: t::HyphenateLimitChars {
-                total: t::HyphenationMinimum::Count(0),
-                before: t::HyphenationMinimum::Count(0),
-                after: t::HyphenationMinimum::Count(0),
+            hyphens: t::hyphenation::Hyphens::Manual,
+            hyphenate_character: t::hyphenation::HyphenateCharacter::String(t::source::Text::from(
+                ".",
+            )),
+            hyphenate_limit_chars: t::hyphenation::HyphenateLimitChars {
+                total: t::hyphenation::HyphenationMinimum::Count(0),
+                before: t::hyphenation::HyphenationMinimum::Count(0),
+                after: t::hyphenation::HyphenationMinimum::Count(0),
             },
             ..style(punctuation(
                 false,
-                force.then_some(t::HangingPunctuationEnd::ForceEnd),
+                force.then_some(t::style::HangingPunctuationEnd::ForceEnd),
                 false,
             ))
         };
         let p = prepare(input("AB\u{ad}CDE", base), AHEM);
         let alternative = p
             .alternative_views()
-            .find(|a| a.source_range() == Some(t::Range::new(2, 3)))
+            .find(|a| a.source_range() == Some(t::source::Range::new(2, 3)))
             .unwrap()
             .handle();
         assert_eq!(alternative.view().insertion_anchor().get(), 3);
-        assert_eq!(alternative.view().text(), &t::Text::from("."));
+        assert_eq!(alternative.view().text(), &t::source::Text::from("."));
         assert!(
-            matches!(alternative.view().definition(),t::PreparedAlternativeDefinition::Source {source,..} if source==t::Range::new(2,3))
+            matches!(alternative.view().definition(),t::prepared::PreparedAlternativeDefinition::Source {source,..} if source==t::source::Range::new(2,3))
         );
         let end = p
             .opportunity_views()
@@ -1179,21 +1243,25 @@ fn hanging_computed_indication_retains_alternative_and_original_source_custody()
         let mut r = request(&p, 40.0, None, None);
         r.end = end.view().boundary();
         r.participants.truncate(r.end.view().participant_offset());
-        r.termination = t::PreparedTermination::Ordinary(end);
+        r.termination = t::selection::PreparedTermination::Ordinary(end);
         r.alternative = Some(alternative.clone());
-        r.context.end = t::LineEnd::Soft;
+        r.context.end = t::selection::LineEnd::Soft;
         let line = finish(&p, r).unwrap();
         assert_eq!(line.feedback().advance, 30.0);
         let m = if force { 20.0 } else { 30.0 };
         assert_eq!(measures(&line), (m, m, m, m));
         let g = glyphs(&line, AHEM);
         assert_eq!(g.len(), 3);
-        assert_eq!(g[2], (t::Range::new(3, 3), 16, 10.0, 0.0, 20.0, 20.0));
+        assert_eq!(
+            g[2],
+            (t::source::Range::new(3, 3), 16, 10.0, 0.0, 20.0, 20.0)
+        );
         let row = line
             .edge_units()
             .find(|row| {
-                row.owners()
-                    .any(|owner| owner == t::LineEdgeOwner::Alternative(alternative.clone()))
+                row.owners().any(|owner| {
+                    owner == t::finalized::LineEdgeOwner::Alternative(alternative.clone())
+                })
             })
             .unwrap();
         assert_eq!(row.advance(), 10.0);
@@ -1208,7 +1276,7 @@ fn hanging_computed_indication_retains_alternative_and_original_source_custody()
             .mapping_views()
             .find(|m| m.alternative() == Some(alternative.clone()))
             .unwrap();
-        assert_eq!(mapping.source_range(), t::Range::new(3, 3));
+        assert_eq!(mapping.source_range(), t::source::Range::new(3, 3));
         assert_eq!(mapping.insertion_anchor().unwrap().get(), 3);
         let layout = placed(&p, line);
         assert_eq!(
@@ -1220,63 +1288,66 @@ fn hanging_computed_indication_retains_alternative_and_original_source_custody()
 
 #[test]
 fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
-    use t::SourceProcessingEvent as E;
+    use t::capture::SourceProcessingEvent as E;
     let base = style(punctuation(
         false,
-        Some(t::HangingPunctuationEnd::ForceEnd),
+        Some(t::style::HangingPunctuationEnd::ForceEnd),
         false,
     ));
-    let source = t::Source::identified("A. B", t::Id::from_u64(71074), 5);
+    let source = t::source::Source::identified("A. B", t::source::Id::from_u64(71074), 5);
     let processed = std::sync::Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
-            origins: vec![t::ParagraphOrigin {
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![t::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: t::Range::new(0, 4),
-                aggregate: t::Range::new(0, 4),
-                kind: t::ParagraphOriginKind::Authored,
+                local: t::source::Range::new(0, 4),
+                aggregate: t::source::Range::new(0, 4),
+                kind: t::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             controls: vec![
-                t::ParagraphControl {
+                t::paragraph::ParagraphControl {
                     at: 0,
-                    kind: t::ParagraphControlKind::InlineBoundaryStart,
+                    kind: t::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
-                t::ParagraphControl {
+                t::paragraph::ParagraphControl {
                     at: 4,
-                    kind: t::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: t::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
             ],
             scopes: vec![
-                t::SourceProcessingScope::Block {
+                t::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: t::SourceProcessingTopology::Complete,
-                    trim: t::WhiteSpaceTrim::default(),
+                    topology: t::capture::SourceProcessingTopology::Complete,
+                    trim: t::capture::WhiteSpaceTrim::default(),
                     base_style: base.clone(),
                     used_direction: LTR,
                 },
-                t::SourceProcessingScope::Inline {
+                t::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
-                    trim: t::WhiteSpaceTrim::default(),
+                    trim: t::capture::WhiteSpaceTrim::default(),
                     style: Some(base),
-                    boundaries: Some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: Some(t::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
                 },
             ],
-            paragraphs: vec![t::SourceProcessingParagraph {
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
                 base_direction: LTR,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
@@ -1284,15 +1355,15 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
                 E::EnterScope(1),
                 E::Control {
                     control: 0,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::Origin {
                     origin: 0,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::Control {
                     control: 1,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::ExitScope(1),
                 E::ExitParagraph(0),
@@ -1301,17 +1372,17 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         })
         .unwrap(),
     );
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| t::WrappingPolicy {
+        .map(|r| t::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
@@ -1320,7 +1391,7 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
         .unwrap();
     let p = system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     let scope = p
         .captured_owner()
@@ -1332,7 +1403,7 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
                 .map(|i| i.scope())
                 .collect::<Vec<_>>()
         })
-        .find(|s| s.role() == t::ScopeRole::Inline)
+        .find(|s| s.role() == t::capture::ScopeRole::Inline)
         .unwrap();
     let entry = p
         .control_views()
@@ -1351,7 +1422,7 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
     let cut = p
         .opportunity_views()
         .find(|o| {
-            o.kind() == t::PreparedBreakKind::Allowed
+            o.kind() == t::prepared::PreparedBreakKind::Allowed
                 && o.boundary().view().source_after().get() == 3
         })
         .unwrap()
@@ -1359,16 +1430,18 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
     for bp in [0.0, 5.0] {
         let mut first = request(&p, 40.0, None, None);
         first.end = cut.view().boundary();
-        first.termination = t::PreparedTermination::Ordinary(cut.clone());
+        first.termination = t::selection::PreparedTermination::Ordinary(cut.clone());
         first
             .participants
             .truncate(first.end.view().participant_offset());
         first.controls.retain(|c| {
             first
                 .participants
-                .contains(&t::PreparedParticipant::Control(c.occurrence.clone()))
+                .contains(&t::prepared::PreparedParticipant::Control(
+                    c.occurrence.clone(),
+                ))
         });
-        first.context.end = t::LineEnd::Soft;
+        first.context.end = t::selection::LineEnd::Soft;
         assert_eq!(first.controls.len(), 1);
         assert_eq!(first.controls[0].occurrence, entry);
         while let Some(occurrence) = p.boundary_context_demand(&first).unwrap() {
@@ -1376,9 +1449,10 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
             let advance = if occurrence == exit { bp } else { 0.0 };
             first
                 .boundary_context
-                .push(t::InlineBoundaryContextAllocation {
+                .push(t::allocation::InlineBoundaryContextAllocation {
                     occurrence,
-                    boundary: t::InlineBoundaryAllocation::contribution(advance).unwrap(),
+                    boundary: t::allocation::InlineBoundaryAllocation::contribution(advance)
+                        .unwrap(),
                 });
             assert!(first.boundary_context.len() <= 2);
         }
@@ -1399,18 +1473,21 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         next.participants.drain(..from);
         next.controls.retain(|c| {
             next.participants
-                .contains(&t::PreparedParticipant::Control(c.occurrence.clone()))
+                .contains(&t::prepared::PreparedParticipant::Control(
+                    c.occurrence.clone(),
+                ))
         });
         assert_eq!(next.controls.len(), 1);
         assert_eq!(next.controls[0].occurrence, exit);
-        next.controls[0].boundary = Some(t::InlineBoundaryAllocation::contribution(bp).unwrap());
-        next.context.start = t::LineStart::Continuation;
+        next.controls[0].boundary =
+            Some(t::allocation::InlineBoundaryAllocation::contribution(bp).unwrap());
+        next.context.start = t::selection::LineStart::Continuation;
         while let Some(occurrence) = p.boundary_context_demand(&next).unwrap() {
             assert_eq!(occurrence, entry);
             next.boundary_context
-                .push(t::InlineBoundaryContextAllocation {
+                .push(t::allocation::InlineBoundaryContextAllocation {
                     occurrence,
-                    boundary: t::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
+                    boundary: t::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
                 });
             assert!(next.boundary_context.len() <= 1);
         }
@@ -1420,14 +1497,14 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
             measures(&receiving),
             (10.0 + bp, 10.0 + bp, 10.0 + bp, 10.0 + bp)
         );
-        assert_eq!(glyphs(&receiving, AHEM)[0].0, t::Range::new(3, 4));
+        assert_eq!(glyphs(&receiving, AHEM)[0].0, t::source::Range::new(3, 4));
     }
     assert_eq!(p.analyzed_source().source(), &source);
 }
 
 #[test]
 fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_overflow() {
-    use t::HangingPunctuationEnd::{AllowEnd, ForceEnd};
+    use t::style::HangingPunctuationEnd::{AllowEnd, ForceEnd};
     // BreakSpaces keeps SPACE ordinary in every measure, independently of the
     // eligible punctuation; it cannot enter a preserved-whitespace edge chain.
     // A SPACE period has three 10px contributions. Natural AllowEnd
@@ -1445,8 +1522,8 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
         let p = prepare(
             input(
                 "A .",
-                t::Style {
-                    white_space: t::WhiteSpace::BreakSpaces,
+                t::style::Style {
+                    white_space: t::style::WhiteSpace::BreakSpaces,
                     ..style(punctuation(false, end, false))
                 },
             ),
@@ -1454,47 +1531,47 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
         );
         assert_eq!(
             p.analyzed_source().style().white_space,
-            t::WhiteSpace::BreakSpaces
+            t::style::WhiteSpace::BreakSpaces
         );
         assert_eq!(
             p.unit_views()
                 .map(|u| (u.source_range(), u.advance()))
                 .collect::<Vec<_>>(),
             [
-                (t::Range::new(0, 1), 10.0),
-                (t::Range::new(1, 2), 10.0),
-                (t::Range::new(2, 3), 10.0)
+                (t::source::Range::new(0, 1), 10.0),
+                (t::source::Range::new(1, 2), 10.0),
+                (t::source::Range::new(2, 3), 10.0)
             ]
         );
         let mut r = request(&p, width, None, None);
-        r.context.spacing = t::SpacingPolicy::Spaces;
+        r.context.spacing = t::spacing::SpacingPolicy::Spaces;
         let selected = p.select(r).unwrap();
         let slots = selected.spacing_slots().collect::<Vec<_>>();
         assert_eq!(slots.len(), 1);
         let space = p
             .unit_views()
-            .find(|u| u.source_range() == t::Range::new(1, 2))
+            .find(|u| u.source_range() == t::source::Range::new(1, 2))
             .unwrap()
             .handle();
         assert_eq!(
             slots[0].participants().cloned().collect::<Vec<_>>(),
-            [t::PreparedParticipant::Text(space)]
+            [t::prepared::PreparedParticipant::Text(space)]
         );
         assert_eq!(
             slots[0]
                 .pieces()
                 .map(|piece| piece.owner())
                 .collect::<Vec<_>>(),
-            [t::SpacingSlotOwner::Source {
+            [t::spacing::SpacingSlotOwner::Source {
                 origin: p.origin_views().next().unwrap().handle(),
-                local: t::Range::new(1, 2),
-                aggregate: t::Range::new(1, 2),
+                local: t::source::Range::new(1, 2),
+                aggregate: t::source::Range::new(1, 2),
             }]
         );
         let natural = selected
-            .finalize(surgeist_text::LineAllocations {
-                spacing: t::SpacingAllocations::None,
-                scopes: surgeist_text::ScopeAllocations::None,
+            .finalize(surgeist_text::scope_alignment::LineAllocations {
+                spacing: t::spacing::SpacingAllocations::None,
+                scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(natural.feedback().advance, 30.0);
@@ -1508,19 +1585,21 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
         if end == Some(AllowEnd) {
             assert_eq!(
                 classification,
-                t::LineEdgeDisposition::Conditional {
-                    side: t::LineEdgeSide::End,
+                t::finalized::LineEdgeDisposition::Conditional {
+                    side: t::finalized::LineEdgeSide::End,
                     eligible: width < 30.0
                 }
             );
         }
         let line = selected
-            .finalize(surgeist_text::LineAllocations {
-                spacing: t::SpacingAllocations::Complete(vec![t::SpacingAllocation {
-                    slot: slots[0].clone(),
-                    amount,
-                }]),
-                scopes: surgeist_text::ScopeAllocations::None,
+            .finalize(surgeist_text::scope_alignment::LineAllocations {
+                spacing: t::spacing::SpacingAllocations::Complete(vec![
+                    t::spacing::SpacingAllocation {
+                        slot: slots[0].clone(),
+                        amount,
+                    },
+                ]),
+                scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(line.feedback().advance, 30.0 + amount);
@@ -1533,14 +1612,14 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
         assert_eq!(feedback[0].advance, 10.0 + amount);
         assert_eq!(
             feedback[0].disposition,
-            t::SpacingSlotDisposition::Retained { trailing: false }
+            t::spacing::SpacingSlotDisposition::Retained { trailing: false }
         );
         let period = line.edge_units().nth(2).unwrap();
         assert_eq!(period.advance(), 10.0);
         assert_eq!(period.disposition(), classification);
         assert_eq!(
             period.source_pieces().collect::<Vec<_>>(),
-            [t::Range::new(2, 3)]
+            [t::source::Range::new(2, 3)]
         );
         assert_eq!(period.excluded_contribution(), (30.0 + amount) - expected.1);
         if end.is_some() {
@@ -1552,10 +1631,10 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
         assert_eq!(
             g,
             [
-                (t::Range::new(0, 1), 35, 10.0, 0.0, 0.0, 0.0),
-                (t::Range::new(1, 2), 3, 10.0, 0.0, 10.0, 10.0),
+                (t::source::Range::new(0, 1), 35, 10.0, 0.0, 0.0, 0.0),
+                (t::source::Range::new(1, 2), 3, 10.0, 0.0, 10.0, 10.0),
                 (
-                    t::Range::new(2, 3),
+                    t::source::Range::new(2, 3),
                     16,
                     10.0,
                     0.0,

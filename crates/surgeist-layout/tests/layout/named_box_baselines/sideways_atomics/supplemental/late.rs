@@ -123,9 +123,9 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
 fn late_scene<S: l::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
-    kind: t::InlineBoxKind,
+    kind: t::source::InlineBoxKind,
 ) -> (ShapeHost<S>, Vec<l::TextParagraphBinding<u32>>) {
-    let capacity = if kind == t::InlineBoxKind::InFlow {
+    let capacity = if kind == t::source::InlineBoxKind::InFlow {
         24.0
     } else {
         10.0
@@ -177,7 +177,7 @@ fn same_text<S: l::LayoutScalar>(
         assert_eq!(row.nodes(), other.nodes());
         assert_eq!(row.layout().source(), other.layout().source());
         assert_eq!(row.layout().key(), other.layout().key());
-        let positions = |text: &t::Layout| {
+        let positions = |text: &t::layout::Layout| {
             text.positions()
                 .map(|position| {
                     (
@@ -199,18 +199,21 @@ fn refusal<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(3))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(3))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -220,14 +223,17 @@ fn refusal<S: l::LayoutScalar>() {
         assert_eq!(text.lines().len(), 2);
         assert_eq!(text.inline_boxes().len(), 1);
         assert_eq!(text.inline_boxes()[0].kind(), kind);
-        assert_eq!(text.inline_boxes()[0].id(), t::Id::from_u64(3));
-        assert_eq!(text.inline_boxes()[0].rect().size, t::Size::new(6.0, 14.0));
+        assert_eq!(text.inline_boxes()[0].id(), t::source::Id::from_u64(3));
+        assert_eq!(
+            text.inline_boxes()[0].rect().size,
+            t::geometry::Size::new(6.0, 14.0)
+        );
         assert_eq!(text.source(), &parent.source);
         assert!(
             text.run_views()
-                .all(|run| run.glyph_basis() == t::GlyphBasis::Clockwise)
+                .all(|run| run.glyph_basis() == t::geometry::GlyphBasis::Clockwise)
         );
-        if kind == t::InlineBoxKind::InFlow {
+        if kind == t::source::InlineBoxKind::InFlow {
             assert_eq!(text.inline_boxes()[0].line(), 0);
             assert_eq!(receipt(&old, 2).feedback().advance, 24.0);
         }

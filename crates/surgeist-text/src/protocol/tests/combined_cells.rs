@@ -23,12 +23,14 @@ use crate::{
     },
     options::Alignment,
     processing::{
-        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem,
-        ProcessedSource, ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind,
-        ScopeAlignmentLimits, ScopeAlignmentUsage, ScopeFontReference, ScopeRole,
-        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
-        SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks, PlaintextItem, ProcessedSource,
+        contextual::{
+            CapturedScope, ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError,
+            ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeAlignmentUsage, ScopeFontReference,
+            ScopeRole, SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+            SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         ControlAllocation, FinalizedInlineBoxPiece, FinalizedLine, FormattedLineContext,

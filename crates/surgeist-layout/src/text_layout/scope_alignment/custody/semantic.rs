@@ -2,8 +2,11 @@
 use super::*;
 use crate::text_layout::scope_alignment::allocation_buffer;
 use surgeist_text::{
-    InlineBoundaryContextAllocation, SemanticAtomicAllocation, SemanticControlAllocation,
-    SemanticWindowEvidence, SemanticWindowRequest,
+    allocation::InlineBoundaryContextAllocation,
+    observation::{
+        SemanticAtomicAllocation, SemanticControlAllocation, SemanticWindowEvidence,
+        SemanticWindowRequest,
+    },
 };
 
 /// This opt-in owner leaves ordinary scope-resource layouts and quotas alone.
@@ -412,7 +415,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         &self,
         operation: Option<&ScopeOperation<'_>>,
         request_rows: usize,
-        result: Result<SemanticWindowEvidence, surgeist_text::SemanticWindowFailure>,
+        result: Result<SemanticWindowEvidence, surgeist_text::observation::SemanticWindowFailure>,
     ) -> surgeist_text::Result<SemanticWindowEvidence> {
         match result {
             Ok(evidence) => {
@@ -477,16 +480,16 @@ impl ScopeOperation<'_> {
     pub(super) fn census(
         &mut self,
         input: ScopeAlignmentCensusInput<'_>,
-        families: &[Option<surgeist_text::PreparedInlineBoxFamily>],
+        families: &[Option<surgeist_text::inline_box::PreparedInlineBoxFamily>],
     ) -> surgeist_text::Result<
         std::result::Result<
-            surgeist_text::ScopeAlignmentCensus,
-            surgeist_text::ScopeAlignmentCensusFailure,
+            surgeist_text::scope_alignment::ScopeAlignmentCensus,
+            surgeist_text::scope_alignment::ScopeAlignmentCensusFailure,
         >,
     > {
         let allowance = self.allowance()?;
         let Some(loan) = &mut self.semantic else {
-            return Ok(surgeist_text::scope_alignment_census(
+            return Ok(surgeist_text::scope_alignment::scope_alignment_census(
                 input,
                 ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies {
                     finalized: &self.strong,
@@ -529,7 +532,7 @@ impl ScopeOperation<'_> {
         for family in families.iter().flatten() {
             values.push(ScopeAlignmentProduct::InlineBoxFamily(family));
         }
-        let result = surgeist_text::scope_alignment_census(
+        let result = surgeist_text::scope_alignment::scope_alignment_census(
             input,
             ScopeAlignmentProducts::Mixed(&values),
             allowance,

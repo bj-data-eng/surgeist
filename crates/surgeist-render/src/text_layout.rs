@@ -19,7 +19,10 @@ use crate::accounting::{
 use std::mem::size_of;
 
 use surgeist_font::ResourceId;
-use surgeist_text::{Brush, Layout, RunView};
+use surgeist_text::{
+    layout::{Layout, RunView},
+    style::Brush,
+};
 
 use crate::{
     Error, Result,
@@ -547,7 +550,10 @@ fn color(brush: Brush) -> Result<Color> {
     Color::try_rgba(brush.r, brush.g, brush.b, brush.a)
 }
 
-fn text_glyph(run: &RunView<'_>, glyph: surgeist_text::GlyphPlacement) -> Result<TextGlyph> {
+fn text_glyph(
+    run: &RunView<'_>,
+    glyph: surgeist_text::layout::GlyphPlacement,
+) -> Result<TextGlyph> {
     let dx = f64::from(glyph.x());
     let dy = f64::from(glyph.y());
     let pen = glyph.pen();
@@ -575,7 +581,7 @@ fn run_transform(run: &RunView<'_>, placement: Transform) -> Result<Transform> {
     transform.then(placement)
 }
 
-fn decoration_rect(rect: surgeist_text::Rect) -> Result<crate::geometry::Rect> {
+fn decoration_rect(rect: surgeist_text::geometry::Rect) -> Result<crate::geometry::Rect> {
     crate::geometry::Rect::try_new(
         rect.origin.x,
         rect.origin.y,

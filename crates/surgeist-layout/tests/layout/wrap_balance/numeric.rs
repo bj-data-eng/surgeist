@@ -14,7 +14,12 @@ pub(super) fn numeric_atomic<S: l::LayoutScalar>(
         direction,
         vertical_align: l::VerticalAlignOf::Baseline,
         atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
-            t::BidiLevel::try_new(if direction == l::Direction::Ltr { 0 } else { 1 }).unwrap(),
+            t::supplied_line::BidiLevel::try_new(if direction == l::Direction::Ltr {
+                0
+            } else {
+                1
+            })
+            .unwrap(),
             following,
         )),
         size: l::Size::new(

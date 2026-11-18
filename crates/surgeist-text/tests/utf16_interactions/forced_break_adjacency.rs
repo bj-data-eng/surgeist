@@ -114,7 +114,7 @@ fn prepare_paragraph_at(
                 .collect(),
             anchor_order,
         },
-        surgeist_text::AnalysisTypography::HorizontalComposition,
+        surgeist_text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .expect("the actual paragraph capture is valid");
     let identity = analysis.identity();

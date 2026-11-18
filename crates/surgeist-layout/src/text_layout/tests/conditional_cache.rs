@@ -44,7 +44,7 @@ pub(super) fn assert_same<S: LayoutScalar>(
     };
     assert_eq!(lines(a), lines(b));
 }
-fn policy_paragraph(overflow: text::OverflowWrap) -> PreparedParagraph {
+fn policy_paragraph(overflow: text::style::OverflowWrap) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
     style.overflow_wrap = overflow;
     PreparedParagraph::new(
@@ -53,7 +53,7 @@ fn policy_paragraph(overflow: text::OverflowWrap) -> PreparedParagraph {
             ParagraphPart::text(11, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     )
 }
 fn root<S: LayoutScalar>(width: f64) -> NodeInputOf<S> {
@@ -67,7 +67,7 @@ fn root<S: LayoutScalar>(width: f64) -> NodeInputOf<S> {
     }
 }
 fn cached<S: LayoutScalar>() {
-    let paragraph = policy_paragraph(text::OverflowWrap::Anywhere);
+    let paragraph = policy_paragraph(text::style::OverflowWrap::Anywhere);
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
     let tree = float_tree::<S>(&binding, 20.0, Float::Left, 1);
@@ -80,7 +80,10 @@ fn cached<S: LayoutScalar>() {
             .iter()
             .map(|line| line.range())
             .collect::<Vec<_>>(),
-        [text::Range::new(0, 1), text::Range::new(1, 2)]
+        [
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2)
+        ]
     );
     assert_eq!(output(&cold, 30).location, Point::ZERO);
     cold.apply_to(&mut host).unwrap();
@@ -101,7 +104,7 @@ fn cached<S: LayoutScalar>() {
     assert_same(&changed, &fresh);
     changed.apply_to(&mut host).unwrap();
 
-    let ordinary = policy_paragraph(text::OverflowWrap::Normal);
+    let ordinary = policy_paragraph(text::style::OverflowWrap::Normal);
     let mut ordinary_binding = ordinary.binding(2);
     ordinary_binding.nodes = vec![10, 30, 11];
     host.tree
@@ -199,16 +202,16 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
     };
     let font = super::super::canonical::fonts::positioned_ahem(&[(35, delta)]);
     first.font = first.font.feature("\"kern\" 1");
-    first.overflow_wrap = text::OverflowWrap::Anywhere;
+    first.overflow_wrap = text::style::OverflowWrap::Anywhere;
     let mut second = ahem_style(10.0, 10.0);
-    second.overflow_wrap = text::OverflowWrap::Anywhere;
+    second.overflow_wrap = text::style::OverflowWrap::Anywhere;
     let paragraph = PreparedParagraph::with_registered_font(
         vec![
             ParagraphPart::text(10, Source::new("A"), first.clone()),
             ParagraphPart::text(11, Source::new("XX"), second),
         ],
         first,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
         &font,
     );
     let whole =
@@ -225,9 +228,9 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
     assert_eq!(
         actual,
         [
-            (text::Range::new(0, 1), 35, advance),
-            (text::Range::new(1, 2), 58, 10.0),
-            (text::Range::new(2, 3), 58, 10.0)
+            (text::source::Range::new(0, 1), 35, advance),
+            (text::source::Range::new(1, 2), 58, 10.0),
+            (text::source::Range::new(2, 3), 58, 10.0)
         ]
     );
     let mut off = ahem_style(10.0, 10.0);
@@ -235,7 +238,7 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
     let control = PreparedParagraph::with_registered_font(
         vec![ParagraphPart::text(10, Source::new("A"), off.clone())],
         off,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
         &font,
     );
     assert_eq!(
@@ -278,9 +281,9 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
             .map(|line| line.range())
             .collect::<Vec<_>>(),
         [
-            text::Range::new(0, 1),
-            text::Range::new(1, 2),
-            text::Range::new(2, 3)
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2),
+            text::source::Range::new(2, 3)
         ]
     );
     assert_eq!(
@@ -301,8 +304,8 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
         .finalized_fragment()
         .finalized_line();
     let origin = paragraph.origin(10);
-    let seam = text::TextSeam::Origin {
-        local: text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
+    let seam = text::finalized::TextSeam::Origin {
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
         origin,
     };
     let prefix = line.prefix_at(&seam).unwrap();
@@ -321,15 +324,15 @@ fn conditional_retained_zero_and_signed_prefixes_advance_source_and_keep_the_rea
 
 fn future<S: LayoutScalar>() {
     let mut style = ahem_style(10.0, 10.0);
-    style.white_space = text::WhiteSpace::Collapse;
-    style.overflow_wrap = text::OverflowWrap::Anywhere;
+    style.white_space = text::style::WhiteSpace::Collapse;
+    style.overflow_wrap = text::style::OverflowWrap::Anywhere;
     let paragraph = PreparedParagraph::new(
         vec![
             ParagraphPart::text(10, Source::new("AAA "), style.clone()),
             ParagraphPart::text(11, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
@@ -364,9 +367,9 @@ fn future<S: LayoutScalar>() {
             .map(|line| line.range())
             .collect::<Vec<_>>(),
         [
-            text::Range::new(0, 2),
-            text::Range::new(2, 4),
-            text::Range::new(4, 5)
+            text::source::Range::new(0, 2),
+            text::source::Range::new(2, 4),
+            text::source::Range::new(4, 5)
         ]
     );
     assert_eq!(
@@ -392,14 +395,14 @@ fn future<S: LayoutScalar>() {
             .map(|line| line.selected_line().request().context.end)
             .collect::<Vec<_>>(),
         [
-            text::LineEnd::Soft,
-            text::LineEnd::Soft,
-            text::LineEnd::Paragraph
+            text::selection::LineEnd::Soft,
+            text::selection::LineEnd::Soft,
+            text::selection::LineEnd::Paragraph
         ]
     );
     let origin = paragraph.origin(10);
-    let seam = text::TextSeam::Origin {
-        local: text::SourcePosition::try_new(origin.view().source().text(), 4).unwrap(),
+    let seam = text::finalized::TextSeam::Origin {
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), 4).unwrap(),
         origin,
     };
     assert_eq!(lines[1].prefix_at(&seam).unwrap().advance(), 10.0);

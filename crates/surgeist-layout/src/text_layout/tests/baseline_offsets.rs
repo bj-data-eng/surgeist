@@ -62,8 +62,8 @@ fn size<S: LayoutScalar>(mode: WritingMode, inline: f64, cross: f64) -> Size<S> 
 }
 
 struct Native {
-    prepared: text::PreparedText,
-    original: text::Source,
+    prepared: text::prepared::PreparedText,
+    original: text::source::Source,
 }
 impl Native {
     fn binding(&self, container: u32, text_node: u32) -> TextParagraphBinding<u32> {
@@ -112,41 +112,41 @@ fn native(
     let mut source = original.clone();
     for &(node, inline, cross) in boxes {
         let physical = size::<f64>(mode, inline, cross);
-        source.inline_box(text::InlineBox::new(
-            text::Id::from_u64(u64::from(node)),
-            text::InlineBoxKind::InFlow,
+        source.inline_box(text::source::InlineBox::new(
+            text::source::Id::from_u64(u64::from(node)),
+            text::source::InlineBoxKind::InFlow,
             original.text().len(),
-            text::Size::new(physical.width, physical.height),
+            text::geometry::Size::new(physical.width, physical.height),
         ));
     }
-    let style = text::Style {
-        white_space: text::WhiteSpace::Preserve,
-        wrap: text::Wrap::None,
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
+        wrap: text::style::Wrap::None,
         ..ahem_style(font_size, line_height)
     };
-    let extent = text::Range::new(0, original.text().len());
+    let extent = text::source::Range::new(0, original.text().len());
     let typography = if name(mode) == BaselineName::Central {
-        text::AnalysisTypography::Upright {
+        text::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::LeftToRight,
         }
     } else {
-        text::AnalysisTypography::HorizontalComposition
+        text::analyzed::AnalysisTypography::HorizontalComposition
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source,
             base_style: style,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: original.clone(),
                 local: extent,
                 aggregate: extent,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -154,41 +154,44 @@ fn native(
             boundary_policies: (0..boxes.len())
                 .flat_map(|index| {
                     [
-                        text::ParagraphBoundaryDefinition::AtomicBefore(index),
-                        text::ParagraphBoundaryDefinition::AtomicAfter(index),
+                        text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(index),
+                        text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(index),
                     ]
                 })
-                .map(|definition| text::ParagraphBoundaryPolicy {
+                .map(|definition| text::paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: text::Wrap::None,
-                    following_wrap: text::Wrap::None,
-                    ancestor_wrap: text::Wrap::None,
+                    preceding_wrap: text::style::Wrap::None,
+                    following_wrap: text::style::Wrap::None,
+                    ancestor_wrap: text::style::Wrap::None,
                 })
                 .collect(),
             anchor_order: (0..boxes.len())
-                .map(|index| text::ParagraphAnchor {
-                    item: text::ParagraphAnchorItem::Atomic(index),
-                    affinity: text::Affinity::Before,
+                .map(|index| text::paragraph::ParagraphAnchor {
+                    item: text::paragraph::ParagraphAnchorItem::Atomic(index),
+                    affinity: text::layout::Affinity::Before,
                 })
                 .collect(),
         },
         typography,
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::None);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::None);
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let orientation = match mode {
-        WritingMode::HorizontalTb => text::LineOrientation::Horizontal,
-        WritingMode::SidewaysRl => text::LineOrientation::SidewaysClockwise,
-        WritingMode::VerticalRl | WritingMode::VerticalLr => text::LineOrientation::Vertical,
-        WritingMode::SidewaysLr => text::LineOrientation::SidewaysCounterclockwise,
+        WritingMode::HorizontalTb => text::selection::LineOrientation::Horizontal,
+        WritingMode::SidewaysRl => text::selection::LineOrientation::SidewaysClockwise,
+        WritingMode::VerticalRl | WritingMode::VerticalLr => {
+            text::selection::LineOrientation::Vertical
+        }
+        WritingMode::SidewaysLr => text::selection::LineOrientation::SidewaysCounterclockwise,
     };
-    let mut options = text::PreparationOptions::default().with_orientation(orientation);
+    let mut options = text::prepared::PreparationOptions::default().with_orientation(orientation);
     if name(mode) == BaselineName::Alphabetic {
-        options = options.with_baseline_reference(text::FontBaseline::Alphabetic);
+        options = options.with_baseline_reference(text::font::FontBaseline::Alphabetic);
     }
     Native {
         prepared: system.prepare(&analyzed, options).unwrap(),
@@ -318,7 +321,7 @@ fn solve<Tree: LayoutTree<Node = u32>>(
 fn placed<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     container: u32,
-) -> &text::Layout {
+) -> &text::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -332,7 +335,7 @@ fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) ->
 fn finalized<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     container: u32,
-) -> text::FinalizedLine {
+) -> text::finalized::FinalizedLine {
     let layout = placed(batch, container);
     batch
         .final_inline_fragments()
@@ -349,7 +352,7 @@ fn fact<S: LayoutScalar>(value: BaselineFactOf<S>, axis: PhysicalAxis, offset: f
         BaselineFactOf::Available(BaselineCoordinateOf::try_new(axis, n(offset)).unwrap())
     );
 }
-fn raw(layout: &text::Layout, font_size: f32, advance: f32) {
+fn raw(layout: &text::layout::Layout, font_size: f32, advance: f32) {
     let mut glyphs = 0;
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -369,18 +372,18 @@ fn raw(layout: &text::Layout, font_size: f32, advance: f32) {
     }
     assert!(glyphs > 0);
 }
-fn custody(layout: &text::Layout, original: &Source) {
+fn custody(layout: &text::layout::Layout, original: &Source) {
     assert_eq!(layout.source().text(), original.text());
     let endpoint = |index, affinity| {
         layout
             .positions()
-            .find(|position| position.source_cursor() == text::Cursor::new(index, affinity))
+            .find(|position| position.source_cursor() == text::layout::Cursor::new(index, affinity))
             .unwrap()
     };
     let selection = layout
         .position_selection(
-            &endpoint(0, text::Affinity::After),
-            &endpoint(original.text().len(), text::Affinity::Before),
+            &endpoint(0, text::layout::Affinity::After),
+            &endpoint(original.text().len(), text::layout::Affinity::Before),
         )
         .unwrap();
     assert_eq!(selection.source_text(), original.text());
@@ -492,16 +495,19 @@ fn alpha<S: LayoutScalar>() {
                 }
                 let allocation =
                     finalized(&batch, 0).selected_line().request().atomics[0].allocation;
-                let text::AtomicLineAllocation::InFlow { alignment, .. } = allocation else {
+                let text::allocation::AtomicLineAllocation::InFlow { alignment, .. } = allocation
+                else {
                     panic!("the bound child is an actual in-flow box")
                 };
                 assert_eq!(
                     alignment,
-                    text::LineBoxAlignment::Shift(text::BaselineShift::try_new(delta).unwrap())
+                    text::allocation::LineBoxAlignment::Shift(
+                        text::source::BaselineShift::try_new(delta).unwrap()
+                    )
                 );
                 let natural = finalized(&batch, 0);
                 let replay = natural
-                    .with_spacing(text::SpacingAllocations::None)
+                    .with_spacing(text::spacing::SpacingAllocations::None)
                     .unwrap();
                 assert_eq!(replay.selected_line(), natural.selected_line());
                 assert_eq!(replay.feedback(), natural.feedback());
@@ -990,7 +996,7 @@ fn float_and_publication<S: LayoutScalar>() {
             matches!(
                 error.detail(),
                 Some(text::ErrorDetail::InvalidTextNumeric {
-                    category: text::TextNumericError::NonZeroLost,
+                    category: text::geometry::TextNumericError::NonZeroLost,
                     ..
                 })
             ),
@@ -1045,11 +1051,11 @@ fn counterclockwise<S: LayoutScalar>() {
     for native in [&parent, &inner] {
         assert_eq!(
             native.prepared.orientation(),
-            text::LineOrientation::SidewaysCounterclockwise
+            text::selection::LineOrientation::SidewaysCounterclockwise
         );
         assert_eq!(
             native.prepared.baseline_reference(),
-            Some(text::FontBaseline::Alphabetic)
+            Some(text::font::FontBaseline::Alphabetic)
         );
     }
     let tree = tree::<S>(
@@ -1107,7 +1113,7 @@ fn precision_native(control: bool) -> (Native, TextParagraphBinding<u32>) {
             ParagraphPart::text(1, original.clone(), style.clone()),
             ParagraphPart::Control {
                 node: 2,
-                kind: text::ParagraphControlKind::ForcedBreak,
+                kind: text::paragraph::ParagraphControlKind::ForcedBreak,
             },
         ],
         style,
@@ -1122,8 +1128,8 @@ fn precision_native(control: bool) -> (Native, TextParagraphBinding<u32>) {
     let prepared = system
         .prepare(
             &paragraph.prepared.analyzed_source(),
-            text::PreparationOptions::default()
-                .with_baseline_reference(text::FontBaseline::Alphabetic),
+            text::prepared::PreparationOptions::default()
+                .with_baseline_reference(text::font::FontBaseline::Alphabetic),
         )
         .unwrap();
     let native = Native { prepared, original };
@@ -1247,7 +1253,7 @@ fn precision_success<S: LayoutScalar>(control: bool, spacer: f64, translated_par
                 (pair.first(), pair.last()),
                 (BaselineFactOf::Absent, BaselineFactOf::Absent)
             );
-            let text::AtomicLineAllocation::InFlow {
+            let text::allocation::AtomicLineAllocation::InFlow {
                 flow, box_geometry, ..
             } = line.selected_line().request().atomics[0].allocation
             else {
@@ -1393,14 +1399,16 @@ fn precision_tiny_atomic<S: LayoutScalar>() {
         (line.feedback().baseline, line.feedback().line_height),
         (8.0, 10.0)
     );
-    let text::AtomicLineAllocation::InFlow { alignment, .. } =
+    let text::allocation::AtomicLineAllocation::InFlow { alignment, .. } =
         line.selected_line().request().atomics[0].allocation
     else {
         panic!("real in-flow child")
     };
     assert_eq!(
         alignment,
-        text::LineBoxAlignment::Shift(text::BaselineShift::try_new(delta).unwrap())
+        text::allocation::LineBoxAlignment::Shift(
+            text::source::BaselineShift::try_new(delta).unwrap()
+        )
     );
     // This atomic's raw top is distinct in Text's f64 domain. Its canonical
     // pixel edge is4 before the actual Layout scalar conversion consumes it.

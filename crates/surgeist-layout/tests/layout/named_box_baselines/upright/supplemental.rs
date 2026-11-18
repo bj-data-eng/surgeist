@@ -75,7 +75,7 @@ fn solve<S: l::LayoutScalar>(
 fn placed<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     container: u32,
-) -> &t::Layout {
+) -> &t::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -111,7 +111,7 @@ fn assert_named<S: l::LayoutScalar>(
 fn lines<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     binding: &l::TextParagraphBinding<u32>,
-) -> Vec<t::FinalizedLine> {
+) -> Vec<t::finalized::FinalizedLine> {
     let mut selected = std::collections::BTreeMap::new();
     for row in batch.unrounded_inline_fragments() {
         if matches!(row.owner(), l::InlineFragmentOwner::Node(node) if binding.nodes.contains(node))
@@ -148,7 +148,7 @@ fn assert_frame<S: l::LayoutScalar>(
         text.analyzed_source().identity(),
         fixture.prepared.analyzed_source().identity()
     );
-    assert_eq!(text.orientation(), t::LineOrientation::Vertical);
+    assert_eq!(text.orientation(), t::selection::LineOrientation::Vertical);
     assert_eq!(text.lines().len(), centers.len());
     let receipts = lines(batch, binding);
     assert_eq!(receipts.len(), centers.len());
@@ -156,13 +156,16 @@ fn assert_frame<S: l::LayoutScalar>(
         text.lines().iter().zip(&receipts).zip(centers).enumerate()
     {
         let range = if centers.len() == 1 {
-            t::Range::new(0, 2)
+            t::source::Range::new(0, 2)
         } else {
-            t::Range::new(index, index + 1)
+            t::source::Range::new(index, index + 1)
         };
         assert_eq!(line.range(), range);
         assert_eq!(line.baseline(), c);
-        assert_eq!(line.bounds(), t::Rect::new(c - 2.0, top, 10.0, capacity));
+        assert_eq!(
+            line.bounds(),
+            t::geometry::Rect::new(c - 2.0, top, 10.0, capacity)
+        );
         assert_eq!(
             (receipt.feedback().baseline, receipt.feedback().line_height),
             (8.0, 10.0)
@@ -177,22 +180,25 @@ fn assert_frame<S: l::LayoutScalar>(
         assert_eq!(request.context.available_inline, Some(capacity));
         assert_eq!(
             request.context.base_direction,
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         );
         assert_eq!(
             request.context.line_box_direction,
             if direction == l::Direction::Ltr {
-                t::LineBoxDirection::LeftToRight
+                t::selection::LineBoxDirection::LeftToRight
             } else {
-                t::LineBoxDirection::RightToLeft
+                t::selection::LineBoxDirection::RightToLeft
             }
         );
-        assert_eq!(request.context.orientation, t::LineOrientation::Vertical);
+        assert_eq!(
+            request.context.orientation,
+            t::selection::LineOrientation::Vertical
+        );
     }
     let runs = text.run_views().collect::<Vec<_>>();
     let mut glyphs = Vec::new();
     for run in runs {
-        assert_eq!(run.glyph_basis(), t::GlyphBasis::Unrotated);
+        assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Unrotated);
         assert_eq!(run.face().bytes(), fixture.bytes);
         assert_eq!(
             run.face().catalogue_identity(),
@@ -204,7 +210,10 @@ fn assert_frame<S: l::LayoutScalar>(
         } else {
             run.range().start
         };
-        assert_eq!(run.origin(), t::Point::new(centers[index], run_start));
+        assert_eq!(
+            run.origin(),
+            t::geometry::Point::new(centers[index], run_start)
+        );
         assert!(text.lines().iter().any(|line| {
             line.range().start <= run.range().start && run.range().end <= line.range().end
         }));
@@ -256,7 +265,10 @@ fn assert_frame<S: l::LayoutScalar>(
         }
     }
     source_ranges.sort_by_key(|range| range.start);
-    assert_eq!(source_ranges, [t::Range::new(0, 1), t::Range::new(1, 2)]);
+    assert_eq!(
+        source_ranges,
+        [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
+    );
 }
 
 fn intrinsic_and_auto<S: l::LayoutScalar>() {
@@ -491,7 +503,7 @@ fn fractional_translation<S: l::LayoutScalar>() {
             );
         }
         for run in text.run_views() {
-            assert_eq!(run.glyph_basis(), t::GlyphBasis::Unrotated);
+            assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Unrotated);
             assert_eq!(run.face().bytes(), fixture.bytes);
             for glyph in run.glyphs() {
                 assert_eq!(
@@ -741,8 +753,8 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
             assert_eq!(
                 text_error.detail(),
                 Some(&t::ErrorDetail::InvalidTextProtocol {
-                    reason: t::ProtocolError::MismatchedContext {
-                        field: t::ProtocolContextField::Orientation
+                    reason: t::prepared::ProtocolError::MismatchedContext {
+                        field: t::prepared::ProtocolContextField::Orientation
                     },
                 })
             );
@@ -796,20 +808,36 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
         // metric band, while the qualified source fragments are only 4 wide.
         // Source affinity distinguishes the two sides of the soft cut.
         for (cursor, c, y) in [
-            (t::Cursor::new(0, t::Affinity::After), centers[0], 0.0),
-            (t::Cursor::new(1, t::Affinity::Before), centers[0], 4.0),
-            (t::Cursor::new(1, t::Affinity::After), centers[1], 0.0),
-            (t::Cursor::new(2, t::Affinity::Before), centers[1], 4.0),
+            (
+                t::layout::Cursor::new(0, t::layout::Affinity::After),
+                centers[0],
+                0.0,
+            ),
+            (
+                t::layout::Cursor::new(1, t::layout::Affinity::Before),
+                centers[0],
+                4.0,
+            ),
+            (
+                t::layout::Cursor::new(1, t::layout::Affinity::After),
+                centers[1],
+                0.0,
+            ),
+            (
+                t::layout::Cursor::new(2, t::layout::Affinity::Before),
+                centers[1],
+                4.0,
+            ),
         ] {
             assert_eq!(
                 text.cursor(cursor).unwrap().rect(),
-                t::Rect::new(c - 2.0, y, 10.0, 1.0)
+                t::geometry::Rect::new(c - 2.0, y, 10.0, 1.0)
             );
         }
         let selected = text
-            .selection(t::Selection::new(
-                t::Cursor::new(0, t::Affinity::After),
-                t::Cursor::new(2, t::Affinity::Before),
+            .selection(t::layout::Selection::new(
+                t::layout::Cursor::new(0, t::layout::Affinity::After),
+                t::layout::Cursor::new(2, t::layout::Affinity::Before),
             ))
             .unwrap();
         assert_eq!(
@@ -819,21 +847,21 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
                 .map(|rect| (rect.line(), rect.rect()))
                 .collect::<Vec<_>>(),
             [
-                (0, t::Rect::new(centers[0] - 2.0, 0.0, 10.0, 4.0)),
-                (1, t::Rect::new(centers[1] - 2.0, 0.0, 10.0, 4.0)),
+                (0, t::geometry::Rect::new(centers[0] - 2.0, 0.0, 10.0, 4.0)),
+                (1, t::geometry::Rect::new(centers[1] - 2.0, 0.0, 10.0, 4.0)),
             ]
         );
         for (index, c) in centers.into_iter().enumerate() {
-            let t::Hit::Text(hit) = text.hit(t::Point::new(c, 0.5)) else {
+            let t::layout::Hit::Text(hit) = text.hit(t::geometry::Point::new(c, 0.5)) else {
                 panic!("actual native leading half-cell must hit its text occurrence");
             };
             assert_eq!(
                 hit.source_cursor(),
-                t::Cursor::new(index, t::Affinity::After)
+                t::layout::Cursor::new(index, t::layout::Affinity::After)
             );
             assert_eq!(
                 text.position_geometry(&hit).unwrap().rect(),
-                t::Rect::new(c - 2.0, 0.0, 10.0, 1.0)
+                t::geometry::Rect::new(c - 2.0, 0.0, 10.0, 1.0)
             );
         }
 

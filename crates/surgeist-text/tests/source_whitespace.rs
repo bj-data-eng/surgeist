@@ -2,7 +2,9 @@
 //! CSS Text4 §4 defines document-language breaks and CR-as-space; §4.3.1
 //! preserves tabs/spaces and represents a preserved segment break as one LF.
 use surgeist_text::{
-    DocumentSegmentBreaks, Id, Range, Source, Style, Text, WhiteSpace, process_source_whitespace,
+    processing::{DocumentSegmentBreaks, process_source_whitespace},
+    source::{Id, Range, Source, Text},
+    style::{Style, WhiteSpace},
 };
 
 fn assert_original(source: &Source, id: Id, revision: u64, units: &[u16]) {

@@ -818,9 +818,11 @@ fn normal_payload(
     // fourth per-level term covers partition endpoints; this is a bound, not
     // an executed-visit trace. No new permutation algorithm is introduced.
     let overflow = || {
-        scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
-        })
+        scope_alignment::refusal(
+            crate::processing::contextual::ScopeAlignmentError::Overflow {
+                kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
+            },
+        )
     };
     let passes = minimum_odd.map_or(0, |minimum| usize::from(maximum - minimum) + 1);
     let factor = passes

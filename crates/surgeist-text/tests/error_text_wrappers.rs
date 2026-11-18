@@ -19,28 +19,32 @@ const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 
 fn assert_send_sync<E: StdError + Send + Sync + 'static>() {}
 
-fn paragraph(value: &str) -> t::ParagraphInput {
-    let source = t::Source::identified(t::Text::from(value), t::Id::from_u64(65301), 1);
+fn paragraph(value: &str) -> t::paragraph::ParagraphInput {
+    let source = t::source::Source::identified(
+        t::source::Text::from(value),
+        t::source::Id::from_u64(65301),
+        1,
+    );
     let end = source.text().len();
-    t::ParagraphInput {
+    t::paragraph::ParagraphInput {
         source: source.clone(),
-        base_style: t::Style {
-            font: t::Font::new().family("Ahem"),
+        base_style: t::style::Style {
+            font: t::style::Font::new().family("Ahem"),
             size: 10.0,
-            line_height: t::LineHeight::Absolute(10.0),
-            ..t::Style::default()
+            line_height: t::style::LineHeight::Absolute(10.0),
+            ..t::style::Style::default()
         },
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: t::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: t::ParagraphStrut::DefaultFont,
-        terminal_edge: t::ParagraphTerminalEdge::BlockEnd,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: t::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![t::ParagraphOrigin {
+        origins: vec![t::paragraph::ParagraphOrigin {
             text_node: None,
             source,
-            local: t::Range::new(0, end),
-            aggregate: t::Range::new(0, end),
-            kind: t::ParagraphOriginKind::Authored,
+            local: t::source::Range::new(0, end),
+            aggregate: t::source::Range::new(0, end),
+            kind: t::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -51,16 +55,18 @@ fn paragraph(value: &str) -> t::ParagraphInput {
 }
 
 /// A preparation made from a plain source: it has no contextual capture.
-fn uncaptured_preparation() -> t::PreparedText {
+fn uncaptured_preparation() -> t::prepared::PreparedText {
     let input = paragraph("ab");
     let wrap = input.base_style.wrap;
-    let analyzed =
-        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = t::analyzed::AnalyzedSource::from_paragraph(
+        input,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| t::WrappingPolicy {
+        .map(|relation| t::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap: wrap,
         })
@@ -71,7 +77,7 @@ fn uncaptured_preparation() -> t::PreparedText {
         .register_fonts(AHEM.to_vec(), common::FONT_LIMITS)
         .unwrap();
     system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap()
 }
 
@@ -93,11 +99,15 @@ fn an_error_prints_its_message_without_its_code() {
 #[test]
 fn an_error_from_a_public_operation_prints_its_message_only() {
     // A reversed delimiter is refused by whitespace processing.
-    let source = t::Source::identified(t::Text::from("ab\ncd"), t::Id::from_u64(65302), 1);
-    let error = t::process_source_whitespace(
+    let source = t::source::Source::identified(
+        t::source::Text::from("ab\ncd"),
+        t::source::Id::from_u64(65302),
+        1,
+    );
+    let error = t::processing::process_source_whitespace(
         source,
-        t::Style::default(),
-        t::DocumentSegmentBreaks::Defined(vec![t::Range { start: 3, end: 2 }]),
+        t::style::Style::default(),
+        t::processing::DocumentSegmentBreaks::Defined(vec![t::source::Range { start: 3, end: 2 }]),
     )
     .unwrap_err();
     assert_eq!(error.code, t::ErrorCode::InvalidRange);
@@ -119,13 +129,15 @@ fn an_error_reports_its_source_without_repeating_it() {
 
 #[test]
 fn a_failed_census_states_only_its_own_context() {
-    assert_send_sync::<t::ScopeAlignmentCensusFailure>();
+    assert_send_sync::<t::scope_alignment::ScopeAlignmentCensusFailure>();
     let prepared = uncaptured_preparation();
     // The preparation has no contextual capture, so no allowance can fund the census.
-    let failure = t::scope_alignment_census(
-        t::ScopeAlignmentCensusInput::Product(t::ScopeAlignmentProduct::Prepared(&prepared)),
-        t::ScopeAlignmentProducts::Mixed(&[]),
-        t::ScopeAlignmentAllowance::new(1_000, 1_000_000),
+    let failure = t::scope_alignment::scope_alignment_census(
+        t::scope_alignment::ScopeAlignmentCensusInput::Product(
+            t::scope_alignment::ScopeAlignmentProduct::Prepared(&prepared),
+        ),
+        t::scope_alignment::ScopeAlignmentProducts::Mixed(&[]),
+        t::scope_alignment::ScopeAlignmentAllowance::new(1_000, 1_000_000),
     )
     .unwrap_err();
     assert_eq!(failure.error().code, t::ErrorCode::ScopeAlignmentRefused);
@@ -141,15 +153,15 @@ fn a_failed_census_states_only_its_own_context() {
 
 #[test]
 fn a_failed_semantic_window_states_only_its_own_context() {
-    assert_send_sync::<t::SemanticWindowFailure>();
+    assert_send_sync::<t::observation::SemanticWindowFailure>();
     let prepared = uncaptured_preparation();
     let segment = prepared.source_segments().next().unwrap();
-    let request = t::SemanticWindowRequest::new(segment);
+    let request = t::observation::SemanticWindowRequest::new(segment);
     // The preparation has no contextual capture, so no allowance can fund the window.
     let failure = prepared
         .semantic_window_with_scope_allowance(
             &request,
-            t::ScopeAlignmentAllowance::new(1_000, 1_000_000),
+            t::scope_alignment::ScopeAlignmentAllowance::new(1_000, 1_000_000),
         )
         .unwrap_err();
     assert_eq!(failure.error().code, t::ErrorCode::ScopeAlignmentRefused);

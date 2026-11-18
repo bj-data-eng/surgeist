@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use super::scope_alignment::{EntryBacking, EntryFunding, EntryFundingRef, ScopeLease};
-use surgeist_text::{PreparedAlternative, PreparedBoundary, PreparedSourceSegment};
+use surgeist_text::prepared::{PreparedAlternative, PreparedBoundary, PreparedSourceSegment};
 
 #[cfg(test)]
 #[path = "formatted_tests.rs"]
@@ -244,7 +244,7 @@ impl PartialEq for FormattedTailUses {
 pub(crate) struct NumericFormattedLine {
     pub(crate) source_end: usize,
     pub(crate) descriptor_end: usize,
-    pub(crate) ending: surgeist_text::LineEnd,
+    pub(crate) ending: surgeist_text::selection::LineEnd,
 }
 
 #[derive(Clone, Debug, PartialEq)]

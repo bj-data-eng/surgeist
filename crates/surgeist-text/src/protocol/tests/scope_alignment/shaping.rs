@@ -11,7 +11,7 @@ use crate::{
     id::Id,
     layout::{Affinity, Layout},
     options::Alignment,
-    processing::{
+    processing::contextual::{
         ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError, ScopeFontReference,
         SourceProcessingConnection, SourceProcessingScope, process_contextual_source,
     },
@@ -93,7 +93,7 @@ fn input(
         *font_reference = Some(reference());
     }
     value.paragraphs[0].paragraph_strut = ParagraphStrut::AllocatedContributions;
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     value.events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     let mut open = None;
     for (i, &owner) in owners.iter().enumerate() {

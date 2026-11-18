@@ -7,7 +7,7 @@ use crate::{
     id::Id,
     layout::{Affinity, Cursor, Layout},
     options::Alignment,
-    processing::{
+    processing::contextual::{
         CapturedScope, ContextualSourceInput, ScopeAlignmentError, ScopeAlignmentLimitKind,
         ScopeAlignmentLimits, ScopeAlignmentUsage, process_contextual_source,
     },

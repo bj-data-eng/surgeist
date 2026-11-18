@@ -1,5 +1,28 @@
 //! Public UTF-16 source and interaction contracts over registered fixture fonts.
-use surgeist_text::*;
+use surgeist_text::{
+    ErrorCode, ErrorDetail, System,
+    analyzed::AnalyzedSource,
+    geometry::Size,
+    layout::{Affinity, Cursor, Layout, Selection},
+    options::Options,
+    paragraph::{
+        ParagraphAnchor, ParagraphAnchorItem, ParagraphBaseDirection, ParagraphBoundaryDefinition,
+        ParagraphBoundaryPolicy, ParagraphControl, ParagraphControlKind, ParagraphInput,
+        ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition,
+        ParagraphStrut, ParagraphTerminalEdge,
+    },
+    prepared::{
+        PreparationOptions, PreparedAlternativeDefinition, PreparedBreakKind, PreparedParticipant,
+        PreparedText,
+    },
+    processing::DocumentSegmentBreaks,
+    source::{
+        Id, InlineBox, InlineBoxKind, Range, Source, SourcePosition, SourceRange, Text, TextEdit,
+    },
+    style::{Direction, Font, Slant, Style, Weight, WhiteSpace, Wrap},
+};
+#[cfg(feature = "text-accessibility")]
+use surgeist_text::{accessibility::Accessibility, geometry::Point};
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 
@@ -171,7 +194,7 @@ fn actual_refusal_preserves_original_cache_while_isolated_and_literal_units_rema
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::ShapingRefused {
-            reason: surgeist_text::ShapingRefusalReason::ContextLimit,
+            reason: surgeist_text::layout::ShapingRefusalReason::ContextLimit,
         })
     );
     assert_eq!(system.stats(), before);

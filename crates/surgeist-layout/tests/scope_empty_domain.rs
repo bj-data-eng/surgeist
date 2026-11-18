@@ -48,82 +48,85 @@ impl layout::LayoutTree for Tree {
     }
 }
 
-fn prepare() -> Vec<text::PreparedText> {
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+fn prepare() -> Vec<text::prepared::PreparedText> {
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
+        line_height: text::style::LineHeight::Absolute(10.0),
         locale: Some("ja".into()),
-        word_space_transform: text::WordSpaceTransform::None,
+        word_space_transform: text::style::WordSpaceTransform::None,
         ..Default::default()
     };
-    let mut source = text::Source::new(format!("{JAPANESE}{JAPANESE}"));
+    let mut source = text::source::Source::new(format!("{JAPANESE}{JAPANESE}"));
     let n = JAPANESE.encode_utf16().count();
     let end = 2 * n;
-    source.span(text::Range::new(0, end), style.clone());
-    let origin = |start, end| text::ParagraphOrigin {
+    source.span(text::source::Range::new(0, end), style.clone());
+    let origin = |start, end| text::paragraph::ParagraphOrigin {
         text_node: None,
         source: source.clone(),
-        local: text::Range::new(start, end),
-        aggregate: text::Range::new(start, end),
-        kind: text::ParagraphOriginKind::Authored,
+        local: text::source::Range::new(start, end),
+        aggregate: text::source::Range::new(start, end),
+        kind: text::paragraph::ParagraphOriginKind::Authored,
     };
-    let block = || text::SourceProcessingScope::Block {
+    let block = || text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
+        topology: text::capture::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: style.clone(),
-        used_direction: text::ParagraphBaseDirection::LeftToRight,
+        used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
     };
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let control = |control| E::Control {
         control,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let occurrence = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: vec![origin(0, n), origin(n, end)],
             connections: vec![],
             controls: vec![
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 0,
-                    kind: text::ParagraphControlKind::InlineBoundaryStart,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: end,
-                    kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
             ],
             boundary_policies: vec![],
             replacements: vec![],
             scopes: vec![
                 block(),
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
                     style: Some(style.clone()),
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
                 },
                 block(),
             ],
             paragraphs: (0..3)
-                .map(|_| text::SourceProcessingParagraph {
-                    base_direction: text::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                .map(|_| text::capture::SourceProcessingParagraph {
+                    base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             // The inner plain Block has its required paragraph, with no
@@ -160,22 +163,22 @@ fn prepare() -> Vec<text::PreparedText> {
     processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                text::AnalysisTypography::HorizontalComposition,
+                text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())
-                .map(|row| text::WrappingPolicy {
+                .map(|row| text::analyzed::WrappingPolicy {
                     relation: row.handle(),
-                    ancestor_wrap: text::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 })
                 .collect();
             let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
             system
-                .prepare(&analyzed, text::PreparationOptions::default())
+                .prepare(&analyzed, text::prepared::PreparationOptions::default())
                 .unwrap()
         })
         .collect()
@@ -449,55 +452,55 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
 
 #[test]
 fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Discard,
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Discard,
         ..Default::default()
     };
-    let mut source = text::Source::new(" ");
-    let whole = text::Range::new(0, 1);
+    let mut source = text::source::Source::new(" ");
+    let whole = text::source::Range::new(0, 1);
     source.span(whole, style.clone());
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: whole,
                 aggregate: whole,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
             boundary_policies: vec![],
             replacements: vec![],
-            scopes: vec![text::SourceProcessingScope::Block {
+            scopes: vec![text::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Complete,
+                topology: text::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: text::ParagraphBaseDirection::LeftToRight,
+                used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
                 E::EnterParagraph(0),
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::ExitScope(0),
@@ -506,9 +509,9 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         .unwrap(),
     );
     assert_eq!(processed.processed_text().len(), 0);
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = text::System::default();
@@ -519,7 +522,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         )
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     // Output emptiness does not erase the original occurrence.
     assert_eq!(prepared.origin_views().count(), 1);

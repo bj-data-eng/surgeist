@@ -581,7 +581,7 @@ pub(crate) struct FinalizedLineData {
     pub(crate) scope_cell_band: Option<(f64, f64)>,
     pub(crate) scope_allocations: Vec<crate::protocol::ScopeFrameAllocation>,
     pub(crate) scope_retention: Option<crate::protocol::ScopeAlignmentRetention>,
-    pub(crate) scope_usage: Option<crate::processing::ScopeAlignmentUsage>,
+    pub(crate) scope_usage: Option<crate::processing::contextual::ScopeAlignmentUsage>,
     pub(crate) measurements: Option<crate::protocol::LineMeasurements>,
     pub(crate) font_runs: Vec<PreparedRun>,
     pub(crate) runs: Vec<FinalizedRun>,

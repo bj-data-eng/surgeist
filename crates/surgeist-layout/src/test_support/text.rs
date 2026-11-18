@@ -4,11 +4,18 @@
 //! They do not accept shaped widths, glyph packets, levels or break receipts.
 
 use surgeist_text::{
-    Affinity, AnalyzedSource, DocumentSegmentBreaks, Font, Id, InlineBox, InlineBoxKind,
-    LineHeight, ParagraphAnchor, ParagraphAnchorItem, ParagraphBaseDirection,
-    ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
-    ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphInput,
-    ParagraphOrigin, ParagraphOriginKind, PreparationOptions, PreparedText, Source, Style, System,
+    System,
+    analyzed::AnalyzedSource,
+    layout::Affinity,
+    paragraph::{
+        ParagraphAnchor, ParagraphAnchorItem, ParagraphBaseDirection, ParagraphBoundaryDefinition,
+        ParagraphBoundaryPolicy, ParagraphConnection, ParagraphConnectionKind, ParagraphControl,
+        ParagraphControlKind, ParagraphInput, ParagraphOrigin, ParagraphOriginKind,
+    },
+    prepared::{PreparationOptions, PreparedText},
+    processing::DocumentSegmentBreaks,
+    source::{Id, InlineBox, InlineBoxKind, Source},
+    style::{Font, LineHeight, Style},
 };
 
 use crate::{
@@ -34,12 +41,12 @@ pub(crate) fn ahem_style(size: f32, line_height: f64) -> Style {
 /// facts and preserves any exact relation policy already captured by the input.
 pub(crate) fn in_flat_wrapping_context(
     analyzed: AnalyzedSource,
-    ancestor_wrap: surgeist_text::Wrap,
+    ancestor_wrap: surgeist_text::style::Wrap,
 ) -> AnalyzedSource {
     let policies = analyzed
         .wrapping_relations()
         .filter(|view| view.ancestor_wrap().is_none())
-        .map(|view| surgeist_text::WrappingPolicy {
+        .map(|view| surgeist_text::analyzed::WrappingPolicy {
             relation: view.handle(),
             ancestor_wrap,
         })
@@ -54,11 +61,11 @@ pub(crate) enum ParagraphPart {
     Text(Box<ParagraphText>),
     Atomic {
         node: u32,
-        size: surgeist_text::Size,
+        size: surgeist_text::geometry::Size,
     },
     OutOfFlow {
         node: u32,
-        size: surgeist_text::Size,
+        size: surgeist_text::geometry::Size,
     },
     Control {
         node: u32,
@@ -93,8 +100,8 @@ pub(crate) struct PreparedParagraph {
 }
 
 struct ParagraphFacts<'font> {
-    strut: surgeist_text::ParagraphStrut,
-    terminal: surgeist_text::ParagraphTerminalEdge,
+    strut: surgeist_text::paragraph::ParagraphStrut,
+    terminal: surgeist_text::paragraph::ParagraphTerminalEdge,
     font: &'font [u8],
 }
 
@@ -105,14 +112,14 @@ impl PreparedParagraph {
         parts: Vec<ParagraphPart>,
         base_style: Style,
         direction: ParagraphBaseDirection,
-        terminal: surgeist_text::ParagraphTerminalEdge,
+        terminal: surgeist_text::paragraph::ParagraphTerminalEdge,
     ) -> Self {
         Self::with_preparation(
             parts,
             base_style,
             direction,
             ParagraphFacts {
-                strut: surgeist_text::ParagraphStrut::DefaultFont,
+                strut: surgeist_text::paragraph::ParagraphStrut::DefaultFont,
                 terminal,
                 font: AHEM,
             },
@@ -141,13 +148,13 @@ impl PreparedParagraph {
         parts: Vec<ParagraphPart>,
         base_style: Style,
         direction: ParagraphBaseDirection,
-        replacements: Vec<surgeist_text::ParagraphReplacement>,
+        replacements: Vec<surgeist_text::paragraph::ParagraphReplacement>,
     ) -> Self {
         Self::with_strut(
             parts,
             base_style,
             direction,
-            surgeist_text::ParagraphStrut::DefaultFont,
+            surgeist_text::paragraph::ParagraphStrut::DefaultFont,
             replacements,
         )
     }
@@ -157,8 +164,8 @@ impl PreparedParagraph {
         parts: Vec<ParagraphPart>,
         base_style: Style,
         direction: ParagraphBaseDirection,
-        paragraph_strut: surgeist_text::ParagraphStrut,
-        replacements: Vec<surgeist_text::ParagraphReplacement>,
+        paragraph_strut: surgeist_text::paragraph::ParagraphStrut,
+        replacements: Vec<surgeist_text::paragraph::ParagraphReplacement>,
     ) -> Self {
         Self::with_strut_at_boundary(
             parts,
@@ -166,7 +173,7 @@ impl PreparedParagraph {
             direction,
             paragraph_strut,
             replacements,
-            surgeist_text::ParagraphTerminalEdge::BlockEnd,
+            surgeist_text::paragraph::ParagraphTerminalEdge::BlockEnd,
         )
     }
 
@@ -175,9 +182,9 @@ impl PreparedParagraph {
         parts: Vec<ParagraphPart>,
         base_style: Style,
         direction: ParagraphBaseDirection,
-        paragraph_strut: surgeist_text::ParagraphStrut,
-        replacements: Vec<surgeist_text::ParagraphReplacement>,
-        terminal: surgeist_text::ParagraphTerminalEdge,
+        paragraph_strut: surgeist_text::paragraph::ParagraphStrut,
+        replacements: Vec<surgeist_text::paragraph::ParagraphReplacement>,
+        terminal: surgeist_text::paragraph::ParagraphTerminalEdge,
     ) -> Self {
         Self::with_preparation(
             parts,
@@ -202,18 +209,20 @@ impl PreparedParagraph {
         block_direction: ParagraphBaseDirection,
     ) -> Self {
         let reference =
-            surgeist_text::ParagraphTabReference::new(base_style.clone(), block_direction).unwrap();
+            surgeist_text::tabs::ParagraphTabReference::new(base_style.clone(), block_direction)
+                .unwrap();
         Self::with_preparation(
             parts,
             base_style,
             direction,
             ParagraphFacts {
-                strut: surgeist_text::ParagraphStrut::DefaultFont,
-                terminal: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+                strut: surgeist_text::paragraph::ParagraphStrut::DefaultFont,
+                terminal: surgeist_text::paragraph::ParagraphTerminalEdge::BlockEnd,
                 font: AHEM,
             },
             Vec::new(),
-            PreparationOptions::try_new(1.0, surgeist_text::TabPreparation::CssStops).unwrap(),
+            PreparationOptions::try_new(1.0, surgeist_text::tabs::TabPreparation::CssStops)
+                .unwrap(),
             Some(reference),
         )
     }
@@ -230,8 +239,8 @@ impl PreparedParagraph {
             base_style,
             direction,
             ParagraphFacts {
-                strut: surgeist_text::ParagraphStrut::DefaultFont,
-                terminal: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+                strut: surgeist_text::paragraph::ParagraphStrut::DefaultFont,
+                terminal: surgeist_text::paragraph::ParagraphTerminalEdge::BlockEnd,
                 font,
             },
             Vec::new(),
@@ -245,9 +254,9 @@ impl PreparedParagraph {
         base_style: Style,
         direction: ParagraphBaseDirection,
         facts: ParagraphFacts<'_>,
-        replacements: Vec<surgeist_text::ParagraphReplacement>,
+        replacements: Vec<surgeist_text::paragraph::ParagraphReplacement>,
         options: PreparationOptions,
-        tab_reference: Option<surgeist_text::ParagraphTabReference>,
+        tab_reference: Option<surgeist_text::tabs::ParagraphTabReference>,
     ) -> Self {
         let ancestor_wrap = base_style.wrap;
         let mut aggregate = Source::new("");
@@ -289,14 +298,17 @@ impl PreparedParagraph {
                     for span in source.spans() {
                         let local = span.range();
                         aggregate.span(
-                            surgeist_text::Range::new(start + local.start, start + local.end),
+                            surgeist_text::source::Range::new(
+                                start + local.start,
+                                start + local.end,
+                            ),
                             span.style().clone(),
                         );
                     }
                     if range.is_empty() {
                         anchors.push(ParagraphAnchorItem::EmptyOrigin(origins.len()));
                     }
-                    let local = surgeist_text::Range::new(0, source.text().len());
+                    let local = surgeist_text::source::Range::new(0, source.text().len());
                     origins.push(ParagraphOrigin {
                         text_node: None,
                         source,
@@ -374,7 +386,7 @@ impl PreparedParagraph {
                     })
                     .collect(),
             },
-            surgeist_text::AnalysisTypography::HorizontalComposition,
+            surgeist_text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .expect("test supplies complete original paragraph facts");
         let analyzed = in_flat_wrapping_context(analyzed, ancestor_wrap);
@@ -447,7 +459,7 @@ impl PreparedParagraph {
         LayoutInputOf::inline_text(TextParticipation::new(origin))
     }
 
-    pub(crate) fn origin(&self, node: u32) -> surgeist_text::PreparedOrigin {
+    pub(crate) fn origin(&self, node: u32) -> surgeist_text::prepared::PreparedOrigin {
         self.origins
             .iter()
             .find(|binding| binding.node == node)

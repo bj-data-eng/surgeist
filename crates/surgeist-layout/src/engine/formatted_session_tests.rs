@@ -6,19 +6,27 @@ use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use crate::*;
 use surgeist_text as text;
 
-fn paragraph(node: u32, value: &str, terminal: text::ParagraphTerminalEdge) -> PreparedParagraph {
-    let style = text::Style {
-        hanging_punctuation: text::HangingPunctuation::new(false, None, true),
+fn paragraph(
+    node: u32,
+    value: &str,
+    terminal: text::paragraph::ParagraphTerminalEdge,
+) -> PreparedParagraph {
+    let style = text::style::Style {
+        hanging_punctuation: text::style::HangingPunctuation::new(false, None, true),
         ..ahem_style(10.0, 10.0)
     };
     PreparedParagraph::at_boundary(
         vec![ParagraphPart::text(
             node,
-            text::Source::identified(value, text::Id::from_u64(u64::from(node)), 71),
+            text::source::Source::identified(
+                value,
+                text::source::Id::from_u64(u64::from(node)),
+                71,
+            ),
             style.clone(),
         )],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
         terminal,
     )
 }
@@ -99,7 +107,7 @@ fn compute<S: LayoutScalar>(
 fn lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     p: &PreparedParagraph,
-) -> Vec<text::FinalizedLine> {
+) -> Vec<text::finalized::FinalizedLine> {
     let mut result = Vec::new();
     for entry in batch.final_inline_fragments() {
         let line = entry.fragment().finalized_fragment().finalized_line();
@@ -113,7 +121,7 @@ fn lines<S: LayoutScalar>(
 #[test]
 fn endpoint_replay_lets_an_earlier_full_candidate_absorb_the_old_last_line() {
     fn lane<S: LayoutScalar>() {
-        let p = paragraph(1, "A AA)", text::ParagraphTerminalEdge::BlockEnd);
+        let p = paragraph(1, "A AA)", text::paragraph::ParagraphTerminalEdge::BlockEnd);
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1])
             .children(1, [])
@@ -122,7 +130,7 @@ fn endpoint_replay_lets_an_earlier_full_candidate_absorb_the_old_last_line() {
         let batch = compute(&tree, vec![p.binding(0)], 40.0);
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.lines().len(), 1);
-        assert_eq!(placed.lines()[0].range(), text::Range::new(0, 5));
+        assert_eq!(placed.lines()[0].range(), text::source::Range::new(0, 5));
         assert_eq!(placed.source(), p.prepared.analyzed_source().source());
         let actual = lines(&batch, &p);
         assert_eq!(actual.len(), 1);
@@ -146,7 +154,7 @@ fn endpoint_replay_lets_an_earlier_full_candidate_absorb_the_old_last_line() {
 #[test]
 fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
     fn lane<S: LayoutScalar>() {
-        let p = paragraph(1, "A AA)", text::ParagraphTerminalEdge::BlockEnd);
+        let p = paragraph(1, "A AA)", text::paragraph::ParagraphTerminalEdge::BlockEnd);
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1])
             .children(1, [])
@@ -266,7 +274,7 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
 #[test]
 fn a_later_real_empty_forced_child_disproves_last_for_earlier_text() {
     fn lane<S: LayoutScalar>() {
-        let p = paragraph(1, "A)", text::ParagraphTerminalEdge::Unknown);
+        let p = paragraph(1, "A)", text::paragraph::ParagraphTerminalEdge::Unknown);
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1, 2])
             .children(1, [])
@@ -313,7 +321,7 @@ fn a_later_real_empty_forced_child_disproves_last_for_earlier_text() {
 #[test]
 fn float_band_child_keeps_its_parent_formatted_flow() {
     fn lane<S: LayoutScalar>() {
-        let p = paragraph(1, "A)", text::ParagraphTerminalEdge::Unknown);
+        let p = paragraph(1, "A)", text::paragraph::ParagraphTerminalEdge::Unknown);
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [4, 1, 2])
             .children(4, [])
@@ -379,7 +387,7 @@ fn float_band_child_keeps_its_parent_formatted_flow() {
 #[test]
 fn a_sized_empty_block_does_not_invent_a_formatted_successor() {
     fn lane<S: LayoutScalar>() {
-        let p = paragraph(1, "A)", text::ParagraphTerminalEdge::Unknown);
+        let p = paragraph(1, "A)", text::paragraph::ParagraphTerminalEdge::Unknown);
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1, 2])
             .children(1, [])
@@ -416,8 +424,8 @@ fn a_sized_empty_block_does_not_invent_a_formatted_successor() {
 #[test]
 fn a_floats_private_lines_do_not_become_parent_ifc_lines() {
     fn lane<S: LayoutScalar>() {
-        let p = paragraph(1, "A)", text::ParagraphTerminalEdge::Unknown);
-        let inner = paragraph(3, "B)", text::ParagraphTerminalEdge::BlockEnd);
+        let p = paragraph(1, "A)", text::paragraph::ParagraphTerminalEdge::Unknown);
+        let inner = paragraph(3, "B)", text::paragraph::ParagraphTerminalEdge::BlockEnd);
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1, 2])
             .children(1, [])
@@ -456,7 +464,7 @@ fn a_floats_private_lines_do_not_become_parent_ifc_lines() {
 
 #[test]
 fn float_probe_tail_truth_is_merged_only_when_its_packet_is_accepted() {
-    let p = paragraph(3, "B)", text::ParagraphTerminalEdge::BlockEnd);
+    let p = paragraph(3, "B)", text::paragraph::ParagraphTerminalEdge::BlockEnd);
     let tree = PublicLayoutTreeOf::<f64>::new()
         .children(0, [2])
         .children(2, [3])
@@ -575,7 +583,7 @@ impl LayoutTree for GeometryCachedTree {
 
 #[test]
 fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
-    let p = paragraph(1, "A)", text::ParagraphTerminalEdge::Unknown);
+    let p = paragraph(1, "A)", text::paragraph::ParagraphTerminalEdge::Unknown);
     let tree = GeometryCachedTree {
         tree: PublicLayoutTreeOf::new()
             .children(0, [2])
@@ -705,8 +713,10 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
 }
 
 fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>(nested_anonymous: bool) {
-    let visible = PreparedParagraph::plain(3, text::Source::new("XX"), ahem_style(10.0, 10.0));
-    let second = PreparedParagraph::plain(6, text::Source::new("YYY"), ahem_style(10.0, 40.0));
+    let visible =
+        PreparedParagraph::plain(3, text::source::Source::new("XX"), ahem_style(10.0, 10.0));
+    let second =
+        PreparedParagraph::plain(6, text::source::Source::new("YYY"), ahem_style(10.0, 40.0));
     let item = |width, height: Option<f64>, collapse| NodeInputOf {
         display: Display::Flex,
         size: Size::new(
@@ -826,7 +836,7 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>(neste
     let [line] = lines.as_slice() else {
         panic!("the visible source fits on one line");
     };
-    assert_eq!(line.range(), text::Range::new(0, 2));
+    assert_eq!(line.range(), text::source::Range::new(0, 2));
 }
 
 #[test]

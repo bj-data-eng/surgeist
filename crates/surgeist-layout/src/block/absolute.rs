@@ -485,7 +485,7 @@ impl<S: LayoutScalar> AbsoluteChildren<S> {
                 paragraph.atomics.iter().any(|binding| {
                     binding.node == child
                         && binding.occurrence.view().original_box().kind()
-                            == surgeist_text::InlineBoxKind::OutOfFlow
+                            == surgeist_text::source::InlineBoxKind::OutOfFlow
                 })
             })
         {

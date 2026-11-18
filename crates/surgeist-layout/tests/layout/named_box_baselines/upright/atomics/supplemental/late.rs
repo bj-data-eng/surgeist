@@ -181,7 +181,7 @@ fn same_text_geometry<S: l::LayoutScalar>(
         assert_eq!(a.inline_boxes(), b.inline_boxes());
         // Fresh placements issue distinct handles. Compare the public source
         // coordinates and physical geometry rather than foreign identities.
-        let positions = |text: &t::Layout| {
+        let positions = |text: &t::layout::Layout| {
             text.positions()
                 .map(|position| {
                     (
@@ -200,22 +200,22 @@ fn late_refusal<S: l::LayoutScalar>() {
     qualify_child::<S>(&child);
     let parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
         false,
-        t::Id::from_u64(3),
+        t::source::Id::from_u64(3),
     );
     for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
         let (mut host, bindings) = scene::<S>(&parent, &child, mode);
         let old = host.compute(&bindings, &[]).unwrap();
         let text = placed(&old, 0);
         assert_eq!(text.source(), &parent.source);
-        assert_eq!(text.orientation(), t::LineOrientation::Vertical);
+        assert_eq!(text.orientation(), t::selection::LineOrientation::Vertical);
         assert_eq!(
             text.lines()
                 .iter()
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
-            [t::Range::new(0, 1), t::Range::new(1, 2)]
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
         );
         let lines = receipts(&old, &bindings[0]);
         assert_eq!(lines.len(), 2);
@@ -237,7 +237,11 @@ fn late_refusal<S: l::LayoutScalar>() {
         } else {
             2.0
         };
-        atomic_rect(&old, &bindings[0], t::Rect::new(c - 2.0, 4.0, 6.0, 14.0));
+        atomic_rect(
+            &old,
+            &bindings[0],
+            t::geometry::Rect::new(c - 2.0, 4.0, 6.0, 14.0),
+        );
         assert_eq!(placed(&old, 3).lines()[0].baseline(), c);
         old.apply_to(&mut host.inner).unwrap();
         let caches = host.inner.published.caches.clone();

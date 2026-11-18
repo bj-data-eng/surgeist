@@ -1,6 +1,6 @@
 //! Hidden native slots cannot change a declared inline scope's break incidence.
 use surgeist_layout::*;
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 struct NativeRun<S: LayoutScalar> {
     inputs: Vec<LayoutInputOf<S>>,

@@ -1,7 +1,19 @@
+//! Font resources, instances, metrics, baselines and outlines.
+//!
+//! [`FontData`] is a strong font face with its catalogue publication, [`FontFace`] borrows one, and
+//! [`EffectiveFontInstance`] is a borrowed complete canonical font instance with executable synthesis
+//! ([`FontSynthesis`]). [`FontMetrics`], [`StrikeoutMetrics`], [`UprightFontMetrics`],
+//! [`VerticalGlyphMetrics`] and the `FontMetric*` types hold same-instance metrics and their numeric refusals;
+//! [`FontBaseline`] and the other `FontBaseline*` types hold named baseline observations; [`GlyphOutlineGeometry`],
+//! [`FontOutlineCapability`] and [`FontOutlineError`] cover outlines.
+
 use std::fmt;
 
 use skrifa::{Tag, raw::TableProvider};
 
+pub use crate::error::{
+    FontMetricField, FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
+};
 use crate::{Error, ErrorCode, ErrorDetail, Result, error::NumericRequirement};
 use surgeist_font::CataloguePublication;
 

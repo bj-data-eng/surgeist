@@ -16,10 +16,10 @@ fn assert_rows<S: l::LayoutScalar>(
         .zip(expected)
         .enumerate()
     {
-        assert_eq!(line.range(), t::Range::new(start, end));
+        assert_eq!(line.range(), t::source::Range::new(start, end));
         assert_eq!(
             line.bounds(),
-            t::Rect::new(0.0, i as f64 * 10.0, 60.0, 10.0)
+            t::geometry::Rect::new(0.0, i as f64 * 10.0, 60.0, 10.0)
         );
         assert_eq!(line.baseline(), i as f64 * 10.0 + 8.0);
         let selected = receipt.selected_line();
@@ -28,18 +28,18 @@ fn assert_rows<S: l::LayoutScalar>(
         assert_eq!(
             selected.request().context.end,
             if i + 1 == expected.len() {
-                t::LineEnd::Paragraph
+                t::selection::LineEnd::Paragraph
             } else {
-                t::LineEnd::Soft
+                t::selection::LineEnd::Soft
             }
         );
         assert!(selected.request().alternative.is_none());
         assert_eq!(selected.request().end.view().source_after().get(), end);
         assert_eq!(
             selected
-                .finalize(surgeist_text::LineAllocations {
-                    spacing: t::SpacingAllocations::None,
-                    scopes: surgeist_text::ScopeAllocations::None
+                .finalize(surgeist_text::scope_alignment::LineAllocations {
+                    spacing: t::spacing::SpacingAllocations::None,
+                    scopes: surgeist_text::scope_alignment::ScopeAllocations::None
                 })
                 .unwrap()
                 .measurements()
@@ -142,7 +142,8 @@ fn stable_text_uses_local_cuts_across_a_coherent_suffix_revision_f64() {
 }
 
 fn warm_float<S: l::LayoutScalar>() {
-    let mut fixture = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
+    let mut fixture =
+        Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
     let first = fixture.compute(&[]);
     assert_float(&fixture, &first, false);
     first.apply_to(&mut fixture.host).unwrap();
@@ -167,7 +168,8 @@ fn warm_float<S: l::LayoutScalar>() {
             "warm evidence requires an eligible float leaf CacheOf hit"
         );
         warm.apply_to(&mut fixture.host).unwrap();
-        let mut fresh = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
+        let mut fresh =
+            Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
         fresh.root(|root| root.text_wrap_style = style);
         let cold = fresh.compute(&[]);
         assert_float(&fresh, &cold, balance);

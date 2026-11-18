@@ -12,8 +12,10 @@ use font::{A, Action, B, D, Q, R, SPACE, fixture, native_glyphs};
 use surgeist_text as text;
 
 const DI: char = '\u{2065}';
-const LTR: text::ParagraphBaseDirection = text::ParagraphBaseDirection::LeftToRight;
-const RTL: text::ParagraphBaseDirection = text::ParagraphBaseDirection::RightToLeft;
+const LTR: text::paragraph::ParagraphBaseDirection =
+    text::paragraph::ParagraphBaseDirection::LeftToRight;
+const RTL: text::paragraph::ParagraphBaseDirection =
+    text::paragraph::ParagraphBaseDirection::RightToLeft;
 
 #[derive(Debug)]
 struct Glyph {
@@ -23,14 +25,14 @@ struct Glyph {
     origin_x: f64,
     x: f32,
     y: f32,
-    range: text::Range,
+    range: text::source::Range,
     ink: bool,
 }
 
 #[derive(Debug)]
 struct RunEvidence {
     index: usize,
-    source: text::Range,
+    source: text::source::Range,
     glyphs: Vec<u32>,
 }
 
@@ -38,9 +40,9 @@ struct RunEvidence {
 struct Observation {
     glyphs: Vec<Glyph>,
     runs: Vec<RunEvidence>,
-    units: Vec<(text::Range, f64)>,
+    units: Vec<(text::source::Range, f64)>,
     advance: f64,
-    ink: text::LineOutlineInk,
+    ink: text::finalized::LineOutlineInk,
     line_height: f64,
 }
 
@@ -48,33 +50,33 @@ fn try_observe(
     bytes: &[u8],
     value: &str,
     spacing: f64,
-    direction: text::ParagraphBaseDirection,
+    direction: text::paragraph::ParagraphBaseDirection,
 ) -> text::Result<Observation> {
-    let source = text::Source::new(value);
+    let source = text::source::Source::new(value);
     let end = source.text().len();
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
-            base_style: text::Style {
-                font: text::Font::new().family("Ahem"),
+            base_style: text::style::Style {
+                font: text::style::Font::new().family("Ahem"),
                 size: 10.0,
-                line_height: text::LineHeight::Absolute(10.0),
-                white_space: text::WhiteSpace::Preserve,
-                wrap: text::Wrap::None,
+                line_height: text::style::LineHeight::Absolute(10.0),
+                white_space: text::style::WhiteSpace::Preserve,
+                wrap: text::style::Wrap::None,
                 letter_spacing: spacing,
-                ..text::Style::default()
+                ..text::style::Style::default()
             },
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: direction,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, end),
-                aggregate: text::Range::new(0, end),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, end),
+                aggregate: text::source::Range::new(0, end),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -82,60 +84,60 @@ fn try_observe(
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )?;
     let mut system = text::System::default();
     system.register_fonts(bytes.to_vec(), crate::common::FONT_LIMITS)?;
-    let prepared = system.prepare(&analyzed, text::PreparationOptions::default())?;
+    let prepared = system.prepare(&analyzed, text::prepared::PreparationOptions::default())?;
     let units = prepared
         .unit_views()
         .map(|unit| (unit.source_range(), unit.advance()))
         .collect();
     let end_offer = prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end_offer.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(end_offer),
+            termination: text::selection::PreparedTermination::Ordinary(end_offer),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
             line_box_struts: Vec::new(),
             line_strut: None,
-            context: text::LineContext {
-                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-                formatted_line: surgeist_text::FormattedLineContext::default(),
+            context: text::selection::LineContext {
+                alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: surgeist_text::selection::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
-                    surgeist_text::ParagraphBaseDirection::LeftToRight => {
-                        surgeist_text::LineBoxDirection::LeftToRight
+                    surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight => {
+                        surgeist_text::selection::LineBoxDirection::LeftToRight
                     }
-                    surgeist_text::ParagraphBaseDirection::RightToLeft => {
-                        surgeist_text::LineBoxDirection::RightToLeft
+                    surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft => {
+                        surgeist_text::selection::LineBoxDirection::RightToLeft
                     }
                 },
-                orientation: text::LineOrientation::Horizontal,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                orientation: text::selection::LineOrientation::Horizontal,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(1000.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::Spaces,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::Spaces,
             },
         })?
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })?;
     let feedback = line.feedback();
     let mut glyphs = Vec::new();
@@ -164,18 +166,20 @@ fn try_observe(
         }
     }
     let ink = line.outline_ink()?;
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 0.0,
-                baseline: 8.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: 8.0,
+                },
+                orientation: text::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })?;
     // These public ordinals identify actual retained shaped runs, including
     // source-only runs before painted content. They are not paint-list indices.
@@ -192,11 +196,16 @@ fn try_observe(
     let positions: Vec<_> = layout.positions().collect();
     let before = positions
         .iter()
-        .find(|position| position.source_cursor() == text::Cursor::new(0, text::Affinity::After))
+        .find(|position| {
+            position.source_cursor() == text::layout::Cursor::new(0, text::layout::Affinity::After)
+        })
         .unwrap();
     let after = positions
         .iter()
-        .find(|position| position.source_cursor() == text::Cursor::new(end, text::Affinity::Before))
+        .find(|position| {
+            position.source_cursor()
+                == text::layout::Cursor::new(end, text::layout::Affinity::Before)
+        })
         .unwrap();
     let selection = layout.position_selection(before, after)?;
     assert_eq!(selection.source_text().code_units(), utf16);
@@ -215,7 +224,7 @@ fn observe(
     bytes: &[u8],
     value: &str,
     spacing: f64,
-    direction: text::ParagraphBaseDirection,
+    direction: text::paragraph::ParagraphBaseDirection,
 ) -> Observation {
     try_observe(bytes, value, spacing, direction).unwrap()
 }
@@ -248,7 +257,7 @@ fn qualify_literals() {
             (value.glyphs[0].pen, value.glyphs[0].x, value.glyphs[0].y),
             (0.0, 0.0, 0.0)
         );
-        assert_eq!(value.glyphs[0].range, text::Range::new(0, 1));
+        assert_eq!(value.glyphs[0].range, text::source::Range::new(0, 1));
         assert_eq!(value.advance, f64::from(advance));
     }
 }
@@ -290,7 +299,7 @@ fn qualified(action: Action, mapped: Option<char>) -> Vec<u8> {
 
 fn check_empty(value: &Observation, label: &str, failures: &mut Vec<String>) {
     if !value.glyphs.is_empty()
-        || value.ink != text::LineOutlineInk::Empty
+        || value.ink != text::finalized::LineOutlineInk::Empty
         || value.advance != 0.0
         || value.units.iter().any(|unit| unit.1 != 0.0)
         || value.line_height != 10.0
@@ -303,7 +312,7 @@ fn check_empty(value: &Observation, label: &str, failures: &mut Vec<String>) {
 
 fn check_ab(
     value: &Observation,
-    units: &[(text::Range, f64)],
+    units: &[(text::source::Range, f64)],
     label: &str,
     failures: &mut Vec<String>,
 ) {
@@ -364,9 +373,9 @@ fn residual(scalar: char, mapped: bool) {
         // of semantic grapheme/caret boundaries. These are source allocations;
         // no caret or selection boundary inside base+selector is required.
         let units = vec![
-            (text::Range::new(0, 1), 13.0),
-            (text::Range::new(1, end), 0.0),
-            (text::Range::new(end, end + 1), 20.0),
+            (text::source::Range::new(0, 1), 13.0),
+            (text::source::Range::new(1, end), 0.0),
+            (text::source::Range::new(end, end + 1), 20.0),
         ];
         check_ab(&value, &units, &format!("middle {label}"), &mut failures);
         if scalar == DI {
@@ -374,17 +383,17 @@ fn residual(scalar: char, mapped: bool) {
                 (
                     format!("{DI}AB"),
                     vec![
-                        (text::Range::new(0, 1), 0.0),
-                        (text::Range::new(1, 2), 13.0),
-                        (text::Range::new(2, 3), 20.0),
+                        (text::source::Range::new(0, 1), 0.0),
+                        (text::source::Range::new(1, 2), 13.0),
+                        (text::source::Range::new(2, 3), 20.0),
                     ],
                 ),
                 (
                     format!("AB{DI}"),
                     vec![
-                        (text::Range::new(0, 1), 13.0),
-                        (text::Range::new(1, 2), 20.0),
-                        (text::Range::new(2, 3), 0.0),
+                        (text::source::Range::new(0, 1), 13.0),
+                        (text::source::Range::new(1, 2), 20.0),
+                        (text::source::Range::new(2, 3), 0.0),
                     ],
                 ),
             ] {
@@ -446,25 +455,25 @@ fn deletion(action: Action) {
             (
                 format!("A{DI}B"),
                 vec![
-                    (text::Range::new(0, 1), 13.0),
-                    (text::Range::new(1, 2), 0.0),
-                    (text::Range::new(2, 3), 20.0),
+                    (text::source::Range::new(0, 1), 13.0),
+                    (text::source::Range::new(1, 2), 0.0),
+                    (text::source::Range::new(2, 3), 20.0),
                 ],
             ),
             (
                 format!("{DI}AB"),
                 vec![
-                    (text::Range::new(0, 1), 0.0),
-                    (text::Range::new(1, 2), 13.0),
-                    (text::Range::new(2, 3), 20.0),
+                    (text::source::Range::new(0, 1), 0.0),
+                    (text::source::Range::new(1, 2), 13.0),
+                    (text::source::Range::new(2, 3), 20.0),
                 ],
             ),
             (
                 format!("AB{DI}"),
                 vec![
-                    (text::Range::new(0, 1), 13.0),
-                    (text::Range::new(1, 2), 20.0),
-                    (text::Range::new(2, 3), 0.0),
+                    (text::source::Range::new(0, 1), 13.0),
+                    (text::source::Range::new(1, 2), 20.0),
+                    (text::source::Range::new(2, 3), 0.0),
                 ],
             ),
         ] {
@@ -502,7 +511,7 @@ fn partial_descendant_deletion_preserves_surviving_normal_output() {
     let value = observe(&bytes, &DI.to_string(), 3.0, LTR);
     assert_eq!(ids_and_advances(&value), [(58, 15.0)]);
     assert_eq!(value.advance, 15.0);
-    assert_eq!(value.units, [(text::Range::new(0, 1), 15.0)]);
+    assert_eq!(value.units, [(text::source::Range::new(0, 1), 15.0)]);
     assert!(value.glyphs[0].ink);
 }
 
@@ -514,7 +523,7 @@ fn actual_di_component_consumption_preserves_joint_output_and_metrics() {
     let value = observe(&bytes, &source, 0.0, LTR);
     assert_eq!(ids_and_advances(&value), [(58, 15.0), (36, 20.0)]);
     assert_eq!(value.advance, 35.0);
-    assert_eq!(value.glyphs[0].range, text::Range::new(0, 2));
+    assert_eq!(value.glyphs[0].range, text::source::Range::new(0, 2));
     assert!(value.glyphs.iter().all(|glyph| glyph.ink));
 }
 
@@ -537,11 +546,11 @@ fn skipped_residual_di_cannot_acquire_joint_output_advance_or_spacing() {
         value
             .units
             .iter()
-            .find(|unit| unit.0 == text::Range::new(1, 2))
+            .find(|unit| unit.0 == text::source::Range::new(1, 2))
             .map(|unit| unit.1),
         Some(0.0)
     );
-    assert_eq!(value.glyphs[0].range, text::Range::new(0, 3));
+    assert_eq!(value.glyphs[0].range, text::source::Range::new(0, 3));
     assert!(value.glyphs[0].ink);
 }
 
@@ -576,7 +585,7 @@ fn actual_supported_variation_sequence_retains_its_variant_and_joint_source() {
         assert_eq!(ids_and_advances(&value), [(58, 15.0)]);
         assert_eq!(value.advance, 15.0);
         assert!(value.glyphs[0].ink);
-        assert_eq!(value.glyphs[0].range, text::Range::new(0, 3));
+        assert_eq!(value.glyphs[0].range, text::source::Range::new(0, 3));
     }
 }
 
@@ -594,8 +603,8 @@ fn unsupported_variation_sequences_keep_the_base_without_selector_output() {
             let source = format!("{base}\u{e0100}");
             let value = observe(&bytes, &source, 3.0, direction);
             let expected_units = [
-                (text::Range::new(0, 1), f64::from(advance)),
-                (text::Range::new(1, 3), 0.0),
+                (text::source::Range::new(0, 1), f64::from(advance)),
+                (text::source::Range::new(1, 3), 0.0),
             ];
             if ids_and_advances(&value) != [(id, advance)]
                 || value.advance != f64::from(advance)
@@ -649,7 +658,7 @@ fn actual_mongolian_ccmp_action_retains_the_consumed_fvs_result() {
         assert_eq!(ids_and_advances(&value), [(58, 15.0)]);
         assert_eq!(value.advance, 15.0);
         assert!(value.glyphs[0].ink);
-        assert_eq!(value.glyphs[0].range, text::Range::new(0, 2));
+        assert_eq!(value.glyphs[0].range, text::source::Range::new(0, 2));
     }
 }
 
@@ -665,8 +674,8 @@ fn mongolian_selectors_without_an_actual_action_add_no_output_or_spacing() {
             let source = format!("\u{1820}{selector}");
             let value = observe(&bytes, &source, 3.0, direction);
             let expected_units = [
-                (text::Range::new(0, 1), 10.0),
-                (text::Range::new(1, 2), 0.0),
+                (text::source::Range::new(0, 1), 10.0),
+                (text::source::Range::new(1, 2), 0.0),
             ];
             if ids_and_advances(&value) != [(35, 10.0)]
                 || value.advance != 10.0
@@ -687,7 +696,7 @@ fn qualified_blank_filler_font(mapped: bool) -> Vec<u8> {
     assert_eq!(ids_and_advances(&value), [(3, 18.0)]);
     assert_eq!(value.advance, 18.0);
     assert!(!value.glyphs[0].ink);
-    assert_eq!(value.ink, text::LineOutlineInk::Empty);
+    assert_eq!(value.ink, text::finalized::LineOutlineInk::Empty);
     bytes
 }
 
@@ -704,9 +713,9 @@ fn four_mapped_fillers_retain_their_actual_nonzero_blank_spacing_resource() {
             let value = observe(&bytes, &scalar.to_string(), 3.0, direction);
             assert_eq!(ids_and_advances(&value), [(3, 18.0)]);
             assert_eq!(value.advance, 18.0);
-            assert_eq!(value.units, [(text::Range::new(0, 1), 18.0)]);
+            assert_eq!(value.units, [(text::source::Range::new(0, 1), 18.0)]);
             assert!(!value.glyphs[0].ink);
-            assert_eq!(value.ink, text::LineOutlineInk::Empty);
+            assert_eq!(value.ink, text::finalized::LineOutlineInk::Empty);
         }
     }
 }
@@ -751,9 +760,9 @@ fn context_only_di_changes_its_neighbor_but_retains_zero_independent_allocation(
     for direction in [LTR, RTL] {
         let value = observe(&bytes, &source, 3.0, direction);
         let expected_units = [
-            (text::Range::new(0, 1), 18.0),
-            (text::Range::new(1, 2), 0.0),
-            (text::Range::new(2, 3), 20.0),
+            (text::source::Range::new(0, 1), 18.0),
+            (text::source::Range::new(1, 2), 0.0),
+            (text::source::Range::new(2, 3), 20.0),
         ];
         if ids_and_advances(&value) != [(58, 15.0), (36, 20.0)]
             || value.advance != 38.0
@@ -792,11 +801,11 @@ fn repeated_di_after_a_supplementary_residual_keeps_distinct_normal_and_deleted_
         assert_eq!(
             value.units,
             [
-                (text::Range::new(0, 2), 0.0),
-                (text::Range::new(2, 3), 10.0),
-                (text::Range::new(3, 4), 15.0),
-                (text::Range::new(4, 5), 20.0),
-                (text::Range::new(5, 6), 0.0),
+                (text::source::Range::new(0, 2), 0.0),
+                (text::source::Range::new(2, 3), 10.0),
+                (text::source::Range::new(3, 4), 15.0),
+                (text::source::Range::new(4, 5), 20.0),
+                (text::source::Range::new(5, 6), 0.0),
             ]
         );
         let error = try_observe(&bytes, &source, 3.0, direction).unwrap_err();
@@ -812,18 +821,21 @@ fn repeated_di_after_a_supplementary_residual_keeps_distinct_normal_and_deleted_
         else {
             panic!("{error:?}")
         };
-        assert_eq!(*stage, text::SpacingStage::Preparation);
-        assert_eq!(*operation, text::SpacingOperation::AuthoredTracking);
+        assert_eq!(*stage, text::spacing::SpacingStage::Preparation);
+        assert_eq!(
+            *operation,
+            text::spacing::SpacingOperation::AuthoredTracking
+        );
         assert_eq!(
             *reason,
-            text::SpacingFailureReason::UnqualifiedWritingSystem
+            text::spacing::SpacingFailureReason::UnqualifiedWritingSystem
         );
         assert_eq!(
             pieces.as_ref(),
-            [text::SpacingPiece::Source {
+            [text::spacing::SpacingPiece::Source {
                 origin: 0,
-                local: text::Range::new(3, 4),
-                aggregate: text::Range::new(3, 4),
+                local: text::source::Range::new(3, 4),
+                aggregate: text::source::Range::new(3, 4),
             }]
         );
         assert_eq!(provider_atoms.as_ref(), std::slice::from_ref(&(2..3)));
@@ -942,29 +954,38 @@ fn morx_native_and_later_deletion_preserve_zero_di_allocation_in_both_positionin
                     (
                         format!("A{DI}B"),
                         vec![
-                            (text::Range::new(0, 1), 10.0),
-                            (text::Range::new(1, 2), 0.0),
-                            (text::Range::new(2, 3), 20.0),
+                            (text::source::Range::new(0, 1), 10.0),
+                            (text::source::Range::new(1, 2), 0.0),
+                            (text::source::Range::new(2, 3), 20.0),
                         ],
-                        [text::Range::new(0, 1), text::Range::new(2, 3)],
+                        [
+                            text::source::Range::new(0, 1),
+                            text::source::Range::new(2, 3),
+                        ],
                     ),
                     (
                         format!("{DI}AB"),
                         vec![
-                            (text::Range::new(0, 1), 0.0),
-                            (text::Range::new(1, 2), 10.0),
-                            (text::Range::new(2, 3), 20.0),
+                            (text::source::Range::new(0, 1), 0.0),
+                            (text::source::Range::new(1, 2), 10.0),
+                            (text::source::Range::new(2, 3), 20.0),
                         ],
-                        [text::Range::new(1, 2), text::Range::new(2, 3)],
+                        [
+                            text::source::Range::new(1, 2),
+                            text::source::Range::new(2, 3),
+                        ],
                     ),
                     (
                         format!("AB{DI}"),
                         vec![
-                            (text::Range::new(0, 1), 10.0),
-                            (text::Range::new(1, 2), 20.0),
-                            (text::Range::new(2, 3), 0.0),
+                            (text::source::Range::new(0, 1), 10.0),
+                            (text::source::Range::new(1, 2), 20.0),
+                            (text::source::Range::new(2, 3), 0.0),
                         ],
-                        [text::Range::new(0, 1), text::Range::new(1, 2)],
+                        [
+                            text::source::Range::new(0, 1),
+                            text::source::Range::new(1, 2),
+                        ],
                     ),
                 ] {
                     let value = observe(&bytes, &source, 0.0, direction);
@@ -1016,11 +1037,11 @@ fn morx_current_and_marked_insertion_keep_normal_descendant_without_residual_anc
                 let value = observe(&bytes, &DI.to_string(), 3.0, direction);
                 if ids_and_advances(&value) != [(58, 15.0)]
                     || value.advance != 15.0
-                    || value.units != [(text::Range::new(0, 1), 15.0)]
+                    || value.units != [(text::source::Range::new(0, 1), 15.0)]
                     || !value
                         .glyphs
                         .iter()
-                        .all(|glyph| glyph.ink && glyph.range == text::Range::new(0, 1))
+                        .all(|glyph| glyph.ink && glyph.range == text::source::Range::new(0, 1))
                 {
                     failures.push(format!("insertion marked={marked} GPOS={with_gpos} {direction:?}: expected only normal R15, final15, source0..1/15; got {value:?}"));
                 }
@@ -1074,7 +1095,7 @@ fn morx_actual_di_component_consumption_preserves_real_joint_glyph_and_source() 
             let value = observe(&bytes, &source, 0.0, direction);
             assert_eq!(ids_and_advances(&value), [(58, 15.0), (36, 20.0)]);
             assert_eq!(value.advance, 35.0);
-            assert_eq!(value.glyphs[0].range, text::Range::new(0, 2));
+            assert_eq!(value.glyphs[0].range, text::source::Range::new(0, 2));
             assert!(value.glyphs.iter().all(|glyph| glyph.ink));
         }
     }
@@ -1083,8 +1104,8 @@ fn morx_actual_di_component_consumption_preserves_real_joint_glyph_and_source() 
 fn unqualified_aat_boundary(
     bytes: &[u8],
     source: &str,
-    direction: text::ParagraphBaseDirection,
-    ranges: [text::Range; 2],
+    direction: text::paragraph::ParagraphBaseDirection,
+    ranges: [text::source::Range; 2],
     neutral: &Observation,
 ) {
     // The same source, direction, face, size and actual AAT tables determine
@@ -1122,10 +1143,16 @@ fn unqualified_aat_boundary(
     else {
         panic!("{error:?}")
     };
-    assert_eq!(*stage, text::SpacingStage::Preparation);
-    assert_eq!(*operation, text::SpacingOperation::AuthoredTracking);
-    assert_eq!(*reason, text::SpacingFailureReason::UnqualifiedProviderPath);
-    let expected = ranges.map(|range| text::SpacingPiece::Source {
+    assert_eq!(*stage, text::spacing::SpacingStage::Preparation);
+    assert_eq!(
+        *operation,
+        text::spacing::SpacingOperation::AuthoredTracking
+    );
+    assert_eq!(
+        *reason,
+        text::spacing::SpacingFailureReason::UnqualifiedProviderPath
+    );
+    let expected = ranges.map(|range| text::spacing::SpacingPiece::Source {
         origin: 0,
         local: range,
         aggregate: range,
@@ -1166,7 +1193,7 @@ fn unqualified_aat_boundary(
     assert!(
         constraints.iter().any(|constraint| {
             constraint.kind
-                == text::SpacingConstraintKind::UnqualifiedProviderPath(
+                == text::spacing::SpacingConstraintKind::UnqualifiedProviderPath(
                     surgeist_shaper::ComponentPath::AatSubstitution,
                 )
                 && constraint.run == actual.index
@@ -1192,7 +1219,7 @@ fn morx_later_joint_deletion_zeroes_di_without_erasing_surviving_ordinary_output
             let di_advance = value
                 .units
                 .iter()
-                .find(|unit| unit.0 == text::Range::new(1, 2))
+                .find(|unit| unit.0 == text::source::Range::new(1, 2))
                 .map(|unit| unit.1);
             if ids_and_advances(&value) != [(36, 20.0)]
                 || value.advance != 20.0
@@ -1205,7 +1232,10 @@ fn morx_later_joint_deletion_zeroes_di_without_erasing_surviving_ordinary_output
                 &bytes,
                 &source,
                 direction,
-                [text::Range::new(0, 1), text::Range::new(2, 3)],
+                [
+                    text::source::Range::new(0, 1),
+                    text::source::Range::new(2, 3),
+                ],
                 &value,
             );
             assert_eq!(value.advance, 20.0);
@@ -1230,7 +1260,7 @@ fn morx_skipped_di_retains_zero_allocation_while_ordinary_ligature_survives() {
             let di_advance = value
                 .units
                 .iter()
-                .find(|unit| unit.0 == text::Range::new(1, 2))
+                .find(|unit| unit.0 == text::source::Range::new(1, 2))
                 .map(|unit| unit.1);
             if ids_and_advances(&value) != [(58, 15.0)]
                 || value.advance != 15.0
@@ -1238,7 +1268,7 @@ fn morx_skipped_di_retains_zero_allocation_while_ordinary_ligature_survives() {
                 || !value
                     .glyphs
                     .iter()
-                    .all(|glyph| glyph.ink && glyph.range == text::Range::new(0, 3))
+                    .all(|glyph| glyph.ink && glyph.range == text::source::Range::new(0, 3))
             {
                 failures.push(format!("skipped D GPOS={with_gpos} {direction:?}: expected only real R15, final15, DI0 and joint source0..3; got {value:?}"));
             }
@@ -1246,7 +1276,10 @@ fn morx_skipped_di_retains_zero_allocation_while_ordinary_ligature_survives() {
                 &bytes,
                 &source,
                 direction,
-                [text::Range::new(0, 1), text::Range::new(2, 3)],
+                [
+                    text::source::Range::new(0, 1),
+                    text::source::Range::new(2, 3),
+                ],
                 &value,
             );
             assert_eq!(value.advance, 15.0);

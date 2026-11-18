@@ -4,182 +4,107 @@
 //! inline boxes, cursor geometry, selection geometry, and low-level movement.
 //! It does not own rendering, widgets, document identity, style resolution, or
 //! application commands.
+//!
+//! # Where things live
+//!
+//! The crate root holds only [`System`], [`Error`], [`ErrorCode`], [`ErrorDetail`] and [`Result`]. Every
+//! other public item has exactly one path, through the module that holds it:
+//!
+//! | Module | Holds |
+//! | --- | --- |
+//! | `accessibility` | Optional AccessKit projection of an analyzed source or a placed layout (feature `text-accessibility`) |
+//! | [`allocation`] | Layout-allocated atomic, control, boundary, strut and fit geometry |
+//! | [`analyzed`] | Font-independent semantic analysis with exact original-source custody |
+//! | [`cache`] | Layout cache identity and statistics |
+//! | [`capture`] | Contextual source capture and its processed paragraph views |
+//! | [`composer`] | Incremental construction of a source |
+//! | [`conditional`] | Conditional searches and phrase pieces |
+//! | [`finalized`] | Finalized lines, fragments, feedback, measurements, prefixes and readback views |
+//! | [`font`] | Font resources, instances, metrics, baselines and outlines |
+//! | [`geometry`] | Points, sizes, rectangles, glyph frames and numeric-category diagnostics |
+//! | [`hyphenation`] | Native hyphenation policy and indication inputs with bounded en-US resources |
+//! | [`inline_box`] | Inline-box edges, fragment families, pieces and supplied components |
+//! | [`layout`] | The committed layout and every way to read it |
+//! | [`leader`] | Isolated leader-pattern preparation and readback |
+//! | [`observation`] | Measurement flow, semantic window and scope-incidence observations |
+//! | [`options`] | Paragraph-level layout options |
+//! | [`paragraph`] | Native paragraph input: origins, connections, controls, anchors and boundary policies |
+//! | [`placement`] | Physical placement of finalized lines and atomics |
+//! | [`prepared`] | Prepared text, its issued capabilities and borrowed views |
+//! | [`processing`] | Source-local whitespace processing and its plaintext view |
+//! | [`range_fragments`] | Nonempty original-source observations over placed, selected grapheme units |
+//! | [`scope_alignment`] | Captured-scope alignment: limits, metrics, allocations and census |
+//! | [`selection`] | Line selection requests and the selected line |
+//! | [`source`] | Authored text: exact UTF-16 text, ranges, sources with spans and boxes, and edits |
+//! | [`spacing`] | Selected spacing slots, allocations and spacing diagnostics |
+//! | [`style`] | Resolved text style values and the text-style support matrix |
+//! | [`supplied_line`] | Supplied resolved-level ordering and text-edge decisions for mixed inline lines |
+//! | [`tabs`] | Captured CSS tab values and resource demand |
+//! | [`upright`] | Upright and vertical typography diagnostics vocabulary |
+//!
+//! Items are not re-exported at the root:
+//!
+//! ```compile_fail
+//! use surgeist_text::Style;
+//! ```
+//!
+//! The same name resolves through its module:
+//!
+//! ```
+//! use surgeist_text::style::Style;
+//! let _ = Style::default();
+//! ```
 
 #[cfg(feature = "text-accessibility")]
-mod accessibility;
-mod analyzed;
-mod cache;
-mod composer;
+pub mod accessibility;
+pub mod allocation;
+pub mod analyzed;
+pub mod cache;
+pub mod capture;
+pub mod composer;
+pub mod conditional;
+pub mod finalized;
+pub mod font;
+pub mod geometry;
+pub mod hyphenation;
+pub mod inline_box;
+pub mod layout;
+pub mod leader;
+pub mod observation;
+pub mod options;
+pub mod paragraph;
+pub mod placement;
+pub mod prepared;
+pub mod processing;
+pub mod range_fragments;
+pub mod scope_alignment;
+pub mod selection;
+pub mod source;
+pub mod spacing;
+pub mod style;
+pub mod supplied_line;
+pub mod tabs;
+pub mod upright;
+
 mod control;
 mod edit;
 mod engine;
 mod error;
-mod font;
-mod geometry;
-mod hyphenation;
 mod id;
 mod inline_box_components;
-mod layout;
-mod options;
 mod phrase;
-mod processing;
 mod projection;
 mod protocol;
 mod range;
-mod source;
-mod style;
 mod style_support;
-mod supplied_line;
 mod system;
 mod text;
 mod transform;
-pub use transform::TextCombineError;
 mod views;
 mod wrapping;
 
-#[cfg(feature = "text-accessibility")]
-pub use accessibility::Accessibility;
-pub use analyzed::{
-    AnalysisIdentity, AnalysisTypography, AnalyzedCombinedCell, AnalyzedCombinedSourcePiece,
-    AnalyzedDomain, AnalyzedSource, CapturedAnalysisOwner,
-};
-pub use cache::{Key, OptionsKey, SourceKey, Stats, StyleKey};
-pub use composer::{Composer, Mark, compose, source};
-pub use edit::{Edit, TextEdit};
-pub use engine::analysis::first_letter::FirstLetterSelection;
-pub use engine::leader::{
-    FinalizedLeaderPattern, LeaderClusterView, LeaderCombinationContext, LeaderPaintGroup,
-    LeaderPattern, LeaderPatternInput, LeaderRunView,
-};
-pub use error::{
-    DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontMetricField,
-    FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
-    NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary, ShapingRefusalReason,
-    SpacingConstraint, SpacingConstraintKind, SpacingContext, SpacingFailureReason,
-    SpacingOperation, SpacingPiece, SpacingStage, TextNumericError, TextNumericPhase, TextScript,
-    TextStyleOwner, TextTransformError, UprightContent, UprightContentPiece, UprightDecorationRole,
-    UprightPresentation, UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure,
-    UprightTabMeasurement, VerticalOriginReferenceReason, VerticalPositionStage,
-    VerticalShapingContextReason,
-};
-pub use font::{
-    EffectiveFontInstance, FontBaseline, FontBaselineAbsence, FontBaselineAxis,
-    FontBaselineMeasurement, FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript,
-    FontBaselineUnavailable, FontBaselineUnavailableReason, FontBaselineValue, FontData, FontFace,
-    FontLineMetricSource, FontMetrics, FontOutlineCapability, FontOutlineError, FontSynthesis,
-    GlyphOutlineGeometry, StrikeoutMetrics, UprightFontMetrics, UprightMetricProvenance,
-    UprightMetricReference, VerticalGlyphMetricProvenance, VerticalGlyphMetrics,
-};
-pub use geometry::{GlyphBasis, GlyphFrame, Point, Rect, Size};
-pub use id::Id;
-pub use inline_box_components::{
-    InlineBoxComponentParticipation, SuppliedInlineBoxComponent, SuppliedInlineBoxComponentRow,
-    SuppliedInlineBoxComponents, SuppliedInlineBoxComponentsInput,
-};
-pub use layout::{
-    Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
-    Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact, Metrics,
-    Movement, PaintedSelectionGeometry, PaintedSelectionRect, PlacedPosition, PlacedSelection,
-    PlacedSelectionPiece, PositionedInlineBox, Run, RunMetricFact, RunMetrics, Selection,
-    SelectionGeometry, SelectionRect,
-};
-pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
-pub use processing::{
-    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedConnection,
-    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
-    CapturedJointFlow, CapturedParagraph, CapturedScope, CapturedScopeIntersection,
-    ComputedLineBoundaryError, ComputedLineBoundaryInput, ContextualSourceInput,
-    DocumentSegmentBreaks, PlaintextItem, PlaintextItems, ProcessedInlineBox, ProcessedParagraph,
-    ProcessedPosition, ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText,
-    ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
-    ScopeAlignmentUsage, ScopeFontReference, ScopeRole, SourceBoxSide, SourceContinuityOperation,
-    SourceProcessingConnection, SourceProcessingConnectionError, SourceProcessingEnvelope,
-    SourceProcessingError, SourceProcessingEvent, SourceProcessingJointFlow,
-    SourceProcessingJointFlowError, SourceProcessingParagraph, SourceProcessingScope,
-    SourceProcessingScopeBoundaries, SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim,
-    process_contextual_source, process_source_whitespace,
-};
-pub use protocol::paragraph::{
-    CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,
-    ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
-    ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
-    ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut,
-};
-pub use protocol::placement::{BreakFontMetricBasis, PlacedBreakFontMetrics};
-pub use protocol::prefix::{FinalizedPrefixView, FinalizedSharedUnitView, TextSeam};
-pub use protocol::readback::{
-    FinalizedCellView, FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView,
-    FinalizedGlyphView, FinalizedRunView, LineOutlineInk, PreparedAlternativeDefinition,
-    PreparedAlternativeView, PreparedAtomicView, PreparedBoundaryView, PreparedCellView,
-    PreparedComputedLineBoundaryView, PreparedControlView, PreparedOpportunityView,
-    PreparedOriginIntersectionView, PreparedOriginView, PreparedScopeView, PreparedUnitView,
-    PreparedVirtualSeparatorView, PresentationMappingKind, SelectedMappingView,
-};
-pub use protocol::{
-    AtomicAllocation, AtomicBoxAllocation, AtomicFitAllocation, AtomicFlowAllocation,
-    AtomicLineAllocation, AtomicPlacement, AtomicSlotFeedback, CapturedScopeIncidence,
-    ConditionalDisposition, ConditionalLineContext, ConditionalPurpose, ConditionalStage,
-    ControlAllocation, ControlStrut, CssMarginBoxFit, FinalizedFragment, FinalizedInlineBoxPiece,
-    FinalizedLine, FlowObservation, FlowObservationRequest, FlowSegmentRole, FormattedLineContext,
-    FormattedLineUsage, HyphenationContinuation, HyphenationCounts, HyphenationProvenance,
-    HyphenationResource, HyphenationSourcePieceView, InlineBoundaryAllocation,
-    InlineBoundaryContextAllocation, InlineBoxEdgeComponents, InlineBoxEdgeContext,
-    InlineBoxEdgeError, InlineBoxFragment, InlineBoxFragmentationError, InlineBoxPieceMember,
-    InlineBoxSource, InlineMeasure, LineAlignmentInsets, LineAllocations, LineAnchor,
-    LineBoxAlignment, LineBoxDirection, LineBoxStrut, LineContext, LineDirectionFacts,
-    LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView, LineEnd, LineFeedback,
-    LineMeasurements, LineOrientation, LinePlacement, LineSelectionRequest, LineStart, LineStrut,
-    MarginEdgeFit, MarginEdgeFitAuthority, NonFormattedLine, NonFormattedLinePlacement,
-    ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PhaseTwoContext,
-    PhraseOverflowDecision, PlacedInlineBoxPiece, PlacementCoverage, PlacementEntry,
-    PlacementRequest, PreparationOptions, PreparedAlternative, PreparedAlternativeAvailability,
-    PreparedAtomic, PreparedBoundary, PreparedBoundaryIncidence, PreparedBreakKind, PreparedCell,
-    PreparedComputedLineBoundary, PreparedConditionalBatch, PreparedConditionalOpportunity,
-    PreparedConditionalSearch, PreparedControl, PreparedFlowSegment, PreparedHyphenationCut,
-    PreparedHyphenationCutView, PreparedInlineBoxFamily, PreparedMeasurementFlow,
-    PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedPhrase, PreparedPhrasePiece,
-    PreparedPhrasePieceOwner, PreparedPhrasePortion, PreparedPhraseProvenance, PreparedScope,
-    PreparedScopeMetrics, PreparedSourceSegment, PreparedTermination, PreparedText, PreparedUnit,
-    PreparedVirtualSeparator, PreparedWord, PreparedWordPortion, PreparedWordView,
-    PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
-    ScopeAlignmentAllowance, ScopeAlignmentCensus, ScopeAlignmentCensusAccounting,
-    ScopeAlignmentCensusFailure, ScopeAlignmentCensusInput, ScopeAlignmentProduct,
-    ScopeAlignmentProducts, ScopeAlignmentRetention, ScopeAlignmentWeakProduct, ScopeAllocation,
-    ScopeAllocations, ScopeFrameAllocation, ScopeMetricContribution, SelectedInlineBoxPiece,
-    SelectedLine, SelectedScope, SemanticAtomicAllocation, SemanticConditionalEvidence,
-    SemanticControlAllocation, SemanticPartitionEvidence, SemanticWindowEvidence,
-    SemanticWindowFailure, SemanticWindowRequest, SpacingAllocation, SpacingAllocations,
-    SpacingBoundaryGeometry, SpacingDeferredCause, SpacingPolicy, SpacingSlot,
-    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotGeometry, SpacingSlotOwner,
-    SpacingSlotPiece, SpacingSlotTarget, SpacingStretchability, SpacingUnit, TabContext,
-    WrappingScopeQueryError, scope_alignment_census,
-};
-pub use range::{Range, SourcePosition, SourceRange};
-pub use source::{
-    BaselineShift, InlineBox, InlineBoxKind, Source, SourceIdentity, SourceRevision, Span,
-    ValidatedSource, VerticalAlign,
-};
-pub use style::{
-    Brush, CaseTransform, Decoration, DecorationBrush, DecorationOffset, DecorationOffsetValue,
-    DecorationThickness, DecorationThicknessValue, Direction, Font, FontVariant, FontWeightValue,
-    FontWidthRatio, HangingPunctuation, HangingPunctuationEnd, LineBreak, LineHeight, OverflowWrap,
-    SelectionPaint, Slant, Style, TextCombineUpright, TextCombineUprightDigits, TextTransform,
-    TextTransformSet, ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, WordSpaceTransform,
-    Wrap,
-};
-pub use style_support::{
-    TextStyleFeature, TextStylePhase, TextStyleSupport, UnsupportedTextStyleReason,
-};
-pub use supplied_line::{
-    BidiLevel, BidiLevelError, InlineWhitespaceEdge, SuppliedInlineParticipant, SuppliedLine,
-    SuppliedLineEdges, SuppliedLineError, SuppliedVisualOrder,
-};
-pub use system::{Builder, System};
-pub use text::Text;
-pub use views::{GlyphPlacement, RunView};
-pub use wrapping::{
-    AnalyzedWrappingRelation, AnalyzedWrappingRelationView, WrappingNeighbor, WrappingPolicy,
-};
+pub use error::{Error, ErrorCode, ErrorDetail, Result};
+pub use system::System;
 
 #[cfg(test)]
 mod tests;
@@ -204,19 +129,3 @@ mod vertical_test_fonts;
 #[cfg(test)]
 #[path = "test_fonts/mixed.rs"]
 mod mixed_test_fonts;
-
-mod range_fragments;
-pub use range_fragments::{
-    SourceRangeCellFontPiece, SourceRangeCellLayoutFrame, SourceRangeCellMetricFrame,
-    SourceRangeCellTabPiece, SourceRangeCellUnit, SourceRangeCellUnitKind,
-    SourceRangeFragmentError, SourceRangeFragments, SourceRangeGeometry, SourceRangePiece,
-    SourceRangeUnit,
-};
-
-pub use hyphenation::{
-    HyphenateCharacter, HyphenateLimitChars, HyphenationError, HyphenationMinimum,
-    HyphenationPlacement, Hyphens, NativeHyphenationConvention,
-};
-
-mod tabs;
-pub use tabs::{ParagraphTabReference, TabPreparation, TabSize};

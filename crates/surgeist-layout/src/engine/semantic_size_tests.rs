@@ -7,9 +7,13 @@ use surgeist_text as t;
 
 fn fixture<S: LayoutScalar>(
     force: bool,
-) -> (PublicLayoutTreeOf<S>, t::PreparedText, WrappingInput<u32>) {
-    use t::SourceProcessingEvent as E;
-    let inline = || t::SourceProcessingScope::Inline {
+) -> (
+    PublicLayoutTreeOf<S>,
+    t::prepared::PreparedText,
+    WrappingInput<u32>,
+) {
+    use t::capture::SourceProcessingEvent as E;
+    let inline = || t::capture::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
@@ -18,45 +22,45 @@ fn fixture<S: LayoutScalar>(
         boundaries: None,
     };
     let captured = std::sync::Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
-            source: t::Source::identified("", t::Id::from_u64(658300), 51),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            source: t::source::Source::identified("", t::source::Id::from_u64(658300), 51),
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins: vec![],
             controls: vec![],
             connections: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             computed_line_boundaries: if force {
-                vec![t::ComputedLineBoundaryInput::Scope {
+                vec![t::capture::ComputedLineBoundaryInput::Scope {
                     scope: 2,
-                    side: t::SourceBoxSide::Before,
+                    side: t::capture::SourceBoxSide::Before,
                 }]
             } else {
                 vec![]
             },
             scopes: vec![
-                t::SourceProcessingScope::Block {
+                t::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: t::SourceProcessingTopology::Complete,
+                    topology: t::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
-                    base_style: t::Style {
-                        wrap: t::Wrap::None,
-                        hyphens: t::Hyphens::None,
+                    base_style: t::style::Style {
+                        wrap: t::style::Wrap::None,
+                        hyphens: t::hyphenation::Hyphens::None,
                         ..crate::test_support::text::ahem_style(10.0, 10.0)
                     },
-                    used_direction: t::ParagraphBaseDirection::LeftToRight,
+                    used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
                 },
                 inline(),
                 inline(),
             ],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
@@ -75,17 +79,17 @@ fn fixture<S: LayoutScalar>(
         captured.captured_scope(1).unwrap(),
         captured.captured_scope(2).unwrap(),
     ];
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         captured.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| t::WrappingPolicy {
+        .map(|r| t::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: t::Wrap::None,
+            ancestor_wrap: t::style::Wrap::None,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
@@ -101,7 +105,7 @@ fn fixture<S: LayoutScalar>(
         )
         .unwrap();
     let prepared = fonts
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     assert!(prepared.origin_views().next().is_none());
     assert!(prepared.control_views().next().is_none());
@@ -142,13 +146,13 @@ fn fixture<S: LayoutScalar>(
                     wrap_inside: WrapInside::Auto,
                     edges: WrapEdges::AUTO,
                     metric_contribution: Some(InlineBoxMetricContribution::Strut(
-                        t::LineBoxStrut {
+                        t::allocation::LineBoxStrut {
                             scope: None,
-                            metrics: t::LineStrut {
+                            metrics: t::allocation::LineStrut {
                                 baseline,
                                 line_extent,
                             },
-                            alignment: t::LineBoxAlignment::Baseline,
+                            alignment: t::allocation::LineBoxAlignment::Baseline,
                         },
                     )),
                 },
@@ -251,8 +255,8 @@ fn known_size_baseline<S: LayoutScalar>() {
         assert_eq!(pending[0].prepared, prepared);
         assert!(pending[0].nodes.is_empty());
         let [
-            t::PlacementEntry::Formatted(first),
-            t::PlacementEntry::NonFormatted(end),
+            t::placement::PlacementEntry::Formatted(first),
+            t::placement::PlacementEntry::NonFormatted(end),
         ] = pending[0].entries.as_slice()
         else {
             panic!("actual Forced placement and nonformatted Paragraph completion are retained");
@@ -262,33 +266,36 @@ fn known_size_baseline<S: LayoutScalar>() {
             .map(|o| o.handle())
             .collect::<Vec<_>>();
         let first_selected = first.line.selected_line();
-        assert_eq!(first_selected.request().context.end, t::LineEnd::Forced);
+        assert_eq!(
+            first_selected.request().context.end,
+            t::selection::LineEnd::Forced
+        );
         assert_eq!(
             first_selected.request().termination,
-            t::PreparedTermination::Ordinary(offers[0].clone())
+            t::selection::PreparedTermination::Ordinary(offers[0].clone())
         );
         assert_eq!(first.line.feedback().baseline, 16.0);
         assert_eq!(first.line.feedback().line_height, 20.0);
         assert_eq!(first.anchor.baseline, 16.0);
         assert_eq!(
             first_selected.request().line_box_struts,
-            [t::LineBoxStrut {
+            [t::allocation::LineBoxStrut {
                 scope: Some(expected_scope),
-                metrics: t::LineStrut {
+                metrics: t::allocation::LineStrut {
                     baseline: 16.0,
                     line_extent: 20.0
                 },
-                alignment: t::LineBoxAlignment::Baseline
+                alignment: t::allocation::LineBoxAlignment::Baseline
             }]
         );
         let final_line = end.line.finalized_line();
         let final_selected = final_line.selected_line();
         let request = final_selected.request();
         assert_eq!(final_line.prepared_text(), prepared);
-        assert_eq!(request.context.end, t::LineEnd::Paragraph);
+        assert_eq!(request.context.end, t::selection::LineEnd::Paragraph);
         assert_eq!(
             request.termination,
-            t::PreparedTermination::Ordinary(offers[1].clone())
+            t::selection::PreparedTermination::Ordinary(offers[1].clone())
         );
         assert_eq!(request.start, first_selected.request().end);
         assert_eq!(request.end, offers[1].view().boundary());

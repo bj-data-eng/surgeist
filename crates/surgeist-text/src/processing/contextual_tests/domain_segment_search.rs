@@ -6,9 +6,12 @@ use crate::{
     analyzed::{AnalysisTypography, AnalyzedDomain},
     layout::Affinity,
     processing::{
-        ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
-        SourceProcessingJointFlow, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            SourceProcessingConnection, SourceProcessingEvent, SourceProcessingJointFlow,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+            WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         ConditionalPurpose, ParagraphBaseDirection, PreparationOptions, PreparedBoundary,

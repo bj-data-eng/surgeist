@@ -7,7 +7,7 @@ use crate::{
     geometry::{Point, Rect},
     id::Id,
     layout::{Affinity, Cursor, Layout},
-    processing::{
+    processing::contextual::{
         ComputedLineBoundaryInput, ContextualSourceInput, ScopeAlignmentBoundary, SourceBoxSide,
         SourceProcessingConnection, SourceProcessingScope, process_contextual_source,
     },
@@ -84,7 +84,7 @@ fn exterior_input(side: SourceBoxSide) -> ContextualSourceInput {
     // Child2 is an empty inline, with no nominated boundary pair or
     // origin. Its source-box cuts are before EnterScope2 and after ExitScope2;
     // both are inside parent1. Naming child2 is not custody of child2's frame.
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     input.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),

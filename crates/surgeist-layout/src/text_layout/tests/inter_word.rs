@@ -15,9 +15,9 @@ fn direction(rtl: bool) -> ParagraphBaseDirection {
     }
 }
 
-fn style(word_spacing: f64, wrap: Wrap) -> text::Style {
-    text::Style {
-        white_space: text::WhiteSpace::Preserve,
+fn style(word_spacing: f64, wrap: Wrap) -> text::style::Style {
+    text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
         word_spacing,
         wrap,
         ..ahem_style(10.0, 10.0)
@@ -135,7 +135,9 @@ fn finite<S: LayoutScalar>(
     )
 }
 
-fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
+fn lines<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<text::finalized::FinalizedLine> {
     let mut result = vec![None; batch.placed_text()[0].layout().lines().len()];
     for row in batch.final_inline_fragments() {
         let fragment = row.fragment();
@@ -147,7 +149,7 @@ fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::F
 #[derive(Clone, Debug, PartialEq)]
 struct GlyphFact {
     line: usize,
-    source: text::Range,
+    source: text::source::Range,
     id: u32,
     x: f64,
     y: f64,
@@ -157,7 +159,10 @@ struct GlyphFact {
 fn glyphs<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<GlyphFact> {
     let mut facts = Vec::new();
     for run in batch.placed_text()[0].layout().glyph_runs() {
-        assert_eq!(run.orientation(), text::LineOrientation::Horizontal);
+        assert_eq!(
+            run.orientation(),
+            text::selection::LineOrientation::Horizontal
+        );
         assert_eq!(run.font_size(), 10.0);
         for glyph in run.glyphs() {
             assert_eq!((glyph.x(), glyph.y()), (0.0, 0.0));
@@ -185,28 +190,33 @@ fn positions<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<(us
 
 fn source_copy<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, source: &str) {
     let layout = batch.placed_text()[0].layout();
-    assert_eq!(layout.source().text(), &text::Text::from(source));
+    assert_eq!(layout.source().text(), &text::source::Text::from(source));
     let endpoint = |offset, affinity| {
         layout
             .positions()
-            .find(|position| position.source_cursor() == text::Cursor::new(offset, affinity))
+            .find(|position| {
+                position.source_cursor() == text::layout::Cursor::new(offset, affinity)
+            })
             .unwrap()
     };
     let selection = layout
         .position_selection(
-            &endpoint(0, text::Affinity::After),
-            &endpoint(source.encode_utf16().count(), text::Affinity::Before),
+            &endpoint(0, text::layout::Affinity::After),
+            &endpoint(
+                source.encode_utf16().count(),
+                text::layout::Affinity::Before,
+            ),
         )
         .unwrap();
     assert_eq!(selection.source_text(), layout.source().text());
-    assert_eq!(selection.plaintext(), &text::Text::from(source));
+    assert_eq!(selection.plaintext(), &text::source::Text::from(source));
 }
 
-fn amounts(line: &text::FinalizedLine, expected: &[f64]) {
+fn amounts(line: &text::finalized::FinalizedLine, expected: &[f64]) {
     let selected = line.selected_line();
     assert_eq!(
         selected.request().context.spacing,
-        text::SpacingPolicy::InterWord
+        text::spacing::SpacingPolicy::InterWord
     );
     let slots = selected.spacing_slots().collect::<Vec<_>>();
     let rows = line.spacing_slots().collect::<Vec<_>>();
@@ -219,12 +229,18 @@ fn amounts(line: &text::FinalizedLine, expected: &[f64]) {
     }
 }
 
-fn one_slot(line: &text::FinalizedLine, authored: f64, allocation: f64, advance: f64, at: usize) {
+fn one_slot(
+    line: &text::finalized::FinalizedLine,
+    authored: f64,
+    allocation: f64,
+    advance: f64,
+    at: usize,
+) {
     amounts(line, &[allocation]);
     let row = line.spacing_slots().next().unwrap();
     assert_eq!(
         row.geometry,
-        text::SpacingSlotGeometry::Independent {
+        text::spacing::SpacingSlotGeometry::Independent {
             intrinsic_advance: 10.0
         }
     );
@@ -232,13 +248,13 @@ fn one_slot(line: &text::FinalizedLine, authored: f64, allocation: f64, advance:
     assert_eq!(row.advance, advance);
     let pieces = row.slot.pieces().collect::<Vec<_>>();
     assert_eq!(pieces.len(), 1);
-    let text::SpacingSlotOwner::Source {
+    let text::spacing::SpacingSlotOwner::Source {
         local, aggregate, ..
     } = pieces[0].owner()
     else {
         panic!("actual authored separator must retain its source owner")
     };
-    assert_eq!(local, text::Range::new(at, at + 1));
+    assert_eq!(local, text::source::Range::new(at, at + 1));
     assert_eq!(aggregate, local);
 }
 
@@ -287,7 +303,7 @@ fn basic<S: LayoutScalar>() {
     assert_eq!(line.feedback().advance, 40.0);
     assert_eq!(
         line.selected_line().request().context.alignment,
-        text::Alignment::Justify
+        text::options::Alignment::Justify
     );
     assert_eq!(
         positions(&actual),
@@ -303,24 +319,30 @@ fn basic<S: LayoutScalar>() {
             .all(|g| g.raw_advance == 10.0 && g.y == 8.0)
     );
     let row = line.spacing_slots().next().unwrap();
-    assert_eq!(row.stretchability, text::SpacingStretchability::Direct);
+    assert_eq!(
+        row.stretchability,
+        text::spacing::SpacingStretchability::Direct
+    );
     assert!(row.can_expand());
     assert_eq!(
         row.slot
             .pieces()
             .map(|piece| piece.owner())
             .collect::<Vec<_>>(),
-        [text::SpacingSlotOwner::Source {
+        [text::spacing::SpacingSlotOwner::Source {
             origin: p.origin(1),
-            local: text::Range::new(1, 2),
-            aggregate: text::Range::new(1, 2)
+            local: text::source::Range::new(1, 2),
+            aggregate: text::source::Range::new(1, 2)
         }]
     );
     let placed = actual.placed_text()[0].layout();
     for (at, x) in [(1, 10.0), (2, 30.0)] {
         assert_eq!(
             placed
-                .cursor(text::Cursor::new(at, text::Affinity::Before))
+                .cursor(text::layout::Cursor::new(
+                    at,
+                    text::layout::Affinity::Before
+                ))
                 .unwrap()
                 .rect()
                 .origin
@@ -328,7 +350,7 @@ fn basic<S: LayoutScalar>() {
             x
         );
     }
-    let text::Hit::Text(hit) = placed.hit(text::Point::new(31.0, 5.0)) else {
+    let text::layout::Hit::Text(hit) = placed.hit(text::geometry::Point::new(31.0, 5.0)) else {
         panic!("actual allocated B cell must retain text hit ownership")
     };
     assert_eq!(hit.source_cursor().index(), 2);
@@ -340,13 +362,13 @@ fn basic<S: LayoutScalar>() {
     let natural = &lines(&distinct)[0];
     assert_eq!(
         natural.selected_line().request().context.spacing,
-        text::SpacingPolicy::Spaces
+        text::spacing::SpacingPolicy::Spaces
     );
     assert_eq!(natural.spacing_slots().len(), 0);
     assert_eq!(natural.measurements().alignment().advance(), 34.0);
     assert_eq!(
         natural.selected_line().request().context.alignment,
-        text::Alignment::Center
+        text::options::Alignment::Center
     );
     assert_eq!(
         positions(&distinct),
@@ -375,14 +397,14 @@ fn line_roles<S: LayoutScalar>() {
     for (last, alignment, allocation, advance, x) in [
         (
             TextAlignLast::Justify,
-            text::Alignment::Justify,
+            text::options::Alignment::Justify,
             6.0,
             40.0,
             [0.0, 15.0, 30.0],
         ),
         (
             TextAlignLast::Auto,
-            text::Alignment::Start,
+            text::options::Alignment::Start,
             0.0,
             34.0,
             [0.0, 12.0, 24.0],
@@ -393,11 +415,11 @@ fn line_roles<S: LayoutScalar>() {
         assert_eq!(selected.len(), 2);
         assert_eq!(
             selected[0].selected_line().request().context.end,
-            text::LineEnd::Forced
+            text::selection::LineEnd::Forced
         );
         assert_eq!(
             selected[1].selected_line().request().context.end,
-            text::LineEnd::Paragraph
+            text::selection::LineEnd::Paragraph
         );
         for line in &selected {
             amounts(line, &[allocation]);
@@ -426,10 +448,14 @@ fn line_roles<S: LayoutScalar>() {
     for (last, alignment, xs) in [
         (
             TextAlignLast::Justify,
-            text::Alignment::Center,
+            text::options::Alignment::Center,
             [10.0, 20.0, 30.0],
         ),
-        (TextAlignLast::End, text::Alignment::End, [20.0, 30.0, 40.0]),
+        (
+            TextAlignLast::End,
+            text::options::Alignment::End,
+            [20.0, 30.0, 40.0],
+        ),
     ] {
         let actual = finite::<S>(&no_separator, 50.0, block(50.0, last, false));
         let line = &lines(&actual)[0];
@@ -522,7 +548,7 @@ fn source_zero_intrinsic_separator_suppresses_author_and_uses_center_fallback() 
     let row = line.spacing_slots().next().unwrap();
     assert_eq!(
         row.geometry,
-        text::SpacingSlotGeometry::Independent {
+        text::spacing::SpacingSlotGeometry::Independent {
             intrinsic_advance: 0.0
         }
     );
@@ -531,7 +557,7 @@ fn source_zero_intrinsic_separator_suppresses_author_and_uses_center_fallback() 
     assert_eq!(line.measurements().alignment().advance(), 20.0);
     assert_eq!(
         line.selected_line().request().context.alignment,
-        text::Alignment::Center
+        text::options::Alignment::Center
     );
     assert_eq!(
         positions(&actual),
@@ -554,10 +580,16 @@ fn tab_paragraph(rtl: bool, word_spacing: f64) -> PreparedParagraph {
     } else {
         "A \tB\tC"
     });
-    source.span(text::Range::new(1, 2), style(word_spacing, Wrap::None));
-    for (range, period) in [(text::Range::new(2, 3), 4.0), (text::Range::new(4, 5), 3.0)] {
+    source.span(
+        text::source::Range::new(1, 2),
+        style(word_spacing, Wrap::None),
+    );
+    for (range, period) in [
+        (text::source::Range::new(2, 3), 4.0),
+        (text::source::Range::new(4, 5), 3.0),
+    ] {
         let mut tab = base.clone();
-        tab.tab_size = text::TabSize::spaces(period).unwrap();
+        tab.tab_size = text::tabs::TabSize::spaces(period).unwrap();
         source.span(range, tab);
     }
     PreparedParagraph::with_css_tabs(
@@ -588,18 +620,18 @@ fn actual_mixed_period_tabs_require_response_correction_and_prove_skipped_fallba
             assert_eq!(n.measurements().alignment().advance(), 70.0);
             assert_eq!(
                 n.spacing_slots().next().unwrap().stretchability,
-                text::SpacingStretchability::TabDependent
+                text::spacing::SpacingStretchability::TabDependent
             );
             assert_eq!(
                 n.selected_line().request().context.tabs,
-                text::TabContext::CssStops { origin: Some(0.0) }
+                text::tabs::TabContext::CssStops { origin: Some(0.0) }
             );
             // A real positive amount is absorbed before the first stop. This
             // authentic response probe cannot establish unexpandability.
             let slot = n.spacing_slots().next().unwrap().slot;
             let absorbed = n
-                .with_spacing(text::SpacingAllocations::Complete(vec![
-                    text::SpacingAllocation { slot, amount: 10.0 },
+                .with_spacing(text::spacing::SpacingAllocations::Complete(vec![
+                    text::spacing::SpacingAllocation { slot, amount: 10.0 },
                 ]))
                 .unwrap();
             assert_eq!(absorbed.measurements().alignment().advance(), 70.0);
@@ -608,8 +640,8 @@ fn actual_mixed_period_tabs_require_response_correction_and_prove_skipped_fallba
             // Incoming35 leaves exactly5 to the first stop. Equality with
             // half of actual ZERO10 does not take the strict threshold bump.
             let threshold = n
-                .with_spacing(text::SpacingAllocations::Complete(vec![
-                    text::SpacingAllocation {
+                .with_spacing(text::spacing::SpacingAllocations::Complete(vec![
+                    text::spacing::SpacingAllocation {
                         slot: n.spacing_slots().next().unwrap().slot,
                         amount: 15.0 - authored,
                     },
@@ -617,8 +649,8 @@ fn actual_mixed_period_tabs_require_response_correction_and_prove_skipped_fallba
                 .unwrap();
             assert_eq!(threshold.measurements().alignment().advance(), 70.0);
             let exact_probe = n
-                .with_spacing(text::SpacingAllocations::Complete(vec![
-                    text::SpacingAllocation {
+                .with_spacing(text::spacing::SpacingAllocations::Complete(vec![
+                    text::spacing::SpacingAllocation {
                         slot: n.spacing_slots().next().unwrap().slot,
                         amount: probe_amount,
                     },
@@ -634,7 +666,7 @@ fn actual_mixed_period_tabs_require_response_correction_and_prove_skipped_fallba
             assert!(row.can_expand());
             assert_eq!(
                 row.stretchability,
-                text::SpacingStretchability::TabDependent
+                text::spacing::SpacingStretchability::TabDependent
             );
             assert_eq!(row.authored_word_spacing, authored);
             assert_eq!(row.advance, 10.0 + (authored + row.allocation));
@@ -654,7 +686,7 @@ fn actual_mixed_period_tabs_require_response_correction_and_prove_skipped_fallba
             assert_eq!(line.feedback().advance, 130.0);
             assert_eq!(
                 line.selected_line().request().context.alignment,
-                text::Alignment::Justify
+                text::options::Alignment::Justify
             );
             let half = (authored + row.allocation) / 2.0;
             let expected = if rtl {
@@ -698,7 +730,7 @@ fn actual_mixed_period_tabs_require_response_correction_and_prove_skipped_fallba
             assert_eq!(line.measurements().alignment().advance(), 70.0);
             assert_eq!(
                 line.selected_line().request().context.alignment,
-                text::Alignment::Center
+                text::options::Alignment::Center
             );
             let expected = if rtl {
                 [75.0, 65.0 - authored / 2.0, 35.0, 15.0]
@@ -720,7 +752,7 @@ fn actual_mixed_period_tabs_require_response_correction_and_prove_skipped_fallba
 
 fn trailing<S: LayoutScalar>() {
     let mut own = style(4.0, Wrap::Word);
-    own.tab_size = text::TabSize::length(40.0).unwrap();
+    own.tab_size = text::tabs::TabSize::length(40.0).unwrap();
     let p = PreparedParagraph::with_css_tabs(
         vec![ParagraphPart::text(1, Source::new("A B\tCCC"), own.clone())],
         own,
@@ -732,13 +764,13 @@ fn trailing<S: LayoutScalar>() {
     assert_eq!(selected.len(), 2);
     assert_eq!(
         actual.placed_text()[0].layout().lines()[0].range(),
-        text::Range::new(0, 4)
+        text::source::Range::new(0, 4)
     );
     let first = &selected[0];
     one_slot(first, 4.0, 16.0, 30.0, 1);
     assert_eq!(
         first.spacing_slots().next().unwrap().stretchability,
-        text::SpacingStretchability::Direct
+        text::spacing::SpacingStretchability::Direct
     );
     assert_eq!(first.measurements().alignment().advance(), 50.0);
     assert_eq!(first.feedback().advance, 80.0);
@@ -762,13 +794,16 @@ fn trailing<S: LayoutScalar>() {
     let first = &lines(&actual)[0];
     amounts(first, &[0.0]);
     let row = first.spacing_slots().next().unwrap();
-    assert_eq!(row.stretchability, text::SpacingStretchability::Excluded);
+    assert_eq!(
+        row.stretchability,
+        text::spacing::SpacingStretchability::Excluded
+    );
     assert!(!row.can_expand());
     assert_eq!(first.measurements().alignment().advance(), 10.0);
     assert_eq!(first.feedback().advance, 24.0);
     assert_eq!(
         first.selected_line().request().context.alignment,
-        text::Alignment::Center
+        text::options::Alignment::Center
     );
     assert_eq!(&positions(&actual)[..2], &[(0, 0, 15.0), (0, 1, 27.0)]);
 }
@@ -810,7 +845,7 @@ fn insets<S: LayoutScalar>() {
         assert_eq!(context.indent, 8.0);
         assert_eq!(
             context.alignment_insets,
-            text::LineAlignmentInsets::try_new(5.0, 5.0).unwrap()
+            text::allocation::LineAlignmentInsets::try_new(5.0, 5.0).unwrap()
         );
         assert_eq!(line.measurements().alignment().advance(), 50.0);
     }

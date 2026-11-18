@@ -1,9 +1,21 @@
+//! The committed layout and every way to read it.
+//!
+//! A [`Layout`] holds immutable committed rows and is the sole original-source preparation owner; [`Builder`]
+//! builds one. It is read through [`Line`], [`Run`], [`RunView`], [`Glyph`], [`GlyphPlacement`], [`Cluster`],
+//! [`Metrics`] and the `*MetricFact` types, positioned with [`Cursor`], [`CursorGeometry`], [`Movement`],
+//! [`Affinity`], [`Hit`], [`PlacedPosition`], [`Selection`], [`SelectionGeometry`], [`SelectionRect`],
+//! [`PlacedSelection`] and [`PlacedSelectionPiece`], and decorated through [`DecorationKind`] and
+//! [`DecorationRun`]. [`ShapingBoundary`] and [`ShapingRefusalReason`] report shaping refusals.
+
 use std::{fmt, sync::Arc};
 
 use crate::engine::{
     PlacedLine, editing,
     layout::data::{FinalizedCell, FinalizedRun, FinalizedRunFrame, PlacedLayout, PreparedRun},
 };
+pub use crate::error::{ShapingBoundary, ShapingRefusalReason};
+pub use crate::system::Builder;
+pub use crate::views::{GlyphPlacement, RunView};
 use crate::{
     Result,
     cache::Key,

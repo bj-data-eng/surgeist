@@ -1,4 +1,4 @@
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 use super::super::{DefaultScalar, LayoutScalar};
 use super::{Clear, Direction};

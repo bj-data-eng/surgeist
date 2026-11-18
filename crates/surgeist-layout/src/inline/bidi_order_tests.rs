@@ -296,7 +296,10 @@ fn decorated_lane<S: LayoutScalar>() {
     );
     assert!(report.controls[2].endpoint.is_none());
     assert_eq!(report.lines.len(), 1);
-    assert_eq!(report.lines[0].end, surgeist_text::LineEnd::Forced);
+    assert_eq!(
+        report.lines[0].end,
+        surgeist_text::selection::LineEnd::Forced
+    );
     assert_eq!(report.block_extent, n(10.0));
     assert_eq!(report.line_bands.len(), 1);
     assert!(report.nonformatted_controls.is_empty());
@@ -326,7 +329,9 @@ fn opposed_lane<S: LayoutScalar>() {
             crate::LineBoxDirectionPolicy::Plaintext,
             Direction::Rtl,
         );
-        context.commit(context.resolve(Some(surgeist_text::ParagraphBaseDirection::LeftToRight)));
+        context.commit(context.resolve(Some(
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+        )));
         query.line_box_context = context;
         query.indent.amount = n(3.0);
         let report = run(query, 7.0, 47.0);

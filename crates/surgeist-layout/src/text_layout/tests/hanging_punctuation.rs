@@ -4,10 +4,10 @@ use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
-fn paragraph(source: &str, style: text::Style) -> PreparedParagraph {
+fn paragraph(source: &str, style: text::style::Style) -> PreparedParagraph {
     PreparedParagraph::plain(
         1,
-        Source::identified(source, text::Id::from_u64(71072), 4),
+        Source::identified(source, text::source::Id::from_u64(71072), 4),
         style,
     )
 }
@@ -93,7 +93,7 @@ fn compute<S: LayoutScalar>(
 fn lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     p: &PreparedParagraph,
-) -> Vec<text::FinalizedLine> {
+) -> Vec<text::finalized::FinalizedLine> {
     let mut lines = vec![None; batch.placed_text()[0].layout().lines().len()];
     assert_eq!(
         batch.placed_text()[0].layout().source(),
@@ -101,7 +101,7 @@ fn lines<S: LayoutScalar>(
     );
     assert_eq!(
         p.origin(1).view().source().id(),
-        Some(text::Id::from_u64(71072))
+        Some(text::source::Id::from_u64(71072))
     );
     assert_eq!(p.origin(1).view().source().revision(), 4);
     for entry in batch.final_inline_fragments() {
@@ -135,20 +135,20 @@ fn end_geometry<S: LayoutScalar>() {
     for (mode, fit, minimum, maximum) in [
         (None, 20.0, 20.0, 20.0),
         (
-            Some(text::HangingPunctuationEnd::ForceEnd),
+            Some(text::style::HangingPunctuationEnd::ForceEnd),
             10.0,
             10.0,
             10.0,
         ),
         (
-            Some(text::HangingPunctuationEnd::AllowEnd),
+            Some(text::style::HangingPunctuationEnd::AllowEnd),
             10.0,
             10.0,
             20.0,
         ),
     ] {
-        let style = text::Style {
-            hanging_punctuation: text::HangingPunctuation::new(false, mode, false),
+        let style = text::style::Style {
+            hanging_punctuation: text::style::HangingPunctuation::new(false, mode, false),
             wrap: Wrap::Word,
             ..ahem_style(10.0, 10.0)
         };
@@ -169,7 +169,7 @@ fn end_geometry<S: LayoutScalar>() {
                 maximum
             );
             let alignment = match mode {
-                Some(text::HangingPunctuationEnd::AllowEnd) => width.min(20.0),
+                Some(text::style::HangingPunctuationEnd::AllowEnd) => width.min(20.0),
                 _ => fit,
             };
             assert_eq!(line.measurements().alignment().advance(), alignment);
@@ -195,18 +195,18 @@ fn end_hanging_changes_issued_measures_and_keeps_original_glyph_placement() {
 
 fn receiving_partition<S: LayoutScalar>() {
     for placement in [
-        text::HyphenationPlacement::LogicalAfter,
-        text::HyphenationPlacement::BothSides,
+        text::hyphenation::HyphenationPlacement::LogicalAfter,
+        text::hyphenation::HyphenationPlacement::BothSides,
     ] {
         for first in [false, true] {
-            let style = text::Style {
-                hanging_punctuation: text::HangingPunctuation::new(first, None, false),
+            let style = text::style::Style {
+                hanging_punctuation: text::style::HangingPunctuation::new(first, None, false),
                 wrap: Wrap::Word,
-                hyphens: text::Hyphens::Auto,
+                hyphens: text::hyphenation::Hyphens::Auto,
                 locale: Some("en-US".into()),
-                hyphenate_character: text::HyphenateCharacter::Auto,
+                hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
                 native_hyphenation_convention: Some(
-                    text::NativeHyphenationConvention::language_script(
+                    text::hyphenation::NativeHyphenationConvention::language_script(
                         "en-US",
                         "Latn",
                         "(".into(),
@@ -223,18 +223,18 @@ fn receiving_partition<S: LayoutScalar>() {
                 assert_eq!(rows.len(), 2);
                 assert_eq!(
                     batch.placed_text()[0].layout().lines()[0].range(),
-                    text::Range::new(0, cut)
+                    text::source::Range::new(0, cut)
                 );
                 let selected = rows[0].selected_line();
                 let alternative = selected.request().alternative.as_ref().unwrap();
                 assert_eq!(
                     matches!(
                         alternative.view().definition(),
-                        text::PreparedAlternativeDefinition::Automatic { .. }
+                        text::prepared::PreparedAlternativeDefinition::Automatic { .. }
                     ),
                     automatic
                 );
-                assert_eq!(alternative.view().text(), &text::Text::from("("));
+                assert_eq!(alternative.view().text(), &text::source::Text::from("("));
                 let incoming = rows[0]
                     .hyphenation_continuation()
                     .expect("the real After/Both ending issues its receiver");
@@ -269,12 +269,14 @@ fn receiving_manual_partition_does_not_inherit_current_first_or_change_neutral_t
 
 fn zone_natural<S: LayoutScalar>() {
     for last in [false, true] {
-        let style = text::Style {
-            hanging_punctuation: text::HangingPunctuation::new(false, None, last),
+        let style = text::style::Style {
+            hanging_punctuation: text::style::HangingPunctuation::new(false, None, last),
             wrap: Wrap::Word,
-            hyphens: text::Hyphens::Auto,
+            hyphens: text::hyphenation::Hyphens::Auto,
             locale: Some("en-US".into()),
-            hyphenate_character: text::HyphenateCharacter::String(text::Text::from("A")),
+            hyphenate_character: text::hyphenation::HyphenateCharacter::String(
+                text::source::Text::from("A"),
+            ),
             ..ahem_style(10.0, 10.0)
         };
         let p = paragraph("A) associate", style);
@@ -283,7 +285,7 @@ fn zone_natural<S: LayoutScalar>() {
         assert_eq!(rows.len(), 2);
         assert_eq!(
             batch.placed_text()[0].layout().lines()[0].range(),
-            text::Range::new(0, 7)
+            text::source::Range::new(0, 7)
         );
         assert_eq!(rows[0].feedback().advance, 80.0);
         assert_eq!(rows[1].feedback().advance, 50.0);
@@ -296,7 +298,7 @@ fn zone_natural<S: LayoutScalar>() {
                 .unwrap()
                 .view()
                 .definition(),
-            text::PreparedAlternativeDefinition::Automatic { .. }
+            text::prepared::PreparedAlternativeDefinition::Automatic { .. }
         ));
         // The natural-only zone reference ends after A) SPACE, whose closing
         // mark consumes false Last. Actual selected hyphen/terminal lines end

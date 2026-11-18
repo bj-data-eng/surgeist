@@ -59,7 +59,7 @@ fn border_padding_aggregate_keeps_ordinary_native_lane_rounding() {
 
 #[test]
 fn text_component_identity_preserves_source_lane_and_canonical_zero() {
-    use surgeist_text::InlineBoxEdgeComponents;
+    use surgeist_text::inline_box::InlineBoxEdgeComponents;
     let zero32 = InlineBoxEdgeComponents::from_f32(-0.0, -0.0, -0.0).unwrap();
     let plus32 = InlineBoxEdgeComponents::from_f32(0.0, 0.0, 0.0).unwrap();
     let zero64 = InlineBoxEdgeComponents::from_f64(-0.0, -0.0, -0.0).unwrap();
@@ -196,11 +196,14 @@ fn a_nonzero_margin_cannot_become_a_scalar_contribution_even_when_its_total_canc
 }
 
 fn text_error(
-    result: std::result::Result<surgeist_text::InlineBoxEdgeComponents, surgeist_text::Error>,
+    result: std::result::Result<
+        surgeist_text::inline_box::InlineBoxEdgeComponents,
+        surgeist_text::Error,
+    >,
     field: &'static str,
-    category: surgeist_text::TextNumericError,
+    category: surgeist_text::geometry::TextNumericError,
 ) {
-    use surgeist_text::{ErrorCode, ErrorDetail, TextNumericPhase};
+    use surgeist_text::{ErrorCode, ErrorDetail, geometry::TextNumericPhase};
     let error = result.unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidTextNumeric);
     let Some(ErrorDetail::InvalidTextNumeric {
@@ -219,7 +222,9 @@ fn text_error(
 
 #[test]
 fn text_component_construction_reports_the_actual_component_and_native_lane_failure() {
-    use surgeist_text::{InlineBoxEdgeComponents as C, TextNumericError as N};
+    use surgeist_text::{
+        geometry::TextNumericError as N, inline_box::InlineBoxEdgeComponents as C,
+    };
     for result in [
         C::from_f32(f32::NAN, 0.0, 0.0),
         C::from_f64(f64::INFINITY, 0.0, 0.0),
@@ -276,8 +281,8 @@ fn finite_subnormal_margin_is_not_an_implicit_zero_or_a_constructor_magnitude_li
     let b = InlineBoundaryEdgeOf::<f64>::try_new(tiny64, 0.0, 0.0).unwrap();
     assert_eq!(a.flow_advance(), tiny32);
     assert_eq!(b.flow_advance(), tiny64);
-    let a = surgeist_text::InlineBoxEdgeComponents::from_f32(tiny32, 0.0, 0.0).unwrap();
-    let b = surgeist_text::InlineBoxEdgeComponents::from_f64(tiny64, 0.0, 0.0).unwrap();
+    let a = surgeist_text::inline_box::InlineBoxEdgeComponents::from_f32(tiny32, 0.0, 0.0).unwrap();
+    let b = surgeist_text::inline_box::InlineBoxEdgeComponents::from_f64(tiny64, 0.0, 0.0).unwrap();
     assert_eq!(a.margin(), f64::from(tiny32));
     assert_eq!(b.margin(), tiny64);
 }

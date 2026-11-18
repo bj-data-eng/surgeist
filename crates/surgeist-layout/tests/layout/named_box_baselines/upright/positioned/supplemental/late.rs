@@ -145,7 +145,7 @@ fn same_text_geometry<S: l::LayoutScalar>(
         assert_eq!(a.inline_boxes(), b.inline_boxes());
         // Fresh placements issue distinct handles. Compare the public source
         // coordinates and physical geometry rather than foreign identities.
-        let positions = |text: &t::Layout| {
+        let positions = |text: &t::layout::Layout| {
             text.positions()
                 .map(|position| {
                     (
@@ -198,9 +198,9 @@ fn late_refusal<S: l::LayoutScalar>() {
     qualify_child::<S>(&child);
     let parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
         false,
-        t::Id::from_u64(3),
+        t::source::Id::from_u64(3),
     );
     qualify_parent(&parent);
     for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
@@ -212,13 +212,19 @@ fn late_refusal<S: l::LayoutScalar>() {
                 .iter()
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
-            [t::Range::new(0, 1), t::Range::new(1, 2)]
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
         );
         assert_eq!(text.source(), &parent.source);
         assert_eq!(text.inline_boxes().len(), 1);
-        assert_eq!(text.inline_boxes()[0].kind(), t::InlineBoxKind::OutOfFlow);
-        assert_eq!(text.inline_boxes()[0].id(), t::Id::from_u64(3));
-        assert_eq!(text.inline_boxes()[0].rect().size, t::Size::new(6.0, 14.0));
+        assert_eq!(
+            text.inline_boxes()[0].kind(),
+            t::source::InlineBoxKind::OutOfFlow
+        );
+        assert_eq!(text.inline_boxes()[0].id(), t::source::Id::from_u64(3));
+        assert_eq!(
+            text.inline_boxes()[0].rect().size,
+            t::geometry::Size::new(6.0, 14.0)
+        );
         let mut lines = std::collections::BTreeMap::new();
         for row in old.unrounded_inline_fragments() {
             if matches!(row.owner(), l::InlineFragmentOwner::Node(2 | 4)) {

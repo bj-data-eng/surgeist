@@ -9,26 +9,26 @@ use crate::*;
 use surgeist_text as text;
 
 pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding<u32> {
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 12.5,
-        line_height: text::LineHeight::Absolute(16.0),
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(16.0),
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let source = text::Source::new(pieces.concat());
+    let source = text::source::Source::new(pieces.concat());
     let mut at = 0;
     let origins = pieces
         .iter()
         .map(|piece| {
-            let source = text::Source::new(*piece);
+            let source = text::source::Source::new(*piece);
             let len = source.text().len();
-            let origin = text::ParagraphOrigin {
+            let origin = text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, len),
-                aggregate: text::Range::new(at, at + len),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, len),
+                aggregate: text::source::Range::new(at, at + len),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             };
             at += len;
             origin
@@ -37,28 +37,28 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
     let connections = origins
         .iter()
         .skip(1)
-        .map(|origin| text::ParagraphConnection {
+        .map(|origin| text::paragraph::ParagraphConnection {
             at: origin.aggregate.start,
-            kind: text::ParagraphConnectionKind::Continuous,
+            kind: text::paragraph::ParagraphConnectionKind::Continuous,
         })
         .collect::<Vec<_>>();
     let boundary_policies = (0..connections.len())
-        .map(|index| text::ParagraphBoundaryPolicy {
-            definition: text::ParagraphBoundaryDefinition::Connection(index),
+        .map(|index| text::paragraph::ParagraphBoundaryPolicy {
+            definition: text::paragraph::ParagraphBoundaryDefinition::Connection(index),
             preceding_wrap: style.wrap,
             following_wrap: style.wrap,
             ancestor_wrap: style.wrap,
         })
         .collect();
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source,
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             origins,
             connections,
             controls: vec![],
@@ -66,7 +66,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, ancestor_wrap);
@@ -75,7 +75,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         .register_fonts(bytes, surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origins = prepared
         .origin_views()
@@ -224,14 +224,14 @@ fn output<S: LayoutScalar>(
         .output()
 }
 
-fn assert_rect(actual: text::Rect, expected: text::Rect) {
+fn assert_rect(actual: text::geometry::Rect, expected: text::geometry::Rect) {
     assert_eq!(actual, expected);
 }
 
 #[derive(Debug, PartialEq)]
 struct GlyphFacts {
     id: u32,
-    range: text::Range,
+    range: text::source::Range,
     x: f32,
     y: f32,
     advance: f32,
@@ -241,10 +241,10 @@ struct GlyphFacts {
 #[derive(Debug, PartialEq)]
 struct Geometry {
     glyphs: Vec<GlyphFacts>,
-    relative_glyph_origins: Vec<text::Point>,
-    relative_clusters: Vec<text::Cluster>,
-    relative_carets: Vec<(text::Cursor, text::Rect)>,
-    relative_selection: Vec<text::Rect>,
+    relative_glyph_origins: Vec<text::geometry::Point>,
+    relative_clusters: Vec<text::layout::Cluster>,
+    relative_carets: Vec<(text::layout::Cursor, text::geometry::Rect)>,
+    relative_selection: Vec<text::geometry::Rect>,
 }
 
 fn assert_placement<S: LayoutScalar>(
@@ -254,20 +254,24 @@ fn assert_placement<S: LayoutScalar>(
     mark: bool,
 ) -> Geometry {
     let shift = if moved {
-        text::Point::new(4.0, 5.0)
+        text::geometry::Point::new(4.0, 5.0)
     } else {
-        text::Point::new(0.0, 0.0)
+        text::geometry::Point::new(0.0, 0.0)
     };
-    let container_origin = text::Point::new(2.0 + shift.x, 2.0 + shift.y);
+    let container_origin = text::geometry::Point::new(2.0 + shift.x, 2.0 + shift.y);
     // Each .75 committed ancestor origin is 1. The source bounds and carets use
     // the resulting global origin 2, not the pre-rounding cumulative origin 1.5.
     for (node, raw, committed) in [
         (
             1,
-            text::Point::new(0.75 + shift.x, 0.75 + shift.y),
-            text::Point::new(1.0 + shift.x, 1.0 + shift.y),
+            text::geometry::Point::new(0.75 + shift.x, 0.75 + shift.y),
+            text::geometry::Point::new(1.0 + shift.x, 1.0 + shift.y),
         ),
-        (2, text::Point::new(0.75, 0.75), text::Point::new(1.0, 1.0)),
+        (
+            2,
+            text::geometry::Point::new(0.75, 0.75),
+            text::geometry::Point::new(1.0, 1.0),
+        ),
     ] {
         assert_eq!(
             output(batch, node, false).location,
@@ -290,12 +294,12 @@ fn assert_placement<S: LayoutScalar>(
     // Ahem ascent 10 + half-leading (16-12.5)/2 = 11.75. Only the
     // global baseline 13.75 is snapped to 14; the local 16px strut remains rigid.
     assert_eq!(placed.lines()[0].baseline(), baseline);
-    assert_eq!(placed.lines()[0].range(), text::Range::new(0, 2));
+    assert_eq!(placed.lines()[0].range(), text::source::Range::new(0, 2));
     let run = placed.glyph_runs();
     assert_eq!(run.len(), 1);
     assert_eq!(
         run[0].origin(),
-        text::Point::new(container_origin.x, baseline)
+        text::geometry::Point::new(container_origin.x, baseline)
     );
     assert_eq!(run[0].advance(), 12.5);
     let glyphs = run[0].glyphs();
@@ -303,20 +307,20 @@ fn assert_placement<S: LayoutScalar>(
         glyphs.iter().map(|glyph| glyph.id()).collect::<Vec<_>>(),
         if mark { vec![35, 100] } else { vec![58] }
     );
-    assert_eq!(glyphs[0].range(), text::Range::new(0, 2));
+    assert_eq!(glyphs[0].range(), text::source::Range::new(0, 2));
     assert_eq!(glyphs[0].advance(), 12.5);
     assert_eq!(glyphs[0].pen() + f64::from(glyphs[0].x()), 0.0);
     assert_eq!(glyphs[0].y(), 0.0);
     if mark {
         // Literal GPOS anchors: (400,600)-(100,200), size 12.5/UPEM 1000.
-        assert_eq!(glyphs[1].range(), text::Range::new(0, 2));
+        assert_eq!(glyphs[1].range(), text::source::Range::new(0, 2));
         assert_eq!(glyphs[1].pen() + f64::from(glyphs[1].x()), 3.75);
         assert_eq!(glyphs[1].y(), -5.0);
         assert_eq!(glyphs[1].advance(), 0.0);
     }
-    let anchor = text::Point::new(container_origin.x, baseline);
-    let relative = |rect: text::Rect| {
-        text::Rect::new(
+    let anchor = text::geometry::Point::new(container_origin.x, baseline);
+    let relative = |rect: text::geometry::Rect| {
+        text::geometry::Rect::new(
             rect.origin.x - anchor.x,
             rect.origin.y - anchor.y,
             rect.size.width,
@@ -333,15 +337,15 @@ fn assert_placement<S: LayoutScalar>(
         (&clusters[0], 0, container_origin.x),
         (&clusters[1], 1, container_origin.x + 6.25),
     ] {
-        assert_eq!(cluster.range(), text::Range::new(start, start + 1));
+        assert_eq!(cluster.range(), text::source::Range::new(start, start + 1));
         assert_rect(
             cluster.bounds(),
-            text::Rect::new(x, 2.25 + shift.y, 6.25, 16.0),
+            text::geometry::Rect::new(x, 2.25 + shift.y, 6.25, 16.0),
         );
     }
     let relative_clusters = clusters
         .into_iter()
-        .map(|cluster| text::Cluster::new(cluster.range(), relative(cluster.bounds())))
+        .map(|cluster| text::layout::Cluster::new(cluster.range(), relative(cluster.bounds())))
         .collect();
     let positions = placed.positions().collect::<Vec<_>>();
     // Legal positions also respect actual glyph extents. The ligature's glyph
@@ -349,11 +353,11 @@ fn assert_placement<S: LayoutScalar>(
     // has no interior grapheme stop. Both expose only the two outer positions.
     let expected_positions = [
         (
-            text::Cursor::new(0, text::Affinity::After),
+            text::layout::Cursor::new(0, text::layout::Affinity::After),
             container_origin.x,
         ),
         (
-            text::Cursor::new(2, text::Affinity::Before),
+            text::layout::Cursor::new(2, text::layout::Affinity::Before),
             container_origin.x + 12.5,
         ),
     ];
@@ -362,7 +366,7 @@ fn assert_placement<S: LayoutScalar>(
         assert_eq!(position.source_cursor(), cursor);
         assert_rect(
             placed.position_geometry(position).unwrap().rect(),
-            text::Rect::new(x, 2.25 + shift.y, 1.0, 16.0),
+            text::geometry::Rect::new(x, 2.25 + shift.y, 1.0, 16.0),
         );
     }
     let relative_carets = positions
@@ -378,7 +382,7 @@ fn assert_placement<S: LayoutScalar>(
     assert_eq!(selection.geometry().rects().len(), 1);
     assert_rect(
         selection.geometry().rects()[0].rect(),
-        text::Rect::new(container_origin.x, 2.25 + shift.y, 12.5, 16.0),
+        text::geometry::Rect::new(container_origin.x, 2.25 + shift.y, 12.5, 16.0),
     );
     let relative_selection = selection
         .geometry()
@@ -424,9 +428,9 @@ fn assert_placement<S: LayoutScalar>(
         assert_eq!(view.origin(), Some(origin.origin.clone()));
         let origin_start = usize::try_from(origin.node - 10).unwrap();
         let origin_range = if split {
-            text::Range::new(origin_start, origin_start + 1)
+            text::source::Range::new(origin_start, origin_start + 1)
         } else {
-            text::Range::new(0, 2)
+            text::source::Range::new(0, 2)
         };
         let aggregate = view.aggregate_range().unwrap();
         assert!(
@@ -436,7 +440,7 @@ fn assert_placement<S: LayoutScalar>(
         );
         assert_eq!(
             view.local_range(),
-            Some(text::Range::new(
+            Some(text::source::Range::new(
                 aggregate.start - origin_range.start,
                 aggregate.end - origin_range.start
             ))
@@ -454,13 +458,13 @@ fn assert_placement<S: LayoutScalar>(
         );
         assert_eq!(fragment.baseline(), Point::new(S::ZERO, S::from_f64(12.0)));
         assert_rect(
-            text::Rect::new(
+            text::geometry::Rect::new(
                 rect.origin().x.to_f64() + container_origin.x,
                 rect.origin().y.to_f64() + container_origin.y,
                 rect.size().width.to_f64(),
                 rect.size().height.to_f64(),
             ),
-            text::Rect::new(container_origin.x + x, 2.25 + shift.y, width, 16.0),
+            text::geometry::Rect::new(container_origin.x + x, 2.25 + shift.y, width, 16.0),
         );
     }
     for origin in &binding.origins {
@@ -499,7 +503,9 @@ fn assert_placement<S: LayoutScalar>(
             .collect(),
         relative_glyph_origins: glyphs
             .iter()
-            .map(|glyph| text::Point::new(glyph.pen() + f64::from(glyph.x()), f64::from(glyph.y())))
+            .map(|glyph| {
+                text::geometry::Point::new(glyph.pen() + f64::from(glyph.x()), f64::from(glyph.y()))
+            })
             .collect(),
         relative_clusters,
         relative_carets,

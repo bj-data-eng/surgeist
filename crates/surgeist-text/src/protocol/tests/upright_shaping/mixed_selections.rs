@@ -6,9 +6,13 @@ use crate::{
     hyphenation::{HyphenationPlacement, Hyphens, NativeHyphenationConvention},
     layout::{Affinity, DecorationKind},
     processing::{
-        ComputedLineBoundaryInput, ContextualSourceInput, DocumentSegmentBreaks, SourceBoxSide,
-        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent as E,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+        DocumentSegmentBreaks,
+        contextual::{
+            ComputedLineBoundaryInput, ContextualSourceInput, SourceBoxSide,
+            SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent as E,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+            WhiteSpaceTrim,
+        },
     },
     protocol::{
         paragraph::{
@@ -120,7 +124,7 @@ fn captured(
             E::ExitScope(0),
         ],
     };
-    Arc::new(crate::processing::process_contextual_source(input).unwrap())
+    Arc::new(crate::processing::contextual::process_contextual_source(input).unwrap())
 }
 fn prepare(
     system: &mut System,
@@ -217,7 +221,7 @@ fn mixed_real_computed_scope_cut_retains_cause_and_each_selected_native_basis() 
     assert_eq!(cause.source_position().get(), 1);
     assert_eq!(
         cause.target(),
-        crate::processing::CapturedComputedLineBoundaryTarget::Scope {
+        crate::processing::contextual::CapturedComputedLineBoundaryTarget::Scope {
             scope: processed.captured_scope(1).unwrap(),
             side: SourceBoxSide::Before,
         }

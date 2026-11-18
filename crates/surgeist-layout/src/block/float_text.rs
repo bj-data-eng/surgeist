@@ -11,7 +11,12 @@ use crate::LayoutScalar;
 use crate::text_layout::fit::{EncounterBasis, EncounterReplay, FitError};
 use crate::text_layout::scope_alignment::EntryBacking;
 use crate::text_layout::scope_alignment::EntryFundingRef;
-use surgeist_text::{FinalizedLine, LineEnd, PreparedParticipant, SourcePosition, TextSeam};
+use surgeist_text::{
+    finalized::{FinalizedLine, TextSeam},
+    prepared::PreparedParticipant,
+    selection::LineEnd,
+    source::SourcePosition,
+};
 
 mod ancestor_end;
 use ancestor_end::ClosingEnds;
@@ -44,9 +49,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvents<Node, S> {
         self,
         run: &crate::text_layout::AdmittedRun<'_, Node>,
         associations: &crate::text_layout::capture::ScopeAssociations<Node>,
-        controls: impl Iterator<Item = &'a surgeist_text::ControlAllocation> + Clone,
+        controls: impl Iterator<Item = &'a surgeist_text::allocation::ControlAllocation> + Clone,
         mut interval: impl FnMut(
-            &surgeist_text::InlineBoxSource,
+            &surgeist_text::inline_box::InlineBoxSource,
         ) -> Result<Option<(usize, usize)>, FitError>,
         funding: Option<EntryFundingRef<'_>>,
     ) -> Result<BoundEvents<Node, S>, FitError> {
@@ -106,7 +111,7 @@ fn visit_source(funding: Option<EntryFundingRef<'_>>) -> Result<(), FitError> {
 
 fn source_computed_cut<Node: Copy + Eq>(
     associations: &crate::text_layout::capture::ScopeAssociations<Node>,
-    boundary: &surgeist_text::PreparedComputedLineBoundary,
+    boundary: &surgeist_text::prepared::PreparedComputedLineBoundary,
     funding: Option<EntryFundingRef<'_>>,
 ) -> Result<Option<crate::text_layout::capture::ComputedNativeCut>, FitError> {
     for (actual, cut) in associations.computed_cuts() {
@@ -121,8 +126,8 @@ fn source_computed_cut<Node: Copy + Eq>(
 /// Incidence belongs to one preparation and one actual original occurrence.
 /// The admitted origin ranges have equal local and aggregate lengths.
 fn text_origin_incidence(
-    unit: &surgeist_text::PreparedUnit,
-    origin: &surgeist_text::PreparedOrigin,
+    unit: &surgeist_text::prepared::PreparedUnit,
+    origin: &surgeist_text::prepared::PreparedOrigin,
     local: usize,
     funding: Option<EntryFundingRef<'_>>,
 ) -> Result<Option<OriginIncidence>, FitError> {
@@ -165,8 +170,8 @@ fn text_origin_incidence(
 /// A Cell can span several originals without offering an interior break.
 /// Its captured pieces preserve the original endpoint used by Text's prefix.
 fn cell_origin_incidence(
-    cell: &surgeist_text::PreparedCell,
-    origin: &surgeist_text::PreparedOrigin,
+    cell: &surgeist_text::prepared::PreparedCell,
+    origin: &surgeist_text::prepared::PreparedOrigin,
     local: usize,
     funding: Option<EntryFundingRef<'_>>,
 ) -> Result<Option<OriginIncidence>, FitError> {
@@ -229,7 +234,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         if packet.node != pending.node || packet.input != request {
             return Err(FitError::InvalidGeometry);
         }
-        let origin_seam = |origin: &surgeist_text::PreparedOrigin,
+        let origin_seam = |origin: &surgeist_text::prepared::PreparedOrigin,
                            after: bool|
          -> Result<Option<(TextSeam, usize, bool)>, FitError> {
             let view = origin.view();
@@ -605,7 +610,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 earlier_float_top = Some(earlier_float_top.map_or(top, |earlier| earlier.max(top)));
                 continue;
             }
-            let represented = |request: &surgeist_text::LineSelectionRequest,
+            let represented = |request: &surgeist_text::selection::LineSelectionRequest,
                                seam: &TextSeam|
              -> Result<bool, FitError> {
                 Ok(match seam {
@@ -722,7 +727,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             } else if start == end
                 && event.position == end
                 && request.participants.is_empty()
-                && request.context.end == surgeist_text::LineEnd::Paragraph
+                && request.context.end == surgeist_text::selection::LineEnd::Paragraph
             {
                 AcceptedFloatPrefix::EmptyParagraphEnd {
                     boundary: request.end.clone(),

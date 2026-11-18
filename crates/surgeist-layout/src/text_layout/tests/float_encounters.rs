@@ -256,9 +256,9 @@ fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
         ],
         style,
         if rtl {
-            text::ParagraphBaseDirection::RightToLeft
+            text::paragraph::ParagraphBaseDirection::RightToLeft
         } else {
-            text::ParagraphBaseDirection::LeftToRight
+            text::paragraph::ParagraphBaseDirection::LeftToRight
         },
     );
     let mut binding = paragraph.binding(2);
@@ -300,7 +300,7 @@ fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
     .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 1);
-    assert_eq!(layout.lines()[0].range(), text::Range::new(0, 2));
+    assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 2));
     assert_eq!(layout.lines()[0].baseline(), 8.0);
     assert_eq!(output(&batch, 2).size.height, S::from_f64(10.0));
     assert_eq!(output(&batch, 30).location.y, S::ZERO);
@@ -493,7 +493,7 @@ fn assert_cache_and_failure<S: LayoutScalar>(side: Float, width: f64, expected: 
             ParagraphPart::text(11, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
@@ -650,7 +650,7 @@ fn leading_empty_origin_float_keeps_its_encounter_while_text_avoids_its_band() {
             ParagraphPart::text(11, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
@@ -689,14 +689,14 @@ fn leading_empty_origin_float_keeps_its_encounter_while_text_avoids_its_band() {
 
 fn assert_soft_replay<S: LayoutScalar>() {
     let mut style = ahem_style(10.0, 10.0);
-    style.white_space = text::WhiteSpace::Collapse;
+    style.white_space = text::style::WhiteSpace::Collapse;
     let paragraph = PreparedParagraph::new(
         vec![
             ParagraphPart::text(10, Source::new("A "), style.clone()),
             ParagraphPart::text(11, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
@@ -725,8 +725,8 @@ fn assert_soft_replay<S: LayoutScalar>() {
     .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 2);
-    assert_eq!(layout.lines()[0].range(), text::Range::new(0, 2));
-    assert_eq!(layout.lines()[1].range(), text::Range::new(2, 3));
+    assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 2));
+    assert_eq!(layout.lines()[1].range(), text::source::Range::new(2, 3));
     assert_eq!(layout.lines()[0].baseline(), 8.0);
     assert_eq!(layout.lines()[1].baseline(), 18.0);
     assert_eq!(output(&batch, 30).location, Point::ZERO);
@@ -739,8 +739,8 @@ fn assert_soft_replay<S: LayoutScalar>() {
         .finalized_fragment()
         .finalized_line();
     let origin = paragraph.origin(10);
-    let at = text::TextSeam::Origin {
-        local: text::SourcePosition::try_new(origin.view().source().text(), 2).unwrap(),
+    let at = text::finalized::TextSeam::Origin {
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), 2).unwrap(),
         origin,
     };
     assert_eq!(first.feedback().advance, 10.0);
@@ -828,7 +828,7 @@ fn assert_signed<S: LayoutScalar>(adjustment: f64) {
             ParagraphPart::text(11, Source::new("X"), second),
         ],
         first,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
         &font,
     );
     let whole =
@@ -845,8 +845,8 @@ fn assert_signed<S: LayoutScalar>(adjustment: f64) {
     assert_eq!(
         actual,
         [
-            (text::Range::new(0, 1), 35, advance),
-            (text::Range::new(1, 2), 58, 0.0)
+            (text::source::Range::new(0, 1), 35, advance),
+            (text::source::Range::new(1, 2), 58, 0.0)
         ]
     );
     let mut off = ahem_style(10.0, 10.0);
@@ -854,7 +854,7 @@ fn assert_signed<S: LayoutScalar>(adjustment: f64) {
     let control = PreparedParagraph::with_registered_font(
         vec![ParagraphPart::text(10, Source::new("AX"), off.clone())],
         off,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
         &font,
     );
     assert_eq!(
@@ -918,8 +918,8 @@ fn assert_signed<S: LayoutScalar>(adjustment: f64) {
         .finalized_fragment()
         .finalized_line();
     let origin = paragraph.origin(10);
-    let at = text::TextSeam::Origin {
-        local: text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
+    let at = text::finalized::TextSeam::Origin {
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
         origin,
     };
     assert_eq!(line.prefix_at(&at).unwrap().advance(), 10.0 + adjustment);
@@ -945,13 +945,13 @@ fn preceding_unbreakable_content_keeps_its_line_and_defers_the_encountered_float
             ParagraphPart::text(11, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     assert!(
         paragraph
             .prepared
             .opportunity_views()
-            .all(|row| row.kind() == text::PreparedBreakKind::ParagraphEnd)
+            .all(|row| row.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
@@ -990,7 +990,7 @@ fn preceding_unbreakable_content_keeps_its_line_and_defers_the_encountered_float
 
 fn assert_discarded_prefix<S: LayoutScalar>() {
     let mut style = ahem_style(10.0, 10.0);
-    style.white_space = text::WhiteSpace::Collapse;
+    style.white_space = text::style::WhiteSpace::Collapse;
     let paragraph = PreparedParagraph::new(
         vec![
             ParagraphPart::text(10, Source::new(" "), style.clone()),
@@ -998,7 +998,7 @@ fn assert_discarded_prefix<S: LayoutScalar>() {
             ParagraphPart::text(12, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 11, 30, 12];
@@ -1041,18 +1041,18 @@ fn discarded_leading_space_and_empty_origin_do_not_defer_the_encountered_float()
 
 #[test]
 fn leading_float_uses_the_actual_legal_break_reshaped_association() {
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 12.5,
-        line_height: text::LineHeight::Absolute(16.0),
+        line_height: text::style::LineHeight::Absolute(16.0),
         letter_spacing: 5.0,
-        word_break: text::WordBreak::BreakAll,
-        ..text::Style::default()
+        word_break: text::style::WordBreak::BreakAll,
+        ..text::style::Style::default()
     };
-    let analyzed = text::AnalyzedSource::new(
+    let analyzed = text::analyzed::AnalyzedSource::new(
         Source::new("AA"),
         style,
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut fonts = text::System::default();
@@ -1066,7 +1066,7 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = fonts
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let binding = TextParagraphBinding {
@@ -1084,9 +1084,9 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
     };
     let whole =
         crate::test_support::text_fragment::fragment_for(&binding.prepared).finalized_line();
-    let seam = text::TextSeam::Origin {
+    let seam = text::finalized::TextSeam::Origin {
         origin: origin.clone(),
-        local: text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
     };
     assert!(whole.prefix_at(&seam).unwrap().interior_unit().is_some());
     assert_eq!(whole.feedback().advance, 20.0);
@@ -1116,8 +1116,8 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
     .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 2);
-    assert_eq!(layout.lines()[0].range(), text::Range::new(0, 1));
-    assert_eq!(layout.lines()[1].range(), text::Range::new(1, 2));
+    assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 1));
+    assert_eq!(layout.lines()[1].range(), text::source::Range::new(1, 2));
     assert_eq!(output(&batch, 30).location, Point::ZERO);
     let first = batch
         .final_inline_fragments()
@@ -1160,10 +1160,10 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
             ParagraphPart::text(11, Source::new("XXX"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
         vec![
-            text::ParagraphReplacement::resolved_native_logical_before(
-                text::ParagraphReplacementDefinition::Control {
+            text::paragraph::ParagraphReplacement::resolved_native_logical_before(
+                text::paragraph::ParagraphReplacementDefinition::Control {
                     control: 0,
                     origin: None,
                 },
@@ -1223,8 +1223,8 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
         .finalized_fragment()
         .finalized_line();
     let observation = first
-        .prefix_at(&text::TextSeam::AfterParticipant(
-            text::PreparedParticipant::Control(control),
+        .prefix_at(&text::finalized::TextSeam::AfterParticipant(
+            text::prepared::PreparedParticipant::Control(control),
         ))
         .unwrap();
     assert_eq!(observation.advance(), 30.0);
@@ -1235,13 +1235,13 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
         .find(|fragment| {
             matches!(
                 fragment.view().owner(),
-                text::FinalizedFragmentOwner::Alternative(_)
+                text::finalized::FinalizedFragmentOwner::Alternative(_)
             )
         })
         .unwrap();
     assert_eq!(
         replacement.view().owner(),
-        text::FinalizedFragmentOwner::Alternative(alternative)
+        text::finalized::FinalizedFragmentOwner::Alternative(alternative)
     );
     assert_eq!(replacement.view().aggregate_range(), None);
 }
@@ -1260,7 +1260,7 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
             ParagraphPart::text(12, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
         &font,
     );
     let whole =
@@ -1321,9 +1321,9 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
         .finalized_fragment()
         .finalized_line();
     let origin = paragraph.origin(11);
-    let local = text::SourcePosition::try_new(origin.view().source().text(), 0).unwrap();
+    let local = text::source::SourcePosition::try_new(origin.view().source().text(), 0).unwrap();
     let prefix = first
-        .prefix_at(&text::TextSeam::Origin { origin, local })
+        .prefix_at(&text::finalized::TextSeam::Origin { origin, local })
         .unwrap();
     assert_eq!(prefix.advance(), 0.0);
     assert!(prefix.has_retained_flow_participation());
@@ -1342,7 +1342,7 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
             ParagraphPart::text(11, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let child = PreparedParagraph::plain(40, Source::new("Z"), ahem_style(5.0, 5.0));
     let mut outer = parent.binding(2);
@@ -1697,7 +1697,7 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [65, 10]);
     assert_eq!(layout.lines().len(), 1);
-    assert_eq!(layout.lines()[0].range(), text::Range::new(0, 2));
+    assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 2));
     assert_eq!(layout.lines()[0].baseline(), 8.0);
     assert_eq!(layout.metrics().size().height, 10.0);
     let completions = layout.nonformatted_lines().collect::<Vec<_>>();
@@ -1708,10 +1708,13 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
     assert!(!receipt.has_in_flow_content());
     assert_eq!(receipt.feedback().line_height, 10.0);
     let selected = receipt.selected_line();
-    assert_eq!(selected.request().context.end, text::LineEnd::Paragraph);
+    assert_eq!(
+        selected.request().context.end,
+        text::selection::LineEnd::Paragraph
+    );
     assert!(matches!(&selected.request().termination,
-        text::PreparedTermination::Ordinary(offer)
-            if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd));
+        text::selection::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == text::prepared::PreparedBreakKind::ParagraphEnd));
     assert_eq!(output(&batch, 30).location, Point::new(0.0, 10.0));
     // The phantom contributes no line height. The 8x4 float still
     // sets its owner's auto bottom to10+4, independently of Text's10px extent.
@@ -1734,7 +1737,7 @@ fn assert_max_float_cohort<S: LayoutScalar>(
                 ParagraphPart::text(11, Source::new("X"), style.clone()),
             ],
             style,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         )
     } else {
         PreparedParagraph::plain(10, Source::new(source), style)
@@ -1927,7 +1930,7 @@ fn expired_captured_max_cohorts<S: LayoutScalar>() -> f64 {
             ParagraphPart::text(11, Source::new("X"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![30, 10, 31, 11];
@@ -2287,8 +2290,8 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
             },
         ],
         ahem_style(10.0, 10.0),
-        text::ParagraphBaseDirection::LeftToRight,
-        text::ParagraphStrut::AllocatedContributions,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphStrut::AllocatedContributions,
         Vec::new(),
     );
     let mut binding = paragraph.binding(2);
@@ -2411,7 +2414,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
     assert_eq!(receipt.feedback().line_height, 0.0);
     let selected = receipt.selected_line();
     let terminal = selected.request();
-    assert_eq!(terminal.context.end, text::LineEnd::Paragraph);
+    assert_eq!(terminal.context.end, text::selection::LineEnd::Paragraph);
     assert!(terminal.atomics.is_empty());
     assert_eq!(terminal.controls.len(), 2);
     for control in &terminal.controls {
@@ -2541,18 +2544,19 @@ mod both_sides_feedback;
 fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional_frame() {
     fn check<S: LayoutScalar>() {
         let mut style = ahem_style(10.0, 10.0);
-        style.hyphens = text::Hyphens::Auto;
+        style.hyphens = text::hyphenation::Hyphens::Auto;
         style.locale = Some("en-US".into());
-        style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+        style.hyphenate_character =
+            text::hyphenation::HyphenateCharacter::String(text::source::Text::from("A"));
         let mut prefix = style.clone();
-        prefix.line_height = text::LineHeight::Absolute(20.5);
+        prefix.line_height = text::style::LineHeight::Absolute(20.5);
         let paragraph = PreparedParagraph::new(
             vec![
                 ParagraphPart::text(10, Source::new("XX "), prefix),
                 ParagraphPart::text(11, Source::new("as\u{ad}sociate"), style.clone()),
             ],
             style,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let mut binding = paragraph.binding(2);
         binding.nodes = vec![10, 30, 11];
@@ -2598,7 +2602,7 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
         // The prefix is 30px, so the 60px float cannot share its 80px
         // row. A word-only probe must retain that prior source encounter.
         assert_eq!(output(&batch, 30).location.y.to_f64(), 21.0);
-        assert_eq!(layout.lines()[0].range(), text::Range::new(0, 6));
+        assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 6));
         assert_eq!(layout.lines()[0].baseline(), 13.0);
         let first = batch
             .final_inline_fragments()
@@ -2618,7 +2622,7 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
                 .unwrap()
                 .view()
                 .definition(),
-            text::PreparedAlternativeDefinition::Source { .. }
+            text::prepared::PreparedAlternativeDefinition::Source { .. }
         ));
         let warm = compute_layout_with_flow(
             &capture,
@@ -2641,18 +2645,19 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
 fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_it_inside() {
     fn check<S: LayoutScalar>() {
         let mut style = ahem_style(10.0, 10.0);
-        style.hyphens = text::Hyphens::Auto;
+        style.hyphens = text::hyphenation::Hyphens::Auto;
         style.locale = Some("en-US".into());
-        style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+        style.hyphenate_character =
+            text::hyphenation::HyphenateCharacter::String(text::source::Text::from("A"));
         let mut prefix = style.clone();
-        prefix.line_height = text::LineHeight::Absolute(20.5);
+        prefix.line_height = text::style::LineHeight::Absolute(20.5);
         let paragraph = PreparedParagraph::new(
             vec![
                 ParagraphPart::text(10, Source::new("XX "), prefix),
                 ParagraphPart::text(11, Source::new("assoc\u{ad}iate"), style.clone()),
             ],
             style,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let mut binding = paragraph.binding(2);
         binding.nodes = vec![10, 30, 11];
@@ -2700,7 +2705,7 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
         // Preserve SPACE still contributes to the encounter prefix even when
         // its Soft line alignment contribution hangs.
         assert_eq!(output(&batch, 30).location.y.to_f64(), 21.0);
-        assert_eq!(layout.lines()[0].range(), text::Range::new(0, 3));
+        assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 3));
         assert_eq!(layout.lines()[0].baseline(), 13.0);
         let first = batch
             .final_inline_fragments()
@@ -2716,7 +2721,7 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
             layout
                 .lines()
                 .iter()
-                .any(|line| line.range() == text::Range::new(3, 9))
+                .any(|line| line.range() == text::source::Range::new(3, 9))
         );
         let warm = compute_layout_with_flow(
             &capture,
@@ -2740,16 +2745,17 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
 fn automatic_internal_float_retries_changed_band_and_preserves_committed_results_on_refusal() {
     fn check<S: LayoutScalar>() {
         let mut style = ahem_style(10.0, 10.0);
-        style.hyphens = text::Hyphens::Auto;
+        style.hyphens = text::hyphenation::Hyphens::Auto;
         style.locale = Some("en-US".into());
-        style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+        style.hyphenate_character =
+            text::hyphenation::HyphenateCharacter::String(text::source::Text::from("A"));
         let paragraph = PreparedParagraph::new(
             vec![
                 ParagraphPart::text(10, Source::new("as\u{ad}s"), style.clone()),
                 ParagraphPart::text(11, Source::new("ociate"), style.clone()),
             ],
             style,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let mut binding = paragraph.binding(2);
         binding.nodes = vec![10, 30, 11];
@@ -2774,7 +2780,7 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
         assert_eq!(output(&cold, 2).size.width.to_f64(), 80.0);
         assert_eq!(
             cold.placed_text()[0].layout().lines()[0].range(),
-            text::Range::new(0, 5)
+            text::source::Range::new(0, 5)
         );
         assert_eq!(output(&cold, 30).location.y, S::ZERO);
         assert_eq!(
@@ -2794,7 +2800,7 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
         let changed = host.compute(&binding, &[30]).unwrap();
         assert_eq!(
             changed.placed_text()[0].layout().lines()[0].range(),
-            text::Range::new(0, 3)
+            text::source::Range::new(0, 3)
         );
         let fresh = CachedHost::new(host.tree.clone())
             .compute(&binding, &[])

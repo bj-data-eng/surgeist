@@ -868,10 +868,10 @@ fn profile_refusals<S: LayoutScalar>() {
 fn real_text<S: LayoutScalar>() {
     let paragraph = PreparedParagraph::plain(
         1,
-        text::Source::new("AAA BBB"),
-        text::Style {
-            white_space: text::WhiteSpace::Collapse,
-            wrap: text::Wrap::Word,
+        text::source::Source::new("AAA BBB"),
+        text::style::Style {
+            white_space: text::style::WhiteSpace::Collapse,
+            wrap: text::style::Wrap::Word,
             ..ahem_style(10.0, 10.0)
         },
     );
@@ -925,7 +925,7 @@ fn real_text<S: LayoutScalar>() {
         assert_eq!(placed.nodes(), &[1]);
         assert_eq!(
             placed.layout().source().text(),
-            &text::Text::from("AAA BBB")
+            &text::source::Text::from("AAA BBB")
         );
         assert_eq!(placed.layout().lines().len(), expected_lines);
         for (index, line) in placed.layout().lines().iter().enumerate() {

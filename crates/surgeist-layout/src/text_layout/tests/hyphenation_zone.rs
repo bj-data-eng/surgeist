@@ -3,12 +3,17 @@
 //! automatic empty indications remain automatic and are subject to that gate.
 use super::*;
 use surgeist_text::{
-    HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
-    LineEnd, OverflowWrap, PreparedBreakKind, PreparedTermination, Range, SpacingAllocations, Text,
-    WhiteSpace,
+    hyphenation::{
+        HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
+    },
+    prepared::PreparedBreakKind,
+    selection::{LineEnd, PreparedTermination},
+    source::{Range, Text},
+    spacing::SpacingAllocations,
+    style::{OverflowWrap, WhiteSpace},
 };
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-fn style() -> surgeist_text::Style {
+fn style() -> surgeist_text::style::Style {
     let mut value = ahem_style(10.0, 10.0);
     value.locale = Some("en-US".into());
     value.hyphens = Hyphens::Auto;
@@ -19,10 +24,10 @@ fn style() -> surgeist_text::Style {
     value
 }
 fn trial(
-    p: &surgeist_text::PreparedText,
-    offer: surgeist_text::PreparedOpportunity,
-    alternative: Option<surgeist_text::PreparedAlternative>,
-) -> surgeist_text::FinalizedLine {
+    p: &surgeist_text::prepared::PreparedText,
+    offer: surgeist_text::prepared::PreparedOpportunity,
+    alternative: Option<surgeist_text::prepared::PreparedAlternative>,
+) -> surgeist_text::finalized::FinalizedLine {
     let whole = crate::test_support::text_fragment::fragment_for(p).finalized_line();
     let mut request = whole.selected_line().request().clone();
     request.start = p.boundary_views().next().unwrap().handle();
@@ -35,22 +40,22 @@ fn trial(
     request.alternative = alternative;
     request.context.available_inline = Some(0.0);
     request.context.end = LineEnd::Soft;
-    request.context.alignment = surgeist_text::Alignment::Start;
-    request.context.spacing = surgeist_text::SpacingPolicy::None;
+    request.context.alignment = surgeist_text::options::Alignment::Start;
+    request.context.spacing = surgeist_text::spacing::SpacingPolicy::None;
     p.select(request)
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
-fn report(label: &str, line: &surgeist_text::FinalizedLine, bytes: &[u8]) {
+fn report(label: &str, line: &surgeist_text::finalized::FinalizedLine, bytes: &[u8]) {
     let selected = line.selected_line();
     let request = selected.request();
     let fit = line.measurements().fit();
     let retained = line
-        .prefix_at(&surgeist_text::TextSeam::AfterParticipant(
+        .prefix_at(&surgeist_text::finalized::TextSeam::AfterParticipant(
             request.participants.last().unwrap().clone(),
         ))
         .unwrap()
@@ -87,7 +92,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     let mut normal = style();
     normal.font = normal.font.feature("\"kern\" 0");
     let mut collapsed = normal.clone();
-    collapsed.font = surgeist_text::Font::new()
+    collapsed.font = surgeist_text::style::Font::new()
         .family("Ahem")
         .feature("\"kern\" 1");
     let paragraph = PreparedParagraph::with_registered_font(
@@ -167,7 +172,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     let prefix = trial(p, prefix.handle(), None);
     report("ordinary-prefix", &prefix, &font);
     assert!(prefix.edge_units().any(|row| row.disposition()
-        == surgeist_text::LineEdgeDisposition::Removed
+        == surgeist_text::finalized::LineEdgeDisposition::Removed
         && row.source_pieces().collect::<Vec<_>>() == [Range::new(1, 2)]));
     assert_eq!(prefix.measurements().alignment().advance(), 0.0);
 
@@ -189,14 +194,14 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     residual_request.participants = p.participants().skip(from).take(to - from).collect();
     residual_request.termination = PreparedTermination::Ordinary(end);
     residual_request.alternative = None;
-    residual_request.context.start = surgeist_text::LineStart::Continuation;
+    residual_request.context.start = surgeist_text::selection::LineStart::Continuation;
     residual_request.context.end = LineEnd::Paragraph;
     let residual_line = p
         .select(residual_request)
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     report("positive-original-residual", &residual_line, &font);
@@ -224,7 +229,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
             (0.0, 0.0)
         );
         assert!(
-            line.prefix_at(&surgeist_text::TextSeam::AfterParticipant(
+            line.prefix_at(&surgeist_text::finalized::TextSeam::AfterParticipant(
                 line.selected_line()
                     .request()
                     .participants

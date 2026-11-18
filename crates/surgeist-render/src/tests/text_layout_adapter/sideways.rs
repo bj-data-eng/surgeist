@@ -7,9 +7,9 @@ use skrifa::{
     instance::{LocationRef, Size},
 };
 
-fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
+fn clockwise(mut authored: text::style::Style) -> (text::layout::Layout, text::System) {
     authored.size = 10.0;
-    authored.line_height = text::LineHeight::Absolute(10.0);
+    authored.line_height = text::style::LineHeight::Absolute(10.0);
     let mut s = system(AHEM.to_vec());
     let font = skrifa::FontRef::new(AHEM).unwrap();
     assert_eq!(font.charmap().map(0x3a7_u32).unwrap().to_u32(), 274);
@@ -20,32 +20,35 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
         [bounds.x_min, bounds.y_min, bounds.x_max, bounds.y_max],
         [0.0, 400.0, 1000.0, 600.0]
     );
-    let a = text::AnalyzedSource::new(
-        text::Source::identified("\u{3a7}", text::Id::from_u64(1515005), 5),
+    let a = text::analyzed::AnalyzedSource::new(
+        text::source::Source::identified("\u{3a7}", text::source::Id::from_u64(1515005), 5),
         authored,
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let p = s
         .prepare(
             &a,
-            text::PreparationOptions::default()
-                .with_orientation(text::LineOrientation::SidewaysClockwise),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::SidewaysClockwise),
         )
         .unwrap();
-    assert_eq!(p.orientation(), text::LineOrientation::SidewaysClockwise);
+    assert_eq!(
+        p.orientation(),
+        text::selection::LineOrientation::SidewaysClockwise
+    );
     let end = p
         .opportunity_views()
-        .find(|o| o.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|o| o.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = p
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(end),
+            termination: text::selection::PreparedTermination::Ordinary(end),
             participants: p.participants().collect(),
             alternative: None,
             incoming: None,
@@ -54,25 +57,25 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::SidewaysClockwise,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::SidewaysClockwise,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Left,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Left,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
@@ -85,27 +88,29 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
             .collect::<Vec<_>>(),
         [(274, 10.0)]
     );
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared: p,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 20.0,
-                baseline: 100.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 20.0,
+                    baseline: 100.0,
+                },
+                orientation: text::selection::LineOrientation::SidewaysClockwise,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::SidewaysClockwise,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
     assert_eq!(
         layout.run_views().next().unwrap().origin(),
-        text::Point::new(100.0, 20.0)
+        text::geometry::Point::new(100.0, 20.0)
     );
     assert_eq!(
         layout.run_views().next().unwrap().orientation(),
-        text::LineOrientation::SidewaysClockwise
+        text::selection::LineOrientation::SidewaysClockwise
     );
     (layout, s)
 }
@@ -123,7 +128,10 @@ fn clockwise_asymmetric_outline_uses_one_basis_then_real_outer_placement() {
     let (input, s) = clockwise(style());
     let stats = s.stats();
     assert_eq!(input.source().text().code_units(), [0x3a7]);
-    assert_eq!(input.source().id(), Some(text::Id::from_u64(1515005)));
+    assert_eq!(
+        input.source().id(),
+        Some(text::source::Id::from_u64(1515005))
+    );
     assert_eq!(input.source().revision(), 5);
     for (outer, coefficients, ink) in [
         (
@@ -179,14 +187,16 @@ fn clockwise_asymmetric_outline_uses_one_basis_then_real_outer_placement() {
     assert_eq!(input.source().text().code_units(), [0x3a7]);
     assert_eq!(
         input.run_views().next().unwrap().origin(),
-        text::Point::new(100.0, 20.0)
+        text::geometry::Point::new(100.0, 20.0)
     );
 }
 
 #[test]
 fn clockwise_italic_executes_horizontal_shear_before_rotation_and_outer_scale() {
-    let authored = text::Style {
-        font: text::Font::new().family("Ahem").style(text::Slant::Italic),
+    let authored = text::style::Style {
+        font: text::style::Font::new()
+            .family("Ahem")
+            .style(text::style::Slant::Italic),
         ..style()
     };
     let (input, s) = clockwise(authored);
@@ -232,16 +242,16 @@ fn clockwise_italic_executes_horizontal_shear_before_rotation_and_outer_scale() 
 
 #[test]
 fn clockwise_decoration_enters_scene_as_already_physical_geometry() {
-    let authored = text::Style {
-        underline: text::Decoration::solid()
-            .with_offset(text::DecorationOffset::try_absolute(-2.0).unwrap())
-            .with_thickness(text::DecorationThickness::try_absolute(1.0).unwrap()),
+    let authored = text::style::Style {
+        underline: text::style::Decoration::solid()
+            .with_offset(text::style::DecorationOffset::try_absolute(-2.0).unwrap())
+            .with_thickness(text::style::DecorationThickness::try_absolute(1.0).unwrap()),
         ..style()
     };
     let (input, _s) = clockwise(authored);
     assert_eq!(
         input.decoration_views().next().unwrap().rect(),
-        text::Rect::new(97.0, 20.0, 1.0, 10.0)
+        text::geometry::Rect::new(97.0, 20.0, 1.0, 10.0)
     );
     let prepared = prepare_text_layout(
         &input,

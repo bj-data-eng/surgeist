@@ -1,18 +1,21 @@
 //! Continuations participate in actual choice, intrinsic and rollback contexts.
 use super::*;
 
-fn style(hyphens: text::Hyphens, overflow: text::OverflowWrap) -> text::Style {
-    text::Style {
+fn style(
+    hyphens: text::hyphenation::Hyphens,
+    overflow: text::style::OverflowWrap,
+) -> text::style::Style {
+    text::style::Style {
         hyphens,
         locale: Some("en-US".into()),
         overflow_wrap: overflow,
-        white_space: text::WhiteSpace::Collapse,
+        white_space: text::style::WhiteSpace::Collapse,
         native_hyphenation_convention: Some(
-            text::NativeHyphenationConvention::language_script(
+            text::hyphenation::NativeHyphenationConvention::language_script(
                 "en-US",
                 "Latn",
-                text::Text::from("A"),
-                text::HyphenationPlacement::LogicalAfter,
+                text::source::Text::from("A"),
+                text::hyphenation::HyphenationPlacement::LogicalAfter,
             )
             .unwrap(),
         ),
@@ -50,7 +53,9 @@ fn tree<S: LayoutScalar>(
         .input(10, p.text_input(10))
 }
 
-fn finalized<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
+fn finalized<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<text::finalized::FinalizedLine> {
     let mut rows = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -84,7 +89,7 @@ fn sequence<S: LayoutScalar>(
         );
         assert_eq!(
             batch.placed_text()[0].layout().lines()[index].range(),
-            text::Range::new(start, end)
+            text::source::Range::new(start, end)
         );
         pending = line.hyphenation_continuation();
         assert_eq!(pending.is_some(), hyphenated);
@@ -176,7 +181,10 @@ fn automatic_priority<S: LayoutScalar>() {
     let p = PreparedParagraph::plain(
         10,
         Source::new("as\u{ad}sociate"),
-        style(text::Hyphens::Auto, text::OverflowWrap::Normal),
+        style(
+            text::hyphenation::Hyphens::Auto,
+            text::style::OverflowWrap::Normal,
+        ),
     );
     assert_eq!(
         p.prepared.analyzed_source().source().text().code_units(),
@@ -187,10 +195,13 @@ fn automatic_priority<S: LayoutScalar>() {
         .word_views()
         .find(|word| word.query() == Some("associate"))
         .unwrap();
-    assert_eq!(word.resource(), text::HyphenationResource::EnUs2005);
+    assert_eq!(
+        word.resource(),
+        text::hyphenation::HyphenationResource::EnUs2005
+    );
     assert_eq!(
         word.provenance(),
-        Some(text::HyphenationProvenance::SourceException { entry: "associate" })
+        Some(text::hyphenation::HyphenationProvenance::SourceException { entry: "associate" })
     );
     let manual = p
         .prepared
@@ -198,7 +209,7 @@ fn automatic_priority<S: LayoutScalar>() {
         .find(|a| {
             matches!(
                 a.definition(),
-                text::PreparedAlternativeDefinition::Source { .. }
+                text::prepared::PreparedAlternativeDefinition::Source { .. }
             )
         })
         .unwrap()
@@ -228,13 +239,14 @@ fn automatic_priority<S: LayoutScalar>() {
                 .alternative
                 .clone()
                 .unwrap();
-            let text::PreparedAlternativeDefinition::Automatic { cut } = ending.view().definition()
+            let text::prepared::PreparedAlternativeDefinition::Automatic { cut } =
+                ending.view().definition()
             else {
                 panic!("actual residual overflow admits the automatic ending")
             };
             assert_eq!(
                 cut.view().counts().unwrap(),
-                text::HyphenationCounts {
+                text::hyphenation::HyphenationCounts {
                     total: 9,
                     before: 4,
                     after: 5
@@ -261,7 +273,10 @@ fn automatic_priority<S: LayoutScalar>() {
     let manual_only = PreparedParagraph::plain(
         10,
         Source::new("as\u{ad}sociate"),
-        style(text::Hyphens::Manual, text::OverflowWrap::Normal),
+        style(
+            text::hyphenation::Hyphens::Manual,
+            text::style::OverflowWrap::Normal,
+        ),
     );
     intrinsic::<S>(
         &manual_only,
@@ -286,7 +301,10 @@ fn committed_count<S: LayoutScalar>() {
     let p = PreparedParagraph::plain(
         10,
         Source::new("cooperate"),
-        style(text::Hyphens::Auto, text::OverflowWrap::Normal),
+        style(
+            text::hyphenation::Hyphens::Auto,
+            text::style::OverflowWrap::Normal,
+        ),
     );
     assert_eq!(
         p.prepared
@@ -332,11 +350,14 @@ fn after_receiving_prefix_does_not_commit_an_extra_hyphenated_ending_f64() {
 }
 
 fn tail_rollback<S: LayoutScalar>() {
-    for overflow in [text::OverflowWrap::Normal, text::OverflowWrap::Anywhere] {
+    for overflow in [
+        text::style::OverflowWrap::Normal,
+        text::style::OverflowWrap::Anywhere,
+    ] {
         let p = PreparedParagraph::plain(
             10,
             Source::new("as\u{ad}sociate"),
-            style(text::Hyphens::Manual, overflow),
+            style(text::hyphenation::Hyphens::Manual, overflow),
         );
         let binding = p.binding(2);
         let mut host = CachedHost::new(tree::<S>(
@@ -360,7 +381,7 @@ fn tail_rollback<S: LayoutScalar>() {
             let changed = host.compute(&binding, &[2]).unwrap();
             if last == HyphenateLimitLast::None {
                 sequence(&changed, &[(0, 3, 20.0, true), (3, 10, 80.0, false)]);
-            } else if overflow == text::OverflowWrap::Anywhere {
+            } else if overflow == text::style::OverflowWrap::Anywhere {
                 sequence(&changed, &[(0, 9, 80.0, false), (9, 10, 10.0, false)]);
             } else {
                 sequence(&changed, &[(0, 10, 90.0, false)]);
@@ -383,23 +404,26 @@ fn tail_reflow_withdraws_after_obligation_and_all_receiving_cache_geometry_f64()
 }
 
 fn prefix_float_feedback<S: LayoutScalar>() {
-    let base = style(text::Hyphens::Manual, text::OverflowWrap::Normal);
-    let tall = text::Style {
-        line_height: text::LineHeight::Absolute(30.0),
+    let base = style(
+        text::hyphenation::Hyphens::Manual,
+        text::style::OverflowWrap::Normal,
+    );
+    let tall = text::style::Style {
+        line_height: text::style::LineHeight::Absolute(30.0),
         ..base.clone()
     };
     let mut source = Source::new("AB\u{ad}");
     // Original A independently makes the ending line30px. Only the actual
     // indication's governing SHY style can make the receiving CDE line30px.
-    source.span(text::Range::new(0, 1), tall.clone());
-    source.span(text::Range::new(2, 3), tall);
+    source.span(text::source::Range::new(0, 1), tall.clone());
+    source.span(text::source::Range::new(2, 3), tall);
     let p = PreparedParagraph::new(
         vec![
             ParagraphPart::text(10, source, base.clone()),
             ParagraphPart::text(11, Source::new("CDE"), base.clone()),
         ],
         base,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = p.binding(2);
     binding.nodes.push(30);
@@ -444,7 +468,7 @@ fn prefix_float_feedback<S: LayoutScalar>() {
                 && row.fragment().line_index() == 1
                 && matches!(
                     row.fragment().finalized_fragment().view().owner(),
-                    text::FinalizedFragmentOwner::Alternative(_)
+                    text::finalized::FinalizedFragmentOwner::Alternative(_)
                 )
         })
         .expect("the receiving prefix retains its preceding origin's actual node");
@@ -528,21 +552,24 @@ fn after_prefix_height_and_float_feedback_rebuild_transactionally_f64() {
 }
 
 fn late_float_refusal<S: LayoutScalar>() {
-    let base = style(text::Hyphens::Manual, text::OverflowWrap::Normal);
-    let tall = text::Style {
-        line_height: text::LineHeight::Absolute(30.0),
+    let base = style(
+        text::hyphenation::Hyphens::Manual,
+        text::style::OverflowWrap::Normal,
+    );
+    let tall = text::style::Style {
+        line_height: text::style::LineHeight::Absolute(30.0),
         ..base.clone()
     };
     let mut source = Source::new("AB\u{ad}CDE");
-    source.span(text::Range::new(0, 1), tall.clone());
-    source.span(text::Range::new(2, 3), tall);
+    source.span(text::source::Range::new(0, 1), tall.clone());
+    source.span(text::source::Range::new(2, 3), tall);
     let p = PreparedParagraph::new(
         vec![
             ParagraphPart::text(10, source, base.clone()),
             ParagraphPart::text(11, Source::new(" X"), base.clone()),
         ],
         base,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = p.binding(2);
     binding.nodes = vec![10, 30, 11];

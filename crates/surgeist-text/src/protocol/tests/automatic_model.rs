@@ -768,9 +768,12 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
         id::Id,
         layout::Affinity,
         processing::{
-            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
-            SourceProcessingEnvelope, SourceProcessingEvent as Event, SourceProcessingParagraph,
-            SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+            DocumentSegmentBreaks,
+            contextual::{
+                ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+                SourceProcessingEvent as Event, SourceProcessingParagraph, SourceProcessingScope,
+                WhiteSpaceTrim, process_contextual_source,
+            },
         },
         source::{InlineBox, InlineBoxKind},
     };
@@ -834,7 +837,7 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::processing::SourceProcessingTopology::Unknown,
+                topology: crate::processing::contextual::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: automatic_style(10.0),
                 used_direction: ParagraphBaseDirection::LeftToRight,
@@ -843,7 +846,7 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::processing::SourceProcessingTopology::Unknown,
+                topology: crate::processing::contextual::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: automatic_style(10.0),
                 used_direction: ParagraphBaseDirection::LeftToRight,

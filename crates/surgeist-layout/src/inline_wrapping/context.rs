@@ -17,8 +17,8 @@ pub(crate) enum WrappingScopeProof<Node> {
     NativePair {
         flow: Node,
         pair: (Node, Node),
-        start: surgeist_text::CapturedControl,
-        end: surgeist_text::CapturedControl,
+        start: surgeist_text::capture::CapturedControl,
+        end: surgeist_text::capture::CapturedControl,
         order: Option<Arc<CanonicalOrderBindings<Node>>>,
     },
 }
@@ -34,17 +34,19 @@ impl<Node> WrappingScopeProof<Node> {
 enum SourceExtent {
     Captured(CapturedScope),
     Native {
-        start: surgeist_text::CapturedControl,
-        end: surgeist_text::CapturedControl,
+        start: surgeist_text::capture::CapturedControl,
+        end: surgeist_text::capture::CapturedControl,
     },
 }
 impl SourceExtent {
     fn text_source(
         &self,
-        prepared: &surgeist_text::PreparedText,
-    ) -> surgeist_text::Result<surgeist_text::InlineBoxSource> {
+        prepared: &surgeist_text::prepared::PreparedText,
+    ) -> surgeist_text::Result<surgeist_text::inline_box::InlineBoxSource> {
         match self {
-            Self::Captured(scope) => Ok(surgeist_text::InlineBoxSource::captured(scope.clone())),
+            Self::Captured(scope) => Ok(surgeist_text::inline_box::InlineBoxSource::captured(
+                scope.clone(),
+            )),
             Self::Native { start, end } => prepared.native_inline_box(start.clone(), end.clone()),
         }
     }
@@ -52,8 +54,8 @@ impl SourceExtent {
         Self::Captured(scope.clone())
     }
     fn native(
-        start: &surgeist_text::CapturedControl,
-        end: &surgeist_text::CapturedControl,
+        start: &surgeist_text::capture::CapturedControl,
+        end: &surgeist_text::capture::CapturedControl,
     ) -> Result<Self, WrappingScopeError> {
         let first = start.event_position();
         let last = end.event_position();
@@ -63,11 +65,11 @@ impl SourceExtent {
             || first.partial_cmp(&last) != Some(std::cmp::Ordering::Less)
             || !matches!(
                 start.kind(),
-                surgeist_text::ParagraphControlKind::InlineBoundaryStart
+                surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart
             )
             || !matches!(
                 end.kind(),
-                surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+                surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryEnd
             )
         {
             return Err(WrappingScopeError::CaptureAssociation);
@@ -83,13 +85,13 @@ impl SourceExtent {
             Self::Native { start, .. } => start.paragraph().domain(),
         }
     }
-    fn start(&self) -> surgeist_text::CapturedEventPosition {
+    fn start(&self) -> surgeist_text::capture::CapturedEventPosition {
         match self {
             Self::Captured(scope) => scope.enter_position(),
             Self::Native { start, .. } => start.event_position(),
         }
     }
-    fn end(&self) -> surgeist_text::CapturedEventPosition {
+    fn end(&self) -> surgeist_text::capture::CapturedEventPosition {
         match self {
             Self::Captured(scope) => scope.exit_position(),
             Self::Native { end, .. } => end.event_position(),
@@ -487,7 +489,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                     edges,
                     metric_contribution,
                 } => {
-                    if scope.role() != surgeist_text::ScopeRole::Inline {
+                    if scope.role() != surgeist_text::capture::ScopeRole::Inline {
                         return Err(WrappingScopeError::NonInlineScope);
                     }
                     let proof = proofs
@@ -580,7 +582,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             {
                 continue;
             }
-            if scope.role() != surgeist_text::ScopeRole::Inline {
+            if scope.role() != surgeist_text::capture::ScopeRole::Inline {
                 return Err(WrappingScopeError::NonInlineScope);
             }
             let proof = proofs
@@ -688,11 +690,11 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 continue;
             };
             let actual_parent_is_domain = match &row.source {
-                Some(SourceExtent::Captured(scope)) => scope
-                    .parent()
-                    .is_some_and(|parent| parent.role() == surgeist_text::ScopeRole::Domain),
+                Some(SourceExtent::Captured(scope)) => scope.parent().is_some_and(|parent| {
+                    parent.role() == surgeist_text::capture::ScopeRole::Domain
+                }),
                 Some(SourceExtent::Native { start, .. }) => {
-                    start.scope().role() == surgeist_text::ScopeRole::Domain
+                    start.scope().role() == surgeist_text::capture::ScopeRole::Domain
                 }
                 None => true,
             };
@@ -830,12 +832,12 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         flow: Node,
         node: Node,
         fallback: Option<&CapturedScope>,
-        prepared: &surgeist_text::PreparedText,
+        prepared: &surgeist_text::prepared::PreparedText,
         mut inspect: impl FnMut() -> surgeist_text::Result<()>,
     ) -> surgeist_text::Result<
         Option<(
-            surgeist_text::InlineBoxSource,
-            surgeist_text::InlineBoxSource,
+            surgeist_text::inline_box::InlineBoxSource,
+            surgeist_text::inline_box::InlineBoxSource,
         )>,
     > {
         let mut source = None;
@@ -892,8 +894,8 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
     pub(crate) fn text_box_source_pair(
         &self,
         flow: Node,
-        source: &surgeist_text::InlineBoxSource,
-        prepared: &surgeist_text::PreparedText,
+        source: &surgeist_text::inline_box::InlineBoxSource,
+        prepared: &surgeist_text::prepared::PreparedText,
         mut inspect: impl FnMut() -> surgeist_text::Result<()>,
     ) -> surgeist_text::Result<Option<(Node, Node)>> {
         for row in &self.rows {
@@ -1090,7 +1092,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             // The box endpoint owns this edge, not a shared inter-run gap.
             // Qualify that actual emitted slot before projecting Before/After;
             // partitioning an outside rank would clamp it to this run's ends.
-            let owner_rank = if edge.side == surgeist_text::SourceBoxSide::Before {
+            let owner_rank = if edge.side == surgeist_text::capture::SourceBoxSide::Before {
                 span.first
             } else {
                 span.last
@@ -1111,7 +1113,8 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                     continue;
                 }
             };
-            let cut = owner + usize::from(edge.side == surgeist_text::SourceBoxSide::After);
+            let cut =
+                owner + usize::from(edge.side == surgeist_text::capture::SourceBoxSide::After);
             if edge.effect.forced {
                 forced[cut] = true;
             }

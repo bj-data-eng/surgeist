@@ -7,7 +7,11 @@ use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use crate::*;
-use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
+use surgeist_text::{
+    paragraph::{ParagraphBaseDirection, ParagraphControlKind},
+    source::Source,
+    style::Wrap,
+};
 
 #[path = "tests/atomic_hyphen_receivers.rs"]
 mod atomic_hyphen_receivers;
@@ -110,7 +114,7 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
             ParagraphPart::text(90, Source::new("X"), style.clone()),
             ParagraphPart::Atomic {
                 node: 3,
-                size: surgeist_text::Size::new(10.0, 10.0),
+                size: surgeist_text::geometry::Size::new(10.0, 10.0),
             },
             ParagraphPart::Control {
                 node: 44,
@@ -246,11 +250,11 @@ fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
     // The actual Forced line uses Ahem ascent8/descent2. Its strut-only
     // Paragraph receiver retains those nominal metrics without a CSS line box.
     assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 2));
+    assert_eq!(lines[0].range(), surgeist_text::source::Range::new(0, 2));
     assert_eq!(lines[0].baseline(), 8.0);
     assert_eq!(
         lines[0].bounds(),
-        surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
+        surgeist_text::geometry::Rect::new(0.0, 0.0, 20.0, 10.0)
     );
     let completions = placed.nonformatted_lines().collect::<Vec<_>>();
     assert_eq!(completions.len(), 1);
@@ -281,10 +285,13 @@ fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
     assert_eq!(completions[0].origin.y, 10.0);
     let selected = completion.selected_line();
     let request = selected.request();
-    assert_eq!(request.context.end, surgeist_text::LineEnd::Paragraph);
+    assert_eq!(
+        request.context.end,
+        surgeist_text::selection::LineEnd::Paragraph
+    );
     assert!(matches!(&request.termination,
-        surgeist_text::PreparedTermination::Ordinary(offer)
-            if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+        surgeist_text::selection::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == surgeist_text::prepared::PreparedBreakKind::ParagraphEnd));
     assert_eq!(request.start, request.end);
     assert!(request.participants.is_empty());
     assert_eq!(placed.source().text().code_units(), &[0x58, 0x0a]);
@@ -392,7 +399,10 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     let actual = placed.lines()[0].bounds();
     // The public computation resolves the auto root to 20px before the final
     // pass. That known containing size is a definite line allocation.
-    assert_eq!(actual, surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0));
+    assert_eq!(
+        actual,
+        surgeist_text::geometry::Rect::new(0.0, 0.0, 20.0, 10.0)
+    );
     let finalized = batch.final_inline_fragments()[0]
         .fragment()
         .finalized_fragment()
@@ -473,8 +483,8 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
                     next_transition: None,
                 })
             },
-            clear: |_, _: &surgeist_text::LineSelectionRequest| Ok(None),
-            replay: |_: &surgeist_text::FinalizedLine, _| Ok(Vec::new()),
+            clear: |_, _: &surgeist_text::selection::LineSelectionRequest| Ok(None),
+            replay: |_: &surgeist_text::finalized::FinalizedLine, _| Ok(Vec::new()),
             accept: || Ok(()),
         },
     )
@@ -483,7 +493,8 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     // definite allocation. Both Ahem code units advance 10px; its actual line
     // box includes the conditionally hangable space for this explicit maximum
     // contribution. Its actual Text metric frame retains the same 20px width.
-    let surgeist_text::PlacementEntry::Formatted(first) = &output.paragraph.entries[0] else {
+    let surgeist_text::placement::PlacementEntry::Formatted(first) = &output.paragraph.entries[0]
+    else {
         panic!("native intrinsic line remains formatted");
     };
     assert_eq!(
@@ -517,15 +528,17 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
                 .unwrap()
         ]
     );
-    let intrinsic = surgeist_text::Layout::from_finalized_lines(surgeist_text::PlacementRequest {
-        prepared: output.paragraph.prepared,
-        coverage: surgeist_text::PlacementCoverage::WholeParagraph,
-        entries: output.paragraph.entries,
-    })
+    let intrinsic = surgeist_text::layout::Layout::from_finalized_lines(
+        surgeist_text::placement::PlacementRequest {
+            prepared: output.paragraph.prepared,
+            coverage: surgeist_text::placement::PlacementCoverage::WholeParagraph,
+            entries: output.paragraph.entries,
+        },
+    )
     .unwrap();
     assert_eq!(
         intrinsic.lines()[0].bounds(),
-        surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
+        surgeist_text::geometry::Rect::new(0.0, 0.0, 20.0, 10.0)
     );
     assert_eq!(placed.source().text().code_units(), &[0x58, 0x20]);
     for entries in [
@@ -752,7 +765,7 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
             fragment.view().owner(),
-            surgeist_text::FinalizedFragmentOwner::Origin(paragraph.origin(1))
+            surgeist_text::finalized::FinalizedFragmentOwner::Origin(paragraph.origin(1))
         );
         let feedback = fragment.finalized_line().feedback();
         assert!((feedback.baseline - 15.0).abs() < 1e-6);
@@ -844,7 +857,7 @@ fn assert_actual_no_clear_round_trip<S: LayoutScalar>() {
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
             fragment.view().owner(),
-            surgeist_text::FinalizedFragmentOwner::Origin(paragraph.origin(1))
+            surgeist_text::finalized::FinalizedFragmentOwner::Origin(paragraph.origin(1))
         );
         let feedback = fragment.finalized_line().feedback();
         // Ascent 12.8 plus half-leading 2.1 supplies before 14.9.
@@ -917,13 +930,13 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
     let lines = placed.lines();
     assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 3));
-    assert_eq!(lines[1].range(), surgeist_text::Range::new(3, 5));
+    assert_eq!(lines[0].range(), surgeist_text::source::Range::new(0, 3));
+    assert_eq!(lines[1].range(), surgeist_text::source::Range::new(3, 5));
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
             fragment.view().owner(),
-            surgeist_text::FinalizedFragmentOwner::Origin(paragraph.origin(1))
+            surgeist_text::finalized::FinalizedFragmentOwner::Origin(paragraph.origin(1))
         );
         let feedback = fragment.finalized_line().feedback();
         // Ahem ascent 8.4/descent 2.1 plus 1.5px half-leading gives 9.9/3.6.
@@ -966,7 +979,7 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         parts.push(ParagraphPart::text(text, Source::new("X"), style.clone()));
         parts.push(ParagraphPart::Atomic {
             node: atomic,
-            size: surgeist_text::Size::new(4.0, 16.0),
+            size: surgeist_text::geometry::Size::new(4.0, 16.0),
         });
     }
     let paragraph = PreparedParagraph::new(parts, style, ParagraphBaseDirection::LeftToRight);
@@ -1031,7 +1044,10 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         .enumerate()
     {
         let line = &lines[index];
-        assert_eq!(line.range(), surgeist_text::Range::new(index, index + 1));
+        assert_eq!(
+            line.range(),
+            surgeist_text::source::Range::new(index, index + 1)
+        );
         assert_eq!(line.baseline(), baseline);
         assert!((line.bounds().origin.y - top).abs() < 0.000_001);
         assert!((line.bounds().size.height - 21.2).abs() < 0.000_001);
@@ -1046,7 +1062,7 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
             fragment.view().owner(),
-            surgeist_text::FinalizedFragmentOwner::Origin(paragraph.origin(node))
+            surgeist_text::finalized::FinalizedFragmentOwner::Origin(paragraph.origin(node))
         );
         let line = fragment.finalized_line();
         let feedback = line.feedback();
@@ -1305,8 +1321,8 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
         style,
         ParagraphBaseDirection::LeftToRight,
         vec![
-            surgeist_text::ParagraphReplacement::resolved_native_logical_before(
-                surgeist_text::ParagraphReplacementDefinition::Control {
+            surgeist_text::paragraph::ParagraphReplacement::resolved_native_logical_before(
+                surgeist_text::paragraph::ParagraphReplacementDefinition::Control {
                     control: 0,
                     origin: None,
                 },
@@ -1319,7 +1335,7 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
     let opportunity = paragraph
         .prepared
         .opportunity_views()
-        .find(|view| view.kind() == surgeist_text::PreparedBreakKind::Discretionary)
+        .find(|view| view.kind() == surgeist_text::prepared::PreparedBreakKind::Discretionary)
         .unwrap();
     let alternatives = opportunity
         .alternatives()
@@ -1358,7 +1374,7 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
         .find(|entry| {
             matches!(
                 entry.fragment().finalized_fragment().view().owner(),
-                surgeist_text::FinalizedFragmentOwner::Alternative(_)
+                surgeist_text::finalized::FinalizedFragmentOwner::Alternative(_)
             )
         })
         .unwrap();
@@ -1366,7 +1382,7 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
     let fragment = replacement.fragment().finalized_fragment();
     assert_eq!(
         fragment.view().owner(),
-        surgeist_text::FinalizedFragmentOwner::Alternative(alternatives[1].clone())
+        surgeist_text::finalized::FinalizedFragmentOwner::Alternative(alternatives[1].clone())
     );
     assert!(fragment.view().origin().is_none());
     assert_eq!(
@@ -1400,7 +1416,7 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
                 ParagraphPart::text(1, Source::new("X"), style.clone()),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(20.0, 20.0),
+                    size: surgeist_text::geometry::Size::new(20.0, 20.0),
                 },
             ],
             style,
@@ -1469,7 +1485,10 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
         let placed_box = placed.inline_boxes()[0];
         assert_eq!(placed_box.rect().origin.x, 10.0);
         assert_eq!(placed_box.rect().origin.y, 0.0);
-        assert_eq!(placed_box.rect().size, surgeist_text::Size::new(20.0, 20.0));
+        assert_eq!(
+            placed_box.rect().size,
+            surgeist_text::geometry::Size::new(20.0, 20.0)
+        );
     }
 }
 
@@ -1556,7 +1575,7 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
             ParagraphPart::text(1, Source::new("XX"), style.clone()),
             ParagraphPart::Atomic {
                 node: 2,
-                size: surgeist_text::Size::new(20.0, 20.0),
+                size: surgeist_text::geometry::Size::new(20.0, 20.0),
             },
             ParagraphPart::Control {
                 node: 3,
@@ -1642,7 +1661,9 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
         .finalized_fragment()
         .finalized_line();
     let atomic = finalized.atomic_slots().next().unwrap();
-    let surgeist_text::AtomicLineAllocation::InFlow { box_geometry, .. } = atomic.allocation else {
+    let surgeist_text::allocation::AtomicLineAllocation::InFlow { box_geometry, .. } =
+        atomic.allocation
+    else {
         panic!("actual in-flow atomic")
     };
     let expected_atomic = Point::new(
@@ -1685,7 +1706,7 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
         vec![ParagraphPart::text(1, Source::new("X"), style.clone())],
         style,
         ParagraphBaseDirection::LeftToRight,
-        surgeist_text::ParagraphTerminalEdge::Unknown,
+        surgeist_text::paragraph::ParagraphTerminalEdge::Unknown,
     );
     let first = paragraph.binding(0);
     let mut second = first.clone();
@@ -1766,7 +1787,7 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
     assert!(matches!(
         error.detail(),
         Some(surgeist_text::ErrorDetail::InvalidTextProtocol {
-            reason: surgeist_text::ProtocolError::ForeignPlacement
+            reason: surgeist_text::prepared::ProtocolError::ForeignPlacement
         })
     ));
 }
@@ -1784,7 +1805,7 @@ fn assert_out_of_flow<S: LayoutScalar>() {
             ParagraphPart::text(1, Source::new("A"), style.clone()),
             ParagraphPart::OutOfFlow {
                 node: 2,
-                size: surgeist_text::Size::new(20.0, 10.0),
+                size: surgeist_text::geometry::Size::new(20.0, 10.0),
             },
             ParagraphPart::text(3, Source::new("B"), style.clone()),
         ],
@@ -1847,10 +1868,13 @@ fn assert_out_of_flow<S: LayoutScalar>() {
     assert_eq!(node.location, Point::new(S::from_f64(10.0), S::ZERO));
     assert_eq!(node.size, Size::new(S::from_f64(20.0), S::from_f64(10.0)));
     let positioned = placed.inline_boxes()[0];
-    assert_eq!(positioned.kind(), surgeist_text::InlineBoxKind::OutOfFlow);
+    assert_eq!(
+        positioned.kind(),
+        surgeist_text::source::InlineBoxKind::OutOfFlow
+    );
     assert_eq!(
         positioned.rect(),
-        surgeist_text::Rect::new(10.0, 0.0, 20.0, 10.0)
+        surgeist_text::geometry::Rect::new(10.0, 0.0, 20.0, 10.0)
     );
     let line = batch.final_inline_fragments()[0]
         .fragment()
@@ -1860,7 +1884,7 @@ fn assert_out_of_flow<S: LayoutScalar>() {
     assert_eq!(line.selected_line().request().atomics.len(), 1);
     assert_eq!(
         line.selected_line().request().atomics[0].allocation,
-        surgeist_text::AtomicLineAllocation::OutOfFlow
+        surgeist_text::allocation::AtomicLineAllocation::OutOfFlow
     );
 }
 
@@ -1878,11 +1902,11 @@ fn distinct_out_of_flow_occurrences_cannot_claim_one_absolute_node() {
             ParagraphPart::text(1, Source::new("X"), style.clone()),
             ParagraphPart::OutOfFlow {
                 node: 2,
-                size: surgeist_text::Size::new(10.0, 10.0),
+                size: surgeist_text::geometry::Size::new(10.0, 10.0),
             },
             ParagraphPart::OutOfFlow {
                 node: 3,
-                size: surgeist_text::Size::new(10.0, 10.0),
+                size: surgeist_text::geometry::Size::new(10.0, 10.0),
             },
         ],
         style,
@@ -1953,7 +1977,7 @@ fn assert_conflicting_atomic_authority<S: LayoutScalar>() {
     let paragraph = PreparedParagraph::new(
         vec![ParagraphPart::Atomic {
             node: 1,
-            size: surgeist_text::Size::new(20.0, 10.0),
+            size: surgeist_text::geometry::Size::new(20.0, 10.0),
         }],
         style,
         ParagraphBaseDirection::LeftToRight,
@@ -1973,7 +1997,7 @@ fn assert_conflicting_atomic_authority<S: LayoutScalar>() {
             NodeInputOf {
                 display: Display::InlineBlock,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
-                    surgeist_text::BidiLevel::try_new(0).unwrap(),
+                    surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
                     InlineBreakOpportunity::Allowed,
                 )),
                 ..NodeInputOf::default()
@@ -2151,10 +2175,13 @@ fn assert_terminal_break<S: LayoutScalar>() {
     assert_eq!(completions[0].origin.y, 10.0);
     let selected = completion.selected_line();
     let request = selected.request();
-    assert_eq!(request.context.end, surgeist_text::LineEnd::Paragraph);
+    assert_eq!(
+        request.context.end,
+        surgeist_text::selection::LineEnd::Paragraph
+    );
     assert!(matches!(&request.termination,
-        surgeist_text::PreparedTermination::Ordinary(offer)
-            if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+        surgeist_text::selection::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == surgeist_text::prepared::PreparedBreakKind::ParagraphEnd));
     assert_eq!(request.start, request.end);
     assert!(request.participants.is_empty());
     let forced = batch.final_inline_fragments()[0]
@@ -2163,7 +2190,7 @@ fn assert_terminal_break<S: LayoutScalar>() {
         .finalized_line();
     assert_eq!(
         forced.selected_line().request().context.end,
-        surgeist_text::LineEnd::Forced
+        surgeist_text::selection::LineEnd::Forced
     );
     assert_eq!(request.start, forced.selected_line().request().end);
     assert_eq!(placed.source().text().code_units(), &[88]);
@@ -2219,13 +2246,13 @@ fn assert_fractional_line_allocation_scroll<S: LayoutScalar>() {
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
     let lines = placed.lines();
     assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 3));
-    assert_eq!(lines[1].range(), surgeist_text::Range::new(3, 5));
+    assert_eq!(lines[0].range(), surgeist_text::source::Range::new(0, 3));
+    assert_eq!(lines[1].range(), surgeist_text::source::Range::new(3, 5));
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
             fragment.view().owner(),
-            surgeist_text::FinalizedFragmentOwner::Origin(paragraph.origin(1))
+            surgeist_text::finalized::FinalizedFragmentOwner::Origin(paragraph.origin(1))
         );
         let feedback = fragment.finalized_line().feedback();
         // Actual Ahem ascent 8.4 and descent 2.1, with 1.5 half-leading.
@@ -2401,8 +2428,8 @@ fn assert_logical_allocation_float_sliver<S: LayoutScalar>() {
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
     let lines = placed.lines();
     assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 3));
-    assert_eq!(lines[1].range(), surgeist_text::Range::new(3, 5));
+    assert_eq!(lines[0].range(), surgeist_text::source::Range::new(0, 3));
+    assert_eq!(lines[1].range(), surgeist_text::source::Range::new(3, 5));
     // Logical second allocation 13.5..27 intersects the actual sliver;
     // its independently placed metric footprint 13.1..26.6 does not.
     assert_eq!(lines[0].bounds().origin.x, 0.0);
@@ -2415,7 +2442,7 @@ fn assert_logical_allocation_float_sliver<S: LayoutScalar>() {
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
             fragment.view().owner(),
-            surgeist_text::FinalizedFragmentOwner::Origin(paragraph.origin(1))
+            surgeist_text::finalized::FinalizedFragmentOwner::Origin(paragraph.origin(1))
         );
         assert_eq!(fragment.finalized_line().feedback().line_height, 13.5);
     }

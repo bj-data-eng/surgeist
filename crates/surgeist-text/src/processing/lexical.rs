@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 mod continuity;
-use crate::processing::SourceContinuityOperation;
+use crate::processing::contextual::SourceContinuityOperation;
 use continuity::{Adjacency, Edge, ExteriorContinuity, Frontier, Neighbor};
 
 use icu_properties::{CodePointMapData, CodePointSetData, props};
@@ -713,7 +713,9 @@ fn execute_contextual(
             .get(origin)
             .map(|(_, domain)| *domain)
             .ok_or_else(|| {
-                super::contextual::invalid(crate::processing::SourceProcessingError::Domain)
+                super::contextual::invalid(
+                    crate::processing::contextual::SourceProcessingError::Domain,
+                )
             })?;
     }
     // All zero-extent actions precede the next original contribution. Their

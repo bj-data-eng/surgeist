@@ -6,37 +6,37 @@ use surgeist_text as text;
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 const ORIGINAL: [u16; 6] = [65, 66, 173, 67, 68, 69];
 
-fn analyzed(placement: text::HyphenationPlacement) -> text::AnalyzedSource {
-    let convention = text::NativeHyphenationConvention::language_script(
+fn analyzed(placement: text::hyphenation::HyphenationPlacement) -> text::analyzed::AnalyzedSource {
+    let convention = text::hyphenation::NativeHyphenationConvention::language_script(
         "und-Latn",
         "Latn",
-        text::Text::from("A"),
+        text::source::Text::from("A"),
         placement,
     )
     .unwrap();
-    let style = text::Style {
-        hyphens: text::Hyphens::Manual,
+    let style = text::style::Style {
+        hyphens: text::hyphenation::Hyphens::Manual,
         locale: Some("und-Latn".into()),
-        hyphenate_character: text::HyphenateCharacter::Auto,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
         native_hyphenation_convention: Some(convention),
         ..ahem_style(10.0, 10.0)
     };
-    let source = Source::identified("AB\u{ad}CDE", text::Id::from_u64(66077), 7);
-    let value = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let source = Source::identified("AB\u{ad}CDE", text::source::Id::from_u64(66077), 7);
+    let value = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, 6),
-                aggregate: text::Range::new(0, 6),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 6),
+                aggregate: text::source::Range::new(0, 6),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -44,17 +44,17 @@ fn analyzed(placement: text::HyphenationPlacement) -> text::AnalyzedSource {
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let value = crate::test_support::text::in_flat_wrapping_context(value, text::Wrap::Word);
+    let value = crate::test_support::text::in_flat_wrapping_context(value, text::style::Wrap::Word);
     assert_eq!(value.source().text().code_units(), ORIGINAL);
     let style = value.style();
-    assert_eq!(style.hyphens, text::Hyphens::Manual);
+    assert_eq!(style.hyphens, text::hyphenation::Hyphens::Manual);
     assert_eq!(style.locale.as_deref(), Some("und-Latn"));
     assert_eq!(
         style.hyphenate_limit_chars,
-        text::HyphenateLimitChars::default()
+        text::hyphenation::HyphenateLimitChars::default()
     );
     let convention = style.native_hyphenation_convention.as_ref().unwrap();
     assert_eq!(convention.locale(), Some("und-Latn"));
@@ -70,26 +70,37 @@ fn system() -> text::System {
     system
 }
 
-fn prepared(placement: text::HyphenationPlacement) -> text::Result<text::PreparedText> {
-    system().prepare(&analyzed(placement), text::PreparationOptions::default())
+fn prepared(
+    placement: text::hyphenation::HyphenationPlacement,
+) -> text::Result<text::prepared::PreparedText> {
+    system().prepare(
+        &analyzed(placement),
+        text::prepared::PreparationOptions::default(),
+    )
 }
 
-fn qualify_prepared(prepared: &text::PreparedText) {
+fn qualify_prepared(prepared: &text::prepared::PreparedText) {
     assert_eq!(
         prepared.analyzed_source().source().text().code_units(),
         ORIGINAL
     );
     let origins = prepared.origin_views().collect::<Vec<_>>();
     assert_eq!(origins.len(), 1);
-    assert_eq!(origins[0].source().id(), Some(text::Id::from_u64(66077)));
+    assert_eq!(
+        origins[0].source().id(),
+        Some(text::source::Id::from_u64(66077))
+    );
     assert_eq!(origins[0].source().revision(), 7);
     assert_eq!(origins[0].source().text().code_units(), ORIGINAL);
     let cuts = prepared.hyphenation_cut_views().collect::<Vec<_>>();
     assert_eq!(cuts.len(), 1);
-    assert_eq!(cuts[0].provenance(), text::HyphenationProvenance::Source);
+    assert_eq!(
+        cuts[0].provenance(),
+        text::hyphenation::HyphenationProvenance::Source
+    );
     assert_eq!(
         cuts[0].counts(),
-        Some(text::HyphenationCounts {
+        Some(text::hyphenation::HyphenationCounts {
             total: 5,
             before: 2,
             after: 3
@@ -97,17 +108,20 @@ fn qualify_prepared(prepared: &text::PreparedText) {
     );
     assert_eq!(
         cuts[0].opportunity().unwrap().view().kind(),
-        text::PreparedBreakKind::Discretionary
+        text::prepared::PreparedBreakKind::Discretionary
     );
     let alternatives = prepared.alternative_views().collect::<Vec<_>>();
     assert_eq!(alternatives.len(), 1);
     assert_eq!(alternatives[0].text().code_units(), [65]);
-    assert_eq!(alternatives[0].source_range(), Some(text::Range::new(2, 3)));
+    assert_eq!(
+        alternatives[0].source_range(),
+        Some(text::source::Range::new(2, 3))
+    );
     assert_eq!(alternatives[0].insertion_anchor().get(), 3);
 }
 
 fn compute<S: LayoutScalar>(
-    prepared: &text::PreparedText,
+    prepared: &text::prepared::PreparedText,
     available: crate::AxisSizingRequestOf<S>,
     width: Option<f64>,
 ) -> CompletedLayoutBatchOf<u32, S> {
@@ -202,7 +216,9 @@ fn compute<S: LayoutScalar>(
     result
 }
 
-fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
+fn lines<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<text::finalized::FinalizedLine> {
     let mut lines = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let f = entry.fragment();
@@ -215,7 +231,7 @@ fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::F
     lines.into_iter().map(|line| line.unwrap()).collect()
 }
 
-fn glyphs(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32)> {
+fn glyphs(line: &text::finalized::FinalizedLine) -> Vec<(text::source::Range, u32, f32)> {
     let mut glyphs = Vec::new();
     for run in line.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -232,7 +248,7 @@ fn glyphs(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32)> {
             run.glyphs()
                 .filter(|glyph| {
                     if glyph.advance() == 0.0 {
-                        assert_eq!(glyph.range(), text::Range::new(2, 3));
+                        assert_eq!(glyph.range(), text::source::Range::new(2, 3));
                         assert_eq!(
                             line.prepared_text()
                                 .analyzed_source()
@@ -245,7 +261,7 @@ fn glyphs(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32)> {
                             line.prepared_text()
                                 .alternative_views()
                                 .any(|alternative| alternative.source_range()
-                                    == Some(text::Range::new(2, 3)))
+                                    == Some(text::source::Range::new(2, 3)))
                         );
                         false
                     } else {
@@ -258,7 +274,7 @@ fn glyphs(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32)> {
     glyphs
 }
 
-fn qualify_whole<S: LayoutScalar>(p: &text::PreparedText) {
+fn qualify_whole<S: LayoutScalar>(p: &text::prepared::PreparedText) {
     let batch = compute::<S>(
         p,
         crate::AxisSizingRequestOf::new(
@@ -282,17 +298,17 @@ fn qualify_whole<S: LayoutScalar>(p: &text::PreparedText) {
     assert_eq!(
         glyphs(&actual[0]),
         [
-            (text::Range::new(0, 1), 35, 10.0),
-            (text::Range::new(1, 2), 36, 10.0),
-            (text::Range::new(3, 4), 37, 10.0),
-            (text::Range::new(4, 5), 38, 10.0),
-            (text::Range::new(5, 6), 39, 10.0),
+            (text::source::Range::new(0, 1), 35, 10.0),
+            (text::source::Range::new(1, 2), 36, 10.0),
+            (text::source::Range::new(3, 4), 37, 10.0),
+            (text::source::Range::new(4, 5), 38, 10.0),
+            (text::source::Range::new(5, 6), 39, 10.0),
         ]
     );
     assert!(actual[0].selected_line().request().alternative.is_none());
 }
 
-fn assert_layout<S: LayoutScalar>(p: &text::PreparedText, after: bool) {
+fn assert_layout<S: LayoutScalar>(p: &text::prepared::PreparedText, after: bool) {
     let batch = compute::<S>(
         p,
         crate::AxisSizingRequestOf::new(
@@ -316,7 +332,10 @@ fn assert_layout<S: LayoutScalar>(p: &text::PreparedText, after: bool) {
         assert_eq!(line.feedback().line_height, 10.0);
         assert_eq!(
             batch.placed_text()[0].layout().lines()[i].range(),
-            [text::Range::new(0, 3), text::Range::new(3, 6)][i]
+            [
+                text::source::Range::new(0, 3),
+                text::source::Range::new(3, 6)
+            ][i]
         );
         assert_eq!(
             batch.placed_text()[0].layout().lines()[i].baseline(),
@@ -324,18 +343,18 @@ fn assert_layout<S: LayoutScalar>(p: &text::PreparedText, after: bool) {
         );
     }
     let mut first = vec![
-        (text::Range::new(0, 1), 35, 10.0),
-        (text::Range::new(1, 2), 36, 10.0),
+        (text::source::Range::new(0, 1), 35, 10.0),
+        (text::source::Range::new(1, 2), 36, 10.0),
     ];
     let mut second = vec![
-        (text::Range::new(3, 4), 37, 10.0),
-        (text::Range::new(4, 5), 38, 10.0),
-        (text::Range::new(5, 6), 39, 10.0),
+        (text::source::Range::new(3, 4), 37, 10.0),
+        (text::source::Range::new(4, 5), 38, 10.0),
+        (text::source::Range::new(5, 6), 39, 10.0),
     ];
     if after {
-        second.insert(0, (text::Range::new(3, 3), 35, 10.0));
+        second.insert(0, (text::source::Range::new(3, 3), 35, 10.0));
     } else {
-        first.push((text::Range::new(3, 3), 35, 10.0));
+        first.push((text::source::Range::new(3, 3), 35, 10.0));
     }
     assert_eq!(glyphs(&actual[0]), first);
     assert_eq!(glyphs(&actual[1]), second);
@@ -363,7 +382,7 @@ fn assert_layout<S: LayoutScalar>(p: &text::PreparedText, after: bool) {
 }
 
 fn before<S: LayoutScalar>() {
-    let p = prepared(text::HyphenationPlacement::LogicalBefore).unwrap();
+    let p = prepared(text::hyphenation::HyphenationPlacement::LogicalBefore).unwrap();
     qualify_prepared(&p);
     qualify_whole::<S>(&p);
     assert_layout::<S>(&p, false);
@@ -382,7 +401,7 @@ fn positive_after<S: LayoutScalar>() {
     // Each scalar reaches its own missing behavior after independent Before
     // resource/font/count/geometry and intrinsic controls have passed.
     before::<S>();
-    let p = prepared(text::HyphenationPlacement::LogicalAfter)
+    let p = prepared(text::hyphenation::HyphenationPlacement::LogicalAfter)
         .expect("admitted real native LogicalAfter must support continuation placement");
     qualify_prepared(&p);
     qualify_whole::<S>(&p);

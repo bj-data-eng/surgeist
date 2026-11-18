@@ -86,12 +86,12 @@ impl AllocationSet {
             return Ok(false);
         }
         let inspection = checked_sum(
-            crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+            crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
             witness.records,
             1,
         )?;
         budget.work(checked_sum(
-            crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+            crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
             self.seen.len(),
             inspection,
         )?)?;
@@ -100,12 +100,12 @@ impl AllocationSet {
         }
         push(budget, &mut self.seen, witness)?;
         self.retention.records = checked_sum(
-            crate::processing::ScopeAlignmentLimitKind::Records,
+            crate::processing::contextual::ScopeAlignmentLimitKind::Records,
             self.retention.records,
             witness.records,
         )?;
         self.retention.payload_bytes = checked_sum(
-            crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
             self.retention.payload_bytes,
             witness.payload_bytes,
         )?;
@@ -284,7 +284,7 @@ pub(crate) fn proof_frames_contain_resource(
     bytes: &[u8],
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<bool> {
-    let work = crate::processing::ScopeAlignmentLimitKind::StructuralWork;
+    let work = crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork;
     budget.work(checked_sum(work, frames.len(), 1)?)?;
     if bytes.is_empty() {
         return Ok(false);
@@ -348,7 +348,7 @@ pub(crate) fn retained_finalized(
     // to this scalar receipt without fabricating an allocation identity. Its
     // embedded data and prefix headers are already part of this single header.
     retention.payload_bytes = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
         retention.payload_bytes,
         std::mem::size_of::<crate::engine::FinalizedLine>(),
     )?;
@@ -535,7 +535,7 @@ fn related_slots(related: crate::protocol::ScopeAlignmentProducts<'_>) -> Result
             finalized,
             families,
         } => checked_sum(
-            crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+            crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
             finalized.len(),
             families.len(),
         ),
@@ -741,7 +741,7 @@ fn visit_raw_roots<'a>(
 ) -> Result<()> {
     use crate::protocol::ScopeAlignmentProducts as Products;
     emit(RootVisit::Work(checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+        crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
         related_slots(related)?,
         1,
     )?))?;
@@ -801,7 +801,7 @@ fn visit_roots<'a>(
     related: crate::protocol::ScopeAlignmentProducts<'a>,
     emit: &mut dyn FnMut(RootVisit<'a>) -> Result<()>,
 ) -> Result<()> {
-    let work = crate::processing::ScopeAlignmentLimitKind::StructuralWork;
+    let work = crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork;
     let mut ordinal = 0;
     visit_raw_roots(input, related, &mut |event| {
         let (root, phase) = match event {
@@ -849,12 +849,12 @@ fn add_retention(
     witness: AllocationWitness,
 ) -> Result<()> {
     retention.records = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::Records,
+        crate::processing::contextual::ScopeAlignmentLimitKind::Records,
         retention.records,
         witness.records(),
     )?;
     retention.payload_bytes = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
         retention.payload_bytes,
         witness.payload_bytes(),
     )?;
@@ -869,7 +869,7 @@ fn retained_union(
     related: crate::protocol::ScopeAlignmentProducts<'_>,
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<crate::protocol::ScopeAlignmentRetention> {
-    let work = crate::processing::ScopeAlignmentLimitKind::StructuralWork;
+    let work = crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork;
     let mut ordinal = 0;
     let mut retention = crate::protocol::ScopeAlignmentRetention::default();
     visit_products(input, related, &mut |event| {

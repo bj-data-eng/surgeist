@@ -3,10 +3,12 @@ use crate::{
     analyzed::AnalyzedSource,
     layout::Affinity,
     processing::{
-        ComputedLineBoundaryInput, ContextualSourceInput, DocumentSegmentBreaks, ProcessedSource,
-        SourceBoxSide, SourceProcessingEnvelope, SourceProcessingEvent as E,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
-        process_contextual_source,
+        DocumentSegmentBreaks, ProcessedSource,
+        contextual::{
+            ComputedLineBoundaryInput, ContextualSourceInput, SourceBoxSide,
+            SourceProcessingEnvelope, SourceProcessingEvent as E, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection,

@@ -19,7 +19,7 @@ pub use declarations::{
 pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 
 use crate::accounting::{LayoutWork, Meter};
-use surgeist_text::CapturedScope;
+use surgeist_text::capture::CapturedScope;
 mod canonical_order;
 mod context;
 pub(crate) use canonical_order::{

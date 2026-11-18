@@ -358,10 +358,10 @@ fn balanced_receiver_resume_preserves_eligible_search_and_selected_program() {
         assert_eq!(
             report.lines.iter().map(|line| line.end).collect::<Vec<_>>(),
             [
-                surgeist_text::LineEnd::Forced,
-                surgeist_text::LineEnd::Forced,
-                surgeist_text::LineEnd::Soft,
-                surgeist_text::LineEnd::Paragraph,
+                surgeist_text::selection::LineEnd::Forced,
+                surgeist_text::selection::LineEnd::Forced,
+                surgeist_text::selection::LineEnd::Soft,
+                surgeist_text::selection::LineEnd::Paragraph,
             ]
         );
         for (actual, (source, x, y)) in report.atomics.iter().zip([
@@ -506,7 +506,7 @@ fn balanced_group_receipts_reject_real_count_and_terminal_mismatches() {
     assert_eq!(terminal.selected_lines.len(), 2);
     assert_eq!(
         terminal.selected_lines.last().unwrap().ending,
-        surgeist_text::LineEnd::Forced
+        surgeist_text::selection::LineEnd::Forced
     );
     assert!(
         finish_numeric_group_trial(&terminal, entry, &references[0], outcome)
@@ -631,7 +631,7 @@ fn tail_receiver_resume_preserves_frozen_prefix_and_winner_trace() {
                 LogicalPointOf::new(S::from_f64(x), S::from_f64(y))
             );
         }
-        use surgeist_text::LineEnd::{Forced, Paragraph, Soft};
+        use surgeist_text::selection::LineEnd::{Forced, Paragraph, Soft};
         assert_eq!(
             report
                 .formatted_lines
@@ -702,7 +702,7 @@ fn tail_without_winner_restores_auto_formatted_receipts_without_another_walk() {
                 LogicalPointOf::new(S::ZERO, S::from_f64(7.0 * source as f64))
             );
         }
-        use surgeist_text::LineEnd::{Forced, Paragraph, Soft};
+        use surgeist_text::selection::LineEnd::{Forced, Paragraph, Soft};
         assert_eq!(
             report
                 .formatted_lines

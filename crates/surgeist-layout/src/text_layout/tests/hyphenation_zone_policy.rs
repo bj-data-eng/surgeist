@@ -2,11 +2,15 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
-    HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
-    PreparedAlternativeDefinition, Range, Text, WhiteSpace,
+    hyphenation::{
+        HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
+    },
+    prepared::PreparedAlternativeDefinition,
+    source::{Range, Text},
+    style::WhiteSpace,
 };
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-fn style(white: WhiteSpace, indication: &str) -> surgeist_text::Style {
+fn style(white: WhiteSpace, indication: &str) -> surgeist_text::style::Style {
     let mut value = ahem_style(10.0, 10.0);
     value.locale = Some("en-US".into());
     value.hyphens = Hyphens::Auto;
@@ -125,7 +129,7 @@ fn lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     p: &PreparedParagraph,
     expected_font: &[u8],
-) -> Vec<surgeist_text::FinalizedLine> {
+) -> Vec<surgeist_text::finalized::FinalizedLine> {
     assert_eq!(
         batch.placed_text()[0].layout().source().text().code_units(),
         p.prepared.analyzed_source().source().text().code_units()
@@ -542,7 +546,7 @@ fn negative_zone_is_not_clamped_at_a_zero_gap() {
         let mut normal = style(WhiteSpace::Collapse, "");
         normal.font = normal.font.feature("\"kern\" 0");
         let mut zero = normal.clone();
-        zero.font = surgeist_text::Font::new()
+        zero.font = surgeist_text::style::Font::new()
             .family("Ahem")
             .feature("\"kern\" 1");
         let p = PreparedParagraph::with_registered_font(
@@ -632,7 +636,7 @@ fn zone_reference_is_natural_even_when_the_committed_fallback_is_justified() {
             assert_eq!(first.feedback().advance, 100.0);
             assert!(first.spacing_slots().any(|slot| matches!(
                 slot.disposition,
-                surgeist_text::SpacingSlotDisposition::Retained { .. }
+                surgeist_text::spacing::SpacingSlotDisposition::Retained { .. }
             ) && slot.advance > 10.0));
         }
     }

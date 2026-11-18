@@ -101,15 +101,18 @@ fn signed_compute<S: LayoutScalar>(
     })
     .unwrap()
 }
-fn demand(line: &text::FinalizedLine, expected: f64) {
+fn demand(line: &text::finalized::FinalizedLine, expected: f64) {
     let fit = line.measurements().margin_edge_fit();
-    assert_eq!(fit.authority(), text::MarginEdgeFitAuthority::CssComposed);
+    assert_eq!(
+        fit.authority(),
+        text::finalized::MarginEdgeFitAuthority::CssComposed
+    );
     assert_eq!(fit.advance(), expected);
     assert_eq!(fit.required_inline_size(), expected);
 }
 
 fn reduced<S: LayoutScalar>() {
-    let fixture = Fixture::new("A", (0, 1), text::WhiteSpace::Collapse, false, false);
+    let fixture = Fixture::new("A", (0, 1), text::style::WhiteSpace::Collapse, false, false);
     // The ONE-A finite line alone is not proof against unbreakable overflow
     // fallback. Its canonical demand/raw observation and separate intrinsic
     // sizes are the meaningful independent obligations here.
@@ -218,8 +221,10 @@ fn retraction<S: LayoutScalar>() {
             .binding
             .prepared
             .opportunity_views()
-            .any(|offer| offer.kind() == text::PreparedBreakKind::Allowed
-                && offer.boundary().view().source_before().get() == 1)
+            .any(
+                |offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed
+                    && offer.boundary().view().source_before().get() == 1
+            )
     );
     let old = signed_compute::<S>(
         &fixture,
@@ -263,8 +268,8 @@ fn retraction<S: LayoutScalar>() {
         (0.0, 20.0)
     );
     assert!(
-        matches!(&line.selected_line().request().termination,text::PreparedTermination::Ordinary(offer)
-        if offer.view().kind()==text::PreparedBreakKind::ParagraphEnd)
+        matches!(&line.selected_line().request().termination,text::selection::PreparedTermination::Ordinary(offer)
+        if offer.view().kind()==text::prepared::PreparedBreakKind::ParagraphEnd)
     );
     assert_eq!(
         line.run_views()
@@ -277,7 +282,9 @@ fn retraction<S: LayoutScalar>() {
             .collect::<Vec<_>>(),
         [(35, 0.0, 10.0), (36, 10.0, 10.0)]
     );
-    let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     demand(&replay, 5.0);
     assert_eq!(
         replay.selected_line().request(),
@@ -293,7 +300,7 @@ fn later_selected_margin_retraction_keeps_the_whole_candidate_over_a_real_fittin
 }
 
 fn beside_float<S: LayoutScalar>() {
-    let fixture = Fixture::new("A", (0, 1), text::WhiteSpace::Collapse, false, false);
+    let fixture = Fixture::new("A", (0, 1), text::style::WhiteSpace::Collapse, false, false);
     // Maintained real float is25x20. At root35 its10px remaining band admits
     // ordinary A10 beside it; this independently qualifies the actual band.
     let wide = signed_compute::<S>(

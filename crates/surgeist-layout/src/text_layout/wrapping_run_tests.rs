@@ -4,14 +4,16 @@ use super::*;
 use crate::test_support::inline_endpoint::Fixture;
 use crate::*;
 use std::cell::Cell;
-use surgeist_text::{ControlAllocation, ControlStrut, InlineBoundaryAllocation, LineBoxAlignment};
+use surgeist_text::allocation::{
+    ControlAllocation, ControlStrut, InlineBoundaryAllocation, LineBoxAlignment,
+};
 
 #[test]
 fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
     let fixture = Fixture::new(
         "A B C",
         (2, 5),
-        surgeist_text::WhiteSpace::Collapse,
+        surgeist_text::style::WhiteSpace::Collapse,
         false,
         false,
     );
@@ -139,9 +141,11 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
                     next_transition: None,
                 })
             },
-            clear: |_, _: &surgeist_text::LineSelectionRequest| Ok(None),
+            clear: |_, _: &surgeist_text::selection::LineSelectionRequest| Ok(None),
             replay: |line: &FinalizedLine, _| {
-                if line.selected_line().request().context.end == surgeist_text::LineEnd::Paragraph {
+                if line.selected_line().request().context.end
+                    == surgeist_text::selection::LineEnd::Paragraph
+                {
                     capacity.set(30.0);
                     changed.set(true);
                 }

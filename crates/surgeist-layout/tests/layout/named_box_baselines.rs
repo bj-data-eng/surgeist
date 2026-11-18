@@ -260,7 +260,7 @@ fn atomic<S: l::LayoutScalar>(
         vertical_align: l::VerticalAlignOf::Baseline,
         inline_baseline_context: l::InlineBaselineContext::Physical,
         atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
-            t::BidiLevel::try_new(u8::from(direction == l::Direction::Rtl)).unwrap(),
+            t::supplied_line::BidiLevel::try_new(u8::from(direction == l::Direction::Rtl)).unwrap(),
             l::InlineBreakOpportunity::Allowed,
         )),
         size: if mode == l::WritingMode::HorizontalTb {
@@ -1262,54 +1262,54 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
         env!("CARGO_MANIFEST_DIR"),
         "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
     ));
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     };
-    let source = t::Source::identified("A", t::Id::from_u64(1489001), 4);
-    use t::SourceProcessingEvent as E;
+    let source = t::source::Source::identified("A", t::source::Id::from_u64(1489001), 4);
+    use t::capture::SourceProcessingEvent as E;
     let capture = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
-            origins: vec![t::ParagraphOrigin {
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![t::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: t::Range::new(0, 1),
-                aggregate: t::Range::new(0, 1),
-                kind: t::ParagraphOriginKind::Authored,
+                local: t::source::Range::new(0, 1),
+                aggregate: t::source::Range::new(0, 1),
+                kind: t::paragraph::ParagraphOriginKind::Authored,
             }],
             controls: vec![],
             connections: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style.clone(),
-                used_direction: t::ParagraphBaseDirection::LeftToRight,
+                used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
                 E::EnterParagraph(0),
                 E::Origin {
                     origin: 0,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::ExitScope(0),
@@ -1317,17 +1317,17 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
         })
         .unwrap(),
     );
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         capture.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| t::WrappingPolicy {
+        .map(|r| t::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let mut system = t::System::default();
@@ -1337,7 +1337,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
     let prepared = system
         .prepare(
             &analyzed.with_wrapping_policies(wrapping).unwrap(),
-            t::PreparationOptions::default(),
+            t::prepared::PreparationOptions::default(),
         )
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
@@ -1465,7 +1465,7 @@ fn inline_block_default_last<S: l::LayoutScalar>() {
     let mut first = atomic(mode, direction, 10.0, (0.0, 0.0));
     first.size.width = px(10.0);
     first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
-        t::BidiLevel::try_new(0).unwrap(),
+        t::supplied_line::BidiLevel::try_new(0).unwrap(),
         l::InlineBreakOpportunity::Mandatory,
     ));
     assert_eq!(host.push(Some(2), l::LayoutInputOf::box_input(first)), 3);
@@ -1684,7 +1684,7 @@ fn source_override_cache<S: l::LayoutScalar>() {
         let mut first = atomic(mode, l::Direction::Ltr, 10.0, (0.0, 0.0));
         first.size.width = px(10.0);
         first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
-            t::BidiLevel::try_new(0).unwrap(),
+            t::supplied_line::BidiLevel::try_new(0).unwrap(),
             l::InlineBreakOpportunity::Mandatory,
         ));
         host.push(Some(2), l::LayoutInputOf::box_input(first));
@@ -2636,71 +2636,71 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
         env!("CARGO_MANIFEST_DIR"),
         "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
     ));
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     };
-    let source = t::Source::identified("AA", t::Id::from_u64(1489041), 1);
+    let source = t::source::Source::identified("AA", t::source::Id::from_u64(1489041), 1);
     let origins = [0, 1]
-        .map(|index| t::ParagraphOrigin {
+        .map(|index| t::paragraph::ParagraphOrigin {
             text_node: None,
-            source: t::Source::new("A"),
-            local: t::Range::new(0, 1),
-            aggregate: t::Range::new(index, index + 1),
-            kind: t::ParagraphOriginKind::Authored,
+            source: t::source::Source::new("A"),
+            local: t::source::Range::new(0, 1),
+            aggregate: t::source::Range::new(index, index + 1),
+            kind: t::paragraph::ParagraphOriginKind::Authored,
         })
         .to_vec();
-    use t::SourceProcessingEvent as E;
+    use t::capture::SourceProcessingEvent as E;
     let capture = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins,
             controls: vec![],
-            connections: vec![t::SourceProcessingConnection {
+            connections: vec![t::capture::SourceProcessingConnection {
                 before_origin: 0,
                 after_origin: 1,
-                kind: t::ParagraphConnectionKind::Continuous,
+                kind: t::paragraph::ParagraphConnectionKind::Continuous,
             }],
-            boundary_policies: vec![t::ParagraphBoundaryPolicy {
-                definition: t::ParagraphBoundaryDefinition::Connection(0),
-                preceding_wrap: t::Wrap::Word,
-                following_wrap: t::Wrap::Word,
-                ancestor_wrap: t::Wrap::Word,
+            boundary_policies: vec![t::paragraph::ParagraphBoundaryPolicy {
+                definition: t::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                preceding_wrap: t::style::Wrap::Word,
+                following_wrap: t::style::Wrap::Word,
+                ancestor_wrap: t::style::Wrap::Word,
             }],
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: t::ParagraphBaseDirection::LeftToRight,
+                used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
                 E::EnterParagraph(0),
                 E::Origin {
                     origin: 0,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::Connection(0),
                 E::Origin {
                     origin: 1,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::ExitScope(0),
@@ -2708,17 +2708,17 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
         })
         .unwrap(),
     );
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         capture.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| t::WrappingPolicy {
+        .map(|relation| t::analyzed::WrappingPolicy {
             relation: relation.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let mut system = t::System::default();
@@ -2728,7 +2728,7 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
     let prepared = system
         .prepare(
             &analyzed.with_wrapping_policies(wrapping).unwrap(),
-            t::PreparationOptions::default(),
+            t::prepared::PreparationOptions::default(),
         )
         .unwrap();
     let origins = prepared
@@ -2814,7 +2814,7 @@ fn packet_text_float<S: l::LayoutScalar>() {
     assert_eq!(text.source(), binding.prepared.analyzed_source().source());
     assert_eq!(text.source().text().code_units(), [65, 65]);
     assert_eq!(text.lines().len(), 1);
-    assert_eq!(text.lines()[0].range(), t::Range::new(0, 2));
+    assert_eq!(text.lines()[0].range(), t::source::Range::new(0, 2));
     assert_eq!(text.lines()[0].baseline(), 8.0);
     assert_eq!(
         text.glyph_runs()

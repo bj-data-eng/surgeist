@@ -50,7 +50,7 @@ fn solve<S: l::LayoutScalar>(
 fn placed<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     container: u32,
-) -> &t::Layout {
+) -> &t::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -113,10 +113,13 @@ fn qualify_child<S: l::LayoutScalar>(fixture: &Fixture) {
     }
     let text = placed(&batch, 0);
     assert_eq!(text.source(), &fixture.source);
-    assert_eq!(text.orientation(), t::LineOrientation::Vertical);
+    assert_eq!(text.orientation(), t::selection::LineOrientation::Vertical);
     assert_eq!(text.lines().len(), 1);
     assert_eq!(text.lines()[0].baseline(), 2.0);
-    assert_eq!(text.lines()[0].bounds(), t::Rect::new(0.0, 0.0, 4.0, 14.0));
+    assert_eq!(
+        text.lines()[0].bounds(),
+        t::geometry::Rect::new(0.0, 0.0, 4.0, 14.0)
+    );
     let mut saw_source = false;
     for row in batch.unrounded_inline_fragments() {
         if matches!(row.owner(), l::InlineFragmentOwner::Node(1)) {
@@ -143,58 +146,68 @@ fn qualify_child<S: l::LayoutScalar>(fixture: &Fixture) {
 }
 
 struct Parent {
-    prepared: t::PreparedText,
-    source: t::Source,
+    prepared: t::prepared::PreparedText,
+    source: t::source::Source,
 }
 
 fn parent(bytes: &[u8]) -> Parent {
-    let parent = captured_parent(bytes, t::Size::new(6.0, 14.0), false, t::Id::from_u64(2));
+    let parent = captured_parent(
+        bytes,
+        t::geometry::Size::new(6.0, 14.0),
+        false,
+        t::source::Id::from_u64(2),
+    );
     let atomic = parent.prepared.atomic_views().next().unwrap().handle();
     qualify_parent_text(&parent.prepared, atomic);
     parent
 }
 
-fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) -> Parent {
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+fn captured_parent(
+    bytes: &[u8],
+    size: t::geometry::Size,
+    atomic_only: bool,
+    id: t::source::Id,
+) -> Parent {
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 4.0,
-        line_height: t::LineHeight::Absolute(4.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(4.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     };
-    let mut source = t::Source::identified(
+    let mut source = t::source::Source::identified(
         if atomic_only { "" } else { "\u{4e00}\u{4e00}" },
-        t::Id::from_u64(1_552_100 + u64::from(atomic_only)),
+        t::source::Id::from_u64(1_552_100 + u64::from(atomic_only)),
         1,
     );
     // This is the authored fixture identity of the actual bound node. All
     // capture/preparation capabilities are issued by Text, never synthesized.
-    source.inline_box(t::InlineBox::new(
+    source.inline_box(t::source::InlineBox::new(
         id,
-        t::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::InFlow,
         usize::from(!atomic_only),
         size,
     ));
-    use t::SourceProcessingEvent as E;
+    use t::capture::SourceProcessingEvent as E;
     let capture = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins: if atomic_only {
                 vec![]
             } else {
-                [t::Range::new(0, 1), t::Range::new(1, 2)]
+                [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
                     .into_iter()
-                    .map(|range| t::ParagraphOrigin {
+                    .map(|range| t::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: source.clone(),
                         local: range,
                         aggregate: range,
-                        kind: t::ParagraphOriginKind::Authored,
+                        kind: t::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect()
             },
@@ -202,46 +215,46 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
             connections: if atomic_only {
                 vec![]
             } else {
-                vec![t::SourceProcessingConnection {
+                vec![t::capture::SourceProcessingConnection {
                     before_origin: 0,
                     after_origin: 1,
-                    kind: t::ParagraphConnectionKind::Continuous,
+                    kind: t::paragraph::ParagraphConnectionKind::Continuous,
                 }]
             },
             boundary_policies: if atomic_only {
                 vec![
-                    t::ParagraphBoundaryDefinition::AtomicBefore(0),
-                    t::ParagraphBoundaryDefinition::AtomicAfter(0),
+                    t::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                    t::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
                 ]
             } else {
                 vec![
-                    t::ParagraphBoundaryDefinition::AtomicBefore(0),
-                    t::ParagraphBoundaryDefinition::AtomicAfter(0),
-                    t::ParagraphBoundaryDefinition::Connection(0),
+                    t::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                    t::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
+                    t::paragraph::ParagraphBoundaryDefinition::Connection(0),
                 ]
             }
             .into_iter()
-            .map(|definition| t::ParagraphBoundaryPolicy {
+            .map(|definition| t::paragraph::ParagraphBoundaryPolicy {
                 definition,
-                preceding_wrap: t::Wrap::Word,
-                following_wrap: t::Wrap::Word,
-                ancestor_wrap: t::Wrap::Word,
+                preceding_wrap: t::style::Wrap::Word,
+                following_wrap: t::style::Wrap::Word,
+                ancestor_wrap: t::style::Wrap::Word,
             })
             .collect(),
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: t::ParagraphBaseDirection::LeftToRight,
+                used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: if atomic_only {
                 vec![
@@ -249,7 +262,7 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
                     E::EnterParagraph(0),
                     E::Atomic {
                         atomic: 0,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::ExitParagraph(0),
                     E::ExitScope(0),
@@ -260,16 +273,16 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
                     E::EnterParagraph(0),
                     E::Origin {
                         origin: 0,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::Atomic {
                         atomic: 0,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::Connection(0),
                     E::Origin {
                         origin: 1,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::ExitParagraph(0),
                     E::ExitScope(0),
@@ -278,10 +291,10 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
         })
         .unwrap(),
     );
-    let typography = t::AnalysisTypography::Upright {
-        computed_direction: t::ParagraphBaseDirection::RightToLeft,
+    let typography = t::analyzed::AnalysisTypography::Upright {
+        computed_direction: t::paragraph::ParagraphBaseDirection::RightToLeft,
     };
-    let analysis = t::AnalyzedSource::from_processed_paragraph(
+    let analysis = t::analyzed::AnalyzedSource::from_processed_paragraph(
         capture.paragraphs().next().unwrap(),
         typography,
     )
@@ -289,14 +302,14 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
     let wrapping = analysis
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| t::WrappingPolicy {
+        .map(|row| t::analyzed::WrappingPolicy {
             relation: row.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analysis = analysis.with_wrapping_policies(wrapping).unwrap();
     assert_eq!(analysis.typography(), typography);
-    assert_eq!(analysis.direction(), t::Direction::LeftToRight);
+    assert_eq!(analysis.direction(), t::style::Direction::LeftToRight);
     let mut system = t::System::default();
     system
         .register_fonts(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
@@ -304,7 +317,8 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
     let prepared = system
         .prepare(
             &analysis,
-            t::PreparationOptions::default().with_orientation(t::LineOrientation::Vertical),
+            t::prepared::PreparationOptions::default()
+                .with_orientation(t::selection::LineOrientation::Vertical),
         )
         .expect(
             "the real captured InFlow parent must satisfy the independently GREEN Text producer",
@@ -325,21 +339,21 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
     assert_eq!(prepared.atomic_views().count(), 1);
     let participants = prepared.participants().collect::<Vec<_>>();
     let atomic = if atomic_only {
-        let [t::PreparedParticipant::Atomic(atomic)] = participants.as_slice() else {
+        let [t::prepared::PreparedParticipant::Atomic(atomic)] = participants.as_slice() else {
             panic!("source-free input must retain exactly its actual atomic occurrence");
         };
         atomic
     } else {
         let [
-            t::PreparedParticipant::Text(before),
-            t::PreparedParticipant::Atomic(atomic),
-            t::PreparedParticipant::Text(after),
+            t::prepared::PreparedParticipant::Text(before),
+            t::prepared::PreparedParticipant::Atomic(atomic),
+            t::prepared::PreparedParticipant::Text(after),
         ] = participants.as_slice()
         else {
             panic!("actual processed participant order must be Hani, atomic, Hani");
         };
-        assert_eq!(before.view().source_range(), t::Range::new(0, 1));
-        assert_eq!(after.view().source_range(), t::Range::new(1, 2));
+        assert_eq!(before.view().source_range(), t::source::Range::new(0, 1));
+        assert_eq!(after.view().source_range(), t::source::Range::new(1, 2));
         atomic
     };
     let atomic_view = atomic.view();
@@ -348,20 +362,20 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
     Parent { prepared, source }
 }
 
-fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
+fn qualify_parent_text(prepared: &t::prepared::PreparedText, atomic: t::prepared::PreparedAtomic) {
     let start = prepared.boundary_views().next().unwrap().handle();
     let end = prepared
         .opportunity_views()
-        .find(|row| row.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|row| row.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = prepared
-        .select(t::LineSelectionRequest {
+        .select(t::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start,
             end: end.view().boundary(),
-            termination: t::PreparedTermination::Ordinary(end),
+            termination: t::selection::PreparedTermination::Ordinary(end),
             participants: prepared.participants().collect(),
             alternative: None,
             incoming: None,
@@ -369,11 +383,11 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
             boundary_context: vec![],
             line_box_struts: vec![],
             line_strut: Some(STRUT),
-            atomics: vec![t::AtomicAllocation {
+            atomics: vec![t::allocation::AtomicAllocation {
                 occurrence: atomic.clone(),
-                allocation: t::AtomicLineAllocation::InFlow {
-                    fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
-                    flow: t::AtomicFlowAllocation {
+                allocation: t::allocation::AtomicLineAllocation::InFlow {
+                    fit: surgeist_text::allocation::AtomicFitAllocation::NativeOccupied,
+                    flow: t::allocation::AtomicFlowAllocation {
                         normal_border_inline_size: 14.0,
                         advance: 14.0,
                         before_baseline: 4.0,
@@ -381,33 +395,33 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
                         occupied_start: 0.0,
                         occupied_end: 14.0,
                     },
-                    box_geometry: t::AtomicBoxAllocation {
-                        border: t::Rect::new(0.0, -4.0, 14.0, 6.0),
-                        content: t::Rect::new(0.0, -4.0, 14.0, 6.0),
+                    box_geometry: t::allocation::AtomicBoxAllocation {
+                        border: t::geometry::Rect::new(0.0, -4.0, 14.0, 6.0),
+                        content: t::geometry::Rect::new(0.0, -4.0, 14.0, 6.0),
                         baseline: 0.0,
                     },
-                    alignment: t::LineBoxAlignment::Baseline,
+                    alignment: t::allocation::LineBoxAlignment::Baseline,
                 },
             }],
-            context: t::LineContext {
-                alignment_insets: t::LineAlignmentInsets::ZERO,
-                formatted_line: t::FormattedLineContext::default(),
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::Vertical,
-                start: t::LineStart::Paragraph,
-                end: t::LineEnd::Paragraph,
+            context: t::selection::LineContext {
+                alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: t::selection::FormattedLineContext::default(),
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: t::selection::LineBoxDirection::LeftToRight,
+                orientation: t::selection::LineOrientation::Vertical,
+                start: t::selection::LineStart::Paragraph,
+                end: t::selection::LineEnd::Paragraph,
                 available_inline: Some(22.0),
                 indent: 0.0,
-                alignment: t::Alignment::Start,
-                tabs: t::TabContext::NoTabs,
-                spacing: t::SpacingPolicy::None,
+                alignment: t::options::Alignment::Start,
+                tabs: t::tabs::TabContext::NoTabs,
+                spacing: t::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -420,25 +434,27 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
     );
     let slot = line.atomic_slots().next().unwrap();
     assert_eq!(slot.occurrence, atomic);
-    assert_eq!(slot.origin, t::Point::new(4.0, 8.0));
-    let physical = t::Rect::new(98.0, 4.0, 6.0, 14.0);
-    let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
+    assert_eq!(slot.origin, t::geometry::Point::new(4.0, 8.0));
+    let physical = t::geometry::Rect::new(98.0, 4.0, 6.0, 14.0);
+    let layout = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: prepared.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
-        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-            line,
-            anchor: t::LineAnchor {
-                inline_origin: 0.0,
-                baseline: 100.0,
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![t::placement::PlacementEntry::Formatted(
+            t::placement::LinePlacement {
+                line,
+                anchor: t::placement::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: 100.0,
+                },
+                orientation: t::selection::LineOrientation::Vertical,
+                atomics: vec![t::placement::AtomicPlacement {
+                    occurrence: atomic,
+                    border: physical,
+                    content: physical,
+                    baseline: 100.0,
+                }],
             },
-            orientation: t::LineOrientation::Vertical,
-            atomics: vec![t::AtomicPlacement {
-                occurrence: atomic,
-                border: physical,
-                content: physical,
-                baseline: 100.0,
-            }],
-        })],
+        )],
     })
     .expect("this new captured parent must also complete actual standalone Text placement");
     assert_eq!(layout.inline_boxes()[0].rect(), physical);
@@ -531,19 +547,22 @@ fn native_atomic<S: l::LayoutScalar>() {
         assert_eq!(text.lines()[0].baseline(), c);
         assert_eq!(
             text.lines()[0].bounds(),
-            t::Rect::new(c - 2.0, 0.0, 10.0, 22.0)
+            t::geometry::Rect::new(c - 2.0, 0.0, 10.0, 22.0)
         );
         let boxes = text.inline_boxes();
         assert_eq!(boxes.len(), 1);
-        assert_eq!(boxes[0].id(), t::Id::from_u64(2));
-        assert_eq!(boxes[0].rect(), t::Rect::new(c - 2.0, 4.0, 6.0, 14.0));
+        assert_eq!(boxes[0].id(), t::source::Id::from_u64(2));
         assert_eq!(
-            text.hit(t::Point::new(c, 10.0)),
-            t::Hit::InlineBox(t::Id::from_u64(2))
+            boxes[0].rect(),
+            t::geometry::Rect::new(c - 2.0, 4.0, 6.0, 14.0)
+        );
+        assert_eq!(
+            text.hit(t::geometry::Point::new(c, 10.0)),
+            t::layout::Hit::InlineBox(t::source::Id::from_u64(2))
         );
         let mut glyphs = Vec::new();
         for run in text.run_views() {
-            assert_eq!(run.glyph_basis(), t::GlyphBasis::Unrotated);
+            assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Unrotated);
             assert_eq!(run.face().bytes(), child.bytes);
             glyphs.extend(run.glyphs().map(|glyph| {
                 assert_eq!(
@@ -558,7 +577,7 @@ fn native_atomic<S: l::LayoutScalar>() {
         assert_eq!(child_text.source(), &child.source);
         assert_eq!(child_text.lines()[0].baseline(), c);
         for run in child_text.run_views() {
-            assert_eq!(run.glyph_basis(), t::GlyphBasis::Unrotated);
+            assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Unrotated);
         }
         let mut source_ranges = Vec::new();
         for row in batch.unrounded_inline_fragments() {
@@ -581,9 +600,9 @@ fn native_atomic<S: l::LayoutScalar>() {
             assert_eq!(line.selected_line().request().line_strut, Some(STRUT));
             assert_eq!(line.atomic_slots().next().unwrap().occurrence, atomic);
             let range = if owner == 1 {
-                t::Range::new(0, 1)
+                t::source::Range::new(0, 1)
             } else {
-                t::Range::new(1, 2)
+                t::source::Range::new(1, 2)
             };
             assert_eq!(receipt.view().aggregate_range(), Some(range));
             assert_eq!(receipt.view().local_range(), Some(range));
@@ -597,7 +616,10 @@ fn native_atomic<S: l::LayoutScalar>() {
             assert_eq!(rect.size(), l::Size::new(n(4.0), n(4.0)));
         }
         source_ranges.sort_by_key(|range| range.start);
-        assert_eq!(source_ranges, [t::Range::new(0, 1), t::Range::new(1, 2)]);
+        assert_eq!(
+            source_ranges,
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
+        );
     }
 }
 

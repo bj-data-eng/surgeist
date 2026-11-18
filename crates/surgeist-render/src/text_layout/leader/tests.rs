@@ -16,26 +16,29 @@ fn system(bytes: Vec<u8>) -> text::System {
         .unwrap();
     system
 }
-fn input(source: &str) -> text::LeaderPatternInput {
-    text::LeaderPatternInput {
-        pattern: text::LeaderPattern::Literal(source.into()),
-        source_identity: text::SourceIdentity::new(None, text::SourceRevision::new(3)),
-        style: text::Style {
-            font: text::Font::new().family("Ahem"),
+fn input(source: &str) -> text::leader::LeaderPatternInput {
+    text::leader::LeaderPatternInput {
+        pattern: text::leader::LeaderPattern::Literal(source.into()),
+        source_identity: text::source::SourceIdentity::new(
+            None,
+            text::source::SourceRevision::new(3),
+        ),
+        style: text::style::Style {
+            font: text::style::Font::new().family("Ahem"),
             size: 20.0,
-            brush: text::Brush::color(0.0, 0.0, 0.0, 0.5),
-            ..text::Style::default()
+            brush: text::style::Brush::color(0.0, 0.0, 0.0, 0.5),
+            ..text::style::Style::default()
         },
-        direction: text::ParagraphBaseDirection::LeftToRight,
-        writing_axis: text::SourceWritingAxis::Horizontal,
-        typography: text::AnalysisTypography::HorizontalComposition,
-        orientation: text::LineOrientation::Horizontal,
+        direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+        writing_axis: text::capture::SourceWritingAxis::Horizontal,
+        typography: text::analyzed::AnalysisTypography::HorizontalComposition,
+        orientation: text::selection::LineOrientation::Horizontal,
         scale: 1.0,
         tab_reference: None,
         combination: None,
     }
 }
-fn pattern(source: &str) -> text::FinalizedLeaderPattern {
+fn pattern(source: &str) -> text::leader::FinalizedLeaderPattern {
     system(AHEM.to_vec())
         .prepare_leader_pattern(input(source))
         .unwrap()
@@ -164,19 +167,19 @@ fn spaces_and_empty_patterns_keep_proved_empty_distinct_from_positive_advance() 
 fn physical_clockwise_counterclockwise_and_rtl_frames_have_literal_envelopes() {
     for (orientation, expected, transform) in [
         (
-            text::LineOrientation::SidewaysClockwise,
+            text::selection::LineOrientation::SidewaysClockwise,
             ink(-4.0, 0.0, 20.0, 40.0),
             [0.0, 1.0, -1.0, 0.0, 0.0, 0.0],
         ),
         (
-            text::LineOrientation::SidewaysCounterclockwise,
+            text::selection::LineOrientation::SidewaysCounterclockwise,
             ink(-16.0, -40.0, 20.0, 40.0),
             [0.0, -1.0, 1.0, 0.0, 0.0, 0.0],
         ),
     ] {
         let mut request = input("AA");
         request.orientation = orientation;
-        request.writing_axis = text::SourceWritingAxis::Vertical;
+        request.writing_axis = text::capture::SourceWritingAxis::Vertical;
         let pattern = system(AHEM.to_vec())
             .prepare_leader_pattern(request)
             .unwrap();
@@ -189,7 +192,7 @@ fn physical_clockwise_counterclockwise_and_rtl_frames_have_literal_envelopes() {
         );
     }
     let mut request = input("AA");
-    request.direction = text::ParagraphBaseDirection::RightToLeft;
+    request.direction = text::paragraph::ParagraphBaseDirection::RightToLeft;
     let pattern = system(AHEM.to_vec())
         .prepare_leader_pattern(request)
         .unwrap();
@@ -197,7 +200,7 @@ fn physical_clockwise_counterclockwise_and_rtl_frames_have_literal_envelopes() {
     assert_eq!(ready.bounds(), ink(0.0, -16.0, 40.0, 20.0));
     assert_eq!(
         ready.runs().next().unwrap().frame().pen_direction(),
-        text::Point::new(1.0, 0.0)
+        text::geometry::Point::new(1.0, 0.0)
     );
 }
 
@@ -359,28 +362,30 @@ fn zero_advance_ink_and_negative_bearing_remain_representation_feedback() {
 fn compressed_combined_cell_keeps_one_authentic_group_and_horizontal_inner_frame() {
     for (orientation, transform, bounds) in [
         (
-            text::LineOrientation::SidewaysClockwise,
+            text::selection::LineOrientation::SidewaysClockwise,
             [0.5, 0.0, 0.0, 1.0, -4.0, 16.0],
             ink(-4.0, 0.0, 20.0, 20.0),
         ),
         (
-            text::LineOrientation::SidewaysCounterclockwise,
+            text::selection::LineOrientation::SidewaysCounterclockwise,
             [0.5, 0.0, 0.0, 1.0, -16.0, -4.0],
             ink(-16.0, -20.0, 20.0, 20.0),
         ),
     ] {
         let mut request = input("A\r\nA");
-        request.writing_axis = text::SourceWritingAxis::Vertical;
+        request.writing_axis = text::capture::SourceWritingAxis::Vertical;
         request.orientation = orientation;
-        request.style.text_combine_upright = text::TextCombineUpright::All;
-        request.combination = Some(text::LeaderCombinationContext {
-            horizontal_inner_direction: text::ParagraphBaseDirection::LeftToRight,
-            font_reference: text::ScopeFontReference {
-                script: text::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-                axis: text::FontBaselineAxis::HorizontalY,
-                baseline: text::FontBaseline::Alphabetic,
+        request.style.text_combine_upright = text::style::TextCombineUpright::All;
+        request.combination = Some(text::leader::LeaderCombinationContext {
+            horizontal_inner_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            font_reference: text::scope_alignment::ScopeFontReference {
+                script: text::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+                axis: text::font::FontBaselineAxis::HorizontalY,
+                baseline: text::font::FontBaseline::Alphabetic,
             },
-            limits: text::ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216),
+            limits: text::scope_alignment::ScopeAlignmentLimits::new(
+                4096, 4096, 1_000_000, 16_777_216,
+            ),
         });
         let pattern = system(AHEM.to_vec())
             .prepare_leader_pattern(request)
@@ -393,7 +398,10 @@ fn compressed_combined_cell_keeps_one_authentic_group_and_horizontal_inner_frame
         assert_eq!(group.glyphs().len(), 2);
         assert_eq!(group.bounds(), bounds);
         let run = ready.runs().next().unwrap();
-        assert_eq!(run.frame().pen_direction(), text::Point::new(1.0, 0.0));
+        assert_eq!(
+            run.frame().pen_direction(),
+            text::geometry::Point::new(1.0, 0.0)
+        );
         assert_eq!(run.transform().as_array(), transform);
         assert_eq!(run.run().glyphs()[1].x(), 20.0);
         assert_eq!(run.run().paints().len(), 1);
@@ -486,9 +494,10 @@ fn late_unsupported_actual_run_preserves_typed_cause_without_a_receipt() {
 #[test]
 fn glyphless_preserved_tabs_keep_their_original_empty_groups() {
     let mut request = input("A\t\tB");
-    request.style.white_space = text::WhiteSpace::Preserve;
-    request.tab_reference =
-        Some(text::ParagraphTabReference::new(request.style.clone(), request.direction).unwrap());
+    request.style.white_space = text::style::WhiteSpace::Preserve;
+    request.tab_reference = Some(
+        text::tabs::ParagraphTabReference::new(request.style.clone(), request.direction).unwrap(),
+    );
     let pattern = system(AHEM.to_vec())
         .prepare_leader_pattern(request)
         .unwrap();
@@ -523,18 +532,18 @@ fn combined_group_unions_every_actual_run_and_retains_both_font_resources() {
         .register_fonts(fallback.clone(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let mut request = input("AX");
-    request.style.font = text::Font::new().family("Ahem").family("Bhem");
-    request.writing_axis = text::SourceWritingAxis::Vertical;
-    request.orientation = text::LineOrientation::SidewaysClockwise;
-    request.style.text_combine_upright = text::TextCombineUpright::All;
-    request.combination = Some(text::LeaderCombinationContext {
-        horizontal_inner_direction: text::ParagraphBaseDirection::LeftToRight,
-        font_reference: text::ScopeFontReference {
-            script: text::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-            axis: text::FontBaselineAxis::HorizontalY,
-            baseline: text::FontBaseline::Alphabetic,
+    request.style.font = text::style::Font::new().family("Ahem").family("Bhem");
+    request.writing_axis = text::capture::SourceWritingAxis::Vertical;
+    request.orientation = text::selection::LineOrientation::SidewaysClockwise;
+    request.style.text_combine_upright = text::style::TextCombineUpright::All;
+    request.combination = Some(text::leader::LeaderCombinationContext {
+        horizontal_inner_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+        font_reference: text::scope_alignment::ScopeFontReference {
+            script: text::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+            axis: text::font::FontBaselineAxis::HorizontalY,
+            baseline: text::font::FontBaseline::Alphabetic,
         },
-        limits: text::ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216),
+        limits: text::scope_alignment::ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216),
     });
     let pattern = producer.prepare_leader_pattern(request).unwrap();
     assert_eq!(pattern.run_views().len(), 2);
@@ -570,7 +579,7 @@ fn normalized_instances_and_synthesis_come_from_each_actual_text_preparation() {
     for (setting, bits, width) in [(0.0, 0, 1000.0), (0.5, 8192, 1050.0), (1.0, 16384, 1100.0)] {
         let mut request = input("X");
         request.style.size = 1000.0;
-        request.style.font = text::Font::new()
+        request.style.font = text::style::Font::new()
             .family("Ahem")
             .variation(format!("'wght' {setting}"));
         let pattern = producer.prepare_leader_pattern(request).unwrap();
@@ -591,10 +600,10 @@ fn normalized_instances_and_synthesis_come_from_each_actual_text_preparation() {
         );
     }
     let mut request = input("A");
-    request.style.font = text::Font::new()
+    request.style.font = text::style::Font::new()
         .family("Ahem")
-        .weight(text::Weight::Bold)
-        .style(text::Slant::Italic);
+        .weight(text::style::Weight::Bold)
+        .style(text::style::Slant::Italic);
     let pattern = system(AHEM.to_vec())
         .prepare_leader_pattern(request)
         .unwrap();
@@ -758,16 +767,19 @@ fn whole_upright_pattern_keeps_physical_vertical_pens_and_unrotated_ink() {
     }
     let font = fixtures::replace_tables(vec![(*b"cmap", cmap)]);
     let mut request = input("一一");
-    request.writing_axis = text::SourceWritingAxis::Vertical;
-    request.orientation = text::LineOrientation::Vertical;
-    request.typography = text::AnalysisTypography::Upright {
-        computed_direction: text::ParagraphBaseDirection::RightToLeft,
+    request.writing_axis = text::capture::SourceWritingAxis::Vertical;
+    request.orientation = text::selection::LineOrientation::Vertical;
+    request.typography = text::analyzed::AnalysisTypography::Upright {
+        computed_direction: text::paragraph::ParagraphBaseDirection::RightToLeft,
     };
     let pattern = system(font).prepare_leader_pattern(request).unwrap();
     let ready = prepare_leader_pattern(&pattern, &mut RenderAccountingContext::default()).unwrap();
     let run = ready.runs().next().unwrap();
     assert_eq!(run.transform(), Transform::identity());
-    assert_eq!(run.frame().pen_direction(), text::Point::new(0.0, 1.0));
+    assert_eq!(
+        run.frame().pen_direction(),
+        text::geometry::Point::new(0.0, 1.0)
+    );
     assert_eq!(
         run.run().glyphs(),
         [

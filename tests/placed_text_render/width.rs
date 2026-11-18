@@ -96,43 +96,43 @@ fn system(bytes: &[u8]) -> text::System {
 fn capture(
     system: &mut text::System,
     value: &str,
-    transform: text::TextTransform,
-    white_space: text::WhiteSpace,
-    word_break: text::WordBreak,
+    transform: text::style::TextTransform,
+    white_space: text::style::WhiteSpace,
+    word_break: text::style::WordBreak,
     authored_width: Option<f32>,
     request: layout::LayoutRootRequest,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
-    text::PreparedOrigin,
-    text::Source,
+    text::prepared::PreparedOrigin,
+    text::source::Source,
 ) {
-    let source = text::Source::identified(value, text::Id::from_u64(6304), 17);
-    let range = text::Range::new(0, source.text().len());
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let source = text::source::Source::identified(value, text::source::Id::from_u64(6304), 17);
+    let range = text::source::Range::new(0, source.text().len());
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
+        line_height: text::style::LineHeight::Absolute(10.0),
         white_space,
         word_break,
         text_transform: transform,
-        ..text::Style::default()
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: range,
                 aggregate: range,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -140,7 +140,7 @@ fn capture(
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     // These witnesses have no phase-I deletion/conversion: equal processed
@@ -152,14 +152,14 @@ fn capture(
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
@@ -210,7 +210,7 @@ fn capture(
     (batch, origin, source)
 }
 
-fn glyphs(placed: &text::Layout, bytes: &[u8]) -> Vec<(u32, f32)> {
+fn glyphs(placed: &text::layout::Layout, bytes: &[u8]) -> Vec<(u32, f32)> {
     placed
         .run_views()
         .flat_map(|run| {
@@ -262,9 +262,11 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
         let (batch, origin, source) = capture(
             &mut system,
             "A",
-            text::TextTransform::Set(text::TextTransformSet::none().with_full_width(enabled)),
-            text::WhiteSpace::Preserve,
-            text::WordBreak::Normal,
+            text::style::TextTransform::Set(
+                text::style::TextTransformSet::none().with_full_width(enabled),
+            ),
+            text::style::WhiteSpace::Preserve,
+            text::style::WordBreak::Normal,
             Some(30.0),
             NativeViewport::new(
                 layout::Size::new(Some(30.0), None),
@@ -279,7 +281,7 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
         let advance = if enabled { 20.0 } else { 10.0 };
         assert_eq!(placed.source(), &source);
         assert_eq!(source.text().code_units(), [0x41]);
-        assert_eq!(source.id(), Some(text::Id::from_u64(6304)));
+        assert_eq!(source.id(), Some(text::source::Id::from_u64(6304)));
         assert_eq!(source.revision(), 17);
         assert_eq!(
             glyphs(placed, &bytes),
@@ -291,7 +293,7 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
                 .positions()
                 .find(|position| {
                     placed.position_geometry(position).unwrap().rect().origin
-                        == text::Point::new(x, 0.0)
+                        == text::geometry::Point::new(x, 0.0)
                 })
                 .unwrap()
         };
@@ -305,15 +307,15 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
             assert_eq!(selection.source_pieces()[0].origin(), &origin);
             assert_eq!(
                 selection.source_pieces()[0].local_range(),
-                text::Range::new(0, 1)
+                text::source::Range::new(0, 1)
             );
             assert_eq!(
                 selection.geometry().rects()[0].rect(),
-                text::Rect::new(0.0, 0.0, advance, 10.0)
+                text::geometry::Rect::new(0.0, 0.0, advance, 10.0)
             );
         }
         let fragments = placed
-            .source_range_fragments(&origin, text::Range::new(0, 1))
+            .source_range_fragments(&origin, text::source::Range::new(0, 1))
             .unwrap();
         assert_eq!(
             fragments
@@ -324,7 +326,7 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
                 .next()
                 .unwrap()
                 .rect(),
-            text::Rect::new(0.0, 0.0, advance, 10.0)
+            text::geometry::Rect::new(0.0, 0.0, advance, 10.0)
         );
         let font = render::text::FontData::try_from_bytes(
             bytes.clone(),
@@ -385,7 +387,7 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
     let mut system = system(&bytes);
     for (case, width, expected_glyphs, expected_advances, min, max) in [
         (
-            text::CaseTransform::None,
+            text::style::CaseTransform::None,
             false,
             vec![(134, 10.0)],
             vec![10.0],
@@ -393,7 +395,7 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             10.0,
         ),
         (
-            text::CaseTransform::Uppercase,
+            text::style::CaseTransform::Uppercase,
             false,
             vec![(53, 10.0); 2],
             vec![10.0; 2],
@@ -401,7 +403,7 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             20.0,
         ),
         (
-            text::CaseTransform::Uppercase,
+            text::style::CaseTransform::Uppercase,
             true,
             vec![(58, 15.0); 2],
             vec![15.0; 2],
@@ -409,8 +411,8 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             30.0,
         ),
     ] {
-        let transform = text::TextTransform::Set(
-            text::TextTransformSet::none()
+        let transform = text::style::TextTransform::Set(
+            text::style::TextTransformSet::none()
                 .with_case(case)
                 .with_full_width(width),
         );
@@ -418,8 +420,8 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             &mut system,
             "ß",
             transform,
-            text::WhiteSpace::Preserve,
-            text::WordBreak::BreakAll,
+            text::style::WhiteSpace::Preserve,
+            text::style::WordBreak::BreakAll,
             Some(16.0),
             NativeViewport::new(
                 layout::Size::new(Some(16.0), None),
@@ -438,7 +440,7 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             placed
                 .lines()
                 .iter()
-                .all(|line| line.range() == text::Range::new(0, 1))
+                .all(|line| line.range() == text::source::Range::new(0, 1))
         );
         if width {
             let at = |x, y| {
@@ -446,7 +448,7 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
                     .positions()
                     .find(|position| {
                         placed.position_geometry(position).unwrap().rect().origin
-                            == text::Point::new(x, y)
+                            == text::geometry::Point::new(x, y)
                     })
                     .unwrap()
             };
@@ -460,15 +462,15 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
                 assert_eq!(selected.source_pieces()[0].origin(), &origin);
                 assert_eq!(
                     selected.source_pieces()[0].aggregate_range(),
-                    text::Range::new(0, 1)
+                    text::source::Range::new(0, 1)
                 );
                 assert_eq!(
                     selected.geometry().rects()[0].rect(),
-                    text::Rect::new(0.0, 10.0, 15.0, 10.0)
+                    text::geometry::Rect::new(0.0, 10.0, 15.0, 10.0)
                 );
             }
             let range = placed
-                .source_range_fragments(&origin, text::Range::new(0, 1))
+                .source_range_fragments(&origin, text::source::Range::new(0, 1))
                 .unwrap();
             let mut rectangles = range
                 .units()
@@ -478,8 +480,8 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             assert_eq!(
                 rectangles,
                 [
-                    text::Rect::new(0.0, 0.0, 15.0, 10.0),
-                    text::Rect::new(0.0, 10.0, 15.0, 10.0)
+                    text::geometry::Rect::new(0.0, 0.0, 15.0, 10.0),
+                    text::geometry::Rect::new(0.0, 10.0, 15.0, 10.0)
                 ]
             );
         }
@@ -491,8 +493,8 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
                 &mut system,
                 "ß",
                 transform,
-                text::WhiteSpace::Preserve,
-                text::WordBreak::BreakAll,
+                text::style::WhiteSpace::Preserve,
+                text::style::WordBreak::BreakAll,
                 None,
                 NativeViewport::new(
                     layout::Size::new(None, None),
@@ -515,14 +517,15 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
     // Ordinary Latin AA is one20px word. Fullwidth letters have normal
     // ideographic opportunities: two20px glyphs cannot share a25px line.
     for enabled in [false, true] {
-        let transform =
-            text::TextTransform::Set(text::TextTransformSet::none().with_full_width(enabled));
+        let transform = text::style::TextTransform::Set(
+            text::style::TextTransformSet::none().with_full_width(enabled),
+        );
         let (batch, _, source) = capture(
             &mut system,
             "AA",
             transform,
-            text::WhiteSpace::Preserve,
-            text::WordBreak::Normal,
+            text::style::WhiteSpace::Preserve,
+            text::style::WordBreak::Normal,
             Some(25.0),
             NativeViewport::new(
                 layout::Size::new(Some(25.0), None),
@@ -549,9 +552,12 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
             if enabled {
-                vec![text::Range::new(0, 1), text::Range::new(1, 2)]
+                vec![
+                    text::source::Range::new(0, 1),
+                    text::source::Range::new(1, 2),
+                ]
             } else {
-                vec![text::Range::new(0, 2)]
+                vec![text::source::Range::new(0, 2)]
             }
         );
         assert_eq!(placed.source(), &source);
@@ -566,8 +572,8 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
                 &mut system,
                 "AA",
                 transform,
-                text::WhiteSpace::Preserve,
-                text::WordBreak::Normal,
+                text::style::WhiteSpace::Preserve,
+                text::style::WordBreak::Normal,
                 None,
                 NativeViewport::new(
                     layout::Size::new(None, None),
@@ -592,28 +598,28 @@ fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
         (
             "A A",
             false,
-            text::WhiteSpace::Preserve,
+            text::style::WhiteSpace::Preserve,
             vec![(35, 10.0), (3, 5.0), (35, 10.0)],
             25.0,
         ),
         (
             "A\u{3000}A",
             false,
-            text::WhiteSpace::Preserve,
+            text::style::WhiteSpace::Preserve,
             vec![(35, 10.0), (1, 20.0), (35, 10.0)],
             40.0,
         ),
         (
             "A A",
             true,
-            text::WhiteSpace::Preserve,
+            text::style::WhiteSpace::Preserve,
             vec![(36, 20.0), (1, 20.0), (36, 20.0)],
             60.0,
         ),
         (
             "A A",
             true,
-            text::WhiteSpace::Collapse,
+            text::style::WhiteSpace::Collapse,
             vec![(36, 20.0), (3, 5.0), (36, 20.0)],
             45.0,
         ),
@@ -621,9 +627,11 @@ fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
         let (batch, origin, source) = capture(
             &mut system,
             value,
-            text::TextTransform::Set(text::TextTransformSet::none().with_full_width(enabled)),
+            text::style::TextTransform::Set(
+                text::style::TextTransformSet::none().with_full_width(enabled),
+            ),
             mode,
-            text::WordBreak::Normal,
+            text::style::WordBreak::Normal,
             Some(100.0),
             NativeViewport::new(
                 layout::Size::new(Some(100.0), None),
@@ -638,7 +646,7 @@ fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
         assert_eq!(glyphs(placed, &bytes), expected);
         assert_eq!(advances(&batch), [width]);
         let range = placed
-            .source_range_fragments(&origin, text::Range::new(1, 2))
+            .source_range_fragments(&origin, text::source::Range::new(1, 2))
             .unwrap();
         let rect = range
             .units()
@@ -651,7 +659,8 @@ fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
         assert_eq!(rect.origin.x, if enabled { 20.0 } else { 10.0 });
         assert_eq!(
             rect.size.width,
-            if value.contains('\u{3000}') || (enabled && mode == text::WhiteSpace::Preserve) {
+            if value.contains('\u{3000}') || (enabled && mode == text::style::WhiteSpace::Preserve)
+            {
                 20.0
             } else {
                 5.0
@@ -716,13 +725,13 @@ fn width_accessibility_keeps_original_sharp_s_with_actual_thirty_pixel_geometry(
     let (batch, _, _) = capture(
         &mut system,
         "ß",
-        text::TextTransform::Set(
-            text::TextTransformSet::none()
-                .with_case(text::CaseTransform::Uppercase)
+        text::style::TextTransform::Set(
+            text::style::TextTransformSet::none()
+                .with_case(text::style::CaseTransform::Uppercase)
                 .with_full_width(true),
         ),
-        text::WhiteSpace::Preserve,
-        text::WordBreak::Normal,
+        text::style::WhiteSpace::Preserve,
+        text::style::WordBreak::Normal,
         Some(40.0),
         NativeViewport::new(
             layout::Size::new(Some(40.0), None),
@@ -735,18 +744,21 @@ fn width_accessibility_keeps_original_sharp_s_with_actual_thirty_pixel_geometry(
     );
     let placed = batch.placed_text()[0].layout();
     drop(system);
-    let mut accessibility = text::Accessibility::new(20);
+    let mut accessibility = text::accessibility::Accessibility::new(20);
     let parent = 1000_u64.into();
     let update = placed
         .accessibility_update(
             &mut accessibility,
             parent,
             parent,
-            text::Point::new(100.0, 200.0),
+            text::geometry::Point::new(100.0, 200.0),
         )
         .unwrap();
     let position = placed
-        .access_position(&accessibility, text::Cursor::new(0, text::Affinity::After))
+        .access_position(
+            &accessibility,
+            text::layout::Cursor::new(0, text::layout::Affinity::After),
+        )
         .unwrap()
         .unwrap();
     let node = &update

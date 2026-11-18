@@ -9,8 +9,11 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ProcessedSource, SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingTopology, SourceWritingAxis, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+            SourceProcessingTopology, SourceWritingAxis, process_contextual_source,
+        },
     },
     protocol::{ParagraphBaseDirection, PreparationOptions, paragraph::ParagraphStrut},
     range::Range,

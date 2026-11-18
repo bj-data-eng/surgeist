@@ -5,10 +5,10 @@ use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-const DECLARED_OVERFLOW: [text::OverflowWrap; 3] = [
-    text::OverflowWrap::Normal,
-    text::OverflowWrap::Anywhere,
-    text::OverflowWrap::BreakWord,
+const DECLARED_OVERFLOW: [text::style::OverflowWrap; 3] = [
+    text::style::OverflowWrap::Normal,
+    text::style::OverflowWrap::Anywhere,
+    text::style::OverflowWrap::BreakWord,
 ];
 
 #[derive(Clone, Copy)]
@@ -21,26 +21,26 @@ enum Ending {
 
 fn paragraph(
     source: &str,
-    word_break: text::WordBreak,
-    overflow_wrap: text::OverflowWrap,
+    word_break: text::style::WordBreak,
+    overflow_wrap: text::style::OverflowWrap,
     ancestor_wrap: Wrap,
     rtl: bool,
 ) -> PreparedParagraph {
-    let child = text::Style {
+    let child = text::style::Style {
         word_break,
         overflow_wrap,
-        white_space: text::WhiteSpace::Preserve,
+        white_space: text::style::WhiteSpace::Preserve,
         wrap: Wrap::Word,
         ..ahem_style(10.0, 10.0)
     };
-    let base = text::Style {
+    let base = text::style::Style {
         wrap: ancestor_wrap,
         ..child.clone()
     };
     let paragraph = PreparedParagraph::new(
         vec![ParagraphPart::text(
             1,
-            Source::identified(source, text::Id::from_u64(65053), 7),
+            Source::identified(source, text::source::Id::from_u64(65053), 7),
             child,
         )],
         base,
@@ -131,7 +131,7 @@ fn assert_output<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
     source: &str,
     width: f64,
-    expected: &[(text::Range, f64, f64, Ending)],
+    expected: &[(text::source::Range, f64, f64, Ending)],
 ) {
     let root = readback::single_box_output(batch, 0, Phase::Unrounded);
     assert_eq!(root.size.width, S::from_f64(width));
@@ -140,7 +140,10 @@ fn assert_output<S: LayoutScalar>(
     let units = source.encode_utf16().collect::<Vec<_>>();
     assert_eq!(placed.source().text().code_units(), units);
     let origin = paragraph.origin(1);
-    assert_eq!(origin.view().source().id(), Some(text::Id::from_u64(65053)));
+    assert_eq!(
+        origin.view().source().id(),
+        Some(text::source::Id::from_u64(65053))
+    );
     assert_eq!(origin.view().source().revision(), 7);
     assert_eq!(origin.view().source().text().code_units(), units);
     assert_eq!(placed.lines().len(), expected.len());
@@ -165,19 +168,28 @@ fn assert_output<S: LayoutScalar>(
         assert!(request.incoming.is_none());
         assert!(line.hyphenation_continuation().is_none());
         match (ending, &request.termination) {
-            (Ending::Conditional, text::PreparedTermination::Conditional(opportunity)) => {
-                assert_eq!(request.context.end, text::LineEnd::Soft);
+            (
+                Ending::Conditional,
+                text::selection::PreparedTermination::Conditional(opportunity),
+            ) => {
+                assert_eq!(request.context.end, text::selection::LineEnd::Soft);
                 assert_eq!(opportunity.boundary(), request.end);
                 assert_eq!(request.end.view().source_before().get(), range.end);
                 assert_eq!(request.end.view().source_after().get(), range.end);
             }
-            (ending, text::PreparedTermination::Ordinary(opportunity)) => {
+            (ending, text::selection::PreparedTermination::Ordinary(opportunity)) => {
                 let (kind, end) = match ending {
-                    Ending::Ordinary => (text::PreparedBreakKind::Allowed, text::LineEnd::Soft),
-                    Ending::Forced => (text::PreparedBreakKind::Forced, text::LineEnd::Forced),
+                    Ending::Ordinary => (
+                        text::prepared::PreparedBreakKind::Allowed,
+                        text::selection::LineEnd::Soft,
+                    ),
+                    Ending::Forced => (
+                        text::prepared::PreparedBreakKind::Forced,
+                        text::selection::LineEnd::Forced,
+                    ),
                     Ending::Paragraph => (
-                        text::PreparedBreakKind::ParagraphEnd,
-                        text::LineEnd::Paragraph,
+                        text::prepared::PreparedBreakKind::ParagraphEnd,
+                        text::selection::LineEnd::Paragraph,
                     ),
                     Ending::Conditional => panic!("emergency cut must retain conditional custody"),
                 };
@@ -213,20 +225,55 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
     fn lane<S: LayoutScalar>() {
         for rtl in [false, true] {
             let twenty = [
-                (text::Range::new(0, 2), 20.0, 20.0, Ending::Conditional),
-                (text::Range::new(2, 4), 20.0, 20.0, Ending::Paragraph),
+                (
+                    text::source::Range::new(0, 2),
+                    20.0,
+                    20.0,
+                    Ending::Conditional,
+                ),
+                (
+                    text::source::Range::new(2, 4),
+                    20.0,
+                    20.0,
+                    Ending::Paragraph,
+                ),
             ];
-            let forty = [(text::Range::new(0, 4), 40.0, 40.0, Ending::Paragraph)];
+            let forty = [(
+                text::source::Range::new(0, 4),
+                40.0,
+                40.0,
+                Ending::Paragraph,
+            )];
             let minimum = [
-                (text::Range::new(0, 1), 10.0, 10.0, Ending::Conditional),
-                (text::Range::new(1, 2), 10.0, 10.0, Ending::Conditional),
-                (text::Range::new(2, 3), 10.0, 10.0, Ending::Conditional),
-                (text::Range::new(3, 4), 10.0, 10.0, Ending::Paragraph),
+                (
+                    text::source::Range::new(0, 1),
+                    10.0,
+                    10.0,
+                    Ending::Conditional,
+                ),
+                (
+                    text::source::Range::new(1, 2),
+                    10.0,
+                    10.0,
+                    Ending::Conditional,
+                ),
+                (
+                    text::source::Range::new(2, 3),
+                    10.0,
+                    10.0,
+                    Ending::Conditional,
+                ),
+                (
+                    text::source::Range::new(3, 4),
+                    10.0,
+                    10.0,
+                    Ending::Paragraph,
+                ),
             ];
             for overflow in DECLARED_OVERFLOW {
                 let p = paragraph(
                     "AAAA",
-                    text::WordBreak::BreakWord,
+                    text::style::WordBreak::BreakWord,
                     overflow,
                     Wrap::Word,
                     rtl,
@@ -234,7 +281,7 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
                 // BreakWord preserves Normal ordinary analysis. Every interior
                 // selection below must come from the actual conditional fitter.
                 assert!(p.prepared.opportunity_views().all(|opportunity| {
-                    opportunity.kind() == text::PreparedBreakKind::ParagraphEnd
+                    opportunity.kind() == text::prepared::PreparedBreakKind::ParagraphEnd
                 }));
                 for (available, width, lines) in [
                     (
@@ -283,8 +330,8 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
             // above contributes one 10px typographic unit.
             let overflow_only = paragraph(
                 "AAAA",
-                text::WordBreak::Normal,
-                text::OverflowWrap::BreakWord,
+                text::style::WordBreak::Normal,
+                text::style::OverflowWrap::BreakWord,
                 Wrap::Word,
                 rtl,
             );
@@ -299,8 +346,8 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
             assert_output(&minimum, &overflow_only, "AAAA", 40.0, &forty);
             let normal = paragraph(
                 "AAAA",
-                text::WordBreak::Normal,
-                text::OverflowWrap::Normal,
+                text::style::WordBreak::Normal,
+                text::style::OverflowWrap::Normal,
                 Wrap::Word,
                 rtl,
             );
@@ -328,7 +375,7 @@ fn break_word_chooses_the_fitting_ordinary_space_before_emergency_interiors() {
             for overflow in DECLARED_OVERFLOW {
                 let p = paragraph(
                     "AA AA",
-                    text::WordBreak::BreakWord,
+                    text::style::WordBreak::BreakWord,
                     overflow,
                     Wrap::Word,
                     rtl,
@@ -350,8 +397,13 @@ fn break_word_chooses_the_fitting_ordinary_space_before_emergency_interiors() {
                     40.0,
                     &[
                         // The preserved trailing SPACE hangs: raw30, fit20.
-                        (text::Range::new(0, 3), 30.0, 20.0, Ending::Ordinary),
-                        (text::Range::new(3, 5), 20.0, 20.0, Ending::Paragraph),
+                        (text::source::Range::new(0, 3), 30.0, 20.0, Ending::Ordinary),
+                        (
+                            text::source::Range::new(3, 5),
+                            20.0,
+                            20.0,
+                            Ending::Paragraph,
+                        ),
                     ],
                 );
                 let wide = compute::<S>(
@@ -369,7 +421,12 @@ fn break_word_chooses_the_fitting_ordinary_space_before_emergency_interiors() {
                     &p,
                     "AA AA",
                     50.0,
-                    &[(text::Range::new(0, 5), 50.0, 50.0, Ending::Paragraph)],
+                    &[(
+                        text::source::Range::new(0, 5),
+                        50.0,
+                        50.0,
+                        Ending::Paragraph,
+                    )],
                 );
             }
         }
@@ -384,8 +441,8 @@ fn break_word_child_respects_ancestor_nowrap_and_preserves_forced_breaks() {
         for rtl in [false, true] {
             let p = paragraph(
                 "AAAA\nAA",
-                text::WordBreak::BreakWord,
-                text::OverflowWrap::Normal,
+                text::style::WordBreak::BreakWord,
+                text::style::OverflowWrap::Normal,
                 Wrap::None,
                 rtl,
             );
@@ -405,8 +462,13 @@ fn break_word_child_respects_ancestor_nowrap_and_preserves_forced_breaks() {
                 "AAAA\nAA",
                 20.0,
                 &[
-                    (text::Range::new(0, 5), 40.0, 40.0, Ending::Forced),
-                    (text::Range::new(5, 7), 20.0, 20.0, Ending::Paragraph),
+                    (text::source::Range::new(0, 5), 40.0, 40.0, Ending::Forced),
+                    (
+                        text::source::Range::new(5, 7),
+                        20.0,
+                        20.0,
+                        Ending::Paragraph,
+                    ),
                 ],
             );
         }

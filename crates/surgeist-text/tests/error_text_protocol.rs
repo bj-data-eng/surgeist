@@ -12,8 +12,12 @@
 //! `Display`; their names are checked through the messages that print them.
 
 use surgeist_text::{
-    Affinity, ConditionalPurpose, InlineBoxEdgeError, InlineBoxFragmentationError, PhaseTwoContext,
-    ProtocolContextField, ProtocolError, ProtocolHandleKind, Range, WrappingScopeQueryError,
+    conditional::ConditionalPurpose,
+    inline_box::{InlineBoxEdgeError, InlineBoxFragmentationError},
+    layout::Affinity,
+    observation::WrappingScopeQueryError,
+    prepared::{PhaseTwoContext, ProtocolContextField, ProtocolError, ProtocolHandleKind},
+    source::Range,
 };
 
 mod error_support;

@@ -18,13 +18,15 @@ fn actual_geometry<S: LayoutScalar>() {
         output.line_bounds[0].metrics.size().width,
         S::from_f64(20.0)
     );
-    let surgeist_text::PlacementEntry::Formatted(placement) = &output.paragraph.entries[0] else {
+    let surgeist_text::placement::PlacementEntry::Formatted(placement) =
+        &output.paragraph.entries[0]
+    else {
         panic!("native intrinsic line remains formatted");
     };
     let first = &placement.line;
     assert_eq!(
         first.metric_bounds(),
-        surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
+        surgeist_text::geometry::Rect::new(0.0, 0.0, 20.0, 10.0)
     );
     assert_eq!(
         (
@@ -40,31 +42,33 @@ fn actual_geometry<S: LayoutScalar>() {
         .next()
         .unwrap()
         .handle();
-    let layout = surgeist_text::Layout::from_finalized_lines(surgeist_text::PlacementRequest {
-        prepared: output.paragraph.prepared,
-        coverage: surgeist_text::PlacementCoverage::WholeParagraph,
-        entries: output.paragraph.entries,
-    })
+    let layout = surgeist_text::layout::Layout::from_finalized_lines(
+        surgeist_text::placement::PlacementRequest {
+            prepared: output.paragraph.prepared,
+            coverage: surgeist_text::placement::PlacementCoverage::WholeParagraph,
+            entries: output.paragraph.entries,
+        },
+    )
     .unwrap();
     assert_eq!(layout.source().text().code_units(), &[88, 32, 10, 89]);
     assert_eq!(layout.lines()[0].bounds().size.width, 20.0);
     let rects = layout
-        .source_range_fragments(&original, surgeist_text::Range::new(1, 2))
+        .source_range_fragments(&original, surgeist_text::source::Range::new(1, 2))
         .unwrap();
     let units: Vec<_> = rects.units().collect();
     assert_eq!(units.len(), 1);
     let pieces: Vec<_> = units[0].pieces().collect();
     assert_eq!(pieces.len(), 1);
-    let surgeist_text::SourceRangeGeometry::Line(piece) = pieces[0] else {
+    let surgeist_text::range_fragments::SourceRangeGeometry::Line(piece) = pieces[0] else {
         panic!("ordinary intrinsic text retains Line geometry");
     };
     assert_eq!(piece.advance_edges(), (10.0, 20.0));
     assert_eq!(piece.rect().size.width, 10.0);
     assert_eq!(
         layout
-            .cursor(surgeist_text::Cursor::new(
+            .cursor(surgeist_text::layout::Cursor::new(
                 2,
-                surgeist_text::Affinity::Before
+                surgeist_text::layout::Affinity::Before
             ))
             .unwrap()
             .rect()

@@ -54,8 +54,8 @@ where
     for participant in selected() {
         inspect().map_err(error)?;
         match participant {
-            text::PreparedParticipant::Atomic(_) => atomics += 1,
-            text::PreparedParticipant::Control(_) => controls += 1,
+            text::prepared::PreparedParticipant::Atomic(_) => atomics += 1,
+            text::prepared::PreparedParticipant::Control(_) => controls += 1,
             _ => {}
         }
     }
@@ -73,7 +73,7 @@ where
         let mut inside = false;
         for participant in selected() {
             inspect().map_err(error)?;
-            if matches!(participant, text::PreparedParticipant::Control(ref value) if *value == binding.occurrence)
+            if matches!(participant, text::prepared::PreparedParticipant::Control(ref value) if *value == binding.occurrence)
             {
                 inside = true;
                 break;
@@ -83,10 +83,10 @@ where
             outside += 1;
         }
     }
-    let mut template = text::SemanticWindowRequest::new(segment.clone());
+    let mut template = text::observation::SemanticWindowRequest::new(segment.clone());
     template.inline_boxes = run.inline_boxes.family().cloned();
     template.formatted_line =
-        text::FormattedLineContext::new(Some(constants.first_formatted), None);
+        text::selection::FormattedLineContext::new(Some(constants.first_formatted), None);
     let mut request = resources
         .fund_semantic_request(template, atomics, controls, outside)
         .map_err(error)?;
@@ -104,15 +104,15 @@ where
     for participant in selected() {
         inspect().map_err(error)?;
         match participant {
-            text::PreparedParticipant::Atomic(occurrence) => {
+            text::prepared::PreparedParticipant::Atomic(occurrence) => {
                 request
-                    .push_atomic(text::SemanticAtomicAllocation {
+                    .push_atomic(text::observation::SemanticAtomicAllocation {
                         kind: occurrence.view().original_box().kind(),
                         occurrence,
                     })
                     .map_err(error)?;
             }
-            text::PreparedParticipant::Control(occurrence) => {
+            text::prepared::PreparedParticipant::Control(occurrence) => {
                 let mut node = None;
                 for binding in &run.binding.controls {
                     inspect().map_err(error)?;
@@ -132,7 +132,7 @@ where
                     _ => None,
                 };
                 request
-                    .push_control(text::SemanticControlAllocation {
+                    .push_control(text::observation::SemanticControlAllocation {
                         occurrence,
                         boundary,
                     })
@@ -150,7 +150,7 @@ where
         let mut inside = false;
         for participant in selected() {
             inspect().map_err(error)?;
-            if matches!(participant, text::PreparedParticipant::Control(ref value) if *value == binding.occurrence)
+            if matches!(participant, text::prepared::PreparedParticipant::Control(ref value) if *value == binding.occurrence)
             {
                 inside = true;
                 break;
@@ -166,7 +166,7 @@ where
             crate::inline::InlineEndpointOf::from_input(input),
         )?;
         request
-            .push_boundary_context(text::InlineBoundaryContextAllocation {
+            .push_boundary_context(text::allocation::InlineBoundaryContextAllocation {
                 occurrence: binding.occurrence.clone(),
                 boundary,
             })
@@ -198,10 +198,11 @@ pub(super) fn separates<S: LayoutScalar>(
         if let Some(funding) = funding {
             funding.visit(1)?;
         }
-        let end = if partition.terminal().view().kind() == text::PreparedBreakKind::Forced {
-            text::LineEnd::Forced
+        let end = if partition.terminal().view().kind() == text::prepared::PreparedBreakKind::Forced
+        {
+            text::selection::LineEnd::Forced
         } else {
-            text::LineEnd::Paragraph
+            text::selection::LineEnd::Paragraph
         };
         if crate::text_layout::fit::LineDisposition::participates(
             end,

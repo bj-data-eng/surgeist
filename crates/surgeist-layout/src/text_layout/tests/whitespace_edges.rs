@@ -122,8 +122,8 @@ fn run_in_band<S: LayoutScalar>(
                     next_transition: (narrow_before_twenty && start < 20.0).then_some(20.0),
                 })
             },
-            clear: |_, _: &surgeist_text::LineSelectionRequest| Ok(None),
-            replay: |_: &surgeist_text::FinalizedLine, _| Ok(Vec::new()),
+            clear: |_, _: &surgeist_text::selection::LineSelectionRequest| Ok(None),
+            replay: |_: &surgeist_text::finalized::FinalizedLine, _| Ok(Vec::new()),
             accept: || Ok(()),
         },
     )
@@ -337,8 +337,14 @@ fn finite_fit<S: LayoutScalar>() {
     assert_eq!(
         observed,
         vec![
-            (0.0, surgeist_text::LineEnd::Forced, 3, 20.0, 5.0),
-            (10.0, surgeist_text::LineEnd::Paragraph, 4, 10.0, 0.0),
+            (0.0, surgeist_text::selection::LineEnd::Forced, 3, 20.0, 5.0),
+            (
+                10.0,
+                surgeist_text::selection::LineEnd::Paragraph,
+                4,
+                10.0,
+                0.0
+            ),
         ]
     );
 }

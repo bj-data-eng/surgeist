@@ -42,50 +42,54 @@ impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
     }
 }
 
-fn metric(baseline: f64, extent: f64) -> t::LineBoxStrut {
-    t::LineBoxStrut {
+fn metric(baseline: f64, extent: f64) -> t::allocation::LineBoxStrut {
+    t::allocation::LineBoxStrut {
         scope: None,
-        metrics: t::LineStrut {
+        metrics: t::allocation::LineStrut {
             baseline,
             line_extent: extent,
         },
-        alignment: t::LineBoxAlignment::Baseline,
+        alignment: t::allocation::LineBoxAlignment::Baseline,
     }
 }
 
-fn expected_metric(scope: &t::CapturedScope, baseline: f64, extent: f64) -> t::LineBoxStrut {
+fn expected_metric(
+    scope: &t::capture::CapturedScope,
+    baseline: f64,
+    extent: f64,
+) -> t::allocation::LineBoxStrut {
     let mut strut = metric(baseline, extent);
     strut.scope = Some(scope.clone());
     strut
 }
 
 struct Fixture<S: l::LayoutScalar> {
-    processed: Arc<t::ProcessedSource>,
-    prepared: t::PreparedText,
+    processed: Arc<t::processing::ProcessedSource>,
+    prepared: t::prepared::PreparedText,
     binding: l::TextParagraphBinding<u32>,
-    scopes: [t::CapturedScope; 2],
+    scopes: [t::capture::CapturedScope; 2],
     tree: Tree<S>,
 }
 impl<S: l::LayoutScalar> Fixture<S> {
     fn new(direction: l::Direction, forced: bool) -> Self {
-        use t::SourceProcessingEvent as E;
+        use t::capture::SourceProcessingEvent as E;
         let base = if direction == l::Direction::Ltr {
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
-            t::ParagraphBaseDirection::RightToLeft
+            t::paragraph::ParagraphBaseDirection::RightToLeft
         };
-        let style = t::Style {
-            font: t::Font::new().family("Ahem"),
+        let style = t::style::Style {
+            font: t::style::Font::new().family("Ahem"),
             size: 10.0,
-            line_height: t::LineHeight::Absolute(10.0),
-            word_break: t::WordBreak::BreakAll,
-            hyphens: t::Hyphens::None,
-            wrap: t::Wrap::Word,
-            ..t::Style::default()
+            line_height: t::style::LineHeight::Absolute(10.0),
+            word_break: t::style::WordBreak::BreakAll,
+            hyphens: t::hyphenation::Hyphens::None,
+            wrap: t::style::Wrap::Word,
+            ..t::style::Style::default()
         };
-        let mut source = t::Source::identified("AB", t::Id::from_u64(652900), 9);
-        source.span(t::Range::new(0, 2), style.clone());
-        let inline = || t::SourceProcessingScope::Inline {
+        let mut source = t::source::Source::identified("AB", t::source::Id::from_u64(652900), 9);
+        source.span(t::source::Range::new(0, 2), style.clone());
+        let inline = || t::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
@@ -94,50 +98,54 @@ impl<S: l::LayoutScalar> Fixture<S> {
             boundaries: None,
         };
         let processed = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source,
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
                 origins: ["A", "B"]
                     .into_iter()
                     .enumerate()
-                    .map(|(i, raw)| t::ParagraphOrigin {
+                    .map(|(i, raw)| t::paragraph::ParagraphOrigin {
                         text_node: None,
-                        source: t::Source::identified(raw, t::Id::from_u64(652901 + i as u64), 9),
-                        local: t::Range::new(0, 1),
-                        aggregate: t::Range::new(i, i + 1),
-                        kind: t::ParagraphOriginKind::Authored,
+                        source: t::source::Source::identified(
+                            raw,
+                            t::source::Id::from_u64(652901 + i as u64),
+                            9,
+                        ),
+                        local: t::source::Range::new(0, 1),
+                        aggregate: t::source::Range::new(i, i + 1),
+                        kind: t::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect(),
-                connections: vec![t::SourceProcessingConnection {
+                connections: vec![t::capture::SourceProcessingConnection {
                     before_origin: 0,
                     after_origin: 1,
-                    kind: t::ParagraphConnectionKind::Continuous,
+                    kind: t::paragraph::ParagraphConnectionKind::Continuous,
                 }],
-                boundary_policies: vec![t::ParagraphBoundaryPolicy {
-                    definition: t::ParagraphBoundaryDefinition::Connection(0),
-                    preceding_wrap: t::Wrap::Word,
-                    following_wrap: t::Wrap::Word,
-                    ancestor_wrap: t::Wrap::Word,
+                boundary_policies: vec![t::paragraph::ParagraphBoundaryPolicy {
+                    definition: t::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                    preceding_wrap: t::style::Wrap::Word,
+                    following_wrap: t::style::Wrap::Word,
+                    ancestor_wrap: t::style::Wrap::Word,
                 }],
                 controls: vec![],
                 replacements: vec![],
                 computed_line_boundaries: if forced {
-                    vec![t::ComputedLineBoundaryInput::Scope {
+                    vec![t::capture::ComputedLineBoundaryInput::Scope {
                         scope: 2,
-                        side: t::SourceBoxSide::Before,
+                        side: t::capture::SourceBoxSide::Before,
                     }]
                 } else {
                     vec![]
                 },
                 scopes: vec![
-                    t::SourceProcessingScope::Block {
+                    t::capture::SourceProcessingScope::Block {
                         writing_axis: None,
                         horizontal_inner_direction: None,
                         font_reference: None,
-                        topology: t::SourceProcessingTopology::Complete,
+                        topology: t::capture::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style,
                         used_direction: base,
@@ -145,21 +153,21 @@ impl<S: l::LayoutScalar> Fixture<S> {
                     inline(),
                     inline(),
                 ],
-                paragraphs: vec![t::SourceProcessingParagraph {
+                paragraphs: vec![t::capture::SourceProcessingParagraph {
                     base_direction: base,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events: vec![
                     E::EnterScope(0),
                     E::EnterParagraph(0),
                     E::Origin {
                         origin: 0,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::Connection(0),
                     E::Origin {
                         origin: 1,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::EnterScope(1),
                     E::EnterScope(2),
@@ -183,17 +191,17 @@ impl<S: l::LayoutScalar> Fixture<S> {
             assert!(scope.entry_control().is_none());
             assert!(scope.exit_control().is_none());
         }
-        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            t::AnalysisTypography::HorizontalComposition,
+            t::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let policies = analyzed
             .wrapping_relations()
             .filter(|r| r.ancestor_wrap().is_none())
-            .map(|r| t::WrappingPolicy {
+            .map(|r| t::analyzed::WrappingPolicy {
                 relation: r.handle(),
-                ancestor_wrap: t::Wrap::Word,
+                ancestor_wrap: t::style::Wrap::Word,
             })
             .collect();
         let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
@@ -202,9 +210,12 @@ impl<S: l::LayoutScalar> Fixture<S> {
             .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
             .unwrap();
         let prepared = fonts
-            .prepare(&analyzed, t::PreparationOptions::default())
+            .prepare(&analyzed, t::prepared::PreparationOptions::default())
             .unwrap();
-        assert_eq!(prepared.terminal_edge(), t::ParagraphTerminalEdge::BlockEnd);
+        assert_eq!(
+            prepared.terminal_edge(),
+            t::paragraph::ParagraphTerminalEdge::BlockEnd
+        );
         assert_eq!(prepared.control_views().count(), 0);
         assert_eq!(prepared.atomic_views().count(), 0);
         assert_eq!(prepared.participants().count(), if forced { 3 } else { 2 });
@@ -223,11 +234,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
             .map(|(i, origin)| {
                 assert_eq!(
                     origin.source().id(),
-                    Some(t::Id::from_u64(652901 + i as u64))
+                    Some(t::source::Id::from_u64(652901 + i as u64))
                 );
                 assert_eq!(origin.source().revision(), 9);
-                assert_eq!(origin.aggregate_range(), t::Range::new(i, i + 1));
-                assert_eq!(origin.local_range(), t::Range::new(0, 1));
+                assert_eq!(origin.aggregate_range(), t::source::Range::new(i, i + 1));
+                assert_eq!(origin.local_range(), t::source::Range::new(0, 1));
                 inputs.push(l::LayoutInputOf::inline_text(l::TextParticipation::new(
                     origin.handle(),
                 )));
@@ -303,7 +314,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         }
     }
 
-    fn offers(&self, forced: bool) -> Vec<t::PreparedOpportunity> {
+    fn offers(&self, forced: bool) -> Vec<t::prepared::PreparedOpportunity> {
         let offers = self
             .prepared
             .opportunity_views()
@@ -325,21 +336,21 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 .collect::<Vec<_>>(),
             if forced {
                 vec![
-                    (t::PreparedBreakKind::Allowed, 1, 1, 1),
-                    (t::PreparedBreakKind::Forced, 3, 2, 2),
-                    (t::PreparedBreakKind::ParagraphEnd, 3, 2, 2),
+                    (t::prepared::PreparedBreakKind::Allowed, 1, 1, 1),
+                    (t::prepared::PreparedBreakKind::Forced, 3, 2, 2),
+                    (t::prepared::PreparedBreakKind::ParagraphEnd, 3, 2, 2),
                 ]
             } else {
                 vec![
-                    (t::PreparedBreakKind::Allowed, 1, 1, 1),
-                    (t::PreparedBreakKind::ParagraphEnd, 2, 2, 2),
+                    (t::prepared::PreparedBreakKind::Allowed, 1, 1, 1),
+                    (t::prepared::PreparedBreakKind::ParagraphEnd, 2, 2, 2),
                 ]
             }
         );
         offers
     }
 
-    fn pinned(&self) -> Vec<t::PreparedBoundaryIncidence> {
+    fn pinned(&self) -> Vec<t::observation::PreparedBoundaryIncidence> {
         let offers = self.offers(true);
         let forced = offers[1].view().boundary();
         assert_eq!(offers[2].view().boundary(), forced);
@@ -351,9 +362,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 .causes()
                 .map(|c| c.target())
                 .collect::<Vec<_>>(),
-            [t::CapturedComputedLineBoundaryTarget::Scope {
+            [t::capture::CapturedComputedLineBoundaryTarget::Scope {
                 scope: self.scopes[1].clone(),
-                side: t::SourceBoxSide::Before
+                side: t::capture::SourceBoxSide::Before
             }]
         );
         assert!(offers[2].view().computed_line_boundary().is_none());
@@ -362,9 +373,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 .captured_computed_line_boundary(0)
                 .unwrap()
                 .target(),
-            t::CapturedComputedLineBoundaryTarget::Scope {
+            t::capture::CapturedComputedLineBoundaryTarget::Scope {
                 scope: self.scopes[1].clone(),
-                side: t::SourceBoxSide::Before
+                side: t::capture::SourceBoxSide::Before
             }
         );
         let incidences = self
@@ -374,8 +385,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert_eq!(incidences.len(), 1);
         assert_eq!(incidences[0].boundary(), forced);
         for (scope, expected) in self.scopes.iter().zip([
-            t::CapturedScopeIncidence::Inside,
-            t::CapturedScopeIncidence::AtBefore,
+            t::observation::CapturedScopeIncidence::Inside,
+            t::observation::CapturedScopeIncidence::AtBefore,
         ]) {
             assert_eq!(
                 self.prepared
@@ -430,7 +441,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
     }
 }
 
-fn assert_struts(actual: &[t::LineBoxStrut], expected: &[t::LineBoxStrut]) {
+fn assert_struts(actual: &[t::allocation::LineBoxStrut], expected: &[t::allocation::LineBoxStrut]) {
     assert_eq!(actual.len(), expected.len());
     for value in expected {
         assert_eq!(actual.iter().filter(|row| *row == value).count(), 1);
@@ -456,13 +467,13 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
         placed.analyzed_source().identity(),
         prepared.analyzed_source().identity()
     );
-    assert_eq!(placed.source().id(), Some(t::Id::from_u64(652900)));
+    assert_eq!(placed.source().id(), Some(t::source::Id::from_u64(652900)));
     assert_eq!(placed.source().revision(), 9);
     assert_eq!(placed.source().text().code_units(), [65, 66]);
     let lines = placed.lines();
     assert_eq!(
         lines.iter().map(|l| l.range()).collect::<Vec<_>>(),
-        vec![t::Range::new(0, 2)]
+        vec![t::source::Range::new(0, 2)]
     );
     assert_eq!(
         lines
@@ -510,14 +521,14 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
     assert_eq!(
         request.context.end,
         if forced {
-            t::LineEnd::Forced
+            t::selection::LineEnd::Forced
         } else {
-            t::LineEnd::Paragraph
+            t::selection::LineEnd::Paragraph
         }
     );
     assert_eq!(
         request.termination,
-        t::PreparedTermination::Ordinary(offers[1].clone())
+        t::selection::PreparedTermination::Ordinary(offers[1].clone())
     );
     assert_eq!(request.end, offers[1].view().boundary());
     assert_eq!(
@@ -546,8 +557,8 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
     assert_eq!(
         source_glyphs,
         [
-            (t::Range::new(0, 1), 35, 10.0),
-            (t::Range::new(1, 2), 36, 10.0)
+            (t::source::Range::new(0, 1), 35, 10.0),
+            (t::source::Range::new(1, 2), 36, 10.0)
         ]
     );
     let mut glyphs = vec![];
@@ -646,7 +657,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
 
 fn replace_t_metric(
     inventory: &mut l::WrappingInput<u32>,
-    target: &t::CapturedScope,
+    target: &t::capture::CapturedScope,
     contribution: Option<l::InlineBoxMetricContribution>,
 ) {
     let mut replaced = 0;
@@ -713,7 +724,7 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
         placed.analyzed_source().identity(),
         fixture.prepared.analyzed_source().identity()
     );
-    assert_eq!(placed.source().id(), Some(t::Id::from_u64(652900)));
+    assert_eq!(placed.source().id(), Some(t::source::Id::from_u64(652900)));
     assert_eq!(placed.source().revision(), 9);
     assert_eq!(placed.source().text().code_units(), [65, 66]);
     // A real Forced line is formatted; its final strut-only Paragraph receiver
@@ -724,9 +735,9 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
         1,
         "the Paragraph-ended empty strut receiver is phantom"
     );
-    assert_eq!(lines[0].range(), t::Range::new(0, 2));
+    assert_eq!(lines[0].range(), t::source::Range::new(0, 2));
     assert_eq!(lines[0].baseline(), 16.0);
-    assert_eq!(lines[0].bounds().size, t::Size::new(30.0, 20.0));
+    assert_eq!(lines[0].bounds().size, t::geometry::Size::new(30.0, 20.0));
     assert_eq!(placed.metrics().line_count(), 1);
     assert_eq!(placed.metrics().first_baseline(), Some(16.0));
     assert_eq!(placed.metrics().last_baseline(), Some(16.0));
@@ -752,10 +763,10 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
     let selected = body.selected_line();
     let request = selected.request();
     let offers = fixture.offers(true);
-    assert_eq!(request.context.end, t::LineEnd::Forced);
+    assert_eq!(request.context.end, t::selection::LineEnd::Forced);
     assert_eq!(
         request.termination,
-        t::PreparedTermination::Ordinary(offers[1].clone())
+        t::selection::PreparedTermination::Ordinary(offers[1].clone())
     );
     assert_eq!(request.end, offers[1].view().boundary());
     assert_eq!(
@@ -769,7 +780,10 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
     assert!(request.controls.is_empty());
     assert!(request.atomics.is_empty());
     assert_eq!(body.measurements().fit().advance(), 20.0);
-    assert_eq!(offers[2].view().kind(), t::PreparedBreakKind::ParagraphEnd);
+    assert_eq!(
+        offers[2].view().kind(),
+        t::prepared::PreparedBreakKind::ParagraphEnd
+    );
     assert_eq!(offers[2].view().boundary(), request.end);
     assert!(offers[2].view().computed_line_boundary().is_none());
     // Source-aware glyph facts come from the actual finalized body, while
@@ -785,8 +799,8 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
     assert_eq!(
         sourced,
         [
-            (t::Range::new(0, 1), 35, 10.0),
-            (t::Range::new(1, 2), 36, 10.0)
+            (t::source::Range::new(0, 1), 35, 10.0),
+            (t::source::Range::new(1, 2), 36, 10.0)
         ]
     );
     let x = if direction == l::Direction::Ltr {
@@ -838,16 +852,19 @@ fn assert_retained_phantom_receipt<S: l::LayoutScalar>(
     let placement = completions[0];
     assert!(placement.origin.x.is_finite());
     assert_eq!(placement.origin.y, 20.0);
-    assert_eq!(placement.orientation, t::LineOrientation::Horizontal);
+    assert_eq!(
+        placement.orientation,
+        t::selection::LineOrientation::Horizontal
+    );
     assert!(placement.atomics.is_empty());
     let finalized = placement.line.finalized_line();
     let selected = finalized.selected_line();
     let request = selected.request();
     let offers = fixture.offers(true);
-    assert_eq!(request.context.end, t::LineEnd::Paragraph);
+    assert_eq!(request.context.end, t::selection::LineEnd::Paragraph);
     assert_eq!(
         request.termination,
-        t::PreparedTermination::Ordinary(offers[2].clone())
+        t::selection::PreparedTermination::Ordinary(offers[2].clone())
     );
     assert_eq!(request.start, offers[1].view().boundary());
     assert_eq!(request.end, offers[2].view().boundary());
@@ -947,37 +964,42 @@ fn omitted_paragraph_receipt<S: l::LayoutScalar>(direction: l::Direction) {
     let selected = actual_body.selected_line();
     let request = selected.request();
     let offers = fixture.offers(true);
-    assert_eq!(request.context.end, t::LineEnd::Forced);
+    assert_eq!(request.context.end, t::selection::LineEnd::Forced);
     assert_eq!(
         request.termination,
-        t::PreparedTermination::Ordinary(offers[1].clone())
+        t::selection::PreparedTermination::Ordinary(offers[1].clone())
     );
     assert_eq!(request.end, offers[2].view().boundary());
-    assert_eq!(offers[2].view().kind(), t::PreparedBreakKind::ParagraphEnd);
+    assert_eq!(
+        offers[2].view().kind(),
+        t::prepared::PreparedBreakKind::ParagraphEnd
+    );
     let first = placed.lines()[0];
-    let anchor = t::LineAnchor {
+    let anchor = t::placement::LineAnchor {
         inline_origin: first.bounds().origin.x,
         baseline: first.baseline(),
     };
     assert!(anchor.inline_origin.is_finite() && anchor.baseline.is_finite());
     // Exact terminal-boundary equality is insufficient: the actual selected
     // ending remains Forced, while WholeParagraph needs its real Paragraph receipt.
-    let error = t::Layout::from_finalized_lines(t::PlacementRequest {
+    let error = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: fixture.prepared.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
-        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-            line: actual_body,
-            anchor,
-            orientation: t::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![t::placement::PlacementEntry::Formatted(
+            t::placement::LinePlacement {
+                line: actual_body,
+                anchor,
+                orientation: t::selection::LineOrientation::Horizontal,
+                atomics: vec![],
+            },
+        )],
     })
     .expect_err("dropping the ParagraphEnd receipt cannot complete WholeParagraph");
     assert!(
         matches!(
             error.detail(),
             Some(t::ErrorDetail::InvalidTextProtocol {
-                reason: t::ProtocolError::IncompleteLineCoverage { line: 0 },
+                reason: t::prepared::ProtocolError::IncompleteLineCoverage { line: 0 },
             })
         ),
         "{error:?}"

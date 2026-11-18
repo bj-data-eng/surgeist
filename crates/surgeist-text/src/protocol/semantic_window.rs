@@ -131,7 +131,7 @@ struct Window {
     request: SemanticWindowRequest,
     partitions: Vec<SemanticPartitionEvidence>,
     conditionals: Vec<SemanticConditionalEvidence>,
-    usage: Option<crate::processing::ScopeAlignmentUsage>,
+    usage: Option<crate::processing::contextual::ScopeAlignmentUsage>,
     retention: ScopeAlignmentRetention,
     input_retention: ScopeAlignmentRetention,
 }
@@ -142,7 +142,7 @@ struct Window {
 #[derive(Debug)]
 pub struct SemanticWindowFailure {
     error: crate::Error,
-    usage: Option<crate::processing::ScopeAlignmentUsage>,
+    usage: Option<crate::processing::contextual::ScopeAlignmentUsage>,
     input_retention: ScopeAlignmentRetention,
 }
 impl SemanticWindowFailure {
@@ -153,7 +153,7 @@ impl SemanticWindowFailure {
         self,
     ) -> (
         crate::Error,
-        Option<crate::processing::ScopeAlignmentUsage>,
+        Option<crate::processing::contextual::ScopeAlignmentUsage>,
         ScopeAlignmentRetention,
     ) {
         (self.error, self.usage, self.input_retention)
@@ -161,7 +161,9 @@ impl SemanticWindowFailure {
     pub const fn input_retention(&self) -> ScopeAlignmentRetention {
         self.input_retention
     }
-    pub const fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
+    pub const fn scope_alignment_usage(
+        &self,
+    ) -> Option<crate::processing::contextual::ScopeAlignmentUsage> {
         self.usage
     }
 }
@@ -209,7 +211,9 @@ impl SemanticWindowEvidence {
     pub fn conditionals(&self) -> &[SemanticConditionalEvidence] {
         &self.inner.conditionals
     }
-    pub fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
+    pub fn scope_alignment_usage(
+        &self,
+    ) -> Option<crate::processing::contextual::ScopeAlignmentUsage> {
         self.inner.usage
     }
     /// This proof's own live rows/bytes, excluding shared preparation/family
@@ -457,8 +461,9 @@ fn retention(
     ]
     .into_iter()
     .try_fold(0usize, |sum, count| {
-        sum.checked_add(count)
-            .ok_or_else(|| count_overflow(crate::processing::ScopeAlignmentLimitKind::Records))
+        sum.checked_add(count).ok_or_else(|| {
+            count_overflow(crate::processing::contextual::ScopeAlignmentLimitKind::Records)
+        })
     })?;
     let payload_bytes = [
         account::bytes(&request.atomics)?,
@@ -469,8 +474,9 @@ fn retention(
     ]
     .into_iter()
     .try_fold(std::mem::size_of::<Window>(), |sum, count| {
-        sum.checked_add(count)
-            .ok_or_else(|| count_overflow(crate::processing::ScopeAlignmentLimitKind::PayloadBytes))
+        sum.checked_add(count).ok_or_else(|| {
+            count_overflow(crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes)
+        })
     })?;
     Ok(ScopeAlignmentRetention {
         records,
@@ -478,12 +484,12 @@ fn retention(
     })
 }
 fn structural_overflow() -> crate::Error {
-    count_overflow(crate::processing::ScopeAlignmentLimitKind::StructuralWork)
+    count_overflow(crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork)
 }
-fn count_overflow(kind: crate::processing::ScopeAlignmentLimitKind) -> crate::Error {
-    crate::engine::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-        kind,
-    })
+fn count_overflow(kind: crate::processing::contextual::ScopeAlignmentLimitKind) -> crate::Error {
+    crate::engine::scope_alignment::refusal(
+        crate::processing::contextual::ScopeAlignmentError::Overflow { kind },
+    )
 }
 
 fn work(ledger: &mut Ledger, counts: &[usize]) -> Result<()> {
@@ -499,8 +505,8 @@ fn push<T>(ledger: &mut Ledger, values: &mut Vec<T>, value: T) -> Result<()> {
     }
     values.try_reserve(1).map_err(|_| {
         crate::engine::scope_alignment::refusal(
-            crate::processing::ScopeAlignmentError::Allocation {
-                kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::contextual::ScopeAlignmentError::Allocation {
+                kind: crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
             },
         )
     })?;

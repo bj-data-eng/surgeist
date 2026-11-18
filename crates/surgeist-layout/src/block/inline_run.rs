@@ -178,7 +178,7 @@ fn validate_inline_control_flow<Node, S: LayoutScalar, M>(
 pub(super) struct VisibleInlineRunTransition {
     pub(super) start: usize,
     pub(super) end: usize,
-    semantic: Option<surgeist_text::PreparedSourceSegment>,
+    semantic: Option<surgeist_text::prepared::PreparedSourceSegment>,
 }
 
 impl VisibleInlineRunTransition {
@@ -1007,10 +1007,10 @@ fn named_atomic_baseline<S: LayoutScalar, M>(
 /// semantics. Struts and metrics are deliberately outside this operation.
 pub(super) struct BoundaryAllocationContext<'a, Node> {
     pub(super) container: Node,
-    pub(super) prepared: &'a surgeist_text::PreparedText,
+    pub(super) prepared: &'a surgeist_text::prepared::PreparedText,
     pub(super) associations: &'a crate::text_layout::capture::ScopeAssociations<Node>,
     pub(super) resources: &'a dyn crate::text_layout::scope_alignment::ScopeAlignmentFacts,
-    pub(super) orientation: surgeist_text::LineOrientation,
+    pub(super) orientation: surgeist_text::selection::LineOrientation,
     pub(super) axes: crate::FlowAxes,
 }
 impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
@@ -1018,9 +1018,9 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
         &self,
         tree: &Tree,
         node: Node,
-        occurrence: &surgeist_text::PreparedControl,
+        occurrence: &surgeist_text::prepared::PreparedControl,
         endpoint: crate::inline::InlineEndpointOf<S>,
-    ) -> LayoutResultOf<Node, surgeist_text::InlineBoundaryAllocation, S, M>
+    ) -> LayoutResultOf<Node, surgeist_text::allocation::InlineBoundaryAllocation, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
         Node: 'input,
@@ -1031,7 +1031,7 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
             unreachable!("an endpoint retains its normalized input");
         };
         let Some(parent_axes) = input.parent_edge_axes() else {
-            return surgeist_text::InlineBoundaryAllocation::contribution(advance)
+            return surgeist_text::allocation::InlineBoundaryAllocation::contribution(advance)
                 .map_err(|error| text_run_error(self.container, error.into()));
         };
         let limits = occurrence
@@ -1074,7 +1074,7 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
             })?;
         if let Some(scope) = parent
             .captured_scope()
-            .filter(|scope| scope.role() == surgeist_text::ScopeRole::Domain)
+            .filter(|scope| scope.role() == surgeist_text::capture::ScopeRole::Domain)
         {
             if let Some(limits) = scope.scope_alignment_limits() {
                 crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(
@@ -1110,20 +1110,20 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
             }
         }
         let side = match (self.orientation, parent_axes.inline_start()) {
-            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Left)
+            (surgeist_text::selection::LineOrientation::Horizontal, crate::PhysicalSide::Left)
             | (
-                surgeist_text::LineOrientation::Vertical
-                | surgeist_text::LineOrientation::SidewaysClockwise
-                | surgeist_text::LineOrientation::SidewaysCounterclockwise,
+                surgeist_text::selection::LineOrientation::Vertical
+                | surgeist_text::selection::LineOrientation::SidewaysClockwise
+                | surgeist_text::selection::LineOrientation::SidewaysCounterclockwise,
                 crate::PhysicalSide::Top,
-            ) => surgeist_text::LineEdgeSide::Start,
-            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Right)
+            ) => surgeist_text::finalized::LineEdgeSide::Start,
+            (surgeist_text::selection::LineOrientation::Horizontal, crate::PhysicalSide::Right)
             | (
-                surgeist_text::LineOrientation::Vertical
-                | surgeist_text::LineOrientation::SidewaysClockwise
-                | surgeist_text::LineOrientation::SidewaysCounterclockwise,
+                surgeist_text::selection::LineOrientation::Vertical
+                | surgeist_text::selection::LineOrientation::SidewaysClockwise
+                | surgeist_text::selection::LineOrientation::SidewaysCounterclockwise,
                 crate::PhysicalSide::Bottom,
-            ) => surgeist_text::LineEdgeSide::End,
+            ) => surgeist_text::finalized::LineEdgeSide::End,
             _ => {
                 return Err(LayoutErrorOf::new(
                     LayoutErrorSiteOf::Node(node),
@@ -1143,9 +1143,7 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
             .map_err(|error| text_run_error(self.container, error.into()))?;
         let components = crate::text_layout::edge_components::from_native(endpoint.edge)
             .map_err(|error| text_run_error(self.container, error.into()))?;
-        Ok(surgeist_text::InlineBoundaryAllocation::box_edge(
-            context, components,
-        ))
+        Ok(surgeist_text::allocation::InlineBoundaryAllocation::box_edge(context, components))
     }
 }
 

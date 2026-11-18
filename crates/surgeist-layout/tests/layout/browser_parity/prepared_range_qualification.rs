@@ -3,7 +3,7 @@
 use super::*;
 use exact_differences::{QualifiedComparison, QualifiedVerdict, RawVerdict};
 use serde::Serialize;
-use surgeist_text::Range;
+use surgeist_text::source::Range;
 
 pub const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
 pub const POLICY_SOURCE: &str = "docs/text-layout-contract.md";
@@ -545,10 +545,11 @@ fn verify_native(
     let mut intersections = unit.selected_intersections();
     let selected = intersections.next();
     let mut pieces = unit.pieces();
-    let Some(surgeist_text::SourceRangeGeometry::Line(piece)) = pieces.next() else {
+    let Some(surgeist_text::range_fragments::SourceRangeGeometry::Line(piece)) = pieces.next()
+    else {
         return Err(Error::new("missing PDI line font band"));
     };
-    let cursor = surgeist_text::Cursor::new(4, surgeist_text::Affinity::After);
+    let cursor = surgeist_text::layout::Cursor::new(4, surgeist_text::layout::Affinity::After);
     let x = if rtl { 24.0 } else { 48.0 };
     let instance = piece.effective_instance();
     let font_band = piece.rect();
@@ -649,7 +650,7 @@ fn verify_fragment_packets(
     golden: &Golden,
     fragments: &[layout::InlineFragmentOutputEntry<usize>],
     final_fragments: &[layout::InlineFragmentOutputEntry<usize>],
-    lines: &[surgeist_text::FinalizedLine; 2],
+    lines: &[surgeist_text::finalized::FinalizedLine; 2],
 ) -> Result<(), Error> {
     // The captured paragraph has one canonical anchor per selected line.
     // Both packet channels must project the same issued Text fragment.
@@ -673,10 +674,10 @@ fn verify_fragment_packets(
                 .children
                 .iter()
                 .position(|child| match view.owner() {
-                    surgeist_text::FinalizedFragmentOwner::Origin(origin) => {
+                    surgeist_text::finalized::FinalizedFragmentOwner::Origin(origin) => {
                         child.prepared_origin.as_ref() == Some(&origin)
                     }
-                    surgeist_text::FinalizedFragmentOwner::Control(control) => {
+                    surgeist_text::finalized::FinalizedFragmentOwner::Control(control) => {
                         child.prepared_control.as_ref() == Some(&control)
                     }
                     _ => false,
@@ -826,7 +827,7 @@ fn metric_matches(actual: f64, expected: f64) -> bool {
     (actual - expected).abs() <= f64::EPSILON * 16.0 * expected.abs().max(1.0)
 }
 
-fn verify_selected_lines(text: &surgeist_text::Layout, rtl: bool) -> Result<(), Error> {
+fn verify_selected_lines(text: &surgeist_text::layout::Layout, rtl: bool) -> Result<(), Error> {
     let lines = text.lines();
     let expected = [(Range::new(0, 6), 0.0), (Range::new(6, 7), LINE_HEIGHT)];
     if lines.len() != expected.len() {

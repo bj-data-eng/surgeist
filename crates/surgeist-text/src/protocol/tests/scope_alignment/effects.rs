@@ -10,8 +10,11 @@ use crate::{
     id::Id,
     layout::{Affinity, Cursor, Hit, Layout, Selection},
     processing::{
-        CapturedScope, ProcessedSource, ScopeAlignmentBoundary, SourceProcessingConnection,
-        SourceProcessingScope, SourceProcessingScopeBoundaries, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            CapturedScope, ScopeAlignmentBoundary, SourceProcessingConnection,
+            SourceProcessingScope, SourceProcessingScopeBoundaries, process_contextual_source,
+        },
     },
     protocol::{
         AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
@@ -47,7 +50,7 @@ fn decorated() -> Style {
 }
 
 fn capture() -> Arc<ProcessedSource> {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     let mut source = Source::identified("A\u{3a7}\u{3a7}B", Id::from_u64(1_578_701), 29);
     source.span(
         Range::new(0, 1),
@@ -499,7 +502,7 @@ const EDGE_ATOMICS: [Id; 5] = [
 ];
 
 fn edge_leaves(orientation: LineOrientation) -> (PreparedText, CapturedScope) {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     let mut source = Source::identified("AB", Id::from_u64(1_578_720), 37);
     source.span(
         Range::new(0, 1),

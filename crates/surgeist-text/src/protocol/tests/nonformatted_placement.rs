@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     layout::{Affinity, Cursor, Hit},
-    processing::SourceProcessingEvent as E,
+    processing::contextual::SourceProcessingEvent as E,
     range::Range,
     style::LineHeight,
 };
@@ -20,7 +20,7 @@ fn nf_style(mode: WhiteSpace) -> Style {
         ..style()
     }
 }
-fn nf_input(raw: &str, mode: WhiteSpace) -> crate::processing::ContextualSourceInput {
+fn nf_input(raw: &str, mode: WhiteSpace) -> crate::processing::contextual::ContextualSourceInput {
     let source = Source::new(raw);
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     let origins = if raw.is_empty() {
@@ -39,36 +39,39 @@ fn nf_input(raw: &str, mode: WhiteSpace) -> crate::processing::ContextualSourceI
         }]
     };
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
-    crate::processing::ContextualSourceInput {
+    crate::processing::contextual::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
         segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: crate::processing::SourceProcessingEnvelope::Complete,
+        envelope: crate::processing::contextual::SourceProcessingEnvelope::Complete,
         origins,
         controls: vec![],
         connections: vec![],
         boundary_policies: vec![],
         replacements: vec![],
         computed_line_boundaries: vec![],
-        scopes: vec![crate::processing::SourceProcessingScope::Block {
-            writing_axis: None,
-            horizontal_inner_direction: None,
-            font_reference: None,
-            topology: crate::processing::SourceProcessingTopology::Complete,
-            trim: Default::default(),
-            base_style: nf_style(mode),
-            used_direction: ParagraphBaseDirection::LeftToRight,
-        }],
-        paragraphs: vec![crate::processing::SourceProcessingParagraph {
+        scopes: vec![
+            crate::processing::contextual::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
+                topology: crate::processing::contextual::SourceProcessingTopology::Complete,
+                trim: Default::default(),
+                base_style: nf_style(mode),
+                used_direction: ParagraphBaseDirection::LeftToRight,
+            },
+        ],
+        paragraphs: vec![crate::processing::contextual::SourceProcessingParagraph {
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
         }],
         events,
     }
 }
-fn nf_prepare(value: crate::processing::ContextualSourceInput) -> PreparedText {
-    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
+fn nf_prepare(value: crate::processing::contextual::ContextualSourceInput) -> PreparedText {
+    let processed =
+        Arc::new(crate::processing::contextual::process_contextual_source(value).unwrap());
     let a = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
         crate::analyzed::AnalysisTypography::HorizontalComposition,
@@ -383,11 +386,13 @@ fn removed_middle_soft_receipt_preserves_original_selection_between_real_visual_
         })
         .collect();
     input.connections = (0..2)
-        .map(|i| crate::processing::SourceProcessingConnection {
-            before_origin: i,
-            after_origin: i + 1,
-            kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
-        })
+        .map(
+            |i| crate::processing::contextual::SourceProcessingConnection {
+                before_origin: i,
+                after_origin: i + 1,
+                kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+            },
+        )
         .collect();
     input.boundary_policies = (0..2)
         .map(|i| crate::protocol::paragraph::ParagraphBoundaryPolicy {

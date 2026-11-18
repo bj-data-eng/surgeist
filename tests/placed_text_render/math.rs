@@ -99,40 +99,47 @@ fn system(bytes: &[u8]) -> text::System {
     system
 }
 
-fn style(math: bool, white_space: text::WhiteSpace, word_break: text::WordBreak) -> text::Style {
-    text::Style {
-        font: text::Font::new().family("Ahem"),
+fn style(
+    math: bool,
+    white_space: text::style::WhiteSpace,
+    word_break: text::style::WordBreak,
+) -> text::style::Style {
+    text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
+        line_height: text::style::LineHeight::Absolute(10.0),
         white_space,
         word_break,
         text_transform: if math {
-            text::TextTransform::MathAuto
+            text::style::TextTransform::MathAuto
         } else {
-            text::TextTransform::none()
+            text::style::TextTransform::none()
         },
-        ..text::Style::default()
+        ..text::style::Style::default()
     }
 }
 
-fn source(value: &str) -> text::Source {
-    text::Source::identified(value, text::Id::from_u64(6305), 19)
+fn source(value: &str) -> text::source::Source {
+    text::source::Source::identified(value, text::source::Id::from_u64(6305), 19)
 }
 
 fn origin(
-    source: &text::Source,
-    aggregate: text::Range,
+    source: &text::source::Source,
+    aggregate: text::source::Range,
     complete: &str,
-    contribution: text::Range,
-) -> text::ParagraphOrigin {
-    text::ParagraphOrigin {
+    contribution: text::source::Range,
+) -> text::paragraph::ParagraphOrigin {
+    text::paragraph::ParagraphOrigin {
         source: source.clone(),
         local: aggregate,
         aggregate,
-        kind: text::ParagraphOriginKind::Authored,
+        kind: text::paragraph::ParagraphOriginKind::Authored,
         text_node: Some(
-            text::CompleteTextNodeContribution::new(text::Text::from(complete), contribution)
-                .unwrap(),
+            text::paragraph::CompleteTextNodeContribution::new(
+                text::source::Text::from(complete),
+                contribution,
+            )
+            .unwrap(),
         ),
     }
 }
@@ -175,39 +182,39 @@ impl layout::LayoutTree for MathTree {
 
 fn capture(
     system: &mut text::System,
-    source: &text::Source,
-    origins: Vec<text::ParagraphOrigin>,
-    style: text::Style,
+    source: &text::source::Source,
+    origins: Vec<text::paragraph::ParagraphOrigin>,
+    style: text::style::Style,
     authored_width: Option<f32>,
     request: layout::LayoutRootRequest,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
-    Vec<text::PreparedOrigin>,
+    Vec<text::prepared::PreparedOrigin>,
 ) {
     let connections = origins
         .windows(2)
-        .map(|pair| text::ParagraphConnection {
+        .map(|pair| text::paragraph::ParagraphConnection {
             at: pair[0].aggregate.end,
-            kind: text::ParagraphConnectionKind::Continuous,
+            kind: text::paragraph::ParagraphConnectionKind::Continuous,
         })
         .collect();
     let ancestor_wrap = style.wrap;
     let boundary_policies = (0..origins.len().saturating_sub(1))
-        .map(|index| text::ParagraphBoundaryPolicy {
-            definition: text::ParagraphBoundaryDefinition::Connection(index),
+        .map(|index| text::paragraph::ParagraphBoundaryPolicy {
+            definition: text::paragraph::ParagraphBoundaryDefinition::Connection(index),
             preceding_wrap: ancestor_wrap,
             following_wrap: ancestor_wrap,
             ancestor_wrap,
         })
         .collect();
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins,
             connections,
@@ -216,20 +223,20 @@ fn capture(
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origins = prepared
         .origin_views()
@@ -288,7 +295,7 @@ fn capture(
     (batch, origins)
 }
 
-fn glyphs(placed: &text::Layout, bytes: &[u8]) -> Vec<(u32, f32)> {
+fn glyphs(placed: &text::layout::Layout, bytes: &[u8]) -> Vec<(u32, f32)> {
     placed
         .run_views()
         .flat_map(|run| {
@@ -349,11 +356,15 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                 &source,
                 vec![origin(
                     &source,
-                    text::Range::new(0, 1),
+                    text::source::Range::new(0, 1),
                     value,
-                    text::Range::new(0, 1),
+                    text::source::Range::new(0, 1),
                 )],
-                style(math, text::WhiteSpace::Preserve, text::WordBreak::Normal),
+                style(
+                    math,
+                    text::style::WhiteSpace::Preserve,
+                    text::style::WordBreak::Normal,
+                ),
                 Some(40.0),
                 NativeViewport::new(
                     layout::Size::new(Some(40.0), None),
@@ -376,7 +387,7 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
             assert_eq!(advances(&batch), [advance]);
             assert_eq!(placed.source(), &source);
             assert_eq!(source.text().code_units(), [original]);
-            assert_eq!(source.id(), Some(text::Id::from_u64(6305)));
+            assert_eq!(source.id(), Some(text::source::Id::from_u64(6305)));
             assert_eq!(source.revision(), 19);
             let finalized = batch.final_inline_fragments()[0]
                 .fragment()
@@ -402,14 +413,14 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                     .iter()
                     .flat_map(|run| run.glyphs().iter().map(|glyph| glyph.range()))
                     .collect::<Vec<_>>(),
-                [text::Range::new(0, 1)]
+                [text::source::Range::new(0, 1)]
             );
             let at = |x| {
                 placed
                     .positions()
                     .find(|position| {
                         placed.position_geometry(position).unwrap().rect().origin
-                            == text::Point::new(x, 0.0)
+                            == text::geometry::Point::new(x, 0.0)
                     })
                     .unwrap()
             };
@@ -423,15 +434,15 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                 assert_eq!(selected.source_pieces()[0].origin(), &origins[0]);
                 assert_eq!(
                     selected.source_pieces()[0].local_range(),
-                    text::Range::new(0, 1)
+                    text::source::Range::new(0, 1)
                 );
                 assert_eq!(
                     selected.geometry().rects()[0].rect(),
-                    text::Rect::new(0.0, 0.0, advance, 10.0)
+                    text::geometry::Rect::new(0.0, 0.0, advance, 10.0)
                 );
             }
             let fragments = placed
-                .source_range_fragments(&origins[0], text::Range::new(0, 1))
+                .source_range_fragments(&origins[0], text::source::Range::new(0, 1))
                 .unwrap();
             assert_eq!(fragments.units().count(), 1);
             assert_eq!(
@@ -443,7 +454,7 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                     .next()
                     .unwrap()
                     .rect(),
-                text::Rect::new(0.0, 0.0, advance, 10.0)
+                text::geometry::Rect::new(0.0, 0.0, advance, 10.0)
             );
             let actual = placed
                 .run_views()
@@ -510,22 +521,32 @@ fn complete_node_cardinality_survives_origin_splitting_and_changes_real_fit() {
         let make_origins = || {
             if separate_nodes {
                 vec![
-                    origin(&source, text::Range::new(0, 1), "c", text::Range::new(0, 1)),
-                    origin(&source, text::Range::new(1, 2), "c", text::Range::new(0, 1)),
+                    origin(
+                        &source,
+                        text::source::Range::new(0, 1),
+                        "c",
+                        text::source::Range::new(0, 1),
+                    ),
+                    origin(
+                        &source,
+                        text::source::Range::new(1, 2),
+                        "c",
+                        text::source::Range::new(0, 1),
+                    ),
                 ]
             } else {
                 vec![
                     origin(
                         &source,
-                        text::Range::new(0, 1),
+                        text::source::Range::new(0, 1),
                         "cc",
-                        text::Range::new(0, 1),
+                        text::source::Range::new(0, 1),
                     ),
                     origin(
                         &source,
-                        text::Range::new(1, 2),
+                        text::source::Range::new(1, 2),
                         "cc",
-                        text::Range::new(1, 2),
+                        text::source::Range::new(1, 2),
                     ),
                 ]
             }
@@ -534,7 +555,11 @@ fn complete_node_cardinality_survives_origin_splitting_and_changes_real_fit() {
             &mut system,
             &source,
             make_origins(),
-            style(true, text::WhiteSpace::Preserve, text::WordBreak::BreakAll),
+            style(
+                true,
+                text::style::WhiteSpace::Preserve,
+                text::style::WordBreak::BreakAll,
+            ),
             Some(25.0),
             NativeViewport::new(
                 layout::Size::new(Some(25.0), None),
@@ -571,15 +596,18 @@ fn complete_node_cardinality_survives_origin_splitting_and_changes_real_fit() {
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
             if separate_nodes {
-                vec![text::Range::new(0, 1), text::Range::new(1, 2)]
+                vec![
+                    text::source::Range::new(0, 1),
+                    text::source::Range::new(1, 2),
+                ]
             } else {
-                vec![text::Range::new(0, 2)]
+                vec![text::source::Range::new(0, 2)]
             }
         );
         for (index, origin) in origins.iter().enumerate() {
             assert_eq!(origin.view().source(), &source);
             let range = placed
-                .source_range_fragments(origin, text::Range::new(index, index + 1))
+                .source_range_fragments(origin, text::source::Range::new(index, index + 1))
                 .unwrap();
             assert_eq!(range.units().count(), 1);
             let rect = range
@@ -592,7 +620,7 @@ fn complete_node_cardinality_survives_origin_splitting_and_changes_real_fit() {
                 .rect();
             assert_eq!(
                 rect,
-                text::Rect::new(
+                text::geometry::Rect::new(
                     if separate_nodes {
                         0.0
                     } else {
@@ -622,7 +650,11 @@ fn complete_node_cardinality_survives_origin_splitting_and_changes_real_fit() {
                 &mut system,
                 &source,
                 make_origins(),
-                style(true, text::WhiteSpace::Preserve, text::WordBreak::BreakAll),
+                style(
+                    true,
+                    text::style::WhiteSpace::Preserve,
+                    text::style::WordBreak::BreakAll,
+                ),
                 None,
                 NativeViewport::new(
                     layout::Size::new(None, None),
@@ -643,16 +675,20 @@ fn discard_cannot_turn_complete_space_c_space_into_eligible_single_character_nod
     let bytes = math_ahem();
     let mut system = system(&bytes);
     for (value, range, glyph, advance) in [
-        (" c ", text::Range::new(1, 2), 69, 10.0),
-        ("c", text::Range::new(0, 1), 82, 15.0),
+        (" c ", text::source::Range::new(1, 2), 69, 10.0),
+        ("c", text::source::Range::new(0, 1), 82, 15.0),
     ] {
         let source = source(value);
-        let whole = text::Range::new(0, source.text().len());
+        let whole = text::source::Range::new(0, source.text().len());
         let (batch, origins) = capture(
             &mut system,
             &source,
             vec![origin(&source, whole, value, whole)],
-            style(true, text::WhiteSpace::Discard, text::WordBreak::Normal),
+            style(
+                true,
+                text::style::WhiteSpace::Discard,
+                text::style::WordBreak::Normal,
+            ),
             Some(40.0),
             NativeViewport::new(
                 layout::Size::new(Some(40.0), None),
@@ -693,7 +729,7 @@ fn discard_cannot_turn_complete_space_c_space_into_eligible_single_character_nod
                 .next()
                 .unwrap()
                 .rect(),
-            text::Rect::new(0.0, 0.0, advance, 10.0)
+            text::geometry::Rect::new(0.0, 0.0, advance, 10.0)
         );
     }
 }
@@ -705,16 +741,29 @@ fn normal_math_letter_word_stays_unbroken_while_break_all_uses_actual_mapped_adv
     let source = source("Ac");
     let make_origins = || {
         vec![
-            origin(&source, text::Range::new(0, 1), "A", text::Range::new(0, 1)),
-            origin(&source, text::Range::new(1, 2), "c", text::Range::new(0, 1)),
+            origin(
+                &source,
+                text::source::Range::new(0, 1),
+                "A",
+                text::source::Range::new(0, 1),
+            ),
+            origin(
+                &source,
+                text::source::Range::new(1, 2),
+                "c",
+                text::source::Range::new(0, 1),
+            ),
         ]
     };
-    for word_break in [text::WordBreak::Normal, text::WordBreak::BreakAll] {
+    for word_break in [
+        text::style::WordBreak::Normal,
+        text::style::WordBreak::BreakAll,
+    ] {
         let (batch, _) = capture(
             &mut system,
             &source,
             make_origins(),
-            style(true, text::WhiteSpace::Preserve, word_break),
+            style(true, text::style::WhiteSpace::Preserve, word_break),
             Some(25.0),
             NativeViewport::new(
                 layout::Size::new(Some(25.0), None),
@@ -729,7 +778,7 @@ fn normal_math_letter_word_stays_unbroken_while_break_all_uses_actual_mapped_adv
         assert_eq!(glyphs(placed, &bytes), [(36, 20.0), (82, 15.0)]);
         assert_eq!(
             advances(&batch),
-            if word_break == text::WordBreak::Normal {
+            if word_break == text::style::WordBreak::Normal {
                 vec![35.0]
             } else {
                 vec![20.0, 15.0]
@@ -738,7 +787,7 @@ fn normal_math_letter_word_stays_unbroken_while_break_all_uses_actual_mapped_adv
         for (purpose, expected) in [
             (
                 layout::SizingOperation::MinContent,
-                if word_break == text::WordBreak::Normal {
+                if word_break == text::style::WordBreak::Normal {
                     35.0
                 } else {
                     20.0
@@ -750,7 +799,7 @@ fn normal_math_letter_word_stays_unbroken_while_break_all_uses_actual_mapped_adv
                 &mut system,
                 &source,
                 make_origins(),
-                style(true, text::WhiteSpace::Preserve, word_break),
+                style(true, text::style::WhiteSpace::Preserve, word_break),
                 None,
                 NativeViewport::new(
                     layout::Size::new(None, None),
@@ -777,11 +826,15 @@ fn math_accessibility_keeps_original_c_with_fifteen_pixel_source_geometry() {
         &source,
         vec![origin(
             &source,
-            text::Range::new(0, 1),
+            text::source::Range::new(0, 1),
             "c",
-            text::Range::new(0, 1),
+            text::source::Range::new(0, 1),
         )],
-        style(true, text::WhiteSpace::Preserve, text::WordBreak::Normal),
+        style(
+            true,
+            text::style::WhiteSpace::Preserve,
+            text::style::WordBreak::Normal,
+        ),
         Some(40.0),
         NativeViewport::new(
             layout::Size::new(Some(40.0), None),
@@ -794,18 +847,21 @@ fn math_accessibility_keeps_original_c_with_fifteen_pixel_source_geometry() {
     );
     let placed = batch.placed_text()[0].layout();
     drop(system);
-    let mut accessibility = text::Accessibility::new(20);
+    let mut accessibility = text::accessibility::Accessibility::new(20);
     let parent = 1000_u64.into();
     let update = placed
         .accessibility_update(
             &mut accessibility,
             parent,
             parent,
-            text::Point::new(100.0, 200.0),
+            text::geometry::Point::new(100.0, 200.0),
         )
         .unwrap();
     let position = placed
-        .access_position(&accessibility, text::Cursor::new(0, text::Affinity::After))
+        .access_position(
+            &accessibility,
+            text::layout::Cursor::new(0, text::layout::Affinity::After),
+        )
         .unwrap()
         .unwrap();
     let node = &update

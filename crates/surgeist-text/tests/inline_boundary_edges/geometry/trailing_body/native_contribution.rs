@@ -5,8 +5,8 @@ use super::*;
 #[test]
 fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
     let p = prepare_capture(
-        t::Source::identified("A", t::Id::from_u64(1_646_408), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("A", t::source::Id::from_u64(1_646_408), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -17,10 +17,13 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
         vec![control(0), origin(0), control(1), control(2)],
         AHEM,
     );
-    assert_eq!(p.analyzed_source().source().text(), &t::Text::from("A"));
+    assert_eq!(
+        p.analyzed_source().source().text(),
+        &t::source::Text::from("A")
+    );
     assert_eq!(
         p.analyzed_source().processed_source().processed_text(),
-        &t::Text::from("A")
+        &t::source::Text::from("A")
     );
     assert_eq!(p.source_segments().len(), 1);
     let controls = p
@@ -38,10 +41,10 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
     let force_source = force.captured_control().unwrap();
     let end_source = closing.captured_control().unwrap();
     let domain = start_source.scope();
-    assert_eq!(domain.role(), t::ScopeRole::Domain);
+    assert_eq!(domain.role(), t::capture::ScopeRole::Domain);
     assert_eq!(
         domain.domain_topology(),
-        t::SourceProcessingTopology::Complete
+        t::capture::SourceProcessingTopology::Complete
     );
     assert_eq!(force_source.scope(), domain);
     assert_eq!(end_source.scope(), domain);
@@ -51,14 +54,17 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
     assert!(captured.members().all(|member| {
         member
             .scope_intersections()
-            .all(|intersection| intersection.scope().role() == t::ScopeRole::Domain)
+            .all(|intersection| intersection.scope().role() == t::capture::ScopeRole::Domain)
     }));
     let originals = p
         .origin_views()
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     assert_eq!(originals.len(), 1);
-    assert_eq!(originals[0].view().aggregate_range(), t::Range::new(0, 1));
+    assert_eq!(
+        originals[0].view().aggregate_range(),
+        t::source::Range::new(0, 1)
+    );
     let original_event = originals[0].view().capture_position().unwrap();
     assert!(start_source.event_position() < original_event);
     assert!(original_event < force_source.event_position());
@@ -71,7 +77,7 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
         native.captured_scope().is_none(),
         "actual NativePair, not canonical CapturedInline"
     );
-    let root_owner = t::InlineBoxSource::captured(domain.clone());
+    let root_owner = t::inline_box::InlineBoxSource::captured(domain.clone());
     assert_ne!(native, root_owner);
     assert_eq!(
         native,
@@ -80,7 +86,7 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
 
     let mut forced = p
         .opportunity_views()
-        .filter(|view| view.kind() == t::PreparedBreakKind::Forced)
+        .filter(|view| view.kind() == t::prepared::PreparedBreakKind::Forced)
         .map(|view| view.handle());
     let mandatory = forced.next().expect("one captured mandatory break");
     assert!(forced.next().is_none());
@@ -103,23 +109,23 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
     let mut first_input = request(&p, segment.start(), mandatory, &facts, 100.0);
     let mut tail_input = request(&p, tail_start, paragraph, &facts, 100.0);
     for input in [&mut first_input, &mut tail_input] {
-        input.context.spacing = t::SpacingPolicy::None;
+        input.context.spacing = t::spacing::SpacingPolicy::None;
         answer(&p, input, &facts);
         assert!(input.inline_boxes.is_none());
     }
     assert!(
         tail_input
             .participants
-            .contains(&t::PreparedParticipant::Control(closing.clone()))
+            .contains(&t::prepared::PreparedParticipant::Control(closing.clone()))
     );
     assert!(
         !tail_input
             .participants
-            .contains(&t::PreparedParticipant::Control(force.clone()))
+            .contains(&t::prepared::PreparedParticipant::Control(force.clone()))
     );
     assert!(tail_input.participants.iter().all(|part| match part {
-        t::PreparedParticipant::Control(actual) => actual == closing,
-        t::PreparedParticipant::Text(unit) =>
+        t::prepared::PreparedParticipant::Control(actual) => actual == closing,
+        t::prepared::PreparedParticipant::Text(unit) =>
             unit.view().source_range().is_empty() && unit.view().processed_range().is_empty(),
         _ => false,
     }));
@@ -127,7 +133,7 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
     // Establish actual local behavior before demanding a complete native family.
     let prior_first = finalize(&p, first_input.clone());
     let prior_tail = finalize(&p, tail_input.clone());
-    assert_eq!(ids(&prior_first), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(ids(&prior_first), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(prior_first.feedback().advance, 10.0);
     assert!(ids(&prior_tail).is_empty());
     assert_eq!(prior_tail.feedback().advance, 5.0);
@@ -155,7 +161,7 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
     tail_input.inline_boxes = Some(family.clone());
     let first = finalize(&p, first_input);
     let tail = finalize(&p, tail_input);
-    assert_eq!(ids(&first), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(ids(&first), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(first.feedback().advance, 10.0);
     assert!(ids(&tail).is_empty());
     assert_eq!(tail.feedback().advance, 5.0);
@@ -196,12 +202,15 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
     assert!(matches!(
         a.nearest_common_ancestor(&b).unwrap_err().detail(),
         Some(t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::InlineBoxFragmentation(
-                t::InlineBoxFragmentationError::DifferentBody
+            reason: t::prepared::ProtocolError::InlineBoxFragmentation(
+                t::inline_box::InlineBoxFragmentationError::DifferentBody
             )
         })
     ));
     assert_eq!(prior_first.feedback().advance, 10.0);
     assert_eq!(prior_tail.feedback().advance, 5.0);
-    assert_eq!(originals[0].view().source().text(), &t::Text::from("A"));
+    assert_eq!(
+        originals[0].view().source().text(),
+        &t::source::Text::from("A")
+    );
 }

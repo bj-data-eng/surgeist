@@ -101,7 +101,7 @@ impl<Node: Copy + Eq> NativeInlineBoxFragment<Node> {
     pub fn owner(&self) -> GeneratedBoxRef<Node> {
         self.family.identity(self.component().owner())
     }
-    fn component(&self) -> surgeist_text::SuppliedInlineBoxComponent<'_> {
+    fn component(&self) -> surgeist_text::inline_box::SuppliedInlineBoxComponent<'_> {
         self.family
             .data()
             .components

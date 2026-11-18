@@ -18,17 +18,17 @@ const END: u32 = 11;
 /// AllocatedContributions, neither endpoint can supply metrics backward across
 /// the force. This is the same Text-owned refusal as computed_line_boundaries'
 /// allocated_metrics_cannot_be_borrowed_from_endpoints_beyond_the_force case.
-fn paragraph(strut: text::ParagraphStrut) -> TextParagraphBinding<u32> {
-    use text::SourceProcessingEvent as E;
-    let style = text::Style {
-        wrap: text::Wrap::None,
+fn paragraph(strut: text::paragraph::ParagraphStrut) -> TextParagraphBinding<u32> {
+    use text::capture::SourceProcessingEvent as E;
+    let style = text::style::Style {
+        wrap: text::style::Wrap::None,
         ..crate::test_support::text::ahem_style(10.0, 10.0)
     };
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
-            source: text::Source::new(""),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
+            source: text::source::Source::new(""),
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: Vec::new(),
             connections: Vec::new(),
             boundary_policies: Vec::new(),
@@ -36,40 +36,43 @@ fn paragraph(strut: text::ParagraphStrut) -> TextParagraphBinding<u32> {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             controls: vec![
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 0,
-                    kind: text::ParagraphControlKind::InlineBoundaryStart,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 0,
-                    kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
             ],
-            computed_line_boundaries: vec![text::ComputedLineBoundaryInput::Scope {
+            computed_line_boundaries: vec![text::capture::ComputedLineBoundaryInput::Scope {
                 scope: 1,
-                side: text::SourceBoxSide::Before,
+                side: text::capture::SourceBoxSide::Before,
             }],
             scopes: vec![
-                text::SourceProcessingScope::Block {
+                text::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: text::SourceProcessingTopology::Complete,
+                    topology: text::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style,
-                    used_direction: text::ParagraphBaseDirection::LeftToRight,
+                    used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
                     style: None,
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: strut,
             }],
             events: vec![
@@ -78,11 +81,11 @@ fn paragraph(strut: text::ParagraphStrut) -> TextParagraphBinding<u32> {
                 E::EnterScope(1),
                 E::Control {
                     control: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Control {
                     control: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(1),
                 E::ExitParagraph(0),
@@ -91,12 +94,13 @@ fn paragraph(strut: text::ParagraphStrut) -> TextParagraphBinding<u32> {
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::None);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::None);
     let mut system = text::System::default();
     system
         .register_fonts(
@@ -105,7 +109,7 @@ fn paragraph(strut: text::ParagraphStrut) -> TextParagraphBinding<u32> {
         )
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let controls = prepared
         .control_views()
@@ -346,10 +350,10 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for FailureHost<S> {
 struct TextSnapshot {
     container: u32,
     nodes: Vec<u32>,
-    source: text::Source,
-    key: text::Key,
-    metrics: text::InlineMetricFacts,
-    captured_members: Vec<text::CapturedParagraph>,
+    source: text::source::Source,
+    key: text::cache::Key,
+    metrics: text::layout::InlineMetricFacts,
+    captured_members: Vec<text::capture::CapturedParagraph>,
 }
 
 fn text_snapshot<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<TextSnapshot> {
@@ -371,8 +375,8 @@ fn text_snapshot<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec
 }
 
 fn failures_preserve_publication<S: LayoutScalar>() {
-    let good = paragraph(text::ParagraphStrut::DefaultFont);
-    let missing = paragraph(text::ParagraphStrut::AllocatedContributions);
+    let good = paragraph(text::paragraph::ParagraphStrut::DefaultFont);
+    let missing = paragraph(text::paragraph::ParagraphStrut::AllocatedContributions);
     let mut host = FailureHost::<S>::new();
     let baseline = host.compute(&good, &[]).unwrap();
     // Ahem's authored 10px line/endpoint contributions precede this clear.
@@ -469,7 +473,7 @@ fn failures_preserve_publication<S: LayoutScalar>() {
     assert!(
         matches!(error.kind(), LayoutErrorKindOf::Text(error) if matches!(
             error.detail(), Some(text::ErrorDetail::InvalidTextProtocol {
-                reason: text::ProtocolError::MissingLineMetrics,
+                reason: text::prepared::ProtocolError::MissingLineMetrics,
             })
         )),
         "removing Shape failure must reveal the actual later metric refusal: {error:?}"

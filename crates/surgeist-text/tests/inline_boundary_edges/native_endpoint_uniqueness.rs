@@ -1,10 +1,10 @@
 //! Complete native families retain singular actual endpoint custody.
 use super::*;
 
-fn native_controls() -> (t::PreparedText, Vec<t::CapturedControl>) {
+fn native_controls() -> (t::prepared::PreparedText, Vec<t::capture::CapturedControl>) {
     let p = prepare_capture(
-        t::Source::identified("A", t::Id::from_u64(1_646_701), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("A", t::source::Id::from_u64(1_646_701), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -19,7 +19,7 @@ fn native_controls() -> (t::PreparedText, Vec<t::CapturedControl>) {
     assert_eq!(p.source_segments().len(), 1);
     assert_eq!(
         p.unit_views().map(|u| u.source_range()).collect::<Vec<_>>(),
-        [t::Range::new(0, 1)]
+        [t::source::Range::new(0, 1)]
     );
     let views = p.control_views().collect::<Vec<_>>();
     assert_eq!(views.len(), 4);
@@ -28,10 +28,10 @@ fn native_controls() -> (t::PreparedText, Vec<t::CapturedControl>) {
         .map(|v| v.handle().captured_control().unwrap())
         .collect::<Vec<_>>();
     let root = actual[0].scope();
-    assert_eq!(root.role(), t::ScopeRole::Domain);
+    assert_eq!(root.role(), t::capture::ScopeRole::Domain);
     assert_eq!(
         root.domain_topology(),
-        t::SourceProcessingTopology::Complete
+        t::capture::SourceProcessingTopology::Complete
     );
     assert!(actual.iter().all(|c| c.scope() == root));
     assert!(root.entry_control().is_none() && root.exit_control().is_none());
@@ -56,7 +56,9 @@ fn invalid_pair(error: &t::Error) {
         matches!(
             error.detail(),
             Some(t::ErrorDetail::InvalidTextProtocol {
-                reason: t::ProtocolError::InlineBoxEdge(t::InlineBoxEdgeError::InvalidPair),
+                reason: t::prepared::ProtocolError::InlineBoxEdge(
+                    t::inline_box::InlineBoxEdgeError::InvalidPair
+                ),
             })
         ),
         "actual closed-family custody refusal: {error:?}"

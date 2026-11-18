@@ -41,19 +41,19 @@ fn system(bytes: Vec<u8>) -> text::System {
     system
 }
 
-fn style() -> text::Style {
-    text::Style {
-        font: text::Font::new().family("Ahem"),
+fn style() -> text::style::Style {
+    text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 20.0,
-        line_height: text::LineHeight::Absolute(20.0),
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(20.0),
+        ..text::style::Style::default()
     }
 }
 
-fn options() -> text::Options {
-    text::Options {
+fn options() -> text::options::Options {
+    text::options::Options {
         quantize: false,
-        ..text::Options::default()
+        ..text::options::Options::default()
     }
 }
 
@@ -77,18 +77,18 @@ fn bounded(
     )
 }
 
-fn layout(source: impl Into<text::Text>) -> text::Layout {
+fn layout(source: impl Into<text::source::Text>) -> text::layout::Layout {
     system(AHEM.to_vec())
-        .layout(text::Source::new(source), style(), options())
+        .layout(text::source::Source::new(source), style(), options())
         .unwrap()
 }
 
-fn split_source() -> text::Source {
-    let mut source = text::Source::new("AX");
+fn split_source() -> text::source::Source {
+    let mut source = text::source::Source::new("AX");
     source.span(
-        text::Range::new(1, 2),
-        text::Style {
-            brush: text::Brush::color(1.0, 0.0, 0.0, 1.0),
+        text::source::Range::new(1, 2),
+        text::style::Style {
+            brush: text::style::Brush::color(1.0, 0.0, 0.0, 1.0),
             ..style()
         },
     );
@@ -107,7 +107,7 @@ fn outline(command: &Command) -> (&PreparedGlyphRun, Transform) {
     (outline, *transform)
 }
 
-fn refuse(layout: &text::Layout, placement: Transform, limits: TextLayoutLimits) -> Error {
+fn refuse(layout: &text::layout::Layout, placement: Transform, limits: TextLayoutLimits) -> Error {
     match prepare_text_layout(
         layout,
         placement,
@@ -154,9 +154,9 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
     let mut system = system(AHEM.to_vec());
     let input = system
         .layout(
-            text::Source::new("AX"),
-            text::Style {
-                brush: text::Brush::color(1.0, 0.0, 0.0, 0.5),
+            text::source::Source::new("AX"),
+            text::style::Style {
+                brush: text::style::Brush::color(1.0, 0.0, 0.0, 0.5),
                 ..style()
             },
             options(),
@@ -217,7 +217,7 @@ fn compressed_text_layouts_keep_exact_faces_through_render_admission_and_refresh
         let mut system = text::System::default();
         system.register_font_resource(resource.clone()).unwrap();
         let original_publication = system.font_catalogue_identity().clone();
-        let source = text::Source::new("AX");
+        let source = text::source::Source::new("AX");
         let original = system.layout(source.clone(), style(), options()).unwrap();
         system.refresh_fonts().unwrap();
         let refreshed_publication = system.font_catalogue_identity().clone();
@@ -297,8 +297,8 @@ fn actual_fractional_logical_pens_preserve_provider_advances() {
     let spacing = 2.0_f64.powi(-30);
     let input = system(AHEM.to_vec())
         .layout(
-            text::Source::new("AXA"),
-            text::Style {
+            text::source::Source::new("AXA"),
+            text::style::Style {
                 letter_spacing: spacing,
                 ..style()
             },
@@ -332,12 +332,12 @@ fn actual_fractional_logical_pens_preserve_provider_advances() {
 fn actual_run_origin_is_outer_and_placement_order_preserves_decorations() {
     let input = system(AHEM.to_vec())
         .layout(
-            text::Source::new("X"),
+            text::source::Source::new("X"),
             decorated_style(),
-            text::Options {
-                indent: text::Indent {
+            text::options::Options {
+                indent: text::options::Indent {
                     amount: 5.0,
-                    ..text::Indent::default()
+                    ..text::options::Indent::default()
                 },
                 ..options()
             },
@@ -378,7 +378,7 @@ fn actual_run_origin_is_outer_and_placement_order_preserves_decorations() {
 #[test]
 fn transformed_decoration_transfers_its_actual_layer_metadata_box() {
     let input = system(AHEM.to_vec())
-        .layout(text::Source::new("X"), decorated_style(), options())
+        .layout(text::source::Source::new("X"), decorated_style(), options())
         .unwrap();
     let mut transferred = Vec::new();
     for (placement, root_count) in [
@@ -412,12 +412,12 @@ fn actual_large_run_origin_never_enters_canonical_outline_points() {
     let origin = 16_777_217.0_f64;
     let input = system(AHEM.to_vec())
         .layout(
-            text::Source::new("X"),
+            text::source::Source::new("X"),
             style(),
-            text::Options {
-                indent: text::Indent {
+            text::options::Options {
+                indent: text::options::Indent {
                     amount: origin,
-                    ..text::Indent::default()
+                    ..text::options::Indent::default()
                 },
                 ..options()
             },
@@ -471,9 +471,9 @@ fn actual_registered_fallback_runs_keep_each_face_and_outer_origin() {
         .unwrap();
     let input = system
         .layout(
-            text::Source::new("AX"),
-            text::Style {
-                font: text::Font::new().family("Ahem").family("Bhem"),
+            text::source::Source::new("AX"),
+            text::style::Style {
+                font: text::style::Font::new().family("Ahem").family("Bhem"),
                 ..style()
             },
             options(),
@@ -512,26 +512,26 @@ fn actual_registered_fallback_runs_keep_each_face_and_outer_origin() {
 fn real_multiline_alignment_and_indent_are_preserved_by_run_placement() {
     for (alignment, indent, expected) in [
         (
-            text::Alignment::Center,
+            text::options::Alignment::Center,
             0.0,
             [(40.0, 16.0), (30.0, 36.0), (50.0, 36.0)],
         ),
         (
-            text::Alignment::Start,
+            text::options::Alignment::Start,
             10.0,
             [(10.0, 16.0), (0.0, 36.0), (20.0, 36.0)],
         ),
     ] {
         let input = system(AHEM.to_vec())
             .layout(
-                text::Source::new("X\nXX"),
+                text::source::Source::new("X\nXX"),
                 style(),
-                text::Options {
+                text::options::Options {
                     width: Some(100.0),
                     alignment,
-                    indent: text::Indent {
+                    indent: text::options::Indent {
                         amount: indent,
-                        ..text::Indent::default()
+                        ..text::options::Indent::default()
                     },
                     ..options()
                 },
@@ -578,25 +578,25 @@ fn returned_borrow_retains_exact_utf16_layout_interactions() {
         [0x41, 0xd83d, 0xde00, 0x58]
     );
     for (affinity, expected_x) in [
-        (text::Affinity::Before, 20.0),
-        (text::Affinity::After, 40.0),
+        (text::layout::Affinity::Before, 20.0),
+        (text::layout::Affinity::After, 40.0),
     ] {
-        let cursor = text::Cursor::new(2, affinity);
+        let cursor = text::layout::Cursor::new(2, affinity);
         assert_eq!(cursor.index(), 2);
         assert_eq!(same.cursor(cursor).unwrap().rect().origin.x, expected_x);
         assert!(
-            same.selection(text::Selection::collapsed(cursor))
+            same.selection(text::layout::Selection::collapsed(cursor))
                 .unwrap()
                 .rects()
                 .is_empty()
         );
     }
     for (start, end) in [(1, 2), (2, 3)] {
-        let selection = text::Selection::new(
-            text::Cursor::new(start, text::Affinity::After),
-            text::Cursor::new(end, text::Affinity::Before),
+        let selection = text::layout::Selection::new(
+            text::layout::Cursor::new(start, text::layout::Affinity::After),
+            text::layout::Cursor::new(end, text::layout::Affinity::Before),
         );
-        assert_eq!(selection.range(), text::Range::new(start, end));
+        assert_eq!(selection.range(), text::source::Range::new(start, end));
         let geometry = same.selection(selection).unwrap();
         assert_eq!(geometry.rects().len(), 1);
         assert_eq!(geometry.rects()[0].rect().origin.x, 20.0);
@@ -604,17 +604,17 @@ fn returned_borrow_retains_exact_utf16_layout_interactions() {
     }
 }
 
-fn decorated_style() -> text::Style {
-    text::Style {
-        underline: text::Decoration::solid()
-            .with_offset(text::DecorationOffset::try_absolute(-2.0).unwrap())
-            .with_thickness(text::DecorationThickness::try_absolute(1.0).unwrap()),
-        strikethrough: text::Decoration::solid()
-            .with_offset(text::DecorationOffset::try_absolute(6.0).unwrap())
-            .with_thickness(text::DecorationThickness::try_absolute(2.0).unwrap())
-            .with_brush(text::DecorationBrush::Color(text::Brush::color(
-                1.0, 0.0, 0.0, 1.0,
-            ))),
+fn decorated_style() -> text::style::Style {
+    text::style::Style {
+        underline: text::style::Decoration::solid()
+            .with_offset(text::style::DecorationOffset::try_absolute(-2.0).unwrap())
+            .with_thickness(text::style::DecorationThickness::try_absolute(1.0).unwrap()),
+        strikethrough: text::style::Decoration::solid()
+            .with_offset(text::style::DecorationOffset::try_absolute(6.0).unwrap())
+            .with_thickness(text::style::DecorationThickness::try_absolute(2.0).unwrap())
+            .with_brush(text::style::DecorationBrush::Color(
+                text::style::Brush::color(1.0, 0.0, 0.0, 1.0),
+            )),
         ..style()
     }
 }
@@ -622,7 +622,11 @@ fn decorated_style() -> text::Style {
 #[test]
 fn actual_decorations_follow_glyphs_and_have_one_shared_placement_layer() {
     let input = system(AHEM.to_vec())
-        .layout(text::Source::new("AX"), decorated_style(), options())
+        .layout(
+            text::source::Source::new("AX"),
+            decorated_style(),
+            options(),
+        )
         .unwrap();
     let expected = [
         Rect::try_new(0.0, 18.0, 40.0, 1.0).unwrap(),
@@ -691,7 +695,11 @@ fn actual_zero_area_decoration_is_noop_but_positive_extent_cannot_disappear() {
     // actual space advance is20. Only the latter decoration has positive area.
     let input = |source| {
         system(AHEM.to_vec())
-            .layout(text::Source::new(source), decorated_style(), options())
+            .layout(
+                text::source::Source::new(source),
+                decorated_style(),
+                options(),
+            )
             .unwrap()
     };
     let zero = input("\u{200b}");
@@ -827,7 +835,11 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
         }
     ));
     let decorated = system(AHEM.to_vec())
-        .layout(text::Source::new("AX"), decorated_style(), options())
+        .layout(
+            text::source::Source::new("AX"),
+            decorated_style(),
+            options(),
+        )
         .unwrap();
     let error = refuse(
         &decorated,
@@ -934,11 +946,13 @@ fn actual_late_nonidentity_composite_refusal_exposes_no_batch_and_keeps_input_fo
 
 #[test]
 fn actual_italic_synthesis_is_executed_from_the_same_effective_instance() {
-    let mut source = text::Source::new("AX");
+    let mut source = text::source::Source::new("AX");
     source.span(
-        text::Range::new(1, 2),
-        text::Style {
-            font: text::Font::new().family("Ahem").style(text::Slant::Italic),
+        text::source::Range::new(1, 2),
+        text::style::Style {
+            font: text::style::Font::new()
+                .family("Ahem")
+                .style(text::style::Slant::Italic),
             ..style()
         },
     );
@@ -1052,7 +1066,7 @@ fn split_text_runs_charge_actual_font_capacity_once_at_the_retained_cap() {
     }
 }
 
-fn minimum_retained(input: &text::Layout, placement: Transform) -> usize {
+fn minimum_retained(input: &text::layout::Layout, placement: Transform) -> usize {
     let (mut low, mut high) = (0, ROOM);
     assert!(
         prepare_text_layout(
@@ -1108,7 +1122,7 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
     .unwrap();
     assert!(prepared.scene().commands.is_empty());
     let decorated = system(AHEM.to_vec())
-        .layout(text::Source::new(""), decorated_style(), options())
+        .layout(text::source::Source::new(""), decorated_style(), options())
         .unwrap();
     assert!(decorated.run_views().next().is_some());
     assert!(
@@ -1159,11 +1173,11 @@ fn variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
     for (setting, bits, width) in [(0.0, 0, 1000.0), (0.5, 8192, 1050.0), (1.0, 16384, 1100.0)] {
         let input = system(variable_ahem())
             .layout(
-                text::Source::new("X"),
-                text::Style {
+                text::source::Source::new("X"),
+                text::style::Style {
                     size: 1000.0,
-                    line_height: text::LineHeight::Absolute(1000.0),
-                    font: text::Font::new()
+                    line_height: text::style::LineHeight::Absolute(1000.0),
+                    font: text::style::Font::new()
                         .family("Ahem")
                         .variation(format!("'wght' {setting}")),
                     ..style()
@@ -1216,24 +1230,24 @@ fn adapter_scene_real_gpu_direct_and_base_graph_use_the_same_layout_resources() 
     // with x0/x3 and the final row left transparent on a 4x4 surface.
     let input = system(AHEM.to_vec())
         .layout(
-            text::Source::new("X"),
-            text::Style {
+            text::source::Source::new("X"),
+            text::style::Style {
                 size: 2.0,
-                line_height: text::LineHeight::Absolute(2.0),
-                brush: text::Brush::color(1.0, 0.0, 0.0, 1.0),
-                underline: text::Decoration::solid()
-                    .with_offset(text::DecorationOffset::try_absolute(-0.4).unwrap())
-                    .with_thickness(text::DecorationThickness::try_absolute(1.0).unwrap())
-                    .with_brush(text::DecorationBrush::Color(text::Brush::color(
-                        0.0, 0.0, 1.0, 1.0,
-                    ))),
+                line_height: text::style::LineHeight::Absolute(2.0),
+                brush: text::style::Brush::color(1.0, 0.0, 0.0, 1.0),
+                underline: text::style::Decoration::solid()
+                    .with_offset(text::style::DecorationOffset::try_absolute(-0.4).unwrap())
+                    .with_thickness(text::style::DecorationThickness::try_absolute(1.0).unwrap())
+                    .with_brush(text::style::DecorationBrush::Color(
+                        text::style::Brush::color(0.0, 0.0, 1.0, 1.0),
+                    )),
                 ..style()
             },
-            text::Options {
+            text::options::Options {
                 width: Some(4.0),
-                indent: text::Indent {
+                indent: text::options::Indent {
                     amount: 1.0,
-                    ..text::Indent::default()
+                    ..text::options::Indent::default()
                 },
                 ..options()
             },

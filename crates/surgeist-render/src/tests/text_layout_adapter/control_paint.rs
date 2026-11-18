@@ -129,15 +129,20 @@ fn retained_native_default_ignorables_paint_no_pixels_with_absent_or_visible_nom
                     .code_units(),
                 expected_units
             );
-            assert_eq!(layout.lines()[0].range(), text::Range::new(0, 1));
+            assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 1));
             let positions: Vec<_> = layout.positions().collect();
             let before = positions
                 .iter()
-                .find(|p| p.source_cursor() == text::Cursor::new(0, text::Affinity::After))
+                .find(|p| {
+                    p.source_cursor() == text::layout::Cursor::new(0, text::layout::Affinity::After)
+                })
                 .unwrap();
             let after = positions
                 .iter()
-                .find(|p| p.source_cursor() == text::Cursor::new(1, text::Affinity::Before))
+                .find(|p| {
+                    p.source_cursor()
+                        == text::layout::Cursor::new(1, text::layout::Affinity::Before)
+                })
                 .unwrap();
             let selection = layout.position_selection(before, after).unwrap();
             assert_eq!(selection.source_text().code_units(), expected_units);
@@ -241,28 +246,28 @@ fn retained_native_default_ignorables_paint_no_pixels_with_absent_or_visible_nom
     assert!(renderer.default_device_has_no_terminal_signal_for_test());
 }
 
-fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
-    let source = text::Source::new(value);
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+fn selected_placed(system: &mut text::System, value: &str) -> text::layout::Layout {
+    let source = text::source::Source::new(value);
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
-            base_style: text::Style {
+            base_style: text::style::Style {
                 size: FONT_SIZE,
-                line_height: text::LineHeight::Absolute(f64::from(FONT_SIZE)),
-                white_space: text::WhiteSpace::Preserve,
+                line_height: text::style::LineHeight::Absolute(f64::from(FONT_SIZE)),
+                white_space: text::style::WhiteSpace::Preserve,
                 ..style()
             },
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, 1),
-                aggregate: text::Range::new(0, 1),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 1),
+                aggregate: text::source::Range::new(0, 1),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -270,65 +275,67 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let termination = prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(termination),
+            termination: text::selection::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
             boundary_context: vec![],
             line_strut: None,
-            context: text::LineContext {
-                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
-                formatted_line: text::FormattedLineContext::default(),
-                orientation: text::LineOrientation::Horizontal,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::selection::LineBoxDirection::LeftToRight,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                orientation: text::selection::LineOrientation::Horizontal,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(32.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
-    text::Layout::from_finalized_lines(text::PlacementRequest {
+    text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 2.0,
-                baseline: 26.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 2.0,
+                    baseline: 26.0,
+                },
+                orientation: text::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap()
 }
@@ -397,15 +404,19 @@ fn retained_native_control_fonts_paint_distinct_codepoints_after_system_drop() {
                 .code_units(),
             expected_units
         );
-        assert_eq!(layout.lines()[0].range(), text::Range::new(0, 1));
+        assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 1));
         let positions: Vec<_> = layout.positions().collect();
         let before = positions
             .iter()
-            .find(|p| p.source_cursor() == text::Cursor::new(0, text::Affinity::After))
+            .find(|p| {
+                p.source_cursor() == text::layout::Cursor::new(0, text::layout::Affinity::After)
+            })
             .unwrap();
         let after = positions
             .iter()
-            .find(|p| p.source_cursor() == text::Cursor::new(1, text::Affinity::Before))
+            .find(|p| {
+                p.source_cursor() == text::layout::Cursor::new(1, text::layout::Affinity::Before)
+            })
             .unwrap();
         let selection = layout.position_selection(before, after).unwrap();
         assert_eq!(selection.source_text().code_units(), expected_units);
@@ -442,7 +453,7 @@ fn retained_native_control_fonts_paint_distinct_codepoints_after_system_drop() {
         assert_eq!(transform, Transform::translation(2.0, 26.0).unwrap());
         let actual_glyphs: Vec<_> = source_run.glyphs().collect();
         assert_eq!(actual_glyphs.len(), 1);
-        assert_eq!(source_run.range(), text::Range::new(0, 1));
+        assert_eq!(source_run.range(), text::source::Range::new(0, 1));
         assert_eq!(run.glyphs()[0].id(), actual_glyphs[0].id());
         assert_eq!(run.glyphs()[0].advance(), actual_glyphs[0].advance());
         assert_eq!(

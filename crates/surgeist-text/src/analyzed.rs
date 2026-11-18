@@ -1,4 +1,13 @@
 //! Font-independent semantic analysis with exact original-source custody.
+//!
+//! [`AnalyzedSource`] is the immutable original-source analysis, constructible without a font catalogue;
+//! [`AnalysisIdentity`] is the strong opaque identity of one such analysis and [`AnalysisTypography`] is the
+//! resolved source interpretation established before Unicode bidi analysis. [`AnalyzedDomain`] is one complete
+//! source-domain analysis batch, [`AnalyzedCombinedCell`] and [`AnalyzedCombinedSourcePiece`] describe combined
+//! cells, and [`CapturedAnalysisOwner`] observes the captured authority of one output.
+//! [`AnalyzedWrappingRelation`], [`AnalyzedWrappingRelationView`], [`WrappingNeighbor`] and [`WrappingPolicy`]
+//! carry wrapping relations between issued pairs; [`TextCombineError`] reports missing source facts or an
+//! unsupported downstream cell capability.
 
 use std::{
     fmt,
@@ -17,6 +26,10 @@ use crate::{
 pub(crate) mod captured;
 mod combined;
 mod domain;
+pub use crate::transform::TextCombineError;
+pub use crate::wrapping::{
+    AnalyzedWrappingRelation, AnalyzedWrappingRelationView, WrappingNeighbor, WrappingPolicy,
+};
 pub use captured::CapturedAnalysisOwner;
 pub use combined::{AnalyzedCombinedCell, AnalyzedCombinedSourcePiece};
 pub use domain::AnalyzedDomain;

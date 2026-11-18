@@ -126,7 +126,7 @@ mod tests {
     use crate::{
         Clear, Direction, InlineBoundaryKind, InlineMetricsOf, VerticalAlignOf, WritingMode,
     };
-    use surgeist_text::Source;
+    use surgeist_text::source::Source;
 
     fn projection_from_input<S: LayoutScalar>(
         input: &LayoutInputOf<S>,

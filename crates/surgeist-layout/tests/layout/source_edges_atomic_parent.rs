@@ -20,7 +20,7 @@ struct AtomicHost<S: layout::LayoutScalar> {
 }
 impl<S: layout::LayoutScalar> AtomicHost<S> {
     fn new(
-        side: text::SourceBoxSide,
+        side: text::capture::SourceBoxSide,
         proof: Proof,
         siblings_inside: bool,
         direction: layout::Direction,
@@ -59,10 +59,10 @@ impl<S: layout::LayoutScalar> AtomicHost<S> {
         };
         if matches!(proof, Proof::IncompleteSide) {
             match side {
-                text::SourceBoxSide::Before => {
+                text::capture::SourceBoxSide::Before => {
                     orders[1].prefix = layout::ChildOrderCompleteness::Unknown
                 }
-                text::SourceBoxSide::After => {
+                text::capture::SourceBoxSide::After => {
                     orders[1].suffix = layout::ChildOrderCompleteness::Unknown
                 }
             }
@@ -70,8 +70,8 @@ impl<S: layout::LayoutScalar> AtomicHost<S> {
         let mut edges = layout::WrapEdges::AUTO;
         if forced {
             match side {
-                text::SourceBoxSide::Before => edges.before = layout::WrapEdge::Line,
-                text::SourceBoxSide::After => edges.after = layout::WrapEdge::Line,
+                text::capture::SourceBoxSide::Before => edges.before = layout::WrapEdge::Line,
+                text::capture::SourceBoxSide::After => edges.after = layout::WrapEdge::Line,
             }
         }
         let px = || {
@@ -150,27 +150,30 @@ impl<S: layout::LayoutScalar> layout::WrapEdgeSource for AtomicHost<S> {
         &self.orders
     }
 }
-fn source(siblings_inside: bool, direction: layout::Direction) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+fn source(
+    siblings_inside: bool,
+    direction: layout::Direction,
+) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let base = if direction == layout::Direction::Ltr {
-        text::ParagraphBaseDirection::LeftToRight
+        text::paragraph::ParagraphBaseDirection::LeftToRight
     } else {
-        text::ParagraphBaseDirection::RightToLeft
+        text::paragraph::ParagraphBaseDirection::RightToLeft
     };
-    let mut source = text::Source::identified("AB", text::Id::from_u64(659000), 21);
-    source.inline_box(text::InlineBox::new(
-        text::Id::from_u64(659003),
-        text::InlineBoxKind::InFlow,
+    let mut source = text::source::Source::identified("AB", text::source::Id::from_u64(659000), 21);
+    source.inline_box(text::source::InlineBox::new(
+        text::source::Id::from_u64(659003),
+        text::source::InlineBoxKind::InFlow,
         1,
-        text::Size::new(10.0, 10.0),
+        text::geometry::Size::new(10.0, 10.0),
     ));
     let origin = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let atomic = E::Atomic {
         atomic: 0,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     if siblings_inside {
@@ -193,57 +196,63 @@ fn source(siblings_inside: bool, direction: layout::Direction) -> text::Contextu
         ]);
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
-    let policy = |definition| text::ParagraphBoundaryPolicy {
+    let policy = |definition| text::paragraph::ParagraphBoundaryPolicy {
         definition,
-        preceding_wrap: text::Wrap::None,
-        following_wrap: text::Wrap::None,
-        ancestor_wrap: text::Wrap::None,
+        preceding_wrap: text::style::Wrap::None,
+        following_wrap: text::style::Wrap::None,
+        ancestor_wrap: text::style::Wrap::None,
     };
-    text::ContextualSourceInput {
+    text::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: text::SourceProcessingEnvelope::Complete,
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: text::capture::SourceProcessingEnvelope::Complete,
         origins: ["A", "B"]
             .into_iter()
             .enumerate()
-            .map(|(i, s)| text::ParagraphOrigin {
+            .map(|(i, s)| text::paragraph::ParagraphOrigin {
                 text_node: None,
-                source: text::Source::identified(s, text::Id::from_u64(659001 + i as u64), 21),
-                local: text::Range::new(0, 1),
-                aggregate: text::Range::new(i, i + 1),
-                kind: text::ParagraphOriginKind::Authored,
+                source: text::source::Source::identified(
+                    s,
+                    text::source::Id::from_u64(659001 + i as u64),
+                    21,
+                ),
+                local: text::source::Range::new(0, 1),
+                aggregate: text::source::Range::new(i, i + 1),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
-        connections: vec![text::SourceProcessingConnection {
+        connections: vec![text::capture::SourceProcessingConnection {
             before_origin: 0,
             after_origin: 1,
-            kind: text::ParagraphConnectionKind::Continuous,
+            kind: text::paragraph::ParagraphConnectionKind::Continuous,
         }],
         controls: vec![],
         computed_line_boundaries: vec![],
         replacements: vec![],
         boundary_policies: vec![
-            policy(text::ParagraphBoundaryDefinition::Connection(0)),
-            policy(text::ParagraphBoundaryDefinition::AtomicBefore(0)),
-            policy(text::ParagraphBoundaryDefinition::AtomicAfter(0)),
+            policy(text::paragraph::ParagraphBoundaryDefinition::Connection(0)),
+            policy(text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(
+                0,
+            )),
+            policy(text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0)),
         ],
         scopes: vec![
-            text::SourceProcessingScope::Block {
+            text::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Complete,
+                topology: text::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
-                base_style: text::Style {
-                    wrap: text::Wrap::None,
-                    hyphens: text::Hyphens::None,
-                    ..text::Style::default()
+                base_style: text::style::Style {
+                    wrap: text::style::Wrap::None,
+                    hyphens: text::hyphenation::Hyphens::None,
+                    ..text::style::Style::default()
                 },
                 used_direction: base,
             },
-            text::SourceProcessingScope::Inline {
+            text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
@@ -252,15 +261,15 @@ fn source(siblings_inside: bool, direction: layout::Direction) -> text::Contextu
                 boundaries: None,
             },
         ],
-        paragraphs: vec![text::SourceProcessingParagraph {
+        paragraphs: vec![text::capture::SourceProcessingParagraph {
             base_direction: base,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
         }],
         events,
     }
 }
-fn qualify_raw(input: text::ContextualSourceInput, siblings_inside: bool) {
-    let processed = text::process_contextual_source(input).unwrap();
+fn qualify_raw(input: text::capture::ContextualSourceInput, siblings_inside: bool) {
+    let processed = text::capture::process_contextual_source(input).unwrap();
     let s = processed.captured_scope(1).unwrap();
     let atomic = processed.captured_atomic(0).unwrap();
     let a = processed.captured_origin(0).unwrap();
@@ -268,7 +277,7 @@ fn qualify_raw(input: text::ContextualSourceInput, siblings_inside: bool) {
     assert_eq!(s.parent(), processed.captured_scope(0));
     assert_eq!(
         s.domain_topology(),
-        text::SourceProcessingTopology::Complete
+        text::capture::SourceProcessingTopology::Complete
     );
     assert!(s.enter_position() < atomic);
     assert!(atomic < s.exit_position());
@@ -284,7 +293,10 @@ fn qualify_raw(input: text::ContextualSourceInput, siblings_inside: bool) {
 }
 fn unproved_parent<S: layout::LayoutScalar>(proof: Proof) {
     for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
-        for side in [text::SourceBoxSide::Before, text::SourceBoxSide::After] {
+        for side in [
+            text::capture::SourceBoxSide::Before,
+            text::capture::SourceBoxSide::After,
+        ] {
             qualify_raw(source(false, direction), false);
             // Neutral declarations need no propagation proof, and establish
             // that these real source/occurrence bindings are admissible.
@@ -343,7 +355,10 @@ fn incomplete_relevant_parent_side_refuses_even_when_parent_identity_is_supplied
 }
 fn complete_parent<S: layout::LayoutScalar>() {
     for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
-        for side in [text::SourceBoxSide::Before, text::SourceBoxSide::After] {
+        for side in [
+            text::capture::SourceBoxSide::Before,
+            text::capture::SourceBoxSide::After,
+        ] {
             for siblings_inside in [false, true] {
                 qualify_raw(source(siblings_inside, direction), siblings_inside);
                 let host =
@@ -359,12 +374,12 @@ fn complete_parent<S: layout::LayoutScalar>() {
                 let cause = processed.captured_computed_line_boundary(0).unwrap();
                 assert!(processed.captured_computed_line_boundary(1).is_none());
                 let expected = if siblings_inside {
-                    text::CapturedComputedLineBoundaryTarget::Atomic {
+                    text::capture::CapturedComputedLineBoundaryTarget::Atomic {
                         position: processed.captured_atomic(0).unwrap(),
                         side,
                     }
                 } else {
-                    text::CapturedComputedLineBoundaryTarget::Scope {
+                    text::capture::CapturedComputedLineBoundaryTarget::Scope {
                         scope: processed.captured_scope(1).unwrap(),
                         side,
                     }
@@ -373,7 +388,7 @@ fn complete_parent<S: layout::LayoutScalar>() {
                 assert_eq!(cause.source_position().get(), 1);
                 assert_eq!(cause.domain(), processed.captured_scope(0).unwrap());
                 assert_eq!(cause.paragraph(), processed.captured_paragraph(0).unwrap());
-                assert_eq!(processed.source().text(), &text::Text::from("AB"));
+                assert_eq!(processed.source().text(), &text::source::Text::from("AB"));
                 assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
                 assert!(processed.captured_control(0).is_none());
             }

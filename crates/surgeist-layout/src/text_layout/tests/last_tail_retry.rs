@@ -13,7 +13,7 @@ fn root_tail<S: LayoutScalar>(policy: HyphenateLimitLast) -> NodeInputOf<S> {
         ..NodeInputOf::default()
     }
 }
-fn ranges<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::Range> {
+fn ranges<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::source::Range> {
     batch.placed_text()[0]
         .layout()
         .lines()
@@ -23,17 +23,18 @@ fn ranges<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::
 }
 fn check<S: LayoutScalar>() {
     let mut style = ahem_style(10.0, 10.0);
-    style.white_space = text::WhiteSpace::Collapse;
-    style.hyphens = text::Hyphens::Auto;
+    style.white_space = text::style::WhiteSpace::Collapse;
+    style.hyphens = text::hyphenation::Hyphens::Auto;
     style.locale = Some("en-US".into());
-    style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+    style.hyphenate_character =
+        text::hyphenation::HyphenateCharacter::String(text::source::Text::from("A"));
     let p = PreparedParagraph::new(
         vec![
             ParagraphPart::text(10, Source::new("XXXX "), style.clone()),
             ParagraphPart::text(11, Source::new("associate"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = p.binding(2);
     binding.nodes = vec![10, 30, 11];
@@ -53,7 +54,10 @@ fn check<S: LayoutScalar>() {
     let first = host.compute(&binding, &[]).unwrap();
     assert_eq!(
         ranges(&first),
-        [text::Range::new(0, 5), text::Range::new(5, 14)]
+        [
+            text::source::Range::new(0, 5),
+            text::source::Range::new(5, 14)
+        ]
     );
     assert_eq!(
         first.placed_text()[0].layout().source().text().code_units(),
@@ -95,9 +99,15 @@ fn check<S: LayoutScalar>() {
         assert_eq!(
             ranges(&actual),
             if policy == HyphenateLimitLast::Always {
-                vec![text::Range::new(0, 5), text::Range::new(5, 14)]
+                vec![
+                    text::source::Range::new(0, 5),
+                    text::source::Range::new(5, 14),
+                ]
             } else {
-                vec![text::Range::new(0, 7), text::Range::new(7, 14)]
+                vec![
+                    text::source::Range::new(0, 7),
+                    text::source::Range::new(7, 14),
+                ]
             }
         );
         actual.apply_to(&mut host).unwrap();

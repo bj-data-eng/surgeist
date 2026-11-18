@@ -558,7 +558,7 @@ fn text_allocation_and_metric_padding<S: LayoutScalar>() {
     // normal allocation [0,11.5], native reference8.75, under2.75.
     let paragraph = crate::test_support::text::PreparedParagraph::plain(
         1,
-        surgeist_text::Source::new("X"),
+        surgeist_text::source::Source::new("X"),
         crate::test_support::text::ahem_style(10.0, 11.5),
     );
     let padding = Edges {
@@ -631,14 +631,14 @@ fn text_allocation_and_metric_padding<S: LayoutScalar>() {
     assert_eq!(layout.source().text().code_units(), &[0x58]);
     let lines = layout.lines();
     assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 1));
+    assert_eq!(lines[0].range(), surgeist_text::source::Range::new(0, 1));
     // Existing native policy snaps the common8.75 anchor to9, retaining
     // fractional Text geometry. This moves the metric band by+.25 only;
     // it cannot move the independent normal allocation endpoint11.5.
     assert_eq!(lines[0].baseline(), 9.0);
     assert_eq!(
         lines[0].bounds(),
-        surgeist_text::Rect::new(0.0, 0.25, 10.0, 11.5)
+        surgeist_text::geometry::Rect::new(0.0, 0.25, 10.0, 11.5)
     );
     assert_eq!(
         layout

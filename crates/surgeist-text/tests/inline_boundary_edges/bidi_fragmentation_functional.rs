@@ -2,7 +2,12 @@
 //! the adjacency of their selected pieces.
 use super::*;
 
-fn sources(p: &t::PreparedText) -> (t::InlineBoxSource, t::InlineBoxSource) {
+fn sources(
+    p: &t::prepared::PreparedText,
+) -> (
+    t::inline_box::InlineBoxSource,
+    t::inline_box::InlineBoxSource,
+) {
     let scope = endpoint(p, K::InlineBoundaryStart)
         .captured_control()
         .unwrap()
@@ -12,14 +17,14 @@ fn sources(p: &t::PreparedText) -> (t::InlineBoxSource, t::InlineBoxSource) {
         endpoint(p, K::InlineBoundaryEnd).captured_control()
     );
     let parent = scope.parent().unwrap();
-    assert_eq!(parent.role(), t::ScopeRole::Domain);
+    assert_eq!(parent.role(), t::capture::ScopeRole::Domain);
     (
-        t::InlineBoxSource::captured(scope),
-        t::InlineBoxSource::captured(parent),
+        t::inline_box::InlineBoxSource::captured(scope),
+        t::inline_box::InlineBoxSource::captured(parent),
     )
 }
 
-fn unit(p: &t::PreparedText, range: t::Range) -> t::PreparedUnit {
+fn unit(p: &t::prepared::PreparedText, range: t::source::Range) -> t::prepared::PreparedUnit {
     let mut units = p
         .unit_views()
         .filter(|u| u.source_range() == range)
@@ -32,11 +37,11 @@ fn unit(p: &t::PreparedText, range: t::Range) -> t::PreparedUnit {
 }
 
 fn reselect(
-    p: &t::PreparedText,
-    family: &t::PreparedInlineBoxFamily,
-    owner: &t::InlineBoxSource,
-    basis: &t::FinalizedLine,
-) -> t::FinalizedLine {
+    p: &t::prepared::PreparedText,
+    family: &t::inline_box::PreparedInlineBoxFamily,
+    owner: &t::inline_box::InlineBoxSource,
+    basis: &t::finalized::FinalizedLine,
+) -> t::finalized::FinalizedLine {
     assert!(
         basis.inline_box_pieces().is_none(),
         "the existing no-family operation makes no global claim"
@@ -53,9 +58,9 @@ fn reselect(
         .map(|piece| piece.fragment())
         .collect::<Vec<_>>();
     let output = selected
-        .finalize(t::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: t::ScopeAllocations::None,
+        .finalize(t::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: t::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(output.inline_box_family(), Some(family));
@@ -70,18 +75,21 @@ fn reselect(
     output
 }
 
-fn owned(line: &t::FinalizedLine, owner: &t::InlineBoxSource) -> Vec<t::FinalizedInlineBoxPiece> {
+fn owned(
+    line: &t::finalized::FinalizedLine,
+    owner: &t::inline_box::InlineBoxSource,
+) -> Vec<t::inline_box::FinalizedInlineBoxPiece> {
     line.inline_box_pieces()
         .expect("a demanded family retains its actual projection")
         .filter(|piece| &piece.owner() == owner)
         .collect()
 }
 
-fn texts(piece: &t::FinalizedInlineBoxPiece) -> Vec<t::PreparedUnit> {
+fn texts(piece: &t::inline_box::FinalizedInlineBoxPiece) -> Vec<t::prepared::PreparedUnit> {
     piece
         .members()
         .filter_map(|member| match member.participant() {
-            Some(t::PreparedParticipant::Text(unit)) => {
+            Some(t::prepared::PreparedParticipant::Text(unit)) => {
                 // This is the whole real containing TCU, not a claim that a member's
                 // range describes exclusive box ink or a general shared packet.
                 assert_eq!(member.unit_source_range(), unit.view().source_range());
@@ -95,9 +103,9 @@ fn texts(piece: &t::FinalizedInlineBoxPiece) -> Vec<t::PreparedUnit> {
 }
 
 fn carrying(
-    pieces: &[t::FinalizedInlineBoxPiece],
-    member: &t::PreparedUnit,
-) -> t::FinalizedInlineBoxPiece {
+    pieces: &[t::inline_box::FinalizedInlineBoxPiece],
+    member: &t::prepared::PreparedUnit,
+) -> t::inline_box::FinalizedInlineBoxPiece {
     let mut found = pieces.iter().filter(|piece| texts(piece).contains(member));
     let piece = found
         .next()
@@ -110,7 +118,11 @@ fn carrying(
     piece
 }
 
-fn ancestry(c: &t::InlineBoxFragment, a: &t::InlineBoxFragment, domain: &t::InlineBoxSource) {
+fn ancestry(
+    c: &t::inline_box::InlineBoxFragment,
+    a: &t::inline_box::InlineBoxFragment,
+    domain: &t::inline_box::InlineBoxSource,
+) {
     assert_ne!(
         c, a,
         "outside C/B separates the two unwrapped source memberships"
@@ -132,8 +144,8 @@ fn separated(narrow: bool) {
     let p = captured_override();
     let (owner, domain) = sources(&p);
     let family = p.inline_box_family(Vec::new(), None).unwrap();
-    let c_unit = unit(&p, t::Range::new(2, 3));
-    let a_unit = unit(&p, t::Range::new(3, 4));
+    let c_unit = unit(&p, t::source::Range::new(2, 3));
+    let a_unit = unit(&p, t::source::Range::new(3, 4));
     let opening = endpoint(&p, K::InlineBoundaryStart);
     let closing = endpoint(&p, K::InlineBoundaryEnd);
     let basis = line(
@@ -148,12 +160,12 @@ fn separated(narrow: bool) {
     assert_eq!(
         packet(&wide),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 23.0),
-            (t::Range::new(5, 6), 37, 33.0),
-            (t::Range::new(4, 5), 36, 43.0),
-            (t::Range::new(3, 4), 35, 53.0),
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 23.0),
+            (t::source::Range::new(5, 6), 37, 33.0),
+            (t::source::Range::new(4, 5), 36, 43.0),
+            (t::source::Range::new(3, 4), 35, 53.0),
         ]
     );
     strip(&wide, &p, K::InlineBoundaryStart, (20.0, 23.0));
@@ -204,17 +216,17 @@ fn separated(narrow: bool) {
     assert_eq!(
         packet(&first),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 23.0),
-            (t::Range::new(3, 4), 35, 33.0),
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 23.0),
+            (t::source::Range::new(3, 4), 35, 33.0),
         ]
     );
     assert_eq!(
         packet(&second),
         [
-            (t::Range::new(5, 6), 37, 0.0),
-            (t::Range::new(4, 5), 36, 10.0)
+            (t::source::Range::new(5, 6), 37, 0.0),
+            (t::source::Range::new(4, 5), 36, 10.0)
         ]
     );
     strip(&first, &p, K::InlineBoundaryStart, (20.0, 23.0));
@@ -282,26 +294,29 @@ fn separated(narrow: bool) {
         for piece in pieces {
             assert_eq!(piece.family(), &family);
             assert_eq!(piece.line_index(), 0);
-            assert_eq!(piece.anchor(), t::Point::new(0.0, 8.0));
-            assert_eq!(piece.orientation(), t::LineOrientation::Horizontal);
+            assert_eq!(piece.anchor(), t::geometry::Point::new(0.0, 8.0));
+            assert_eq!(
+                piece.orientation(),
+                t::selection::LineOrientation::Horizontal
+            );
             assert!(piece.fragment() == c_id || piece.fragment() == a_id);
         }
     }
 }
 
-fn captured_whole_box() -> t::PreparedText {
+fn captured_whole_box() -> t::prepared::PreparedText {
     // Same source, RLO/PDF and optional break, with the whole mixed
     // source inside the single nominated box. No foreign row can split it.
     let p = prepare_capture(
-        t::Source::identified("abcABC", t::Id::from_u64(1_646_101), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("abcABC", t::source::Id::from_u64(1_646_101), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 2), (2, 3), (3, 4), (4, 6)],
         &[
             (K::InlineBoundaryStart, 0),
             (K::RightToLeftOverride, 3),
             (
                 K::OptionalBreak {
-                    wrap: t::Wrap::Word,
+                    wrap: t::style::Wrap::Word,
                 },
                 4,
             ),
@@ -333,12 +348,12 @@ fn captured_whole_box() -> t::PreparedText {
             .map(|u| (u.source_range(), u.level().get()))
             .collect::<Vec<_>>(),
         [
-            (t::Range::new(0, 1), 0),
-            (t::Range::new(1, 2), 0),
-            (t::Range::new(2, 3), 0),
-            (t::Range::new(3, 4), 1),
-            (t::Range::new(4, 5), 1),
-            (t::Range::new(5, 6), 1),
+            (t::source::Range::new(0, 1), 0),
+            (t::source::Range::new(1, 2), 0),
+            (t::source::Range::new(2, 3), 0),
+            (t::source::Range::new(3, 4), 1),
+            (t::source::Range::new(4, 5), 1),
+            (t::source::Range::new(5, 6), 1),
         ]
     );
     assert!(
@@ -364,12 +379,12 @@ fn together(narrow: bool) {
     assert_eq!(
         packet(&wide),
         [
-            (t::Range::new(0, 1), 67, 3.0),
-            (t::Range::new(1, 2), 68, 13.0),
-            (t::Range::new(2, 3), 69, 23.0),
-            (t::Range::new(5, 6), 37, 33.0),
-            (t::Range::new(4, 5), 36, 43.0),
-            (t::Range::new(3, 4), 35, 53.0),
+            (t::source::Range::new(0, 1), 67, 3.0),
+            (t::source::Range::new(1, 2), 68, 13.0),
+            (t::source::Range::new(2, 3), 69, 23.0),
+            (t::source::Range::new(5, 6), 37, 33.0),
+            (t::source::Range::new(4, 5), 36, 43.0),
+            (t::source::Range::new(3, 4), 35, 53.0),
         ]
     );
     strip(&wide, &p, K::InlineBoundaryStart, (0.0, 3.0));
@@ -403,17 +418,17 @@ fn together(narrow: bool) {
     assert_eq!(
         packet(&first),
         [
-            (t::Range::new(0, 1), 67, 3.0),
-            (t::Range::new(1, 2), 68, 13.0),
-            (t::Range::new(2, 3), 69, 23.0),
-            (t::Range::new(3, 4), 35, 33.0)
+            (t::source::Range::new(0, 1), 67, 3.0),
+            (t::source::Range::new(1, 2), 68, 13.0),
+            (t::source::Range::new(2, 3), 69, 23.0),
+            (t::source::Range::new(3, 4), 35, 33.0)
         ]
     );
     assert_eq!(
         packet(&second),
         [
-            (t::Range::new(5, 6), 37, 0.0),
-            (t::Range::new(4, 5), 36, 10.0)
+            (t::source::Range::new(5, 6), 37, 0.0),
+            (t::source::Range::new(4, 5), 36, 10.0)
         ]
     );
     let a = owned(&first, &owner);
@@ -442,13 +457,16 @@ fn together(narrow: bool) {
     assert_eq!(
         first_members,
         [
-            t::Range::new(0, 1),
-            t::Range::new(1, 2),
-            t::Range::new(2, 3),
-            t::Range::new(3, 4)
+            t::source::Range::new(0, 1),
+            t::source::Range::new(1, 2),
+            t::source::Range::new(2, 3),
+            t::source::Range::new(3, 4)
         ]
     );
-    assert_eq!(second_members, [t::Range::new(4, 5), t::Range::new(5, 6)]);
+    assert_eq!(
+        second_members,
+        [t::source::Range::new(4, 5), t::source::Range::new(5, 6)]
+    );
     assert_eq!(
         a[0].start_control(),
         Some(endpoint(&p, K::InlineBoundaryStart))

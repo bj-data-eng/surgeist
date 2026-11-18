@@ -8,11 +8,14 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, ProcessedSource,
-        ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
-        ScopeAlignmentUsage, ScopeFontReference, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks, ProcessedSource,
+        contextual::{
+            CapturedScope, ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError,
+            ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeAlignmentUsage, ScopeFontReference,
+            SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+            process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection,
@@ -29,7 +32,7 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 fn capture(count: usize) -> Arc<ProcessedSource> {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     let style = Style {
         font: Font::new().family("Ahem"),
         size: 10.0,

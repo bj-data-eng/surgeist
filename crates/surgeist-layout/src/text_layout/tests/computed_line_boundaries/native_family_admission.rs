@@ -3,7 +3,10 @@
 use super::*;
 
 fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
-    let f = prepare(empty_input(true, text::ParagraphStrut::DefaultFont));
+    let f = prepare(empty_input(
+        true,
+        text::paragraph::ParagraphStrut::DefaultFont,
+    ));
     assert!(f.binding.origins.is_empty());
     assert!(f.binding.atomics.is_empty());
     assert_eq!(f.binding.nodes, [200, 201]);
@@ -11,7 +14,7 @@ fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
     assert_eq!(f.binding.prepared.control_views().count(), 2);
     assert_eq!(computed_group(&f, 1).view().source_position().get(), 0);
     let scope = f.processed.captured_scope(1).unwrap();
-    assert_eq!(scope.role(), text::ScopeRole::Inline);
+    assert_eq!(scope.role(), text::capture::ScopeRole::Inline);
     assert_eq!(
         scope.entry_control(),
         f.binding.controls[0].occurrence.captured_control()

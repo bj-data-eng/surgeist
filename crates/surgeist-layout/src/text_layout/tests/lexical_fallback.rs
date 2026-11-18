@@ -45,22 +45,33 @@ fn qualify_notdef_design_metrics(bytes: &[u8]) {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Termination {
-    Ordinary(text::PreparedBreakKind),
+    Ordinary(text::prepared::PreparedBreakKind),
     Conditional,
 }
 
-type LineFact = (text::Range, f64, f64, text::LineEnd, Termination);
+type LineFact = (
+    text::source::Range,
+    f64,
+    f64,
+    text::selection::LineEnd,
+    Termination,
+);
 
-fn line(start: usize, end: usize, advance: f64, kind: text::PreparedBreakKind) -> LineFact {
+fn line(
+    start: usize,
+    end: usize,
+    advance: f64,
+    kind: text::prepared::PreparedBreakKind,
+) -> LineFact {
     (
-        text::Range::new(start, end),
+        text::source::Range::new(start, end),
         advance,
         advance,
         match kind {
-            text::PreparedBreakKind::Allowed => text::LineEnd::Soft,
-            text::PreparedBreakKind::Forced => text::LineEnd::Forced,
-            text::PreparedBreakKind::ParagraphEnd => text::LineEnd::Paragraph,
-            text::PreparedBreakKind::Discretionary => unreachable!(),
+            text::prepared::PreparedBreakKind::Allowed => text::selection::LineEnd::Soft,
+            text::prepared::PreparedBreakKind::Forced => text::selection::LineEnd::Forced,
+            text::prepared::PreparedBreakKind::ParagraphEnd => text::selection::LineEnd::Paragraph,
+            text::prepared::PreparedBreakKind::Discretionary => unreachable!(),
         },
         Termination::Ordinary(kind),
     )
@@ -69,27 +80,27 @@ fn line(start: usize, end: usize, advance: f64, kind: text::PreparedBreakKind) -
 fn paragraph(
     source: &str,
     locale: &str,
-    word_break: text::WordBreak,
+    word_break: text::style::WordBreak,
     ancestor_wrap: Wrap,
     rtl: bool,
 ) -> PreparedParagraph {
-    let child = text::Style {
+    let child = text::style::Style {
         locale: Some(locale.to_owned()),
         word_break,
-        line_break: text::LineBreak::Auto,
-        overflow_wrap: text::OverflowWrap::Normal,
-        white_space: text::WhiteSpace::Preserve,
-        hyphens: text::Hyphens::None,
+        line_break: text::style::LineBreak::Auto,
+        overflow_wrap: text::style::OverflowWrap::Normal,
+        white_space: text::style::WhiteSpace::Preserve,
+        hyphens: text::hyphenation::Hyphens::None,
         wrap: Wrap::Word,
         ..ahem_style(10.0, 10.0)
     };
     let paragraph = PreparedParagraph::new(
         vec![ParagraphPart::text(
             1,
-            Source::identified(source, text::Id::from_u64(65402), 19),
+            Source::identified(source, text::source::Id::from_u64(65402), 19),
             child.clone(),
         )],
-        text::Style {
+        text::style::Style {
             wrap: ancestor_wrap,
             ..child
         },
@@ -186,23 +197,28 @@ fn facts<S: LayoutScalar>(
     let units = source.encode_utf16().collect::<Vec<_>>();
     assert_eq!(placed.source().text().code_units(), units);
     let origin = paragraph.origin(1);
-    assert_eq!(origin.view().source().id(), Some(text::Id::from_u64(65402)));
+    assert_eq!(
+        origin.view().source().id(),
+        Some(text::source::Id::from_u64(65402))
+    );
     assert_eq!(origin.view().source().revision(), 19);
     assert_eq!(origin.view().source().text().code_units(), units);
     let endpoint = |offset, affinity| {
         placed
             .positions()
-            .find(|position| position.source_cursor() == text::Cursor::new(offset, affinity))
+            .find(|position| {
+                position.source_cursor() == text::layout::Cursor::new(offset, affinity)
+            })
             .unwrap()
     };
     let copied = placed
         .position_selection(
-            &endpoint(0, text::Affinity::After),
-            &endpoint(units.len(), text::Affinity::Before),
+            &endpoint(0, text::layout::Affinity::After),
+            &endpoint(units.len(), text::layout::Affinity::Before),
         )
         .unwrap();
-    assert_eq!(copied.source_text(), &text::Text::from(source));
-    assert_eq!(copied.plaintext(), &text::Text::from(source));
+    assert_eq!(copied.source_text(), &text::source::Text::from(source));
+    assert_eq!(copied.plaintext(), &text::source::Text::from(source));
     let mut finalized = vec![None; placed.lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -260,12 +276,14 @@ fn facts<S: LayoutScalar>(
                 line.measurements().fit().advance(),
                 request.context.end,
                 match &request.termination {
-                    text::PreparedTermination::Ordinary(offer) => {
+                    text::selection::PreparedTermination::Ordinary(offer) => {
                         Termination::Ordinary(offer.view().kind())
                     }
-                    text::PreparedTermination::Conditional(_) => Termination::Conditional,
-                    text::PreparedTermination::Measurement(_)
-                    | text::PreparedTermination::PhraseMeasurement(_) => {
+                    text::selection::PreparedTermination::Conditional(_) => {
+                        Termination::Conditional
+                    }
+                    text::selection::PreparedTermination::Measurement(_)
+                    | text::selection::PreparedTermination::PhraseMeasurement(_) => {
                         panic!("a measurement-only trial cannot be placed")
                     }
                 },
@@ -294,7 +312,7 @@ fn allowed(paragraph: &PreparedParagraph) -> Vec<usize> {
     paragraph
         .prepared
         .opportunity_views()
-        .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+        .filter(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
         .map(|offer| {
             assert_eq!(offer.alternatives().count(), 0);
             let boundary = offer.boundary();
@@ -312,7 +330,10 @@ fn missing_lexical_capability_uses_ordinary_letter_pair_cuts_in_native_layout() 
     fn lane<S: LayoutScalar>() -> Vec<(Vec<usize>, Vec<LineFact>)> {
         let mut observed = Vec::new();
         for (source, locale) in SCRIPTS {
-            for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for word in [
+                text::style::WordBreak::Normal,
+                text::style::WordBreak::KeepAll,
+            ] {
                 for rtl in [false, true] {
                     let p = paragraph(source, locale, word, Wrap::Word, rtl);
                     let actual = compute::<S>(
@@ -336,8 +357,8 @@ fn missing_lexical_capability_uses_ordinary_letter_pair_cuts_in_native_layout() 
         (
             vec![1],
             vec![
-                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
-                line(1, 2, 10.0, text::PreparedBreakKind::ParagraphEnd),
+                line(0, 1, 10.0, text::prepared::PreparedBreakKind::Allowed),
+                line(1, 2, 10.0, text::prepared::PreparedBreakKind::ParagraphEnd),
             ],
         );
         16
@@ -350,7 +371,10 @@ fn missing_lexical_fallback_reduces_min_content_without_changing_max_content() {
     fn lane<S: LayoutScalar>() -> Vec<(f64, Vec<LineFact>)> {
         let mut observed = Vec::new();
         for (source, locale) in SCRIPTS {
-            for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for word in [
+                text::style::WordBreak::Normal,
+                text::style::WordBreak::KeepAll,
+            ] {
                 for rtl in [false, true] {
                     let p = paragraph(source, locale, word, Wrap::Word, rtl);
                     for available in [
@@ -380,13 +404,18 @@ fn missing_lexical_fallback_reduces_min_content_without_changing_max_content() {
         (
             10.0,
             vec![
-                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
-                line(1, 2, 10.0, text::PreparedBreakKind::ParagraphEnd),
+                line(0, 1, 10.0, text::prepared::PreparedBreakKind::Allowed),
+                line(1, 2, 10.0, text::prepared::PreparedBreakKind::ParagraphEnd),
             ],
         ),
         (
             20.0,
-            vec![line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)],
+            vec![line(
+                0,
+                2,
+                20.0,
+                text::prepared::PreparedBreakKind::ParagraphEnd,
+            )],
         ),
     ];
     let expected = (0..16).flat_map(|_| pair.clone()).collect::<Vec<_>>();
@@ -397,7 +426,10 @@ fn missing_lexical_fallback_reduces_min_content_without_changing_max_content() {
 fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced_breaks() {
     fn lane<S: LayoutScalar>() {
         for (source, locale) in SCRIPTS {
-            for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for word in [
+                text::style::WordBreak::Normal,
+                text::style::WordBreak::KeepAll,
+            ] {
                 for rtl in [false, true] {
                     let p = paragraph(source, locale, word, Wrap::None, rtl);
                     let actual = compute::<S>(
@@ -413,7 +445,12 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
                     assert!(allowed(&p).is_empty());
                     assert_eq!(
                         facts(&actual, &p, source),
-                        [line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)]
+                        [line(
+                            0,
+                            2,
+                            20.0,
+                            text::prepared::PreparedBreakKind::ParagraphEnd
+                        )]
                     );
                     for available in [
                         crate::AxisSizingRequestOf::new(
@@ -428,7 +465,12 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
                         let intrinsic = compute::<S>(&p, available, rtl);
                         assert_eq!(
                             facts(&intrinsic, &p, source),
-                            [line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)]
+                            [line(
+                                0,
+                                2,
+                                20.0,
+                                text::prepared::PreparedBreakKind::ParagraphEnd
+                            )]
                         );
                         let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                         assert_eq!(root.size.width, S::from_f64(20.0));
@@ -451,8 +493,8 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
                     assert_eq!(
                         facts(&actual, &p, &source),
                         [
-                            line(0, 2, 10.0, text::PreparedBreakKind::Forced),
-                            line(2, 3, 10.0, text::PreparedBreakKind::ParagraphEnd),
+                            line(0, 2, 10.0, text::prepared::PreparedBreakKind::Forced),
+                            line(2, 3, 10.0, text::prepared::PreparedBreakKind::ParagraphEnd),
                         ]
                     );
                 }
@@ -469,7 +511,13 @@ fn khmer_manual_keeps_the_real_twenty_pixel_word_in_finite_and_intrinsic_layout(
         let source = "\u{1780}\u{1781}";
         for locale in ["km", "und"] {
             for rtl in [false, true] {
-                let p = paragraph(source, locale, text::WordBreak::Manual, Wrap::Word, rtl);
+                let p = paragraph(
+                    source,
+                    locale,
+                    text::style::WordBreak::Manual,
+                    Wrap::Word,
+                    rtl,
+                );
                 assert!(allowed(&p).is_empty());
                 for available in [
                     crate::AxisSizingRequestOf::new(
@@ -490,7 +538,12 @@ fn khmer_manual_keeps_the_real_twenty_pixel_word_in_finite_and_intrinsic_layout(
                     let actual = compute::<S>(&p, available, rtl);
                     assert_eq!(
                         facts(&actual, &p, source),
-                        [line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)]
+                        [line(
+                            0,
+                            2,
+                            20.0,
+                            text::prepared::PreparedBreakKind::ParagraphEnd
+                        )]
                     );
                     if available.operation() != crate::SizingOperation::Normal
                         || available.space().definite_size().is_none()
@@ -522,22 +575,27 @@ fn mixed_sa_latin_facts<S: LayoutScalar>(
 ) -> Vec<LineFact> {
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
-    let source = text::Text::from(source);
+    let source = text::source::Text::from(source);
     assert_eq!(placed.source().text(), &source);
     let origin = paragraph.origin(1);
     assert_eq!(origin.view().source().text(), &source);
-    assert_eq!(origin.view().source().id(), Some(text::Id::from_u64(65402)));
+    assert_eq!(
+        origin.view().source().id(),
+        Some(text::source::Id::from_u64(65402))
+    );
     assert_eq!(origin.view().source().revision(), 19);
     let endpoint = |offset, affinity| {
         placed
             .positions()
-            .find(|position| position.source_cursor() == text::Cursor::new(offset, affinity))
+            .find(|position| {
+                position.source_cursor() == text::layout::Cursor::new(offset, affinity)
+            })
             .unwrap()
     };
     let copied = placed
         .position_selection(
-            &endpoint(0, text::Affinity::After),
-            &endpoint(source.len(), text::Affinity::Before),
+            &endpoint(0, text::layout::Affinity::After),
+            &endpoint(source.len(), text::layout::Affinity::Before),
         )
         .unwrap();
     assert_eq!(copied.source_text(), &source);
@@ -592,7 +650,7 @@ fn mixed_sa_latin_facts<S: LayoutScalar>(
             assert!(request.alternative.is_none());
             assert!(request.incoming.is_none());
             assert!(finalized.hyphenation_continuation().is_none());
-            let text::PreparedTermination::Ordinary(offer) = &request.termination else {
+            let text::selection::PreparedTermination::Ordinary(offer) = &request.termination else {
                 panic!("OverflowNormal cannot grant a conditional seam")
             };
             (
@@ -610,10 +668,18 @@ fn mixed_sa_latin_facts<S: LayoutScalar>(
     assert_eq!(
         positive,
         [
-            (text::Range::new(0, 1), 0, 10.0),
-            (text::Range::new(1, 2), 0, 10.0),
-            (text::Range::new(latin_start, latin_start + 1), 35, 10.0),
-            (text::Range::new(latin_start + 1, latin_start + 2), 35, 10.0),
+            (text::source::Range::new(0, 1), 0, 10.0),
+            (text::source::Range::new(1, 2), 0, 10.0),
+            (
+                text::source::Range::new(latin_start, latin_start + 1),
+                35,
+                10.0
+            ),
+            (
+                text::source::Range::new(latin_start + 1, latin_start + 2),
+                35,
+                10.0
+            ),
         ]
     );
     result
@@ -626,7 +692,10 @@ fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line()
     fn lane<S: LayoutScalar>() -> Vec<(Vec<usize>, Vec<LineFact>)> {
         let mut observed = Vec::new();
         for (source, locale) in WJ_RUNS {
-            for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for word in [
+                text::style::WordBreak::Normal,
+                text::style::WordBreak::KeepAll,
+            ] {
                 for rtl in [false, true] {
                     let p = paragraph(source, locale, word, Wrap::Word, rtl);
                     let actual = compute::<S>(
@@ -650,8 +719,8 @@ fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line()
         (
             vec![1],
             vec![
-                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
-                line(1, 5, 30.0, text::PreparedBreakKind::ParagraphEnd),
+                line(0, 1, 10.0, text::prepared::PreparedBreakKind::Allowed),
+                line(1, 5, 30.0, text::prepared::PreparedBreakKind::ParagraphEnd),
             ],
         );
         12
@@ -664,7 +733,10 @@ fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece()
     fn lane<S: LayoutScalar>() -> Vec<(f64, Vec<LineFact>)> {
         let mut observed = Vec::new();
         for (source, locale) in WJ_RUNS {
-            for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for word in [
+                text::style::WordBreak::Normal,
+                text::style::WordBreak::KeepAll,
+            ] {
                 for rtl in [false, true] {
                     let p = paragraph(source, locale, word, Wrap::Word, rtl);
                     for available in [
@@ -694,13 +766,18 @@ fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece()
         (
             30.0,
             vec![
-                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
-                line(1, 5, 30.0, text::PreparedBreakKind::ParagraphEnd),
+                line(0, 1, 10.0, text::prepared::PreparedBreakKind::Allowed),
+                line(1, 5, 30.0, text::prepared::PreparedBreakKind::ParagraphEnd),
             ],
         ),
         (
             40.0,
-            vec![line(0, 5, 40.0, text::PreparedBreakKind::ParagraphEnd)],
+            vec![line(
+                0,
+                5,
+                40.0,
+                text::prepared::PreparedBreakKind::ParagraphEnd,
+            )],
         ),
     ];
     let expected = (0..12).flat_map(|_| pair.clone()).collect::<Vec<_>>();
@@ -716,7 +793,10 @@ fn ordinary_sa_context_does_not_accept_a_missing_model_run_end_before_latin() {
     // resolved AL x AL at2 cannot separate the remaining Thai/Latin sequence.
     fn lane<S: LayoutScalar>() -> Vec<(Vec<usize>, Vec<LineFact>)> {
         let mut observed = Vec::new();
-        for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+        for word in [
+            text::style::WordBreak::Normal,
+            text::style::WordBreak::KeepAll,
+        ] {
             for rtl in [false, true] {
                 let p = paragraph(SA_LATIN_RUN, "th", word, Wrap::Word, rtl);
                 let actual = compute::<S>(
@@ -742,8 +822,8 @@ fn ordinary_sa_context_does_not_accept_a_missing_model_run_end_before_latin() {
         (
             vec![1],
             vec![
-                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
-                line(1, 4, 30.0, text::PreparedBreakKind::ParagraphEnd),
+                line(0, 1, 10.0, text::prepared::PreparedBreakKind::Allowed),
+                line(1, 4, 30.0, text::prepared::PreparedBreakKind::ParagraphEnd),
             ],
         );
         4
@@ -755,7 +835,10 @@ fn ordinary_sa_context_does_not_accept_a_missing_model_run_end_before_latin() {
 fn ordinary_sa_context_keeps_the_thirty_pixel_min_content_piece() {
     fn lane<S: LayoutScalar>() -> Vec<(f64, Vec<LineFact>)> {
         let mut observed = Vec::new();
-        for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+        for word in [
+            text::style::WordBreak::Normal,
+            text::style::WordBreak::KeepAll,
+        ] {
             for rtl in [false, true] {
                 let p = paragraph(SA_LATIN_RUN, "th", word, Wrap::Word, rtl);
                 for available in [
@@ -784,13 +867,18 @@ fn ordinary_sa_context_keeps_the_thirty_pixel_min_content_piece() {
         (
             30.0,
             vec![
-                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
-                line(1, 4, 30.0, text::PreparedBreakKind::ParagraphEnd),
+                line(0, 1, 10.0, text::prepared::PreparedBreakKind::Allowed),
+                line(1, 4, 30.0, text::prepared::PreparedBreakKind::ParagraphEnd),
             ],
         ),
         (
             40.0,
-            vec![line(0, 4, 40.0, text::PreparedBreakKind::ParagraphEnd)],
+            vec![line(
+                0,
+                4,
+                40.0,
+                text::prepared::PreparedBreakKind::ParagraphEnd,
+            )],
         ),
     ];
     let expected = (0..4).flat_map(|_| pair.clone()).collect::<Vec<_>>();

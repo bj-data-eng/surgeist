@@ -145,11 +145,11 @@ enum AdapterFrame {
 }
 
 impl AdapterFrame {
-    fn orientation(self) -> text::LineOrientation {
+    fn orientation(self) -> text::selection::LineOrientation {
         match self {
-            Self::Horizontal => text::LineOrientation::Horizontal,
-            Self::Clockwise => text::LineOrientation::SidewaysClockwise,
-            Self::Upright => text::LineOrientation::Vertical,
+            Self::Horizontal => text::selection::LineOrientation::Horizontal,
+            Self::Clockwise => text::selection::LineOrientation::SidewaysClockwise,
+            Self::Upright => text::selection::LineOrientation::Vertical,
         }
     }
 
@@ -165,14 +165,17 @@ impl AdapterFrame {
 fn capture(
     bytes: &[u8],
     frame: AdapterFrame,
-) -> (layout::CompletedLayoutBatch<usize>, text::PreparedOrigin) {
+) -> (
+    layout::CompletedLayoutBatch<usize>,
+    text::prepared::PreparedOrigin,
+) {
     let orientation = frame.orientation();
     qualify_font(bytes);
     let mut system = text::System::default();
     system
         .register_fonts(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
-    if orientation == text::LineOrientation::Vertical {
+    if orientation == text::selection::LineOrientation::Vertical {
         // Absence-qualified synthetic vertical metrics are an existing native
         // policy, not a claim that hmtx alone supplies TTB. The public owner
         // must positively resolve A-D=10 and nominal origin (W/2,A)=(5,8).
@@ -190,36 +193,37 @@ fn capture(
         let cross = instance
             .upright_metrics(
                 system.font_catalogue_identity(),
-                text::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+                text::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
             )
             .unwrap();
         assert_eq!((cross.used_over(), cross.used_under()), (5.0, -5.0));
     }
-    let source = text::Source::identified("A\u{a0}A", text::Id::from_u64(1564001), 7);
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let source =
+        text::source::Source::identified("A\u{a0}A", text::source::Id::from_u64(1564001), 7);
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
         word_spacing: 4.0,
-        ..text::Style::default()
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: text::Range::new(0, 3),
-                aggregate: text::Range::new(0, 3),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 3),
+                aggregate: text::source::Range::new(0, 3),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -227,19 +231,19 @@ fn capture(
             replacements: vec![],
             anchor_order: vec![],
         },
-        if orientation == text::LineOrientation::Vertical {
-            text::AnalysisTypography::Upright {
-                computed_direction: text::ParagraphBaseDirection::LeftToRight,
+        if orientation == text::selection::LineOrientation::Vertical {
+            text::analyzed::AnalysisTypography::Upright {
+                computed_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             }
         } else {
-            text::AnalysisTypography::HorizontalComposition
+            text::analyzed::AnalysisTypography::HorizontalComposition
         },
     )
     .unwrap();
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| text::WrappingPolicy {
+        .map(|row| text::analyzed::WrappingPolicy {
             relation: row.handle(),
             ancestor_wrap,
         })
@@ -248,13 +252,15 @@ fn capture(
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default()
+            text::prepared::PreparationOptions::default()
                 .with_orientation(orientation)
-                .with_baseline_reference(if orientation == text::LineOrientation::Vertical {
-                    text::FontBaseline::Central
-                } else {
-                    text::FontBaseline::Alphabetic
-                }),
+                .with_baseline_reference(
+                    if orientation == text::selection::LineOrientation::Vertical {
+                        text::font::FontBaseline::Central
+                    } else {
+                        text::font::FontBaseline::Alphabetic
+                    },
+                ),
         )
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
@@ -265,7 +271,7 @@ fn capture(
                 display: layout::Display::Block,
                 writing_mode: frame.writing_mode(),
                 inline_baseline_context: layout::InlineBaselineContext::Named(
-                    if orientation == text::LineOrientation::Vertical {
+                    if orientation == text::selection::LineOrientation::Vertical {
                         layout::BaselineName::Central
                     } else {
                         layout::BaselineName::Alphabetic
@@ -375,8 +381,8 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
         AdapterFrame::Upright,
     ] {
         let orientation = frame.orientation();
-        let horizontal = orientation == text::LineOrientation::Horizontal;
-        let clockwise = orientation == text::LineOrientation::SidewaysClockwise;
+        let horizontal = orientation == text::selection::LineOrientation::Horizontal;
+        let clockwise = orientation == text::selection::LineOrientation::SidewaysClockwise;
         let (batch, origin) = capture(&bytes, frame);
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.orientation(), orientation);
@@ -389,7 +395,7 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
         assert_eq!(line.measurements().alignment().advance(), 40.0);
         assert_eq!(
             line.selected_line().request().context.spacing,
-            text::SpacingPolicy::InterWord
+            text::spacing::SpacingPolicy::InterWord
         );
         let rows = line.spacing_slots().collect::<Vec<_>>();
         assert_eq!(rows.len(), 1);
@@ -398,26 +404,26 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
         assert_eq!(rows[0].advance, 20.0);
         assert_eq!(
             rows[0].geometry,
-            text::SpacingSlotGeometry::Independent {
+            text::spacing::SpacingSlotGeometry::Independent {
                 intrinsic_advance: 10.0
             }
         );
         let expected_cells = if !horizontal {
             [
-                text::Rect::new(30.0, 0.0, 10.0, 10.0),
-                text::Rect::new(30.0, 10.0, 10.0, 20.0),
-                text::Rect::new(30.0, 30.0, 10.0, 10.0),
+                text::geometry::Rect::new(30.0, 0.0, 10.0, 10.0),
+                text::geometry::Rect::new(30.0, 10.0, 10.0, 20.0),
+                text::geometry::Rect::new(30.0, 30.0, 10.0, 10.0),
             ]
         } else {
             [
-                text::Rect::new(0.0, 0.0, 10.0, 10.0),
-                text::Rect::new(10.0, 0.0, 20.0, 10.0),
-                text::Rect::new(30.0, 0.0, 10.0, 10.0),
+                text::geometry::Rect::new(0.0, 0.0, 10.0, 10.0),
+                text::geometry::Rect::new(10.0, 0.0, 20.0, 10.0),
+                text::geometry::Rect::new(30.0, 0.0, 10.0, 10.0),
             ]
         };
         for (index, expected) in expected_cells.into_iter().enumerate() {
             let fragments = placed
-                .source_range_fragments(&origin, text::Range::new(index, index + 1))
+                .source_range_fragments(&origin, text::source::Range::new(index, index + 1))
                 .unwrap();
             assert_eq!(
                 fragments
@@ -435,9 +441,9 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
             assert_eq!(
                 run.glyph_basis(),
                 if clockwise {
-                    text::GlyphBasis::Clockwise
+                    text::geometry::GlyphBasis::Clockwise
                 } else {
-                    text::GlyphBasis::Unrotated
+                    text::geometry::GlyphBasis::Unrotated
                 }
             );
             let inline_origin = if horizontal {
@@ -455,7 +461,7 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
             for glyph in run.glyphs() {
                 let id = [35, 58, 35][index];
                 let pen = [0.0, 15.0, 30.0][index];
-                let (dx, dy) = if orientation == text::LineOrientation::Vertical {
+                let (dx, dy) = if orientation == text::selection::LineOrientation::Vertical {
                     (-5.0, 8.0)
                 } else {
                     (0.0, 0.0)
@@ -510,13 +516,15 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
         let at = |offset, affinity| {
             placed
                 .positions()
-                .find(|position| position.source_cursor() == text::Cursor::new(offset, affinity))
+                .find(|position| {
+                    position.source_cursor() == text::layout::Cursor::new(offset, affinity)
+                })
                 .unwrap()
         };
         let selection = placed
             .position_selection(
-                &at(0, text::Affinity::After),
-                &at(3, text::Affinity::Before),
+                &at(0, text::layout::Affinity::After),
+                &at(3, text::layout::Affinity::Before),
             )
             .unwrap();
         assert_eq!(selection.source_text().code_units(), [65, 0xa0, 65]);
@@ -537,9 +545,9 @@ fn native_inter_word_accessibility_keeps_nbsp_source_and_allocated_character_geo
         &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
-    let mut accessibility = text::Accessibility::new(20);
+    let mut accessibility = text::accessibility::Accessibility::new(20);
     let parent = 1000_u64.into();
-    let cursor = text::Cursor::new(1, text::Affinity::After);
+    let cursor = text::layout::Cursor::new(1, text::layout::Affinity::After);
     let analyzed = placed.analyzed_source();
     let source_update = analyzed
         .accessibility_update(&mut accessibility, parent, parent)
@@ -563,7 +571,7 @@ fn native_inter_word_accessibility_keeps_nbsp_source_and_allocated_character_geo
             &mut accessibility,
             parent,
             parent,
-            text::Point::new(100.0, 200.0),
+            text::geometry::Point::new(100.0, 200.0),
         )
         .unwrap();
     let position = placed
@@ -585,6 +593,9 @@ fn native_inter_word_accessibility_keeps_nbsp_source_and_allocated_character_geo
         (110.0, 200.0, 130.0, 210.0)
     );
     assert_eq!(placed.source().text().code_units(), [65, 0xa0, 65]);
-    assert_eq!(placed.source().id(), Some(text::Id::from_u64(1564001)));
+    assert_eq!(
+        placed.source().id(),
+        Some(text::source::Id::from_u64(1564001))
+    );
     assert_eq!(placed.source().revision(), 7);
 }

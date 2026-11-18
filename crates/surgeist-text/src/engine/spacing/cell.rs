@@ -170,8 +170,9 @@ impl CellWordExecution {
         let visits = self.units.iter().try_fold(self.units.len(), |n, unit| {
             n.checked_add(unit.components.len()).ok_or_else(|| {
                 super::super::scope_alignment::refusal(
-                    crate::processing::ScopeAlignmentError::Overflow {
-                        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                    crate::processing::contextual::ScopeAlignmentError::Overflow {
+                        kind:
+                            crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                     },
                 )
             })

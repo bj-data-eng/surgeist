@@ -68,7 +68,9 @@ pub(super) fn original_value(
         return Ok(unchanged);
     };
     if let Some(edge) = proof.missing {
-        return Err(edge.unavailable(crate::processing::SourceContinuityOperation::Transformation));
+        return Err(edge.unavailable(
+            crate::processing::contextual::SourceContinuityOperation::Transformation,
+        ));
     }
     if let Some(connection) = proof.uncertain {
         return Err(Error::new(
@@ -131,7 +133,9 @@ pub(super) fn wbr_value(
         return Ok(None);
     }
     if let Some(edge) = proof.missing {
-        return Err(edge.unavailable(crate::processing::SourceContinuityOperation::Transformation));
+        return Err(edge.unavailable(
+            crate::processing::contextual::SourceContinuityOperation::Transformation,
+        ));
     }
     if let Some(connection) = proof.uncertain {
         return Err(Error::new(

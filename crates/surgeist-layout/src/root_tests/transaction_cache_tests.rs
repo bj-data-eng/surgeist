@@ -8,7 +8,11 @@ use super::fixtures::{
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
-use surgeist_text::{Id, ParagraphBaseDirection, Source, WhiteSpace};
+use surgeist_text::{
+    paragraph::ParagraphBaseDirection,
+    source::{Id, Source},
+    style::WhiteSpace,
+};
 
 #[test]
 fn fri08_c07_t02_scroll_source_root_preserves_error_identity_without_batch() {
@@ -227,15 +231,15 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
         assert_eq!(
             first.iter().map(|row| row.2).collect::<Vec<_>>(),
             [
-                surgeist_text::Range::new(0, 1),
-                surgeist_text::Range::new(1, 2),
-                surgeist_text::Range::new(2, 3)
+                surgeist_text::source::Range::new(0, 1),
+                surgeist_text::source::Range::new(1, 2),
+                surgeist_text::source::Range::new(2, 3)
             ]
         );
         assert!(first.iter().all(|row| row.1 == paragraph.origin(1)));
         let visible = first
             .iter()
-            .filter(|row| row.2 != surgeist_text::Range::new(1, 2))
+            .filter(|row| row.2 != surgeist_text::source::Range::new(1, 2))
             .collect::<Vec<_>>();
         assert_eq!(visible.iter().map(|row| row.5).collect::<Vec<_>>(), [0, 1]);
         for (row, y) in visible.iter().zip([0.0, 10.0]) {
@@ -251,7 +255,7 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
         let absent: Vec<_> = rows.iter().filter(|row| row.0 == 2).collect();
         assert_eq!(absent.len(), 1);
         assert_eq!(absent[0].1, paragraph.origin(2));
-        assert_eq!(absent[0].2, surgeist_text::Range::new(0, 1));
+        assert_eq!(absent[0].2, surgeist_text::source::Range::new(0, 1));
         assert_eq!(
             absent[0].3.unwrap().size(),
             Size::new(S::ZERO, S::from_f64(10.0)),
@@ -382,7 +386,7 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
             (
                 1,
                 tree.text.origins[0].origin.clone(),
-                surgeist_text::Range::new(0, 1),
+                surgeist_text::source::Range::new(0, 1),
                 0
             )
         );
@@ -430,15 +434,15 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         {
             assert_eq!(
                 line.bounds(),
-                surgeist_text::Rect::new(0.0, top, 20.0, height)
+                surgeist_text::geometry::Rect::new(0.0, top, 20.0, height)
             );
             assert_eq!(line.baseline(), baseline);
         }
-        assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 1));
+        assert_eq!(lines[0].range(), surgeist_text::source::Range::new(0, 1));
         assert!(
             lines[1..]
                 .iter()
-                .all(|line| line.range() == surgeist_text::Range::new(1, 1))
+                .all(|line| line.range() == surgeist_text::source::Range::new(1, 1))
         );
         // The legal Forced offer consumes the overwide atomic together with
         // the neutral boundary and the Forced control. Their canonical struts
@@ -478,11 +482,11 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         // baseline gives raw top9.5, then canonical edges10..20 and0..25.
         let atomic_boxes = placed.inline_boxes();
         assert_eq!(atomic_boxes.len(), 1);
-        assert_eq!(atomic_boxes[0].id(), surgeist_text::Id::from_u64(2));
+        assert_eq!(atomic_boxes[0].id(), surgeist_text::source::Id::from_u64(2));
         assert_eq!(atomic_boxes[0].line(), 1);
         assert_eq!(
             atomic_boxes[0].rect(),
-            surgeist_text::Rect::new(0.0, 10.0, 25.0, 10.0)
+            surgeist_text::geometry::Rect::new(0.0, 10.0, 25.0, 10.0)
         );
         for entries in [&cold_unrounded, &cold_final] {
             let atomic = entries
@@ -553,11 +557,11 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         let completion_request = selected.request();
         assert_eq!(
             completion_request.context.end,
-            surgeist_text::LineEnd::Paragraph
+            surgeist_text::selection::LineEnd::Paragraph
         );
         assert!(matches!(&completion_request.termination,
-            surgeist_text::PreparedTermination::Ordinary(offer)
-                if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+            surgeist_text::selection::PreparedTermination::Ordinary(offer)
+                if offer.view().kind() == surgeist_text::prepared::PreparedBreakKind::ParagraphEnd));
         assert_eq!(completion_request.start, completion_request.end);
         assert_eq!(
             completion_request.start,
@@ -711,7 +715,7 @@ fn prepared_text_capture_bypasses_stale_geometry_cache_and_retains_actual_basis_
         let cold_fragments = origin_fragment_associations(cold.unrounded_inline_fragments());
         assert_eq!(cold_fragments.len(), 1);
         assert_eq!(cold_fragments[0].1, original);
-        assert_eq!(cold_fragments[0].2, surgeist_text::Range::new(0, 1));
+        assert_eq!(cold_fragments[0].2, surgeist_text::source::Range::new(0, 1));
         assert_eq!(cold_fragments[0].3.unwrap().size().width, S::from_f64(10.0));
         cold.apply_to(&mut tree).unwrap();
         assert!(tree.retained.dirty.is_empty());
@@ -809,11 +813,11 @@ fn prepared_text_zero_advance_source_fragment_survives_committed_state_and_fresh
                     assert_eq!(fragment.origin(), Some(origin.clone()));
                     assert_eq!(
                         fragment.local_range(),
-                        Some(surgeist_text::Range::new(0, 1))
+                        Some(surgeist_text::source::Range::new(0, 1))
                     );
                     assert_eq!(
                         fragment.aggregate_range(),
-                        Some(surgeist_text::Range::new(0, 1))
+                        Some(surgeist_text::source::Range::new(0, 1))
                     );
                     let bounds = fragment
                         .bounds()
@@ -2265,8 +2269,8 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
         let mut tree = Fri06C02StatefulTextTree::<S>::new(Source::new("X X X"), style);
         let origin = tree.text.origins[0].origin.clone();
         let spacing = match justification {
-            TextJustification::Spaces => surgeist_text::SpacingPolicy::Spaces,
-            TextJustification::InterWord => surgeist_text::SpacingPolicy::InterWord,
+            TextJustification::Spaces => surgeist_text::spacing::SpacingPolicy::Spaces,
+            TextJustification::InterWord => surgeist_text::spacing::SpacingPolicy::InterWord,
             TextJustification::None => panic!("this fixture qualifies actual allocation methods"),
             TextJustification::InterCharacter => {
                 panic!("this fixture qualifies the existing separator allocation methods")
@@ -2317,7 +2321,7 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
         let advances = |batch: &CompletedLayoutBatchOf<u32, S>| {
             assert_eq!(
                 batch.placed_text()[0].layout().source().text(),
-                &surgeist_text::Text::from("X X X")
+                &surgeist_text::source::Text::from("X X X")
             );
             let mut lines = Vec::new();
             for entry in batch.final_inline_fragments() {
@@ -2363,28 +2367,28 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
                     .pieces()
                     .map(|piece| piece.owner())
                     .collect::<Vec<_>>(),
-                [surgeist_text::SpacingSlotOwner::Source {
+                [surgeist_text::spacing::SpacingSlotOwner::Source {
                     origin: origin.clone(),
-                    local: surgeist_text::Range::new(1, 2),
-                    aggregate: surgeist_text::Range::new(1, 2),
+                    local: surgeist_text::source::Range::new(1, 2),
+                    aggregate: surgeist_text::source::Range::new(1, 2),
                 }]
             );
             assert_eq!(
                 rows[0].geometry,
-                surgeist_text::SpacingSlotGeometry::Independent {
+                surgeist_text::spacing::SpacingSlotGeometry::Independent {
                     intrinsic_advance: 10.0
                 }
             );
             assert_eq!(
                 rows[0].stretchability,
-                surgeist_text::SpacingStretchability::Direct
+                surgeist_text::spacing::SpacingStretchability::Direct
             );
             assert!(rows[0].can_expand());
             assert_eq!(rows[0].authored_word_spacing, 0.0);
             assert_eq!((rows[0].allocation, rows[0].advance), (extra, 10.0 + extra));
             assert_eq!(
                 rows[1].disposition,
-                surgeist_text::SpacingSlotDisposition::DiscardedAtLineEdge
+                surgeist_text::spacing::SpacingSlotDisposition::DiscardedAtLineEdge
             );
             assert_eq!((rows[1].allocation, rows[1].advance), (0.0, 0.0));
             assert_eq!(first.measurements().alignment().advance(), 30.0 + extra);
@@ -2392,7 +2396,7 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
                 .run_views()
                 .flat_map(|run| {
                     run.glyphs()
-                        .filter(|glyph| glyph.range() == surgeist_text::Range::new(1, 2))
+                        .filter(|glyph| glyph.range() == surgeist_text::source::Range::new(1, 2))
                         .map(|glyph| (glyph.id(), glyph.advance(), run.origin().x + glyph.pen()))
                         .collect::<Vec<_>>()
                 })
@@ -2454,7 +2458,7 @@ fn native_fractional_spacing_budget_is_stable_across_real_warm_float_cache() {
     {
         let mut span = style.clone();
         span.size = size;
-        source.span(surgeist_text::Range::new(index, index + 1), span);
+        source.span(surgeist_text::source::Range::new(index, index + 1), span);
     }
     let mut tree = Fri06C02StatefulTextTree::<f64>::new(source, style);
     tree.inputs.insert(
@@ -2514,7 +2518,7 @@ fn native_fractional_spacing_budget_is_stable_across_real_warm_float_cache() {
     let facts = |batch: &CompletedLayoutBatchOf<u32, f64>| {
         assert_eq!(
             batch.placed_text()[0].layout().lines()[0].range(),
-            surgeist_text::Range::new(0, 6)
+            surgeist_text::source::Range::new(0, 6)
         );
         let line = batch.final_inline_fragments()[0]
             .fragment()
@@ -2535,7 +2539,7 @@ fn native_fractional_spacing_budget_is_stable_across_real_warm_float_cache() {
         assert!(rows[1].advance > 14.046875 && rows[1].advance.is_finite());
         assert_eq!(
             rows[2].disposition,
-            surgeist_text::SpacingSlotDisposition::DiscardedAtLineEdge
+            surgeist_text::spacing::SpacingSlotDisposition::DiscardedAtLineEdge
         );
         assert_eq!(rows[2].advance, 0.0);
         (
@@ -2590,13 +2594,19 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
         assert_eq!(composed.text(), source.text());
         assert!(composed.boxes().is_empty());
         assert_eq!(composed.spans().len(), 1);
-        assert_eq!(composed.spans()[0].range(), surgeist_text::Range::new(0, 3));
+        assert_eq!(
+            composed.spans()[0].range(),
+            surgeist_text::source::Range::new(0, 3)
+        );
         let mut part_style = ahem_style(10.0, 10.0);
         part_style.white_space = WhiteSpace::Preserve;
-        part_style.wrap = surgeist_text::Wrap::None;
+        part_style.wrap = surgeist_text::style::Wrap::None;
         assert_eq!(composed.spans()[0].style(), &part_style);
         assert_eq!(layout.lines().len(), 1);
-        assert_eq!(layout.lines()[0].range(), surgeist_text::Range::new(0, 3));
+        assert_eq!(
+            layout.lines()[0].range(),
+            surgeist_text::source::Range::new(0, 3)
+        );
         // The real preceding 1px block contributes physical y=1. Ahem's
         // independently known 8px ascent then places the text baseline at9.
         assert_eq!(layout.lines()[0].bounds().origin.y, 1.0);
@@ -2607,15 +2617,15 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
         let selected = line.selected_line();
         assert_eq!(
             selected.request().context.spacing,
-            surgeist_text::SpacingPolicy::InterCharacter
+            surgeist_text::spacing::SpacingPolicy::InterCharacter
         );
         assert_eq!(
             selected.request().context.alignment,
-            surgeist_text::Alignment::Justify
+            surgeist_text::options::Alignment::Justify
         );
         assert_eq!(
             selected.request().context.end,
-            surgeist_text::LineEnd::Paragraph
+            surgeist_text::selection::LineEnd::Paragraph
         );
         let prepared = line.prepared_text();
         let origins = prepared.origin_views().collect::<Vec<_>>();
@@ -2624,10 +2634,13 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
         assert_eq!(origin.view().source(), source);
         assert_eq!(origin.view().source().id(), Some(Id::from_u64(1566071)));
         assert_eq!(origin.view().source().revision(), source.revision());
-        assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 3));
+        assert_eq!(
+            origin.view().local_range(),
+            surgeist_text::source::Range::new(0, 3)
+        );
         assert_eq!(
             origin.view().aggregate_range(),
-            surgeist_text::Range::new(0, 3)
+            surgeist_text::source::Range::new(0, 3)
         );
         let rows = line.spacing_slots().collect::<Vec<_>>();
         assert_eq!(rows.len(), 2);
@@ -2636,7 +2649,7 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
             rows.iter().map(|row| row.slot.clone()).collect::<Vec<_>>()
         );
         for (at, row) in rows.iter().enumerate() {
-            let surgeist_text::SpacingSlotTarget::Boundary {
+            let surgeist_text::spacing::SpacingSlotTarget::Boundary {
                 visual_before,
                 visual_after,
             } = row.slot.target()
@@ -2648,22 +2661,22 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
                 assert_eq!(unit.letter_spacing_after(), 0.0);
                 assert_eq!(
                     unit.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
-                    [surgeist_text::SpacingSlotOwner::Source {
+                    [surgeist_text::spacing::SpacingSlotOwner::Source {
                         origin: origin.clone(),
-                        local: surgeist_text::Range::new(index, index + 1),
-                        aggregate: surgeist_text::Range::new(index, index + 1),
+                        local: surgeist_text::source::Range::new(index, index + 1),
+                        aggregate: surgeist_text::source::Range::new(index, index + 1),
                     }]
                 );
             }
             assert_eq!(
                 row.geometry,
-                surgeist_text::SpacingSlotGeometry::Boundary(
-                    surgeist_text::SpacingBoundaryGeometry::Independent
+                surgeist_text::spacing::SpacingSlotGeometry::Boundary(
+                    surgeist_text::spacing::SpacingBoundaryGeometry::Independent
                 )
             );
             assert_eq!(
                 row.stretchability,
-                surgeist_text::SpacingStretchability::Direct
+                surgeist_text::spacing::SpacingStretchability::Direct
             );
             assert!(row.can_expand());
             assert_eq!(row.authored_word_spacing, 0.0);
@@ -2684,9 +2697,9 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
                 .map(|cluster| cluster.range())
                 .collect::<Vec<_>>(),
             [
-                surgeist_text::Range::new(0, 1),
-                surgeist_text::Range::new(1, 2),
-                surgeist_text::Range::new(2, 3),
+                surgeist_text::source::Range::new(0, 1),
+                surgeist_text::source::Range::new(1, 2),
+                surgeist_text::source::Range::new(2, 3),
             ]
         );
         // Finalized glyph readback owns the source-to-glyph correspondence;
@@ -2700,9 +2713,9 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
                 })
                 .collect::<Vec<_>>(),
             [
-                (surgeist_text::Range::new(0, 1), ids[0], 10.0_f32),
-                (surgeist_text::Range::new(1, 2), ids[1], 10.0_f32),
-                (surgeist_text::Range::new(2, 3), ids[2], 10.0_f32),
+                (surgeist_text::source::Range::new(0, 1), ids[0], 10.0_f32),
+                (surgeist_text::source::Range::new(1, 2), ids[1], 10.0_f32),
+                (surgeist_text::source::Range::new(2, 3), ids[2], 10.0_f32),
             ]
         );
         assert_eq!(
@@ -2710,7 +2723,7 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
                 .run_views()
                 .flat_map(|run| {
                     assert_eq!(run.font_size(), 10.0);
-                    assert_eq!(run.range(), surgeist_text::Range::new(0, 3));
+                    assert_eq!(run.range(), surgeist_text::source::Range::new(0, 3));
                     assert_eq!(run.origin().y, 9.0);
                     run.glyphs()
                         .map(|glyph| {
@@ -2731,7 +2744,7 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
     fn lane<S: LayoutScalar>() {
         let mut style = ahem_style(10.0, 10.0);
         style.white_space = WhiteSpace::Preserve;
-        style.wrap = surgeist_text::Wrap::None;
+        style.wrap = surgeist_text::style::Wrap::None;
         let original = Source::identified("ABC", Id::from_u64(1566071), 1);
         let mut tree = Fri06C02StatefulTextTree::<S>::new(original.clone(), style.clone());
         tree.inputs.insert(

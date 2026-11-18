@@ -483,9 +483,9 @@ pub(crate) fn text_error_kind<S: LayoutScalar, M>(
     let budget = matches!(
         error.detail(),
         Some(surgeist_text::ErrorDetail::ScopeAlignment {
-            reason: surgeist_text::ScopeAlignmentError::Limit { .. }
-                | surgeist_text::ScopeAlignmentError::Overflow { .. }
-                | surgeist_text::ScopeAlignmentError::Allocation { .. },
+            reason: surgeist_text::scope_alignment::ScopeAlignmentError::Limit { .. }
+                | surgeist_text::scope_alignment::ScopeAlignmentError::Overflow { .. }
+                | surgeist_text::scope_alignment::ScopeAlignmentError::Allocation { .. },
         })
     );
     if budget {

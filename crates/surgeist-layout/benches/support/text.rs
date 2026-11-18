@@ -56,26 +56,27 @@ impl Paragraphs {
         floats: usize,
         shape: bool,
     ) -> Self {
-        use t::SourceProcessingEvent as E;
+        use t::capture::SourceProcessingEvent as E;
         let raw = groups.concat();
-        let base = t::Style {
-            font: t::Font::new().family("Ahem"),
+        let base = t::style::Style {
+            font: t::style::Font::new().family("Ahem"),
             size: EM,
-            line_height: t::LineHeight::Absolute(EM.into()),
-            white_space: t::WhiteSpace::Collapse,
-            wrap: t::Wrap::Word,
-            word_break: t::WordBreak::Normal,
-            overflow_wrap: t::OverflowWrap::Normal,
-            hyphens: t::Hyphens::None,
-            ..t::Style::default()
+            line_height: t::style::LineHeight::Absolute(EM.into()),
+            white_space: t::style::WhiteSpace::Collapse,
+            wrap: t::style::Wrap::Word,
+            word_break: t::style::WordBreak::Normal,
+            overflow_wrap: t::style::OverflowWrap::Normal,
+            hyphens: t::hyphenation::Hyphens::None,
+            ..t::style::Style::default()
         };
-        let mut source = t::Source::identified(raw.as_str(), t::Id::from_u64(2245), 1);
-        source.span(t::Range::new(0, raw.len()), base.clone());
+        let mut source =
+            t::source::Source::identified(raw.as_str(), t::source::Id::from_u64(2245), 1);
+        source.span(t::source::Range::new(0, raw.len()), base.clone());
         let mut at = 0;
         let ranges: Vec<_> = groups
             .iter()
             .map(|group| {
-                let range = t::Range::new(at, at + group.len());
+                let range = t::source::Range::new(at, at + group.len());
                 at = range.end;
                 range
             })
@@ -86,69 +87,71 @@ impl Paragraphs {
                 events.extend([
                     E::Control {
                         control: index - 1,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     },
                     E::Connection(index - 1),
                 ]);
             }
             events.push(E::Origin {
                 origin: index,
-                affinity: t::Affinity::After,
+                affinity: t::layout::Affinity::After,
             });
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let capture = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
                 origins: ranges
                     .iter()
-                    .map(|&range| t::ParagraphOrigin {
+                    .map(|&range| t::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: source.clone(),
                         local: range,
                         aggregate: range,
-                        kind: t::ParagraphOriginKind::Authored,
+                        kind: t::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect(),
                 controls: ranges
                     .iter()
                     .take(groups.len() - 1)
-                    .map(|range| t::ParagraphControl {
+                    .map(|range| t::paragraph::ParagraphControl {
                         at: range.end,
-                        kind: t::ParagraphControlKind::ForcedBreak,
+                        kind: t::paragraph::ParagraphControlKind::ForcedBreak,
                     })
                     .collect(),
                 connections: (1..groups.len())
-                    .map(|index| t::SourceProcessingConnection {
+                    .map(|index| t::capture::SourceProcessingConnection {
                         before_origin: index - 1,
                         after_origin: index,
-                        kind: t::ParagraphConnectionKind::Continuous,
+                        kind: t::paragraph::ParagraphConnectionKind::Continuous,
                     })
                     .collect(),
                 boundary_policies: (1..groups.len())
-                    .map(|index| t::ParagraphBoundaryPolicy {
-                        definition: t::ParagraphBoundaryDefinition::Connection(index - 1),
-                        preceding_wrap: t::Wrap::Word,
-                        following_wrap: t::Wrap::Word,
-                        ancestor_wrap: t::Wrap::Word,
+                    .map(|index| t::paragraph::ParagraphBoundaryPolicy {
+                        definition: t::paragraph::ParagraphBoundaryDefinition::Connection(
+                            index - 1,
+                        ),
+                        preceding_wrap: t::style::Wrap::Word,
+                        following_wrap: t::style::Wrap::Word,
+                        ancestor_wrap: t::style::Wrap::Word,
                     })
                     .collect(),
-                scopes: vec![t::SourceProcessingScope::Block {
+                scopes: vec![t::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: t::SourceProcessingTopology::Complete,
+                    topology: t::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: base,
-                    used_direction: t::ParagraphBaseDirection::LeftToRight,
+                    used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
                 }],
-                paragraphs: vec![t::SourceProcessingParagraph {
-                    base_direction: t::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                paragraphs: vec![t::capture::SourceProcessingParagraph {
+                    base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 replacements: vec![],
                 computed_line_boundaries: vec![],
@@ -156,17 +159,17 @@ impl Paragraphs {
             })
             .expect("the generated source is admitted"),
         );
-        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
             capture.paragraphs().next().expect("one paragraph"),
-            t::AnalysisTypography::HorizontalComposition,
+            t::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .expect("the paragraph analyzes");
         let policies = analyzed
             .wrapping_relations()
             .filter(|relation| relation.ancestor_wrap().is_none())
-            .map(|relation| t::WrappingPolicy {
+            .map(|relation| t::analyzed::WrappingPolicy {
                 relation: relation.handle(),
-                ancestor_wrap: t::Wrap::Word,
+                ancestor_wrap: t::style::Wrap::Word,
             })
             .collect();
         let mut fonts = t::System::default();
@@ -178,7 +181,7 @@ impl Paragraphs {
                 &analyzed
                     .with_wrapping_policies(policies)
                     .expect("the wrapping policies apply"),
-                t::PreparationOptions::default(),
+                t::prepared::PreparationOptions::default(),
             )
             .expect("the paragraph prepares");
         let origins: Vec<_> = prepared.origin_views().map(|view| view.handle()).collect();

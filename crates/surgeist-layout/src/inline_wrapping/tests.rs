@@ -17,7 +17,7 @@ fn raw_numeric_run_admits_its_actual_repeated_acyclic_occurrence() {
             crate::NodeInputOf {
                 display: crate::Display::InlineBlock,
                 atomic_inline_participation: Some(crate::AtomicInlineParticipation::new(
-                    surgeist_text::BidiLevel::try_new(0).unwrap(),
+                    surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
                     crate::InlineBreakOpportunity::Prohibited,
                 )),
                 ..Default::default()

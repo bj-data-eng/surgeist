@@ -3,18 +3,18 @@
 //! Reuses only that fixture's authentic host helpers; all product calls are public.
 use super::*;
 
-fn prepare_direct(processed: &Arc<t::ProcessedSource>) -> t::PreparedText {
-    let a = t::AnalyzedSource::from_processed_paragraph(
+fn prepare_direct(processed: &Arc<t::processing::ProcessedSource>) -> t::prepared::PreparedText {
+    let a = t::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = a
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| t::WrappingPolicy {
+        .map(|r| t::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: t::Wrap::None,
+            ancestor_wrap: t::style::Wrap::None,
         })
         .collect();
     let a = a.with_wrapping_policies(policies).unwrap();
@@ -22,21 +22,23 @@ fn prepare_direct(processed: &Arc<t::ProcessedSource>) -> t::PreparedText {
     fonts
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
-    fonts.prepare(&a, t::PreparationOptions::default()).unwrap()
+    fonts
+        .prepare(&a, t::prepared::PreparationOptions::default())
+        .unwrap()
 }
 
 fn assert_late_geometry<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
-    controls: &[t::PreparedControl],
-    empty: &t::CapturedScope,
+    controls: &[t::prepared::PreparedControl],
+    empty: &t::capture::CapturedScope,
 ) {
     let placed = batch.placed_text()[0].layout();
-    assert_eq!(placed.source().id(), Some(t::Id::from_u64(658000)));
+    assert_eq!(placed.source().id(), Some(t::source::Id::from_u64(658000)));
     assert_eq!(placed.source().revision(), 21);
-    assert_eq!(placed.source().text(), &t::Text::from("PAQ"));
+    assert_eq!(placed.source().text(), &t::source::Text::from("PAQ"));
     assert_eq!(
         placed.lines().iter().map(|l| l.range()).collect::<Vec<_>>(),
-        [t::Range::new(0, 1), t::Range::new(1, 3)]
+        [t::source::Range::new(0, 1), t::source::Range::new(1, 3)]
     );
     assert_eq!(
         placed
@@ -85,10 +87,10 @@ fn assert_late_geometry<S: l::LayoutScalar>(
                     .unwrap();
                 assert_eq!(
                     allocation.strut,
-                    Some(t::ControlStrut {
+                    Some(t::allocation::ControlStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
-                        alignment: t::LineBoxAlignment::Baseline
+                        alignment: t::allocation::LineBoxAlignment::Baseline
                     })
                 );
                 assert_eq!(
@@ -106,13 +108,13 @@ fn assert_late_geometry<S: l::LayoutScalar>(
         assert_eq!(
             request.line_box_struts,
             if i == 0 {
-                vec![t::LineBoxStrut {
+                vec![t::allocation::LineBoxStrut {
                     scope: Some(empty.clone()),
-                    metrics: t::LineStrut {
+                    metrics: t::allocation::LineStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
                     },
-                    alignment: t::LineBoxAlignment::Baseline,
+                    alignment: t::allocation::LineBoxAlignment::Baseline,
                 }]
             } else {
                 vec![]
@@ -128,9 +130,9 @@ fn assert_late_geometry<S: l::LayoutScalar>(
     assert_eq!(
         sourced,
         [
-            (t::Range::new(0, 1), 50, 10.0),
-            (t::Range::new(1, 2), 35, 10.0),
-            (t::Range::new(2, 3), 51, 10.0)
+            (t::source::Range::new(0, 1), 50, 10.0),
+            (t::source::Range::new(1, 2), 35, 10.0),
+            (t::source::Range::new(2, 3), 51, 10.0)
         ]
     );
     let mut posed = vec![];
@@ -162,12 +164,12 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
     // the early adapter ran. There is no ResolvedWrapEdges or early-source call.
     input
         .computed_line_boundaries
-        .push(t::ComputedLineBoundaryInput::Scope {
+        .push(t::capture::ComputedLineBoundaryInput::Scope {
             scope: 2,
-            side: t::SourceBoxSide::Before,
+            side: t::capture::SourceBoxSide::Before,
         });
-    let processed = Arc::new(t::process_contextual_source(input).unwrap());
-    assert_eq!(processed.source().text(), &t::Text::from("PAQ"));
+    let processed = Arc::new(t::capture::process_contextual_source(input).unwrap());
+    assert_eq!(processed.source().text(), &t::source::Text::from("PAQ"));
     let outer = processed.captured_scope(1).unwrap();
     let inner = processed.captured_scope(2).unwrap();
     let empty = processed.captured_scope(3).unwrap();
@@ -184,9 +186,9 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(
         cause.target(),
-        t::CapturedComputedLineBoundaryTarget::Scope {
+        t::capture::CapturedComputedLineBoundaryTarget::Scope {
             scope: inner,
-            side: t::SourceBoxSide::Before
+            side: t::capture::SourceBoxSide::Before
         }
     );
     assert!(processed.captured_computed_line_boundary(1).is_none());
@@ -199,13 +201,13 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
     assert_eq!(
         offers,
         [
-            (t::PreparedBreakKind::Forced, 1),
-            (t::PreparedBreakKind::ParagraphEnd, 3)
+            (t::prepared::PreparedBreakKind::Forced, 1),
+            (t::prepared::PreparedBreakKind::ParagraphEnd, 3)
         ]
     );
     let forced = prepared
         .opportunity_views()
-        .find(|o| o.kind() == t::PreparedBreakKind::Forced)
+        .find(|o| o.kind() == t::prepared::PreparedBreakKind::Forced)
         .unwrap();
     assert_eq!(
         forced

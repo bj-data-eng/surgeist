@@ -5,9 +5,12 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingEvent as E, SourceProcessingParagraph,
-        SourceProcessingScope, SourceProcessingScopeBoundaries, SourceProcessingTopology,
+        DocumentSegmentBreaks,
+        contextual::{
+            ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+            SourceProcessingEvent as E, SourceProcessingParagraph, SourceProcessingScope,
+            SourceProcessingScopeBoundaries, SourceProcessingTopology,
+        },
     },
     protocol::paragraph::{
         ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
@@ -73,7 +76,7 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
         events.retain(|event| !matches!(event, E::Control { .. }));
     }
     let processed = Arc::new(
-        crate::processing::process_contextual_source(ContextualSourceInput {
+        crate::processing::contextual::process_contextual_source(ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: Source::identified("A\u{301}B", Id::from_u64(1_507_000), 7),
@@ -447,7 +450,7 @@ fn nested_capture(text: &str) -> PreparedText {
         affinity: Affinity::After,
     };
     let processed = Arc::new(
-        crate::processing::process_contextual_source(ContextualSourceInput {
+        crate::processing::contextual::process_contextual_source(ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: input.source.clone(),
@@ -568,7 +571,7 @@ fn nested_physical_pairs_retain_distinct_coincident_end_events_and_shared_glyphs
                 .map(|intersection| intersection.scope())
                 .collect::<Vec<_>>()
         })
-        .filter(|scope| scope.role() == crate::processing::ScopeRole::Inline)
+        .filter(|scope| scope.role() == crate::processing::contextual::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
     for (start, end) in [(0, 3), (1, 2)] {
@@ -1011,7 +1014,7 @@ fn odd_shared_unit_keeps_each_nested_end_interval_on_its_actual_visual_side() {
                 .map(|i| i.scope())
                 .collect::<Vec<_>>()
         })
-        .filter(|s| s.role() == crate::processing::ScopeRole::Inline)
+        .filter(|s| s.role() == crate::processing::contextual::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
     for (start, end) in [(0, 3), (1, 2)] {

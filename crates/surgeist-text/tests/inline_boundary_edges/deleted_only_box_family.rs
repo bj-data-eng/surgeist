@@ -6,15 +6,15 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
     // Same actual producer/recipe as scope_incidence's removed-and-empty case:
     // Discard truly eliminates the positive SPACE, unlike collapsed-zero SPACE.
     let p = prepare_capture(
-        t::Source::identified(" A", t::Id::from_u64(1_646_403), 1),
-        block(style(t::WhiteSpace::Discard), false, true),
+        t::source::Source::identified(" A", t::source::Id::from_u64(1_646_403), 1),
+        block(style(t::style::WhiteSpace::Discard), false, true),
         &[(0, 1), (1, 2)],
         &[
             (K::InlineBoundaryStart, 0),
             (K::InlineBoundaryEnd, 1),
             (
                 K::OptionalBreak {
-                    wrap: t::Wrap::Word,
+                    wrap: t::style::Wrap::Word,
                 },
                 1,
             ),
@@ -32,23 +32,35 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
         ],
         AHEM,
     );
-    assert_eq!(p.analyzed_source().source().text(), &t::Text::from(" A"));
+    assert_eq!(
+        p.analyzed_source().source().text(),
+        &t::source::Text::from(" A")
+    );
     assert_eq!(
         p.analyzed_source().processed_source().processed_text(),
-        &t::Text::from("A")
+        &t::source::Text::from("A")
     );
     let originals = p
         .origin_views()
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     assert_eq!(originals.len(), 2);
-    assert_eq!(originals[0].view().aggregate_range(), t::Range::new(0, 1));
-    assert_eq!(originals[0].view().local_range(), t::Range::new(0, 1));
-    assert_eq!(originals[0].view().source().text(), &t::Text::from(" A"));
+    assert_eq!(
+        originals[0].view().aggregate_range(),
+        t::source::Range::new(0, 1)
+    );
+    assert_eq!(
+        originals[0].view().local_range(),
+        t::source::Range::new(0, 1)
+    );
+    assert_eq!(
+        originals[0].view().source().text(),
+        &t::source::Text::from(" A")
+    );
     let source_alias = originals[0].clone();
     let removed = p
         .unit_views()
-        .find(|unit| unit.source_range() == t::Range::new(0, 1))
+        .find(|unit| unit.source_range() == t::source::Range::new(0, 1))
         .expect("actual positive-source Deleted unit")
         .handle();
     assert!(removed.view().processed_range().is_empty());
@@ -75,8 +87,8 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
         alias_facts(),
         [(
             source_alias.clone(),
-            t::Range::new(0, 1),
-            t::Range::new(0, 1),
+            t::source::Range::new(0, 1),
+            t::source::Range::new(0, 1),
             true
         )]
     );
@@ -86,12 +98,12 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     let scope = controls[0].captured_control().unwrap().scope();
-    assert_eq!(scope.role(), t::ScopeRole::Inline);
+    assert_eq!(scope.role(), t::capture::ScopeRole::Inline);
     assert_eq!(scope.entry_control(), controls[0].captured_control());
     assert_eq!(scope.exit_control(), controls[1].captured_control());
     assert_eq!(controls[1].captured_control().unwrap().scope(), scope);
     let domain = scope.parent().unwrap();
-    assert_eq!(domain.role(), t::ScopeRole::Domain);
+    assert_eq!(domain.role(), t::capture::ScopeRole::Domain);
     let original_event = source_alias.view().capture_position().unwrap();
     assert!(scope.enter_position() < controls[0].captured_control().unwrap().event_position());
     assert!(controls[0].captured_control().unwrap().event_position() < original_event);
@@ -104,7 +116,7 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
     let mut cuts = soft_at(&p, 1).into_iter().filter(|offer| {
         let count = offer.view().boundary().view().participant_offset();
         matches!(p.participants().take(count).last(),
-            Some(t::PreparedParticipant::Control(actual)) if actual == controls[2])
+            Some(t::prepared::PreparedParticipant::Control(actual)) if actual == controls[2])
     });
     let after = cuts
         .next()
@@ -124,21 +136,25 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
     assert!(
         p.participants()
             .take(after.view().participant_offset())
-            .any(|part| part == t::PreparedParticipant::Text(removed.clone()))
+            .any(|part| part == t::prepared::PreparedParticipant::Text(removed.clone()))
     );
 
-    let owner = t::InlineBoxSource::captured(scope.clone());
-    let parent = t::InlineBoxSource::captured(domain);
+    let owner = t::inline_box::InlineBoxSource::captured(scope.clone());
+    let parent = t::inline_box::InlineBoxSource::captured(domain);
     let context = p
-        .inline_box_edge_context(owner.clone(), parent.clone(), t::LineEdgeSide::Start)
+        .inline_box_edge_context(
+            owner.clone(),
+            parent.clone(),
+            t::finalized::LineEdgeSide::Start,
+        )
         .unwrap();
     let mut input = request(&p, segment.start(), paragraph_end(&p), &[], 100.0);
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     for row in &mut input.controls {
         if row.occurrence == controls[0] || row.occurrence == controls[1] {
-            row.boundary = Some(t::InlineBoundaryAllocation::box_edge(
+            row.boundary = Some(t::allocation::InlineBoundaryAllocation::box_edge(
                 context.clone(),
-                t::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap(),
+                t::inline_box::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap(),
             ));
         } else {
             assert_eq!(row.occurrence, controls[2]);
@@ -160,9 +176,9 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
         .collect::<Vec<_>>();
     assert_eq!(selected_ids.len(), 1);
     let output = selected
-        .finalize(t::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: t::ScopeAllocations::None,
+        .finalize(t::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: t::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     let pieces = output
@@ -177,8 +193,11 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
     assert_eq!(pieces[0].end_control(), Some(controls[1].clone()));
     for member in pieces[0].members() {
         match member.participant() {
-            Some(t::PreparedParticipant::Text(unit)) => assert!(authentic_units.contains(unit)),
-            Some(t::PreparedParticipant::Atomic(_)) | Some(t::PreparedParticipant::Cell(_)) => {
+            Some(t::prepared::PreparedParticipant::Text(unit)) => {
+                assert!(authentic_units.contains(unit))
+            }
+            Some(t::prepared::PreparedParticipant::Atomic(_))
+            | Some(t::prepared::PreparedParticipant::Cell(_)) => {
                 panic!("this source contains neither atomic nor Cell content")
             }
             _ => {}
@@ -188,7 +207,7 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
     // Do not demand that the deleted-only piece exclusively owns this unit.
     for line in [&prior, &output] {
         assert_eq!(line.feedback().advance, 10.0);
-        assert_eq!(ids(line), [(t::Range::new(1, 2), 35)]);
+        assert_eq!(ids(line), [(t::source::Range::new(1, 2), 35)]);
         let packet = line
             .run_views()
             .flat_map(|run| {
@@ -202,19 +221,16 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
         let deleted_mapping = line
             .mapping_views()
             .filter(|view| {
-                view.kind() == t::PresentationMappingKind::Deleted
-                    && view.source_range() == t::Range::new(0, 1)
+                view.kind() == t::finalized::PresentationMappingKind::Deleted
+                    && view.source_range() == t::source::Range::new(0, 1)
             })
             .collect::<Vec<_>>();
         assert_eq!(deleted_mapping.len(), 1);
         assert!(deleted_mapping[0].processed_range().is_empty());
         assert_eq!(deleted_mapping[0].presentation_range().len(), 0);
-        assert!(
-            line.selected_line()
-                .request()
-                .participants
-                .contains(&t::PreparedParticipant::Text(removed_alias.clone()))
-        );
+        assert!(line.selected_line().request().participants.contains(
+            &t::prepared::PreparedParticipant::Text(removed_alias.clone())
+        ));
         for handle in [&controls[0], &controls[1]] {
             let mut slots = line
                 .control_slots()
@@ -225,9 +241,17 @@ fn positive_source_deleted_only_inline_retains_family_and_original_aliases() {
             assert_eq!(from, to);
         }
     }
-    assert_eq!(source_alias.view().source().text(), &t::Text::from(" A"));
+    assert_eq!(
+        source_alias.view().source().text(),
+        &t::source::Text::from(" A")
+    );
     assert_eq!(
         alias_facts(),
-        [(source_alias, t::Range::new(0, 1), t::Range::new(0, 1), true)]
+        [(
+            source_alias,
+            t::source::Range::new(0, 1),
+            t::source::Range::new(0, 1),
+            true
+        )]
     );
 }

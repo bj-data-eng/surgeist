@@ -95,7 +95,7 @@ impl<S: layout::LayoutScalar> Host<S> {
             atomics: vec![],
         }
     }
-    fn install(&mut self, p: &text::PreparedText) -> layout::TextParagraphBinding<u32> {
+    fn install(&mut self, p: &text::prepared::PreparedText) -> layout::TextParagraphBinding<u32> {
         let origins = p
             .origin_views()
             .enumerate()
@@ -103,12 +103,12 @@ impl<S: layout::LayoutScalar> Host<S> {
                 let node = self.origins.iter().find(|(i, _)| *i == ordinal).unwrap().1;
                 assert_eq!(
                     origin.source().id(),
-                    Some(text::Id::from_u64(656001 + ordinal as u64))
+                    Some(text::source::Id::from_u64(656001 + ordinal as u64))
                 );
                 assert_eq!(origin.source().revision(), 15);
                 assert_eq!(
                     origin.aggregate_range(),
-                    text::Range::new(ordinal, ordinal + 1)
+                    text::source::Range::new(ordinal, ordinal + 1)
                 );
                 self.installed[node as usize] = Some(layout::LayoutInputOf::inline_text(
                     layout::TextParticipation::new(origin.handle()),
@@ -132,7 +132,7 @@ impl<S: layout::LayoutScalar> Host<S> {
     }
     fn final_wrapping(
         &self,
-        processed: &text::ProcessedSource,
+        processed: &text::processing::ProcessedSource,
         contribution: Option<layout::InlineBoxMetricContribution>,
     ) -> layout::WrappingInput<u32> {
         let convert = |box_: &layout::GeneratedBoxRef<u32, usize>| match box_ {
@@ -254,35 +254,35 @@ impl<S: layout::LayoutScalar> layout::LayoutTree for Final<'_, S> {
         }
     }
 }
-fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+fn source(before: bool, direction: layout::Direction) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let base = if direction == layout::Direction::Ltr {
-        text::ParagraphBaseDirection::LeftToRight
+        text::paragraph::ParagraphBaseDirection::LeftToRight
     } else {
-        text::ParagraphBaseDirection::RightToLeft
+        text::paragraph::ParagraphBaseDirection::RightToLeft
     };
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        wrap: text::Wrap::None,
-        hyphens: text::Hyphens::None,
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(10.0),
+        wrap: text::style::Wrap::None,
+        hyphens: text::hyphenation::Hyphens::None,
+        ..text::style::Style::default()
     };
-    let mut source = text::Source::identified("AB", text::Id::from_u64(656000), 15);
-    source.span(text::Range::new(0, 2), style.clone());
+    let mut source = text::source::Source::identified("AB", text::source::Id::from_u64(656000), 15);
+    source.span(text::source::Range::new(0, 2), style.clone());
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     if before {
         events.extend([
             E::Origin {
                 origin: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Connection(0),
             E::EnterScope(1),
             E::Origin {
                 origin: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(1),
         ]);
@@ -291,59 +291,63 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
             E::EnterScope(1),
             E::Origin {
                 origin: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(1),
             E::Connection(0),
             E::Origin {
                 origin: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
         ]);
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
-    text::ContextualSourceInput {
+    text::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: text::SourceProcessingEnvelope::Complete,
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: text::capture::SourceProcessingEnvelope::Complete,
         origins: ["A", "B"]
             .into_iter()
             .enumerate()
-            .map(|(i, raw)| text::ParagraphOrigin {
+            .map(|(i, raw)| text::paragraph::ParagraphOrigin {
                 text_node: None,
-                source: text::Source::identified(raw, text::Id::from_u64(656001 + i as u64), 15),
-                local: text::Range::new(0, 1),
-                aggregate: text::Range::new(i, i + 1),
-                kind: text::ParagraphOriginKind::Authored,
+                source: text::source::Source::identified(
+                    raw,
+                    text::source::Id::from_u64(656001 + i as u64),
+                    15,
+                ),
+                local: text::source::Range::new(0, 1),
+                aggregate: text::source::Range::new(i, i + 1),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
-        connections: vec![text::SourceProcessingConnection {
+        connections: vec![text::capture::SourceProcessingConnection {
             before_origin: 0,
             after_origin: 1,
-            kind: text::ParagraphConnectionKind::Continuous,
+            kind: text::paragraph::ParagraphConnectionKind::Continuous,
         }],
-        boundary_policies: vec![text::ParagraphBoundaryPolicy {
-            definition: text::ParagraphBoundaryDefinition::Connection(0),
-            preceding_wrap: text::Wrap::None,
-            following_wrap: text::Wrap::None,
-            ancestor_wrap: text::Wrap::None,
+        boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+            definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: text::style::Wrap::None,
+            following_wrap: text::style::Wrap::None,
+            ancestor_wrap: text::style::Wrap::None,
         }],
         controls: vec![],
         computed_line_boundaries: vec![],
         replacements: vec![],
         scopes: vec![
-            text::SourceProcessingScope::Block {
+            text::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Complete,
+                topology: text::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
                 used_direction: base,
             },
-            text::SourceProcessingScope::Inline {
+            text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
@@ -352,25 +356,27 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
                 boundaries: None,
             },
         ],
-        paragraphs: vec![text::SourceProcessingParagraph {
+        paragraphs: vec![text::capture::SourceProcessingParagraph {
             base_direction: base,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
         }],
         events,
     }
 }
-fn normal_prepare(processed: &Arc<text::ProcessedSource>) -> text::PreparedText {
-    let a = text::AnalyzedSource::from_processed_paragraph(
+fn normal_prepare(
+    processed: &Arc<text::processing::ProcessedSource>,
+) -> text::prepared::PreparedText {
+    let a = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let missing = a
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| text::WrappingPolicy {
+        .map(|r| text::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: text::Wrap::None,
+            ancestor_wrap: text::style::Wrap::None,
         })
         .collect();
     let a = a.with_wrapping_policies(missing).unwrap();
@@ -379,7 +385,7 @@ fn normal_prepare(processed: &Arc<text::ProcessedSource>) -> text::PreparedText 
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     system
-        .prepare(&a, text::PreparationOptions::default())
+        .prepare(&a, text::prepared::PreparationOptions::default())
         .unwrap()
 }
 fn request<S: layout::LayoutScalar>(frame: layout::FlowAxes) -> layout::LayoutRootRequestOf<S> {
@@ -402,8 +408,8 @@ fn request<S: layout::LayoutScalar>(frame: layout::FlowAxes) -> layout::LayoutRo
 }
 fn finish<S: layout::LayoutScalar>(
     host: &Host<S>,
-    processed: &text::ProcessedSource,
-    p: &text::PreparedText,
+    processed: &text::processing::ProcessedSource,
+    p: &text::prepared::PreparedText,
     binding: layout::TextParagraphBinding<u32>,
     receipt: &layout::ResolvedWrapEdges<u32>,
     metric: layout::InlineBoxMetricContribution,
@@ -438,22 +444,28 @@ fn finish<S: layout::LayoutScalar>(
 }
 fn qualify<S: layout::LayoutScalar>(
     result: &layout::CompletedLayoutBatchOf<u32, S>,
-    p: &text::PreparedText,
+    p: &text::prepared::PreparedText,
     direction: layout::Direction,
     forced: bool,
     heights: &[f64],
     baselines: &[f64],
 ) {
     let placed = result.placed_text()[0].layout();
-    assert_eq!(placed.source().id(), Some(text::Id::from_u64(656000)));
+    assert_eq!(
+        placed.source().id(),
+        Some(text::source::Id::from_u64(656000))
+    );
     assert_eq!(placed.source().revision(), 15);
-    assert_eq!(placed.source().text(), &text::Text::from("AB"));
+    assert_eq!(placed.source().text(), &text::source::Text::from("AB"));
     assert_eq!(
         placed.lines().iter().map(|l| l.range()).collect::<Vec<_>>(),
         if forced {
-            vec![text::Range::new(0, 1), text::Range::new(1, 2)]
+            vec![
+                text::source::Range::new(0, 1),
+                text::source::Range::new(1, 2),
+            ]
         } else {
-            vec![text::Range::new(0, 2)]
+            vec![text::source::Range::new(0, 2)]
         }
     );
     assert_eq!(
@@ -512,17 +524,20 @@ fn qualify<S: layout::LayoutScalar>(
         offers,
         if forced {
             vec![
-                (text::PreparedBreakKind::Forced, 1),
-                (text::PreparedBreakKind::ParagraphEnd, 2),
+                (text::prepared::PreparedBreakKind::Forced, 1),
+                (text::prepared::PreparedBreakKind::ParagraphEnd, 2),
             ]
         } else {
-            vec![(text::PreparedBreakKind::ParagraphEnd, 2)]
+            vec![(text::prepared::PreparedBreakKind::ParagraphEnd, 2)]
         }
     );
     assert_eq!(p.control_views().count(), 0);
     assert_eq!(
         p.participants()
-            .filter(|part| matches!(part, text::PreparedParticipant::ComputedLineBoundary(_)))
+            .filter(|part| matches!(
+                part,
+                text::prepared::PreparedParticipant::ComputedLineBoundary(_)
+            ))
             .count(),
         usize::from(forced)
     );
@@ -551,12 +566,12 @@ fn first_pipeline<S: layout::LayoutScalar>() {
                     let cause = processed.captured_computed_line_boundary(0).unwrap();
                     assert_eq!(
                         cause.target(),
-                        text::CapturedComputedLineBoundaryTarget::Scope {
+                        text::capture::CapturedComputedLineBoundaryTarget::Scope {
                             scope: processed.captured_scope(1).unwrap(),
                             side: if before {
-                                text::SourceBoxSide::Before
+                                text::capture::SourceBoxSide::Before
                             } else {
-                                text::SourceBoxSide::After
+                                text::capture::SourceBoxSide::After
                             }
                         }
                     );
@@ -631,13 +646,13 @@ fn reusable_receipt<S: layout::LayoutScalar>() {
         );
         let p2 = normal_prepare(&processed);
         let b2 = host.install(&p2);
-        let metric = layout::InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+        let metric = layout::InlineBoxMetricContribution::Strut(text::allocation::LineBoxStrut {
             scope: None,
-            metrics: text::LineStrut {
+            metrics: text::allocation::LineStrut {
                 baseline: 16.0,
                 line_extent: 20.0,
             },
-            alignment: text::LineBoxAlignment::Baseline,
+            alignment: text::allocation::LineBoxAlignment::Baseline,
         });
         let current = finish(&host, &processed, &p2, b2, &receipt, metric);
         qualify(&old, &p1, direction, true, &[10.0, 10.0], &[8.0, 18.0]);
@@ -696,74 +711,77 @@ fn semantic_declaration_mutation_refuses_even_though_prepared_forced_geometry_st
 fn semantic_source(
     left: &[u16],
     right: &[u16],
-    delimiters: text::DocumentSegmentBreaks,
+    delimiters: text::processing::DocumentSegmentBreaks,
     lithuanian: bool,
-) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let split = left.len();
     let mut units = left.to_vec();
     units.extend_from_slice(right);
     let end = units.len();
-    let source = text::Source::identified(
-        text::Text::from_code_units(units),
-        text::Id::from_u64(657000),
+    let source = text::source::Source::identified(
+        text::source::Text::from_code_units(units),
+        text::source::Id::from_u64(657000),
         17,
     );
-    let mut style = text::Style {
-        white_space: text::WhiteSpace::Preserve,
-        wrap: text::Wrap::None,
-        hyphens: text::Hyphens::None,
-        ..text::Style::default()
+    let mut style = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
+        wrap: text::style::Wrap::None,
+        hyphens: text::hyphenation::Hyphens::None,
+        ..text::style::Style::default()
     };
     if lithuanian {
         style.locale = Some("lt".into());
-        style.text_transform = text::TextTransform::Set(
-            text::TextTransformSet::none().with_case(text::CaseTransform::Uppercase),
+        style.text_transform = text::style::TextTransform::Set(
+            text::style::TextTransformSet::none().with_case(text::style::CaseTransform::Uppercase),
         );
     }
     // Each source occurrence selects its real half-range from the same exact
     // aggregate source, matching the lower Text scalar/delimiter fixture.
-    text::ContextualSourceInput {
+    text::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: delimiters,
-        envelope: text::SourceProcessingEnvelope::Complete,
-        origins: [text::Range::new(0, split), text::Range::new(split, end)]
-            .into_iter()
-            .map(|range| text::ParagraphOrigin {
-                text_node: None,
-                source: source.clone(),
-                local: range,
-                aggregate: range,
-                kind: text::ParagraphOriginKind::Authored,
-            })
-            .collect(),
-        connections: vec![text::SourceProcessingConnection {
+        envelope: text::capture::SourceProcessingEnvelope::Complete,
+        origins: [
+            text::source::Range::new(0, split),
+            text::source::Range::new(split, end),
+        ]
+        .into_iter()
+        .map(|range| text::paragraph::ParagraphOrigin {
+            text_node: None,
+            source: source.clone(),
+            local: range,
+            aggregate: range,
+            kind: text::paragraph::ParagraphOriginKind::Authored,
+        })
+        .collect(),
+        connections: vec![text::capture::SourceProcessingConnection {
             before_origin: 0,
             after_origin: 1,
-            kind: text::ParagraphConnectionKind::Continuous,
+            kind: text::paragraph::ParagraphConnectionKind::Continuous,
         }],
-        boundary_policies: vec![text::ParagraphBoundaryPolicy {
-            definition: text::ParagraphBoundaryDefinition::Connection(0),
-            preceding_wrap: text::Wrap::None,
-            following_wrap: text::Wrap::None,
-            ancestor_wrap: text::Wrap::None,
+        boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+            definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: text::style::Wrap::None,
+            following_wrap: text::style::Wrap::None,
+            ancestor_wrap: text::style::Wrap::None,
         }],
         controls: vec![],
         computed_line_boundaries: vec![],
         replacements: vec![],
         scopes: vec![
-            text::SourceProcessingScope::Block {
+            text::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Complete,
+                topology: text::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: text::ParagraphBaseDirection::LeftToRight,
+                used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             },
-            text::SourceProcessingScope::Inline {
+            text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
@@ -772,22 +790,22 @@ fn semantic_source(
                 boundaries: None,
             },
         ],
-        paragraphs: vec![text::SourceProcessingParagraph {
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+        paragraphs: vec![text::capture::SourceProcessingParagraph {
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
         }],
         events: vec![
             E::EnterScope(0),
             E::EnterParagraph(0),
             E::Origin {
                 origin: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::EnterScope(1),
             E::Connection(0),
             E::Origin {
                 origin: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(1),
             E::ExitParagraph(0),
@@ -806,7 +824,7 @@ fn source_phase_casing_boundary<S: layout::LayoutScalar>() {
                 semantic_source(
                     &[0x69],
                     &[0x307],
-                    text::DocumentSegmentBreaks::LineFeedDefault,
+                    text::processing::DocumentSegmentBreaks::LineFeedDefault,
                     true,
                 ),
                 host.occurrences(),
@@ -817,21 +835,28 @@ fn source_phase_casing_boundary<S: layout::LayoutScalar>() {
         // This is intentionally Phase-I/source proof. Casing executes in the
         // later owned analysis transform: ProcessedSource must NOT be mistaken
         // for its private transformed text or a font/glyph observation.
-        assert_eq!(processed.source().id(), Some(text::Id::from_u64(657000)));
+        assert_eq!(
+            processed.source().id(),
+            Some(text::source::Id::from_u64(657000))
+        );
         assert_eq!(processed.source().revision(), 17);
         assert_eq!(processed.source().text().code_units(), [0x69, 0x307]);
         assert_eq!(processed.processed_text().code_units(), [0x69, 0x307]);
         assert_eq!(processed.base_style().locale.as_deref(), Some("lt"));
         assert_eq!(
             processed.base_style().text_transform,
-            text::TextTransform::Set(
-                text::TextTransformSet::none().with_case(text::CaseTransform::Uppercase)
+            text::style::TextTransform::Set(
+                text::style::TextTransformSet::none()
+                    .with_case(text::style::CaseTransform::Uppercase)
             )
         );
         for at in 0..=2 {
-            for affinity in [text::Affinity::Before, text::Affinity::After] {
+            for affinity in [
+                text::layout::Affinity::Before,
+                text::layout::Affinity::After,
+            ] {
                 let original =
-                    text::SourcePosition::try_new(processed.source().text(), at).unwrap();
+                    text::source::SourcePosition::try_new(processed.source().text(), at).unwrap();
                 assert_eq!(
                     processed
                         .source_to_processed(original, affinity)
@@ -857,9 +882,9 @@ fn source_phase_casing_boundary<S: layout::LayoutScalar>() {
             let cause = processed.captured_computed_line_boundary(0).unwrap();
             assert_eq!(
                 cause.target(),
-                text::CapturedComputedLineBoundaryTarget::Scope {
+                text::capture::CapturedComputedLineBoundaryTarget::Scope {
                     scope,
-                    side: text::SourceBoxSide::Before
+                    side: text::capture::SourceBoxSide::Before
                 }
             );
             assert_eq!(cause.source_position().get(), 1);
@@ -881,14 +906,14 @@ fn typed_early_text_errors<S: layout::LayoutScalar>() {
         (
             vec![0xd83d],
             vec![0xde00],
-            text::DocumentSegmentBreaks::LineFeedDefault,
-            text::ComputedLineBoundaryError::InsideScalar,
+            text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            text::capture::ComputedLineBoundaryError::InsideScalar,
         ),
         (
             vec![0x0d],
             vec![0x0a],
-            text::DocumentSegmentBreaks::Defined(vec![text::Range::new(0, 2)]),
-            text::ComputedLineBoundaryError::InsideDelimiter,
+            text::processing::DocumentSegmentBreaks::Defined(vec![text::source::Range::new(0, 2)]),
+            text::capture::ComputedLineBoundaryError::InsideDelimiter,
         ),
     ] {
         // This is the exact requested-force error profile. Do not assert a
@@ -913,7 +938,7 @@ fn typed_early_text_errors<S: layout::LayoutScalar>() {
         match error.kind() {
             layout::LayoutErrorKindOf::Text(cause) => assert!(
                 matches!(cause.detail(),
-                    Some(text::ErrorDetail::SourceProcessing {reason:text::SourceProcessingError::ComputedLineBoundary {request:0,reason}}) if *reason==expected
+                    Some(text::ErrorDetail::SourceProcessing {reason:text::capture::SourceProcessingError::ComputedLineBoundary {request:0,reason}}) if *reason==expected
                 ),
                 "{cause:?}"
             ),
@@ -941,7 +966,7 @@ fn contrary_canonical_order<S: layout::LayoutScalar>() {
         // the borrowed producer instead claims A followed by S containing B.
         // Equal source lengths and a valid input-local scope ordinal do not
         // authenticate that contrary first-child/order claim.
-        let raw = text::process_contextual_source(source(false, direction)).unwrap();
+        let raw = text::capture::process_contextual_source(source(false, direction)).unwrap();
         let scope = raw.captured_scope(1).unwrap();
         let a = raw.captured_origin(0).unwrap();
         let b = raw.captured_origin(1).unwrap();
@@ -950,7 +975,7 @@ fn contrary_canonical_order<S: layout::LayoutScalar>() {
         assert!(scope.exit_position() < b);
         assert_eq!(
             scope.domain_topology(),
-            text::SourceProcessingTopology::Complete
+            text::capture::SourceProcessingTopology::Complete
         );
         assert!(raw.captured_computed_line_boundary(0).is_none());
         let host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
@@ -1046,24 +1071,24 @@ fn caller_causes_and_duplicate_ordinals<S: layout::LayoutScalar>() {
         // A caller's After cause is distinct. Two literal caller Before
         // requests and the adapter's same Before edge share one cause.
         raw.computed_line_boundaries = vec![
-            text::ComputedLineBoundaryInput::Scope {
+            text::capture::ComputedLineBoundaryInput::Scope {
                 scope: 1,
-                side: text::SourceBoxSide::After,
+                side: text::capture::SourceBoxSide::After,
             },
-            text::ComputedLineBoundaryInput::Scope {
+            text::capture::ComputedLineBoundaryInput::Scope {
                 scope: 1,
-                side: text::SourceBoxSide::Before,
+                side: text::capture::SourceBoxSide::Before,
             },
-            text::ComputedLineBoundaryInput::Scope {
+            text::capture::ComputedLineBoundaryInput::Scope {
                 scope: 1,
-                side: text::SourceBoxSide::Before,
+                side: text::capture::SourceBoxSide::Before,
             },
         ];
         let (processed, _receipt) =
             layout::process_wrapping_source(&Early(&host), 0, raw, host.occurrences())
                 .unwrap()
                 .into_parts();
-        assert_eq!(processed.source().text(), &text::Text::from("AB"));
+        assert_eq!(processed.source().text(), &text::source::Text::from("AB"));
         assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
         assert!(processed.captured_control(0).is_none());
         let after = processed.captured_computed_line_boundary(0).unwrap();
@@ -1081,16 +1106,16 @@ fn caller_causes_and_duplicate_ordinals<S: layout::LayoutScalar>() {
         let s = processed.captured_scope(1).unwrap();
         assert_eq!(
             after.target(),
-            text::CapturedComputedLineBoundaryTarget::Scope {
+            text::capture::CapturedComputedLineBoundaryTarget::Scope {
                 scope: s.clone(),
-                side: text::SourceBoxSide::After,
+                side: text::capture::SourceBoxSide::After,
             }
         );
         assert_eq!(
             before.target(),
-            text::CapturedComputedLineBoundaryTarget::Scope {
+            text::capture::CapturedComputedLineBoundaryTarget::Scope {
                 scope: s,
-                side: text::SourceBoxSide::Before,
+                side: text::capture::SourceBoxSide::Before,
             }
         );
         assert_eq!(after.source_position().get(), 2);
@@ -1210,58 +1235,58 @@ impl<S: layout::LayoutScalar> layout::WrapEdgeSource for PairedEarly<S> {
         &self.base.orders
     }
 }
-fn paired_source(direction: layout::Direction) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+fn paired_source(direction: layout::Direction) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let mut raw = source(true, direction);
     raw.controls = vec![
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 1,
-            kind: text::ParagraphControlKind::InlineBoundaryStart,
+            kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 2,
-            kind: text::ParagraphControlKind::InlineBoundaryEnd,
+            kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
-    let text::SourceProcessingScope::Inline { boundaries, .. } = &mut raw.scopes[1] else {
+    let text::capture::SourceProcessingScope::Inline { boundaries, .. } = &mut raw.scopes[1] else {
         unreachable!()
     };
-    *boundaries = Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 });
+    *boundaries = Some(text::capture::SourceProcessingScopeBoundaries { start: 0, end: 1 });
     raw.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
         E::Origin {
             origin: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Connection(0),
         E::EnterScope(1),
         E::Control {
             control: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Origin {
             origin: 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Control {
             control: 1,
-            affinity: text::Affinity::Before,
+            affinity: text::layout::Affinity::Before,
         },
         E::ExitScope(1),
         E::ExitParagraph(0),
         E::ExitScope(0),
     ];
     raw.computed_line_boundaries = vec![
-        text::ComputedLineBoundaryInput::Scope {
+        text::capture::ComputedLineBoundaryInput::Scope {
             scope: 1,
-            side: text::SourceBoxSide::Before,
+            side: text::capture::SourceBoxSide::Before,
         },
-        text::ComputedLineBoundaryInput::Scope {
+        text::capture::ComputedLineBoundaryInput::Scope {
             scope: 1,
-            side: text::SourceBoxSide::Before,
+            side: text::capture::SourceBoxSide::Before,
         },
-        text::ComputedLineBoundaryInput::Endpoint { control: 0 },
+        text::capture::ComputedLineBoundaryInput::Endpoint { control: 0 },
     ];
     raw
 }
@@ -1284,9 +1309,12 @@ fn source_native_alias<S: layout::LayoutScalar>() {
             assert_eq!(scope.exit_control(), Some(end.clone()));
             assert_eq!(
                 start.kind(),
-                &text::ParagraphControlKind::InlineBoundaryStart
+                &text::paragraph::ParagraphControlKind::InlineBoundaryStart
             );
-            assert_eq!(end.kind(), &text::ParagraphControlKind::InlineBoundaryEnd);
+            assert_eq!(
+                end.kind(),
+                &text::paragraph::ParagraphControlKind::InlineBoundaryEnd
+            );
             assert!(start.event_position() < processed.captured_origin(1).unwrap());
             assert!(processed.captured_origin(1).unwrap() < end.event_position());
             let before = processed.captured_computed_line_boundary(0).unwrap();
@@ -1302,17 +1330,17 @@ fn source_native_alias<S: layout::LayoutScalar>() {
             assert!(processed.captured_computed_line_boundary(4).is_none());
             assert_eq!(
                 before.target(),
-                text::CapturedComputedLineBoundaryTarget::Scope {
+                text::capture::CapturedComputedLineBoundaryTarget::Scope {
                     scope: scope.clone(),
-                    side: text::SourceBoxSide::Before,
+                    side: text::capture::SourceBoxSide::Before,
                 }
             );
             assert_eq!(
                 endpoint.target(),
-                text::CapturedComputedLineBoundaryTarget::Endpoint(start)
+                text::capture::CapturedComputedLineBoundaryTarget::Endpoint(start)
             );
             assert_ne!(before, endpoint);
-            assert_eq!(processed.source().text(), &text::Text::from("AB"));
+            assert_eq!(processed.source().text(), &text::source::Text::from("AB"));
             assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
             let processed = Arc::new(processed);
             let prepared = normal_prepare(&processed);
@@ -1320,7 +1348,10 @@ fn source_native_alias<S: layout::LayoutScalar>() {
             assert_eq!(
                 prepared
                     .participants()
-                    .filter(|p| matches!(p, text::PreparedParticipant::ComputedLineBoundary(_)))
+                    .filter(|p| matches!(
+                        p,
+                        text::prepared::PreparedParticipant::ComputedLineBoundary(_)
+                    ))
                     .count(),
                 1
             );
@@ -1331,8 +1362,8 @@ fn source_native_alias<S: layout::LayoutScalar>() {
                     .map(|o| (o.kind(), o.boundary().view().source_before().get()))
                     .collect::<Vec<_>>(),
                 [
-                    (text::PreparedBreakKind::Forced, 1),
-                    (text::PreparedBreakKind::ParagraphEnd, 2),
+                    (text::prepared::PreparedBreakKind::Forced, 1),
+                    (text::prepared::PreparedBreakKind::ParagraphEnd, 2),
                 ]
             );
             let group = offers[0].computed_line_boundary().unwrap();

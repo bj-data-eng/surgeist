@@ -9,7 +9,7 @@ fn identified(text: &str, revision: u64) -> PreparedParagraph {
     style.overflow_wrap = OverflowWrap::Anywhere;
     PreparedParagraph::plain(
         1,
-        Source::identified(text, surgeist_text::Id::from_u64(149501), revision),
+        Source::identified(text, surgeist_text::source::Id::from_u64(149501), revision),
         style,
     )
 }
@@ -76,9 +76,9 @@ fn terminal_constraint<S: LayoutScalar>() {
     assert_eq!(
         ends,
         [
-            Some(surgeist_text::LineEnd::Soft),
-            Some(surgeist_text::LineEnd::Soft),
-            Some(surgeist_text::LineEnd::Paragraph)
+            Some(surgeist_text::selection::LineEnd::Soft),
+            Some(surgeist_text::selection::LineEnd::Soft),
+            Some(surgeist_text::selection::LineEnd::Paragraph)
         ]
     );
     assert_eq!(

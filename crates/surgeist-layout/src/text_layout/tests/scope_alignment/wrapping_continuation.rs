@@ -3,147 +3,156 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 
 fn continuation_case() -> Case {
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let style = authored(10.0);
     let runs = [(1_u32, "X"), (2, "X"), (3, "XXXXXX")];
-    let mut source = text::Source::identified("XXXXXXXX", text::Id::from_u64(1578120), 17);
-    source.span(text::Range::new(0, 8), style.clone());
+    let mut source =
+        text::source::Source::identified("XXXXXXXX", text::source::Id::from_u64(1578120), 17);
+    source.span(text::source::Range::new(0, 8), style.clone());
     let mut cursor = 0;
     let origins = runs
         .iter()
         .map(|(node, raw)| {
             let start = cursor;
             cursor += raw.len();
-            text::ParagraphOrigin {
+            text::paragraph::ParagraphOrigin {
                 text_node: None,
-                source: text::Source::identified(
+                source: text::source::Source::identified(
                     *raw,
-                    text::Id::from_u64(1578120 + u64::from(*node)),
+                    text::source::Id::from_u64(1578120 + u64::from(*node)),
                     17,
                 ),
-                local: text::Range::new(0, raw.len()),
-                aggregate: text::Range::new(start, cursor),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, raw.len()),
+                aggregate: text::source::Range::new(start, cursor),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }
         })
         .collect();
     let controls = vec![
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 1,
             kind: ParagraphControlKind::InlineBoundaryStart,
         },
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 8,
             kind: ParagraphControlKind::InlineBoundaryEnd,
         },
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 2,
             kind: ParagraphControlKind::InlineBoundaryStart,
         },
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 8,
             kind: ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
-            scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
+            scope_alignment_limits: Some(text::scope_alignment::ScopeAlignmentLimits::new(
                 65_536,
                 100,
                 67_108_864,
                 16 << 20,
             )),
             source,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins,
             connections: (0..2)
-                .map(|i| text::SourceProcessingConnection {
+                .map(|i| text::capture::SourceProcessingConnection {
                     before_origin: i,
                     after_origin: i + 1,
-                    kind: text::ParagraphConnectionKind::Continuous,
+                    kind: text::paragraph::ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
             controls,
             replacements: vec![],
             computed_line_boundaries: vec![],
             boundary_policies: (0..2)
-                .map(|i| text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(i),
-                    preceding_wrap: text::Wrap::Word,
-                    following_wrap: text::Wrap::Word,
-                    ancestor_wrap: text::Wrap::Word,
+                .map(|i| text::paragraph::ParagraphBoundaryPolicy {
+                    definition: text::paragraph::ParagraphBoundaryDefinition::Connection(i),
+                    preceding_wrap: text::style::Wrap::Word,
+                    following_wrap: text::style::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 })
                 .collect(),
             scopes: vec![
-                text::SourceProcessingScope::Block {
+                text::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
-                    topology: text::SourceProcessingTopology::Complete,
+                    topology: text::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style.clone(),
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     font_reference: Some(reference()),
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: Some(style),
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
-                    alignment_boundary: Some(text::ScopeAlignmentBoundary::NonInitial),
+                    boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
+                    alignment_boundary: Some(
+                        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
+                    ),
                     font_reference: Some(reference()),
                 },
                 // Actual represented child, with numeric endpoint/box geometry.
                 // It has neither an invented Initial classification nor a font demand.
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: None,
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 2, end: 3 }),
+                    boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                        start: 2,
+                        end: 3,
+                    }),
                     alignment_boundary: None,
                     font_reference: None,
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
                 E::EnterParagraph(0),
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Connection(0),
                 E::EnterScope(1),
                 E::Control {
                     control: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Origin {
                     origin: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Connection(1),
                 E::EnterScope(2),
                 E::Control {
                     control: 2,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Origin {
                     origin: 2,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Control {
                     control: 3,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(2),
                 E::Control {
                     control: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(1),
                 E::ExitParagraph(0),
@@ -152,12 +161,13 @@ fn continuation_case() -> Case {
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
     let prepared = prepare(&analyzed, 1.0);
     let origins = prepared
         .origin_views()
@@ -216,7 +226,7 @@ fn continuation<S: LayoutScalar>() {
             .unwrap_err()
             .detail(),
         Some(text::ErrorDetail::ScopeAlignment {
-            reason: text::ScopeAlignmentError::MissingMetrics { scope: 2 }
+            reason: text::scope_alignment::ScopeAlignmentError::MissingMetrics { scope: 2 }
         })
     ));
     for cut in [4, 6] {
@@ -224,8 +234,10 @@ fn continuation<S: LayoutScalar>() {
             case.binding
                 .prepared
                 .opportunity_views()
-                .any(|offer| offer.kind() == text::PreparedBreakKind::Allowed
-                    && offer.boundary().view().source_before().get() == cut)
+                .any(
+                    |offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed
+                        && offer.boundary().view().source_before().get() == cut
+                )
         );
     }
     let tree = case.tree::<S>(20.0, VerticalAlignOf::Baseline);
@@ -239,27 +251,31 @@ fn continuation<S: LayoutScalar>() {
                 scope: parent.clone(),
                 wrap_inside: WrapInside::Auto,
                 edges: WrapEdges::AUTO,
-                metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
-                    scope: None,
-                    metrics: text::LineStrut {
-                        baseline: 0.0,
-                        line_extent: 0.0,
+                metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                    text::allocation::LineBoxStrut {
+                        scope: None,
+                        metrics: text::allocation::LineStrut {
+                            baseline: 0.0,
+                            line_extent: 0.0,
+                        },
+                        alignment: text::allocation::LineBoxAlignment::Baseline,
                     },
-                    alignment: text::LineBoxAlignment::Baseline,
-                })),
+                )),
             },
             WrappingScopeInput::Captured {
                 scope: child.clone(),
                 wrap_inside: WrapInside::Auto,
                 edges: WrapEdges::AUTO,
-                metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
-                    scope: None,
-                    metrics: text::LineStrut {
-                        baseline: 6.0,
-                        line_extent: 14.0,
+                metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                    text::allocation::LineBoxStrut {
+                        scope: None,
+                        metrics: text::allocation::LineStrut {
+                            baseline: 6.0,
+                            line_extent: 14.0,
+                        },
+                        alignment: text::allocation::LineBoxAlignment::Baseline,
                     },
-                    alignment: text::LineBoxAlignment::Baseline,
-                })),
+                )),
             },
         ],
         child_order: vec![],
@@ -284,10 +300,10 @@ fn continuation<S: LayoutScalar>() {
             .map(|line| line.range())
             .collect::<Vec<_>>(),
         [
-            text::Range::new(0, 2),
-            text::Range::new(2, 4),
-            text::Range::new(4, 6),
-            text::Range::new(6, 8)
+            text::source::Range::new(0, 2),
+            text::source::Range::new(2, 4),
+            text::source::Range::new(4, 6),
+            text::source::Range::new(6, 8)
         ]
     );
     let middle = &final_lines[2];
@@ -304,7 +320,7 @@ fn continuation<S: LayoutScalar>() {
             .occurrence;
         assert_eq!(endpoint.captured_control().unwrap().scope(), *child);
         assert!(!line_request.participants.iter().any(
-            |p| matches!(p, text::PreparedParticipant::Control(control) if control == endpoint)
+            |p| matches!(p, text::prepared::PreparedParticipant::Control(control) if control == endpoint)
         ));
         assert!(
             line_request
@@ -320,10 +336,10 @@ fn continuation<S: LayoutScalar>() {
         assert_eq!(actual.len(), 1);
         assert_eq!(
             actual[0].strut,
-            Some(text::ControlStrut {
+            Some(text::allocation::ControlStrut {
                 baseline: 6.0,
                 line_extent: 14.0,
-                alignment: text::LineBoxAlignment::Baseline
+                alignment: text::allocation::LineBoxAlignment::Baseline
             })
         );
     }
@@ -344,10 +360,10 @@ fn continuation<S: LayoutScalar>() {
         assert_eq!(actual.len(), 1);
         assert_eq!(
             actual[0].strut,
-            Some(text::ControlStrut {
+            Some(text::allocation::ControlStrut {
                 baseline: 0.0,
                 line_extent: 0.0,
-                alignment: text::LineBoxAlignment::Baseline
+                alignment: text::allocation::LineBoxAlignment::Baseline
             })
         );
     }
@@ -363,13 +379,13 @@ fn continuation<S: LayoutScalar>() {
         let (index, row) = matches[0];
         assert_eq!(
             row,
-            &text::LineBoxStrut {
+            &text::allocation::LineBoxStrut {
                 scope: Some(scope.clone()),
-                metrics: text::LineStrut {
+                metrics: text::allocation::LineStrut {
                     baseline,
                     line_extent: extent
                 },
-                alignment: text::LineBoxAlignment::Baseline
+                alignment: text::allocation::LineBoxAlignment::Baseline
             }
         );
         assert_eq!(
@@ -400,7 +416,10 @@ fn continuation<S: LayoutScalar>() {
         (20.0, 11.0, 16.0)
     );
     let baseline = layout.lines()[2].baseline();
-    assert_eq!(layout.lines()[2].bounds().size, text::Size::new(20.0, 16.0));
+    assert_eq!(
+        layout.lines()[2].bounds().size,
+        text::geometry::Size::new(20.0, 16.0)
+    );
     assert_eq!(baseline, layout.lines()[2].bounds().origin.y + 11.0);
     assert_eq!(
         glyph_references(layout)
@@ -408,17 +427,17 @@ fn continuation<S: LayoutScalar>() {
             .filter(|(range, _)| range.start >= 4 && range.end <= 6)
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(4, 5), baseline - 3.0),
-            (text::Range::new(5, 6), baseline - 3.0)
+            (text::source::Range::new(4, 5), baseline - 3.0),
+            (text::source::Range::new(5, 6), baseline - 3.0)
         ]
     );
     let start = layout
         .positions()
-        .find(|p| p.source_cursor() == text::Cursor::new(4, text::Affinity::After))
+        .find(|p| p.source_cursor() == text::layout::Cursor::new(4, text::layout::Affinity::After))
         .unwrap();
     assert_eq!(
         layout.position_geometry(&start).unwrap().rect(),
-        text::Rect::new(0.0, baseline - 11.0, 1.0, 16.0)
+        text::geometry::Rect::new(0.0, baseline - 11.0, 1.0, 16.0)
     );
     let fragments = batch
         .final_inline_fragments()
@@ -441,7 +460,10 @@ fn continuation<S: LayoutScalar>() {
                 .view()
                 .aggregate_range())
             .collect::<Vec<_>>(),
-        [Some(text::Range::new(4, 5)), Some(text::Range::new(5, 6))]
+        [
+            Some(text::source::Range::new(4, 5)),
+            Some(text::source::Range::new(5, 6))
+        ]
     );
     raw(layout);
     source_custody(layout);

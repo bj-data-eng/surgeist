@@ -74,13 +74,13 @@ fn final_pair_wrapping<S: layout::LayoutScalar>(
             wrap_inside: host.declarations[0].wrap_inside,
             edges: host.declarations[0].edges,
             metric_contribution: Some(layout::InlineBoxMetricContribution::Strut(
-                text::LineBoxStrut {
+                text::allocation::LineBoxStrut {
                     scope: None,
-                    metrics: text::LineStrut {
+                    metrics: text::allocation::LineStrut {
                         baseline: 0.0,
                         line_extent: 0.0,
                     },
-                    alignment: text::LineBoxAlignment::Baseline,
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
             )),
         }],
@@ -89,18 +89,24 @@ fn final_pair_wrapping<S: layout::LayoutScalar>(
 }
 fn qualify_final_pair<S: layout::LayoutScalar>(
     batch: &layout::CompletedLayoutBatchOf<u32, S>,
-    prepared: &text::PreparedText,
+    prepared: &text::prepared::PreparedText,
     direction: layout::Direction,
 ) {
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
     assert!(placed.analyzed_source().identity() == prepared.analyzed_source().identity());
-    assert_eq!(placed.source().id(), Some(text::Id::from_u64(656000)));
+    assert_eq!(
+        placed.source().id(),
+        Some(text::source::Id::from_u64(656000))
+    );
     assert_eq!(placed.source().revision(), 15);
-    assert_eq!(placed.source().text(), &text::Text::from("AB"));
+    assert_eq!(placed.source().text(), &text::source::Text::from("AB"));
     assert_eq!(
         placed.lines().iter().map(|l| l.range()).collect::<Vec<_>>(),
-        [text::Range::new(0, 1), text::Range::new(1, 2)]
+        [
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2)
+        ]
     );
     assert_eq!(
         placed
@@ -150,8 +156,8 @@ fn qualify_final_pair<S: layout::LayoutScalar>(
     assert_eq!(
         glyphs,
         [
-            (35, 10.0, text::Range::new(0, 1)),
-            (36, 10.0, text::Range::new(1, 2))
+            (35, 10.0, text::source::Range::new(0, 1)),
+            (36, 10.0, text::source::Range::new(1, 2))
         ]
     );
     assert_eq!(prepared.control_views().count(), 2);
@@ -161,8 +167,8 @@ fn qualify_final_pair<S: layout::LayoutScalar>(
             .map(|o| (o.kind(), o.boundary().view().source_before().get()))
             .collect::<Vec<_>>(),
         [
-            (text::PreparedBreakKind::Forced, 1),
-            (text::PreparedBreakKind::ParagraphEnd, 2),
+            (text::prepared::PreparedBreakKind::Forced, 1),
+            (text::prepared::PreparedBreakKind::ParagraphEnd, 2),
         ]
     );
 }
@@ -187,7 +193,7 @@ fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
                 .captured_computed_line_boundary(0)
                 .unwrap()
                 .target(),
-            text::CapturedComputedLineBoundaryTarget::Endpoint(
+            text::capture::CapturedComputedLineBoundaryTarget::Endpoint(
                 processed.captured_control(0).unwrap()
             )
         );
@@ -205,12 +211,15 @@ fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
             let (node, input) = if captured == processed.captured_control(0).unwrap() {
                 assert_eq!(
                     view.kind(),
-                    &text::ParagraphControlKind::InlineBoundaryStart
+                    &text::paragraph::ParagraphControlKind::InlineBoundaryStart
                 );
                 (3, host.start)
             } else {
                 assert_eq!(captured, processed.captured_control(1).unwrap());
-                assert_eq!(view.kind(), &text::ParagraphControlKind::InlineBoundaryEnd);
+                assert_eq!(
+                    view.kind(),
+                    &text::paragraph::ParagraphControlKind::InlineBoundaryEnd
+                );
                 (4, host.end)
             };
             // Actual existing endpoint metrics are an affirmative zero. No

@@ -515,7 +515,7 @@ fn cancelled_terminal_candidates_keep_closed_deferred_causes_until_spacing_makes
 }
 
 fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     for origin in 0..cuts.len() - 1 {
         if origin != 0 {
@@ -529,62 +529,66 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let wrap = style.wrap;
     let processed = std::sync::Arc::new(
-        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
-            joint_flows: Vec::new(),
-            scope_alignment_limits: None,
-            source: source.clone(),
-            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: crate::processing::SourceProcessingEnvelope::Complete,
-            origins: cuts
-                .windows(2)
-                .map(|pair| crate::protocol::paragraph::ParagraphOrigin {
-                    text_node: None,
-                    source: source.clone(),
-                    local: Range::new(pair[0], pair[1]),
-                    aggregate: Range::new(pair[0], pair[1]),
-                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
-                })
-                .collect(),
-            connections: (0..cuts.len() - 2)
-                .map(
-                    |before_origin| crate::processing::SourceProcessingConnection {
-                        before_origin,
-                        after_origin: before_origin + 1,
-                        kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+        crate::processing::contextual::process_contextual_source(
+            crate::processing::contextual::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
+                source: source.clone(),
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: crate::processing::contextual::SourceProcessingEnvelope::Complete,
+                origins: cuts
+                    .windows(2)
+                    .map(|pair| crate::protocol::paragraph::ParagraphOrigin {
+                        text_node: None,
+                        source: source.clone(),
+                        local: Range::new(pair[0], pair[1]),
+                        aggregate: Range::new(pair[0], pair[1]),
+                        kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
+                    })
+                    .collect(),
+                connections: (0..cuts.len() - 2)
+                    .map(|before_origin| {
+                        crate::processing::contextual::SourceProcessingConnection {
+                            before_origin,
+                            after_origin: before_origin + 1,
+                            kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+                        }
+                    })
+                    .collect(),
+                boundary_policies: (0..cuts.len() - 2)
+                    .map(
+                        |connection| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                            definition:
+                                crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                                    connection,
+                                ),
+                            preceding_wrap: wrap,
+                            following_wrap: wrap,
+                            ancestor_wrap: wrap,
+                        },
+                    )
+                    .collect(),
+                controls: vec![],
+                replacements: vec![],
+                computed_line_boundaries: vec![],
+                scopes: vec![
+                    crate::processing::contextual::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: None,
+                        topology: crate::processing::contextual::SourceProcessingTopology::Complete,
+                        trim: Default::default(),
+                        base_style: style,
+                        used_direction: ParagraphBaseDirection::LeftToRight,
                     },
-                )
-                .collect(),
-            boundary_policies: (0..cuts.len() - 2)
-                .map(
-                    |connection| crate::protocol::paragraph::ParagraphBoundaryPolicy {
-                        definition:
-                            crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
-                                connection,
-                            ),
-                        preceding_wrap: wrap,
-                        following_wrap: wrap,
-                        ancestor_wrap: wrap,
-                    },
-                )
-                .collect(),
-            controls: vec![],
-            replacements: vec![],
-            computed_line_boundaries: vec![],
-            scopes: vec![crate::processing::SourceProcessingScope::Block {
-                writing_axis: None,
-                horizontal_inner_direction: None,
-                font_reference: None,
-                topology: crate::processing::SourceProcessingTopology::Complete,
-                trim: Default::default(),
-                base_style: style,
-                used_direction: ParagraphBaseDirection::LeftToRight,
-            }],
-            paragraphs: vec![crate::processing::SourceProcessingParagraph {
-                base_direction: ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: ParagraphStrut::DefaultFont,
-            }],
-            events,
-        })
+                ],
+                paragraphs: vec![crate::processing::contextual::SourceProcessingParagraph {
+                    base_direction: ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: ParagraphStrut::DefaultFont,
+                }],
+                events,
+            },
+        )
         .unwrap(),
     );
     crate::test_wrapping::bind_missing(

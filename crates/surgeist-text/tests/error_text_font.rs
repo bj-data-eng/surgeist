@@ -8,8 +8,13 @@
 //! has a row. Only `FontMetricTableError::BaselineOutline` wraps another error.
 
 use surgeist_text::{
-    BidiLevelError, FontMetricNumericError, FontMetricTable, FontMetricTableError,
-    FontOutlineCapability, FontOutlineError, HyphenationError, SuppliedLineError, TextNumericError,
+    font::{
+        FontMetricNumericError, FontMetricTable, FontMetricTableError, FontOutlineCapability,
+        FontOutlineError,
+    },
+    geometry::TextNumericError,
+    hyphenation::HyphenationError,
+    supplied_line::{BidiLevelError, SuppliedLineError},
 };
 
 mod error_support;

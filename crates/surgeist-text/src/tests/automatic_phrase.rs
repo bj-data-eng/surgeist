@@ -12,10 +12,13 @@ use crate::{
     layout::{Affinity, Layout},
     options::Alignment,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, ScopeRole, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
-        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            ContextualSourceInput, ScopeRole, SourceProcessingConnection, SourceProcessingEnvelope,
+            SourceProcessingError, SourceProcessingEvent, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingScopeBoundaries, SourceProcessingTopology,
+            WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         ControlAllocation, FinalizedLine, LineAnchor, LineContext, LineEnd, LineOrientation,

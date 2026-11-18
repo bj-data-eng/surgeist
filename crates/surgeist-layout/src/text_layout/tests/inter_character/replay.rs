@@ -59,7 +59,7 @@ fn insets<S: LayoutScalar>() {
     let paragraph = paragraph(
         AHEM,
         "ABC\nAAAAA",
-        own(0.0, Wrap::None, text::OverflowWrap::Normal, false),
+        own(0.0, Wrap::None, text::style::OverflowWrap::Normal, false),
     );
     let mut input = block::<S>();
     input.border = Edges::new(
@@ -90,11 +90,11 @@ fn insets<S: LayoutScalar>() {
         assert_eq!(selected.request().context.indent, 8.0);
         assert_eq!(
             selected.request().context.alignment_insets,
-            text::LineAlignmentInsets::try_new(5.0, 5.0).unwrap()
+            text::allocation::LineAlignmentInsets::try_new(5.0, 5.0).unwrap()
         );
         assert_eq!(
             selected.request().context.spacing,
-            text::SpacingPolicy::InterCharacter
+            text::spacing::SpacingPolicy::InterCharacter
         );
         assert_eq!(line.measurements().alignment().advance(), 50.0);
     }
@@ -132,12 +132,12 @@ fn float_input<S: LayoutScalar>(height: f64) -> NodeInputOf<S> {
 }
 
 fn selected_boundary(
-    slot: &text::SpacingSlot,
+    slot: &text::spacing::SpacingSlot,
     paragraph: &PreparedParagraph,
     line_start: usize,
     at: usize,
 ) {
-    let text::SpacingSlotTarget::Boundary {
+    let text::spacing::SpacingSlotTarget::Boundary {
         visual_before,
         visual_after,
     } = slot.target()
@@ -149,10 +149,10 @@ fn selected_boundary(
         assert_eq!(unit.letter_spacing_after(), 4.0);
         let pieces = unit.pieces().collect::<Vec<_>>();
         assert_eq!(pieces.len(), 1);
-        let source = text::Range::new(line_start + local, line_start + local + 1);
+        let source = text::source::Range::new(line_start + local, line_start + local + 1);
         assert_eq!(
             pieces[0].owner(),
-            text::SpacingSlotOwner::Source {
+            text::spacing::SpacingSlotOwner::Source {
                 origin: paragraph.origin(1),
                 local: source,
                 aggregate: source,
@@ -175,7 +175,7 @@ fn selected_boundary(
             .handle();
         assert_eq!(
             unit.participants().cloned().collect::<Vec<_>>(),
-            [text::PreparedParticipant::Text(participant)]
+            [text::prepared::PreparedParticipant::Text(participant)]
         );
     }
 }
@@ -185,7 +185,7 @@ fn cached_float<S: LayoutScalar>() {
     let paragraph = paragraph(
         AHEM,
         "ABC\nABC",
-        own(4.0, Wrap::None, text::OverflowWrap::Normal, false),
+        own(4.0, Wrap::None, text::style::OverflowWrap::Normal, false),
     );
     let tree = tree(&paragraph, block::<S>())
         .children(0, [9, 1])
@@ -205,7 +205,7 @@ fn cached_float<S: LayoutScalar>() {
         );
         assert_eq!(
             line.selected_line().request().context.spacing,
-            text::SpacingPolicy::InterCharacter
+            text::spacing::SpacingPolicy::InterCharacter
         );
         assert_eq!(
             line.measurements().alignment().advance(),
@@ -267,9 +267,17 @@ fn cached_float<S: LayoutScalar>() {
             assert_eq!(
                 raw(line, AHEM),
                 [
-                    (text::Range::new(index * 4, index * 4 + 1), 35, 10.0),
-                    (text::Range::new(index * 4 + 1, index * 4 + 2), 36, 10.0),
-                    (text::Range::new(index * 4 + 2, index * 4 + 3), 37, 10.0),
+                    (text::source::Range::new(index * 4, index * 4 + 1), 35, 10.0),
+                    (
+                        text::source::Range::new(index * 4 + 1, index * 4 + 2),
+                        36,
+                        10.0
+                    ),
+                    (
+                        text::source::Range::new(index * 4 + 2, index * 4 + 3),
+                        37,
+                        10.0
+                    ),
                 ]
             );
         }

@@ -1,9 +1,9 @@
 //! Complete-body family admission and preparation identity.
 use super::*;
 
-fn admission_fixture(topology: t::SourceProcessingTopology) -> t::PreparedText {
-    let mut domain = block(style(t::WhiteSpace::Preserve), false, false);
-    let t::SourceProcessingScope::Block {
+fn admission_fixture(topology: t::capture::SourceProcessingTopology) -> t::prepared::PreparedText {
+    let mut domain = block(style(t::style::WhiteSpace::Preserve), false, false);
+    let t::capture::SourceProcessingScope::Block {
         topology: value, ..
     } = &mut domain
     else {
@@ -11,7 +11,7 @@ fn admission_fixture(topology: t::SourceProcessingTopology) -> t::PreparedText {
     };
     *value = topology;
     prepare_capture(
-        t::Source::identified("A", t::Id::from_u64(1_646_301), 1),
+        t::source::Source::identified("A", t::source::Id::from_u64(1_646_301), 1),
         domain,
         &[(0, 1)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 1)],
@@ -27,27 +27,27 @@ fn admission_fixture(topology: t::SourceProcessingTopology) -> t::PreparedText {
     )
 }
 
-fn local_request(p: &t::PreparedText) -> t::LineSelectionRequest {
+fn local_request(p: &t::prepared::PreparedText) -> t::selection::LineSelectionRequest {
     assert_eq!(p.source_segments().len(), 1);
     let controls = p.control_views().map(|v| v.handle()).collect::<Vec<_>>();
     assert_eq!(controls.len(), 2);
     let owner = controls[0].captured_control().unwrap().scope();
-    assert_eq!(owner.role(), t::ScopeRole::Inline);
+    assert_eq!(owner.role(), t::capture::ScopeRole::Inline);
     assert_eq!(owner.entry_control(), controls[0].captured_control());
     assert_eq!(owner.exit_control(), controls[1].captured_control());
     assert_eq!(controls[1].captured_control().unwrap().scope(), owner);
     let parent = owner.parent().unwrap();
-    assert_eq!(parent.role(), t::ScopeRole::Domain);
+    assert_eq!(parent.role(), t::capture::ScopeRole::Domain);
     let context = p
         .inline_box_edge_context(
-            t::InlineBoxSource::captured(owner),
-            t::InlineBoxSource::captured(parent),
-            t::LineEdgeSide::Start,
+            t::inline_box::InlineBoxSource::captured(owner),
+            t::inline_box::InlineBoxSource::captured(parent),
+            t::finalized::LineEdgeSide::Start,
         )
         .unwrap();
     let segment = p.source_segments().next().unwrap();
     let mut input = request(p, segment.start(), segment.end_opportunity(), &[], 100.0);
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     assert!(input.inline_boxes.is_none());
     assert_eq!(input.controls.len(), 2);
     for row in &mut input.controls {
@@ -57,20 +57,23 @@ fn local_request(p: &t::PreparedText) -> t::LineSelectionRequest {
             assert_eq!(row.occurrence, controls[1]);
             3.0
         };
-        row.boundary = Some(t::InlineBoundaryAllocation::box_edge(
+        row.boundary = Some(t::allocation::InlineBoundaryAllocation::box_edge(
             context.clone(),
-            t::InlineBoxEdgeComponents::from_f64(0.0, width, 0.0).unwrap(),
+            t::inline_box::InlineBoxEdgeComponents::from_f64(0.0, width, 0.0).unwrap(),
         ));
     }
     assert!(p.boundary_context_demand(&input).unwrap().is_none());
     input
 }
 
-fn authentic_publication(p: &t::PreparedText, line: &t::FinalizedLine) {
+fn authentic_publication(p: &t::prepared::PreparedText, line: &t::finalized::FinalizedLine) {
     // Real maintained Ahem: UPEM1000/A advance1000 at size10. The two
     // independently supplied physical edges contribute2+3; no font/strut proxy.
-    assert_eq!(p.analyzed_source().source().text(), &t::Text::from("A"));
-    assert_eq!(ids(line), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(
+        p.analyzed_source().source().text(),
+        &t::source::Text::from("A")
+    );
+    assert_eq!(ids(line), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(line.feedback().advance, 15.0);
     let mut glyphs = 0;
     for run in line.run_views() {
@@ -84,12 +87,12 @@ fn authentic_publication(p: &t::PreparedText, line: &t::FinalizedLine) {
     assert_eq!(line.control_slots().count(), 2);
 }
 
-fn exact_refusal(error: t::Error, expected: t::InlineBoxFragmentationError) {
+fn exact_refusal(error: t::Error, expected: t::inline_box::InlineBoxFragmentationError) {
     assert_eq!(error.code, t::ErrorCode::InvalidTextProtocol);
     assert!(
         matches!(error.detail(),
             Some(t::ErrorDetail::InvalidTextProtocol {
-                reason: t::ProtocolError::InlineBoxFragmentation(actual)
+                reason: t::prepared::ProtocolError::InlineBoxFragmentation(actual)
             }) if *actual == expected
         ),
         "unexpected family refusal: {error:?}"
@@ -98,8 +101,8 @@ fn exact_refusal(error: t::Error, expected: t::InlineBoxFragmentationError) {
 
 #[test]
 fn unknown_topology_retains_local_edges_but_cannot_issue_global_family() {
-    let unknown = admission_fixture(t::SourceProcessingTopology::Unknown);
-    let complete = admission_fixture(t::SourceProcessingTopology::Complete);
+    let unknown = admission_fixture(t::capture::SourceProcessingTopology::Unknown);
+    let complete = admission_fixture(t::capture::SourceProcessingTopology::Complete);
     let unknown_request = local_request(&unknown);
     let complete_request = local_request(&complete);
     let old_unknown = finalize(&unknown, unknown_request.clone());
@@ -112,7 +115,7 @@ fn unknown_topology_retains_local_edges_but_cannot_issue_global_family() {
     // Domain0 is the actual captured root Block input ordinal, not a family ID.
     exact_refusal(
         unknown.inline_box_family(vec![], None).unwrap_err(),
-        t::InlineBoxFragmentationError::IncompleteTopology { domain: 0 },
+        t::inline_box::InlineBoxFragmentationError::IncompleteTopology { domain: 0 },
     );
     assert!(unknown.scope_alignment_retention().is_none());
     assert!(complete.scope_alignment_retention().is_none());
@@ -133,8 +136,8 @@ fn unknown_topology_retains_local_edges_but_cannot_issue_global_family() {
 
 #[test]
 fn independent_preparations_reject_foreign_family_without_revoking_prior_output() {
-    let left = admission_fixture(t::SourceProcessingTopology::Complete);
-    let right = admission_fixture(t::SourceProcessingTopology::Complete);
+    let left = admission_fixture(t::capture::SourceProcessingTopology::Complete);
+    let right = admission_fixture(t::capture::SourceProcessingTopology::Complete);
     assert_eq!(
         left.analyzed_source().source().text(),
         right.analyzed_source().source().text()
@@ -163,7 +166,7 @@ fn independent_preparations_reject_foreign_family_without_revoking_prior_output(
         mismatched.inline_boxes = Some(foreign.clone());
         exact_refusal(
             receiver.select(mismatched).unwrap_err(),
-            t::InlineBoxFragmentationError::ForeignFamily,
+            t::inline_box::InlineBoxFragmentationError::ForeignFamily,
         );
         authentic_publication(receiver, &prior);
         let recovered = finalize(receiver, valid.clone());

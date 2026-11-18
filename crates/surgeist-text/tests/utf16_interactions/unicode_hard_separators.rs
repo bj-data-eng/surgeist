@@ -48,7 +48,7 @@ fn native_visible_control(separator: u16, class: LineBreak, white_space: WhiteSp
             replacements: Vec::new(),
             anchor_order: Vec::new(),
         },
-        surgeist_text::AnalysisTypography::HorizontalComposition,
+        surgeist_text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .expect("the original control source is admitted");
     assert_eq!(analyzed.source(), &source);

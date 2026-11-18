@@ -5,10 +5,10 @@ use surgeist_text as text;
 
 fn paragraph(raw: &str) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
-    style.white_space = text::WhiteSpace::PreserveBreaks;
-    style.wrap = text::Wrap::Word;
-    style.hyphens = text::Hyphens::None;
-    PreparedParagraph::plain(1, text::Source::new(raw), style)
+    style.white_space = text::style::WhiteSpace::PreserveBreaks;
+    style.wrap = text::style::Wrap::Word;
+    style.hyphens = text::hyphenation::Hyphens::None;
+    PreparedParagraph::plain(1, text::source::Source::new(raw), style)
 }
 
 fn fit_terminal(paragraph: &PreparedParagraph, style: crate::TextWrapStyle) -> Vec<FittedLine> {
@@ -45,7 +45,7 @@ pub(in super::super) fn fit_with_allocation(
         &FinalizedLine,
         Band,
         f64,
-        &[surgeist_text::LineBoxStrut],
+        &[surgeist_text::allocation::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
 ) -> Result<Vec<FittedLine>, FitError> {
     let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
@@ -121,7 +121,10 @@ pub(in super::super) fn fit_with_allocation(
     )
 }
 
-fn terminal_pair(paragraph: &PreparedParagraph, length: usize) -> [text::PreparedOpportunity; 2] {
+fn terminal_pair(
+    paragraph: &PreparedParagraph,
+    length: usize,
+) -> [text::prepared::PreparedOpportunity; 2] {
     let offers = paragraph
         .prepared
         .opportunity_views()
@@ -152,7 +155,7 @@ fn terminal_pair(paragraph: &PreparedParagraph, length: usize) -> [text::Prepare
 fn assert_completion(
     paragraph: &PreparedParagraph,
     lines: &[FittedLine],
-    expected: &[(text::Range, f64, LineEnd)],
+    expected: &[(text::source::Range, f64, LineEnd)],
     length: usize,
 ) {
     let [forced, paragraph_end] = terminal_pair(paragraph, length);
@@ -202,7 +205,7 @@ fn assert_completion(
                 assert!(matches!(
                     error.detail(),
                     Some(text::ErrorDetail::InvalidTextProtocol {
-                        reason: text::ProtocolError::NonFormattedForcedLine
+                        reason: text::prepared::ProtocolError::NonFormattedForcedLine
                     })
                 ));
             } else {
@@ -285,16 +288,16 @@ fn balance_terminal_source_lf_keeps_equal_boundary_paragraph_completion_nonforma
     );
     let auto = fit_terminal(&paragraph, crate::TextWrapStyle::Auto);
     let auto_expected = [
-        (text::Range::new(0, 7), 60.0, LineEnd::Soft),
-        (text::Range::new(7, 9), 10.0, LineEnd::Forced),
-        (text::Range::new(9, 9), 0.0, LineEnd::Paragraph),
+        (text::source::Range::new(0, 7), 60.0, LineEnd::Soft),
+        (text::source::Range::new(7, 9), 10.0, LineEnd::Forced),
+        (text::source::Range::new(9, 9), 0.0, LineEnd::Paragraph),
     ];
     assert_completion(&paragraph, &auto, &auto_expected, 9);
     let balanced = fit_terminal(&paragraph, crate::TextWrapStyle::Balance);
     let balanced_expected = [
-        (text::Range::new(0, 4), 30.0, LineEnd::Soft),
-        (text::Range::new(4, 9), 40.0, LineEnd::Forced),
-        (text::Range::new(9, 9), 0.0, LineEnd::Paragraph),
+        (text::source::Range::new(0, 4), 30.0, LineEnd::Soft),
+        (text::source::Range::new(4, 9), 40.0, LineEnd::Forced),
+        (text::source::Range::new(9, 9), 0.0, LineEnd::Paragraph),
     ];
     assert_completion(&paragraph, &balanced, &balanced_expected, 9);
     assert_completion(&paragraph, &auto, &auto_expected, 9);
@@ -313,8 +316,8 @@ fn balance_source_lf_without_text_still_has_real_forced_line_and_nonformatted_ta
         [10]
     );
     let expected = [
-        (text::Range::new(0, 1), 0.0, LineEnd::Forced),
-        (text::Range::new(1, 1), 0.0, LineEnd::Paragraph),
+        (text::source::Range::new(0, 1), 0.0, LineEnd::Forced),
+        (text::source::Range::new(1, 1), 0.0, LineEnd::Paragraph),
     ];
     for style in [
         crate::TextWrapStyle::Auto,
@@ -346,9 +349,9 @@ fn balance_source_lf_without_text_still_has_real_forced_line_and_nonformatted_ta
 fn paragraph_tail_leaves_terminal_forced_group_and_phantom_receipt_ordinary() {
     let paragraph = paragraph("AAA BB C\n");
     let expected = [
-        (text::Range::new(0, 7), 60.0, LineEnd::Soft),
-        (text::Range::new(7, 9), 10.0, LineEnd::Forced),
-        (text::Range::new(9, 9), 0.0, LineEnd::Paragraph),
+        (text::source::Range::new(0, 7), 60.0, LineEnd::Soft),
+        (text::source::Range::new(7, 9), 10.0, LineEnd::Forced),
+        (text::source::Range::new(9, 9), 0.0, LineEnd::Paragraph),
     ];
     let auto = fit_terminal(&paragraph, crate::TextWrapStyle::Auto);
     let repaired = fit_terminal(&paragraph, crate::TextWrapStyle::AvoidShortLastLine);
@@ -363,16 +366,17 @@ fn paragraph_tail_leaves_terminal_forced_group_and_phantom_receipt_ordinary() {
 
 #[test]
 fn paragraph_tail_cannot_reactivate_manual_penultimate_indication_excluded_by_always() {
-    let style = text::Style {
-        white_space: text::WhiteSpace::Collapse,
-        wrap: text::Wrap::Word,
-        hyphens: text::Hyphens::Manual,
-        hyphenate_character: text::HyphenateCharacter::String("A".into()),
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Collapse,
+        wrap: text::style::Wrap::Word,
+        hyphens: text::hyphenation::Hyphens::Manual,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::String("A".into()),
         ..ahem_style(10.0, 10.0)
     };
     // Real source SHY after XXXX SPACE as: Before indication A supplies10.
     // Ordinary permits80/70; complete-block Always requires40/90.
-    let paragraph = PreparedParagraph::plain(1, text::Source::new("XXXX as\u{ad}sociate"), style);
+    let paragraph =
+        PreparedParagraph::plain(1, text::source::Source::new("XXXX as\u{ad}sociate"), style);
     let manual = paragraph
         .prepared
         .opportunity_views()
@@ -442,27 +446,27 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
     use crate::test_support::text::ParagraphPart;
 
     fn check<S: crate::LayoutScalar>() {
-        let style = text::Style {
-            white_space: text::WhiteSpace::PreserveBreaks,
-            wrap: text::Wrap::Word,
-            hyphens: text::Hyphens::None,
+        let style = text::style::Style {
+            white_space: text::style::WhiteSpace::PreserveBreaks,
+            wrap: text::style::Wrap::Word,
+            hyphens: text::hyphenation::Hyphens::None,
             ..ahem_style(10.0, 10.0)
         };
         for in_flow in [false, true] {
             let atomic = if in_flow {
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: text::Size::new(0.0, 0.0),
+                    size: text::geometry::Size::new(0.0, 0.0),
                 }
             } else {
                 ParagraphPart::OutOfFlow {
                     node: 2,
-                    size: text::Size::new(0.0, 0.0),
+                    size: text::geometry::Size::new(0.0, 0.0),
                 }
             };
             let paragraph = PreparedParagraph::new(
                 vec![
-                    ParagraphPart::text(1, text::Source::new("AAA BB C\n"), style.clone()),
+                    ParagraphPart::text(1, text::source::Source::new("AAA BB C\n"), style.clone()),
                     atomic,
                 ],
                 style.clone(),
@@ -470,10 +474,13 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
             );
             let binding = paragraph.binding(0);
             let occurrence = binding.atomics[0].occurrence.clone();
-            assert_eq!(occurrence.view().original_box().id(), text::Id::from_u64(2));
+            assert_eq!(
+                occurrence.view().original_box().id(),
+                text::source::Id::from_u64(2)
+            );
             assert_eq!(
                 occurrence.view().original_box().size(),
-                text::Size::new(0.0, 0.0)
+                text::geometry::Size::new(0.0, 0.0)
             );
             let tree = PublicLayoutTreeOf::<S>::new()
                 .children(0, [1, 2])
@@ -553,7 +560,7 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
             assert_eq!(
                 entries
                     .iter()
-                    .filter(|entry| matches!(entry, text::PlacementEntry::Formatted(_)))
+                    .filter(|entry| matches!(entry, text::placement::PlacementEntry::Formatted(_)))
                     .count(),
                 if in_flow { 3 } else { 2 }
             );
@@ -565,7 +572,7 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
             }
             let receiver = entries.last().unwrap();
             assert_eq!(
-                matches!(receiver, text::PlacementEntry::Formatted(_)),
+                matches!(receiver, text::placement::PlacementEntry::Formatted(_)),
                 in_flow
             );
             let finalized = receiver.finalized_line();
@@ -585,7 +592,7 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
             assert_eq!(
                 matches!(
                     request.atomics[0].allocation,
-                    text::AtomicLineAllocation::InFlow { .. }
+                    text::allocation::AtomicLineAllocation::InFlow { .. }
                 ),
                 in_flow
             );

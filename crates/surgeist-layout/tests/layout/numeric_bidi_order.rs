@@ -1,7 +1,7 @@
 //! Physical placement consumes supplied L2 order once and retains source order.
 use std::{convert::Infallible, slice};
 use surgeist_layout as l;
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 struct AtomicTree<S: l::LayoutScalar> {
     inputs: Vec<l::LayoutInputOf<S>>,

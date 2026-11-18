@@ -1,3 +1,8 @@
+//! Incremental construction of a source.
+//!
+//! [`Composer`] builds a source piece by piece, and [`Mark`] marks a range of it. [`compose`] returns a new
+//! composer; [`source`] runs a closure over one and returns the finished source.
+
 use crate::{
     Result,
     geometry::Size,

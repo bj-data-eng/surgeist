@@ -209,7 +209,7 @@ pub(super) fn measure(
     child: usize,
     width: &str,
     height: &str,
-) -> Result<surgeist_text::Size, Error> {
+) -> Result<surgeist_text::geometry::Size, Error> {
     let [before, atomic, after] = children else {
         return Err(invalid(
             "original containing frame has three direct children",
@@ -265,7 +265,7 @@ pub(super) fn measure(
         root_request(context)?,
     )
     .map_err(|error| invalid(format!("{error:?}")))?;
-    Ok(surgeist_text::Size::new(
+    Ok(surgeist_text::geometry::Size::new(
         f64::from(size.width),
         f64::from(size.height),
     ))
@@ -375,7 +375,7 @@ fn verify_native<'batch>(
     if bound.node != ATOMIC
         || placed.container() != ROOT
         || placed.nodes() != CHILDREN
-        || original.size() != surgeist_text::Size::new(20.0, 40.0)
+        || original.size() != surgeist_text::geometry::Size::new(20.0, 40.0)
         || atomic.id() != original.id()
         || atomic.index() != original.index()
         || atomic.rect().size() != original.size()

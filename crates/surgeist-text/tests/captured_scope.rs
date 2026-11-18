@@ -1,7 +1,28 @@
 //! Public capture identity and paragraph-incidence contracts.
 
 use std::{collections::HashSet, sync::Arc};
-use surgeist_text::*;
+use surgeist_text::{
+    System,
+    analyzed::{AnalyzedSource, WrappingPolicy},
+    capture::{
+        CapturedDomainDefinition, CapturedFlowEvent, CapturedParagraph, CapturedScope,
+        ContextualSourceInput, ScopeRole, SourceProcessingConnection, SourceProcessingEnvelope,
+        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingScopeBoundaries, SourceProcessingTopology, WhiteSpaceTrim,
+        process_contextual_source,
+    },
+    geometry::Size,
+    layout::Affinity,
+    paragraph::{
+        ParagraphBaseDirection, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
+        ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+        ParagraphOriginKind, ParagraphStrut,
+    },
+    prepared::{PreparationOptions, PreparedText},
+    processing::{DocumentSegmentBreaks, ProcessedSource},
+    source::{Id, InlineBox, InlineBoxKind, Range, Source},
+    style::{Font, LineHeight, Style, WhiteSpace, WordSpaceTransform, Wrap},
+};
 
 #[path = "captured_scope/flow.rs"]
 mod flow;
@@ -66,7 +87,7 @@ fn prepare(processed: &Arc<ProcessedSource>) -> Vec<PreparedText> {
         .map(|paragraph| {
             let analyzed = AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                surgeist_text::AnalysisTypography::HorizontalComposition,
+                surgeist_text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let policies = analyzed
@@ -604,7 +625,7 @@ fn standalone_preparation_does_not_acquire_contextual_authority() {
     let analyzed = AnalyzedSource::new(
         Source::new("X"),
         style(WordSpaceTransform::None),
-        surgeist_text::AnalysisTypography::HorizontalComposition,
+        surgeist_text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system()

@@ -9,7 +9,7 @@ use crate::projection::SourceProjection;
 use crate::protocol::paragraph::SemanticAnchorItem;
 use crate::{
     Error, ErrorCode, ErrorDetail, Result, error::TextTransformError,
-    processing::SourceProcessingEvent, source::InlineBoxKind,
+    processing::contextual::SourceProcessingEvent, source::InlineBoxKind,
 };
 use icu_properties::{
     CodePointMapData,
@@ -256,9 +256,9 @@ impl PhraseReads {
         if let Some(edge) = paragraph.missing.iter().find(|edge| {
             input.atoms[start].source.start < edge.at && edge.at < input.atoms[end - 1].source.end
         }) {
-            return Err(
-                edge.unavailable(crate::processing::SourceContinuityOperation::Transformation)
-            );
+            return Err(edge.unavailable(
+                crate::processing::contextual::SourceContinuityOperation::Transformation,
+            ));
         }
         let language = self
             .language(styles, map.rows[start].style)?

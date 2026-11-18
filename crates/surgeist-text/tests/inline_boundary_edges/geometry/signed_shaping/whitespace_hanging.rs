@@ -2,10 +2,10 @@
 //! Preserved separators and punctuation use their separate Phase-II causes.
 use super::*;
 
-fn whole_inline(value: &str, own: t::Style) -> t::PreparedText {
+fn whole_inline(value: &str, own: t::style::Style) -> t::prepared::PreparedText {
     let n = value.encode_utf16().count();
     prepare_capture(
-        t::Source::new(value),
+        t::source::Source::new(value),
         block(own, false, false),
         &[(0, n)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, n)],
@@ -24,10 +24,20 @@ fn whole_inline(value: &str, own: t::Style) -> t::PreparedText {
 #[test]
 fn signed_and_cancelling_edges_remain_transparent_to_actual_collapsible_space() {
     for (value, leading, space, glyph_range) in [
-        (" A", true, t::Range::new(0, 1), t::Range::new(1, 2)),
-        ("A ", false, t::Range::new(1, 2), t::Range::new(0, 1)),
+        (
+            " A",
+            true,
+            t::source::Range::new(0, 1),
+            t::source::Range::new(1, 2),
+        ),
+        (
+            "A ",
+            false,
+            t::source::Range::new(1, 2),
+            t::source::Range::new(0, 1),
+        ),
     ] {
-        let p = whole_inline(value, style(t::WhiteSpace::Collapse));
+        let p = whole_inline(value, style(t::style::WhiteSpace::Collapse));
         for (edge, flow, x, strip) in [
             (
                 c(-5.0, 0.0, 0.0),
@@ -57,9 +67,15 @@ fn signed_and_cancelling_edges_remain_transparent_to_actual_collapsible_space() 
                 .edge_units()
                 .find(|row| row.source_pieces().any(|range| range == space))
                 .unwrap();
-            assert_eq!(row.disposition(), t::LineEdgeDisposition::Removed);
+            assert_eq!(
+                row.disposition(),
+                t::finalized::LineEdgeDisposition::Removed
+            );
             assert_eq!(row.advance(), 0.0);
-            assert_eq!(p.analyzed_source().source().text(), &t::Text::from(value));
+            assert_eq!(
+                p.analyzed_source().source().text(),
+                &t::source::Text::from(value)
+            );
             let occurrence = p
                 .control_views()
                 .nth(usize::from(!leading))
@@ -72,14 +88,16 @@ fn signed_and_cancelling_edges_remain_transparent_to_actual_collapsible_space() 
                     .strip_interval(),
                 strip
             );
-            let replay = line.with_spacing(t::SpacingAllocations::None).unwrap();
+            let replay = line
+                .with_spacing(t::spacing::SpacingAllocations::None)
+                .unwrap();
             assert_eq!(paints(&replay), paints(&line));
         }
     }
     // <Inline>A SPACE</Inline>B: this SPACE is internal, not terminal.
     let p = prepare_capture(
-        t::Source::new("A B"),
-        block(style(t::WhiteSpace::Collapse), false, false),
+        t::source::Source::new("A B"),
+        block(style(t::style::WhiteSpace::Collapse), false, false),
         &[(0, 2), (2, 3)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 2)],
         &[(0, 1)],
@@ -102,17 +120,23 @@ fn signed_and_cancelling_edges_remain_transparent_to_actual_collapsible_space() 
         assert_eq!(
             paints(&line),
             [
-                (t::Range::new(0, 1), 35, 10.0, 0.0),
-                (t::Range::new(1, 2), 3, 10.0, 10.0),
-                (t::Range::new(2, 3), 36, 10.0, b)
+                (t::source::Range::new(0, 1), 35, 10.0, 0.0),
+                (t::source::Range::new(1, 2), 3, 10.0, 10.0),
+                (t::source::Range::new(2, 3), 36, 10.0, b)
             ]
         );
         assert_eq!(line.feedback().advance, flow);
         let space = line
             .edge_units()
-            .find(|row| row.source_pieces().any(|r| r == t::Range::new(1, 2)))
+            .find(|row| {
+                row.source_pieces()
+                    .any(|r| r == t::source::Range::new(1, 2))
+            })
             .unwrap();
-        assert_ne!(space.disposition(), t::LineEdgeDisposition::Removed);
+        assert_ne!(
+            space.disposition(),
+            t::finalized::LineEdgeDisposition::Removed
+        );
         assert_eq!(space.advance(), 10.0);
     }
 }
@@ -122,7 +146,10 @@ fn margin_only_preserved_separator_hanging_uses_actual_geometry_and_bp_remains_b
     // Pinned Text3:2776/Text4:5066: the BP blocker applies to ANY
     // hangable glyph, before the punctuation subsection. Margin-only does not
     // stop eligibility; actual SPACE10..20 still overflows the real band15.
-    for mode in [t::WhiteSpace::Preserve, t::WhiteSpace::PreserveSpaces] {
+    for mode in [
+        t::style::WhiteSpace::Preserve,
+        t::style::WhiteSpace::PreserveSpaces,
+    ] {
         let p = whole_inline("A ", style(mode));
         for (edge, raw, fit, align, min, max) in [
             (zero(), 20.0, 10.0, 15.0, 10.0, 20.0),
@@ -134,8 +161,8 @@ fn margin_only_preserved_separator_hanging_uses_actual_geometry_and_bp_remains_b
             assert_eq!(
                 paints(&line),
                 [
-                    (t::Range::new(0, 1), 35, 10.0, 0.0),
-                    (t::Range::new(1, 2), 3, 10.0, 10.0)
+                    (t::source::Range::new(0, 1), 35, 10.0, 0.0),
+                    (t::source::Range::new(1, 2), 3, 10.0, 10.0)
                 ]
             );
             assert_eq!(measures(&line), [raw, fit, align, min, max]);
@@ -145,14 +172,22 @@ fn margin_only_preserved_separator_hanging_uses_actual_geometry_and_bp_remains_b
             );
             let space = line
                 .edge_units()
-                .find(|row| row.source_pieces().any(|r| r == t::Range::new(1, 2)))
+                .find(|row| {
+                    row.source_pieces()
+                        .any(|r| r == t::source::Range::new(1, 2))
+                })
                 .unwrap();
-            assert_ne!(space.disposition(), t::LineEdgeDisposition::Removed);
+            assert_ne!(
+                space.disposition(),
+                t::finalized::LineEdgeDisposition::Removed
+            );
             assert_eq!(space.advance(), 10.0);
             // With no BP, conditional fit/min exclude the whole SPACE10;
             // alignment excludes its actual5px overflow. End margin is still
             // actual signed flow, not a generic trailing-whitespace subtraction.
-            let replay = line.with_spacing(t::SpacingAllocations::None).unwrap();
+            let replay = line
+                .with_spacing(t::spacing::SpacingAllocations::None)
+                .unwrap();
             assert_eq!(measures(&replay), measures(&line));
         }
     }
@@ -160,9 +195,12 @@ fn margin_only_preserved_separator_hanging_uses_actual_geometry_and_bp_remains_b
 
 #[test]
 fn cancelling_bp_blocks_real_period_hanging_while_margin_alone_does_not() {
-    let mut own = style(t::WhiteSpace::Preserve);
-    own.hanging_punctuation =
-        t::HangingPunctuation::new(false, Some(t::HangingPunctuationEnd::ForceEnd), false);
+    let mut own = style(t::style::WhiteSpace::Preserve);
+    own.hanging_punctuation = t::style::HangingPunctuation::new(
+        false,
+        Some(t::style::HangingPunctuationEnd::ForceEnd),
+        false,
+    );
     let p = whole_inline("A.", own);
     // Maintained hanging_punctuation.rs qualifies Ahem A35/period16, size10,
     // advances10. ForceEnd is unconditional; first/last context usage is NOT
@@ -177,8 +215,8 @@ fn cancelling_bp_blocks_real_period_hanging_while_margin_alone_does_not() {
         assert_eq!(
             paints(&line),
             [
-                (t::Range::new(0, 1), 35, 10.0, 0.0),
-                (t::Range::new(1, 2), 16, 10.0, 10.0)
+                (t::source::Range::new(0, 1), 35, 10.0, 0.0),
+                (t::source::Range::new(1, 2), 16, 10.0, 10.0)
             ]
         );
         assert_eq!(
@@ -187,7 +225,10 @@ fn cancelling_bp_blocks_real_period_hanging_while_margin_alone_does_not() {
         );
         let period = line
             .edge_units()
-            .find(|row| row.source_pieces().any(|r| r == t::Range::new(1, 2)))
+            .find(|row| {
+                row.source_pieces()
+                    .any(|r| r == t::source::Range::new(1, 2))
+            })
             .unwrap();
         assert_eq!(period.advance(), 10.0);
         assert_eq!(period.excluded_contribution(), excluded);
@@ -195,6 +236,9 @@ fn cancelling_bp_blocks_real_period_hanging_while_margin_alone_does_not() {
             line.measurements().margin_edge_fit().required_inline_size(),
             measured
         );
-        assert_eq!(p.analyzed_source().source().text(), &t::Text::from("A."));
+        assert_eq!(
+            p.analyzed_source().source().text(),
+            &t::source::Text::from("A.")
+        );
     }
 }

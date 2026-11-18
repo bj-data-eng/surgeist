@@ -44,15 +44,15 @@ impl Empty {
     }
 }
 
-fn block(size: f32) -> text::SourceProcessingScope {
-    text::SourceProcessingScope::Block {
+fn block(size: f32) -> text::capture::SourceProcessingScope {
+    text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
-        trim: text::WhiteSpaceTrim::default(),
-        base_style: text::Style {
-            white_space: text::WhiteSpace::Preserve,
+        topology: text::capture::SourceProcessingTopology::Complete,
+        trim: text::capture::WhiteSpaceTrim::default(),
+        base_style: text::style::Style {
+            white_space: text::style::WhiteSpace::Preserve,
             ..ahem_style(size, f64::from(size))
         },
         used_direction: ParagraphBaseDirection::LeftToRight,
@@ -61,14 +61,14 @@ fn block(size: f32) -> text::SourceProcessingScope {
 
 struct Fixture {
     source: Source,
-    raws: Vec<text::CapturedParagraph>,
-    prepared: Vec<text::PreparedText>,
+    raws: Vec<text::capture::CapturedParagraph>,
+    prepared: Vec<text::prepared::PreparedText>,
     origin_nodes: Vec<u32>,
 }
 
 fn fixture(empty: Empty) -> Fixture {
-    use text::SourceProcessingEvent as E;
-    let source = Source::identified(empty.source(), text::Id::from_u64(784_902), 73);
+    use text::capture::SourceProcessingEvent as E;
+    let source = Source::identified(empty.source(), text::source::Id::from_u64(784_902), 73);
     let origin_nodes = empty.nodes();
     let authored = |node| {
         origin_nodes
@@ -76,7 +76,7 @@ fn fixture(empty: Empty) -> Fixture {
             .position(|&candidate| candidate == node)
             .map(|origin| E::Origin {
                 origin,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             })
     };
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
@@ -97,17 +97,17 @@ fn fixture(empty: Empty) -> Fixture {
     }
     events.extend([E::ExitParagraph(2), E::ExitScope(0)]);
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: (0..origin_nodes.len())
-                .map(|i| text::ParagraphOrigin {
+                .map(|i| text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: text::Range::new(i, i + 1),
-                    aggregate: text::Range::new(i, i + 1),
-                    kind: text::ParagraphOriginKind::Authored,
+                    local: text::source::Range::new(i, i + 1),
+                    aggregate: text::source::Range::new(i, i + 1),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             // At most one parent origin exists. No invented connection through B
@@ -120,12 +120,12 @@ fn fixture(empty: Empty) -> Fixture {
             scope_alignment_limits: None,
             scopes: vec![block(10.0), block(20.0)],
             paragraphs: (0..3)
-                .map(|_| text::SourceProcessingParagraph {
+                .map(|_| text::capture::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
-            joint_flows: vec![text::SourceProcessingJointFlow {
+            joint_flows: vec![text::capture::SourceProcessingJointFlow {
                 scope: 0,
                 paragraphs: vec![0, 2],
                 facts_owner: 0,
@@ -145,9 +145,9 @@ fn fixture(empty: Empty) -> Fixture {
         .unwrap();
     let mut prepared = Vec::new();
     for member in [0, 1] {
-        let analyzed = text::AnalyzedDomain::from_processed_paragraph(
+        let analyzed = text::analyzed::AnalyzedDomain::from_processed_paragraph(
             processed.paragraphs().nth(member).unwrap(),
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert!(Arc::ptr_eq(analyzed.processed_source(), &processed));
@@ -162,7 +162,7 @@ fn fixture(empty: Empty) -> Fixture {
         );
         prepared.push(
             system
-                .prepare(&output, text::PreparationOptions::default())
+                .prepare(&output, text::prepared::PreparationOptions::default())
                 .unwrap(),
         );
     }
@@ -259,7 +259,7 @@ fn bind<S: LayoutScalar>(
     (tree, bindings)
 }
 
-fn packets(layout: &text::Layout) -> Vec<(text::Range, u32, f64, f64, f32)> {
+fn packets(layout: &text::layout::Layout) -> Vec<(text::source::Range, u32, f64, f64, f32)> {
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
     }
@@ -267,8 +267,11 @@ fn packets(layout: &text::Layout) -> Vec<(text::Range, u32, f64, f64, f32)> {
         .glyph_runs()
         .iter()
         .flat_map(|run| {
-            assert_eq!(run.orientation(), text::LineOrientation::Horizontal);
-            assert_eq!(run.glyph_basis(), text::GlyphBasis::Unrotated);
+            assert_eq!(
+                run.orientation(),
+                text::selection::LineOrientation::Horizontal
+            );
+            assert_eq!(run.glyph_basis(), text::geometry::GlyphBasis::Unrotated);
             let origin = run.origin();
             run.glyphs()
                 .iter()
@@ -446,28 +449,28 @@ fn assert_empty<S: LayoutScalar>(empty: Empty) {
         } else {
             30.0
         };
-        assert_eq!(completion.origin, text::Point::new(0.0, y));
+        assert_eq!(completion.origin, text::geometry::Point::new(0.0, y));
     }
     let (height, child_top, parent_packets, child_packets) = match empty {
         // Size20 Ahem has ascent16; C at y20 has ascent8. No empty-line10.
         Empty::Before => (
             30.0,
             0.0,
-            vec![(text::Range::new(1, 2), 37, 0.0, 28.0, 10.0)],
-            vec![(text::Range::new(0, 1), 36, 0.0, 16.0, 20.0)],
+            vec![(text::source::Range::new(1, 2), 37, 0.0, 28.0, 10.0)],
+            vec![(text::source::Range::new(0, 1), 36, 0.0, 16.0, 20.0)],
         ),
         // A occupies0..10, B occupies10..30, then metadata completes at30.
         Empty::After => (
             30.0,
             10.0,
-            vec![(text::Range::new(0, 1), 35, 0.0, 8.0, 10.0)],
-            vec![(text::Range::new(1, 2), 36, 0.0, 26.0, 20.0)],
+            vec![(text::source::Range::new(0, 1), 35, 0.0, 8.0, 10.0)],
+            vec![(text::source::Range::new(1, 2), 36, 0.0, 26.0, 20.0)],
         ),
         Empty::Both => (
             20.0,
             0.0,
             vec![],
-            vec![(text::Range::new(0, 1), 36, 0.0, 16.0, 20.0)],
+            vec![(text::source::Range::new(0, 1), 36, 0.0, 16.0, 20.0)],
         ),
     };
     assert_eq!(packets(parent_output.layout()), parent_packets);
@@ -523,7 +526,7 @@ fn an_empty_resumed_section_rejects_an_earlier_frontier_with_different_original_
     let segments = parent.source_segments().collect::<Vec<_>>();
     assert_eq!(segments.len(), 2);
     assert_ne!(segments[0], segments[1]);
-    assert_eq!(fixture.source.text(), &text::Text::from("B"));
+    assert_eq!(fixture.source.text(), &text::source::Text::from("B"));
     assert_eq!(parent.origin_views().count(), 0);
     assert_eq!(parent.participants().len(), 0);
     let first_start = segments[0].start();
@@ -551,35 +554,36 @@ fn an_empty_resumed_section_rejects_an_earlier_frontier_with_different_original_
         assert_eq!(segment.end().view().participant_offset(), 0);
         assert_eq!(segment.end_opportunity().view().boundary(), segment.end());
     }
-    let request = |segment: &text::PreparedSourceSegment| text::LineSelectionRequest {
-        inline_boxes: None,
-        segment: segment.clone(),
-        start: segment.start(),
-        end: segment.end(),
-        participants: vec![],
-        termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
-        alternative: None,
-        incoming: None,
-        atomics: vec![],
-        controls: vec![],
-        boundary_context: vec![],
-        line_strut: None,
-        line_box_struts: vec![],
-        context: text::LineContext {
-            alignment_insets: text::LineAlignmentInsets::ZERO,
-            formatted_line: text::FormattedLineContext::default(),
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            line_box_direction: text::LineBoxDirection::LeftToRight,
-            orientation: text::LineOrientation::Horizontal,
-            start: text::LineStart::Paragraph,
-            end: text::LineEnd::Paragraph,
-            available_inline: Some(100.0),
-            indent: 0.0,
-            alignment: text::Alignment::Left,
-            tabs: text::TabContext::NoTabs,
-            spacing: text::SpacingPolicy::None,
-        },
-    };
+    let request =
+        |segment: &text::prepared::PreparedSourceSegment| text::selection::LineSelectionRequest {
+            inline_boxes: None,
+            segment: segment.clone(),
+            start: segment.start(),
+            end: segment.end(),
+            participants: vec![],
+            termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
+            alternative: None,
+            incoming: None,
+            atomics: vec![],
+            controls: vec![],
+            boundary_context: vec![],
+            line_strut: None,
+            line_box_struts: vec![],
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::Horizontal,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
+                available_inline: Some(100.0),
+                indent: 0.0,
+                alignment: text::options::Alignment::Left,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
+            },
+        };
     let first_request = request(&segments[0]);
     let resumed_request = request(&segments[1]);
     let first = parent.select(first_request.clone()).unwrap();
@@ -598,7 +602,7 @@ fn an_empty_resumed_section_rejects_an_earlier_frontier_with_different_original_
     assert!(matches!(
         error.detail(),
         Some(text::ErrorDetail::InvalidTextProtocol {
-            reason: text::ProtocolError::InvalidSourceSegment { segment: 1 }
+            reason: text::prepared::ProtocolError::InvalidSourceSegment { segment: 1 }
         })
     ));
     assert_eq!(first.request().start, first_start);

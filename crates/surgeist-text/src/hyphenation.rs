@@ -1,5 +1,17 @@
 //! Native hyphenation policy and indication inputs with bounded en-US resources.
+//!
+//! [`Hyphens`], [`HyphenateCharacter`], [`HyphenateLimitChars`], [`HyphenationMinimum`],
+//! [`HyphenationPlacement`] and [`NativeHyphenationConvention`] are the policy and indication inputs and
+//! [`HyphenationError`] their refusal. [`PreparedWord`], [`PreparedWordView`], [`PreparedWordPortion`],
+//! [`PreparedHyphenationCut`] and [`PreparedHyphenationCutView`] observe prepared words and cuts;
+//! [`HyphenationResource`], [`HyphenationProvenance`], [`HyphenationCounts`], [`HyphenationContinuation`] and
+//! [`HyphenationSourcePieceView`] report their resources, provenance, counts, continuations and source pieces.
 
+pub use crate::protocol::{
+    HyphenationContinuation, HyphenationCounts, HyphenationProvenance, HyphenationResource,
+    HyphenationSourcePieceView, PreparedHyphenationCut, PreparedHyphenationCutView, PreparedWord,
+    PreparedWordPortion, PreparedWordView,
+};
 use crate::{Error, ErrorCode, ErrorDetail, Result, text::Text};
 
 /// Whether authored and resource-qualified automatic hyphenation points may be used.

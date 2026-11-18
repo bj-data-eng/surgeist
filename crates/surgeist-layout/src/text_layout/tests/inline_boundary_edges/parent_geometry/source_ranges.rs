@@ -7,7 +7,7 @@ use super::*;
 fn source_rects<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     fixture: &Fixture,
-) -> Vec<text::Rect> {
+) -> Vec<text::geometry::Rect> {
     let [placed] = batch.placed_text() else {
         panic!("one real placed paragraph")
     };
@@ -15,10 +15,10 @@ fn source_rects<S: LayoutScalar>(
     assert_eq!(layout.source().text().code_units(), [65]);
     let origin = fixture.binding.origins[0].origin.clone();
     let query = layout
-        .source_range_fragments(&origin, text::Range::new(0, 1))
+        .source_range_fragments(&origin, text::source::Range::new(0, 1))
         .unwrap();
     assert_eq!(query.origin(), &origin);
-    assert_eq!(query.local_range(), text::Range::new(0, 1));
+    assert_eq!(query.local_range(), text::source::Range::new(0, 1));
     assert_eq!(
         query.units().len(),
         1,
@@ -42,9 +42,9 @@ fn lane<S: LayoutScalar>() {
             let ordinary = compute::<S>(&fixture, rtl, 10.0, captured_child, false);
             let shifted = compute::<S>(&fixture, rtl, 20.0, captured_child, true);
             let expected = |x| {
-                vec![text::Rect {
-                    origin: text::Point::new(x, 0.0),
-                    size: text::Size::new(10.0, 10.0),
+                vec![text::geometry::Rect {
+                    origin: text::geometry::Point::new(x, 0.0),
+                    size: text::geometry::Size::new(10.0, 10.0),
                 }]
             };
             assert_eq!(source_rects(&ordinary, &fixture), expected(0.0));

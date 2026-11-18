@@ -113,17 +113,17 @@ fn contextual_trim_keeps_original_offsets_through_paint_and_interaction() {
 
 #[test]
 fn css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
-    assert_css_tab_composition(text::TabSize::length(80.0).unwrap(), 0.0, 80.0);
+    assert_css_tab_composition(text::tabs::TabSize::length(80.0).unwrap(), 0.0, 80.0);
 }
 
 #[test]
 fn negative_css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
     // Ahem SPACE20 plus block word-spacing -21 derives T=-4; ZERO20 gives
     // half-ch10. From pen20 the next stop24 receives one bump to28.
-    assert_css_tab_composition(text::TabSize::spaces(4.0).unwrap(), -21.0, 28.0);
+    assert_css_tab_composition(text::tabs::TabSize::spaces(4.0).unwrap(), -21.0, 28.0);
 }
 
-fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: f64) {
+fn assert_css_tab_composition(tab_size: text::tabs::TabSize, block_spacing: f64, b_x: f64) {
     let mut system = text::System::default();
     system
         .register_fonts(
@@ -131,40 +131,40 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
-    let source = text::Source::new("A\tB");
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let source = text::source::Source::new("A\tB");
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 20.0,
-        line_height: text::LineHeight::Absolute(20.0),
-        white_space: text::WhiteSpace::Preserve,
+        line_height: text::style::LineHeight::Absolute(20.0),
+        white_space: text::style::WhiteSpace::Preserve,
         tab_size,
-        ..text::Style::default()
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: Some(
-                text::ParagraphTabReference::new(
-                    text::Style {
+                text::tabs::ParagraphTabReference::new(
+                    text::style::Style {
                         word_spacing: block_spacing,
                         ..style.clone()
                     },
-                    text::ParagraphBaseDirection::LeftToRight,
+                    text::paragraph::ParagraphBaseDirection::LeftToRight,
                 )
                 .unwrap(),
             ),
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: text::Range::new(0, 3),
-                aggregate: text::Range::new(0, 3),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 3),
+                aggregate: text::source::Range::new(0, 3),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -172,13 +172,13 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap,
         })
@@ -187,7 +187,8 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::try_new(1.0, text::TabPreparation::CssStops).unwrap(),
+            text::prepared::PreparationOptions::try_new(1.0, text::tabs::TabPreparation::CssStops)
+                .unwrap(),
         )
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
@@ -256,22 +257,25 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
         .collect::<Vec<_>>();
     assert_eq!(glyphs, [(35, 0.0, 20.0), (36, b_x, 20.0)]);
     let tab = placed
-        .source_range_fragments(&origin, text::Range::new(1, 2))
+        .source_range_fragments(&origin, text::source::Range::new(1, 2))
         .unwrap();
     assert_eq!(
         tab.units()
             .flat_map(|unit| unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>())
             .collect::<Vec<_>>(),
-        [text::Rect::new(20.0, 0.0, b_x - 20.0, 20.0)]
+        [text::geometry::Rect::new(20.0, 0.0, b_x - 20.0, 20.0)]
     );
     for (index, x) in [(1, 20.0), (2, b_x)] {
         assert_eq!(
             placed
-                .cursor(text::Cursor::new(index, text::Affinity::After))
+                .cursor(text::layout::Cursor::new(
+                    index,
+                    text::layout::Affinity::After
+                ))
                 .unwrap()
                 .rect()
                 .origin,
-            text::Point::new(x, 0.0)
+            text::geometry::Point::new(x, 0.0)
         );
     }
     drop(system);
@@ -300,107 +304,107 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
-    let source = text::Source::new(if contextual {
+    let source = text::source::Source::new(if contextual {
         "  A X  "
     } else if expanded {
         "A X X"
     } else {
         "AX AX"
     });
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 20.0,
-        line_height: text::LineHeight::Absolute(20.0),
-        white_space: text::WhiteSpace::Collapse,
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(20.0),
+        white_space: text::style::WhiteSpace::Collapse,
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let origins = vec![text::ParagraphOrigin {
+    let origins = vec![text::paragraph::ParagraphOrigin {
         text_node: None,
         source: source.clone(),
-        local: text::Range::new(0, source.text().len()),
-        aggregate: text::Range::new(0, source.text().len()),
-        kind: text::ParagraphOriginKind::Authored,
+        local: text::source::Range::new(0, source.text().len()),
+        aggregate: text::source::Range::new(0, source.text().len()),
+        kind: text::paragraph::ParagraphOriginKind::Authored,
     }];
     let analyzed = if contextual {
         let processed = std::sync::Arc::new(
-            text::process_contextual_source(text::ContextualSourceInput {
+            text::capture::process_contextual_source(text::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: text::SourceProcessingEnvelope::Complete,
+                segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: text::capture::SourceProcessingEnvelope::Complete,
                 origins,
                 connections: vec![],
                 controls: vec![],
                 boundary_policies: vec![],
                 replacements: vec![],
                 scopes: vec![
-                    text::SourceProcessingScope::Block {
+                    text::capture::SourceProcessingScope::Block {
                         writing_axis: None,
                         horizontal_inner_direction: None,
                         font_reference: None,
-                        topology: text::SourceProcessingTopology::Unknown,
-                        used_direction: text::ParagraphBaseDirection::LeftToRight,
-                        trim: text::WhiteSpaceTrim::default(),
+                        topology: text::capture::SourceProcessingTopology::Unknown,
+                        used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                        trim: text::capture::WhiteSpaceTrim::default(),
                         base_style: style,
                     },
-                    text::SourceProcessingScope::Inline {
+                    text::capture::SourceProcessingScope::Inline {
                         horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
                         style: None,
                         boundaries: None,
-                        trim: text::WhiteSpaceTrim {
+                        trim: text::capture::WhiteSpaceTrim {
                             discard_inner: true,
-                            ..text::WhiteSpaceTrim::default()
+                            ..text::capture::WhiteSpaceTrim::default()
                         },
                     },
                 ],
-                paragraphs: vec![text::SourceProcessingParagraph {
-                    base_direction: text::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                paragraphs: vec![text::capture::SourceProcessingParagraph {
+                    base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events: vec![
-                    text::SourceProcessingEvent::EnterScope(0),
-                    text::SourceProcessingEvent::EnterParagraph(0),
-                    text::SourceProcessingEvent::EnterScope(1),
-                    text::SourceProcessingEvent::Origin {
+                    text::capture::SourceProcessingEvent::EnterScope(0),
+                    text::capture::SourceProcessingEvent::EnterParagraph(0),
+                    text::capture::SourceProcessingEvent::EnterScope(1),
+                    text::capture::SourceProcessingEvent::Origin {
                         origin: 0,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     },
-                    text::SourceProcessingEvent::ExitScope(1),
-                    text::SourceProcessingEvent::ExitParagraph(0),
-                    text::SourceProcessingEvent::ExitScope(0),
+                    text::capture::SourceProcessingEvent::ExitScope(1),
+                    text::capture::SourceProcessingEvent::ExitParagraph(0),
+                    text::capture::SourceProcessingEvent::ExitScope(0),
                 ],
             })
             .unwrap(),
         );
         let paragraph = processed.paragraphs().next().unwrap();
-        assert_eq!(paragraph.source_range(), text::Range::new(0, 7));
+        assert_eq!(paragraph.source_range(), text::source::Range::new(0, 7));
         let plaintext: Vec<u16> = paragraph
-            .plaintext_items(text::Affinity::Before)
+            .plaintext_items(text::layout::Affinity::Before)
             .flat_map(|item| match item {
-                text::PlaintextItem::Text(text) => text.code_units().to_vec(),
-                text::PlaintextItem::InlineBox(_) => panic!("no authored atomic"),
+                text::processing::PlaintextItem::Text(text) => text.code_units().to_vec(),
+                text::processing::PlaintextItem::InlineBox(_) => panic!("no authored atomic"),
             })
             .collect();
         assert_eq!(plaintext, "A X".encode_utf16().collect::<Vec<_>>());
-        text::AnalyzedSource::from_processed_paragraph(
+        text::analyzed::AnalyzedSource::from_processed_paragraph(
             paragraph,
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
     } else {
-        text::AnalyzedSource::from_paragraph(
-            text::ParagraphInput {
-                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+        text::analyzed::AnalyzedSource::from_paragraph(
+            text::paragraph::ParagraphInput {
+                terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: source.clone(),
                 base_style: style,
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 origins,
                 connections: vec![],
                 controls: vec![],
@@ -408,7 +412,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
                 replacements: vec![],
                 anchor_order: vec![],
             },
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
     }
     .unwrap();
@@ -417,14 +421,14 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
@@ -491,11 +495,11 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     assert_eq!(lines.len(), 2);
     assert_eq!(
         lines[0].range(),
-        text::Range::new(0, if expanded || contextual { 4 } else { 3 })
+        text::source::Range::new(0, if expanded || contextual { 4 } else { 3 })
     );
     assert_eq!(
         lines[1].range(),
-        text::Range::new(
+        text::source::Range::new(
             if expanded || contextual { 4 } else { 3 },
             if contextual { 7 } else { 5 }
         )
@@ -531,19 +535,19 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     );
     assert_eq!(
         placed
-            .cursor(text::Cursor::new(
+            .cursor(text::layout::Cursor::new(
                 if expanded { 2 } else { 4 },
-                text::Affinity::After
+                text::layout::Affinity::After
             ))
             .unwrap()
             .rect()
             .origin,
         if expanded {
-            text::Point::new(45.0, 0.0)
+            text::geometry::Point::new(45.0, 0.0)
         } else if contextual {
-            text::Point::new(0.0, 20.0)
+            text::geometry::Point::new(0.0, 20.0)
         } else {
-            text::Point::new(20.0, 20.0)
+            text::geometry::Point::new(20.0, 20.0)
         }
     );
     let stats = system.stats();
@@ -551,14 +555,14 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     // Its first caret moves by that indent; the second line stays unindented.
     assert_eq!(
         placed
-            .cursor(text::Cursor::new(
+            .cursor(text::layout::Cursor::new(
                 if contextual { 2 } else { 0 },
-                text::Affinity::After
+                text::layout::Affinity::After
             ))
             .unwrap()
             .rect()
             .origin,
-        text::Point::new(f64::from(indent), 0.0)
+        text::geometry::Point::new(f64::from(indent), 0.0)
     );
     drop(system);
     let paint = render::text_layout::prepare_text_layout(
@@ -582,7 +586,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
 
     #[cfg(feature = "text-accessibility")]
     {
-        let mut accessibility = text::Accessibility::new(10);
+        let mut accessibility = text::accessibility::Accessibility::new(10);
         let parent = 1000_u64.into();
         let update = paint
             .layout()
@@ -590,7 +594,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
                 &mut accessibility,
                 parent,
                 parent,
-                text::Point::new(100.0, 200.0),
+                text::geometry::Point::new(100.0, 200.0),
             )
             .unwrap();
         let parent_node = &update.nodes.iter().find(|(id, _)| *id == parent).unwrap().1;
@@ -604,7 +608,8 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             ),
             (100.0, 200.0, if expanded { 165.0 } else { 145.0 }, 240.0)
         );
-        let cursor = text::Cursor::new(if expanded { 2 } else { 4 }, text::Affinity::After);
+        let cursor =
+            text::layout::Cursor::new(if expanded { 2 } else { 4 }, text::layout::Affinity::After);
         let position = paint
             .layout()
             .access_position(&accessibility, cursor)
@@ -634,7 +639,10 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             .layout()
             .access_position(
                 &accessibility,
-                text::Cursor::new(if contextual { 2 } else { 0 }, text::Affinity::After),
+                text::layout::Cursor::new(
+                    if contextual { 2 } else { 0 },
+                    text::layout::Affinity::After,
+                ),
             )
             .unwrap()
             .unwrap();
@@ -675,19 +683,19 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
 #[test]
 fn after_indication_keeps_authored_carets_and_accessibility_through_paint_admission() {
     indication_keeps_authored_carets_and_accessibility_through_paint_admission(
-        text::HyphenationPlacement::LogicalAfter,
+        text::hyphenation::HyphenationPlacement::LogicalAfter,
     );
 }
 
 #[test]
 fn both_indications_keep_authored_carets_and_accessibility_through_paint_admission() {
     indication_keeps_authored_carets_and_accessibility_through_paint_admission(
-        text::HyphenationPlacement::BothSides,
+        text::hyphenation::HyphenationPlacement::BothSides,
     );
 }
 
 fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
-    placement: text::HyphenationPlacement,
+    placement: text::hyphenation::HyphenationPlacement,
 ) {
     const AHEM: &[u8] =
         include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -695,16 +703,17 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
-    let source = text::Source::identified("AB\u{ad}CDE", text::Id::from_u64(66191), 4);
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let source =
+        text::source::Source::identified("AB\u{ad}CDE", text::source::Id::from_u64(66191), 4);
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        hyphens: text::Hyphens::Manual,
+        line_height: text::style::LineHeight::Absolute(10.0),
+        hyphens: text::hyphenation::Hyphens::Manual,
         locale: Some("und-Latn".into()),
-        hyphenate_character: text::HyphenateCharacter::Auto,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
         native_hyphenation_convention: Some(
-            text::NativeHyphenationConvention::language_script(
+            text::hyphenation::NativeHyphenationConvention::language_script(
                 "und-Latn",
                 "Latn",
                 "A".into(),
@@ -712,24 +721,24 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             )
             .unwrap(),
         ),
-        ..text::Style::default()
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: text::Range::new(0, 6),
-                aggregate: text::Range::new(0, 6),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 6),
+                aggregate: text::source::Range::new(0, 6),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -737,26 +746,26 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let cut = prepared.hyphenation_cut_views().next().unwrap();
     assert_eq!(
         cut.counts(),
-        Some(text::HyphenationCounts {
+        Some(text::hyphenation::HyphenationCounts {
             total: 5,
             before: 2,
             after: 3,
@@ -824,8 +833,8 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             .map(|line| (line.range(), line.baseline()))
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(0, 3), 8.0),
-            (text::Range::new(3, 6), 18.0)
+            (text::source::Range::new(0, 3), 8.0),
+            (text::source::Range::new(3, 6), 18.0)
         ]
     );
     // Ahem's one-em cells give AB20 or ABA30, then incoming-A+CDE40.
@@ -851,7 +860,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         }
     }
     let expected = match placement {
-        text::HyphenationPlacement::LogicalAfter => vec![
+        text::hyphenation::HyphenationPlacement::LogicalAfter => vec![
             (0, 35, 10.0, 0.0, 8.0),
             (0, 36, 10.0, 10.0, 8.0),
             (1, 35, 10.0, 0.0, 18.0),
@@ -859,7 +868,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             (1, 38, 10.0, 20.0, 18.0),
             (1, 39, 10.0, 30.0, 18.0),
         ],
-        text::HyphenationPlacement::BothSides => vec![
+        text::hyphenation::HyphenationPlacement::BothSides => vec![
             (0, 35, 10.0, 0.0, 8.0),
             (0, 36, 10.0, 10.0, 8.0),
             (0, 35, 10.0, 20.0, 8.0),
@@ -868,22 +877,22 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             (1, 38, 10.0, 20.0, 18.0),
             (1, 39, 10.0, 30.0, 18.0),
         ],
-        text::HyphenationPlacement::LogicalBefore => unreachable!(),
+        text::hyphenation::HyphenationPlacement::LogicalBefore => unreachable!(),
     };
     assert_eq!(glyphs, expected);
     let shy = placed
-        .source_range_fragments(&origin, text::Range::new(2, 3))
+        .source_range_fragments(&origin, text::source::Range::new(2, 3))
         .unwrap();
     let units = shy.units().collect::<Vec<_>>();
     let expected_units = match placement {
-        text::HyphenationPlacement::LogicalAfter => {
-            vec![(1, 1, vec![text::Rect::new(0.0, 10.0, 10.0, 10.0)])]
+        text::hyphenation::HyphenationPlacement::LogicalAfter => {
+            vec![(1, 1, vec![text::geometry::Rect::new(0.0, 10.0, 10.0, 10.0)])]
         }
-        text::HyphenationPlacement::BothSides => vec![
-            (0, 1, vec![text::Rect::new(20.0, 0.0, 10.0, 10.0)]),
-            (1, 1, vec![text::Rect::new(0.0, 10.0, 10.0, 10.0)]),
+        text::hyphenation::HyphenationPlacement::BothSides => vec![
+            (0, 1, vec![text::geometry::Rect::new(20.0, 0.0, 10.0, 10.0)]),
+            (1, 1, vec![text::geometry::Rect::new(0.0, 10.0, 10.0, 10.0)]),
         ],
-        text::HyphenationPlacement::LogicalBefore => unreachable!(),
+        text::hyphenation::HyphenationPlacement::LogicalBefore => unreachable!(),
     };
     assert_eq!(
         units
@@ -896,31 +905,31 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             .collect::<Vec<_>>(),
         expected_units
     );
-    if placement == text::HyphenationPlacement::BothSides {
+    if placement == text::hyphenation::HyphenationPlacement::BothSides {
         assert!(!units[0].same_unit(&units[1]));
     }
-    let seam = text::Cursor::new(3, text::Affinity::After);
+    let seam = text::layout::Cursor::new(3, text::layout::Affinity::After);
     let assert_ambiguous = |error: text::Error| {
         assert_eq!(
             error.detail(),
             Some(&text::ErrorDetail::InvalidTextProtocol {
-                reason: text::ProtocolError::AmbiguousSourcePosition {
+                reason: text::prepared::ProtocolError::AmbiguousSourcePosition {
                     index: 3,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
             })
         );
     };
     // Both emissions have source-empty occurrences at the same source
     // endpoint on distinct lines. Retain issued positions for those exact edges.
-    let seam_positions = if placement == text::HyphenationPlacement::BothSides {
+    let seam_positions = if placement == text::hyphenation::HyphenationPlacement::BothSides {
         assert_ambiguous(placed.cursor(seam).unwrap_err());
         let positions = placed
             .positions()
             .filter(|position| position.source_cursor().index() == 3)
             .map(|position| {
                 let rect = placed.position_geometry(&position).unwrap().rect();
-                assert_eq!(rect.size, text::Size::new(1.0, 10.0));
+                assert_eq!(rect.size, text::geometry::Size::new(1.0, 10.0));
                 (position, rect)
             })
             .collect::<Vec<_>>();
@@ -934,10 +943,10 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         assert_eq!(
             edges,
             [
-                text::Point::new(20.0, 0.0),
-                text::Point::new(30.0, 0.0),
-                text::Point::new(0.0, 10.0),
-                text::Point::new(10.0, 10.0),
+                text::geometry::Point::new(20.0, 0.0),
+                text::geometry::Point::new(30.0, 0.0),
+                text::geometry::Point::new(0.0, 10.0),
+                text::geometry::Point::new(10.0, 10.0),
             ]
         );
         positions
@@ -946,13 +955,16 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
     };
     // D is an unambiguous authored caret for Both; retain the existing C/After
     // control where only the receiving manifestation exists.
-    let (cursor, caret_x) = if placement == text::HyphenationPlacement::BothSides {
-        (text::Cursor::new(4, text::Affinity::After), 20.0)
+    let (cursor, caret_x) = if placement == text::hyphenation::HyphenationPlacement::BothSides {
+        (
+            text::layout::Cursor::new(4, text::layout::Affinity::After),
+            20.0,
+        )
     } else {
         (seam, 10.0)
     };
     let caret = placed.cursor(cursor).unwrap().rect();
-    assert_eq!(caret.origin, text::Point::new(caret_x, 10.0));
+    assert_eq!(caret.origin, text::geometry::Point::new(caret_x, 10.0));
     assert_eq!(caret.size.height, 10.0);
     drop(system);
     let paint = render::text_layout::prepare_text_layout(
@@ -976,13 +988,13 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             *rect
         );
     }
-    if placement == text::HyphenationPlacement::BothSides {
+    if placement == text::hyphenation::HyphenationPlacement::BothSides {
         assert_ambiguous(paint.layout().cursor(seam).unwrap_err());
     }
     assert_eq!(paint.layout().source(), &source);
     #[cfg(feature = "text-accessibility")]
     {
-        let mut accessibility = text::Accessibility::new(10);
+        let mut accessibility = text::accessibility::Accessibility::new(10);
         let parent = 1000_u64.into();
         let update = paint
             .layout()
@@ -990,7 +1002,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
                 &mut accessibility,
                 parent,
                 parent,
-                text::Point::new(100.0, 200.0),
+                text::geometry::Point::new(100.0, 200.0),
             )
             .unwrap();
         let position = paint
@@ -1004,14 +1016,14 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             .find(|(id, _)| *id == position.node)
             .unwrap()
             .1;
-        let character = if placement == text::HyphenationPlacement::BothSides {
+        let character = if placement == text::hyphenation::HyphenationPlacement::BothSides {
             "D"
         } else {
             "C"
         };
         assert_eq!(node.value(), Some(character));
         assert_eq!(position.character_index, 0);
-        if placement == text::HyphenationPlacement::BothSides {
+        if placement == text::hyphenation::HyphenationPlacement::BothSides {
             assert_ambiguous(
                 paint
                     .layout()
@@ -1105,45 +1117,46 @@ mod kana_transform {
         request: layout::LayoutRootRequest,
     ) -> (
         layout::CompletedLayoutBatch<usize>,
-        text::PreparedOrigin,
-        text::Source,
+        text::prepared::PreparedOrigin,
+        text::source::Source,
     ) {
-        let source = text::Source::identified("A\u{1b132}C", text::Id::from_u64(6301), 11);
+        let source =
+            text::source::Source::identified("A\u{1b132}C", text::source::Id::from_u64(6301), 11);
         let units = [0x41, 0xd82c, 0xdd32, 0x43];
-        let style = text::Style {
-            font: text::Font::new().family("Ahem"),
+        let style = text::style::Style {
+            font: text::style::Font::new().family("Ahem"),
             size: 10.0,
-            line_height: text::LineHeight::Absolute(10.0),
-            white_space: text::WhiteSpace::Preserve,
-            text_transform: text::TextTransform::Set(
-                text::TextTransformSet::none().with_full_size_kana(enabled),
+            line_height: text::style::LineHeight::Absolute(10.0),
+            white_space: text::style::WhiteSpace::Preserve,
+            text_transform: text::style::TextTransform::Set(
+                text::style::TextTransformSet::none().with_full_size_kana(enabled),
             ),
-            ..text::Style::default()
+            ..text::style::Style::default()
         };
-        let text::TextTransform::Set(set) = style.text_transform else {
+        let text::style::TextTransform::Set(set) = style.text_transform else {
             panic!("expected composable set")
         };
         assert_eq!(set.full_size_kana(), enabled);
-        let style = text::Style {
-            word_break: text::WordBreak::BreakAll,
+        let style = text::style::Style {
+            word_break: text::style::WordBreak::BreakAll,
             ..style
         };
         let ancestor_wrap = style.wrap;
-        let analyzed = text::AnalyzedSource::from_paragraph(
-            text::ParagraphInput {
+        let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+            text::paragraph::ParagraphInput {
                 source: source.clone(),
                 base_style: style,
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
-                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+                terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                origins: vec![text::ParagraphOrigin {
+                origins: vec![text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: text::Range::new(0, 4),
-                    aggregate: text::Range::new(0, 4),
-                    kind: text::ParagraphOriginKind::Authored,
+                    local: text::source::Range::new(0, 4),
+                    aggregate: text::source::Range::new(0, 4),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -1151,7 +1164,7 @@ mod kana_transform {
                 replacements: vec![],
                 anchor_order: vec![],
             },
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -1160,24 +1173,26 @@ mod kana_transform {
         );
         let plaintext = analyzed
             .processed_source()
-            .plaintext_items(text::Affinity::Before)
+            .plaintext_items(text::layout::Affinity::Before)
             .flat_map(|item| match item {
-                text::PlaintextItem::Text(value) => value.code_units().to_vec(),
-                text::PlaintextItem::InlineBox(_) => panic!("no boxes in the actual source"),
+                text::processing::PlaintextItem::Text(value) => value.code_units().to_vec(),
+                text::processing::PlaintextItem::InlineBox(_) => {
+                    panic!("no boxes in the actual source")
+                }
             })
             .collect::<Vec<_>>();
         assert_eq!(plaintext, units);
         let policies = analyzed
             .wrapping_relations()
             .filter(|relation| relation.ancestor_wrap().is_none())
-            .map(|relation| text::WrappingPolicy {
+            .map(|relation| text::analyzed::WrappingPolicy {
                 relation: relation.handle(),
                 ancestor_wrap,
             })
             .collect();
         let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
         let prepared = system
-            .prepare(&analyzed, text::PreparationOptions::default())
+            .prepare(&analyzed, text::prepared::PreparationOptions::default())
             .unwrap();
         let origin = prepared.origin_views().next().unwrap().handle();
 
@@ -1263,10 +1278,10 @@ mod kana_transform {
             let c_x = 10.0 + middle;
             assert_eq!(placed.source(), &source);
             assert_eq!(placed.source().text().code_units(), units);
-            assert_eq!(placed.source().id(), Some(text::Id::from_u64(6301)));
+            assert_eq!(placed.source().id(), Some(text::source::Id::from_u64(6301)));
             assert_eq!(placed.source().revision(), 11);
             assert_eq!(placed.lines().len(), 1);
-            assert_eq!(placed.lines()[0].range(), text::Range::new(0, 4));
+            assert_eq!(placed.lines()[0].range(), text::source::Range::new(0, 4));
             // Line bounds describe the actual allocated span; glyphs and
             // finalized feedback below own the content-advance observation.
             assert_eq!(
@@ -1317,29 +1332,29 @@ mod kana_transform {
             assert_eq!(
                 glyphs,
                 [
-                    (35, 10.0, 0.0, text::Range::new(0, 1)),
+                    (35, 10.0, 0.0, text::source::Range::new(0, 1)),
                     (
                         if enabled { 36 } else { 82 },
                         middle as f32,
                         10.0,
-                        text::Range::new(1, 3)
+                        text::source::Range::new(1, 3)
                     ),
-                    (37, 10.0, c_x, text::Range::new(3, 4)),
+                    (37, 10.0, c_x, text::source::Range::new(3, 4)),
                 ]
             );
             let whole = placed
-                .source_range_fragments(&origin, text::Range::new(1, 3))
+                .source_range_fragments(&origin, text::source::Range::new(1, 3))
                 .unwrap();
             let first = placed
-                .source_range_fragments(&origin, text::Range::new(1, 2))
+                .source_range_fragments(&origin, text::source::Range::new(1, 2))
                 .unwrap();
             let second = placed
-                .source_range_fragments(&origin, text::Range::new(2, 3))
+                .source_range_fragments(&origin, text::source::Range::new(2, 3))
                 .unwrap();
             let whole_unit = whole.units().next().unwrap();
             assert_eq!(whole.units().count(), 1);
-            assert_eq!(first.local_range(), text::Range::new(1, 2));
-            assert_eq!(second.local_range(), text::Range::new(2, 3));
+            assert_eq!(first.local_range(), text::source::Range::new(1, 2));
+            assert_eq!(second.local_range(), text::source::Range::new(2, 3));
             assert!(whole_unit.same_unit(&first.units().next().unwrap()));
             assert!(whole_unit.same_unit(&second.units().next().unwrap()));
             for fragments in [&whole, &first, &second] {
@@ -1351,23 +1366,23 @@ mod kana_transform {
                             .map(|piece| piece.rect())
                             .collect::<Vec<_>>())
                         .collect::<Vec<_>>(),
-                    [text::Rect::new(10.0, 0.0, middle, 10.0)]
+                    [text::geometry::Rect::new(10.0, 0.0, middle, 10.0)]
                 );
             }
             for (index, affinity, x) in [
-                (1, text::Affinity::After, 10.0),
-                (2, text::Affinity::Before, 10.0),
-                (2, text::Affinity::After, c_x),
-                (3, text::Affinity::Before, c_x),
-                (4, text::Affinity::Before, advance),
+                (1, text::layout::Affinity::After, 10.0),
+                (2, text::layout::Affinity::Before, 10.0),
+                (2, text::layout::Affinity::After, c_x),
+                (3, text::layout::Affinity::Before, c_x),
+                (4, text::layout::Affinity::Before, advance),
             ] {
                 assert_eq!(
                     placed
-                        .cursor(text::Cursor::new(index, affinity))
+                        .cursor(text::layout::Cursor::new(index, affinity))
                         .unwrap()
                         .rect()
                         .origin,
-                    text::Point::new(x, 0.0)
+                    text::geometry::Point::new(x, 0.0)
                 );
             }
             let misses = system.stats().layout_misses();
@@ -1391,7 +1406,7 @@ mod kana_transform {
             assert_eq!(misses, 0);
             #[cfg(feature = "text-accessibility")]
             {
-                let mut accessibility = text::Accessibility::new(10);
+                let mut accessibility = text::accessibility::Accessibility::new(10);
                 let parent = 1000_u64.into();
                 let update = paint
                     .layout()
@@ -1399,12 +1414,15 @@ mod kana_transform {
                         &mut accessibility,
                         parent,
                         parent,
-                        text::Point::new(100.0, 200.0),
+                        text::geometry::Point::new(100.0, 200.0),
                     )
                     .unwrap();
                 let position = paint
                     .layout()
-                    .access_position(&accessibility, text::Cursor::new(1, text::Affinity::After))
+                    .access_position(
+                        &accessibility,
+                        text::layout::Cursor::new(1, text::layout::Affinity::After),
+                    )
                     .unwrap()
                     .unwrap();
                 let node = &update
@@ -1482,14 +1500,14 @@ mod kana_transform {
                 actual,
                 if enabled {
                     vec![
-                        (text::Range::new(0, 3), 15.0),
-                        (text::Range::new(3, 4), 10.0),
+                        (text::source::Range::new(0, 3), 15.0),
+                        (text::source::Range::new(3, 4), 10.0),
                     ]
                 } else {
                     vec![
-                        (text::Range::new(0, 1), 10.0),
-                        (text::Range::new(1, 3), 10.0),
-                        (text::Range::new(3, 4), 10.0),
+                        (text::source::Range::new(0, 1), 10.0),
+                        (text::source::Range::new(1, 3), 10.0),
+                        (text::source::Range::new(3, 4), 10.0),
                     ]
                 }
             );

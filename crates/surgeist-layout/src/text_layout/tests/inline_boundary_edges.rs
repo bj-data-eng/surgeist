@@ -24,7 +24,7 @@ fn output<S: LayoutScalar>(
 
 fn finalized_lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> Vec<text::FinalizedLine> {
+) -> Vec<text::finalized::FinalizedLine> {
     let mut lines = Vec::new();
     for fragment in batch.unrounded_inline_fragments() {
         let line = fragment.fragment().finalized_fragment().finalized_line();
@@ -35,7 +35,7 @@ fn finalized_lines<S: LayoutScalar>(
     lines
 }
 
-fn qualify(line: &text::FinalizedLine) {
+fn qualify(line: &text::finalized::FinalizedLine) {
     for run in line.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
         assert_eq!(run.face().index(), 0);
@@ -46,7 +46,13 @@ fn qualify(line: &text::FinalizedLine) {
 #[test]
 fn end_edge_stops_local_hanging_and_moves_the_actual_line_below_a_float_both_scalars() {
     fn lane<S: LayoutScalar>() {
-        let fixture = Fixture::new("X \nY", (0, 2), text::WhiteSpace::Preserve, false, false);
+        let fixture = Fixture::new(
+            "X \nY",
+            (0, 2),
+            text::style::WhiteSpace::Preserve,
+            false,
+            false,
+        );
         for (edge, raw, fit, alignment, y) in [
             (InlineBoundaryEdgeOf::ZERO, 20.0, 10.0, 15.0, 0.0),
             (
@@ -142,7 +148,13 @@ fn end_edge_stops_local_hanging_and_moves_the_actual_line_below_a_float_both_sca
 #[test]
 fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
     fn lane<S: LayoutScalar>() {
-        let fixture = Fixture::new("A\tB", (1, 3), text::WhiteSpace::Preserve, false, true);
+        let fixture = Fixture::new(
+            "A\tB",
+            (1, 3),
+            text::style::WhiteSpace::Preserve,
+            false,
+            true,
+        );
         for (edge, total, advance) in [
             (InlineBoundaryEdgeOf::ZERO, 0.0, 30.0),
             (
@@ -250,7 +262,13 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
     }
     lane::<f32>();
     lane::<f64>();
-    let fixture = Fixture::new("A\tB", (1, 3), text::WhiteSpace::Preserve, false, true);
+    let fixture = Fixture::new(
+        "A\tB",
+        (1, 3),
+        text::style::WhiteSpace::Preserve,
+        false,
+        true,
+    );
     let edge = InlineBoundaryEdgeOf::try_new(0.0, 4.8f32, 0.2f32).unwrap();
     assert_eq!(edge.border_padding_advance(), 5.0);
     assert_eq!(
@@ -310,7 +328,7 @@ fn endpoint_node_uses_its_own_direction_and_control_fragment_without_a_scope_env
             let fixture = Fixture::new(
                 value,
                 (0, 2),
-                text::WhiteSpace::Preserve,
+                text::style::WhiteSpace::Preserve,
                 paragraph_rtl,
                 false,
             );
@@ -369,7 +387,7 @@ fn endpoint_node_uses_its_own_direction_and_control_fragment_without_a_scope_env
             let view = fragment.fragment().finalized_fragment().view();
             assert!(matches!(
                 view.owner(),
-                text::FinalizedFragmentOwner::Control(_)
+                text::finalized::FinalizedFragmentOwner::Control(_)
             ));
             assert!(view.origin().is_none());
             assert!(view.local_range().is_none());
@@ -407,7 +425,7 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
     let fixture = Fixture::with_generated_separators(
         "今日は天気です。今日は天気です。今日は天気です。",
         (0, 24),
-        text::WhiteSpace::Collapse,
+        text::style::WhiteSpace::Collapse,
         false,
         false,
         true,
@@ -472,7 +490,7 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
                 if !matches!(entry.owner(), InlineFragmentOwner::Scope(_)) {
                     return None;
                 }
-                let text::FinalizedFragmentOwner::VirtualSeparator(separator) =
+                let text::finalized::FinalizedFragmentOwner::VirtualSeparator(separator) =
                     entry.fragment().finalized_fragment().view().owner()
                 else {
                     panic!("scope geometry belongs to its actual generated separator")
@@ -499,7 +517,13 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
 #[test]
 fn justification_feedback_preserves_one_selected_endpoint_total() {
     fn lane<S: LayoutScalar>() {
-        let fixture = Fixture::new("A B", (2, 3), text::WhiteSpace::Collapse, false, false);
+        let fixture = Fixture::new(
+            "A B",
+            (2, 3),
+            text::style::WhiteSpace::Collapse,
+            false,
+            false,
+        );
         let edge =
             InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(3.0), S::from_f64(5.0)).unwrap();
         let tree = fixture

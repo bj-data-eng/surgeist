@@ -24,15 +24,16 @@ fn zone_references_rebuild_for_policy_and_float_frames_and_never_publish_failed_
     fn check<S: LayoutScalar>() {
         let mut style = ahem_style(10.0, 10.0);
         style.locale = Some("en-US".into());
-        style.hyphens = text::Hyphens::Auto;
-        style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+        style.hyphens = text::hyphenation::Hyphens::Auto;
+        style.hyphenate_character =
+            text::hyphenation::HyphenateCharacter::String(text::source::Text::from("A"));
         let paragraph = PreparedParagraph::new(
             vec![
                 ParagraphPart::text(10, Source::new("X "), style.clone()),
                 ParagraphPart::text(11, Source::new("associate"), style.clone()),
             ],
             style,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let mut binding = paragraph.binding(2);
         binding.nodes = vec![10, 30, 11];

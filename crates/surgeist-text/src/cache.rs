@@ -1,3 +1,9 @@
+//! Layout cache identity and statistics.
+//!
+//! [`Key`] identifies one cached layout; it holds a [`SourceKey`], a [`StyleKey`], the font-catalogue
+//! publication and a request basis: for a standalone request an [`OptionsKey`] and the width, for an explicit
+//! placement the prepared text and its coverage. [`Stats`] counts layout hits and misses, font refreshes and invalidations.
+
 use std::hash::{Hash, Hasher};
 
 use crate::{

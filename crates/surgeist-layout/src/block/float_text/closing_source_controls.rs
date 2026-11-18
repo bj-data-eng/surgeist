@@ -117,14 +117,16 @@ fn execute<S: LayoutScalar>(
             edges: WrapEdges::AUTO,
             // These are the actual endpoint's8/10 metrics. They remain a
             // truthful continuation witness when Start is not on a later line.
-            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
-                scope: None,
-                metrics: text::LineStrut {
-                    baseline: 8.0,
-                    line_extent: 10.0,
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                text::allocation::LineBoxStrut {
+                    scope: None,
+                    metrics: text::allocation::LineStrut {
+                        baseline: 8.0,
+                        line_extent: 10.0,
+                    },
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
-                alignment: text::LineBoxAlignment::Baseline,
-            })),
+            )),
         }],
         child_order: vec![
             order(
@@ -179,7 +181,13 @@ fn geometry<S: LayoutScalar>(
 }
 
 fn continuing_owner<S: LayoutScalar>(end_padding: f64, expected_top: f64, expected_root: f64) {
-    let fixture = Fixture::new("X X", (0, 3), text::WhiteSpace::Collapse, false, false);
+    let fixture = Fixture::new(
+        "X X",
+        (0, 3),
+        text::style::WhiteSpace::Collapse,
+        false,
+        false,
+    );
     let start = fixture
         .binding
         .controls
@@ -205,7 +213,10 @@ fn continuing_owner<S: LayoutScalar>(end_padding: f64, expected_top: f64, expect
     let [placed] = batch.placed_text() else {
         panic!("one continuing paragraph")
     };
-    assert_eq!(placed.layout().source().text(), &text::Text::from("X X"));
+    assert_eq!(
+        placed.layout().source().text(),
+        &text::source::Text::from("X X")
+    );
     assert_eq!(
         placed
             .layout()
@@ -250,11 +261,11 @@ fn continuing_owner<S: LayoutScalar>(end_padding: f64, expected_top: f64, expect
             .box_context()
             .unwrap()
             .owner(),
-        &text::InlineBoxSource::captured(scope),
+        &text::inline_box::InlineBoxSource::captured(scope),
     );
     let prefix = line
-        .prefix_at(&text::TextSeam::BeforeParticipant(
-            text::PreparedParticipant::Control(end),
+        .prefix_at(&text::finalized::TextSeam::BeforeParticipant(
+            text::prepared::PreparedParticipant::Control(end),
         ))
         .unwrap();
     assert_eq!(prefix.advance(), 10.0);
@@ -263,9 +274,18 @@ fn continuing_owner<S: LayoutScalar>(end_padding: f64, expected_top: f64, expect
 }
 
 fn canonical_terminal_shy_stops_without_alternative<S: LayoutScalar>() {
-    let fixture = Fixture::new("\u{ad}", (0, 1), text::WhiteSpace::Collapse, false, false);
+    let fixture = Fixture::new(
+        "\u{ad}",
+        (0, 1),
+        text::style::WhiteSpace::Collapse,
+        false,
+        false,
+    );
     let origin = fixture.binding.origins[0].origin.clone();
-    assert_eq!(origin.view().source().text(), &text::Text::from("\u{ad}"));
+    assert_eq!(
+        origin.view().source().text(),
+        &text::source::Text::from("\u{ad}")
+    );
     let end = fixture
         .binding
         .controls
@@ -275,7 +295,10 @@ fn canonical_terminal_shy_stops_without_alternative<S: LayoutScalar>() {
         .occurrence
         .clone();
     let scope = end.captured_control().unwrap().scope();
-    assert_eq!(scope.style().unwrap().hyphens, text::Hyphens::Manual);
+    assert_eq!(
+        scope.style().unwrap().hyphens,
+        text::hyphenation::Hyphens::Manual
+    );
     assert!(fixture.binding.prepared.unit_views().any(|unit| {
         unit.empty_origin().is_none()
             && !unit.processed_range().is_empty()
@@ -289,7 +312,10 @@ fn canonical_terminal_shy_stops_without_alternative<S: LayoutScalar>() {
     let [placed] = batch.placed_text() else {
         panic!("one conditional-source paragraph")
     };
-    assert_eq!(placed.layout().source().text(), &text::Text::from("\u{ad}"));
+    assert_eq!(
+        placed.layout().source().text(),
+        &text::source::Text::from("\u{ad}")
+    );
     assert!(
         placed
             .layout()
@@ -323,8 +349,8 @@ fn canonical_terminal_shy_stops_without_alternative<S: LayoutScalar>() {
         )
         .find(|line| {
             line.mapping_views().any(|mapping| {
-                mapping.kind() == text::PresentationMappingKind::Source
-                    && mapping.source_range() == text::Range::new(0, 1)
+                mapping.kind() == text::finalized::PresentationMappingKind::Source
+                    && mapping.source_range() == text::source::Range::new(0, 1)
             })
         })
         .expect("the accepted source-owning receipt retains terminal SHY as Source");

@@ -74,10 +74,10 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
     );
     assert_eq!(layout.lines().len(), 1);
     assert_eq!(layout.nonformatted_lines().count(), 0);
-    assert_eq!(layout.lines()[0].range(), t::Range::new(0, 8));
+    assert_eq!(layout.lines()[0].range(), t::source::Range::new(0, 8));
     assert_eq!(
         layout.lines()[0].bounds(),
-        t::Rect::new(20.0, 0.0, 80.0, 10.0)
+        t::geometry::Rect::new(20.0, 0.0, 80.0, 10.0)
     );
     assert_eq!(layout.lines()[0].baseline(), 8.0);
     assert_eq!(glyph_extents(layout), [(20.0, 100.0)]);
@@ -93,25 +93,28 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
     assert_eq!(line.prepared_text(), paragraph.prepared);
     assert_eq!(request.start.view().source_after().get(), 0);
     assert_eq!(request.end.view().source_after().get(), 8);
-    assert_eq!(request.context.end, t::LineEnd::Paragraph);
+    assert_eq!(request.context.end, t::selection::LineEnd::Paragraph);
     assert_eq!(request.context.available_inline, Some(80.0));
     assert_eq!(request.context.indent, 0.0);
     assert_eq!(
         request.context.alignment_insets,
-        t::LineAlignmentInsets::ZERO
+        t::allocation::LineAlignmentInsets::ZERO
     );
     assert!(request.alternative.is_none());
     assert!(request.controls.is_empty());
     assert!(request.atomics.is_empty());
-    let t::PreparedTermination::Ordinary(offer) = &request.termination else {
+    let t::selection::PreparedTermination::Ordinary(offer) = &request.termination else {
         panic!("the unchanged paragraph ending terminates this fitting source");
     };
-    assert_eq!(offer.view().kind(), t::PreparedBreakKind::ParagraphEnd);
+    assert_eq!(
+        offer.view().kind(),
+        t::prepared::PreparedBreakKind::ParagraphEnd
+    );
     assert_eq!(offer.view().boundary(), request.end);
     let natural = selected
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.measurements().alignment().advance(), 80.0);
@@ -120,15 +123,15 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
 
     assert_eq!(
         layout
-            .cursor(t::Cursor::new(0, t::Affinity::After))
+            .cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
             .unwrap()
             .rect()
             .origin,
-        t::Point::new(20.0, 0.0)
+        t::geometry::Point::new(20.0, 0.0)
     );
     assert_eq!(
         layout
-            .cursor(t::Cursor::new(8, t::Affinity::Before))
+            .cursor(t::layout::Cursor::new(8, t::layout::Affinity::Before))
             .unwrap()
             .rect()
             .origin
@@ -136,15 +139,15 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
         100.0
     );
     let selected_word = layout
-        .selection(t::Selection::new(
-            t::Cursor::new(0, t::Affinity::After),
-            t::Cursor::new(3, t::Affinity::Before),
+        .selection(t::layout::Selection::new(
+            t::layout::Cursor::new(0, t::layout::Affinity::After),
+            t::layout::Cursor::new(3, t::layout::Affinity::Before),
         ))
         .unwrap();
     assert_eq!(selected_word.rects().len(), 1);
     assert_eq!(
         selected_word.rects()[0].rect(),
-        t::Rect::new(20.0, 0.0, 30.0, 10.0)
+        t::geometry::Rect::new(20.0, 0.0, 30.0, 10.0)
     );
 }
 
@@ -166,7 +169,7 @@ fn shared_relative_float_text<S: l::LayoutScalar>() {
         later,
         &[Part::Text("AAA BB C")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let old = compute(&host, &[&paragraph], &[]);

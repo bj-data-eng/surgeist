@@ -8,8 +8,8 @@ use crate::{LayoutScalar, block::floats::AcceptedFloatPrefix};
 use surgeist_text as text;
 
 struct ClosingEnd {
-    occurrence: text::PreparedControl,
-    allocation: text::InlineBoundaryAllocation,
+    occurrence: text::prepared::PreparedControl,
+    allocation: text::allocation::InlineBoundaryAllocation,
 }
 
 pub(super) struct ClosingEnds {
@@ -48,7 +48,7 @@ pub(in crate::block) fn source_interval<Node: Copy + Eq>(
     associations: &crate::text_layout::capture::ScopeAssociations<Node>,
     context: &crate::inline_wrapping::WrappingContext<Node>,
     graph: &crate::engine::validation::ValidationGraph<Node>,
-    owner: &text::InlineBoxSource,
+    owner: &text::inline_box::InlineBoxSource,
     funding: Option<EntryFundingRef<'_>>,
 ) -> Result<Option<(usize, usize)>, FitError> {
     let inspect = || {
@@ -106,9 +106,12 @@ pub(in crate::block) fn source_interval<Node: Copy + Eq>(
 }
 
 fn owner(
-    control: &text::PreparedControl,
-    allocation: Option<&text::InlineBoundaryAllocation>,
-) -> Option<(text::InlineBoxSource, text::InlineBoxSource)> {
+    control: &text::prepared::PreparedControl,
+    allocation: Option<&text::allocation::InlineBoundaryAllocation>,
+) -> Option<(
+    text::inline_box::InlineBoxSource,
+    text::inline_box::InlineBoxSource,
+)> {
     if let Some(context) = allocation.and_then(|allocation| allocation.box_context()) {
         return Some((context.owner().clone(), context.parent().clone()));
     }
@@ -117,8 +120,8 @@ fn owner(
     (scope.exit_control().as_ref() == Some(&captured)).then_some(())?;
     let parent = scope.parent()?;
     Some((
-        text::InlineBoxSource::captured(scope),
-        text::InlineBoxSource::captured(parent),
+        text::inline_box::InlineBoxSource::captured(scope),
+        text::inline_box::InlineBoxSource::captured(parent),
     ))
 }
 
@@ -127,8 +130,10 @@ impl ClosingEnds {
         source: &FloatEvent<Node, S>,
         run: &AdmittedRun<'_, Node>,
         associations: &crate::text_layout::capture::ScopeAssociations<Node>,
-        controls: impl Iterator<Item = &'a text::ControlAllocation> + Clone,
-        mut interval: impl FnMut(&text::InlineBoxSource) -> Result<Option<(usize, usize)>, FitError>,
+        controls: impl Iterator<Item = &'a text::allocation::ControlAllocation> + Clone,
+        mut interval: impl FnMut(
+            &text::inline_box::InlineBoxSource,
+        ) -> Result<Option<(usize, usize)>, FitError>,
         funding: Option<EntryFundingRef<'_>>,
     ) -> Result<Self, FitError> {
         let mut result = Self {
@@ -140,7 +145,7 @@ impl ClosingEnds {
             visit(funding)?;
             if matches!(
                 row.occurrence.view().kind(),
-                text::ParagraphControlKind::InlineBoundaryEnd
+                text::paragraph::ParagraphControlKind::InlineBoundaryEnd
             ) && row
                 .boundary
                 .as_ref()
@@ -156,7 +161,10 @@ impl ClosingEnds {
             // acquire wrapping geometry merely by retaining a source scope.
             return Ok(result);
         }
-        let allocation = |control: &text::PreparedControl| -> Result<Option<&'a text::InlineBoundaryAllocation>, FitError> {
+        let allocation = |control: &text::prepared::PreparedControl| -> Result<
+            Option<&'a text::allocation::InlineBoundaryAllocation>,
+            FitError,
+        > {
             for row in controls.clone() {
                 visit(funding)?;
                 if row.occurrence == *control {
@@ -174,7 +182,7 @@ impl ClosingEnds {
             visit(funding)?;
             if !matches!(
                 row.occurrence.view().kind(),
-                text::ParagraphControlKind::InlineBoundaryEnd
+                text::paragraph::ParagraphControlKind::InlineBoundaryEnd
             ) {
                 continue;
             }
@@ -210,7 +218,9 @@ impl ClosingEnds {
                 {
                     continue;
                 }
-                if let text::PreparedParticipant::ComputedLineBoundary(boundary) = participant {
+                if let text::prepared::PreparedParticipant::ComputedLineBoundary(boundary) =
+                    participant
+                {
                     let cut = source_computed_cut(associations, &boundary, funding)?
                         .ok_or(FitError::MissingComputedBoundaryIncidence)?;
                     let Some(cut) = cut.relative_to(run.inventory.clone()) else {
@@ -229,7 +239,7 @@ impl ClosingEnds {
                 for participant in run.binding.prepared.participants() {
                     visit(funding)?;
                     match participant {
-                        text::PreparedParticipant::Text(unit) => {
+                        text::prepared::PreparedParticipant::Text(unit) => {
                             let view = unit.view();
                             if view.empty_origin().as_ref() == Some(&row.origin) {
                                 continue;
@@ -248,7 +258,7 @@ impl ClosingEnds {
                                 return Ok(result);
                             }
                         }
-                        text::PreparedParticipant::Cell(cell)
+                        text::prepared::PreparedParticipant::Cell(cell)
                             if cell_origin_incidence(
                                 &cell,
                                 &row.origin,
@@ -265,7 +275,9 @@ impl ClosingEnds {
                 continue;
             }
             if let Some(row) = find_row(&run.binding.atomics, funding, |row| row.node == node)? {
-                if row.occurrence.view().original_box().kind() == text::InlineBoxKind::InFlow {
+                if row.occurrence.view().original_box().kind()
+                    == text::source::InlineBoxKind::InFlow
+                {
                     return Ok(result);
                 }
                 continue;
@@ -287,7 +299,7 @@ impl ClosingEnds {
             if Self::virtual_before(source, run, &row.occurrence, funding)? {
                 return Ok(result);
             }
-            use text::ParagraphControlKind as K;
+            use text::paragraph::ParagraphControlKind as K;
             match row.occurrence.view().kind() {
                 K::InlineBoundaryEnd => {
                     let actual = allocation(&row.occurrence)?;
@@ -326,7 +338,7 @@ impl ClosingEnds {
     fn virtual_before<Node: Copy + Eq, S: LayoutScalar>(
         source: &FloatEvent<Node, S>,
         run: &AdmittedRun<'_, Node>,
-        end: &text::PreparedControl,
+        end: &text::prepared::PreparedControl,
         funding: Option<EntryFundingRef<'_>>,
     ) -> Result<bool, FitError> {
         let Some(end) = end.view().participant() else {
@@ -345,7 +357,7 @@ impl ClosingEnds {
             {
                 continue;
             }
-            if let text::PreparedParticipant::Text(unit) = participant {
+            if let text::prepared::PreparedParticipant::Text(unit) = participant {
                 let view = unit.view();
                 if view.empty_origin().is_none()
                     && view.source_range().is_empty()
@@ -360,7 +372,7 @@ impl ClosingEnds {
 
     pub(super) fn demand(
         &self,
-        line: &text::FinalizedLine,
+        line: &text::finalized::FinalizedLine,
         observation: &AcceptedFloatPrefix,
         funding: Option<EntryFundingRef<'_>>,
     ) -> Result<ClosingDemand, FitError> {
@@ -410,8 +422,8 @@ impl ClosingEnds {
                     prefix.as_ref().and_then(|prefix| prefix.interior_unit())
             {
                 visit(funding)?;
-                let before = line.prefix_at(&text::TextSeam::BeforeParticipant(
-                    text::PreparedParticipant::Control(row.occurrence.clone()),
+                let before = line.prefix_at(&text::finalized::TextSeam::BeforeParticipant(
+                    text::prepared::PreparedParticipant::Control(row.occurrence.clone()),
                 ))?;
                 charged = before.interior_unit().is_some_and(|end_group| {
                     let range = prefix_group.presentation_range();

@@ -59,39 +59,39 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(10.0),
+        ..text::style::Style::default()
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            source: text::Source::new("AX"),
+            source: text::source::Source::new("AX"),
             base_style: style.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             origins: ["A", "X"]
                 .into_iter()
                 .enumerate()
-                .map(|(index, value)| text::ParagraphOrigin {
+                .map(|(index, value)| text::paragraph::ParagraphOrigin {
                     text_node: None,
-                    source: text::Source::new(value),
-                    local: text::Range::new(0, 1),
-                    aggregate: text::Range::new(index, index + 1),
-                    kind: text::ParagraphOriginKind::Authored,
+                    source: text::source::Source::new(value),
+                    local: text::source::Range::new(0, 1),
+                    aggregate: text::source::Range::new(index, index + 1),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
-            connections: vec![text::ParagraphConnection {
+            connections: vec![text::paragraph::ParagraphConnection {
                 at: 1,
-                kind: text::ParagraphConnectionKind::Continuous,
+                kind: text::paragraph::ParagraphConnectionKind::Continuous,
             }],
             controls: vec![],
-            boundary_policies: vec![text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(0),
+            boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+                definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
                 preceding_wrap: style.wrap,
                 following_wrap: style.wrap,
                 ancestor_wrap: style.wrap,
@@ -99,7 +99,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     // Both text origins are direct children of Tree's one block. The float is
@@ -107,14 +107,14 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap: style.wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(prepared.atomic_views().count(), 0);
     assert_eq!(prepared.control_views().count(), 0);
@@ -193,13 +193,13 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[65, 88]);
     assert_eq!(placed.lines().len(), 1);
-    assert_eq!(placed.lines()[0].range(), text::Range::new(0, 2));
+    assert_eq!(placed.lines()[0].range(), text::source::Range::new(0, 2));
     // Independent Ahem10 cells and the real left float exactly fill 35px.
     // The float is not text; the one line occupies the remaining 20px band.
     assert_eq!(placed.lines()[0].baseline(), 8.0);
     assert_eq!(
         placed.lines()[0].bounds(),
-        text::Rect::new(15.0, 0.0, 20.0, 10.0)
+        text::geometry::Rect::new(15.0, 0.0, 20.0, 10.0)
     );
     assert_eq!(
         placed
@@ -212,11 +212,14 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
     for (offset, x) in [(0, 15.0), (1, 25.0)] {
         assert_eq!(
             placed
-                .cursor(text::Cursor::new(offset, text::Affinity::After))
+                .cursor(text::layout::Cursor::new(
+                    offset,
+                    text::layout::Affinity::After
+                ))
                 .unwrap()
                 .rect()
                 .origin,
-            text::Point::new(x, 0.0)
+            text::geometry::Point::new(x, 0.0)
         );
     }
     let stats = system.stats();
@@ -238,7 +241,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
     assert_eq!(stats.layout_misses(), 0);
     #[cfg(feature = "text-accessibility")]
     {
-        let mut accessibility = text::Accessibility::new(10);
+        let mut accessibility = text::accessibility::Accessibility::new(10);
         let parent = 1000_u64.into();
         let update = paint
             .layout()
@@ -246,12 +249,15 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
                 &mut accessibility,
                 parent,
                 parent,
-                text::Point::new(100.0, 200.0),
+                text::geometry::Point::new(100.0, 200.0),
             )
             .unwrap();
         let position = paint
             .layout()
-            .access_position(&accessibility, text::Cursor::new(1, text::Affinity::After))
+            .access_position(
+                &accessibility,
+                text::layout::Cursor::new(1, text::layout::Affinity::After),
+            )
             .unwrap()
             .unwrap();
         let node = &update

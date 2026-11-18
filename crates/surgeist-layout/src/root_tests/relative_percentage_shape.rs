@@ -10,12 +10,12 @@ fn percentage_shape_tree<S: LayoutScalar>(
     let paragraph = PreparedParagraph::at_boundary(
         vec![ParagraphPart::text(
             2,
-            surgeist_text::Source::new("X X"),
+            surgeist_text::source::Source::new("X X"),
             style.clone(),
         )],
         style,
-        surgeist_text::ParagraphBaseDirection::LeftToRight,
-        surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
     );
     let mut tree = if shape {
         Fri06C02StatefulTextTree::new_shape_provider(Fri06C05ShapeProvider::Interval {

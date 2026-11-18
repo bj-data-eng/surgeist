@@ -3,9 +3,9 @@ use super::*;
 
 fn singleton_fallback<S: LayoutScalar>(line_height: f64) {
     qualify_metrics(AHEM, 1000);
-    let style = text::Style {
-        line_height: text::LineHeight::Absolute(line_height),
-        ..own(0.0, Wrap::Word, text::OverflowWrap::Anywhere, false)
+    let style = text::style::Style {
+        line_height: text::style::LineHeight::Absolute(line_height),
+        ..own(0.0, Wrap::Word, text::style::OverflowWrap::Anywhere, false)
     };
     let paragraph = paragraph(AHEM, "ABC", style);
     assert_eq!(
@@ -14,7 +14,7 @@ fn singleton_fallback<S: LayoutScalar>(line_height: f64) {
             .opportunity_views()
             .map(|view| view.kind())
             .collect::<Vec<_>>(),
-        [text::PreparedBreakKind::ParagraphEnd]
+        [text::prepared::PreparedBreakKind::ParagraphEnd]
     );
 
     // Each raw Ahem glyph advances10: two cannot fit15. Each singleton has no
@@ -29,9 +29,9 @@ fn singleton_fallback<S: LayoutScalar>(line_height: f64) {
             .map(|line| line.range())
             .collect::<Vec<_>>(),
         [
-            text::Range::new(0, 1),
-            text::Range::new(1, 2),
-            text::Range::new(2, 3),
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2),
+            text::source::Range::new(2, 3),
         ]
     );
     let finalized = lines(&actual);
@@ -43,7 +43,7 @@ fn singleton_fallback<S: LayoutScalar>(line_height: f64) {
         assert_eq!(
             raw(line, AHEM),
             [(
-                text::Range::new(index, index + 1),
+                text::source::Range::new(index, index + 1),
                 [35, 36, 37][index],
                 10.0
             )]
@@ -57,8 +57,8 @@ fn singleton_fallback<S: LayoutScalar>(line_height: f64) {
         let selected = line.selected_line();
         let request = selected.request();
         assert_eq!(request.context.available_inline, Some(15.0));
-        assert_eq!(request.context.spacing, text::SpacingPolicy::None);
-        assert_eq!(request.context.alignment, text::Alignment::Center);
+        assert_eq!(request.context.spacing, text::spacing::SpacingPolicy::None);
+        assert_eq!(request.context.alignment, text::options::Alignment::Center);
         assert_eq!(
             (
                 request.start.view().source_after().get(),
@@ -67,32 +67,39 @@ fn singleton_fallback<S: LayoutScalar>(line_height: f64) {
             (index, index + 1)
         );
         if index < 2 {
-            assert_eq!(request.context.end, text::LineEnd::Soft);
-            let text::PreparedTermination::Conditional(cut) = &request.termination else {
+            assert_eq!(request.context.end, text::selection::LineEnd::Soft);
+            let text::selection::PreparedTermination::Conditional(cut) = &request.termination
+            else {
                 panic!("singleton overflow retains its actual conditional authority")
             };
             assert_eq!(cut.prepared_text(), paragraph.prepared);
-            assert_eq!(cut.purpose(), text::ConditionalPurpose::Overflow);
+            assert_eq!(
+                cut.purpose(),
+                text::conditional::ConditionalPurpose::Overflow
+            );
             assert_eq!(cut.start(), request.start);
             assert_eq!(cut.boundary(), request.end);
             assert_eq!(
                 cut.ceiling().view().kind(),
-                text::PreparedBreakKind::ParagraphEnd
+                text::prepared::PreparedBreakKind::ParagraphEnd
             );
         } else {
-            assert_eq!(request.context.end, text::LineEnd::Paragraph);
-            let text::PreparedTermination::Ordinary(end) = &request.termination else {
+            assert_eq!(request.context.end, text::selection::LineEnd::Paragraph);
+            let text::selection::PreparedTermination::Ordinary(end) = &request.termination else {
                 panic!("the last source glyph consumes the paragraph end")
             };
-            assert_eq!(end.view().kind(), text::PreparedBreakKind::ParagraphEnd);
+            assert_eq!(
+                end.view().kind(),
+                text::prepared::PreparedBreakKind::ParagraphEnd
+            );
         }
     }
     assert_eq!(
         paints(&actual),
         [
-            (0, text::Range::new(0, 1), 35, 2.5),
-            (1, text::Range::new(1, 2), 36, 2.5),
-            (2, text::Range::new(2, 3), 37, 2.5),
+            (0, text::source::Range::new(0, 1), 35, 2.5),
+            (1, text::source::Range::new(1, 2), 36, 2.5),
+            (2, text::source::Range::new(2, 3), 37, 2.5),
         ]
     );
     // Canonical placement rounds the actual first baseline to8. LH10 is the

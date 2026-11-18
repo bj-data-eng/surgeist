@@ -5,45 +5,45 @@ use super::*;
 fn capture(
     system: &mut text::System,
     value: &str,
-    replacement: text::WordSpaceTransform,
-    mode: text::WhiteSpace,
+    replacement: text::style::WordSpaceTransform,
+    mode: text::style::WhiteSpace,
     full_width: bool,
     authored_width: Option<f32>,
     request: layout::LayoutRootRequest,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
-    text::PreparedOrigin,
-    text::Source,
+    text::prepared::PreparedOrigin,
+    text::source::Source,
 ) {
-    let source = text::Source::identified(value, text::Id::from_u64(6306), 23);
-    let source_range = text::Range::new(0, source.text().len());
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let source = text::source::Source::identified(value, text::source::Id::from_u64(6306), 23);
+    let source_range = text::source::Range::new(0, source.text().len());
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
+        line_height: text::style::LineHeight::Absolute(10.0),
         white_space: mode,
         word_space_transform: replacement,
-        text_transform: text::TextTransform::Set(
-            text::TextTransformSet::none().with_full_width(full_width),
+        text_transform: text::style::TextTransform::Set(
+            text::style::TextTransformSet::none().with_full_width(full_width),
         ),
-        ..text::Style::default()
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: source_range,
                 aggregate: source_range,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -51,7 +51,7 @@ fn capture(
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     // These sources contain no Phase-I-discarded units. ZWSP replacement is a
@@ -63,14 +63,14 @@ fn capture(
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
@@ -133,8 +133,8 @@ fn system(bytes: &[u8]) -> text::System {
 fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint() {
     let bytes = super::width_transform::width_ahem();
     let mut cases = vec![(
-        text::WordSpaceTransform::IdeographicSpace,
-        text::WhiteSpace::Preserve,
+        text::style::WordSpaceTransform::IdeographicSpace,
+        text::style::WhiteSpace::Preserve,
         false,
         35,
         10.0,
@@ -146,13 +146,13 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
     // for subsequent width conversion even in Collapse/Discard. This does not
     // change the separate rules for original authored SPACE.
     for mode in [
-        text::WhiteSpace::Collapse,
-        text::WhiteSpace::Discard,
-        text::WhiteSpace::Preserve,
-        text::WhiteSpace::PreserveSpaces,
+        text::style::WhiteSpace::Collapse,
+        text::style::WhiteSpace::Discard,
+        text::style::WhiteSpace::Preserve,
+        text::style::WhiteSpace::PreserveSpaces,
     ] {
         cases.push((
-            text::WordSpaceTransform::Space,
+            text::style::WordSpaceTransform::Space,
             mode,
             false,
             35,
@@ -162,7 +162,7 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
             25.0,
         ));
         cases.push((
-            text::WordSpaceTransform::Space,
+            text::style::WordSpaceTransform::Space,
             mode,
             true,
             36,
@@ -193,7 +193,7 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.source(), &source);
         assert_eq!(source.text().code_units(), [0x41, 0x200b, 0x41]);
-        assert_eq!(source.id(), Some(text::Id::from_u64(6306)));
+        assert_eq!(source.id(), Some(text::source::Id::from_u64(6306)));
         assert_eq!(source.revision(), 23);
         assert_eq!(placed.lines().len(), 1);
         let finalized = batch.final_inline_fragments()[0]
@@ -226,9 +226,9 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
                 .flat_map(|run| run.glyphs().iter().map(|glyph| glyph.range()))
                 .collect::<Vec<_>>(),
             [
-                text::Range::new(0, 1),
-                text::Range::new(1, 2),
-                text::Range::new(2, 3)
+                text::source::Range::new(0, 1),
+                text::source::Range::new(1, 2),
+                text::source::Range::new(2, 3)
             ]
         );
         let at = |x| {
@@ -236,13 +236,13 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
                 .positions()
                 .find(|position| {
                     placed.position_geometry(position).unwrap().rect().origin
-                        == text::Point::new(x, 0.0)
+                        == text::geometry::Point::new(x, 0.0)
                 })
                 .unwrap()
         };
         let start = at(f64::from(letter_advance));
         let end = at(f64::from(letter_advance + blank_advance));
-        let expected = text::Rect::new(
+        let expected = text::geometry::Rect::new(
             f64::from(letter_advance),
             0.0,
             f64::from(blank_advance),
@@ -256,17 +256,17 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
             assert_eq!(selected.source_pieces()[0].origin(), &origin);
             assert_eq!(
                 selected.source_pieces()[0].local_range(),
-                text::Range::new(1, 2)
+                text::source::Range::new(1, 2)
             );
             assert_eq!(
                 selected.source_pieces()[0].aggregate_range(),
-                text::Range::new(1, 2)
+                text::source::Range::new(1, 2)
             );
             assert_eq!(selected.geometry().rects().len(), 1);
             assert_eq!(selected.geometry().rects()[0].rect(), expected);
         }
         let range = placed
-            .source_range_fragments(&origin, text::Range::new(1, 2))
+            .source_range_fragments(&origin, text::source::Range::new(1, 2))
             .unwrap();
         assert_eq!(range.units().count(), 1);
         assert_eq!(
@@ -343,21 +343,21 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
 fn separator_accessibility_keeps_original_zwsp_with_actual_replacement_geometry() {
     let bytes = super::width_transform::width_ahem();
     for (replacement, width, x, extent) in [
-        (text::WordSpaceTransform::Space, false, 10.0, 5.0),
+        (text::style::WordSpaceTransform::Space, false, 10.0, 5.0),
         (
-            text::WordSpaceTransform::IdeographicSpace,
+            text::style::WordSpaceTransform::IdeographicSpace,
             false,
             10.0,
             20.0,
         ),
-        (text::WordSpaceTransform::Space, true, 20.0, 20.0),
+        (text::style::WordSpaceTransform::Space, true, 20.0, 20.0),
     ] {
         let mut system = system(&bytes);
         let (batch, _, source) = capture(
             &mut system,
             "A\u{200b}A",
             replacement,
-            text::WhiteSpace::Preserve,
+            text::style::WhiteSpace::Preserve,
             width,
             Some(100.0),
             NativeViewport::new(
@@ -372,9 +372,9 @@ fn separator_accessibility_keeps_original_zwsp_with_actual_replacement_geometry(
         let placed = batch.placed_text()[0].layout();
         let analyzed = placed.analyzed_source();
         drop(system);
-        let mut accessibility = text::Accessibility::new(20);
+        let mut accessibility = text::accessibility::Accessibility::new(20);
         let parent = 1000_u64.into();
-        let cursor = text::Cursor::new(1, text::Affinity::After);
+        let cursor = text::layout::Cursor::new(1, text::layout::Affinity::After);
         let source_update = analyzed
             .accessibility_update(&mut accessibility, parent, parent)
             .unwrap();
@@ -396,7 +396,7 @@ fn separator_accessibility_keeps_original_zwsp_with_actual_replacement_geometry(
                 &mut accessibility,
                 parent,
                 parent,
-                text::Point::new(100.0, 200.0),
+                text::geometry::Point::new(100.0, 200.0),
             )
             .unwrap();
         let position = placed
@@ -426,7 +426,7 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
     for (value, replacement, width, expected_glyphs, total, edge_x, edge_width) in [
         (
             "A\u{3000}",
-            text::WordSpaceTransform::None,
+            text::style::WordSpaceTransform::None,
             false,
             [(35, 10.0), (1, 20.0)],
             30.0,
@@ -435,7 +435,7 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
         ),
         (
             "A\u{200b}",
-            text::WordSpaceTransform::Space,
+            text::style::WordSpaceTransform::Space,
             false,
             [(35, 10.0), (3, 5.0)],
             15.0,
@@ -444,7 +444,7 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
         ),
         (
             "A\u{200b}",
-            text::WordSpaceTransform::Space,
+            text::style::WordSpaceTransform::Space,
             true,
             [(36, 20.0), (1, 20.0)],
             40.0,
@@ -457,7 +457,7 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
             &mut system,
             value,
             replacement,
-            text::WhiteSpace::Discard,
+            text::style::WhiteSpace::Discard,
             width,
             Some(10.0),
             NativeViewport::new(
@@ -505,10 +505,13 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
             .edge_units()
             .find(|unit| {
                 unit.source_pieces()
-                    .any(|piece| piece == text::Range::new(1, 2))
+                    .any(|piece| piece == text::source::Range::new(1, 2))
             })
             .unwrap();
-        assert_eq!(edge.disposition(), text::LineEdgeDisposition::Ordinary);
+        assert_eq!(
+            edge.disposition(),
+            text::finalized::LineEdgeDisposition::Ordinary
+        );
         assert_eq!(edge.excluded_contribution(), 0.0);
         assert_eq!(edge.outward_overlap(), 0.0);
         assert_eq!(edge.advance(), edge_width);
@@ -523,9 +526,9 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
             })
             .collect::<Vec<_>>();
         assert_eq!(glyphs, expected_glyphs);
-        let expected_edge = text::Rect::new(edge_x, 0.0, edge_width, 10.0);
+        let expected_edge = text::geometry::Rect::new(edge_x, 0.0, edge_width, 10.0);
         let fragments = placed
-            .source_range_fragments(&origin, text::Range::new(1, 2))
+            .source_range_fragments(&origin, text::source::Range::new(1, 2))
             .unwrap();
         assert_eq!(fragments.units().count(), 1);
         assert_eq!(
@@ -544,7 +547,7 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
                 .positions()
                 .find(|position| {
                     placed.position_geometry(position).unwrap().rect().origin
-                        == text::Point::new(x, 0.0)
+                        == text::geometry::Point::new(x, 0.0)
                 })
                 .unwrap()
         };
@@ -564,7 +567,7 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
             assert_eq!(selected.source_pieces()[0].origin(), &origin);
             assert_eq!(
                 selected.source_pieces()[0].local_range(),
-                text::Range::new(1, 2)
+                text::source::Range::new(1, 2)
             );
             assert_eq!(selected.geometry().rects()[0].rect(), expected_edge);
         }
@@ -579,7 +582,7 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
                 &mut system,
                 value,
                 replacement,
-                text::WhiteSpace::Discard,
+                text::style::WhiteSpace::Discard,
                 width,
                 None,
                 NativeViewport::new(

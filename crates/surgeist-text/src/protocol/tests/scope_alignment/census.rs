@@ -6,7 +6,7 @@ use crate::{
     geometry::{Point, Rect},
     layout::Layout,
     options::Alignment,
-    processing::{
+    processing::contextual::{
         CapturedScope, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
         SourceProcessingScope, process_contextual_source,
     },

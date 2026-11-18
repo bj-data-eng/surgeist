@@ -1,7 +1,9 @@
 //! Checked per-binding family custody; Text remains the source/fragment owner.
 use super::{AdmittedInlineBoxes, InlineBoxFragmentationDemand, TextParagraphBinding};
 use std::sync::Arc;
-use surgeist_text::{PreparedInlineBoxFamily, ScopeAlignmentLimitKind};
+use surgeist_text::{
+    inline_box::PreparedInlineBoxFamily, scope_alignment::ScopeAlignmentLimitKind,
+};
 
 /// One optional whole-input allocation, shared by associations and operations.
 /// The absent state allocates nothing for wholly non-demanding input.
@@ -14,7 +16,7 @@ struct InlineBoxFamilySlots {
     slots: Vec<Option<PreparedInlineBoxFamily>>,
     // A captured witness from an actual successful funded family, used to
     // pre-admit comparison discovery. It never activates operation funding.
-    scope: Option<surgeist_text::CapturedScope>,
+    scope: Option<surgeist_text::capture::CapturedScope>,
 }
 impl PartialEq for InlineBoxFamilies {
     fn eq(&self, other: &Self) -> bool {
@@ -41,7 +43,7 @@ impl InlineBoxFamilies {
             .map_or(&[], |owner| owner.slots.as_slice())
     }
 
-    pub(crate) fn policy_scope(&self) -> Option<&surgeist_text::CapturedScope> {
+    pub(crate) fn policy_scope(&self) -> Option<&surgeist_text::capture::CapturedScope> {
         self.slots.as_ref().and_then(|owner| owner.scope.as_ref())
     }
 
@@ -61,7 +63,7 @@ impl InlineBoxFamilies {
         if slots.len() != paragraphs.len() {
             return Err(foreign_family());
         }
-        let mut scope: Option<surgeist_text::CapturedScope> = None;
+        let mut scope: Option<surgeist_text::capture::CapturedScope> = None;
         for (slot, paragraph) in slots.iter().zip(paragraphs) {
             inspect()?;
             match (paragraph.inline_box_fragments, slot) {
@@ -101,7 +103,7 @@ impl InlineBoxFamilies {
 
     pub(crate) fn validate_line(
         expected: &AdmittedInlineBoxes,
-        line: &surgeist_text::FinalizedLine,
+        line: &surgeist_text::finalized::FinalizedLine,
     ) -> surgeist_text::Result<()> {
         if line.inline_box_family() != expected.family() {
             return Err(foreign_family());
@@ -115,7 +117,7 @@ impl InlineBoxFamilies {
     pub(crate) fn admit_comparison<S: crate::LayoutScalar>(
         &self,
         other: &Self,
-        limits: surgeist_text::ScopeAlignmentLimits,
+        limits: surgeist_text::scope_alignment::ScopeAlignmentLimits,
         resources: &super::scope_alignment::ScopeAlignmentResources<S>,
     ) -> surgeist_text::Result<()> {
         use super::scope_alignment::ScopeAlignmentFacts;
@@ -149,8 +151,8 @@ pub(crate) fn foreign_family() -> surgeist_text::Error {
         "inline box family does not belong to this Layout binding",
     )
     .with_detail(surgeist_text::ErrorDetail::InvalidTextProtocol {
-        reason: surgeist_text::ProtocolError::InlineBoxFragmentation(
-            surgeist_text::InlineBoxFragmentationError::ForeignFamily,
+        reason: surgeist_text::prepared::ProtocolError::InlineBoxFragmentation(
+            surgeist_text::inline_box::InlineBoxFragmentationError::ForeignFamily,
         ),
     })
 }
@@ -213,7 +215,7 @@ pub(super) fn reserve_slots<Tree: crate::LayoutTree>(
 fn extra_native_source<Node: Copy + Eq>(
     binding: &TextParagraphBinding<Node>,
     proof: &crate::inline_wrapping::WrappingScopeProof<Node>,
-) -> surgeist_text::Result<Option<surgeist_text::InlineBoxSource>> {
+) -> surgeist_text::Result<Option<surgeist_text::inline_box::InlineBoxSource>> {
     let crate::inline_wrapping::WrappingScopeProof::NativePair {
         flow, start, end, ..
     } = proof
@@ -315,10 +317,11 @@ pub(super) fn prepare_families<Tree: crate::LayoutTree>(
         }
         let lease = match &operation {
             Some(operation) => {
-                let (values, lease) = allocation_buffer::<surgeist_text::InlineBoxSource>(
-                    resources, operation, count,
-                )
-                .map_err(|error| text_error::<Tree>(binding.container, error))?;
+                let (values, lease) =
+                    allocation_buffer::<surgeist_text::inline_box::InlineBoxSource>(
+                        resources, operation, count,
+                    )
+                    .map_err(|error| text_error::<Tree>(binding.container, error))?;
                 native_boxes = values;
                 Some(lease)
             }
@@ -356,9 +359,11 @@ pub(super) fn prepare_families<Tree: crate::LayoutTree>(
             .map_err(|error| text_error::<Tree>(binding.container, error))?;
         if let Some(operation) = &operation {
             let limits = operation.limits();
-            if validation_limits.is_none_or(|old: surgeist_text::ScopeAlignmentLimits| {
-                limits.structural_work() < old.structural_work()
-            }) {
+            if validation_limits.is_none_or(
+                |old: surgeist_text::scope_alignment::ScopeAlignmentLimits| {
+                    limits.structural_work() < old.structural_work()
+                },
+            ) {
                 validation_limits = Some(limits);
             }
         }

@@ -10,27 +10,27 @@ const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fon
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Ending {
     Ordinary,
-    Restored(text::ConditionalStage),
+    Restored(text::conditional::ConditionalStage),
     Paragraph,
 }
-type Fact = (text::Range, f64, f64, Ending);
+type Fact = (text::source::Range, f64, f64, Ending);
 
-fn japanese(overflow_wrap: text::OverflowWrap) -> text::Style {
-    text::Style {
-        font: text::Font::new().family("Surgeist Phrase Ahem"),
+fn japanese(overflow_wrap: text::style::OverflowWrap) -> text::style::Style {
+    text::style::Style {
+        font: text::style::Font::new().family("Surgeist Phrase Ahem"),
         locale: Some("ja".into()),
-        word_break: text::WordBreak::AutoPhrase,
+        word_break: text::style::WordBreak::AutoPhrase,
         overflow_wrap,
-        hyphens: text::Hyphens::None,
+        hyphens: text::hyphenation::Hyphens::None,
         ..ahem_style(10.0, 10.0)
     }
 }
 
-fn paragraph(source: &str, style: text::Style, rtl: bool, font: &[u8]) -> PreparedParagraph {
+fn paragraph(source: &str, style: text::style::Style, rtl: bool, font: &[u8]) -> PreparedParagraph {
     PreparedParagraph::with_registered_font(
         vec![ParagraphPart::text(
             1,
-            Source::identified(source, text::Id::from_u64(65067), 11),
+            Source::identified(source, text::source::Id::from_u64(65067), 11),
             style.clone(),
         )],
         style,
@@ -114,7 +114,7 @@ fn compute<S: LayoutScalar>(
 fn finalized<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     p: &PreparedParagraph,
-) -> Vec<text::FinalizedLine> {
+) -> Vec<text::finalized::FinalizedLine> {
     let mut result = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -136,21 +136,26 @@ fn facts<S: LayoutScalar>(
 ) -> (f64, Vec<Fact>) {
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
-    assert_eq!(placed.source().text(), &text::Text::from(source));
+    assert_eq!(placed.source().text(), &text::source::Text::from(source));
     let endpoint = |offset, affinity| {
         placed
             .positions()
-            .find(|position| position.source_cursor() == text::Cursor::new(offset, affinity))
+            .find(|position| {
+                position.source_cursor() == text::layout::Cursor::new(offset, affinity)
+            })
             .unwrap()
     };
     let copied = placed
         .position_selection(
-            &endpoint(0, text::Affinity::After),
-            &endpoint(source.encode_utf16().count(), text::Affinity::Before),
+            &endpoint(0, text::layout::Affinity::After),
+            &endpoint(
+                source.encode_utf16().count(),
+                text::layout::Affinity::Before,
+            ),
         )
         .unwrap();
-    assert_eq!(copied.source_text(), &text::Text::from(source));
-    assert_eq!(copied.plaintext(), &text::Text::from(source));
+    assert_eq!(copied.source_text(), &text::source::Text::from(source));
+    assert_eq!(copied.plaintext(), &text::source::Text::from(source));
     let mut original = Vec::new();
     let lines = placed
         .lines()
@@ -194,21 +199,23 @@ fn facts<S: LayoutScalar>(
             let selected = line.selected_line();
             let request = selected.request();
             let ending = match &request.termination {
-                text::PreparedTermination::Ordinary(offer) => match offer.view().kind() {
-                    text::PreparedBreakKind::Allowed => {
-                        assert_eq!(request.context.end, text::LineEnd::Soft);
-                        Ending::Ordinary
+                text::selection::PreparedTermination::Ordinary(offer) => {
+                    match offer.view().kind() {
+                        text::prepared::PreparedBreakKind::Allowed => {
+                            assert_eq!(request.context.end, text::selection::LineEnd::Soft);
+                            Ending::Ordinary
+                        }
+                        text::prepared::PreparedBreakKind::ParagraphEnd => {
+                            assert_eq!(request.context.end, text::selection::LineEnd::Paragraph);
+                            Ending::Paragraph
+                        }
+                        _ => panic!("no ordinary hyphen or forced owner in this fixture"),
                     }
-                    text::PreparedBreakKind::ParagraphEnd => {
-                        assert_eq!(request.context.end, text::LineEnd::Paragraph);
-                        Ending::Paragraph
-                    }
-                    _ => panic!("no ordinary hyphen or forced owner in this fixture"),
-                },
-                text::PreparedTermination::Conditional(offer) => {
-                    assert_eq!(request.context.end, text::LineEnd::Soft);
+                }
+                text::selection::PreparedTermination::Conditional(offer) => {
+                    assert_eq!(request.context.end, text::selection::LineEnd::Soft);
                     assert_eq!(offer.alternative(), request.alternative);
-                    if offer.stage() == text::ConditionalStage::Hyphens {
+                    if offer.stage() == text::conditional::ConditionalStage::Hyphens {
                         assert!(request.alternative.is_some());
                     } else {
                         assert!(request.alternative.is_none());
@@ -232,7 +239,7 @@ fn facts<S: LayoutScalar>(
             .encode_utf16()
             .enumerate()
             .filter(|(_, cp)| *cp != 0xad)
-            .map(|(index, _)| text::Range::new(index, index + 1))
+            .map(|(index, _)| text::source::Range::new(index, index + 1))
             .collect::<Vec<_>>()
     );
     let width = readback::single_box_output(batch, 0, Phase::Unrounded)
@@ -243,7 +250,7 @@ fn facts<S: LayoutScalar>(
 }
 
 fn line(start: usize, end: usize, raw: f64, ending: Ending) -> Fact {
-    (text::Range::new(start, end), raw, raw, ending)
+    (text::source::Range::new(start, end), raw, raw, ending)
 }
 
 fn intrinsic<S: LayoutScalar>(
@@ -338,8 +345,8 @@ fn intrinsic<S: LayoutScalar>(
                     next_transition: None,
                 })
             },
-            clear: |_, _: &text::LineSelectionRequest| Ok(None),
-            replay: |_: &text::FinalizedLine, _| Ok(Vec::new()),
+            clear: |_, _: &text::selection::LineSelectionRequest| Ok(None),
+            replay: |_: &text::finalized::FinalizedLine, _| Ok(Vec::new()),
             accept: || Ok(()),
         },
     )
@@ -352,7 +359,7 @@ fn real_whole_phrase_overflow_restores_normal_before_arbitrary_and_requeries_rem
         for rtl in [false, true] {
             let p = paragraph(
                 "日本へ",
-                japanese(text::OverflowWrap::Anywhere),
+                japanese(text::style::OverflowWrap::Anywhere),
                 rtl,
                 PHRASE_FONT,
             );
@@ -360,22 +367,37 @@ fn real_whole_phrase_overflow_restores_normal_before_arbitrary_and_requeries_rem
             assert!(
                 p.prepared
                     .opportunity_views()
-                    .all(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+                    .all(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
             );
             for (width, expected) in [
                 (40.0, vec![line(0, 3, 30.0, Ending::Paragraph)]),
                 (
                     20.0,
                     vec![
-                        line(0, 2, 20.0, Ending::Restored(text::ConditionalStage::Normal)),
+                        line(
+                            0,
+                            2,
+                            20.0,
+                            Ending::Restored(text::conditional::ConditionalStage::Normal),
+                        ),
                         line(2, 3, 10.0, Ending::Paragraph),
                     ],
                 ),
                 (
                     10.0,
                     vec![
-                        line(0, 1, 10.0, Ending::Restored(text::ConditionalStage::Normal)),
-                        line(1, 2, 10.0, Ending::Restored(text::ConditionalStage::Normal)),
+                        line(
+                            0,
+                            1,
+                            10.0,
+                            Ending::Restored(text::conditional::ConditionalStage::Normal),
+                        ),
+                        line(
+                            1,
+                            2,
+                            10.0,
+                            Ending::Restored(text::conditional::ConditionalStage::Normal),
+                        ),
                         line(2, 3, 10.0, Ending::Paragraph),
                     ],
                 ),
@@ -402,22 +424,22 @@ fn real_whole_phrase_overflow_restores_normal_before_arbitrary_and_requeries_rem
 fn earlier_fitting_prefix_wraps_a_phrase_intact_instead_of_relaxing_into_the_suffix() {
     fn lane<S: LayoutScalar>() {
         for rtl in [false, true] {
-            let ja = japanese(text::OverflowWrap::Anywhere);
-            let prefix = text::Style {
+            let ja = japanese(text::style::OverflowWrap::Anywhere);
+            let prefix = text::style::Style {
                 locale: Some("en-US".into()),
-                word_break: text::WordBreak::Normal,
+                word_break: text::style::WordBreak::Normal,
                 ..ja.clone()
             };
             let p = PreparedParagraph::with_registered_font(
                 vec![
                     ParagraphPart::text(
                         1,
-                        Source::identified("AA ", text::Id::from_u64(65068), 1),
+                        Source::identified("AA ", text::source::Id::from_u64(65068), 1),
                         prefix,
                     ),
                     ParagraphPart::text(
                         2,
-                        Source::identified("日本へ", text::Id::from_u64(65069), 1),
+                        Source::identified("日本へ", text::source::Id::from_u64(65069), 1),
                         ja.clone(),
                     ),
                 ],
@@ -444,15 +466,18 @@ fn earlier_fitting_prefix_wraps_a_phrase_intact_instead_of_relaxing_into_the_suf
                 (
                     40.0,
                     vec![
-                        (text::Range::new(0, 3), 30.0, 20.0, Ending::Ordinary),
+                        (text::source::Range::new(0, 3), 30.0, 20.0, Ending::Ordinary),
                         line(3, 6, 30.0, Ending::Paragraph)
                     ]
                 )
             );
-            assert_eq!(p.origin(1).view().source().text(), &text::Text::from("AA "));
+            assert_eq!(
+                p.origin(1).view().source().text(),
+                &text::source::Text::from("AA ")
+            );
             assert_eq!(
                 p.origin(2).view().source().text(),
-                &text::Text::from("日本へ")
+                &text::source::Text::from("日本へ")
             );
         }
     }
@@ -466,18 +491,18 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
         for rtl in [false, true] {
             for (source, font, size) in [("日本へ", PHRASE_FONT, 30.0), ("ABCD", AHEM, 40.0)] {
                 for overflow in [
-                    text::OverflowWrap::Normal,
-                    text::OverflowWrap::BreakWord,
-                    text::OverflowWrap::Anywhere,
+                    text::style::OverflowWrap::Normal,
+                    text::style::OverflowWrap::BreakWord,
+                    text::style::OverflowWrap::Anywhere,
                 ] {
                     let style = if source == "日本へ" {
                         japanese(overflow)
                     } else {
-                        text::Style {
-                            word_break: text::WordBreak::AutoPhrase,
+                        text::style::Style {
+                            word_break: text::style::WordBreak::AutoPhrase,
                             overflow_wrap: overflow,
                             locale: Some("en-US".into()),
-                            hyphens: text::Hyphens::None,
+                            hyphens: text::hyphenation::Hyphens::None,
                             ..ahem_style(10.0, 10.0)
                         }
                     };
@@ -507,13 +532,13 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                     let minimum = facts(&minimum, &p, source, font);
                     assert_eq!(
                         minimum.0,
-                        if overflow == text::OverflowWrap::Anywhere {
+                        if overflow == text::style::OverflowWrap::Anywhere {
                             10.0
                         } else {
                             size
                         }
                     );
-                    if overflow == text::OverflowWrap::Anywhere {
+                    if overflow == text::style::OverflowWrap::Anywhere {
                         let measured = intrinsic::<S>(
                             &p,
                             crate::AxisSizingRequestOf::new(
@@ -530,13 +555,19 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                             .take(measured.paragraph.entries.len() - 1)
                         {
                             let selected = row.finalized_line().selected_line();
-                            let text::PreparedTermination::Conditional(offer) =
+                            let text::selection::PreparedTermination::Conditional(offer) =
                                 &selected.request().termination
                             else {
                                 panic!("intrinsic TCU cut must retain its independent capability")
                             };
-                            assert_eq!(offer.stage(), text::ConditionalStage::Arbitrary);
-                            assert_eq!(offer.purpose(), text::ConditionalPurpose::MinContent);
+                            assert_eq!(
+                                offer.stage(),
+                                text::conditional::ConditionalStage::Arbitrary
+                            );
+                            assert_eq!(
+                                offer.purpose(),
+                                text::conditional::ConditionalPurpose::MinContent
+                            );
                             assert_eq!(selected.request().context.available_inline, None);
                             assert!(selected.request().alternative.is_none());
                         }
@@ -597,12 +628,12 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
 fn unsupported_phrase_language_restores_real_owner_automatic_hyphen_before_arbitrary() {
     fn lane<S: LayoutScalar>() {
         for rtl in [false, true] {
-            let style = text::Style {
-                word_break: text::WordBreak::AutoPhrase,
-                overflow_wrap: text::OverflowWrap::Anywhere,
+            let style = text::style::Style {
+                word_break: text::style::WordBreak::AutoPhrase,
+                overflow_wrap: text::style::OverflowWrap::Anywhere,
                 locale: Some("en-US".into()),
-                hyphens: text::Hyphens::Auto,
-                hyphenate_character: text::HyphenateCharacter::String("A".into()),
+                hyphens: text::hyphenation::Hyphens::Auto,
+                hyphenate_character: text::hyphenation::HyphenateCharacter::String("A".into()),
                 ..ahem_style(10.0, 10.0)
             };
             for (source, width, cut, first, residual, automatic) in [
@@ -632,7 +663,7 @@ fn unsupported_phrase_language_restores_real_owner_automatic_hyphen_before_arbit
                                 0,
                                 cut,
                                 first,
-                                Ending::Restored(text::ConditionalStage::Hyphens)
+                                Ending::Restored(text::conditional::ConditionalStage::Hyphens)
                             ),
                             line(
                                 cut,
@@ -646,11 +677,11 @@ fn unsupported_phrase_language_restores_real_owner_automatic_hyphen_before_arbit
                 let lines = finalized(&actual, &p);
                 let selected = lines[0].selected_line();
                 let alternative = selected.request().alternative.as_ref().unwrap();
-                assert_eq!(alternative.view().text(), &text::Text::from("A"));
+                assert_eq!(alternative.view().text(), &text::source::Text::from("A"));
                 assert_eq!(
                     matches!(
                         alternative.view().definition(),
-                        text::PreparedAlternativeDefinition::Automatic { .. }
+                        text::prepared::PreparedAlternativeDefinition::Automatic { .. }
                     ),
                     automatic
                 );
@@ -665,17 +696,17 @@ fn unsupported_phrase_language_restores_real_owner_automatic_hyphen_before_arbit
 fn restored_after_and_both_indications_keep_receiving_authority_across_finite_frames() {
     fn lane<S: LayoutScalar>() {
         for placement in [
-            text::HyphenationPlacement::LogicalAfter,
-            text::HyphenationPlacement::BothSides,
+            text::hyphenation::HyphenationPlacement::LogicalAfter,
+            text::hyphenation::HyphenationPlacement::BothSides,
         ] {
-            let style = text::Style {
-                word_break: text::WordBreak::AutoPhrase,
-                overflow_wrap: text::OverflowWrap::Anywhere,
-                hyphens: text::Hyphens::Manual,
+            let style = text::style::Style {
+                word_break: text::style::WordBreak::AutoPhrase,
+                overflow_wrap: text::style::OverflowWrap::Anywhere,
+                hyphens: text::hyphenation::Hyphens::Manual,
                 locale: Some("und-Latn".into()),
-                hyphenate_character: text::HyphenateCharacter::Auto,
+                hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
                 native_hyphenation_convention: Some(
-                    text::NativeHyphenationConvention::language_script(
+                    text::hyphenation::NativeHyphenationConvention::language_script(
                         "und-Latn",
                         "Latn",
                         "A".into(),
@@ -686,7 +717,7 @@ fn restored_after_and_both_indications_keep_receiving_authority_across_finite_fr
                 ..ahem_style(10.0, 10.0)
             };
             let p = paragraph("AB\u{ad}CDE", style, false, AHEM);
-            let first = if placement == text::HyphenationPlacement::LogicalAfter {
+            let first = if placement == text::hyphenation::HyphenationPlacement::LogicalAfter {
                 20.0
             } else {
                 30.0
@@ -699,7 +730,7 @@ fn restored_after_and_both_indications_keep_receiving_authority_across_finite_fr
                             0,
                             3,
                             first,
-                            Ending::Restored(text::ConditionalStage::Hyphens),
+                            Ending::Restored(text::conditional::ConditionalStage::Hyphens),
                         ),
                         line(3, 6, 40.0, Ending::Paragraph),
                     ],
@@ -711,13 +742,13 @@ fn restored_after_and_both_indications_keep_receiving_authority_across_finite_fr
                             0,
                             3,
                             first,
-                            Ending::Restored(text::ConditionalStage::Hyphens),
+                            Ending::Restored(text::conditional::ConditionalStage::Hyphens),
                         ),
                         line(
                             3,
                             5,
                             30.0,
-                            Ending::Restored(text::ConditionalStage::Arbitrary),
+                            Ending::Restored(text::conditional::ConditionalStage::Arbitrary),
                         ),
                         line(5, 6, 10.0, Ending::Paragraph),
                     ],
@@ -844,13 +875,13 @@ impl<S: LayoutScalar> ShapeTree<S> {
 #[test]
 fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_band_and_warm_cache() {
     fn lane<S: LayoutScalar>() {
-        let style = japanese(text::OverflowWrap::Anywhere);
-        let mut source = Source::identified("日本へ", text::Id::from_u64(65070), 1);
+        let style = japanese(text::style::OverflowWrap::Anywhere);
+        let mut source = Source::identified("日本へ", text::source::Id::from_u64(65070), 1);
         source.span(
-            text::Range::new(1, 2),
-            text::Style {
+            text::source::Range::new(1, 2),
+            text::style::Style {
                 size: 20.0,
-                line_height: text::LineHeight::Absolute(20.0),
+                line_height: text::style::LineHeight::Absolute(20.0),
                 ..style.clone()
             },
         );
@@ -858,7 +889,7 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
             vec![
                 ParagraphPart::Control {
                     node: 1,
-                    kind: text::ParagraphControlKind::OptionalBreak { wrap: Wrap::Word },
+                    kind: text::paragraph::ParagraphControlKind::OptionalBreak { wrap: Wrap::Word },
                 },
                 ParagraphPart::text(3, source, style.clone()),
             ],
@@ -993,9 +1024,9 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
                 .collect::<Vec<_>>()
         };
         let expected = vec![
-            (text::Range::new(0, 1), 10.0, 10.0, Some(40.0)),
-            (text::Range::new(1, 2), 20.0, 20.0, Some(20.0)),
-            (text::Range::new(2, 3), 10.0, 10.0, Some(40.0)),
+            (text::source::Range::new(0, 1), 10.0, 10.0, Some(40.0)),
+            (text::source::Range::new(1, 2), 20.0, 20.0, Some(20.0)),
+            (text::source::Range::new(2, 3), 10.0, 10.0, Some(40.0)),
         ];
         assert_eq!(observe(&cold), expected);
         assert!(tree.queries.borrow().contains(&(0.0, 10.0)));

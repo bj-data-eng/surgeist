@@ -225,7 +225,7 @@ pub enum ErrorDetail {
     },
     /// A typed captured-scope alignment refusal from its owning phase.
     ScopeAlignment {
-        reason: crate::processing::ScopeAlignmentError,
+        reason: crate::processing::contextual::ScopeAlignmentError,
     },
     /// A material spacing operation needs unavailable profile or movement capability.
     UnsupportedSpacing {
@@ -252,7 +252,7 @@ pub enum ErrorDetail {
     },
     /// Atomic rejection of contextual source facts or view membership.
     SourceProcessing {
-        reason: crate::processing::SourceProcessingError,
+        reason: crate::processing::contextual::SourceProcessingError,
     },
     /// Actual phase association or request admission failure.
     InvalidTextProtocol {

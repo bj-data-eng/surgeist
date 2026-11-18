@@ -206,9 +206,11 @@ pub(super) fn order_levels(levels: &[u8], ledger: &mut Ledger) -> Result<Vec<usi
     let mut order = account::filled(ledger, levels.len(), 0)?;
     let passes = min_odd.map_or(0, |n| usize::from(maximum - n) + 1);
     let work = levels.len().checked_mul(passes * 4 + 3).ok_or_else(|| {
-        crate::engine::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
-        })
+        crate::engine::scope_alignment::refusal(
+            crate::processing::contextual::ScopeAlignmentError::Overflow {
+                kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
+            },
+        )
     })?;
     account::work(ledger, work)?;
     crate::supplied_line::SuppliedLine::new(&slots)

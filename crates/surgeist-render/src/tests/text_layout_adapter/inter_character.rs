@@ -9,8 +9,8 @@ use skrifa::{
     raw::TableProvider,
 };
 
-fn font(orientation: text::LineOrientation) -> Vec<u8> {
-    if orientation != text::LineOrientation::Vertical {
+fn font(orientation: text::selection::LineOrientation) -> Vec<u8> {
+    if orientation != text::selection::LineOrientation::Vertical {
         return AHEM.to_vec();
     }
     // Same real Wide/Hani -> unchanged chi outline as the upright adapter
@@ -28,18 +28,18 @@ fn font(orientation: text::LineOrientation) -> Vec<u8> {
 }
 
 fn selected(
-    orientation: text::LineOrientation,
+    orientation: text::selection::LineOrientation,
     tracking: f64,
 ) -> (
-    text::PreparedText,
-    text::SelectedLine,
+    text::prepared::PreparedText,
+    text::selection::SelectedLine,
     text::System,
     Vec<u8>,
 ) {
     let bytes = font(orientation);
     let native = skrifa::FontRef::new(&bytes).unwrap();
     assert_eq!(native.head().unwrap().units_per_em(), 1000);
-    let cp: u32 = if orientation == text::LineOrientation::Vertical {
+    let cp: u32 = if orientation == text::selection::LineOrientation::Vertical {
         0x4e00
     } else {
         0x3a7
@@ -52,25 +52,25 @@ fn selected(
         [ink.x_min, ink.y_min, ink.x_max, ink.y_max],
         [0.0, 400.0, 1000.0, 600.0]
     );
-    let upright = orientation == text::LineOrientation::Vertical;
-    let analyzed = text::AnalyzedSource::new(
-        text::Source::identified(
+    let upright = orientation == text::selection::LineOrientation::Vertical;
+    let analyzed = text::analyzed::AnalyzedSource::new(
+        text::source::Source::identified(
             if upright { "一一一" } else { "ΧΧΧ" },
-            text::Id::from_u64(1566060),
+            text::source::Id::from_u64(1566060),
             9,
         ),
-        text::Style {
+        text::style::Style {
             size: 10.0,
-            line_height: text::LineHeight::Absolute(10.0),
+            line_height: text::style::LineHeight::Absolute(10.0),
             letter_spacing: tracking,
             ..style()
         },
         if upright {
-            text::AnalysisTypography::Upright {
-                computed_direction: text::ParagraphBaseDirection::RightToLeft,
+            text::analyzed::AnalysisTypography::Upright {
+                computed_direction: text::paragraph::ParagraphBaseDirection::RightToLeft,
             }
         } else {
-            text::AnalysisTypography::HorizontalComposition
+            text::analyzed::AnalysisTypography::HorizontalComposition
         },
     )
     .unwrap();
@@ -78,21 +78,21 @@ fn selected(
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(orientation),
+            text::prepared::PreparationOptions::default().with_orientation(orientation),
         )
         .unwrap();
     let end = prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let selected = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(end),
+            termination: text::selection::PreparedTermination::Ordinary(end),
             participants: prepared.participants().collect(),
             alternative: None,
             incoming: None,
@@ -101,19 +101,19 @@ fn selected(
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
                 orientation,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::InterCharacter,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::InterCharacter,
             },
         })
         .unwrap();
@@ -121,39 +121,47 @@ fn selected(
     (prepared, selected, system, bytes)
 }
 
-fn amounts(selected: &text::SelectedLine, amount: f64) -> text::SpacingAllocations {
-    text::SpacingAllocations::Complete(
+fn amounts(
+    selected: &text::selection::SelectedLine,
+    amount: f64,
+) -> text::spacing::SpacingAllocations {
+    text::spacing::SpacingAllocations::Complete(
         selected
             .spacing_slots()
-            .map(|slot| text::SpacingAllocation { slot, amount })
+            .map(|slot| text::spacing::SpacingAllocation { slot, amount })
             .collect(),
     )
 }
 
-fn place(prepared: &text::PreparedText, line: text::FinalizedLine) -> text::Layout {
-    text::Layout::from_finalized_lines(text::PlacementRequest {
+fn place(
+    prepared: &text::prepared::PreparedText,
+    line: text::finalized::FinalizedLine,
+) -> text::layout::Layout {
+    text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared: prepared.clone(),
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 20.0,
-                baseline: 100.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 20.0,
+                    baseline: 100.0,
+                },
+                orientation: prepared.orientation(),
+                atomics: vec![],
             },
-            orientation: prepared.orientation(),
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap()
 }
 
-fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
+fn consumed(input: &text::layout::Layout, bytes: &[u8], gap: f64) {
     let orientation = input.run_views().next().unwrap().orientation();
-    let upright = orientation == text::LineOrientation::Vertical;
+    let upright = orientation == text::selection::LineOrientation::Vertical;
     let pen = [0.0, 10.0 + gap, 20.0 + 2.0 * gap];
     assert_eq!(
         input.run_views().map(|run| run.range()).collect::<Vec<_>>(),
-        [text::Range::new(0, 3)]
+        [text::source::Range::new(0, 3)]
     );
     assert_eq!(
         input
@@ -162,9 +170,9 @@ fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
             .map(|cluster| cluster.range())
             .collect::<Vec<_>>(),
         [
-            text::Range::new(0, 1),
-            text::Range::new(1, 2),
-            text::Range::new(2, 3)
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2),
+            text::source::Range::new(2, 3)
         ]
     );
     let raw = input
@@ -223,19 +231,19 @@ fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
     );
     let advance = 30.0 + 2.0 * gap;
     let (coefficients, physical_ink) = match orientation {
-        text::LineOrientation::Horizontal => (
+        text::selection::LineOrientation::Horizontal => (
             [1.0, 0.0, 0.0, 1.0, 27.0, 109.0],
             kurbo::Rect::new(27.0, 103.0, 27.0 + advance, 105.0),
         ),
-        text::LineOrientation::SidewaysClockwise => (
+        text::selection::LineOrientation::SidewaysClockwise => (
             [0.0, 1.0, -1.0, 0.0, 107.0, 29.0],
             kurbo::Rect::new(111.0, 29.0, 113.0, 29.0 + advance),
         ),
-        text::LineOrientation::SidewaysCounterclockwise => (
+        text::selection::LineOrientation::SidewaysCounterclockwise => (
             [0.0, -1.0, 1.0, 0.0, 107.0, 29.0],
             kurbo::Rect::new(101.0, 29.0 - advance, 103.0, 29.0),
         ),
-        text::LineOrientation::Vertical => (
+        text::selection::LineOrientation::Vertical => (
             [1.0, 0.0, 0.0, 1.0, 107.0, 29.0],
             kurbo::Rect::new(102.0, 31.0, 112.0, 23.0 + advance),
         ),
@@ -246,12 +254,12 @@ fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
     assert_eq!(path.bounding_box(), physical_ink);
 }
 
-fn qualifies(orientation: text::LineOrientation) {
+fn qualifies(orientation: text::selection::LineOrientation) {
     let (control_prepared, control_selected, _, control_bytes) = selected(orientation, 0.0);
     let control = control_selected
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(control.feedback().advance, 30.0);
@@ -259,9 +267,9 @@ fn qualifies(orientation: text::LineOrientation) {
     let (prepared, selected, system, bytes) = selected(orientation, 4.0);
     let stats = system.stats();
     let natural = selected
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 38.0);
@@ -272,13 +280,16 @@ fn qualifies(orientation: text::LineOrientation) {
     let expanded = natural.with_spacing(amounts(&selected, 2.0)).unwrap();
     assert_eq!(expanded.feedback().advance, 42.0);
     let published = place(&prepared, expanded.clone());
-    let expected_units = if orientation == text::LineOrientation::Vertical {
+    let expected_units = if orientation == text::selection::LineOrientation::Vertical {
         [0x4e00; 3]
     } else {
         [0x3a7; 3]
     };
     assert_eq!(published.source().text().code_units(), expected_units);
-    assert_eq!(published.source().id(), Some(text::Id::from_u64(1566060)));
+    assert_eq!(
+        published.source().id(),
+        Some(text::source::Id::from_u64(1566060))
+    );
     assert_eq!(published.source().revision(), 9);
     assert_eq!(
         published.analyzed_source().identity(),
@@ -286,12 +297,12 @@ fn qualifies(orientation: text::LineOrientation) {
     );
     consumed(&published, &bytes, 6.0);
     let error = expanded
-        .with_spacing(text::SpacingAllocations::Complete(vec![]))
+        .with_spacing(text::spacing::SpacingAllocations::Complete(vec![]))
         .unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&text::ErrorDetail::InvalidTextProtocol {
-            reason: text::ProtocolError::MissingSpacingSlot { slot: 0 },
+            reason: text::prepared::ProtocolError::MissingSpacingSlot { slot: 0 },
         })
     );
     assert_eq!(expanded.feedback().advance, 42.0);
@@ -309,7 +320,7 @@ fn qualifies(orientation: text::LineOrientation) {
         "spacing, placement and Render must not prepare or analyze again"
     );
     let restored = expanded
-        .with_spacing(text::SpacingAllocations::None)
+        .with_spacing(text::spacing::SpacingAllocations::None)
         .unwrap();
     assert_eq!(restored.feedback().advance, 38.0);
     consumed(&place(&prepared, restored), &bytes, 4.0);
@@ -317,15 +328,15 @@ fn qualifies(orientation: text::LineOrientation) {
 
 #[test]
 fn allocated_horizontal_gaps_preserve_raw_provider_data_and_actual_render_pens() {
-    qualifies(text::LineOrientation::Horizontal);
+    qualifies(text::selection::LineOrientation::Horizontal);
 }
 
 #[test]
 fn allocated_clockwise_gaps_rotate_actual_outlines_and_pens_once() {
-    qualifies(text::LineOrientation::SidewaysClockwise);
+    qualifies(text::selection::LineOrientation::SidewaysClockwise);
 }
 
 #[test]
 fn allocated_upright_gaps_keep_actual_outline_axes_and_vertical_pens() {
-    qualifies(text::LineOrientation::Vertical);
+    qualifies(text::selection::LineOrientation::Vertical);
 }

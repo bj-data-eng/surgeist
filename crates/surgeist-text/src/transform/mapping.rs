@@ -15,7 +15,8 @@ use crate::{
 
 pub(super) fn failed(reason: MappingError) -> Error {
     if let MappingError::Context(edge) = reason {
-        return edge.unavailable(crate::processing::SourceContinuityOperation::Transformation);
+        return edge
+            .unavailable(crate::processing::contextual::SourceContinuityOperation::Transformation);
     }
     let (code, reason) = match reason {
         MappingError::DataUnavailable => (

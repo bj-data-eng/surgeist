@@ -64,8 +64,8 @@ fn both_checked_constructors_refuse_complete_bodies_for_association_only() {
         display: Display::Block,
         ..NodeInputOf::default()
     });
-    let mut input = base_input(false, text::ParagraphStrut::DefaultFont);
-    input.source = Source::identified("", text::Id::from_u64(650_759), 12);
+    let mut input = base_input(false, text::paragraph::ParagraphStrut::DefaultFont);
+    input.source = Source::identified("", text::source::Id::from_u64(650_759), 12);
     input.origins.clear();
     input.connections.clear();
     input.boundary_policies.clear();
@@ -164,7 +164,10 @@ fn complete_bodies_flow_retains_one_binding_family_and_existing_source_geometry(
             .iter()
             .map(|line| line.range())
             .collect::<Vec<_>>(),
-        [text::Range::new(0, 1), text::Range::new(1, 2)]
+        [
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2)
+        ]
     );
     assert_originals(&batch, &fixture);
     let mut unrequested = prepare(scope_input(false, Side::Before, true));
@@ -182,7 +185,10 @@ fn complete_bodies_flow_retains_one_binding_family_and_existing_source_geometry(
 
 #[test]
 fn complete_bodies_accepts_authentic_node_free_semantic_flow() {
-    let mut fixture = prepare(empty_input(false, text::ParagraphStrut::DefaultFont));
+    let mut fixture = prepare(empty_input(
+        false,
+        text::paragraph::ParagraphStrut::DefaultFont,
+    ));
     assert_eq!(
         crate::text_layout::capture::classify(&fixture.binding).unwrap(),
         crate::text_layout::capture::ParagraphClass::SemanticFlow
@@ -224,10 +230,10 @@ fn unknown_topology_refuses_precisely_without_replacing_prior_output_and_recover
         .map(|line| (line.range(), line.bounds(), line.baseline()))
         .collect::<Vec<_>>();
     let mut input = scope_input(false, Side::Before, true);
-    let text::SourceProcessingScope::Block { topology, .. } = &mut input.scopes[0] else {
+    let text::capture::SourceProcessingScope::Block { topology, .. } = &mut input.scopes[0] else {
         unreachable!("real domain")
     };
-    *topology = text::SourceProcessingTopology::Unknown;
+    *topology = text::capture::SourceProcessingTopology::Unknown;
     let mut unknown = prepare(input);
     let ordinary_tree = tree::<f64>(&unknown, false);
     LayoutFlowInput::try_new(
@@ -253,8 +259,8 @@ fn unknown_topology_refuses_precisely_without_replacing_prior_output_and_recover
     assert!(
         matches!(error.kind(), LayoutErrorKindOf::Text(error) if matches!(
             error.detail(), Some(text::ErrorDetail::InvalidTextProtocol {
-                reason: text::ProtocolError::InlineBoxFragmentation(
-                    text::InlineBoxFragmentationError::IncompleteTopology { domain: 0 }
+                reason: text::prepared::ProtocolError::InlineBoxFragmentation(
+                    text::inline_box::InlineBoxFragmentationError::IncompleteTopology { domain: 0 }
                 )
             })
         )),

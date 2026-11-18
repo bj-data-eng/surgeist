@@ -67,7 +67,7 @@
 //! [`WrappingScopeInput`] boxes to one borrowed tree. Numeric box/control flow
 //! can supply no Text paragraphs. [`compute_layout_with_flow`] consumes that
 //! checked flow and selects Text-issued candidates when present. It retains the exact
-//! placed [`surgeist_text::Layout`] in each [`PlacedTextOutput`], alongside
+//! placed [`surgeist_text::layout::Layout`] in each [`PlacedTextOutput`], alongside
 //! source-associated fragment handles and canonical atomic allocations.
 //! Text owns shaping and source mappings; Layout owns fitting and placement,
 //! Render owns paint conversion, and Runtime owns coherent publication.
@@ -226,7 +226,7 @@
 mod fixture_variants;
 
 #[cfg(test)]
-use surgeist_text::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
+use surgeist_text::supplied_line::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
 
 mod accounting;
 #[cfg(test)]
@@ -476,7 +476,7 @@ pub use sizing::{
     SizingCalculationOf,
 };
 /// Baseline names, independent of any font-design or placed-box coordinate.
-pub use surgeist_text::FontBaseline as BaselineName;
+pub use surgeist_text::font::FontBaseline as BaselineName;
 pub use tree::{LayoutBatchSink, LayoutTree, Traverse};
 pub use value::{
     AspectRatio, AspectRatioOf, AvailableSpace, AvailableSpaceOf, AxisSizingRequest,

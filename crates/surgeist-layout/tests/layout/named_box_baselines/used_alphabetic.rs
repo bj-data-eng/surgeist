@@ -2,7 +2,7 @@
 use super::*;
 mod joins;
 
-const ALPHA: t::FontBaseline = t::FontBaseline::Alphabetic;
+const ALPHA: t::font::FontBaseline = t::font::FontBaseline::Alphabetic;
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
@@ -155,7 +155,7 @@ fn qualify_font(bytes: &[u8]) {
     );
 }
 fn raw_instance(
-    instance: t::EffectiveFontInstance<'_>,
+    instance: t::font::EffectiveFontInstance<'_>,
     catalogue: &surgeist_font::CataloguePublication,
     size: f32,
 ) {
@@ -170,66 +170,66 @@ fn raw_instance(
     let measured = instance
         .baseline(
             catalogue,
-            t::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-            t::FontBaselineAxis::HorizontalY,
+            t::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+            t::font::FontBaselineAxis::HorizontalY,
             ALPHA,
         )
         .unwrap();
-    let t::FontBaselineOutcome::Available(value) = measured.outcome() else {
+    let t::font::FontBaselineOutcome::Available(value) = measured.outcome() else {
         panic!("actual romn100 must be available: {measured:?}")
     };
     assert_eq!(value.coordinate(), scale);
     assert_eq!(
         value.provenance(),
-        t::FontBaselineProvenance::BaseCoordinate
+        t::font::FontBaselineProvenance::BaseCoordinate
     );
     assert_eq!(value.base_script(), Some(*b"latn"));
     assert_eq!(value.absence(), None);
 }
 
 struct Captured {
-    prepared: t::PreparedText,
-    source: t::Source,
+    prepared: t::prepared::PreparedText,
+    source: t::source::Source,
 }
-fn style(size: f32, height: f64) -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style(size: f32, height: f64) -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size,
-        line_height: t::LineHeight::Absolute(height),
-        white_space: t::WhiteSpace::Preserve,
-        word_break: t::WordBreak::BreakAll,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(height),
+        white_space: t::style::WhiteSpace::Preserve,
+        word_break: t::style::WordBreak::BreakAll,
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     }
 }
 fn capture(
     system: &mut t::System,
     raw: &str,
-    style: t::Style,
-    orientation: t::LineOrientation,
+    style: t::style::Style,
+    orientation: t::selection::LineOrientation,
     atomic: bool,
 ) -> Captured {
-    let mut source = t::Source::new(raw);
+    let mut source = t::source::Source::new(raw);
     if atomic {
-        source.inline_box(t::InlineBox::new(
-            t::Id::from_u64(2),
-            t::InlineBoxKind::InFlow,
+        source.inline_box(t::source::InlineBox::new(
+            t::source::Id::from_u64(2),
+            t::source::InlineBoxKind::InFlow,
             1,
-            t::Size::new(6.0, 14.0),
+            t::geometry::Size::new(6.0, 14.0),
         ));
     }
     let ranges = if atomic {
-        vec![t::Range::new(0, 1), t::Range::new(1, 2)]
+        vec![t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
     } else {
-        vec![t::Range::new(0, raw.encode_utf16().count())]
+        vec![t::source::Range::new(0, raw.encode_utf16().count())]
     };
-    use t::SourceProcessingEvent as E;
+    use t::capture::SourceProcessingEvent as E;
     let mut events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
         E::Origin {
             origin: 0,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         },
     ];
     let mut boundaries = Vec::new();
@@ -237,91 +237,91 @@ fn capture(
         events.extend([
             E::Atomic {
                 atomic: 0,
-                affinity: t::Affinity::After,
+                affinity: t::layout::Affinity::After,
             },
             E::Connection(0),
             E::Origin {
                 origin: 1,
-                affinity: t::Affinity::After,
+                affinity: t::layout::Affinity::After,
             },
         ]);
         boundaries.extend([
-            t::ParagraphBoundaryDefinition::AtomicBefore(0),
-            t::ParagraphBoundaryDefinition::AtomicAfter(0),
-            t::ParagraphBoundaryDefinition::Connection(0),
+            t::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+            t::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
+            t::paragraph::ParagraphBoundaryDefinition::Connection(0),
         ]);
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins: ranges
                 .into_iter()
-                .map(|range| t::ParagraphOrigin {
+                .map(|range| t::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: range,
                     aggregate: range,
-                    kind: t::ParagraphOriginKind::Authored,
+                    kind: t::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             controls: vec![],
             connections: if atomic {
-                vec![t::SourceProcessingConnection {
+                vec![t::capture::SourceProcessingConnection {
                     before_origin: 0,
                     after_origin: 1,
-                    kind: t::ParagraphConnectionKind::Continuous,
+                    kind: t::paragraph::ParagraphConnectionKind::Continuous,
                 }]
             } else {
                 vec![]
             },
             boundary_policies: boundaries
                 .into_iter()
-                .map(|definition| t::ParagraphBoundaryPolicy {
+                .map(|definition| t::paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: t::Wrap::Word,
-                    following_wrap: t::Wrap::Word,
-                    ancestor_wrap: t::Wrap::Word,
+                    preceding_wrap: t::style::Wrap::Word,
+                    following_wrap: t::style::Wrap::Word,
+                    ancestor_wrap: t::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: t::ParagraphBaseDirection::LeftToRight,
+                used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    let analysis = t::AnalyzedSource::from_processed_paragraph(
+    let analysis = t::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analysis
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| t::WrappingPolicy {
+        .map(|row| t::analyzed::WrappingPolicy {
             relation: row.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analysis = analysis.with_wrapping_policies(policies).unwrap();
-    let options = t::PreparationOptions::default()
+    let options = t::prepared::PreparationOptions::default()
         .with_orientation(orientation)
         .with_baseline_reference(ALPHA);
     let prepared = system
@@ -350,23 +350,23 @@ fn capture(
 }
 fn select(
     parent: &Captured,
-    start: t::PreparedBoundary,
-    offer: t::PreparedOpportunity,
-    atomics: Vec<t::AtomicAllocation>,
+    start: t::prepared::PreparedBoundary,
+    offer: t::prepared::PreparedOpportunity,
+    atomics: Vec<t::allocation::AtomicAllocation>,
     available: f64,
-) -> t::FinalizedLine {
+) -> t::finalized::FinalizedLine {
     let from = start.view().participant_offset();
     let end = offer.view().boundary();
     let to = end.view().participant_offset();
-    let terminal = offer.view().kind() == t::PreparedBreakKind::ParagraphEnd;
+    let terminal = offer.view().kind() == t::prepared::PreparedBreakKind::ParagraphEnd;
     parent
         .prepared
-        .select(t::LineSelectionRequest {
+        .select(t::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: parent.prepared.source_segments().next().unwrap(),
             start,
             end,
-            termination: t::PreparedTermination::Ordinary(offer),
+            termination: t::selection::PreparedTermination::Ordinary(offer),
             participants: parent
                 .prepared
                 .participants()
@@ -380,46 +380,46 @@ fn select(
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: t::LineContext {
-                alignment_insets: t::LineAlignmentInsets::ZERO,
-                formatted_line: t::FormattedLineContext::default(),
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: t::LineBoxDirection::LeftToRight,
+            context: t::selection::LineContext {
+                alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: t::selection::FormattedLineContext::default(),
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: t::selection::LineBoxDirection::LeftToRight,
                 orientation: parent.prepared.orientation(),
                 start: if from == 0 {
-                    t::LineStart::Paragraph
+                    t::selection::LineStart::Paragraph
                 } else {
-                    t::LineStart::Continuation
+                    t::selection::LineStart::Continuation
                 },
                 end: if terminal {
-                    t::LineEnd::Paragraph
+                    t::selection::LineEnd::Paragraph
                 } else {
-                    t::LineEnd::Forced
+                    t::selection::LineEnd::Forced
                 },
                 available_inline: Some(available),
                 indent: 0.0,
-                alignment: t::Alignment::Start,
-                tabs: t::TabContext::NoTabs,
-                spacing: t::SpacingPolicy::None,
+                alignment: t::options::Alignment::Start,
+                tabs: t::tabs::TabContext::NoTabs,
+                spacing: t::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
-fn terminal(p: &t::PreparedText) -> t::PreparedOpportunity {
+fn terminal(p: &t::prepared::PreparedText) -> t::prepared::PreparedOpportunity {
     p.opportunity_views()
-        .find(|row| row.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|row| row.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle()
 }
 fn placed<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     container: u32,
-) -> &t::Layout {
+) -> &t::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -526,7 +526,7 @@ fn qualify_child_text(child: &Captured, bytes: &[u8], cw: bool) {
     let p = &child.prepared;
     let forced = p
         .opportunity_views()
-        .find(|row| row.kind() == t::PreparedBreakKind::Forced)
+        .find(|row| row.kind() == t::prepared::PreparedBreakKind::Forced)
         .unwrap()
         .handle();
     let first = select(
@@ -554,15 +554,15 @@ fn qualify_child_text(child: &Captured, bytes: &[u8], cw: bool) {
         );
     }
     let refs = if cw { [2.0, -4.0] } else { [4.0, 10.0] };
-    let text = t::Layout::from_finalized_lines(t::PlacementRequest {
+    let text = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: p.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
         entries: [(first, refs[0]), (last, refs[1])]
             .into_iter()
             .map(|(line, baseline)| {
-                t::PlacementEntry::Formatted(t::LinePlacement {
+                t::placement::PlacementEntry::Formatted(t::placement::LinePlacement {
                     line,
-                    anchor: t::LineAnchor {
+                    anchor: t::placement::LineAnchor {
                         inline_origin: 0.0,
                         baseline,
                     },
@@ -593,24 +593,24 @@ fn qualify_child_text(child: &Captured, bytes: &[u8], cw: bool) {
             let raw = run
                 .baseline(
                     p.font_catalogue_identity(),
-                    t::FontBaselineAxis::HorizontalY,
+                    t::font::FontBaselineAxis::HorizontalY,
                     ALPHA,
                 )
                 .unwrap();
             assert_eq!(
                 raw.script(),
-                t::FontBaselineScript::from_iso15924(*b"Latn").unwrap()
+                t::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap()
             );
-            let t::FontBaselineOutcome::Available(value) = raw.outcome() else {
+            let t::font::FontBaselineOutcome::Available(value) = raw.outcome() else {
                 panic!("actual child Latin romn is available")
             };
             assert_eq!(value.coordinate(), 0.5);
             assert_eq!(
                 run.glyph_basis(),
                 if cw {
-                    t::GlyphBasis::Clockwise
+                    t::geometry::GlyphBasis::Clockwise
                 } else {
-                    t::GlyphBasis::Unrotated
+                    t::geometry::GlyphBasis::Unrotated
                 }
             );
             if cw { run.origin().x } else { run.origin().y }
@@ -751,20 +751,20 @@ const CASES: [Case; 8] = [
         child_reference: -4.0,
     },
 ];
-fn parent_allocation(parent: &Captured, case: Case) -> t::AtomicAllocation {
+fn parent_allocation(parent: &Captured, case: Case) -> t::allocation::AtomicAllocation {
     let cw = case.mode != l::WritingMode::HorizontalTb;
     let p = case.child_reference;
     let before = if cw { 6.0 - p } else { p };
     let rect = if cw {
-        t::Rect::new(0.0, -before, 14.0, 6.0)
+        t::geometry::Rect::new(0.0, -before, 14.0, 6.0)
     } else {
-        t::Rect::new(0.0, -before, 6.0, 14.0)
+        t::geometry::Rect::new(0.0, -before, 6.0, 14.0)
     };
-    t::AtomicAllocation {
+    t::allocation::AtomicAllocation {
         occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
-        allocation: t::AtomicLineAllocation::InFlow {
-            fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
-            flow: t::AtomicFlowAllocation {
+        allocation: t::allocation::AtomicLineAllocation::InFlow {
+            fit: surgeist_text::allocation::AtomicFitAllocation::NativeOccupied,
+            flow: t::allocation::AtomicFlowAllocation {
                 normal_border_inline_size: if cw { 14.0 } else { 6.0 },
                 advance: if cw { 14.0 } else { 6.0 },
                 before_baseline: before,
@@ -772,12 +772,12 @@ fn parent_allocation(parent: &Captured, case: Case) -> t::AtomicAllocation {
                 occupied_start: 0.0,
                 occupied_end: if cw { 14.0 } else { 6.0 },
             },
-            box_geometry: t::AtomicBoxAllocation {
+            box_geometry: t::allocation::AtomicBoxAllocation {
                 border: rect,
                 content: rect,
                 baseline: 0.0,
             },
-            alignment: t::LineBoxAlignment::Baseline,
+            alignment: t::allocation::LineBoxAlignment::Baseline,
         },
     }
 }
@@ -800,27 +800,29 @@ fn qualify_parent_text(parent: &Captured, bytes: &[u8], case: Case) {
     );
     let reference = if cw { 100.0 } else { 70.0 };
     let border = if cw {
-        t::Rect::new(reference - case.child_reference, 30.0, 6.0, 14.0)
+        t::geometry::Rect::new(reference - case.child_reference, 30.0, 6.0, 14.0)
     } else {
-        t::Rect::new(30.0, reference - case.child_reference, 6.0, 14.0)
+        t::geometry::Rect::new(30.0, reference - case.child_reference, 6.0, 14.0)
     };
-    let text = t::Layout::from_finalized_lines(t::PlacementRequest {
+    let text = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: parent.prepared.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
-        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-            line,
-            anchor: t::LineAnchor {
-                inline_origin: 20.0,
-                baseline: reference,
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![t::placement::PlacementEntry::Formatted(
+            t::placement::LinePlacement {
+                line,
+                anchor: t::placement::LineAnchor {
+                    inline_origin: 20.0,
+                    baseline: reference,
+                },
+                orientation: parent.prepared.orientation(),
+                atomics: vec![t::placement::AtomicPlacement {
+                    occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
+                    border,
+                    content: border,
+                    baseline: reference,
+                }],
             },
-            orientation: parent.prepared.orientation(),
-            atomics: vec![t::AtomicPlacement {
-                occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
-                border,
-                content: border,
-                baseline: reference,
-            }],
-        })],
+        )],
     })
     .unwrap();
     assert_eq!(text.lines()[0].baseline(), reference);
@@ -835,15 +837,15 @@ fn qualify_parent_text(parent: &Captured, bytes: &[u8], case: Case) {
         let raw = run
             .baseline(
                 parent.prepared.font_catalogue_identity(),
-                t::FontBaselineAxis::HorizontalY,
+                t::font::FontBaselineAxis::HorizontalY,
                 ALPHA,
             )
             .unwrap();
         assert_eq!(
             raw.script(),
-            t::FontBaselineScript::from_iso15924(*b"Latn").unwrap()
+            t::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap()
         );
-        let t::FontBaselineOutcome::Available(value) = raw.outcome() else {
+        let t::font::FontBaselineOutcome::Available(value) = raw.outcome() else {
             panic!("actual parent Latin romn is available")
         };
         assert_eq!(value.coordinate(), 1.0);
@@ -942,7 +944,7 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
     );
     assert_eq!(text.lines().len(), 1);
     assert_eq!(text.lines()[0].baseline(), case.baseline);
-    let border = t::Rect::new(case.child_x, case.child_y, 6.0, 14.0);
+    let border = t::geometry::Rect::new(case.child_x, case.child_y, 6.0, 14.0);
     assert_eq!(text.inline_boxes()[0].rect(), border);
     let pens = text
         .run_views()
@@ -951,9 +953,9 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
             assert_eq!(
                 run.glyph_basis(),
                 if cw {
-                    t::GlyphBasis::Clockwise
+                    t::geometry::GlyphBasis::Clockwise
                 } else {
-                    t::GlyphBasis::Unrotated
+                    t::geometry::GlyphBasis::Unrotated
                 }
             );
             assert_eq!(
@@ -1024,14 +1026,14 @@ fn core<S: l::LayoutScalar>() {
         &mut system,
         "A\nB",
         style(5.0, 6.0),
-        t::LineOrientation::Horizontal,
+        t::selection::LineOrientation::Horizontal,
         false,
     );
     let child_cw = capture(
         &mut system,
         "A\nB",
         style(5.0, 6.0),
-        t::LineOrientation::SidewaysClockwise,
+        t::selection::LineOrientation::SidewaysClockwise,
         false,
     );
     qualify_child_text(&child_h, &bytes, false);
@@ -1044,14 +1046,14 @@ fn core<S: l::LayoutScalar>() {
         &mut system,
         "AB",
         style(10.0, 10.0),
-        t::LineOrientation::Horizontal,
+        t::selection::LineOrientation::Horizontal,
         true,
     );
     let parent_cw = capture(
         &mut system,
         "AB",
         style(10.0, 10.0),
-        t::LineOrientation::SidewaysClockwise,
+        t::selection::LineOrientation::SidewaysClockwise,
         true,
     );
     // All standalone new-producer controls precede the intended Layout RED.

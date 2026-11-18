@@ -11,8 +11,11 @@ use crate::{
     },
     error::TextTransformError,
     processing::{
-        ProcessedSource, SourceContinuityOperation, SourceProcessingError, SourceProcessingEvent,
-        contextual::ParagraphTopology,
+        ProcessedSource,
+        contextual::{
+            ParagraphTopology, SourceContinuityOperation, SourceProcessingError,
+            SourceProcessingEvent,
+        },
         lexical_inventory::{LexicalContext, LexicalDisposition, LexicalRecordKind, LexicalState},
     },
     projection::SourceProjection,

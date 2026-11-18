@@ -507,48 +507,52 @@ fn expanded_wbr_is_a_generated_endpoint_with_its_control_custody_and_no_authored
 }
 
 fn phrase_analysis(source: &Source, tracking: f64) -> AnalyzedSource {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     let processed = std::sync::Arc::new(
-        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
-            joint_flows: Vec::new(),
-            scope_alignment_limits: None,
-            source: source.clone(),
-            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: crate::processing::SourceProcessingEnvelope::Complete,
-            origins: input(source, own(0.0)).origins,
-            connections: vec![],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            computed_line_boundaries: vec![],
-            scopes: vec![crate::processing::SourceProcessingScope::Block {
-                writing_axis: None,
-                horizontal_inner_direction: None,
-                font_reference: None,
-                topology: crate::processing::SourceProcessingTopology::Complete,
-                trim: Default::default(),
-                base_style: Style {
-                    locale: Some("ja".into()),
-                    word_space_transform: crate::style::WordSpaceTransform::SpaceAutoPhrase,
-                    ..own(tracking)
-                },
-                used_direction: ParagraphBaseDirection::LeftToRight,
-            }],
-            paragraphs: vec![crate::processing::SourceProcessingParagraph {
-                base_direction: ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: ParagraphStrut::DefaultFont,
-            }],
-            events: vec![
-                E::EnterScope(0),
-                E::EnterParagraph(0),
-                E::Origin {
-                    origin: 0,
-                    affinity: Affinity::After,
-                },
-                E::ExitParagraph(0),
-                E::ExitScope(0),
-            ],
-        })
+        crate::processing::contextual::process_contextual_source(
+            crate::processing::contextual::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
+                source: source.clone(),
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: crate::processing::contextual::SourceProcessingEnvelope::Complete,
+                origins: input(source, own(0.0)).origins,
+                connections: vec![],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                computed_line_boundaries: vec![],
+                scopes: vec![
+                    crate::processing::contextual::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: None,
+                        topology: crate::processing::contextual::SourceProcessingTopology::Complete,
+                        trim: Default::default(),
+                        base_style: Style {
+                            locale: Some("ja".into()),
+                            word_space_transform: crate::style::WordSpaceTransform::SpaceAutoPhrase,
+                            ..own(tracking)
+                        },
+                        used_direction: ParagraphBaseDirection::LeftToRight,
+                    },
+                ],
+                paragraphs: vec![crate::processing::contextual::SourceProcessingParagraph {
+                    base_direction: ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: ParagraphStrut::DefaultFont,
+                }],
+                events: vec![
+                    E::EnterScope(0),
+                    E::EnterParagraph(0),
+                    E::Origin {
+                        origin: 0,
+                        affinity: Affinity::After,
+                    },
+                    E::ExitParagraph(0),
+                    E::ExitScope(0),
+                ],
+            },
+        )
         .unwrap(),
     );
     crate::test_wrapping::bind_missing(

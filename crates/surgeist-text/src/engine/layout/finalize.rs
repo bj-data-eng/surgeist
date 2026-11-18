@@ -3359,8 +3359,8 @@ fn character_slots(
                 let mut traversal = account::clone_vec(ledger, order)?;
                 let scans = traversal.len().checked_mul(3).ok_or_else(|| {
                     super::super::scope_alignment::refusal(
-                        crate::processing::ScopeAlignmentError::Overflow {
-                            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                        crate::processing::contextual::ScopeAlignmentError::Overflow {
+                            kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                         },
                     )
                 })?;

@@ -11,7 +11,7 @@ fn absorbed_directional_control<S: LayoutScalar>() {
     let directional = binding.controls.iter().find(|row| row.node == 22).unwrap();
     assert_eq!(
         directional.occurrence.view().kind(),
-        &text::ParagraphControlKind::RightToLeftOverride
+        &text::paragraph::ParagraphControlKind::RightToLeftOverride
     );
     assert_eq!(directional.occurrence.view().participant(), None);
     let cell = binding.prepared.cell_views().next().unwrap();
@@ -19,7 +19,7 @@ fn absorbed_directional_control<S: LayoutScalar>() {
     for (index, origin) in binding.origins.iter().enumerate() {
         assert!(cell.source_cell().source_pieces().any(|piece| {
             Some(piece.origin_position()) == origin.origin.view().capture_position()
-                && piece.local() == text::Range::new(index, index + 1)
+                && piece.local() == text::source::Range::new(index, index + 1)
         }));
     }
     let scope = binding
@@ -181,13 +181,13 @@ fn absorbed_directional_control<S: LayoutScalar>() {
                 .unwrap();
             assert!(boundary.box_context().is_some());
             assert_eq!(boundary.advance(), 0.0);
-            text::ControlAllocation {
+            text::allocation::ControlAllocation {
                 occurrence: row.occurrence.clone(),
                 boundary: Some(boundary),
-                strut: Some(text::ControlStrut {
+                strut: Some(text::allocation::ControlStrut {
                     baseline: 8.0,
                     line_extent: 10.0,
-                    alignment: text::LineBoxAlignment::Baseline,
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 }),
             }
         })
@@ -196,13 +196,13 @@ fn absorbed_directional_control<S: LayoutScalar>() {
     let segment = binding.prepared.source_segments().next().unwrap();
     let line = binding
         .prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
             participants: binding.prepared.participants().collect(),
-            termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+            termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
             alternative: None,
             incoming: None,
             atomics: Vec::new(),
@@ -210,32 +210,32 @@ fn absorbed_directional_control<S: LayoutScalar>() {
             boundary_context: Vec::new(),
             line_strut: None,
             line_box_struts: Vec::new(),
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
                 orientation: binding.prepared.orientation(),
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(30.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
     let origin = &binding.origins[0].origin;
-    let direct = AcceptedFloatPrefix::Seam(text::TextSeam::Origin {
+    let direct = AcceptedFloatPrefix::Seam(text::finalized::TextSeam::Origin {
         origin: origin.clone(),
-        local: text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
     });
     assert_eq!(
         direct.observe(&line).map_err(prefix_error).unwrap(),

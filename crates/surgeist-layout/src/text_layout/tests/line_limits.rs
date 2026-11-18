@@ -1,13 +1,18 @@
 //! Successive-line policy through real block computation and retained Text.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use surgeist_text::{HyphenateCharacter, Hyphens, OverflowWrap, PreparedTermination, Range, Text};
+use surgeist_text::{
+    hyphenation::{HyphenateCharacter, Hyphens},
+    selection::PreparedTermination,
+    source::{Range, Text},
+    style::OverflowWrap,
+};
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 fn paragraph(source: &str, indication: &str, overflow: OverflowWrap) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
     style.hyphens = Hyphens::Auto;
-    style.white_space = surgeist_text::WhiteSpace::Collapse;
+    style.white_space = surgeist_text::style::WhiteSpace::Collapse;
     style.locale = Some("en-US".into());
     style.hyphenate_character = HyphenateCharacter::String(Text::from(indication));
     style.overflow_wrap = overflow;
@@ -393,7 +398,7 @@ fn real_forced_and_source_less_discretionary_endings_use_their_actual_roles() {
         style.hyphens = Hyphens::Auto;
         style.locale = Some("en-US".into());
         style.hyphenate_character = HyphenateCharacter::String(Text::from("A"));
-        style.white_space = surgeist_text::WhiteSpace::Preserve;
+        style.white_space = surgeist_text::style::WhiteSpace::Preserve;
         let forced =
             PreparedParagraph::plain(1, Source::new("co\u{ad}operate\ncooperate"), style.clone());
         let batch = compute::<S>(
@@ -425,10 +430,10 @@ fn real_forced_and_source_less_discretionary_endings_use_their_actual_roles() {
             .finalized_line();
         assert_eq!(
             lf.selected_line().request().context.end,
-            surgeist_text::LineEnd::Forced
+            surgeist_text::selection::LineEnd::Forced
         );
         assert!(
-            matches!(&lf.selected_line().request().termination,PreparedTermination::Ordinary(offer) if offer.view().kind()==surgeist_text::PreparedBreakKind::Forced)
+            matches!(&lf.selected_line().request().termination,PreparedTermination::Ordinary(offer) if offer.view().kind()==surgeist_text::prepared::PreparedBreakKind::Forced)
         );
         for indication in ["A", ""] {
             style.hyphenate_character = HyphenateCharacter::String(Text::from(indication));
@@ -475,7 +480,7 @@ fn real_forced_and_source_less_discretionary_endings_use_their_actual_roles() {
             let alternative = selected.request().alternative.as_ref().unwrap();
             assert!(matches!(
                 alternative.view().definition(),
-                surgeist_text::PreparedAlternativeDefinition::Control { .. }
+                surgeist_text::prepared::PreparedAlternativeDefinition::Control { .. }
             ));
             assert_eq!(
                 alternative.view().text().code_units(),

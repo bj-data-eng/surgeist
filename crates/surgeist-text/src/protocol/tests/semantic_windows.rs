@@ -87,7 +87,7 @@ fn window_reason(failure: &crate::protocol::SemanticWindowFailure) -> &ProtocolE
 }
 
 fn bounded(text: &str) -> PreparedText {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     let mut value = input(text, WhiteSpace::Preserve);
     let length = text.encode_utf16().count();
     value.controls = vec![
@@ -101,52 +101,60 @@ fn bounded(text: &str) -> PreparedText {
         },
     ];
     let captured = std::sync::Arc::new(
-        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
-            source: value.source,
-            segment_breaks: value.segment_breaks,
-            envelope: crate::processing::SourceProcessingEnvelope::Complete,
-            origins: value.origins,
-            controls: value.controls,
-            connections: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            computed_line_boundaries: vec![],
-            joint_flows: vec![],
-            scope_alignment_limits: Some(crate::processing::ScopeAlignmentLimits::new(
-                100_000, 4096, 10_000_000, 67_108_864,
-            )),
-            scopes: vec![crate::processing::SourceProcessingScope::Block {
-                topology: crate::processing::SourceProcessingTopology::Complete,
-                trim: crate::processing::WhiteSpaceTrim::default(),
-                base_style: value.base_style,
-                used_direction: ParagraphBaseDirection::LeftToRight,
-                writing_axis: Some(crate::processing::SourceWritingAxis::Horizontal),
-                horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
-                font_reference: None,
-            }],
-            paragraphs: vec![crate::processing::SourceProcessingParagraph {
-                base_direction: ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: ParagraphStrut::DefaultFont,
-            }],
-            events: vec![
-                E::EnterScope(0),
-                E::EnterParagraph(0),
-                E::Control {
-                    control: 0,
-                    affinity: crate::layout::Affinity::After,
-                },
-                E::Origin {
-                    origin: 0,
-                    affinity: crate::layout::Affinity::After,
-                },
-                E::Control {
-                    control: 1,
-                    affinity: crate::layout::Affinity::After,
-                },
-                E::ExitParagraph(0),
-                E::ExitScope(0),
-            ],
-        })
+        crate::processing::contextual::process_contextual_source(
+            crate::processing::contextual::ContextualSourceInput {
+                source: value.source,
+                segment_breaks: value.segment_breaks,
+                envelope: crate::processing::contextual::SourceProcessingEnvelope::Complete,
+                origins: value.origins,
+                controls: value.controls,
+                connections: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                computed_line_boundaries: vec![],
+                joint_flows: vec![],
+                scope_alignment_limits: Some(
+                    crate::processing::contextual::ScopeAlignmentLimits::new(
+                        100_000, 4096, 10_000_000, 67_108_864,
+                    ),
+                ),
+                scopes: vec![
+                    crate::processing::contextual::SourceProcessingScope::Block {
+                        topology: crate::processing::contextual::SourceProcessingTopology::Complete,
+                        trim: crate::processing::contextual::WhiteSpaceTrim::default(),
+                        base_style: value.base_style,
+                        used_direction: ParagraphBaseDirection::LeftToRight,
+                        writing_axis: Some(
+                            crate::processing::contextual::SourceWritingAxis::Horizontal,
+                        ),
+                        horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
+                        font_reference: None,
+                    },
+                ],
+                paragraphs: vec![crate::processing::contextual::SourceProcessingParagraph {
+                    base_direction: ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: ParagraphStrut::DefaultFont,
+                }],
+                events: vec![
+                    E::EnterScope(0),
+                    E::EnterParagraph(0),
+                    E::Control {
+                        control: 0,
+                        affinity: crate::layout::Affinity::After,
+                    },
+                    E::Origin {
+                        origin: 0,
+                        affinity: crate::layout::Affinity::After,
+                    },
+                    E::Control {
+                        control: 1,
+                        affinity: crate::layout::Affinity::After,
+                    },
+                    E::ExitParagraph(0),
+                    E::ExitScope(0),
+                ],
+            },
+        )
         .unwrap(),
     );
     let analyzed = AnalyzedSource::from_processed_paragraph(
@@ -190,7 +198,7 @@ fn transaction_limits_count_discarded_branches_and_preserve_input_on_failure() {
         .semantic_window_with_scope_allowance(&r, ScopeAlignmentAllowance::new(limit, 67_108_864))
         .unwrap_err();
     assert!(
-        matches!(failed.error().detail(), Some(crate::ErrorDetail::ScopeAlignment { reason: crate::processing::ScopeAlignmentError::Limit { kind: crate::processing::ScopeAlignmentLimitKind::Records, required, limit: actual } }) if *required == usage.records() && *actual == limit)
+        matches!(failed.error().detail(), Some(crate::ErrorDetail::ScopeAlignment { reason: crate::processing::contextual::ScopeAlignmentError::Limit { kind: crate::processing::contextual::ScopeAlignmentLimitKind::Records, required, limit: actual } }) if *required == usage.records() && *actual == limit)
     );
     let failed_usage = failed.scope_alignment_usage().unwrap();
     assert_eq!(failed_usage.records(), limit);

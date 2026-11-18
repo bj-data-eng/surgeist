@@ -44,7 +44,7 @@ pub(crate) fn build_spacing_slots(
     let ledger = if active {
         if ledger.is_none() {
             return Err(crate::engine::scope_alignment::refusal(
-                crate::processing::ScopeAlignmentError::LimitsRequired,
+                crate::processing::contextual::ScopeAlignmentError::LimitsRequired,
             ));
         }
         account::header::<Vec<SpacingSlotData>>(ledger)?;

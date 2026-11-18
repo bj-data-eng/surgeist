@@ -1,7 +1,10 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
-use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source};
+use surgeist_text::{
+    paragraph::{ParagraphBaseDirection, ParagraphControlKind},
+    source::Source,
+};
 
 pub(super) fn computed_overflow(x: Overflow, y: Overflow) -> ComputedOverflow {
     ComputedOverflow::try_new(x, y).expect("test overflow pair must already be canonical")
@@ -133,12 +136,12 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
 
 pub(super) fn prepared_source_batch<S: LayoutScalar>(
     native_frame: crate::test_support::requests::NativeRootFrameOf<S>,
-    source: surgeist_text::Source,
-    style: surgeist_text::Style,
+    source: surgeist_text::source::Source,
+    style: surgeist_text::style::Style,
     available: crate::AxisSizingRequestOf<S>,
     flow_axes: FlowAxes,
     text_align: TextAlign,
-    replacements: Vec<surgeist_text::ParagraphReplacement>,
+    replacements: Vec<surgeist_text::paragraph::ParagraphReplacement>,
 ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, core::convert::Infallible> {
     let writing_mode = flow_axes.writing_mode();
     let direction = flow_axes.direction();
@@ -190,8 +193,8 @@ pub(super) fn prepared_source_batch<S: LayoutScalar>(
 
 pub(super) type OriginFragmentAssociation<S> = (
     u32,
-    surgeist_text::PreparedOrigin,
-    surgeist_text::Range,
+    surgeist_text::prepared::PreparedOrigin,
+    surgeist_text::source::Range,
     Option<ScrollRectOf<S>>,
     Point<S>,
     usize,
@@ -205,7 +208,8 @@ pub(super) fn origin_fragment_associations<S: LayoutScalar>(
         .filter_map(|entry| {
             let fragment = entry.fragment();
             let original = fragment.finalized_fragment().view();
-            let surgeist_text::FinalizedFragmentOwner::Origin(origin) = original.owner() else {
+            let surgeist_text::finalized::FinalizedFragmentOwner::Origin(origin) = original.owner()
+            else {
                 return None;
             };
             let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
@@ -775,7 +779,7 @@ pub(super) fn assert_fri06_c08_mixed_inline_atomic_x<S: LayoutScalar>(
         ..NodeInputOf::default()
     };
     let mut whitespace = ahem_style(10.0, 10.0);
-    whitespace.white_space = surgeist_text::WhiteSpace::Collapse;
+    whitespace.white_space = surgeist_text::style::WhiteSpace::Collapse;
     // The original numeric fixture's75px gap is an actual10px Ahem space
     // plus65px authored word spacing, retaining the10px font metrics.
     whitespace.word_spacing = 65.0;
@@ -783,12 +787,12 @@ pub(super) fn assert_fri06_c08_mixed_inline_atomic_x<S: LayoutScalar>(
         vec![
             ParagraphPart::Atomic {
                 node: 1,
-                size: surgeist_text::Size::new(18.0, 18.0),
+                size: surgeist_text::geometry::Size::new(18.0, 18.0),
             },
             ParagraphPart::text(2, Source::new(" "), whitespace),
             ParagraphPart::Atomic {
                 node: 3,
-                size: surgeist_text::Size::new(12.0, 18.0),
+                size: surgeist_text::geometry::Size::new(12.0, 18.0),
             },
         ],
         ahem_style(10.0, 10.0),
@@ -836,7 +840,7 @@ pub(super) fn assert_fri06_c08_mixed_inline_atomic_x<S: LayoutScalar>(
 
     let space = batch.placed_text()[0].layout().clusters();
     assert_eq!(space.len(), 1);
-    assert_eq!(space[0].range(), surgeist_text::Range::new(0, 1));
+    assert_eq!(space[0].range(), surgeist_text::source::Range::new(0, 1));
     assert_eq!(space[0].bounds().size.width, 75.0);
 
     assert_eq!(
@@ -923,19 +927,19 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
             },
             ParagraphPart::Atomic {
                 node: 4,
-                size: surgeist_text::Size::new(28.0, 16.0),
+                size: surgeist_text::geometry::Size::new(28.0, 16.0),
             },
             ParagraphPart::Atomic {
                 node: 5,
-                size: surgeist_text::Size::new(32.0, 16.0),
+                size: surgeist_text::geometry::Size::new(32.0, 16.0),
             },
             ParagraphPart::Atomic {
                 node: 6,
-                size: surgeist_text::Size::new(36.0, 16.0),
+                size: surgeist_text::geometry::Size::new(36.0, 16.0),
             },
             ParagraphPart::Atomic {
                 node: 7,
-                size: surgeist_text::Size::new(40.0, 16.0),
+                size: surgeist_text::geometry::Size::new(40.0, 16.0),
             },
         ],
         text_style,
@@ -1089,7 +1093,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         let atomic = paragraph
             .prepared
             .atomic_views()
-            .find(|atomic| atomic.original_box().id() == surgeist_text::Id::from_u64(node))
+            .find(|atomic| atomic.original_box().id() == surgeist_text::source::Id::from_u64(node))
             .unwrap();
         assert_eq!(
             atomic.level(),
@@ -1321,7 +1325,7 @@ pub(super) struct Fri06C02StatefulTextTree<S: LayoutScalar> {
 }
 
 impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
-    pub(super) fn new(source: Source, style: surgeist_text::Style) -> Self {
+    pub(super) fn new(source: Source, style: surgeist_text::style::Style) -> Self {
         let root_input = NodeInputOf {
             display: Display::Block,
             ..NodeInputOf::default()
@@ -1362,7 +1366,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
                 ParagraphPart::text(1, Source::new("X"), style.clone()),
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(25.25, 10.5),
+                    size: surgeist_text::geometry::Size::new(25.25, 10.5),
                 },
                 ParagraphPart::Control {
                     node: 3,
@@ -1515,7 +1519,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         self.inputs.insert(2, LayoutInputOf::box_input(style));
     }
 
-    pub(super) fn replace_text(&mut self, source: Source, style: surgeist_text::Style) {
+    pub(super) fn replace_text(&mut self, source: Source, style: surgeist_text::style::Style) {
         let paragraph = PreparedParagraph::plain(1, source, style);
         self.inputs.insert(1, paragraph.text_input(1));
         self.text = paragraph.binding(0);

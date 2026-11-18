@@ -1,6 +1,6 @@
 //! Captured output authority, separate from used paragraph facts.
 use crate::processing::contextual::ScopeCapture;
-use crate::processing::{CapturedJointFlow, CapturedParagraph, CapturedScope};
+use crate::processing::contextual::{CapturedJointFlow, CapturedParagraph, CapturedScope};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]

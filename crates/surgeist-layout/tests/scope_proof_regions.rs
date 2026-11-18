@@ -78,9 +78,9 @@ struct Pair {
 }
 
 fn inline(
-    scopes: &mut Vec<text::SourceProcessingScope>,
-    controls: &mut Vec<text::ParagraphControl>,
-    style: text::Style,
+    scopes: &mut Vec<text::capture::SourceProcessingScope>,
+    controls: &mut Vec<text::paragraph::ParagraphControl>,
+    style: text::style::Style,
     start: usize,
     end: usize,
 ) -> Pair {
@@ -90,22 +90,22 @@ fn inline(
         end: controls.len() + 1,
     };
     controls.extend([
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: start,
-            kind: text::ParagraphControlKind::InlineBoundaryStart,
+            kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: end,
-            kind: text::ParagraphControlKind::InlineBoundaryEnd,
+            kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ]);
-    scopes.push(text::SourceProcessingScope::Inline {
+    scopes.push(text::capture::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
-        trim: text::WhiteSpaceTrim::default(),
+        trim: text::capture::WhiteSpaceTrim::default(),
         style: Some(style),
-        boundaries: Some(text::SourceProcessingScopeBoundaries {
+        boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
             start: pair.start,
             end: pair.end,
         }),
@@ -121,47 +121,47 @@ fn fixture_with_empty_paragraphs(owners: Owners, child_paragraphs: usize) -> Fix
     fixture_with_child_topology(
         owners,
         child_paragraphs,
-        text::SourceProcessingTopology::Complete,
+        text::capture::SourceProcessingTopology::Complete,
     )
 }
 
 fn fixture_with_child_topology(
     owners: Owners,
     child_paragraphs: usize,
-    child_topology: text::SourceProcessingTopology,
+    child_topology: text::capture::SourceProcessingTopology,
 ) -> Fixture {
     assert!(child_paragraphs > 0);
     let resumed = child_paragraphs + 1;
-    let plain = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let plain = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
+        line_height: text::style::LineHeight::Absolute(10.0),
         locale: Some("ja".into()),
-        word_space_transform: text::WordSpaceTransform::None,
-        ..text::Style::default()
+        word_space_transform: text::style::WordSpaceTransform::None,
+        ..text::style::Style::default()
     };
-    let authored_auto = text::Style {
-        word_space_transform: text::WordSpaceTransform::SpaceAutoPhrase,
+    let authored_auto = text::style::Style {
+        word_space_transform: text::style::WordSpaceTransform::SpaceAutoPhrase,
         ..plain.clone()
     };
-    let emitter = text::Style {
-        word_space_transform: text::WordSpaceTransform::Space,
+    let emitter = text::style::Style {
+        word_space_transform: text::style::WordSpaceTransform::Space,
         ..plain.clone()
     };
-    let block = |base_style, topology| text::SourceProcessingScope::Block {
+    let block = |base_style, topology| text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
         topology,
-        trim: text::WhiteSpaceTrim::default(),
+        trim: text::capture::WhiteSpaceTrim::default(),
         base_style,
-        used_direction: text::ParagraphBaseDirection::LeftToRight,
+        used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
     };
-    let mut source = text::Source::new(format!("{JAPANESE}{JAPANESE}"));
+    let mut source = text::source::Source::new(format!("{JAPANESE}{JAPANESE}"));
     let n = JAPANESE.encode_utf16().count();
     let end = 2 * n;
     source.span(
-        text::Range::new(0, n),
+        text::source::Range::new(0, n),
         if matches!(owners, Owners::DormantSpanning) {
             plain.clone()
         } else {
@@ -169,7 +169,7 @@ fn fixture_with_child_topology(
         },
     );
     source.span(
-        text::Range::new(n, end),
+        text::source::Range::new(n, end),
         if matches!(
             owners,
             Owners::DisjointAroundBlock | Owners::SpanningBlock | Owners::WholeDomain
@@ -179,12 +179,12 @@ fn fixture_with_child_topology(
             plain.clone()
         },
     );
-    let origin = |start, end| text::ParagraphOrigin {
+    let origin = |start, end| text::paragraph::ParagraphOrigin {
         text_node: None,
         source: source.clone(),
-        local: text::Range::new(start, end),
-        aggregate: text::Range::new(start, end),
-        kind: text::ParagraphOriginKind::Authored,
+        local: text::source::Range::new(start, end),
+        aggregate: text::source::Range::new(start, end),
+        kind: text::paragraph::ParagraphOriginKind::Authored,
     };
     // Scope0 is the actual root domain; scope1 is the real empty Block child.
     let mut scopes = vec![
@@ -194,19 +194,19 @@ fn fixture_with_child_topology(
             } else {
                 plain.clone()
             },
-            text::SourceProcessingTopology::Complete,
+            text::capture::SourceProcessingTopology::Complete,
         ),
         block(plain.clone(), child_topology),
     ];
     let mut controls = Vec::new();
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let control = |control| E::Control {
         control,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let occurrence = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let (before, after, first_controls, last_controls, first_nodes, last_nodes) = match owners {
         Owners::LocalBeforeBlock => {
@@ -314,13 +314,13 @@ fn fixture_with_child_topology(
     events.extend([E::ExitParagraph(resumed), E::ExitScope(0)]);
     let control_facts = controls.clone();
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: vec![origin(0, n), origin(n, end)],
             connections: vec![],
             controls,
@@ -328,9 +328,9 @@ fn fixture_with_child_topology(
             replacements: vec![],
             scopes,
             paragraphs: (0..resumed + 1)
-                .map(|_| text::SourceProcessingParagraph {
-                    base_direction: text::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                .map(|_| text::capture::SourceProcessingParagraph {
+                    base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             events,
@@ -344,22 +344,22 @@ fn fixture_with_child_topology(
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                text::AnalysisTypography::HorizontalComposition,
+                text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())
-                .map(|row| text::WrappingPolicy {
+                .map(|row| text::analyzed::WrappingPolicy {
                     relation: row.handle(),
-                    ancestor_wrap: text::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 })
                 .collect();
             let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
             system
-                .prepare(&analyzed, text::PreparationOptions::default())
+                .prepare(&analyzed, text::prepared::PreparationOptions::default())
                 .unwrap()
         })
         .collect();
@@ -398,16 +398,16 @@ fn fixture_with_child_topology(
     if matches!(owners, Owners::WholeDomain) {
         assert_eq!(
             prepared[0].scopes().next().unwrap().captured_scope().role(),
-            text::ScopeRole::Domain
+            text::capture::ScopeRole::Domain
         );
     }
     if matches!(owners, Owners::LocalInsideWideAncestor) {
         let local = prepared[0].scopes().next().unwrap().captured_scope();
         let wide = local.parent().unwrap();
-        assert_eq!(wide.role(), text::ScopeRole::Inline);
+        assert_eq!(wide.role(), text::capture::ScopeRole::Inline);
         assert_eq!(
             wide.style().unwrap().word_space_transform,
-            text::WordSpaceTransform::None
+            text::style::WordSpaceTransform::None
         );
         assert!(wide.entry_control().is_some());
         assert!(wide.exit_control().is_some());
@@ -451,8 +451,12 @@ fn fixture_with_child_topology(
     ]);
     for (ordinal, control) in control_facts.into_iter().enumerate() {
         let kind = match control.kind {
-            text::ParagraphControlKind::InlineBoundaryStart => layout::InlineBoundaryKind::Start,
-            text::ParagraphControlKind::InlineBoundaryEnd => layout::InlineBoundaryKind::End,
+            text::paragraph::ParagraphControlKind::InlineBoundaryStart => {
+                layout::InlineBoundaryKind::Start
+            }
+            text::paragraph::ParagraphControlKind::InlineBoundaryEnd => {
+                layout::InlineBoundaryKind::End
+            }
             _ => unreachable!(),
         };
         inputs.insert(
@@ -643,7 +647,9 @@ fn assert_geometry(batch: &layout::CompletedLayoutBatch<usize>, expected: &[(usi
             let fragment = entry.fragment();
             let finalized = fragment.finalized_fragment();
             let view = finalized.view();
-            let text::FinalizedFragmentOwner::VirtualSeparator(occurrence) = view.owner() else {
+            let text::finalized::FinalizedFragmentOwner::VirtualSeparator(occurrence) =
+                view.owner()
+            else {
                 panic!("actual virtual contributor")
             };
             assert_eq!(view.origin(), None);
@@ -734,7 +740,7 @@ fn dormant_duplicate_empty_paragraph_identity_still_refuses() {
 fn dormant_empty_paragraph_cannot_request_a_line_strut() {
     let fixture = fixture(Owners::DormantSpanning);
     let mut malformed = fixture.empty_child.clone();
-    malformed.line_strut = Some(text::LineStrut {
+    malformed.line_strut = Some(text::allocation::LineStrut {
         baseline: 8.0,
         line_extent: 10.0,
     });
@@ -874,46 +880,46 @@ struct IncidenceFixture {
 }
 
 fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        word_space_transform: text::WordSpaceTransform::None,
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(10.0),
+        word_space_transform: text::style::WordSpaceTransform::None,
+        ..text::style::Style::default()
     };
-    let mut source = text::Source::new("AXB");
-    source.span(text::Range::new(0, 3), style.clone());
+    let mut source = text::source::Source::new("AXB");
+    source.span(text::source::Range::new(0, 3), style.clone());
     let origins = (0..3)
-        .map(|index| text::ParagraphOrigin {
+        .map(|index| text::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
-            local: text::Range::new(index, index + 1),
-            aggregate: text::Range::new(index, index + 1),
-            kind: text::ParagraphOriginKind::Authored,
+            local: text::source::Range::new(index, index + 1),
+            aggregate: text::source::Range::new(index, index + 1),
+            kind: text::paragraph::ParagraphOriginKind::Authored,
         })
         .collect();
-    let block = || text::SourceProcessingScope::Block {
+    let block = || text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
-        trim: text::WhiteSpaceTrim::default(),
+        topology: text::capture::SourceProcessingTopology::Complete,
+        trim: text::capture::WhiteSpaceTrim::default(),
         base_style: style.clone(),
-        used_direction: text::ParagraphBaseDirection::LeftToRight,
+        used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
     };
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let occurrence = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins,
             connections: vec![],
             controls: vec![],
@@ -921,9 +927,9 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
             replacements: vec![],
             scopes: vec![block(), block()],
             paragraphs: (0..4)
-                .map(|_| text::SourceProcessingParagraph {
-                    base_direction: text::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                .map(|_| text::capture::SourceProcessingParagraph {
+                    base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             // Parent paragraphs own A/B. The child domain first owns X,
@@ -955,22 +961,22 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                text::AnalysisTypography::HorizontalComposition,
+                text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())
-                .map(|row| text::WrappingPolicy {
+                .map(|row| text::analyzed::WrappingPolicy {
                     relation: row.handle(),
-                    ancestor_wrap: text::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 })
                 .collect();
             let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
             system
-                .prepare(&analyzed, text::PreparationOptions::default())
+                .prepare(&analyzed, text::prepared::PreparationOptions::default())
                 .unwrap()
         })
         .collect();
@@ -1167,7 +1173,7 @@ fn unknown_child_inline_topology_preserves_empty_domain_authority() {
     let fixture = fixture_with_child_topology(
         Owners::SpanningBlock,
         1,
-        text::SourceProcessingTopology::Unknown,
+        text::capture::SourceProcessingTopology::Unknown,
     );
     assert_eq!(
         fixture.parents[0]
@@ -1176,7 +1182,7 @@ fn unknown_child_inline_topology_preserves_empty_domain_authority() {
             .unwrap()
             .domain()
             .domain_topology(),
-        text::SourceProcessingTopology::Complete
+        text::capture::SourceProcessingTopology::Complete
     );
     assert_eq!(
         fixture
@@ -1186,7 +1192,7 @@ fn unknown_child_inline_topology_preserves_empty_domain_authority() {
             .unwrap()
             .domain()
             .domain_topology(),
-        text::SourceProcessingTopology::Unknown
+        text::capture::SourceProcessingTopology::Unknown
     );
     // Unknown describes inline inventory, not the canonical paragraph/domain
     // identity or its actual empty Block slot between the parent's two lines.
@@ -1198,7 +1204,7 @@ fn unknown_child_inline_topology_does_not_waive_a_demanded_block_association() {
     let fixture = fixture_with_child_topology(
         Owners::SpanningBlock,
         1,
-        text::SourceProcessingTopology::Unknown,
+        text::capture::SourceProcessingTopology::Unknown,
     );
     rejects(
         &fixture,
@@ -1209,20 +1215,20 @@ fn unknown_child_inline_topology_does_not_waive_a_demanded_block_association() {
 
 #[test]
 fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_a_domain() {
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
-            source: text::Source::new(""),
-            base_style: text::Style {
-                font: text::Font::new().family("Ahem"),
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
+            source: text::source::Source::new(""),
+            base_style: text::style::Style {
+                font: text::style::Font::new().family("Ahem"),
                 size: 10.0,
-                line_height: text::LineHeight::Absolute(10.0),
-                word_space_transform: text::WordSpaceTransform::None,
-                ..text::Style::default()
+                line_height: text::style::LineHeight::Absolute(10.0),
+                word_space_transform: text::style::WordSpaceTransform::None,
+                ..text::style::Style::default()
             },
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![],
             connections: vec![],
@@ -1231,7 +1237,7 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = text::System::default();
@@ -1239,7 +1245,7 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     assert!(prepared.captured_owner().is_none());
     assert_eq!(prepared.origin_views().count(), 0);

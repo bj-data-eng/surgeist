@@ -3,19 +3,19 @@ use super::*;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
-fn style(hyphens: text::Hyphens) -> text::Style {
-    text::Style {
+fn style(hyphens: text::hyphenation::Hyphens) -> text::style::Style {
+    text::style::Style {
         hyphens,
         locale: Some("en-US".into()),
-        white_space: text::WhiteSpace::Collapse,
-        overflow_wrap: text::OverflowWrap::Normal,
-        hyphenate_character: text::HyphenateCharacter::Auto,
+        white_space: text::style::WhiteSpace::Collapse,
+        overflow_wrap: text::style::OverflowWrap::Normal,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
         native_hyphenation_convention: Some(
-            text::NativeHyphenationConvention::language_script(
+            text::hyphenation::NativeHyphenationConvention::language_script(
                 "en-US",
                 "Latn",
                 "A".into(),
-                text::HyphenationPlacement::BothSides,
+                text::hyphenation::HyphenationPlacement::BothSides,
             )
             .unwrap(),
         ),
@@ -58,7 +58,7 @@ fn host<S: LayoutScalar>(
 fn sequence<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     expected: &[(usize, usize, f64, bool)],
-) -> Vec<text::FinalizedLine> {
+) -> Vec<text::finalized::FinalizedLine> {
     let layout = batch.placed_text()[0].layout();
     let mut actual = vec![None; layout.lines().len()];
     for entry in batch.final_inline_fragments() {
@@ -77,7 +77,10 @@ fn sequence<S: LayoutScalar>(
         let request = selected.request();
         assert_eq!(request.incoming, incoming);
         assert_eq!(request.alternative.is_some(), ending);
-        assert_eq!(layout.lines()[index].range(), text::Range::new(start, end));
+        assert_eq!(
+            layout.lines()[index].range(),
+            text::source::Range::new(start, end)
+        );
         assert_eq!(
             (
                 line.feedback().advance,
@@ -114,7 +117,7 @@ fn sequence<S: LayoutScalar>(
         let actual_owners = line
             .fragment_views()
             .filter_map(|row| match row.owner() {
-                text::FinalizedFragmentOwner::Alternative(owner) => Some(owner),
+                text::finalized::FinalizedFragmentOwner::Alternative(owner) => Some(owner),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -202,7 +205,7 @@ fn automatic_priority<S: LayoutScalar>() {
     let p = PreparedParagraph::plain(
         10,
         Source::new("as\u{ad}sociate"),
-        style(text::Hyphens::Auto),
+        style(text::hyphenation::Hyphens::Auto),
     );
     assert_eq!(
         p.prepared.analyzed_source().source().text().code_units(),
@@ -213,10 +216,13 @@ fn automatic_priority<S: LayoutScalar>() {
         .word_views()
         .find(|word| word.query() == Some("associate"))
         .unwrap();
-    assert_eq!(word.resource(), text::HyphenationResource::EnUs2005);
+    assert_eq!(
+        word.resource(),
+        text::hyphenation::HyphenationResource::EnUs2005
+    );
     assert_eq!(
         word.provenance(),
-        Some(text::HyphenationProvenance::SourceException { entry: "associate" })
+        Some(text::hyphenation::HyphenationProvenance::SourceException { entry: "associate" })
     );
     let manual = p
         .prepared
@@ -224,7 +230,7 @@ fn automatic_priority<S: LayoutScalar>() {
         .find(|row| {
             matches!(
                 row.definition(),
-                text::PreparedAlternativeDefinition::Source { .. }
+                text::prepared::PreparedAlternativeDefinition::Source { .. }
             )
         })
         .unwrap()
@@ -233,9 +239,9 @@ fn automatic_priority<S: LayoutScalar>() {
         .prepared
         .alternative_views()
         .find(|row| match row.definition() {
-            text::PreparedAlternativeDefinition::Automatic { cut } => {
+            text::prepared::PreparedAlternativeDefinition::Automatic { cut } => {
                 cut.view().counts()
-                    == Some(text::HyphenationCounts {
+                    == Some(text::hyphenation::HyphenationCounts {
                         total: 9,
                         before: 4,
                         after: 5,
@@ -333,7 +339,7 @@ fn automatic_priority<S: LayoutScalar>() {
     let manual_only = PreparedParagraph::plain(
         10,
         Source::new("as\u{ad}sociate"),
-        style(text::Hyphens::Manual),
+        style(text::hyphenation::Hyphens::Manual),
     );
     intrinsic::<S>(
         &manual_only,
@@ -347,22 +353,32 @@ fn automatic_priority<S: LayoutScalar>() {
 }
 
 fn committed_counter<S: LayoutScalar>() {
-    let p = PreparedParagraph::plain(10, Source::new("cooperate"), style(text::Hyphens::Auto));
+    let p = PreparedParagraph::plain(
+        10,
+        Source::new("cooperate"),
+        style(text::hyphenation::Hyphens::Auto),
+    );
     let word = p
         .prepared
         .word_views()
         .find(|word| word.query() == Some("cooperate"))
         .unwrap();
-    assert_eq!(word.resource(), text::HyphenationResource::EnUs2005);
+    assert_eq!(
+        word.resource(),
+        text::hyphenation::HyphenationResource::EnUs2005
+    );
     assert_eq!(
         p.prepared
             .hyphenation_cut_views()
             .map(|cut| {
-                assert_eq!(cut.provenance(), text::HyphenationProvenance::Pattern);
+                assert_eq!(
+                    cut.provenance(),
+                    text::hyphenation::HyphenationProvenance::Pattern
+                );
                 cut.counts().unwrap()
             })
             .collect::<Vec<_>>(),
-        [2, 4, 6].map(|before| text::HyphenationCounts {
+        [2, 4, 6].map(|before| text::hyphenation::HyphenationCounts {
             total: 9,
             before,
             after: 9 - before
@@ -398,7 +414,11 @@ fn committed_counter<S: LayoutScalar>() {
 }
 
 fn tail_cache<S: LayoutScalar>() {
-    let p = PreparedParagraph::plain(10, Source::new("AB\u{ad}CDE"), style(text::Hyphens::Manual));
+    let p = PreparedParagraph::plain(
+        10,
+        Source::new("AB\u{ad}CDE"),
+        style(text::hyphenation::Hyphens::Manual),
+    );
     let binding = p.binding(2);
     let mut current = host::<S>(
         &p,
@@ -432,12 +452,10 @@ fn tail_cache<S: LayoutScalar>() {
         );
         if last == HyphenateLimitLast::Always {
             let rows = sequence(&changed, &[(0, 6, 50.0, false)]);
-            assert!(
-                rows[0].fragment_views().all(|row| !matches!(
-                    row.owner(),
-                    text::FinalizedFragmentOwner::Alternative(_)
-                ))
-            );
+            assert!(rows[0].fragment_views().all(|row| !matches!(
+                row.owner(),
+                text::finalized::FinalizedFragmentOwner::Alternative(_)
+            )));
         } else {
             sequence(&changed, &[(0, 3, 30.0, true), (3, 6, 40.0, false)]);
         }
@@ -450,21 +468,21 @@ fn tail_cache<S: LayoutScalar>() {
 }
 
 fn taller_prefix_float<S: LayoutScalar>() {
-    let base = style(text::Hyphens::Manual);
-    let tall = text::Style {
-        line_height: text::LineHeight::Absolute(30.0),
+    let base = style(text::hyphenation::Hyphens::Manual);
+    let tall = text::style::Style {
+        line_height: text::style::LineHeight::Absolute(30.0),
         ..base.clone()
     };
     let mut ending = Source::new("AB\u{ad}");
-    ending.span(text::Range::new(0, 1), tall.clone());
-    ending.span(text::Range::new(2, 3), tall);
+    ending.span(text::source::Range::new(0, 1), tall.clone());
+    ending.span(text::source::Range::new(2, 3), tall);
     let p = PreparedParagraph::new(
         vec![
             ParagraphPart::text(10, ending, base.clone()),
             ParagraphPart::text(11, Source::new("CDE"), base.clone()),
         ],
         base,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = p.binding(2);
     binding.nodes.push(30);
@@ -507,7 +525,7 @@ fn taller_prefix_float<S: LayoutScalar>() {
         && row.fragment().line_index() == 1
         && matches!(
             row.fragment().finalized_fragment().view().owner(),
-            text::FinalizedFragmentOwner::Alternative(_)
+            text::finalized::FinalizedFragmentOwner::Alternative(_)
         )));
     assert!(
         cold.final_inline_fragments()

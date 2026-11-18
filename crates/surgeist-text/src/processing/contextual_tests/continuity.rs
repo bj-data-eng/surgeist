@@ -5,10 +5,13 @@ use crate::{
     ErrorCode, ErrorDetail,
     layout::Affinity,
     processing::{
-        CapturedFlowEvent, ContextualSourceInput, DocumentSegmentBreaks, ProcessedSource,
-        SourceContinuityOperation, SourceProcessingConnection, SourceProcessingError,
-        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks, ProcessedSource,
+        contextual::{
+            CapturedFlowEvent, ContextualSourceInput, SourceContinuityOperation,
+            SourceProcessingConnection, SourceProcessingError, SourceProcessingEvent,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+            WhiteSpaceTrim, process_contextual_source,
+        },
         process_source_whitespace,
     },
     protocol::{

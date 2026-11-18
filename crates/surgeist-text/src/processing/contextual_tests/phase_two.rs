@@ -19,7 +19,7 @@ fn repeated_paragraphs_and_neutral_scope_closures_preserve_real_block_end() {
         boundaries: None,
         trim: WhiteSpaceTrim::default(),
     });
-    use crate::processing::SourceProcessingEvent::*;
+    use crate::processing::contextual::SourceProcessingEvent::*;
     capture.events = vec![
         EnterScope(0),
         EnterParagraph(0),
@@ -64,7 +64,7 @@ fn later_empty_control_and_out_of_flow_paragraph_are_not_erased_by_equal_offsets
         capture
             .paragraphs
             .push(facts(ParagraphBaseDirection::LeftToRight));
-        use crate::processing::SourceProcessingEvent::*;
+        use crate::processing::contextual::SourceProcessingEvent::*;
         capture.events.pop();
         if later == 0 {
             capture
@@ -178,7 +178,7 @@ fn empty_control_and_child_domain_inside_final_paragraph_keep_its_terminal_custo
     capture
         .paragraphs
         .push(facts(ParagraphBaseDirection::LeftToRight));
-    use crate::processing::SourceProcessingEvent::*;
+    use crate::processing::contextual::SourceProcessingEvent::*;
     capture.events = vec![
         EnterScope(0),
         EnterParagraph(0),

@@ -1,11 +1,19 @@
+//! Resolved text style values and the text-style support matrix.
+//!
+//! [`Style`] is the resolved text style accepted by the text layout engine and [`ValidatedStyle`] its validated
+//! form. Its value types include [`Font`], [`Weight`], [`Width`], [`Slant`], [`FontVariant`], [`Brush`],
+//! [`Decoration`], [`LineHeight`], [`Direction`], [`WhiteSpace`], [`Wrap`], [`WordBreak`], [`LineBreak`],
+//! [`OverflowWrap`], [`HangingPunctuation`], [`TextTransform`], [`TextCombineUpright`] and
+//! [`WordSpaceTransform`]. [`TextStyleSupport`], [`TextStylePhase`], [`TextStyleFeature`] and
+//! [`UnsupportedTextStyleReason`] form the text-style support matrix.
+
 use parlance::{FontFamilyName, FontFeature, FontVariation};
 use parlance::{FontStyle, FontWeight, FontWidth, Language};
 
-use crate::{
-    Error, ErrorCode, ErrorDetail, Result,
-    error::NumericRequirement,
-    style_support::{TextStyleFeature, UnsupportedTextStyleReason},
+pub use crate::style_support::{
+    TextStyleFeature, TextStylePhase, TextStyleSupport, UnsupportedTextStyleReason,
 };
+use crate::{Error, ErrorCode, ErrorDetail, Result, error::NumericRequirement};
 
 /// RGBA brush in text-space terms.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -1770,7 +1770,7 @@ impl<S: LayoutScalar> Default for NodeOutputOf<S> {
 /// segment ID is copied into this Layout output.
 #[derive(Clone, Debug, PartialEq)]
 pub struct InlineFragmentOutputOf<S: LayoutScalar = DefaultScalar> {
-    fragment: surgeist_text::FinalizedFragment,
+    fragment: surgeist_text::finalized::FinalizedFragment,
     rect: Option<ScrollRectOf<S>>,
     baseline: Point<S>,
     line_index: usize,
@@ -1780,7 +1780,7 @@ pub type InlineFragmentOutput = InlineFragmentOutputOf<DefaultScalar>;
 
 impl<S: LayoutScalar> InlineFragmentOutputOf<S> {
     pub(crate) fn new(
-        fragment: surgeist_text::FinalizedFragment,
+        fragment: surgeist_text::finalized::FinalizedFragment,
         rect: Option<ScrollRectOf<S>>,
         baseline: Point<S>,
         line_index: usize,
@@ -1795,7 +1795,7 @@ impl<S: LayoutScalar> InlineFragmentOutputOf<S> {
 
     /// The exact issued fragment and its retained finalized-line owner.
     #[must_use]
-    pub fn finalized_fragment(&self) -> &surgeist_text::FinalizedFragment {
+    pub fn finalized_fragment(&self) -> &surgeist_text::finalized::FinalizedFragment {
         &self.fragment
     }
 
@@ -1853,7 +1853,7 @@ impl<Node: Copy, S: LayoutScalar> InlineFragmentOutputEntryOf<Node, S> {
 pub struct PlacedTextOutput<Node> {
     container: Node,
     nodes: Vec<Node>,
-    layout: surgeist_text::Layout,
+    layout: surgeist_text::layout::Layout,
     inline_boxes: crate::text_layout::AdmittedInlineBoxes,
 }
 
@@ -1861,7 +1861,7 @@ impl<Node: Copy> PlacedTextOutput<Node> {
     pub(crate) fn new(
         container: Node,
         nodes: Vec<Node>,
-        layout: surgeist_text::Layout,
+        layout: surgeist_text::layout::Layout,
         inline_boxes: crate::text_layout::AdmittedInlineBoxes,
     ) -> Self {
         Self {
@@ -1881,7 +1881,7 @@ impl<Node: Copy> PlacedTextOutput<Node> {
         &self.nodes
     }
     #[must_use]
-    pub fn layout(&self) -> &surgeist_text::Layout {
+    pub fn layout(&self) -> &surgeist_text::layout::Layout {
         &self.layout
     }
 
@@ -1901,15 +1901,17 @@ impl<Node: Copy> PlacedTextOutput<Node> {
 /// Borrowed Text-owned piece readback from one exact Layout binding result.
 #[derive(Clone, Copy)]
 pub struct PlacedInlineBoxFragments<'layout> {
-    layout: &'layout surgeist_text::Layout,
-    family: &'layout surgeist_text::PreparedInlineBoxFamily,
+    layout: &'layout surgeist_text::layout::Layout,
+    family: &'layout surgeist_text::inline_box::PreparedInlineBoxFamily,
 }
 impl PlacedInlineBoxFragments<'_> {
     #[must_use]
-    pub fn family(&self) -> &surgeist_text::PreparedInlineBoxFamily {
+    pub fn family(&self) -> &surgeist_text::inline_box::PreparedInlineBoxFamily {
         self.family
     }
-    pub fn pieces(&self) -> impl Iterator<Item = surgeist_text::PlacedInlineBoxPiece<'_>> + '_ {
+    pub fn pieces(
+        &self,
+    ) -> impl Iterator<Item = surgeist_text::inline_box::PlacedInlineBoxPiece<'_>> + '_ {
         self.layout.inline_box_pieces()
     }
 }

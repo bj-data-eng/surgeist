@@ -5,26 +5,26 @@ use super::*;
 
 // Nest actual nominated C inside P while preserving both AA origins and their
 // continuous source connection.
-pub(super) fn nest_pair_input(input: &mut text::ContextualSourceInput) {
-    use text::SourceProcessingEvent as E;
-    assert_eq!(input.source.text(), &text::Text::from("AA"));
+pub(super) fn nest_pair_input(input: &mut text::capture::ContextualSourceInput) {
+    use text::capture::SourceProcessingEvent as E;
+    assert_eq!(input.source.text(), &text::source::Text::from("AA"));
     assert_eq!(input.controls.len(), 2);
     assert_eq!(input.scopes.len(), 2);
     input.controls.extend([
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 1,
-            kind: text::ParagraphControlKind::InlineBoundaryStart,
+            kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 2,
-            kind: text::ParagraphControlKind::InlineBoundaryEnd,
+            kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ]);
     let mut child = input.scopes[1].clone();
-    let text::SourceProcessingScope::Inline { boundaries, .. } = &mut child else {
+    let text::capture::SourceProcessingScope::Inline { boundaries, .. } = &mut child else {
         unreachable!()
     };
-    *boundaries = Some(text::SourceProcessingScopeBoundaries { start: 2, end: 3 });
+    *boundaries = Some(text::capture::SourceProcessingScopeBoundaries { start: 2, end: 3 });
     input.scopes.push(child);
     let before_body = input
         .events
@@ -37,7 +37,7 @@ pub(super) fn nest_pair_input(input: &mut text::ContextualSourceInput) {
             E::EnterScope(2),
             E::Control {
                 control: 2,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
         ],
     );
@@ -51,14 +51,14 @@ pub(super) fn nest_pair_input(input: &mut text::ContextualSourceInput) {
         [
             E::Control {
                 control: 3,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(2),
         ],
     );
 }
 
-fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout {
+fn placed_nested(prepared: &text::prepared::PreparedText, positive: bool) -> text::layout::Layout {
     let controls = prepared
         .control_views()
         .map(|v| v.handle())
@@ -72,8 +72,9 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
             source
                 .scope()
                 .parent()
-                .is_some_and(|p| p.role() == text::ScopeRole::Domain)
-                && *control.view().kind() == text::ParagraphControlKind::InlineBoundaryStart
+                .is_some_and(|p| p.role() == text::capture::ScopeRole::Domain)
+                && *control.view().kind()
+                    == text::paragraph::ParagraphControlKind::InlineBoundaryStart
         })
         .unwrap();
     let p = ps.captured_control().unwrap().scope();
@@ -82,7 +83,8 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
         .find(|control| {
             let source = control.captured_control().unwrap();
             source.scope().parent() == Some(p.clone())
-                && *control.view().kind() == text::ParagraphControlKind::InlineBoundaryStart
+                && *control.view().kind()
+                    == text::paragraph::ParagraphControlKind::InlineBoundaryStart
         })
         .unwrap();
     let c = cs.captured_control().unwrap().scope();
@@ -110,16 +112,16 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
     );
     let p_context = prepared
         .inline_box_edge_context(
-            text::InlineBoxSource::captured(p.clone()),
-            text::InlineBoxSource::captured(p.parent().unwrap()),
-            text::LineEdgeSide::Start,
+            text::inline_box::InlineBoxSource::captured(p.clone()),
+            text::inline_box::InlineBoxSource::captured(p.parent().unwrap()),
+            text::finalized::LineEdgeSide::Start,
         )
         .unwrap();
     let c_context = prepared
         .inline_box_edge_context(
-            text::InlineBoxSource::captured(c),
-            text::InlineBoxSource::captured(p),
-            text::LineEdgeSide::End,
+            text::inline_box::InlineBoxSource::captured(c),
+            text::inline_box::InlineBoxSource::captured(p),
+            text::finalized::LineEdgeSide::End,
         )
         .unwrap();
     let allocations = [
@@ -129,26 +131,32 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
         (pe, 4.0, p_context),
     ]
     .into_iter()
-    .map(|(control, amount, context)| text::ControlAllocation {
-        occurrence: control.clone(),
-        strut: None,
-        boundary: Some(text::InlineBoundaryAllocation::box_edge(
-            context,
-            text::InlineBoxEdgeComponents::from_f64(0.0, if positive { amount } else { 0.0 }, 0.0)
+    .map(
+        |(control, amount, context)| text::allocation::ControlAllocation {
+            occurrence: control.clone(),
+            strut: None,
+            boundary: Some(text::allocation::InlineBoundaryAllocation::box_edge(
+                context,
+                text::inline_box::InlineBoxEdgeComponents::from_f64(
+                    0.0,
+                    if positive { amount } else { 0.0 },
+                    0.0,
+                )
                 .unwrap(),
-        )),
-    })
+            )),
+        },
+    )
     .collect();
     let mut segments = prepared.source_segments();
     let segment = segments.next().unwrap();
     assert!(segments.next().is_none());
     let end = segment.end_opportunity();
-    let request = text::LineSelectionRequest {
+    let request = text::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: segment.clone(),
         start: segment.start(),
         end: segment.end(),
-        termination: text::PreparedTermination::Ordinary(end),
+        termination: text::selection::PreparedTermination::Ordinary(end),
         participants: prepared.participants().collect(),
         alternative: None,
         incoming: None,
@@ -157,19 +165,19 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
         boundary_context: vec![],
         line_box_struts: vec![],
         line_strut: None,
-        context: text::LineContext {
-            alignment_insets: text::LineAlignmentInsets::ZERO,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            line_box_direction: text::LineBoxDirection::LeftToRight,
-            formatted_line: text::FormattedLineContext::default(),
-            orientation: text::LineOrientation::Horizontal,
-            start: text::LineStart::Paragraph,
-            end: text::LineEnd::Paragraph,
+        context: text::selection::LineContext {
+            alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+            formatted_line: text::selection::FormattedLineContext::default(),
+            orientation: text::selection::LineOrientation::Horizontal,
+            start: text::selection::LineStart::Paragraph,
+            end: text::selection::LineEnd::Paragraph,
             available_inline: Some(32.0),
             indent: 0.0,
-            alignment: text::Alignment::Start,
-            tabs: text::TabContext::NoTabs,
-            spacing: text::SpacingPolicy::None,
+            alignment: text::options::Alignment::Start,
+            tabs: text::tabs::TabContext::NoTabs,
+            spacing: text::spacing::SpacingPolicy::None,
         },
     };
     assert!(
@@ -181,9 +189,9 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -214,9 +222,9 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
     assert_eq!(
         packet,
         [
-            (text::Range::new(0, 1), 35, 0.0, 10.0),
+            (text::source::Range::new(0, 1), 35, 0.0, 10.0),
             (
-                text::Range::new(1, 2),
+                text::source::Range::new(1, 2),
                 35,
                 if positive { 14.0 } else { 10.0 },
                 10.0
@@ -237,34 +245,43 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
             bounds
         );
     }
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared: prepared.clone(),
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 0.0,
-                baseline: BASELINE,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: BASELINE,
+                },
+                orientation: text::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
-    assert_eq!(layout.source().id(), Some(text::Id::from_u64(640725)));
-    assert_eq!(layout.source().text(), &text::Text::from("AA"));
+    assert_eq!(
+        layout.source().id(),
+        Some(text::source::Id::from_u64(640725))
+    );
+    assert_eq!(layout.source().text(), &text::source::Text::from("AA"));
     for (start, end) in [(0, 1), (1, 2)] {
         let before = layout
             .positions()
-            .find(|p| p.source_cursor() == text::Cursor::new(start, text::Affinity::After))
+            .find(|p| {
+                p.source_cursor() == text::layout::Cursor::new(start, text::layout::Affinity::After)
+            })
             .unwrap();
         let after = layout
             .positions()
-            .find(|p| p.source_cursor() == text::Cursor::new(end, text::Affinity::Before))
+            .find(|p| {
+                p.source_cursor() == text::layout::Cursor::new(end, text::layout::Affinity::Before)
+            })
             .unwrap();
         let selected = layout.position_selection(&before, &after).unwrap();
-        assert_eq!(selected.source_text(), &text::Text::from("A"));
-        assert_eq!(selected.plaintext(), &text::Text::from("A"));
+        assert_eq!(selected.source_text(), &text::source::Text::from("A"));
+        assert_eq!(selected.plaintext(), &text::source::Text::from("A"));
     }
     layout
 }

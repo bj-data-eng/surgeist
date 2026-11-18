@@ -16,7 +16,7 @@ fn descendant_and_nested<S: l::LayoutScalar>() {
             outside,
             &[Part::Text("DDDDDDDD")],
             style(),
-            t::ParagraphBaseDirection::LeftToRight,
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
             false,
         );
         let pair = Paragraph::pair(&mut host, inside);
@@ -61,7 +61,7 @@ fn descendant_and_nested<S: l::LayoutScalar>() {
         wide_container,
         &[Part::Text("DDDDDDDD")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let pair = Paragraph::pair(&mut host, small_container);
@@ -88,7 +88,7 @@ fn independent<S: l::LayoutScalar>() {
         independent,
         &[Part::Text("CCCCCCCCC")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let batch = compute(&host, &[&pair, &excluded], &[]);
@@ -100,7 +100,7 @@ fn independent<S: l::LayoutScalar>() {
             .request()
             .context
             .alignment_insets,
-        t::LineAlignmentInsets::ZERO
+        t::allocation::LineAlignmentInsets::ZERO
     );
 }
 #[test]
@@ -118,7 +118,7 @@ fn member_directions<S: l::LayoutScalar>() {
         left,
         &[Part::Text("AAAAAA")],
         style(),
-        t::ParagraphBaseDirection::RightToLeft,
+        t::paragraph::ParagraphBaseDirection::RightToLeft,
         false,
     );
     let b = Paragraph::new(
@@ -126,7 +126,7 @@ fn member_directions<S: l::LayoutScalar>() {
         right,
         &[Part::Text("BBBB")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let batch = compute(&host, &[&a, &b], &[]);
@@ -136,19 +136,19 @@ fn member_directions<S: l::LayoutScalar>() {
     let b = receipts(&batch, &b);
     assert_eq!(
         a[0].selected_line().request().context.line_box_direction,
-        t::LineBoxDirection::LeftToRight
+        t::selection::LineBoxDirection::LeftToRight
     );
     assert_eq!(
         b[0].selected_line().request().context.line_box_direction,
-        t::LineBoxDirection::RightToLeft
+        t::selection::LineBoxDirection::RightToLeft
     );
     assert_eq!(
         a[0].selected_line().request().context.base_direction,
-        t::ParagraphBaseDirection::RightToLeft
+        t::paragraph::ParagraphBaseDirection::RightToLeft
     );
     assert_eq!(
         b[0].selected_line().request().context.base_direction,
-        t::ParagraphBaseDirection::LeftToRight
+        t::paragraph::ParagraphBaseDirection::LeftToRight
     );
     assert_eq!(
         (
@@ -210,7 +210,7 @@ fn plaintext_fallback<S: l::LayoutScalar>(rtl_strong: bool) {
             Part::Text("12"),
         ],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let batch = compute(&host, &[&paragraph], &[]);
@@ -239,9 +239,9 @@ fn plaintext_fallback<S: l::LayoutScalar>(rtl_strong: bool) {
         assert_eq!(
             context.line_box_direction,
             if rtl_strong {
-                t::LineBoxDirection::RightToLeft
+                t::selection::LineBoxDirection::RightToLeft
             } else {
-                t::LineBoxDirection::LeftToRight
+                t::selection::LineBoxDirection::LeftToRight
             }
         );
         assert_eq!(
@@ -279,7 +279,7 @@ fn changed_limiter<S: l::LayoutScalar>() {
         limiter,
         &[Part::Text("DDDDDDDD")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let old = compute(&host, &[&pair, &old_limiter], &[]);
@@ -303,7 +303,7 @@ fn changed_limiter<S: l::LayoutScalar>() {
         limiter,
         &[Part::Text("DDDDDDDDDD")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let new_text_node = new_limiter.binding.origins[0].node;
@@ -325,7 +325,7 @@ fn changed_limiter<S: l::LayoutScalar>() {
     assert_eq!(x_ranges(&old, &pair), [(10.0, 70.0), (10.0, 50.0)]);
     assert_eq!(
         placed(&old, &pair)
-            .cursor(t::Cursor::new(0, t::Affinity::After))
+            .cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
             .unwrap()
             .rect()
             .origin
@@ -334,7 +334,7 @@ fn changed_limiter<S: l::LayoutScalar>() {
     );
     assert_eq!(
         placed(&changed, &pair)
-            .cursor(t::Cursor::new(0, t::Affinity::After))
+            .cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
             .unwrap()
             .rect()
             .origin
@@ -358,7 +358,7 @@ fn changed_limiter<S: l::LayoutScalar>() {
         b,
         &[Part::Text("DDDDDDDDDD")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let cold = compute(&cold_host, &[&cold_pair, &cold_limiter], &[]);

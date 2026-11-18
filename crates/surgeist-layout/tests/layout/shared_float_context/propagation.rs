@@ -2,7 +2,7 @@
 //! float-containing auto heights or using relative visual offsets as flow input.
 use super::{block, l, output, px};
 use std::{convert::Infallible, slice};
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 struct FlowTree<S: l::LayoutScalar> {
     inputs: Vec<l::NodeInputOf<S>>,

@@ -3,7 +3,7 @@
 use super::*;
 
 fn actual_unanchored_receipt(
-    line: &text::FinalizedLine,
+    line: &text::finalized::FinalizedLine,
     indent: f64,
     opaque: Option<(f64, f64)>,
     width: Option<f64>,
@@ -47,7 +47,9 @@ fn executed(
     positions(&line, specs, actual_incoming);
     actual_unanchored_receipt(&line, indent, opaque, width);
 
-    let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(replay.selected_line().request(), &issued);
     evidence(&replay, expected);
     positions(&replay, specs, actual_incoming);

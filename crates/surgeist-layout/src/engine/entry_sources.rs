@@ -78,8 +78,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
         }
         let count = self.samples.len().checked_add(1).ok_or_else(|| {
             crate::text_layout::scope_alignment::refusal(
-                surgeist_text::ScopeAlignmentError::Overflow {
-                    kind: surgeist_text::ScopeAlignmentLimitKind::Records,
+                surgeist_text::scope_alignment::ScopeAlignmentError::Overflow {
+                    kind: surgeist_text::scope_alignment::ScopeAlignmentLimitKind::Records,
                 },
             )
         })?;
@@ -94,8 +94,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
                 let mut values = Vec::new();
                 values.try_reserve_exact(count).map_err(|_| {
                     crate::text_layout::scope_alignment::refusal(
-                        surgeist_text::ScopeAlignmentError::Allocation {
-                            kind: surgeist_text::ScopeAlignmentLimitKind::PayloadBytes,
+                        surgeist_text::scope_alignment::ScopeAlignmentError::Allocation {
+                            kind: surgeist_text::scope_alignment::ScopeAlignmentLimitKind::PayloadBytes,
                         },
                     )
                 })?;

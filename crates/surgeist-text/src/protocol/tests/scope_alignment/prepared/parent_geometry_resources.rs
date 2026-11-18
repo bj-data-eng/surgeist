@@ -43,7 +43,7 @@ fn funded() -> Funded {
             kind: ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     input.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),

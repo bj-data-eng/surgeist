@@ -1,4 +1,10 @@
 //! Supplied resolved-level ordering and text-edge decisions for mixed inline lines.
+//!
+//! A [`SuppliedLine`] borrows a complete logical line whose [`BidiLevel`] values its producer already
+//! resolved; its slots are [`SuppliedInlineParticipant`] values. [`SuppliedLine::reorder_into`] returns a
+//! [`SuppliedVisualOrder`], failing with [`SuppliedLineError`], and the line's edge decisions are
+//! [`SuppliedLineEdges`] with [`InlineWhitespaceEdge`]. [`BidiLevelError`] reports a level above the highest
+//! resolved Unicode bidi level.
 
 /// A supplied resolved Unicode bidi level, after implicit resolution.
 ///
@@ -139,7 +145,7 @@ pub struct SuppliedLineEdges<'a> {
 ///
 /// Neither backing can expire while this result is read:
 /// ```compile_fail
-/// use surgeist_text::{SuppliedLine, SuppliedInlineParticipant};
+/// use surgeist_text::supplied_line::{SuppliedInlineParticipant, SuppliedLine};
 /// let order = {
 ///     let participants: [SuppliedInlineParticipant; 0] = [];
 ///     let scratch: &mut [usize] = &mut [];
@@ -148,13 +154,33 @@ pub struct SuppliedLineEdges<'a> {
 /// let _ = order.iter().count();
 /// ```
 /// ```compile_fail
-/// use surgeist_text::{SuppliedLine, SuppliedInlineParticipant};
+/// use surgeist_text::supplied_line::{SuppliedInlineParticipant, SuppliedLine};
 /// let participants: [SuppliedInlineParticipant; 0] = [];
 /// let order = {
 ///     let mut scratch = [];
 ///     SuppliedLine::new(&participants).reorder_into(&mut scratch).unwrap()
 /// };
 /// let _ = order.iter().count();
+/// ```
+///
+/// The same calls compile once both backings outlive the order:
+/// ```
+/// use surgeist_text::supplied_line::{SuppliedInlineParticipant, SuppliedLine};
+/// let participants: [SuppliedInlineParticipant; 0] = [];
+/// let scratch: &mut [usize] = &mut [];
+/// let order = SuppliedLine::new(&participants)
+///     .reorder_into(scratch)
+///     .unwrap();
+/// assert_eq!(order.iter().count(), 0);
+/// ```
+/// ```
+/// use surgeist_text::supplied_line::{SuppliedInlineParticipant, SuppliedLine};
+/// let participants: [SuppliedInlineParticipant; 0] = [];
+/// let mut scratch = [];
+/// let order = SuppliedLine::new(&participants)
+///     .reorder_into(&mut scratch)
+///     .unwrap();
+/// assert_eq!(order.iter().count(), 0);
 /// ```
 #[derive(Debug)]
 pub struct SuppliedVisualOrder<'a, 'o> {

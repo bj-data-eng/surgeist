@@ -217,7 +217,7 @@ fn custody_paragraph(left_axis: bool) -> PreparedParagraph {
         ParagraphPart::text(1, Source::new("X"), style.clone()),
         ParagraphPart::Atomic {
             node: 2,
-            size: text::Size::new(
+            size: text::geometry::Size::new(
                 if left_axis { 10.4 } else { 10.0 },
                 if left_axis { 10.0 } else { 10.4 },
             ),
@@ -226,7 +226,11 @@ fn custody_paragraph(left_axis: bool) -> PreparedParagraph {
     if left_axis {
         parts.push(ParagraphPart::text(3, Source::new("X"), style.clone()));
     }
-    PreparedParagraph::new(parts, style, text::ParagraphBaseDirection::LeftToRight)
+    PreparedParagraph::new(
+        parts,
+        style,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
+    )
 }
 fn custody_fixture<S: LayoutScalar>(
     p: &PreparedParagraph,
@@ -578,11 +582,11 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
             ParagraphPart::text(1, Source::new("X"), style.clone()),
             ParagraphPart::Atomic {
                 node: 2,
-                size: text::Size::new(14.4, 14.4),
+                size: text::geometry::Size::new(14.4, 14.4),
             },
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let inner = PreparedParagraph::plain(3, Source::new("X"), ahem_style(10.0, 10.0));
     let atom = NodeInputOf {
@@ -624,17 +628,20 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
         let options = binding
             .prepared
             .preparation_options()
-            .with_baseline_reference(text::FontBaseline::Alphabetic);
+            .with_baseline_reference(text::font::FontBaseline::Alphabetic);
         let prepared = system.prepare(&analyzed, options).unwrap();
         assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
-        assert_eq!(prepared.orientation(), text::LineOrientation::Horizontal);
+        assert_eq!(
+            prepared.orientation(),
+            text::selection::LineOrientation::Horizontal
+        );
         assert_eq!(
             prepared.baseline_reference(),
-            Some(text::FontBaseline::Alphabetic)
+            Some(text::font::FontBaseline::Alphabetic)
         );
         assert_eq!(
             prepared.analyzed_source().typography(),
-            text::AnalysisTypography::HorizontalComposition
+            text::analyzed::AnalysisTypography::HorizontalComposition
         );
         assert_eq!(binding.origins.len(), 1);
         let origins = prepared.origin_views().collect::<Vec<_>>();
@@ -731,7 +738,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
         );
         assert_eq!(
             inner_line.metric_bounds(),
-            text::Rect::new(0.0, 0.0, 14.0, 10.0)
+            text::geometry::Rect::new(0.0, 0.0, 14.0, 10.0)
         );
         assert_eq!(
             geometry.padding_box().size(),

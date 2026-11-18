@@ -3,12 +3,12 @@ use super::*;
 use crate::{Display, LayoutScalar, LayoutTree, Position, engine::validation::ValidationGraph};
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct EdgeLocation<Node, Scope = surgeist_text::CapturedScope> {
+pub(crate) struct EdgeLocation<Node, Scope = surgeist_text::capture::CapturedScope> {
     pub(crate) flow: Node,
     pub(crate) declared_box: GeneratedBoxRef<Node, Scope>,
     pub(crate) box_: GeneratedBoxRef<Node, Scope>,
     pub(crate) native: Option<NativeSpan>,
-    pub(crate) side: surgeist_text::SourceBoxSide,
+    pub(crate) side: surgeist_text::capture::SourceBoxSide,
     pub(crate) effect: EdgeEffect,
     pub(crate) parents: Vec<PropagationParent<Node, Scope>>,
 }
@@ -49,7 +49,7 @@ pub(crate) enum SubtreeRealization {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct BoxFact<Node, Scope = surgeist_text::CapturedScope> {
+pub(super) struct BoxFact<Node, Scope = surgeist_text::capture::CapturedScope> {
     pub(super) box_: GeneratedBoxRef<Node, Scope>,
     pub(super) flow: Node,
     pub(super) native: Option<NativeSpan>,
@@ -280,8 +280,8 @@ struct RealizationProof<'a, Tree: LayoutTree> {
     children: Vec<Vec<usize>>,
     visiting: Vec<bool>,
     text: std::collections::HashMap<
-        surgeist_text::PreparedText,
-        std::collections::HashSet<surgeist_text::PreparedOrigin>,
+        surgeist_text::prepared::PreparedText,
+        std::collections::HashSet<surgeist_text::prepared::PreparedOrigin>,
     >,
 }
 impl<'a, Tree: LayoutTree> RealizationProof<'a, Tree> {
@@ -737,8 +737,11 @@ pub(super) fn propagate<Node: Copy + Eq, Scope: Clone + Eq>(
     let mut locations = Vec::new();
     for (index, b) in boxes.iter().enumerate() {
         for (side, decl) in [
-            (surgeist_text::SourceBoxSide::Before, b.edges.before),
-            (surgeist_text::SourceBoxSide::After, b.edges.after),
+            (
+                surgeist_text::capture::SourceBoxSide::Before,
+                b.edges.before,
+            ),
+            (surgeist_text::capture::SourceBoxSide::After, b.edges.after),
         ] {
             let effect = decl.effect(WrappingMode::Inline);
             if !effect.forced && !effect.avoided {
@@ -806,7 +809,7 @@ pub(super) fn propagate<Node: Copy + Eq, Scope: Clone + Eq>(
                         .iter()
                         .position(|(i, _)| *i == target)
                         .ok_or(WrappingScopeError::ChildOrder)?;
-                    let before = side == surgeist_text::SourceBoxSide::Before;
+                    let before = side == surgeist_text::capture::SourceBoxSide::Before;
                     let sibling = if before {
                         &children[..at]
                     } else {

@@ -15,41 +15,41 @@ fn outflow_native(
     let mut source = original.clone();
     for &(node, inline, cross) in boxes {
         let physical = size::<f64>(mode, inline, cross);
-        source.inline_box(text::InlineBox::new(
-            text::Id::from_u64(u64::from(node)),
-            text::InlineBoxKind::OutOfFlow,
+        source.inline_box(text::source::InlineBox::new(
+            text::source::Id::from_u64(u64::from(node)),
+            text::source::InlineBoxKind::OutOfFlow,
             original.text().len(),
-            text::Size::new(physical.width, physical.height),
+            text::geometry::Size::new(physical.width, physical.height),
         ));
     }
-    let style = text::Style {
-        white_space: text::WhiteSpace::Preserve,
-        wrap: text::Wrap::None,
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
+        wrap: text::style::Wrap::None,
         ..ahem_style(font_size, line_height)
     };
-    let extent = text::Range::new(0, original.text().len());
+    let extent = text::source::Range::new(0, original.text().len());
     let typography = if name(mode) == BaselineName::Central {
-        text::AnalysisTypography::Upright {
+        text::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::LeftToRight,
         }
     } else {
-        text::AnalysisTypography::HorizontalComposition
+        text::analyzed::AnalysisTypography::HorizontalComposition
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source,
             base_style: style,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: original.clone(),
                 local: extent,
                 aggregate: extent,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -57,41 +57,44 @@ fn outflow_native(
             boundary_policies: (0..boxes.len())
                 .flat_map(|index| {
                     [
-                        text::ParagraphBoundaryDefinition::AtomicBefore(index),
-                        text::ParagraphBoundaryDefinition::AtomicAfter(index),
+                        text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(index),
+                        text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(index),
                     ]
                 })
-                .map(|definition| text::ParagraphBoundaryPolicy {
+                .map(|definition| text::paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: text::Wrap::None,
-                    following_wrap: text::Wrap::None,
-                    ancestor_wrap: text::Wrap::None,
+                    preceding_wrap: text::style::Wrap::None,
+                    following_wrap: text::style::Wrap::None,
+                    ancestor_wrap: text::style::Wrap::None,
                 })
                 .collect(),
             anchor_order: (0..boxes.len())
-                .map(|index| text::ParagraphAnchor {
-                    item: text::ParagraphAnchorItem::Atomic(index),
-                    affinity: text::Affinity::Before,
+                .map(|index| text::paragraph::ParagraphAnchor {
+                    item: text::paragraph::ParagraphAnchorItem::Atomic(index),
+                    affinity: text::layout::Affinity::Before,
                 })
                 .collect(),
         },
         typography,
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::None);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::None);
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let orientation = match mode {
-        WritingMode::HorizontalTb => text::LineOrientation::Horizontal,
-        WritingMode::SidewaysRl => text::LineOrientation::SidewaysClockwise,
-        WritingMode::VerticalRl | WritingMode::VerticalLr => text::LineOrientation::Vertical,
-        WritingMode::SidewaysLr => text::LineOrientation::SidewaysCounterclockwise,
+        WritingMode::HorizontalTb => text::selection::LineOrientation::Horizontal,
+        WritingMode::SidewaysRl => text::selection::LineOrientation::SidewaysClockwise,
+        WritingMode::VerticalRl | WritingMode::VerticalLr => {
+            text::selection::LineOrientation::Vertical
+        }
+        WritingMode::SidewaysLr => text::selection::LineOrientation::SidewaysCounterclockwise,
     };
-    let mut options = text::PreparationOptions::default().with_orientation(orientation);
+    let mut options = text::prepared::PreparationOptions::default().with_orientation(orientation);
     if name(mode) == BaselineName::Alphabetic {
-        options = options.with_baseline_reference(text::FontBaseline::Alphabetic);
+        options = options.with_baseline_reference(text::font::FontBaseline::Alphabetic);
     }
     Native {
         prepared: system.prepare(&analyzed, options).unwrap(),
@@ -131,20 +134,32 @@ fn static_ports<S: LayoutScalar>() {
     let inner = outflow_native("X", 10.0, 10.0, mode, &[(4, 2.0, 2.0)]);
     let descendant = native("X", 1.0, 1.0, mode, &[]);
     let outer_box = outer.prepared.atomic_views().next().unwrap();
-    assert_eq!(outer_box.original_box().kind(), text::InlineBoxKind::InFlow);
-    assert_eq!(outer_box.original_box().size(), text::Size::new(10.4, 20.0));
+    assert_eq!(
+        outer_box.original_box().kind(),
+        text::source::InlineBoxKind::InFlow
+    );
+    assert_eq!(
+        outer_box.original_box().size(),
+        text::geometry::Size::new(10.4, 20.0)
+    );
     assert_eq!(
         inner.prepared.baseline_reference(),
-        Some(text::FontBaseline::Central)
+        Some(text::font::FontBaseline::Central)
     );
     let outflow = inner.prepared.atomic_views().next().unwrap();
     assert_eq!(
         outflow.original_box().kind(),
-        text::InlineBoxKind::OutOfFlow
+        text::source::InlineBoxKind::OutOfFlow
     );
-    assert_eq!(outflow.original_box().size(), text::Size::new(2.0, 2.0));
-    assert_eq!(outflow.original_box().id(), text::Id::from_u64(4));
-    let mut prior: Option<(crate::output::NormalGeometryOf<S>, Vec<text::Point>)> = None;
+    assert_eq!(
+        outflow.original_box().size(),
+        text::geometry::Size::new(2.0, 2.0)
+    );
+    assert_eq!(outflow.original_box().id(), text::source::Id::from_u64(4));
+    let mut prior: Option<(
+        crate::output::NormalGeometryOf<S>,
+        Vec<text::geometry::Point>,
+    )> = None;
     for (left, visual_width, visual_x) in [(0.0, 10.0, 8.0), (0.32, 11.0, 9.0)] {
         let mut parent = child(mode, 10.4, BaselineSource::Auto, VerticalAlignOf::Top);
         parent.position = Position::Relative;
@@ -212,8 +227,11 @@ fn static_ports<S: LayoutScalar>() {
         let parent_text = placed(&batch, 2);
         assert_eq!(parent_text.source().text().code_units(), &[0x58]);
         let actual_box = &parent_text.inline_boxes()[0];
-        assert_eq!(actual_box.kind(), text::InlineBoxKind::OutOfFlow);
-        assert_eq!(actual_box.rect(), text::Rect::new(visual_x, 20.0, 2.0, 2.0));
+        assert_eq!(actual_box.kind(), text::source::InlineBoxKind::OutOfFlow);
+        assert_eq!(
+            actual_box.rect(),
+            text::geometry::Rect::new(visual_x, 20.0, 2.0, 2.0)
+        );
         let line = batch
             .unrounded_inline_fragments()
             .iter()
@@ -228,7 +246,7 @@ fn static_ports<S: LayoutScalar>() {
         );
         assert_eq!(
             line.atomic_slots().next().unwrap().allocation,
-            text::AtomicLineAllocation::OutOfFlow
+            text::allocation::AtomicLineAllocation::OutOfFlow
         );
         // Ahem10 upright metrics use the required Central reference:
         // advance10 and equal before/after5. The positioned occurrence adds

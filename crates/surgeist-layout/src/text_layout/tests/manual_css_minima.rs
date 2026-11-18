@@ -5,8 +5,11 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
-    HyphenateCharacter, Hyphens, LineEnd, OverflowWrap, PreparedBreakKind, PreparedTermination,
-    Range, Text,
+    hyphenation::{HyphenateCharacter, Hyphens},
+    prepared::PreparedBreakKind,
+    selection::{LineEnd, PreparedTermination},
+    source::{Range, Text},
+    style::OverflowWrap,
 };
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -20,7 +23,7 @@ fn manual_paragraph(source: &str) -> PreparedParagraph {
     style.overflow_wrap = OverflowWrap::Normal;
     PreparedParagraph::plain(
         1,
-        Source::identified(source, surgeist_text::Id::from_u64(6601), 7),
+        Source::identified(source, surgeist_text::source::Id::from_u64(6601), 7),
         style,
     )
 }
@@ -39,7 +42,7 @@ fn expected_letters(source: &str) -> Vec<(Range, u32, f32)> {
         .collect()
 }
 
-fn manual_glyphs(line: &surgeist_text::FinalizedLine) -> Vec<(Range, u32, f32)> {
+fn manual_glyphs(line: &surgeist_text::finalized::FinalizedLine) -> Vec<(Range, u32, f32)> {
     let mut actual = Vec::new();
     for run in line.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -80,7 +83,7 @@ fn manual_batch<S: LayoutScalar>(
     let origin = paragraph.origin(1);
     assert_eq!(
         origin.view().source().id(),
-        Some(surgeist_text::Id::from_u64(6601))
+        Some(surgeist_text::source::Id::from_u64(6601))
     );
     assert_eq!(origin.view().source().revision(), 7);
     assert_eq!(
@@ -156,7 +159,7 @@ fn manual_batch<S: LayoutScalar>(
 fn actual_lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     paragraph: &PreparedParagraph,
-) -> Vec<surgeist_text::FinalizedLine> {
+) -> Vec<surgeist_text::finalized::FinalizedLine> {
     let mut lines = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();

@@ -75,11 +75,11 @@ fn merged_rows(
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RoleUseData {
     pub(crate) disposition: super::fit::LineDisposition,
-    pub(crate) request: text::LineSelectionRequest,
+    pub(crate) request: text::selection::LineSelectionRequest,
     pub(crate) boxes: Option<super::boxes::BoxAssignment>,
     pub(crate) amounts: Vec<f64>,
-    pub(crate) usage: text::FormattedLineUsage,
-    pub(crate) outgoing: Option<text::HyphenationContinuation>,
+    pub(crate) usage: text::finalized::FormattedLineUsage,
+    pub(crate) outgoing: Option<text::hyphenation::HyphenationContinuation>,
     pub(crate) basis: RoleBasis,
     pub(crate) bands: LineBands,
     pub(crate) encounters: Vec<EncounterBasis>,
@@ -137,11 +137,11 @@ pub(crate) struct ProspectiveRoleBasis {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ProspectiveRoleData {
-    recipe: text::PreparedMeasurementFlow,
-    observations: Vec<text::FlowObservation>,
+    recipe: text::observation::PreparedMeasurementFlow,
+    observations: Vec<text::observation::FlowObservation>,
     boxes: Vec<Option<super::boxes::BoxAssignment>>,
-    query_start: text::PreparedBoundary,
-    query_incoming: Option<text::HyphenationContinuation>,
+    query_start: text::prepared::PreparedBoundary,
+    query_incoming: Option<text::hyphenation::HyphenationContinuation>,
     checkpoint: EntryCheckpoint,
     prior: bool,
     following: bool,
@@ -160,7 +160,7 @@ struct EntryCheckpoint(SharedPayload<EntryCheckpointData>);
 #[derive(Clone, Debug, PartialEq)]
 struct EntryCheckpointData {
     phase: super::fit::EntryPhase,
-    entry: text::PreparedBoundary,
+    entry: text::prepared::PreparedBoundary,
     first: bool,
     outside: bool,
     box_consumed: bool,
@@ -192,7 +192,7 @@ pub(super) fn copied_rows<T: Clone>(
 #[derive(Clone, Debug)]
 struct CheckpointReceipt {
     frame: super::fit::CandidateFrame,
-    line: text::FinalizedLine,
+    line: text::finalized::FinalizedLine,
     amounts: Vec<f64>,
     boxes: Option<super::boxes::BoxAssignment>,
 }
@@ -212,27 +212,28 @@ impl PartialEq for CheckpointReceipt {
 pub(super) struct RoleEntry<'a> {
     pub current_first: bool,
     pub phase: super::fit::EntryPhase,
-    pub query_start: &'a text::PreparedBoundary,
-    pub query_incoming: Option<&'a text::HyphenationContinuation>,
+    pub query_start: &'a text::prepared::PreparedBoundary,
+    pub query_incoming: Option<&'a text::hyphenation::HyphenationContinuation>,
     pub boxes: Option<&'a super::boxes::BoxAssignment>,
     pub accepted: &'a [FittedLine],
     pub preceding: Option<(
-        &'a text::FinalizedLine,
+        &'a text::finalized::FinalizedLine,
         &'a [f64],
         Option<&'a super::boxes::BoxAssignment>,
         &'a super::fit::CandidateFrame,
     )>,
 }
 
-pub(super) fn measurement(request: &text::LineSelectionRequest) -> bool {
+pub(super) fn measurement(request: &text::selection::LineSelectionRequest) -> bool {
     matches!(
         &request.termination,
-        text::PreparedTermination::Measurement(_) | text::PreparedTermination::PhraseMeasurement(_)
+        text::selection::PreparedTermination::Measurement(_)
+            | text::selection::PreparedTermination::PhraseMeasurement(_)
     )
 }
 
 pub(super) fn initial_basis(
-    request: &text::LineSelectionRequest,
+    request: &text::selection::LineSelectionRequest,
     first: bool,
 ) -> Option<RoleBasis> {
     (!measurement(request)).then_some(RoleBasis::Actual {
@@ -243,9 +244,9 @@ pub(super) fn initial_basis(
 
 pub(super) fn resolve(
     input: &FitInput<'_>,
-    request: &text::LineSelectionRequest,
+    request: &text::selection::LineSelectionRequest,
     entry: &RoleEntry<'_>,
-    role: text::PhaseTwoContext,
+    role: text::prepared::PhaseTwoContext,
     basis: &mut Option<RoleBasis>,
 ) -> Result<Option<bool>, FitError> {
     if measurement(request) {
@@ -256,11 +257,13 @@ pub(super) fn resolve(
             return Err(invalid_flow());
         };
         return match role {
-            text::PhaseTwoContext::FirstFormattedLine => Ok(Some(
+            text::prepared::PhaseTwoContext::FirstFormattedLine => Ok(Some(
                 value.checkpoint.first && !value.checkpoint.outside && !value.prior,
             )),
-            text::PhaseTwoContext::LastFormattedLine if value.following => Ok(Some(false)),
-            text::PhaseTwoContext::LastFormattedLine => {
+            text::prepared::PhaseTwoContext::LastFormattedLine if value.following => {
+                Ok(Some(false))
+            }
+            text::prepared::PhaseTwoContext::LastFormattedLine => {
                 let completion = value.recipe.completion().view().boundary();
                 value.external =
                     input
@@ -275,8 +278,8 @@ pub(super) fn resolve(
         return Err(invalid_flow());
     };
     match role {
-        text::PhaseTwoContext::FirstFormattedLine => Ok(Some(entry.current_first)),
-        text::PhaseTwoContext::LastFormattedLine => {
+        text::prepared::PhaseTwoContext::FirstFormattedLine => Ok(Some(entry.current_first)),
+        text::prepared::PhaseTwoContext::LastFormattedLine => {
             *assignment =
                 input
                     .formatted
@@ -289,7 +292,7 @@ pub(super) fn resolve(
 
 fn prospective(
     input: &FitInput<'_>,
-    request: &text::LineSelectionRequest,
+    request: &text::selection::LineSelectionRequest,
     entry: &RoleEntry<'_>,
 ) -> Result<ProspectiveRoleBasis, FitError> {
     let recipe = input.prepared.measurement_flow(
@@ -325,14 +328,14 @@ fn prospective(
         });
     let phrase = matches!(
         &request.termination,
-        text::PreparedTermination::PhraseMeasurement(_)
+        text::selection::PreparedTermination::PhraseMeasurement(_)
     );
     let mut prior = false;
     let mut following = false;
     let mut outside = false;
     for segment in recipe.segments() {
         visit(input.entry_funding, 1)?;
-        let boxes = if segment.role() == text::FlowSegmentRole::Target {
+        let boxes = if segment.role() == text::observation::FlowSegmentRole::Target {
             entry.boxes.cloned()
         } else if let Some(resolver) = input.wrapping {
             let mut controls_copies = EntryCopies::default();
@@ -353,7 +356,7 @@ fn prospective(
                 }
                 controls
             } else {
-                input.controls.iter().filter(|allocation| segment.participants().any(|participant| matches!(participant, text::PreparedParticipant::Control(control) if control == allocation.occurrence))).cloned().collect()
+                input.controls.iter().filter(|allocation| segment.participants().any(|participant| matches!(participant, text::prepared::PreparedParticipant::Control(control) if control == allocation.occurrence))).cloned().collect()
             };
             let choices = resolver.choices(super::boxes::BoxChoice {
                 start: &segment.start(),
@@ -397,7 +400,7 @@ fn prospective(
         let retained = observation.has_retained_flow_participation();
         let forced = segment
             .mandatory_end()
-            .is_some_and(|offer| offer.view().kind() == text::PreparedBreakKind::Forced);
+            .is_some_and(|offer| offer.view().kind() == text::prepared::PreparedBreakKind::Forced);
         let emitted = observation.has_in_flow_content() || forced;
         if let Some(boxes) = &boxes {
             if retained || forced {
@@ -415,19 +418,19 @@ fn prospective(
         }
         box_assignments.push(boxes);
         match segment.role() {
-            text::FlowSegmentRole::EntryPrefix => {
+            text::observation::FlowSegmentRole::EntryPrefix => {
                 if phrase && (emitted || segment.outgoing().is_some()) {
                     return Err(invalid_flow());
                 }
                 outside |= emitted;
             }
-            text::FlowSegmentRole::PriorPartition => prior |= emitted,
-            text::FlowSegmentRole::Target => {
+            text::observation::FlowSegmentRole::PriorPartition => prior |= emitted,
+            text::observation::FlowSegmentRole::Target => {
                 // The target's real cut/continuation remains in its receipt.
                 // Only actual later emitted content/Forced segments establish
                 // a following formatted line; a strut-only receiver does not.
             }
-            text::FlowSegmentRole::Remaining => following |= emitted,
+            text::observation::FlowSegmentRole::Remaining => following |= emitted,
         }
         if input.entry_funding.is_some() && observations.capacity() == 0 {
             observations = copies.rows_ref(input.entry_funding, recipe.segments().len())?;
@@ -469,12 +472,13 @@ fn prospective(
 
 fn contains_control(
     input: &FitInput<'_>,
-    segment: &text::PreparedFlowSegment,
-    control: &text::PreparedControl,
+    segment: &text::observation::PreparedFlowSegment,
+    control: &text::prepared::PreparedControl,
 ) -> Result<bool, FitError> {
     for participant in segment.participants() {
         visit(input.entry_funding, 1)?;
-        if matches!(participant, text::PreparedParticipant::Control(value) if &value == control) {
+        if matches!(participant, text::prepared::PreparedParticipant::Control(value) if &value == control)
+        {
             return Ok(true);
         }
     }
@@ -483,7 +487,7 @@ fn contains_control(
 
 fn checkpoint(
     input: &FitInput<'_>,
-    entry_boundary: &text::PreparedBoundary,
+    entry_boundary: &text::prepared::PreparedBoundary,
     entry: &RoleEntry<'_>,
     observed_outside: bool,
 ) -> Result<EntryCheckpoint, FitError> {
@@ -556,7 +560,8 @@ fn checkpoint(
                     .participants()
                     .nth(at)
                     .ok_or_else(invalid_flow)?;
-                let prefix = line.prefix_at(&text::TextSeam::BeforeParticipant(participant))?;
+                let prefix =
+                    line.prefix_at(&text::finalized::TextSeam::BeforeParticipant(participant))?;
                 (
                     prefix.has_in_flow_content(),
                     prefix.has_retained_flow_participation(),
@@ -599,12 +604,12 @@ fn checkpoint(
     let box_consumed = if let Some(receipt) = receipts.last() {
         let selected = receipt.line.selected_line();
         let request = selected.request();
-        if request.context.end != text::LineEnd::Soft {
+        if request.context.end != text::selection::LineEnd::Soft {
             true
         } else if let Some(last) = request.participants.last() {
             receipt
                 .line
-                .prefix_at(&text::TextSeam::AfterParticipant(last.clone()))?
+                .prefix_at(&text::finalized::TextSeam::AfterParticipant(last.clone()))?
                 .has_retained_flow_participation()
         } else {
             false
@@ -627,24 +632,26 @@ fn checkpoint(
     )?))
 }
 
-fn flow_ending(segment: &text::PreparedFlowSegment) -> text::LineEnd {
-    if segment.role() == text::FlowSegmentRole::Target {
-        text::LineEnd::Soft
+fn flow_ending(segment: &text::observation::PreparedFlowSegment) -> text::selection::LineEnd {
+    if segment.role() == text::observation::FlowSegmentRole::Target {
+        text::selection::LineEnd::Soft
     } else {
         match segment.mandatory_end().map(|offer| offer.view().kind()) {
-            Some(text::PreparedBreakKind::Forced) => text::LineEnd::Forced,
-            Some(text::PreparedBreakKind::ParagraphEnd) => text::LineEnd::Paragraph,
-            _ => text::LineEnd::Soft,
+            Some(text::prepared::PreparedBreakKind::Forced) => text::selection::LineEnd::Forced,
+            Some(text::prepared::PreparedBreakKind::ParagraphEnd) => {
+                text::selection::LineEnd::Paragraph
+            }
+            _ => text::selection::LineEnd::Soft,
         }
     }
 }
 
 fn observe(
     input: &FitInput<'_>,
-    target: &text::LineSelectionRequest,
-    segment: &text::PreparedFlowSegment,
+    target: &text::selection::LineSelectionRequest,
+    segment: &text::observation::PreparedFlowSegment,
     boxes: Option<&super::boxes::BoxAssignment>,
-) -> Result<text::FlowObservation, FitError> {
+) -> Result<text::observation::FlowObservation, FitError> {
     let mut copies = EntryCopies::default();
     let mut atomics_backing = EntryBacking::default();
     let mut controls_backing = EntryBacking::default();
@@ -658,7 +665,7 @@ fn observe(
         let mut included = false;
         for participant in &participants {
             visit(input.entry_funding, 1)?;
-            if matches!(participant, text::PreparedParticipant::Atomic(value) if value == &row.occurrence)
+            if matches!(participant, text::prepared::PreparedParticipant::Atomic(value) if value == &row.occurrence)
             {
                 included = true;
                 break;
@@ -683,7 +690,7 @@ fn observe(
         let mut included = false;
         for participant in &participants {
             visit(input.entry_funding, 1)?;
-            if matches!(participant, text::PreparedParticipant::Control(value) if value == &row.occurrence)
+            if matches!(participant, text::prepared::PreparedParticipant::Control(value) if value == &row.occurrence)
             {
                 included = true;
                 break;
@@ -702,7 +709,7 @@ fn observe(
             controls.push(actual.clone());
         }
     }
-    let line_box_struts = if segment.role() == text::FlowSegmentRole::Target {
+    let line_box_struts = if segment.role() == text::observation::FlowSegmentRole::Target {
         copied_rows(&mut copies, input.entry_funding, &target.line_box_struts)?
     } else if let Some(boxes) = boxes {
         let mut rows = copies.rows_ref(input.entry_funding, boxes.contributions.len())?;
@@ -715,14 +722,14 @@ fn observe(
         Vec::new()
     };
     let mut context = target.context.clone();
-    context.formatted_line = text::FormattedLineContext::default();
+    context.formatted_line = text::selection::FormattedLineContext::default();
     context.start = if segment.start().view().participant_offset() == 0 {
-        text::LineStart::Paragraph
+        text::selection::LineStart::Paragraph
     } else {
-        text::LineStart::Continuation
+        text::selection::LineStart::Continuation
     };
     context.end = flow_ending(segment);
-    let mut request = text::FlowObservationRequest {
+    let mut request = text::observation::FlowObservationRequest {
         context,
         atomics,
         controls,
@@ -752,13 +759,13 @@ fn observe(
         boundary_backing.reserve_push_ref(&mut request.boundary_context, input.entry_funding)?;
         request
             .boundary_context
-            .push(text::InlineBoundaryContextAllocation {
+            .push(text::allocation::InlineBoundaryContextAllocation {
                 occurrence,
                 boundary,
             });
     }
     let operation = input.scope_alignments.begin(
-        text::ScopeAlignmentCensusInput::Flow {
+        text::scope_alignment::ScopeAlignmentCensusInput::Flow {
             prepared: input.prepared,
             segment,
             request: &request,
@@ -782,7 +789,7 @@ fn invalid_flow() -> FitError {
             "invalid prospective formatted flow",
         )
         .with_detail(text::ErrorDetail::InvalidTextProtocol {
-            reason: text::ProtocolError::InvalidMeasurementFlow,
+            reason: text::prepared::ProtocolError::InvalidMeasurementFlow,
         }),
     )
 }
@@ -794,8 +801,8 @@ mod funding_tests {
         EntryFunding, ScopeAlignmentFacts, ScopeAlignmentResources, ScopeAlignmentSnapshot,
     };
 
-    const LIMITS: text::ScopeAlignmentLimits =
-        text::ScopeAlignmentLimits::new(100_000, 100, 1_000_000, 16 << 20);
+    const LIMITS: text::scope_alignment::ScopeAlignmentLimits =
+        text::scope_alignment::ScopeAlignmentLimits::new(100_000, 100, 1_000_000, 16 << 20);
 
     fn sizing_request() -> crate::SizingRequestOf<f64> {
         crate::SizingRequestOf::new(
@@ -821,7 +828,7 @@ mod funding_tests {
 
     fn source() -> (
         crate::test_support::inline_endpoint::Fixture,
-        text::FinalizedLine,
+        text::finalized::FinalizedLine,
     ) {
         let source =
             crate::test_support::inline_endpoint::Fixture::with_scope_limits("X X", LIMITS);
@@ -875,8 +882,8 @@ mod funding_tests {
     }
 
     fn input<'a>(
-        prepared: &'a text::PreparedText,
-        request: &'a text::LineSelectionRequest,
+        prepared: &'a text::prepared::PreparedText,
+        request: &'a text::selection::LineSelectionRequest,
         resources: &'a ScopeAlignmentResources<f64>,
         funding: EntryFundingRef<'a>,
         formatted: &'a super::super::formatted::FormattedTailSnapshot,
@@ -900,8 +907,8 @@ mod funding_tests {
                 crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
                 crate::SizingOperation::Normal,
             ),
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            block_direction: text::ParagraphBaseDirection::LeftToRight,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            block_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             alignment: crate::TextAlign::Start,
             wrap_style: crate::TextWrapStyle::Auto,
             last_alignment: crate::TextAlignLast::Auto,
@@ -911,7 +918,7 @@ mod funding_tests {
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
             hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
             tail: super::super::fit::TailContext::Unrestricted,
-            orientation: text::LineOrientation::Horizontal,
+            orientation: text::selection::LineOrientation::Horizontal,
             atomics: &request.atomics,
             controls: &request.controls,
             line_strut: request.line_strut,
@@ -925,8 +932,8 @@ mod funding_tests {
                 assert!(matches!(
                     error.detail(),
                     Some(text::ErrorDetail::ScopeAlignment {
-                        reason: text::ScopeAlignmentError::Limit {
-                            kind: text::ScopeAlignmentLimitKind::StructuralWork,
+                        reason: text::scope_alignment::ScopeAlignmentError::Limit {
+                            kind: text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
                             ..
                         }
                     })
@@ -966,8 +973,8 @@ mod funding_tests {
         let mut request = original.clone();
         request.start = portion.start();
         request.end = portion.end();
-        request.termination = text::PreparedTermination::Measurement(portion);
-        request.context.end = text::LineEnd::Soft;
+        request.termination = text::selection::PreparedTermination::Measurement(portion);
+        request.context.end = text::selection::LineEnd::Soft;
         let entry = RoleEntry {
             current_first: true,
             phase: super::super::fit::EntryPhase::Pending,
@@ -1021,8 +1028,8 @@ mod funding_tests {
             .expect_err("another prospective producer must refuse the exhausted original owner");
         assert!(
             matches!(error, FitError::Text(error) if matches!(error.detail(),
-            Some(text::ErrorDetail::ScopeAlignment { reason: text::ScopeAlignmentError::Limit {
-                kind: text::ScopeAlignmentLimitKind::StructuralWork, ..
+            Some(text::ErrorDetail::ScopeAlignment { reason: text::scope_alignment::ScopeAlignmentError::Limit {
+                kind: text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork, ..
             } })))
         );
         assert_eq!(
@@ -1039,9 +1046,9 @@ mod funding_tests {
             crate::test_support::inline_endpoint::Fixture::with_scope_limits("X", LIMITS);
         let native = PreparedParagraph::plain(
             101,
-            text::Source::new("(A A"),
-            text::Style {
-                hanging_punctuation: text::HangingPunctuation::new(true, None, false),
+            text::source::Source::new("(A A"),
+            text::style::Style {
+                hanging_punctuation: text::style::HangingPunctuation::new(true, None, false),
                 ..ahem_style(10.0, 10.0)
             },
         );
@@ -1159,7 +1166,8 @@ mod funding_tests {
             },
             |_, _| Ok(None),
             super::super::fit::EncounterCallbacks {
-                replay: |_: &text::FinalizedLine, _: super::super::fit::EncounterReplay| {
+                replay: |_: &text::finalized::FinalizedLine,
+                         _: super::super::fit::EncounterReplay| {
                     Ok(Vec::new())
                 },
                 accept: || Ok(()),

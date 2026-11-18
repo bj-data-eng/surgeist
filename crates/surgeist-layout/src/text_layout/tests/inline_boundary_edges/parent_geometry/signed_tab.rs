@@ -45,7 +45,11 @@ fn execute<S: LayoutScalar>(fixture: &Fixture) -> CompletedLayoutBatchOf<u32, S>
     )
     .unwrap()
 }
-fn interval(line: &text::FinalizedLine, fixture: &Fixture, node: u32) -> ((f64, f64), (f64, f64)) {
+fn interval(
+    line: &text::finalized::FinalizedLine,
+    fixture: &Fixture,
+    node: u32,
+) -> ((f64, f64), (f64, f64)) {
     let occurrence = control(fixture, node);
     let slot = line
         .control_slots()
@@ -56,7 +60,7 @@ fn interval(line: &text::FinalizedLine, fixture: &Fixture, node: u32) -> ((f64, 
 fn lane<S: LayoutScalar>() {
     // A real qualification of DIGIT ZERO advance10 in this SAME pinned Ahem
     // at size10: absolute period20 has half-ch threshold5, not a TAB glyph.
-    let digit = Fixture::new("0", (0, 1), text::WhiteSpace::Preserve, false, false);
+    let digit = Fixture::new("0", (0, 1), text::style::WhiteSpace::Preserve, false, false);
     let digit_layout = digit.compute(
         InlineBoundaryEdgeOf::ZERO,
         InlineBoundaryEdgeOf::ZERO,
@@ -93,9 +97,9 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(glyphs(&prior), [(35, 0.0, 10.0), (36, 20.0, 10.0)]);
     assert_eq!(prior.feedback().advance, 30.0);
     let origin = fixture.binding.origins[0].origin.clone();
-    let seam = text::TextSeam::Origin {
+    let seam = text::finalized::TextSeam::Origin {
         origin: origin.clone(),
-        local: text::SourcePosition::try_new(origin.view().source().text(), 2).unwrap(),
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), 2).unwrap(),
     };
     assert_eq!(prior.prefix_at(&seam).unwrap().advance(), 20.0);
 
@@ -119,8 +123,8 @@ fn lane<S: LayoutScalar>() {
         30.0
     );
     assert_eq!(
-        full.prefix_at(&text::TextSeam::AfterParticipant(
-            text::PreparedParticipant::Control(control(&fixture, 22))
+        full.prefix_at(&text::finalized::TextSeam::AfterParticipant(
+            text::prepared::PreparedParticipant::Control(control(&fixture, 22))
         ))
         .unwrap()
         .advance(),
@@ -134,7 +138,7 @@ fn lane<S: LayoutScalar>() {
     let offer = prepared
         .opportunity_views()
         .find(|offer| {
-            offer.kind() == text::PreparedBreakKind::Allowed
+            offer.kind() == text::prepared::PreparedBreakKind::Allowed
                 && offer.boundary().view().source_before().get() == 2
                 && offer.boundary().view().source_after().get() == 2
         })
@@ -142,15 +146,15 @@ fn lane<S: LayoutScalar>() {
         .handle();
     let mut partial = full.selected_line().request().clone();
     partial.end = offer.view().boundary();
-    partial.termination = text::PreparedTermination::Ordinary(offer);
-    partial.context.end = text::LineEnd::Soft;
+    partial.termination = text::selection::PreparedTermination::Ordinary(offer);
+    partial.context.end = text::selection::LineEnd::Soft;
     partial.participants = prepared
         .participants()
         .take(partial.end.view().participant_offset())
         .collect();
     partial.controls.retain(|row| {
         partial.participants.iter().any(|participant|
-        matches!(participant,text::PreparedParticipant::Control(c) if c==&row.occurrence))
+        matches!(participant,text::prepared::PreparedParticipant::Control(c) if c==&row.occurrence))
     });
     partial.boundary_context.clear();
     assert_eq!(partial.controls.len(), 2);
@@ -173,16 +177,16 @@ fn lane<S: LayoutScalar>() {
             .unwrap();
         partial
             .boundary_context
-            .push(text::InlineBoundaryContextAllocation {
+            .push(text::allocation::InlineBoundaryContextAllocation {
                 occurrence: needed,
                 boundary: allocation,
             });
     }
     let selected = prepared.select(partial).unwrap();
     let partial = selected
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     // New recipe executes Ps5,A10->15,TAB5->20, then selected Cs F0. Gap5
@@ -197,7 +201,9 @@ fn lane<S: LayoutScalar>() {
     );
     assert_eq!(partial.prefix_at(&seam).unwrap().advance(), 20.0);
     assert_eq!(full.prefix_at(&seam).unwrap().advance(), 21.0);
-    let replay = full.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = full
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(replay.prefix_at(&seam).unwrap().advance(), 21.0);
     assert_eq!(glyphs(&replay), glyphs(&full));
     for node in [20, 22, 23, 21] {

@@ -163,13 +163,13 @@ impl<'a> Input<'a> {
             .scope_topology
             .as_ref()
             .expect("prepared cell has authenticated capture");
-        let captured = crate::processing::CapturedScope {
+        let captured = crate::processing::contextual::CapturedScope {
             capture: std::sync::Arc::clone(&topology.capture),
             index: scope,
         };
         let style = captured.style().ok_or_else(|| {
             crate::engine::scope_alignment::refusal(
-                crate::processing::ScopeAlignmentError::MissingStyle { scope },
+                crate::processing::contextual::ScopeAlignmentError::MissingStyle { scope },
             )
         })?;
         f(style)

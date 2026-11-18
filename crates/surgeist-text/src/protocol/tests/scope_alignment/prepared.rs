@@ -13,11 +13,14 @@ use crate::{
     layout::{Affinity, Cursor, Layout, Selection},
     options::Alignment,
     processing::{
-        ContextualSourceInput, ProcessedSource, ScopeAlignmentBoundary, ScopeAlignmentError,
-        ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference, ScopeRole,
-        SourceProcessingConnection, SourceProcessingEvent, SourceProcessingJointFlow,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
-        SourceProcessingTopology, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError,
+            ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference, ScopeRole,
+            SourceProcessingConnection, SourceProcessingEvent, SourceProcessingJointFlow,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
+            SourceProcessingTopology, process_contextual_source,
+        },
     },
     protocol::{
         AtomicAllocation, AtomicBoxAllocation, AtomicFitAllocation, AtomicFlowAllocation,
@@ -574,7 +577,7 @@ pub(super) fn two_leaves() -> ContextualSourceInput {
         following_wrap: Wrap::Word,
         ancestor_wrap: Wrap::Word,
     }];
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     value.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
@@ -794,7 +797,7 @@ fn a_empty_dormant_inline_does_not_demand_missing_reference_or_unavailable_font(
         None,
         Some(unavailable),
     );
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     value.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),

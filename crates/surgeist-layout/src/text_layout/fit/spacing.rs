@@ -1,7 +1,7 @@
 //! Positive separator and character-boundary allocation over actual Text response.
 use super::super::scope_alignment::ScopeAlignmentFacts;
 use super::{FinalizedLine, FitError};
-use surgeist_text::{
+use surgeist_text::spacing::{
     SpacingBoundaryGeometry, SpacingSlotDisposition, SpacingSlotGeometry, SpacingStretchability,
 };
 

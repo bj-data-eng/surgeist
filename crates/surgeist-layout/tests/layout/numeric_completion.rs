@@ -1,7 +1,7 @@
 //! Existing numeric-only native wrapping; no Text source or future selector API.
 use std::{convert::Infallible, slice};
 use surgeist_layout as l;
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 struct NumericTree<S: l::LayoutScalar> {
     inputs: Vec<l::LayoutInputOf<S>>,

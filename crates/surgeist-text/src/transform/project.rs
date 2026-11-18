@@ -6,8 +6,8 @@ use super::{
 };
 use crate::{
     Error, ErrorCode, ErrorDetail, Result, engine::resolve::AnalyzedStyleRun,
-    error::TextTransformError, processing::SourceContinuityOperation, projection::SourceProjection,
-    range::Range,
+    error::TextTransformError, processing::contextual::SourceContinuityOperation,
+    projection::SourceProjection, range::Range,
 };
 use std::sync::Arc;
 

@@ -15,7 +15,7 @@ fn forced_completion<S: l::LayoutScalar>() {
             0,
             &parts,
             style(),
-            t::ParagraphBaseDirection::LeftToRight,
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch = run(&host, &[&p], available(40.0, 15.0), &[]);
         let layout = placed(&batch, &p);
@@ -36,7 +36,7 @@ fn forced_completion<S: l::LayoutScalar>() {
             let line = line.expect("actual Forced control has a retained fragment");
             assert_eq!(
                 line.selected_line().request().context.end,
-                t::LineEnd::Forced
+                t::selection::LineEnd::Forced
             );
             assert_eq!(
                 line.selected_line().request().controls[0].occurrence,
@@ -50,7 +50,7 @@ fn forced_completion<S: l::LayoutScalar>() {
             );
             assert_eq!(
                 layout.lines()[i].bounds(),
-                t::Rect::new(if i == 0 { 30.0 } else { 20.0 }, 0.0, 10.0, 15.0)
+                t::geometry::Rect::new(if i == 0 { 30.0 } else { 20.0 }, 0.0, 10.0, 15.0)
             );
         }
         let completion = layout.nonformatted_lines().next().unwrap();
@@ -58,7 +58,7 @@ fn forced_completion<S: l::LayoutScalar>() {
         assert_eq!(line.prepared_text(), p.prepared);
         assert_eq!(
             line.selected_line().request().context.end,
-            t::LineEnd::Paragraph
+            t::selection::LineEnd::Paragraph
         );
         assert_eq!(
             line.selected_line().request().start,
@@ -74,22 +74,22 @@ fn forced_completion<S: l::LayoutScalar>() {
         // used origin is exactly the next block edge (right40 minus10/20).
         assert_eq!(
             completion.origin,
-            t::Point::new(if twice { 20.0 } else { 30.0 }, 0.0)
+            t::geometry::Point::new(if twice { 20.0 } else { 30.0 }, 0.0)
         );
         assert_eq!(
             completion.orientation,
-            t::LineOrientation::SidewaysClockwise
+            t::selection::LineOrientation::SidewaysClockwise
         );
         assert_eq!(
             layout.metrics().size(),
-            t::Size::new(if twice { 20.0 } else { 10.0 }, 10.0)
+            t::geometry::Size::new(if twice { 20.0 } else { 10.0 }, 10.0)
         );
         assert_eq!(
             layout
                 .run_views()
                 .flat_map(|r| r.glyphs().map(|g| (g.id(), r.range())).collect::<Vec<_>>())
                 .collect::<Vec<_>>(),
-            [(35, t::Range::new(0, 1))]
+            [(35, t::source::Range::new(0, 1))]
         );
     }
 }
@@ -109,7 +109,7 @@ fn endpoints<S: l::LayoutScalar>() {
         0,
         &[Part::Start(2.0), Part::Text("A"), Part::End(3.0)],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     assert_eq!(p.binding.nodes.len(), 3);
     assert_eq!(p.binding.controls.len(), 2);
@@ -152,7 +152,7 @@ fn endpoints<S: l::LayoutScalar>() {
         let view = fragment.finalized_fragment().view();
         assert_eq!(
             view.owner(),
-            t::FinalizedFragmentOwner::Control(binding.occurrence.clone())
+            t::finalized::FinalizedFragmentOwner::Control(binding.occurrence.clone())
         );
         assert!(view.origin().is_none());
         assert!(view.aggregate_range().is_none());
@@ -168,7 +168,7 @@ fn endpoints<S: l::LayoutScalar>() {
     }
     assert_eq!(
         layout.run_views().next().unwrap().origin(),
-        t::Point::new(32.0, 2.0)
+        t::geometry::Point::new(32.0, 2.0)
     );
     let positions = layout.positions().collect::<Vec<_>>();
     let at = |index, y| {
@@ -177,7 +177,7 @@ fn endpoints<S: l::LayoutScalar>() {
             .find(|position| {
                 position.source_cursor().index() == index
                     && layout.position_geometry(position).unwrap().rect()
-                        == t::Rect::new(30.0, y, 10.0, 1.0)
+                        == t::geometry::Rect::new(30.0, y, 10.0, 1.0)
             })
             .expect("actual minted endpoint side")
     };
@@ -191,7 +191,7 @@ fn endpoints<S: l::LayoutScalar>() {
         assert!(selection.plaintext().is_empty());
         assert_eq!(
             selection.geometry().rects()[0].rect(),
-            t::Rect::new(30.0, before, 10.0, after - before)
+            t::geometry::Rect::new(30.0, before, 10.0, after - before)
         );
     }
     let selection = layout.position_selection(at(0, 0.0), at(1, 15.0)).unwrap();
@@ -217,7 +217,7 @@ fn refusal_transaction<S: l::LayoutScalar>() {
         0,
         &[Part::Text("AB")],
         break_all(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let old = run(&host, &[&p], available(40.0, 15.0), &[]);
@@ -259,12 +259,12 @@ fn refusal_transaction<S: l::LayoutScalar>() {
             error.detail(),
             Some(&t::ErrorDetail::InvalidTextProtocol {
                 reason: if wm == l::WritingMode::SidewaysRl {
-                    t::ProtocolError::MismatchedContext {
-                        field: t::ProtocolContextField::Orientation,
+                    t::prepared::ProtocolError::MismatchedContext {
+                        field: t::prepared::ProtocolContextField::Orientation,
                     }
                 } else {
-                    t::ProtocolError::UnsupportedContext {
-                        field: t::ProtocolContextField::Orientation,
+                    t::prepared::ProtocolError::UnsupportedContext {
+                        field: t::prepared::ProtocolContextField::Orientation,
                     }
                 }
             })
@@ -283,7 +283,7 @@ fn refusal_transaction<S: l::LayoutScalar>() {
         0,
         &[Part::Text("AB")],
         break_all(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let mut stale = p.binding.clone();
