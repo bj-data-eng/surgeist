@@ -14,7 +14,7 @@
 //! other arguments and are not ledger calls. A loop is a `for`, `while` or
 //! `loop` body, or the arguments of an iterator adaptor, of a slice or vector
 //! method that takes a per-item closure, or of a method whose name starts with
-//! `for_each` or ends in `each`. The check is lexical: it does not follow a
+//! `for_each` or ends in `_each`. The check is lexical: it does not follow a
 //! call into the function it calls, nor recognise a block written directly as
 //! a `for` loop's iterator. Test modules and test files are not read.
 
@@ -60,7 +60,7 @@ const ADAPTORS: [&str; 33] = [
 
 /// Whether a call of `name` runs its closure argument once per item.
 fn repeats_closure(name: &str) -> bool {
-    ADAPTORS.contains(&name) || name.starts_with("for_each") || name.ends_with("each")
+    ADAPTORS.contains(&name) || name.starts_with("for_each") || name.ends_with("_each")
 }
 
 /// The source with comments and the contents of string and character
