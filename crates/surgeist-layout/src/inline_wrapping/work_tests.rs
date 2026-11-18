@@ -1,72 +1,27 @@
 //! Real numeric/flex geometry precedes invocation-scoped comparison bounds.
 
+use crate::accounting::{LayoutWork, TestHost};
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
 use crate::{
     AlignContent, AlignItems, AtomicInlineParticipation, BidiLevel, CompletedLayoutBatchOf,
     Display, FlexDirection, FlexGrowOf, FlexShrinkOf, FlexWrap, InlineBreakOpportunity,
     LayoutOutputEntryOf, LayoutScalar, LengthPercentageOf, NodeInputOf, Point, PreferredSizeOf,
-    Size, SourceIndex, TextWrapStyle, WrapEdge, compute_layout,
+    Size, SourceIndex, TextWrapStyle, WrapEdge,
 };
-use std::{cell::Cell, marker::PhantomData, rc::Rc};
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// The subset comparisons and offers one layout reports to its host scope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Work {
-    subsets: usize,
-    offers: usize,
+    subsets: u64,
+    offers: u64,
 }
 
-thread_local! {
-    static WORK: Cell<Option<Work>> = const { Cell::new(None) };
-}
-
-pub(super) fn record_subset() {
-    WORK.with(|slot| {
-        if let Some(mut work) = slot.get() {
-            work.subsets += 1;
-            slot.set(Some(work));
-        }
-    });
-}
-
-pub(super) fn record_offer() {
-    WORK.with(|slot| {
-        if let Some(mut work) = slot.get() {
-            work.offers += 1;
-            slot.set(Some(work));
-        }
-    });
-}
-
-// Each synchronous public computation owns its recorder. Nested observation
-// restores its caller, including on unwind, and cannot move to another thread.
-struct Observation {
-    prior: Option<Work>,
-    thread: PhantomData<Rc<()>>,
-}
-impl Observation {
-    fn enter() -> Self {
-        Self {
-            prior: WORK.with(|slot| slot.replace(Some(Work::default()))),
-            thread: PhantomData,
-        }
+fn work_of(host: &TestHost) -> Work {
+    Work {
+        subsets: host.work(LayoutWork::WrappingSubsetTest),
+        offers: host.work(LayoutWork::WrappingOffer),
     }
-    fn counts(&self) -> Work {
-        WORK.with(|slot| slot.get().unwrap())
-    }
-}
-impl Drop for Observation {
-    fn drop(&mut self) {
-        WORK.with(|slot| slot.set(self.prior));
-    }
-}
-
-fn observe<T>(f: impl FnOnce() -> T) -> (T, Work) {
-    let scope = Observation::enter();
-    let result = f();
-    let work = scope.counts();
-    drop(scope);
-    (result, work)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -160,51 +115,59 @@ fn assert_entries<S: LayoutScalar>(entries: &[LayoutOutputEntryOf<u32, S>], coun
 
 fn run<S: LayoutScalar>(profile: Profile, count: usize, avoid: bool) {
     let tree = tree::<S>(profile, count, avoid);
-    let (batch, work): (CompletedLayoutBatchOf<u32, S>, Work) = observe(|| {
-        compute_layout(&tree, 0, {
-            let containing_flow_axes = {
-                let root_input = crate::LayoutTree::node_input(&tree, 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
-            };
-            let requested_axes = Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(10.0 * (count - 1) as f64))
-                            .unwrap(),
+    let host = TestHost::new();
+    let batch: CompletedLayoutBatchOf<u32, S> = {
+        crate::engine::compute_layout_invalidated_accounted(
+            &tree,
+            0,
+            {
+                let containing_flow_axes = {
+                    let root_input = crate::LayoutTree::node_input(&tree, 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                };
+                let requested_axes = Size::new(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(10.0 * (count - 1) as f64))
+                                .unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
                     ),
-                    crate::SizingOperation::Normal,
-                ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
-            );
-            let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
-            // These fixtures perform ordinary block-size layout independently of
-            // the explicitly requested inline contribution operation.
-            logical_requests.block = logical_requests
-                .block
-                .with_operation(crate::SizingOperation::Normal);
-            logical_requests.inline = logical_requests
-                .inline
-                .with_operation(crate::SizingOperation::Normal);
-            let axes = containing_flow_axes.physical_size(logical_requests);
-            // The old Native NoParent fixture explicitly supplied these percentage
-            // bases. It supplied no independent ICB dimensions or ancestor scrollport.
-            let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-            let fallback = crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
-            );
-            crate::LayoutRootRequestOf::standalone(
-                crate::SizingRequestOf::new(axes, fallback),
-                containing_flow_axes,
-                percentage_parent,
-            )
-        })
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MaxContent,
+                    ),
+                );
+                let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+                // These fixtures perform ordinary block-size layout independently of
+                // the explicitly requested inline contribution operation.
+                logical_requests.block = logical_requests
+                    .block
+                    .with_operation(crate::SizingOperation::Normal);
+                logical_requests.inline = logical_requests
+                    .inline
+                    .with_operation(crate::SizingOperation::Normal);
+                let axes = containing_flow_axes.physical_size(logical_requests);
+                // The old Native NoParent fixture explicitly supplied these percentage
+                // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+                let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+                let fallback = crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                );
+                crate::LayoutRootRequestOf::standalone(
+                    crate::SizingRequestOf::new(axes, fallback),
+                    containing_flow_axes,
+                    percentage_parent,
+                )
+            },
+            &[],
+            Some(&host.scope()),
+        )
         .unwrap()
-    });
+    };
+    let work = work_of(&host);
     // Distinct singleton avoided-edge sets are incomparable. Ordinary latest
     // fitting cut wins: n-1 real boxes on row0 and the last real box on row1.
     // Qualify complete authentic output before any work assertion.
@@ -303,28 +266,4 @@ fn flex_neutral_edges_128_f64() {
 #[test]
 fn flex_neutral_edges_256_f64() {
     run::<f64>(Profile::Flex, 256, false);
-}
-
-#[test]
-fn observation_restores_outer_invocation_after_nested_unwind() {
-    assert!(WORK.with(|slot| slot.get().is_none()));
-    let outer = Observation::enter();
-    record_offer();
-    assert!(
-        std::panic::catch_unwind(|| {
-            let _inner = Observation::enter();
-            record_subset();
-            panic!("intentional observer cleanup control");
-        })
-        .is_err()
-    );
-    assert_eq!(
-        outer.counts(),
-        Work {
-            subsets: 0,
-            offers: 1
-        }
-    );
-    drop(outer);
-    assert!(WORK.with(|slot| slot.get().is_none()));
 }

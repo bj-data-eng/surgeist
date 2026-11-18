@@ -115,6 +115,7 @@ fn deferred_after_zero_extent_with_before<S: LayoutScalar>(
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
+        meter: crate::accounting::Meter::new(),
     };
     let driver = Driver::new(&environment, &scopes).unwrap();
     let retained_records = driver.records.clone();

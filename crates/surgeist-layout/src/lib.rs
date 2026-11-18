@@ -228,6 +228,7 @@ mod fixture_variants;
 #[cfg(test)]
 use surgeist_text::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
 
+mod accounting;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/atomic_paragraph_metrics.rs"]
 mod atomic_paragraph_metrics;

@@ -1,5 +1,6 @@
 //! Provisional source-order float encounters for one captured Text paragraph.
 
+use crate::accounting::LayoutWork;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -438,8 +439,6 @@ pub(super) struct Encounters<Node, S: LayoutScalar> {
     cursor: S,
     inline_space: FloatInlineSpace,
     journal: Option<EncounterJournal<Node, S>>,
-    #[cfg(test)]
-    replay_event_visits: usize,
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
@@ -477,8 +476,6 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             cursor,
             inline_space,
             journal,
-            #[cfg(test)]
-            replay_event_visits: 0,
         })
     }
     /// Roll back the entire unpublished branch to this run's incoming ledger.
@@ -592,14 +589,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             window.sort_unstable();
             window
         });
+        let meter = self.base.meter().clone();
+        let mut visited = meter.tally(LayoutWork::FloatReplayEvent);
         for ordinal in 0..window.as_ref().map_or(self.events.len(), Vec::len) {
             let index = window.as_ref().map_or(ordinal, |window| window[ordinal]);
             let encounter = &self.events[index];
             let event = &encounter.source;
-            #[cfg(test)]
-            {
-                self.replay_event_visits += 1;
-            }
+            visited.one();
             if let Some(previous) = &self.accepted[index] {
                 let top = previous
                     .placement

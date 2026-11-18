@@ -4,6 +4,7 @@ use super::{
     LayoutScalar, Size, TextAlign, WritingMode,
 };
 use crate::Point;
+use crate::accounting::LayoutWork;
 #[cfg(test)]
 use crate::geometry::LogicalSizeOf;
 use crate::geometry::{FlowAxes, LogicalPointOf};
@@ -71,26 +72,6 @@ pub(crate) use input::{
 };
 
 #[cfg(test)]
-thread_local! {
-    static INLINE_CANDIDATE_SCAN_VISITS: Cell<usize> = const { Cell::new(0) };
-}
-
-#[cfg(test)]
-fn observe_inline_candidate_scan_visit() {
-    INLINE_CANDIDATE_SCAN_VISITS.with(|visits| visits.set(visits.get() + 1));
-}
-
-#[cfg(test)]
-pub(super) fn reset_inline_candidate_scan_visits() {
-    INLINE_CANDIDATE_SCAN_VISITS.with(|visits| visits.set(0));
-}
-
-#[cfg(test)]
-pub(super) fn inline_candidate_scan_visits() -> usize {
-    INLINE_CANDIDATE_SCAN_VISITS.with(Cell::get)
-}
-
-#[cfg(test)]
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct InlineRunInput<S: LayoutScalar = DefaultScalar> {
     pub available_width: AxisSizingRequestOf<S>,
@@ -111,6 +92,8 @@ pub(super) enum MixedInlineParticipantOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
+    /// The counts of the layout call this run computes for.
+    pub meter: crate::accounting::Meter,
     pub inline_baseline_context: crate::InlineBaselineContext,
     pub groups: crate::group_alignment::Snapshot,
     pub text_wrap_style: crate::TextWrapStyle,
@@ -327,6 +310,7 @@ struct InlineSourceCursor {
 struct ProjectedInlineRun<'a, S: LayoutScalar> {
     participants: &'a [MixedInlineParticipantOf<S>],
     supplied: &'a [SuppliedInlineParticipant],
+    meter: &'a crate::accounting::Meter,
 }
 
 #[derive(Clone, Copy)]
@@ -353,13 +337,14 @@ impl<'a, S: LayoutScalar> ProjectedInlineRun<'a, S> {
 }
 
 fn project_inline_participants<S: LayoutScalar>(
+    meter: &crate::accounting::Meter,
     participants: &[MixedInlineParticipantOf<S>],
 ) -> Vec<SuppliedInlineParticipant> {
+    let mut projected = meter.tally(LayoutWork::InlineProjection);
     participants
         .iter()
         .filter_map(|participant| {
-            #[cfg(test)]
-            observe_inline_work_visit(0);
+            projected.one();
             match *participant {
                 MixedInlineParticipantOf::Atomic { participation, .. } => {
                     Some(SuppliedInlineParticipant::Atomic {
@@ -378,35 +363,6 @@ fn project_inline_participants<S: LayoutScalar>(
             }
         })
         .collect()
-}
-
-#[cfg(test)]
-thread_local! {
-    // Actual source entries projected, source entries searched for hard line ends,
-    // and calls into Text's leading-edge query, respectively.
-    static INLINE_WORK_VISITS: Cell<[usize; 3]> = const { Cell::new([0; 3]) };
-    static INLINE_LEADING_QUERY_UNITS: Cell<usize> = const { Cell::new(0) };
-}
-#[cfg(test)]
-fn observe_inline_work_visit(kind: usize) {
-    INLINE_WORK_VISITS.with(|visits| {
-        let mut counts = visits.get();
-        counts[kind] += 1;
-        visits.set(counts);
-    });
-}
-#[cfg(test)]
-pub(super) fn reset_inline_work_visits() {
-    INLINE_WORK_VISITS.with(|visits| visits.set([0; 3]));
-    INLINE_LEADING_QUERY_UNITS.with(|visits| visits.set(0));
-}
-#[cfg(test)]
-pub(super) fn inline_work_visits() -> [usize; 3] {
-    INLINE_WORK_VISITS.with(Cell::get)
-}
-#[cfg(test)]
-pub(super) fn inline_leading_query_units() -> usize {
-    INLINE_LEADING_QUERY_UNITS.with(Cell::get)
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -1281,6 +1237,7 @@ fn resolved_inline_available<S: LayoutScalar>(
     let run = ProjectedInlineRun {
         participants: &input.participants,
         supplied,
+        meter: &input.meter,
     };
     match (
         input.available_inline_extent.operation(),
@@ -1327,11 +1284,11 @@ fn select_next_inline_line<S: LayoutScalar>(
     let mut scan = source_cursor;
     let mut latest_allowed = None;
     let mut candidate_inline_extent = S::ZERO;
-    #[cfg(test)]
-    observe_inline_work_visit(2);
+    run.meter.charge(LayoutWork::InlineLeadingQuery, 1);
     let leading_query = &run.supplied[cursor.descriptor..next_boundary_descriptor];
-    #[cfg(test)]
-    INLINE_LEADING_QUERY_UNITS.with(|units| units.set(units.get() + leading_query.len()));
+    run.meter
+        .charge(LayoutWork::InlineLeadingQueryUnit, leading_query.len());
+    let mut scanned = run.meter.tally(LayoutWork::InlineCandidateScan);
     let leading_discard_len = SuppliedLine::new(leading_query).leading_discard_len();
     while scan < participants.len() {
         let participant = participants[scan];
@@ -1353,8 +1310,7 @@ fn select_next_inline_line<S: LayoutScalar>(
             });
         }
 
-        #[cfg(test)]
-        observe_inline_candidate_scan_visit();
+        scanned.one();
         if scan - source_cursor >= leading_discard_len {
             candidate_inline_extent =
                 candidate_inline_extent + participant.inline_advance(flow_axes);
@@ -2070,6 +2026,7 @@ fn select_scope_inline_line<S: LayoutScalar, BandError>(
     let bounded = ProjectedInlineRun {
         participants: &run.participants[..stop + usize::from(forced.is_some())],
         supplied: &run.supplied[..descriptor_stop],
+        meter: run.meter,
     };
     // A source-prefix overflow cannot choose a BoxEdge fallback: a later
     // selected negative edge may retract that prefix. The legal-candidate walk
@@ -2146,7 +2103,7 @@ fn select_scope_inline_line<S: LayoutScalar, BandError>(
                 if goal.is_some() { frontier.consider_ranked(wrapping.class(next.receipt().next_cursor.source)?, next, prefer)?; }
                 else { frontier.consider(wrapping.class(next.receipt().next_cursor.source)?, next)?; }
             } else if let Some(prior) = first.take() {
-                let mut next_frontier = wrapping.frontier();
+                let mut next_frontier = wrapping.frontier(run.meter);
                 if goal.is_some() {
                     next_frontier.consider_ranked(wrapping.class(prior.receipt().next_cursor.source)?, prior, prefer)?;
                     next_frontier.consider_ranked(wrapping.class(next.receipt().next_cursor.source)?, next, prefer)?;
@@ -2524,7 +2481,7 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
 pub(super) fn layout_mixed_inline_run<S: LayoutScalar>(
     input: MixedInlineRunInputOf<S>,
 ) -> Result<MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError> {
-    let supplied = project_inline_participants(&input.participants);
+    let supplied = project_inline_participants(&input.meter, &input.participants);
     let available = resolved_inline_available(&input, &supplied)?;
     layout_mixed_inline_run_from_available(
         input,
@@ -2555,7 +2512,7 @@ where
     BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
     ClearSource: FnMut(S, PostLineClearIntent) -> S,
 {
-    let supplied = project_inline_participants(&input.participants);
+    let supplied = project_inline_participants(&input.meter, &input.participants);
     let available = resolved_inline_available(&input, &supplied)?;
     layout_mixed_inline_run_from_available(
         input,
@@ -2593,7 +2550,7 @@ where
         )
             -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
 {
-    let supplied = project_inline_participants(&input.participants);
+    let supplied = project_inline_participants(&input.meter, &input.participants);
     let available = resolved_inline_available(&input, &supplied)?;
     layout_mixed_inline_run_from_available(
         input,
@@ -2819,6 +2776,7 @@ where
     let run = ProjectedInlineRun {
         participants: &input.participants,
         supplied,
+        meter: &input.meter,
     };
     let wraps = input.available_inline_extent.operation() == crate::SizingOperation::MinContent
         || crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
@@ -3282,6 +3240,7 @@ fn numeric_line_boundaries<S: LayoutScalar>(
     input: &MixedInlineRunInputOf<S>,
 ) -> Vec<InlineSourceCursor> {
     let mut boundary_descriptor = 0;
+    let mut scanned = input.meter.tally(LayoutWork::InlineBoundaryScan);
     // Mandatory following breaks also delimit a line. Looking only for forced
     // controls would repeatedly query a suffix of discardable mandatory units.
     let mut original_boundaries = input
@@ -3289,8 +3248,7 @@ fn numeric_line_boundaries<S: LayoutScalar>(
         .iter()
         .enumerate()
         .filter_map(|(index, participant)| {
-            #[cfg(test)]
-            observe_inline_work_visit(1);
+            scanned.one();
             let is_forced = matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_));
             if !is_forced {
                 boundary_descriptor += 1;
@@ -3367,7 +3325,7 @@ impl<S: LayoutScalar> NumericRun<S> {
         input: MixedInlineRunInputOf<S>,
         observe: bool,
     ) -> Result<Self, NumericWrappingError> {
-        let supplied = project_inline_participants(&input.participants);
+        let supplied = project_inline_participants(&input.meter, &input.participants);
         let available = resolved_inline_available(&input, &supplied)?;
         Ok(Self::from_resolved(input, supplied, available, observe))
     }
@@ -4214,6 +4172,7 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         })
         .collect();
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        meter: crate::accounting::Meter::new(),
         inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,

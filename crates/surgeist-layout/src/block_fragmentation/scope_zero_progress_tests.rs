@@ -198,6 +198,7 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool, termina
             target: bound.target_basis(),
             template: request,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
+            meter: crate::accounting::Meter::new(),
         };
         let resolved = Driver::new(&environment, &scopes)
             .unwrap()

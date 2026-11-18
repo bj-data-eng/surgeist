@@ -87,6 +87,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         &[],
         &controls,
         Context {
+            meter: crate::accounting::Meter::new(),
             entry_funding: None,
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 input.scope_alignments.clone(),

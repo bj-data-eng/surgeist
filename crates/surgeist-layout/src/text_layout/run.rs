@@ -491,6 +491,8 @@ pub(crate) struct CanonicalLineFrame<S: LayoutScalar> {
 }
 
 pub(crate) struct Context<Node, S: LayoutScalar> {
+    /// The accounting of the layout call this run computes for.
+    pub meter: crate::accounting::Meter,
     pub scope_alignments: super::scope_alignment::ScopeAlignmentResources<S>,
     pub entry_funding: Option<super::scope_alignment::EntryFunding<S>>,
     pub orientation: LineOrientation,
@@ -1265,6 +1267,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         .map(|projection| projection as &fit::WrappingClassifier<'_>);
     let lines = fit::fit(
         fit::FitInput {
+            meter: context.meter.clone(),
             entry_funding: context
                 .entry_funding
                 .as_ref()

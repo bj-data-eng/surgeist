@@ -22,6 +22,7 @@ fn carrier_path<Tree: LayoutTree>(
         environment.frames[frame],
         environment.intrinsics(environment.frames[frame])?,
         binding,
+        &environment.meter,
     )
 }
 fn window_binding<Tree: LayoutTree>(
@@ -151,6 +152,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                 accepted: Some(binding),
                 carrier: Some(candidate),
                 binding: crate::engine::BlockFrameBinding {
+                    meter: self.environment.meter.clone(),
                     allocations: accepted.allocations.clone(),
                     intrinsics,
                     dispatch: Dispatch {
@@ -533,6 +535,7 @@ pub(super) fn assemble_resolved<Tree: LayoutTree>(
             binding,
             node,
             parent,
+            &environment.meter,
         )
     })?
     .round()?;

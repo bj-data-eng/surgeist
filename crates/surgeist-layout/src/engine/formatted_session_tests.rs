@@ -483,7 +483,7 @@ fn float_probe_tail_truth_is_merged_only_when_its_packet_is_accepted() {
         Vec::new(),
     )
     .unwrap();
-    let mut session = ComputeSession::with_flow(&capture, vec![]);
+    let mut session = ComputeSession::with_flow_unobserved(&capture, vec![]);
     let input = ComputeInputOf::leaf_layout(
         Size::NONE,
         Size::NONE,

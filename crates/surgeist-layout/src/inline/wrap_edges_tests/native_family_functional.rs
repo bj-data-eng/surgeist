@@ -27,10 +27,11 @@ fn intrinsic_closing_cuts<S: LayoutScalar>() {
         (&transparent, 20.0, 60.0),
     ] {
         let input = fixture.numeric();
-        let supplied = project_inline_participants(&input.participants);
+        let supplied = project_inline_participants(&input.meter, &input.participants);
         let run = ProjectedInlineRun {
             participants: &input.participants,
             supplied: &supplied,
+            meter: &input.meter,
         };
         assert_eq!(
             inline_min_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),

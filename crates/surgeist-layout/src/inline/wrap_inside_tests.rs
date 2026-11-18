@@ -158,10 +158,11 @@ fn exercise<S: LayoutScalar>(
             None,
         )),
     ];
-    let supplied = project_inline_participants(&participants);
+    let supplied = project_inline_participants(&crate::accounting::Meter::new(), &participants);
     let run = ProjectedInlineRun {
         participants: &participants,
         supplied: &supplied,
+        meter: &crate::accounting::Meter::new(),
     };
     let InlineSelectionStep::Selected(Some(selected)) = select_scope_inline_line(
         NumericLineQuery {

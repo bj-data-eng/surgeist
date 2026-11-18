@@ -198,7 +198,7 @@ mod tests {
         key: &ContentInsetBinding<u32, S>,
         inline: f64,
     ) -> Produced<'a, S> {
-        let mut session = ComputeSession::new(tree, Vec::new());
+        let mut session = ComputeSession::unobserved(tree, Vec::new());
         let context = content::prepare(
             &mut session,
             0,
@@ -458,7 +458,7 @@ mod tests {
             .style(2, box_style(10.0, true))
             .children(0, [1])
             .children(1, [2]);
-        let mut session = ComputeSession::new(&tree, Vec::new());
+        let mut session = ComputeSession::unobserved(&tree, Vec::new());
         let output =
             super::super::compute_block_scoped(&mut session, 0, input(axes, 80.0)).unwrap();
         assert_eq!(output.size.height, S::from_f64(40.0));

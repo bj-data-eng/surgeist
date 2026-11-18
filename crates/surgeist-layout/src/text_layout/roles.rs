@@ -882,6 +882,7 @@ mod funding_tests {
         formatted: &'a super::super::formatted::FormattedTailSnapshot,
     ) -> FitInput<'a> {
         FitInput {
+            meter: crate::accounting::Meter::new(),
             entry_funding: Some(funding),
             adjoining_displacement: 0.0,
             inline_boxes: None,

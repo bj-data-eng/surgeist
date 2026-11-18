@@ -5,6 +5,7 @@
 //! completed batches must be identical. The comparison does not depend on how a document wraps.
 
 use super::*;
+use crate::accounting::{LayoutWork, TestHost};
 use surgeist_text as text;
 
 /// One authored run of text with its own size and spacing.
@@ -74,8 +75,9 @@ impl Setup {
     }
 }
 
-/// The debug rendering of the completed batch, or of the refusal, of one block container of `spans`.
-fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup) -> String {
+/// The debug rendering of the completed batch, or of the refusal, of one block container of
+/// `spans`, reporting the call's work to `host`.
+fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup, host: &TestHost) -> String {
     let style = |span: &Span| text::Style {
         letter_spacing: span.letter_spacing,
         word_spacing: span.word_spacing,
@@ -144,13 +146,15 @@ fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup) -> String {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(
+    let batch = crate::engine::compute_layout_with_flow_invalidated_accounted(
         &capture,
         0,
         request(setup.width, {
             let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
             crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
+        &[],
+        Some(&host.scope()),
     );
     // A refusal is part of the result: both walks must refuse the same way.
     match batch {
@@ -159,13 +163,14 @@ fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup) -> String {
     }
 }
 
-/// Lays out one document with the early stop and with the full walk and returns how many line
-/// searches stopped early, so a test can show that the comparison exercised the stop.
-fn assert_same_with_full_walk<S: LayoutScalar>(label: &str, spans: &[Span], setup: Setup) -> usize {
-    fit::take_candidate_work();
-    let early = lay_out::<S>(spans, setup);
-    let stops = fit::take_candidate_work().early_stops;
-    let full = fit::with_full_walk(|| lay_out::<S>(spans, setup));
+/// Lays out one document with the early stop and with the full walk and returns how many
+/// candidates the early stop saved, so a test can show that the comparison exercised the stop.
+/// Both walks make the same line searches, and the early stop never evaluates more candidates.
+fn assert_same_with_full_walk<S: LayoutScalar>(label: &str, spans: &[Span], setup: Setup) -> u64 {
+    let early_host = TestHost::new();
+    let early = lay_out::<S>(spans, setup, &early_host);
+    let full_host = TestHost::new();
+    let full = fit::with_full_walk(|| lay_out::<S>(spans, setup, &full_host));
     assert!(
         early == full,
         "{label}: the early stop changed the layout at width {}: early {:.300} full {:.300}",
@@ -173,11 +178,25 @@ fn assert_same_with_full_walk<S: LayoutScalar>(label: &str, spans: &[Span], setu
         early,
         full
     );
-    stops
+    assert_eq!(
+        early_host.work(LayoutWork::LineSearch),
+        full_host.work(LayoutWork::LineSearch),
+        "{label}: the early stop changed the line searches at width {}",
+        setup.width
+    );
+    full_host
+        .work(LayoutWork::Candidate)
+        .checked_sub(early_host.work(LayoutWork::Candidate))
+        .unwrap_or_else(|| {
+            panic!(
+                "{label}: the early stop evaluated more candidates than the full walk at width {}",
+                setup.width
+            )
+        })
 }
 
-/// The same comparison in both scalar types over `widths`; the sum of the early stops.
-fn assert_same_in_both_scalars(label: &str, spans: &[Span], widths: &[f64], setup: Setup) -> usize {
+/// The same comparison in both scalar types over `widths`; the candidates the early stop saved.
+fn assert_same_in_both_scalars(label: &str, spans: &[Span], widths: &[f64], setup: Setup) -> u64 {
     widths
         .iter()
         .map(|&width| {
@@ -202,7 +221,7 @@ fn mixed_size_spans_with_negative_word_spacing_lay_out_the_same_with_the_early_s
             span("XX ", 20.0, 0.0, word_spacing),
             span("X", 10.0, 0.0, word_spacing),
         ];
-        let stops = assert_same_in_both_scalars(
+        let saved = assert_same_in_both_scalars(
             "mixed sizes, word spacing",
             &spans,
             &WIDTHS,
@@ -210,7 +229,7 @@ fn mixed_size_spans_with_negative_word_spacing_lay_out_the_same_with_the_early_s
         );
         // Negative spacing vetoes the stop, so only the document without it must stop.
         assert!(
-            word_spacing < 0.0 || stops > 0,
+            word_spacing < 0.0 || saved > 0,
             "no line search stopped early"
         );
     }
@@ -227,14 +246,14 @@ fn mixed_size_spans_with_negative_letter_spacing_lay_out_the_same_with_the_early
             span("XXX XX ", 10.0, letter_spacing, 0.0),
             span("XX", 20.0, letter_spacing, 0.0),
         ];
-        let stops = assert_same_in_both_scalars(
+        let saved = assert_same_in_both_scalars(
             "mixed sizes, letter spacing",
             &spans,
             &WIDTHS,
             Setup::new(0.0),
         );
         assert!(
-            letter_spacing < 0.0 || stops > 0,
+            letter_spacing < 0.0 || saved > 0,
             "no line search stopped early"
         );
     }
@@ -313,7 +332,7 @@ fn first_and_last_line_roles_do_not_change_with_the_early_stop() {
         (TextAlign::Justify, TextAlignLast::Justify),
         (TextAlign::Center, TextAlignLast::End),
     ];
-    let mut stops = 0;
+    let mut saved = 0;
     for (first, end, last) in hanging {
         for (text_align, text_align_last) in aligns {
             for width in [70.0, 130.0] {
@@ -323,12 +342,12 @@ fn first_and_last_line_roles_do_not_change_with_the_early_stop() {
                     hanging: text::HangingPunctuation::new(first, end, last),
                     ..Setup::new(width)
                 };
-                stops += assert_same_with_full_walk::<f32>("roles", &spans, setup);
-                stops += assert_same_with_full_walk::<f64>("roles", &spans, setup);
+                saved += assert_same_with_full_walk::<f32>("roles", &spans, setup);
+                saved += assert_same_with_full_walk::<f64>("roles", &spans, setup);
             }
         }
     }
-    assert!(stops > 0, "no line search stopped early");
+    assert!(saved > 0, "no line search stopped early");
 }
 
 /// The block settings of a justified or ragged document of one grid cell.
@@ -373,9 +392,9 @@ fn justified_text_that_fits_naturally_is_not_treated_as_overflow_by_the_early_st
                 text_align_last: last,
                 ..base
             };
-            let stops = assert_same_with_full_walk::<f32>("reproducer", &spans, setup)
+            let saved = assert_same_with_full_walk::<f32>("reproducer", &spans, setup)
                 + assert_same_with_full_walk::<f64>("reproducer", &spans, setup);
-            assert!(stops > 0, "no line search stopped early");
+            assert!(saved > 0, "no line search stopped early");
         }
     }
 }
@@ -387,9 +406,9 @@ fn justified_repeated_words_lay_out_the_same_with_the_early_stop() {
         .justified()
         .right_to_left()
         .white_space(text::WhiteSpace::BreakSpaces);
-    let stops = assert_same_with_full_walk::<f32>("repeated words", &spans, setup)
+    let saved = assert_same_with_full_walk::<f32>("repeated words", &spans, setup)
         + assert_same_with_full_walk::<f64>("repeated words", &spans, setup);
-    assert!(stops > 0, "no line search stopped early");
+    assert!(saved > 0, "no line search stopped early");
 }
 
 #[test]
@@ -399,24 +418,24 @@ fn direction_white_space_and_justification_lay_out_the_same_with_the_early_stop(
         "XXXX XXXX XXXX XXXX XXXX",
         "XX  XX  XX  XX  XX  XX",
     ];
-    let mut stops = 0;
+    let mut saved = 0;
     for source in sources {
         for letter_spacing in [0.0, 1.0] {
             let spans = [span(source, 5.0, letter_spacing, 0.0)];
             for width in [55.0, 90.0, 100.0] {
                 for setup in grid_setups(width) {
-                    stops += assert_same_with_full_walk::<f32>("grid", &spans, setup);
+                    saved += assert_same_with_full_walk::<f32>("grid", &spans, setup);
                 }
             }
         }
     }
-    assert!(stops > 0, "no line search stopped early");
+    assert!(saved > 0, "no line search stopped early");
 }
 
 #[test]
 fn inter_character_justification_lays_out_the_same_with_the_early_stop() {
     let spans = [span("XX XX XX XX XX XX XX XX", 5.0, 0.0, 0.0)];
-    let mut stops = 0;
+    let mut saved = 0;
     for rtl in [false, true] {
         for width in [55.0, 90.0, 100.0] {
             let setup = Setup {
@@ -424,11 +443,11 @@ fn inter_character_justification_lays_out_the_same_with_the_early_stop() {
                 rtl,
                 ..Setup::new(width).justified()
             };
-            stops += assert_same_with_full_walk::<f32>("inter-character", &spans, setup);
-            stops += assert_same_with_full_walk::<f64>("inter-character", &spans, setup);
+            saved += assert_same_with_full_walk::<f32>("inter-character", &spans, setup);
+            saved += assert_same_with_full_walk::<f64>("inter-character", &spans, setup);
         }
     }
-    assert!(stops > 0, "no line search stopped early");
+    assert!(saved > 0, "no line search stopped early");
 }
 
 #[test]
@@ -442,7 +461,7 @@ fn hanging_punctuation_with_stretched_justification_lays_out_the_same_with_the_e
         (false, Some(text::HangingPunctuationEnd::AllowEnd), true),
         (true, Some(text::HangingPunctuationEnd::AllowEnd), false),
     ];
-    let mut stops = 0;
+    let mut saved = 0;
     for (first, end, last) in hanging {
         for justification in [
             TextJustification::InterWord,
@@ -454,12 +473,12 @@ fn hanging_punctuation_with_stretched_justification_lays_out_the_same_with_the_e
                     hanging: text::HangingPunctuation::new(first, end, last),
                     ..Setup::new(width).justified()
                 };
-                stops += assert_same_with_full_walk::<f32>("hanging, justified", &spans, setup);
-                stops += assert_same_with_full_walk::<f64>("hanging, justified", &spans, setup);
+                saved += assert_same_with_full_walk::<f32>("hanging, justified", &spans, setup);
+                saved += assert_same_with_full_walk::<f64>("hanging, justified", &spans, setup);
             }
         }
     }
-    assert!(stops > 0, "no line search stopped early");
+    assert!(saved > 0, "no line search stopped early");
 }
 
 #[test]

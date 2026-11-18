@@ -200,12 +200,12 @@ impl EdgePreferences {
             edges,
         })
     }
-    pub(crate) fn frontier<T>(&self) -> PreferenceFrontier<T> {
+    pub(crate) fn frontier<T>(&self, meter: &crate::accounting::Meter) -> PreferenceFrontier<T> {
         AvoidClass {
             ancestry: self.ancestry.clone(),
             scope: None,
             edges: Vec::new(),
         }
-        .frontier()
+        .frontier(meter)
     }
 }

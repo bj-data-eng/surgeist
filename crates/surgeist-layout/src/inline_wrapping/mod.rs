@@ -18,6 +18,7 @@ pub use declarations::{
 };
 pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 
+use crate::accounting::{LayoutWork, Meter};
 use surgeist_text::CapturedScope;
 mod canonical_order;
 mod context;
@@ -142,11 +143,12 @@ impl AvoidClass {
             self.edges.push(edge);
         }
     }
-    pub(crate) fn frontier<T>(&self) -> PreferenceFrontier<T> {
+    pub(crate) fn frontier<T>(&self, meter: &Meter) -> PreferenceFrontier<T> {
         PreferenceFrontier {
             ancestry: Arc::clone(&self.ancestry),
             entries: FrontierEntries::Inside(BTreeMap::new()),
             serial: 0,
+            meter: meter.clone(),
         }
     }
 }
@@ -255,6 +257,7 @@ pub(crate) struct PreferenceFrontier<T> {
     ancestry: Arc<Ancestry>,
     entries: FrontierEntries<T>,
     serial: usize,
+    meter: Meter,
 }
 struct FrontierEntry<T> {
     class: AvoidClass,
@@ -286,9 +289,8 @@ impl AvoidClass {
         self.scope
             .map_or((0, usize::MAX), |i| self.ancestry.intervals[i])
     }
-    fn subset(&self, other: &Self) -> bool {
-        #[cfg(test)]
-        work_tests::record_subset();
+    fn subset(&self, other: &Self, meter: &Meter) -> bool {
+        meter.charge(LayoutWork::WrappingSubsetTest, 1);
         let inside = match (self.scope, other.scope) {
             (None, _) => true,
             (Some(_), None) => false,
@@ -318,8 +320,7 @@ impl<T> PreferenceFrontier<T> {
         receipt: T,
         prefer: impl Fn(&T, &T) -> Ordering,
     ) -> Result<(), WrappingScopeError> {
-        #[cfg(test)]
-        work_tests::record_offer();
+        self.meter.charge(LayoutWork::WrappingOffer, 1);
         if !Arc::ptr_eq(&self.ancestry, &class.ancestry) {
             return Err(WrappingScopeError::InconsistentIncidence);
         }
@@ -336,6 +337,7 @@ impl<T> PreferenceFrontier<T> {
                 mixed => mixed,
             };
         }
+        let meter = &self.meter;
         match &mut self.entries {
             FrontierEntries::Inside(entries) => {
                 let (key, end) = class.interval();
@@ -345,8 +347,8 @@ impl<T> PreferenceFrontier<T> {
                     return Ok(());
                 }
                 if entries.get(&key).is_some_and(|prior| {
-                    prior.class.subset(&class)
-                        && class.subset(&prior.class)
+                    prior.class.subset(&class, meter)
+                        && class.subset(&prior.class, meter)
                         && prefer(&prior.receipt, &receipt) == Ordering::Less
                 }) {
                     return Ok(());
@@ -378,21 +380,21 @@ impl<T> PreferenceFrontier<T> {
                         .iter()
                         .all(|edge| !mixed.seen_edges.contains(edge));
                 if !disjoint {
-                    if mixed
-                        .entries
-                        .iter()
-                        .any(|prior| prior.class.subset(&class) && !class.subset(&prior.class))
-                    {
+                    if mixed.entries.iter().any(|prior| {
+                        prior.class.subset(&class, meter) && !class.subset(&prior.class, meter)
+                    }) {
                         return Ok(());
                     }
                     if mixed.entries.iter().any(|prior| {
-                        prior.class.subset(&class)
-                            && class.subset(&prior.class)
+                        prior.class.subset(&class, meter)
+                            && class.subset(&prior.class, meter)
                             && prefer(&prior.receipt, &receipt) == Ordering::Less
                     }) {
                         return Ok(());
                     }
-                    mixed.entries.retain(|prior| !class.subset(&prior.class));
+                    mixed
+                        .entries
+                        .retain(|prior| !class.subset(&prior.class, meter));
                 }
                 mixed.seen_edges.extend(class.edges.iter().copied());
                 // A nonempty class cannot remove an empty-edge survivor;

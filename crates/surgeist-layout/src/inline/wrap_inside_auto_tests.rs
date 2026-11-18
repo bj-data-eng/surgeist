@@ -72,6 +72,7 @@ fn numeric_input<S: LayoutScalar>(
         ))
     };
     MixedInlineRunInputOf {
+        meter: crate::accounting::Meter::new(),
         inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
@@ -119,10 +120,11 @@ fn assert_numeric_receipts<S: LayoutScalar>(
     first_end: surgeist_text::LineEnd,
 ) {
     let input = numeric_input::<S>(permissions, direction);
-    let supplied = project_inline_participants(&input.participants);
+    let supplied = project_inline_participants(&input.meter, &input.participants);
     let run = ProjectedInlineRun {
         participants: &input.participants,
         supplied: &supplied,
+        meter: &input.meter,
     };
     let select = |cursor, pending| {
         select_next_inline_line(

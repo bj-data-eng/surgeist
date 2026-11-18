@@ -1,6 +1,7 @@
 use super::relative::{self, InsetReference};
 use super::scroll::BlockScrollContributions;
 use super::{Constants, with_block_scroll_projections};
+use crate::accounting::{LayoutWork, Meter};
 use crate::error::{layout_child_geometry_error, value_resolution_error};
 use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
 use crate::inline::PostLineClearIntent;
@@ -249,8 +250,6 @@ pub(crate) struct FloatBand<S: LayoutScalar> {
     pub(crate) inline_start: S,
     pub(crate) inline_end: S,
     pub(crate) next_transition: Option<S>,
-    #[cfg(test)]
-    pub(crate) evaluated: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -269,6 +268,8 @@ pub(crate) struct FloatExclusions<S: LayoutScalar, Node = ()> {
     ledger: Vec<FloatLedgerEntry<S, Node>>,
     backing: EntryBacking,
     funding: Option<EntryFunding<S>>,
+    /// The counts of the layout call these exclusions compute for.
+    meter: Meter,
 }
 
 #[derive(Debug)]
@@ -280,6 +281,7 @@ pub(crate) struct InheritedFloatExclusions<S: LayoutScalar, Node> {
     ledger: Vec<FloatLedgerEntry<S, Node>>,
     _ledger_storage: Option<ScopeLease>,
     _owner_storage: Option<ScopeLease>,
+    meter: Meter,
 }
 
 /// A prospective entry projection has fixed admitted storage. It cannot use
@@ -459,6 +461,7 @@ impl<S: LayoutScalar, Node> InheritedFloatExclusions<S, Node> {
                     ledger,
                     backing: EntryBacking::default(),
                     funding: None,
+                    meter: self.meter.clone(),
                 },
             },
             lease,
@@ -521,6 +524,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         containing_size: Size<S>,
         content_inline_size: S,
         inset: LogicalEdgesOf<S>,
+        meter: Meter,
     ) -> Self {
         Self {
             flow_axes,
@@ -531,7 +535,13 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             ledger: Vec::new(),
             backing: EntryBacking::default(),
             funding: None,
+            meter,
         }
+    }
+
+    /// The counts of the layout call these exclusions compute for.
+    pub(super) fn meter(&self) -> &Meter {
+        &self.meter
     }
 
     pub(super) fn fund_entry(&mut self, funding: Option<&EntryFunding<S>>) {
@@ -549,6 +559,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             ledger: Vec::new(),
             backing: EntryBacking::default(),
             funding: self.funding.clone(),
+            meter: self.meter.clone(),
         };
         if self.funding.is_none() {
             result.ledger = self.ledger.clone();
@@ -673,6 +684,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             ledger: self.ledger.clone(),
             _ledger_storage: None,
             _owner_storage: None,
+            meter: self.meter.clone(),
         }
     }
 
@@ -704,6 +716,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             ledger,
             _ledger_storage: storage,
             _owner_storage: Some(owner),
+            meter: self.meter.clone(),
         };
         for row in &self.ledger {
             funding.visit(1)?;
@@ -1329,15 +1342,11 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         let mut inline_start = self.containing_inline_start;
         let mut inline_end = self.containing_inline_end;
         let mut next_transition = None;
-        #[cfg(test)]
-        let mut evaluated = 0;
+        let mut evaluated = self.meter.tally(LayoutWork::FloatLedgerEntry);
 
         for entry in &self.ledger {
             inspect()?;
-            #[cfg(test)]
-            {
-                evaluated += 1;
-            }
+            evaluated.one();
             debug_assert!(
                 entry.physical_margin_box.origin.x.is_finite()
                     && entry.physical_margin_box.origin.y.is_finite()
@@ -1383,8 +1392,6 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             inline_start,
             inline_end,
             next_transition,
-            #[cfg(test)]
-            evaluated,
         })
     }
 
@@ -1482,6 +1489,7 @@ where
         container_size,
         (logical_container_size.inline - logical_inset.inline_sum()).max(S::ZERO),
         logical_inset,
+        tree.meter(),
     );
 
     for float in floats {

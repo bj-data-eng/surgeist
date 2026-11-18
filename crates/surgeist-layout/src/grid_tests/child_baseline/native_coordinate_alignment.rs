@@ -1025,7 +1025,7 @@ fn qualified_fixed_composites<S: LayoutScalar>(
                 ),
             ),
         );
-        let mut native = crate::engine::ComputeSession::new(&tree, Vec::new());
+        let mut native = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
         let actual = crate::engine::contracts::Compute::compute_child(&mut native, actor, request)
             .expect("the fixed native actor performs its own layout");
         assert_eq!(actual.size, expected_body);

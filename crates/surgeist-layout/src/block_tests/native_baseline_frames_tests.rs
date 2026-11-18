@@ -197,7 +197,7 @@ fn measured<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
     let known = if vertical(mode) {
         Size::new(known_cross.map(n), None)
     } else {
@@ -441,7 +441,7 @@ where
 {
     let capture =
         LayoutFlowInput::try_new(tree, 0, bindings, WrappingInput::default(), Vec::new()).unwrap();
-    let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
     let output = owner
         .compute_child(0, scene_request(Size::NONE, 100.0))
         .unwrap();
@@ -566,7 +566,8 @@ fn unknown_and_absent<S: LayoutScalar>() {
                 Vec::new(),
             )
             .unwrap();
-            let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+            let mut owner =
+                crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
             let request = scene_request(Size::NONE, 100.0);
             let child_output = owner.compute_child(2, request).unwrap();
             assert_eq!(child_output.size, Size::new(n(4.0), n(100.0)));
@@ -640,7 +641,7 @@ fn nested<S: LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+        let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
         let request = scene_request(Size::NONE, 100.0);
         // Resolve the actual child in its own20px box first. Inheritance then
         // applies only its parent placement: F-right3-child20+local15=F-8.
@@ -743,7 +744,7 @@ impl<S: LayoutScalar> MemoTree<S> {
             Vec::new(),
         )
         .unwrap();
-        let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+        let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
         self.lookups.borrow_mut().clear();
         let output = owner.compute_child(0, request).unwrap();
         let observed = self.lookups.borrow();
@@ -1011,7 +1012,7 @@ fn source_refinement<S: LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+        let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
         // The existing definite-size front may skip baseline inspection when
         // its only child is out of flow. A named demand inspects the
         // actual flow and proves absence without changing the returned size.

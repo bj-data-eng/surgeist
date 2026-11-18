@@ -35,7 +35,7 @@ fn growing_source<S: LayoutScalar>() {
             );
         }
 
-        let mut owner = ComputeSession::new(&tree, Vec::new());
+        let mut owner = ComputeSession::unobserved(&tree, Vec::new());
         let input = query(EntryPurpose::FramedEntry).input;
         let parent = block_container_projection::<_, core::convert::Infallible>(&owner, 0);
         let constants = Constants::from_projection::<_, core::convert::Infallible>(
@@ -52,6 +52,7 @@ fn growing_source<S: LayoutScalar>() {
             Size::splat(S::from_f64(100.0)),
             S::from_f64(100.0),
             LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+            crate::accounting::Meter::new(),
         );
         let style = BlockChildProjection::from_node(owner.node_input(1));
         let mut first = true;

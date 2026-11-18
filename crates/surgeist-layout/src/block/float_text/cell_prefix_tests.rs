@@ -402,7 +402,7 @@ fn cell_prefix_for<S: LayoutScalar>(binding: TextParagraphBinding<u32>) {
                 ),
             ),
         );
-        let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
+        let mut owner = crate::engine::ComputeSession::with_flow_unobserved(&capture, Vec::new());
         let packet = owner
             .probe_float_child(2, request, crate::engine::FloatChildTrial::Detached)
             .unwrap();
@@ -446,6 +446,7 @@ fn cell_prefix_for<S: LayoutScalar>(binding: TextParagraphBinding<u32>) {
             Size::splat(S::from_f64(100.0)),
             S::from_f64(30.0),
             crate::geometry::LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+            crate::accounting::Meter::new(),
         );
         let mut events = FloatEvents::new();
         events.push(event, None).map_err(prefix_error).unwrap();

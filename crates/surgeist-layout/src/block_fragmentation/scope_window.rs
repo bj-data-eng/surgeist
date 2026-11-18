@@ -1258,6 +1258,7 @@ mod provider_tests {
             target: bound.target_basis(),
             template: root,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
+            meter: crate::accounting::Meter::new(),
         };
         let progress = Rc::new(RefCell::new(Progress {
             minima: vec![(0, S::ZERO)],
@@ -1336,8 +1337,10 @@ mod provider_tests {
             .borrow_mut()
             .take(id)
             .expect("suspension retains its owned request");
-        let mut body =
-            crate::engine::ComputeSession::new(provider.environment.capture.tree, Vec::new());
+        let mut body = crate::engine::ComputeSession::unobserved(
+            provider.environment.capture.tree,
+            Vec::new(),
+        );
         let output =
             crate::block::compute_block_scoped(&mut body, request.entry.node, request.entry.input)
                 .unwrap();
@@ -1383,8 +1386,10 @@ mod provider_tests {
                 "minimum retry changes only its Block reference"
             );
         }
-        let mut body =
-            crate::engine::ComputeSession::new(provider.environment.capture.tree, Vec::new());
+        let mut body = crate::engine::ComputeSession::unobserved(
+            provider.environment.capture.tree,
+            Vec::new(),
+        );
         let output =
             crate::block::compute_block_scoped(&mut body, request.entry.node, request.entry.input)
                 .unwrap();

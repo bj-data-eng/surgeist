@@ -44,7 +44,7 @@ fn with_session<S: LayoutScalar>(
         |_| false,
     )
     .unwrap();
-    let mut session = ComputeSession::new(tree, invalidated);
+    let mut session = ComputeSession::unobserved(tree, invalidated);
     session.install_wrapping(Arc::new(wrapping), &graph);
     session.enable_request_memo();
     run(&mut session);

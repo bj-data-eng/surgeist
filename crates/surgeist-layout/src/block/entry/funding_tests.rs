@@ -155,13 +155,13 @@ fn framed_case_refuses_spent_work_while_start_only_retains_its_old_footprint() {
         Vec::new(),
     )
     .unwrap();
-    let mut fresh = ComputeSession::with_flow(&capture, Vec::new());
+    let mut fresh = ComputeSession::with_flow_unobserved(&capture, Vec::new());
     assert!(
         matches!(super::super::super::observe(&mut fresh, query(EntryPurpose::FramedEntry)).unwrap(),
         EntryObservation::Demand(demand) if demand.kind == EntryFrontier::NativeRun)
     );
 
-    let mut spent = ComputeSession::with_flow(&capture, Vec::new());
+    let mut spent = ComputeSession::with_flow_unobserved(&capture, Vec::new());
     exhaust_work(&resources(&mut spent));
     assert!(
         matches!(super::super::super::observe(&mut spent, query(EntryPurpose::StartOnly)).unwrap(),
@@ -191,8 +191,8 @@ fn discarded_framed_case_releases_live_buffers_without_refunding_materialization
         Vec::new(),
     )
     .unwrap();
-    let mut spent = ComputeSession::with_flow(&capture, Vec::new());
-    let mut fresh = ComputeSession::with_flow(&capture, Vec::new());
+    let mut spent = ComputeSession::with_flow_unobserved(&capture, Vec::new());
+    let mut fresh = ComputeSession::with_flow_unobserved(&capture, Vec::new());
     let spent_resources = resources(&mut spent);
     let fresh_resources = resources(&mut fresh);
     let before = spent_resources.retention();

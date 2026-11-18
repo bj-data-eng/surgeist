@@ -254,7 +254,7 @@ fn check<S: LayoutScalar>(case: Case) {
     // Run the REAL Grid algorithm with the same authored root dimensions and
     // containing role, without changing or feeding observations into that batch.
     let axes = FlowAxes::new(WritingMode::HorizontalTb, case.direction);
-    let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+    let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
     let root = session
         .compute_child(
             0,
@@ -294,7 +294,7 @@ fn check<S: LayoutScalar>(case: Case) {
         },
         "{case:?}: separate real root computation exports normal baselines",
     );
-    let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+    let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
     let inner = session
         .compute_child(
             2,

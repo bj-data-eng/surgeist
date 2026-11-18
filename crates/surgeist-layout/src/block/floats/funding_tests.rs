@@ -60,6 +60,7 @@ fn funded_ledger_growth_replay_and_drop_keep_cumulative_work() {
             Size::splat(40.0),
             40.0,
             LogicalEdgesOf::new(0.0, 0.0, 0.0, 0.0),
+            crate::accounting::Meter::new(),
         );
         ledger.fund_entry(Some(&funding));
         for node in 0..8 {

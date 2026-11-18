@@ -57,6 +57,7 @@ fn input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        meter: crate::accounting::Meter::new(),
         inline_baseline_context: named(),
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
@@ -451,7 +452,7 @@ fn balanced_group_receipts_reject_real_count_and_terminal_mismatches() {
         limit: Option<usize>,
         width: f64,
     ) -> (NumericSequence<f64>, NumericWalkOutcome) {
-        let supplied = project_inline_participants(&query.participants);
+        let supplied = project_inline_participants(&query.meter, &query.participants);
         let mut sequence = NumericSequence::new(query, true);
         let boundaries = numeric_line_boundaries(query);
         let outcome = walk_numeric_sequence(

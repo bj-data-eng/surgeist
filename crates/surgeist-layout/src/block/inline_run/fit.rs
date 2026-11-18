@@ -207,6 +207,7 @@ where
             .text_computation()
             .is_some_and(|state| state.formatted_active());
     let input = MixedInlineRunInputOf {
+        meter: tree.meter(),
         inline_baseline_context: constants.inline_baseline_context,
         groups: tree
             .group_computation()
@@ -526,6 +527,7 @@ where
         crate::text_layout::run::Frame::Measurement
     };
     let context = crate::text_layout::run::Context {
+        meter: tree.meter(),
         scope_alignments,
         entry_funding: entry_funding.clone(),
         orientation,

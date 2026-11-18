@@ -137,7 +137,7 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
     assert_eq!(input.sizing_mode(), SizingMode::InherentSize);
     tree.observed.borrow_mut().clear();
     let intrinsic_output = {
-        let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+        let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
         session
             .compute_child(0, input)
             .expect("the Grid intrinsic operation completes")
@@ -186,7 +186,7 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
         )
     );
     let known_output = {
-        let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+        let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
         session
             .compute_child(0, known_input)
             .expect("the Grid own-known-width operation completes")

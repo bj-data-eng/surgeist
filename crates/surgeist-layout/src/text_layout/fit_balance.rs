@@ -461,42 +461,48 @@ where
 }
 
 #[cfg(test)]
-#[derive(Clone, Copy, Debug, Default)]
-struct Work {
-    runs: usize,
-    opportunities: usize,
-}
-
-#[cfg(test)]
-thread_local! {
-    static GROUP_WORK: std::cell::RefCell<std::collections::BTreeMap<(usize, usize), Work>> =
-        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
-}
-
-#[cfg(test)]
-pub(super) fn observe_work(scope: SequenceScope, opportunity: bool) {
-    if scope.stop_at_forced {
-        GROUP_WORK.with_borrow_mut(|work| {
-            let work = work
-                .entry((scope.opportunity_start, scope.opportunity_end))
-                .or_default();
-            if opportunity {
-                work.opportunities += 1;
-            } else {
-                work.runs += 1;
-            }
-        });
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_support::text::{PreparedParagraph, ahem_style};
 
+    #[derive(Clone, Copy, Debug, Default)]
+    struct Work {
+        runs: usize,
+        opportunities: usize,
+    }
+
+    /// The work each forced-break group of one fit charged, by the window it fitted over.
+    fn group_work(
+        meter: &crate::accounting::Meter,
+    ) -> std::collections::BTreeMap<(usize, usize), Work> {
+        meter
+            .group_windows()
+            .into_iter()
+            .map(|window| {
+                (
+                    window,
+                    Work {
+                        runs: usize::try_from(
+                            meter.group_work(window, crate::accounting::LayoutWork::SequenceRun),
+                        )
+                        .unwrap(),
+                        opportunities: usize::try_from(
+                            meter.group_work(
+                                window,
+                                crate::accounting::LayoutWork::OpportunityVisit,
+                            ),
+                        )
+                        .unwrap(),
+                    },
+                )
+            })
+            .collect()
+    }
+
     fn fit_groups(
         groups: &[String],
         wrap_style: crate::TextWrapStyle,
+        meter: &crate::accounting::Meter,
     ) -> (PreparedParagraph, Vec<FittedLine>) {
         let mut style = ahem_style(10.0, 10.0);
         style.wrap = surgeist_text::Wrap::Word;
@@ -504,7 +510,6 @@ mod tests {
         style.hyphens = surgeist_text::Hyphens::None;
         let paragraph =
             PreparedParagraph::plain(1, surgeist_text::Source::new(groups.join("\n")), style);
-        GROUP_WORK.with_borrow_mut(|work| work.clear());
         let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
             crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
                 Vec::new(),
@@ -517,6 +522,7 @@ mod tests {
         );
         let lines = super::super::fit(
             FitInput {
+                meter: meter.clone(),
                 entry_funding: None,
                 adjoining_displacement: 0.0,
                 inline_boxes: None,
@@ -593,7 +599,8 @@ mod tests {
         let mut groups = vec![short.to_owned(); 8];
         groups.push(long);
         groups.extend(vec![short.to_owned(); 8]);
-        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::Balance);
+        let meter = crate::accounting::Meter::for_test();
+        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::Balance, &meter);
         let mut actual = Vec::new();
         let mut widths = Vec::new();
         for line in &lines {
@@ -614,18 +621,28 @@ mod tests {
                 assert_eq!(group, &[30.0, 40.0]);
             }
         }
-        GROUP_WORK.with_borrow(|work| {
+        {
+            let work = &group_work(&meter);
             assert_eq!(work.len(), 17);
-            let (&long_window, long_work) = work.iter().max_by_key(|(window, _)| window.1 - window.0).unwrap();
-            assert_eq!(long_work.runs, 2, "one local Auto plus one whole-program replay, independent of the16 short portfolios");
+            let (&long_window, long_work) = work
+                .iter()
+                .max_by_key(|(window, _)| window.1 - window.0)
+                .unwrap();
+            assert_eq!(
+                long_work.runs, 2,
+                "one local Auto plus one whole-program replay, independent of the16 short portfolios"
+            );
             assert!(long_work.opportunities <= 2 * 27 * (long_window.1 - long_window.0));
             for (&window, work) in work {
                 if window != long_window {
                     assert!(work.runs <= 21, "<=20 local runs plus whole-program replay");
-                    assert!(work.opportunities <= 21 * 3 * (window.1 - window.0), "only this group's actual opportunities are visited");
+                    assert!(
+                        work.opportunities <= 21 * 3 * (window.1 - window.0),
+                        "only this group's actual opportunities are visited"
+                    );
                 }
             }
-        });
+        }
     }
 
     #[test]
@@ -633,7 +650,9 @@ mod tests {
         let mut groups = vec!["AAA BB C".to_owned(); 8];
         groups.push("A ".repeat(80) + "A");
         groups.extend(vec!["AAA BB C".to_owned(); 8]);
-        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::AvoidShortLastLine);
+        let meter = crate::accounting::Meter::for_test();
+        let (paragraph, lines) =
+            fit_groups(&groups, crate::TextWrapStyle::AvoidShortLastLine, &meter);
         let mut actual = Vec::new();
         let mut widths = Vec::new();
         for line in &lines {
@@ -659,7 +678,8 @@ mod tests {
                 assert_eq!(group, &[60.0, 10.0]);
             }
         }
-        GROUP_WORK.with_borrow(|work| {
+        {
+            let work = &group_work(&meter);
             assert_eq!(work.len(), 17);
             let final_window = *work.keys().max_by_key(|window| window.0).unwrap();
             for (index, (&window, work)) in work.iter().enumerate() {
@@ -678,7 +698,7 @@ mod tests {
                     assert!(work.opportunities <= 2 * count * (window.1 - window.0));
                 }
             }
-        });
+        }
     }
 
     #[test]
@@ -686,7 +706,8 @@ mod tests {
         let mut groups = vec!["AAA BB C".to_owned(); 8];
         groups.push("A ".repeat(80) + "A");
         groups.extend(vec!["AAA BB C".to_owned(); 8]);
-        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::Pretty);
+        let meter = crate::accounting::Meter::for_test();
+        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::Pretty, &meter);
         assert!(
             lines
                 .iter()
@@ -697,7 +718,8 @@ mod tests {
                 .iter()
                 .all(|line| matches!(line.program.as_deref(), Some(SelectionProgram::Pretty(_))))
         );
-        GROUP_WORK.with_borrow(|work| {
+        {
+            let work = &group_work(&meter);
             assert_eq!(work.len(), 17);
             let final_window = *work.keys().max_by_key(|window| window.0).unwrap();
             for (index, (&window, actual)) in work.iter().enumerate() {
@@ -708,7 +730,7 @@ mod tests {
                 let count = if index == 8 { 27 } else { 2 };
                 assert!(actual.opportunities <= bound * (count + 1) * 2 * (window.1 - window.0));
             }
-        });
+        }
     }
 }
 

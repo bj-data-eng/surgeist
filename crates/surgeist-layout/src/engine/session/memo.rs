@@ -675,7 +675,7 @@ pub(crate) fn compute_ordinary_with_request_trace<Tree: LayoutTree>(
         |_| false,
     )
     .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
-    let mut session = ComputeSession::new(tree, invalidated);
+    let mut session = ComputeSession::unobserved(tree, invalidated);
     session.install_wrapping(Arc::new(wrapping), &graph);
     assert!(!session.has_text() && !session.groups_active());
     session.enable_request_memo();
@@ -790,7 +790,7 @@ mod tests {
             |_| false,
         )
         .unwrap();
-        let mut session = ComputeSession::new(&tree, invalidated);
+        let mut session = ComputeSession::unobserved(&tree, invalidated);
         session.install_wrapping(Arc::new(wrapping), &graph);
         session.enable_request_memo();
 

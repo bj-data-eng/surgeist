@@ -89,7 +89,7 @@ fn proper_ancestry_prefix_dominates_without_ranking_unrelated_depths() {
     let tree = Arc::new(Ancestry {
         intervals: vec![(1, 3), (2, 3), (3, 6), (4, 6), (5, 6)],
     });
-    let mut frontier = class(&tree, None).frontier();
+    let mut frontier = class(&tree, None).frontier(&crate::accounting::Meter::new());
     frontier
         .consider(class(&tree, Some(1)), "inner first")
         .unwrap();
@@ -98,7 +98,7 @@ fn proper_ancestry_prefix_dominates_without_ranking_unrelated_depths() {
         .consider(class(&tree, Some(4)), "unrelated deeper later")
         .unwrap();
     assert_eq!(frontier.into_preferred(), Some("unrelated deeper later"));
-    let mut frontier = class(&tree, None).frontier();
+    let mut frontier = class(&tree, None).frontier(&crate::accounting::Meter::new());
     frontier.consider(class(&tree, Some(4)), "sibling").unwrap();
     frontier.consider(class(&tree, None), "outside").unwrap();
     frontier
@@ -111,7 +111,7 @@ fn retained_incomparable_class_blocks_a_later_descendant_without_depth_scoring()
     let tree = Arc::new(Ancestry {
         intervals: vec![(1, 3), (2, 3), (3, 5), (4, 5)],
     });
-    let mut frontier = class(&tree, None).frontier();
+    let mut frontier = class(&tree, None).frontier(&crate::accounting::Meter::new());
     frontier.consider(class(&tree, Some(2)), 20).unwrap();
     frontier.consider(class(&tree, Some(1)), 30).unwrap();
     frontier.consider(class(&tree, Some(0)), 10).unwrap();
@@ -120,7 +120,7 @@ fn retained_incomparable_class_blocks_a_later_descendant_without_depth_scoring()
     let other = Arc::new(Ancestry {
         intervals: vec![(1, 2)],
     });
-    let mut frontier = class(&tree, None).frontier();
+    let mut frontier = class(&tree, None).frontier(&crate::accounting::Meter::new());
     assert_eq!(
         frontier.consider(class(&other, Some(0)), 0),
         Err(WrappingScopeError::InconsistentIncidence)

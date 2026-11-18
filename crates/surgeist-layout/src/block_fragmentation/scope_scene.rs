@@ -849,6 +849,7 @@ mod tests {
             target: bound.target_basis(),
             template: request,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
+            meter: crate::accounting::Meter::new(),
         };
         run(&environment);
     }
@@ -908,6 +909,7 @@ mod tests {
                 frame: bounds,
                 axes: axes(),
                 binding: crate::engine::BlockFrameBinding {
+                    meter: crate::accounting::Meter::new(),
                     allocations: Vec::new(),
                     intrinsics: environment.intrinsics(bounds).unwrap(),
                     dispatch: crate::engine::block_scope::Dispatch {
@@ -1231,6 +1233,7 @@ mod tests {
                     accepted: None,
                     carrier: None,
                     binding: crate::engine::BlockFrameBinding {
+                        meter: crate::accounting::Meter::new(),
                         allocations: Vec::new(),
                         intrinsics: environment.intrinsics(bounds).unwrap(),
                         dispatch: crate::engine::block_scope::Dispatch {

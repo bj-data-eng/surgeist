@@ -1,4 +1,5 @@
 use super::*;
+use crate::accounting::Meter;
 
 pub(super) type ResolvedFlexRound<Node, S> = (
     Constants<S>,
@@ -35,6 +36,7 @@ pub(super) struct FlexRounds<'input, Node, S: LayoutScalar> {
     constants: Constants<S>,
     recollected: Option<Vec<CollectedFlexItem<Node, S>>>,
     phase: Option<RoundPhase<'input, Node, S>>,
+    meter: Meter,
 }
 
 enum RoundPhase<'input, Node, S: LayoutScalar> {
@@ -55,9 +57,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexRounds<'input, Node, S> {
         original: &[CollectedFlexItem<Node, S>],
         base: Constants<S>,
         run_mode: RunMode,
+        meter: &Meter,
     ) -> LayoutResultOf<Node, Self, S, M> {
         let capture_struts = original.iter().any(CollectedFlexItem::is_collapsed);
-        let (constants, phase) = Self::begin_round(node, original, base, run_mode, None)?;
+        let (constants, phase) = Self::begin_round(node, original, base, run_mode, None, meter)?;
         Ok(Self {
             base,
             run_mode,
@@ -65,6 +68,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexRounds<'input, Node, S> {
             constants,
             recollected: None,
             phase: Some(phase),
+            meter: meter.clone(),
         })
     }
 
@@ -74,6 +78,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexRounds<'input, Node, S> {
         mut constants: Constants<S>,
         run_mode: RunMode,
         struts: Option<CollapsedFlexStruts<Node, S>>,
+        meter: &Meter,
     ) -> FlexRoundStart<'input, Node, S, M> {
         let round = if struts.is_some() {
             FlexLineCollectionRound::Collapsed
@@ -88,7 +93,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexRounds<'input, Node, S> {
                 struts,
             }
         } else {
-            Self::begin_main_size(node, &constants, original, struts)?
+            Self::begin_main_size(node, &constants, original, struts, meter)?
         };
         Ok((constants, phase))
     }
@@ -98,8 +103,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexRounds<'input, Node, S> {
         constants: &Constants<S>,
         items: &[CollectedFlexItem<Node, S>],
         struts: Option<CollapsedFlexStruts<Node, S>>,
+        meter: &Meter,
     ) -> LayoutResultOf<Node, RoundPhase<'input, Node, S>, S, M> {
-        let round = FlexRound::begin(node, *constants, items, struts)?;
+        let round = FlexRound::begin(node, *constants, items, struts, meter)?;
         let measurement =
             begin_main_size(&round.constants, round.items(items), round.sizing_lines());
         Ok(RoundPhase::Intrinsic { round, measurement })
@@ -141,7 +147,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexRounds<'input, Node, S> {
             self.phase = Some(match phase {
                 RoundPhase::Recollect { items, struts } => {
                     let items = items.finish();
-                    let phase = Self::begin_main_size(node, &self.constants, &items, struts)?;
+                    let phase =
+                        Self::begin_main_size(node, &self.constants, &items, struts, &self.meter)?;
                     self.recollected = Some(items);
                     phase
                 }
@@ -161,8 +168,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexRounds<'input, Node, S> {
                     let struts = CollapsedFlexStruts::capture(original, &layout.2);
                     self.capture_struts = false;
                     self.recollected = None;
-                    let (constants, phase) =
-                        Self::begin_round(node, original, self.base, self.run_mode, Some(struts))?;
+                    let (constants, phase) = Self::begin_round(
+                        node,
+                        original,
+                        self.base,
+                        self.run_mode,
+                        Some(struts),
+                        &self.meter,
+                    )?;
                     self.constants = constants;
                     phase
                 }
@@ -248,13 +261,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> FlexRound<Node, S> {
         constants: Constants<S>,
         collected_items: &[CollectedFlexItem<Node, S>],
         collapsed_struts: Option<CollapsedFlexStruts<Node, S>>,
+        meter: &Meter,
     ) -> LayoutResultOf<Node, Self, S, M> {
         let kind = if collapsed_struts.is_some() {
             FlexLineCollectionRound::Collapsed
         } else {
             FlexLineCollectionRound::Normal
         };
-        let lines = collect_flex_lines(collected_items, &constants, kind)
+        let lines = collect_flex_lines(collected_items, &constants, kind, meter)
             .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
         let collapsed = collapsed_struts
             .as_ref()
@@ -307,7 +321,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FlexRound<Node, S> {
         {
             // Intrinsic and auto sizing can use provisional lines. Placement and
             // collapsed struts use the accepted inner main size.
-            lines = collect_flex_lines(collected_items, &layout_constants, round)
+            lines = collect_flex_lines(collected_items, &layout_constants, round, &tree.meter())
                 .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
             collapsed = collapsed_struts
                 .as_ref()

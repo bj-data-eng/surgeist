@@ -1,5 +1,6 @@
 use super::super::{formatted, roles};
 use super::*;
+use crate::accounting::LayoutWork;
 
 pub(super) struct AcceptedCandidate {
     candidate: EvaluatedCandidate,
@@ -18,7 +19,6 @@ pub(super) struct SequenceLineSearch<'a> {
     pub(super) rejected_choices: &'a [CandidateKey],
     pub(super) goal: Option<LineQualityGoal>,
     pub(super) constrained: bool,
-    #[cfg(test)]
     pub(super) scope: SequenceScope,
 }
 
@@ -128,8 +128,7 @@ where
         input: &FitInput<'_>,
         search: SequenceLineSearch<'_>,
     ) -> Result<Option<AcceptedCandidate>, FitError> {
-        #[cfg(test)]
-        observe_candidate_work(Observation::LineSearch);
+        input.meter.charge(LayoutWork::LineSearch, 1);
         let SequenceLineSearch {
             progress,
             constrained,
@@ -351,7 +350,6 @@ where
             walk,
             rejected_choices,
             goal,
-            #[cfg(test)]
             scope,
             ..
         } = search;
@@ -384,16 +382,17 @@ where
                 goal,
                 ..ScopedChoices::default()
             };
+            let visit_meter = scope.meter(&input.meter);
+            let mut visit_work = visit_meter.tally(LayoutWork::OpportunityVisit);
+            let mut candidate_work = input.meter.tally(LayoutWork::Candidate);
             for (index, (end, opportunity, kind, alternatives)) in
                 opportunities.iter().enumerate().skip(first)
             {
-                #[cfg(test)]
-                balance::observe_work(scope, true);
+                visit_work.one();
                 if *end < start || (*end == start && *kind != PreparedBreakKind::ParagraphEnd) {
                     continue;
                 }
-                #[cfg(test)]
-                observe_candidate_work(Observation::Candidate);
+                candidate_work.one();
                 let variants = (*kind != PreparedBreakKind::Discretionary)
                     .then_some(None)
                     .into_iter()
@@ -469,6 +468,7 @@ where
                         scoped.consider(
                             wrapping.expect("comparison has a scope loan"),
                             candidate.clone(),
+                            &input.meter,
                         );
                     }
                     if (choice.is_none()
@@ -545,8 +545,6 @@ where
                     && choice.as_ref().is_some_and(|candidate| candidate.fits)
                     && self.advances_never_shrink(input, &query, &opportunities[index..])?
                 {
-                    #[cfg(test)]
-                    observe_candidate_work(Observation::EarlyStop);
                     break;
                 }
                 if !matches!(
@@ -723,6 +721,7 @@ where
                             scoped.consider(
                                 wrapping.expect("comparison has a scope loan"),
                                 trial.clone(),
+                                &input.meter,
                             );
                         }
                         if purpose == ConditionalPurpose::MinContent {

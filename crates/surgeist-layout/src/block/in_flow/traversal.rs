@@ -285,6 +285,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
             containing_size,
             content_inline_size,
             constants.logical_content_box_inset(),
+            tree.meter(),
         );
         let entry_case_funding = tree
             .text_computation()

@@ -58,7 +58,7 @@ fn content<S: LayoutScalar>() {
             .style(0, owner)
             .style(1, child)
             .children(0, [1]);
-        let mut session = ComputeSession::new(&tree, Vec::new());
+        let mut session = ComputeSession::unobserved(&tree, Vec::new());
         let context = prepare(
             &mut session,
             0,
@@ -138,7 +138,7 @@ fn content<S: LayoutScalar>() {
         .style(1, child)
         .measure(1, Size::new(S::from_f64(20.0), S::from_f64(10.0)))
         .children(0, [1]);
-    let mut session = ComputeSession::new(&tree, Vec::new());
+    let mut session = ComputeSession::unobserved(&tree, Vec::new());
     let context = prepare(
         &mut session,
         0,

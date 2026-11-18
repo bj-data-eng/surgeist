@@ -134,7 +134,8 @@ fn native_avoid_results_do_not_enter_geometry_only_host_caches() {
                 Vec::new(),
             )
             .unwrap();
-            let mut owner = ComputeSession::with_flow(&capture, capture.invalidated.clone());
+            let mut owner =
+                ComputeSession::with_flow_unobserved(&capture, capture.invalidated.clone());
             let output = owner.compute_child(0, input(RunMode::ComputeSize)).unwrap();
             assert_eq!(output.size, Size::new(S::from_f64(25.0), S::from_f64(10.0)));
             assert!(owner.text.is_none());
@@ -186,7 +187,7 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
             Vec::new(),
         )
         .unwrap();
-        let mut owner = ComputeSession::with_flow(&avoid, avoid.invalidated.clone());
+        let mut owner = ComputeSession::with_flow_unobserved(&avoid, avoid.invalidated.clone());
         let packet = owner
             .probe_float_child(
                 4,
@@ -199,7 +200,7 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
         owner.accept_float_child(&packet).unwrap();
         assert!(owner.cache.stores.iter().any(|entry| entry.node() == 4));
 
-        let mut changed = ComputeSession::with_flow(&auto, auto.invalidated.clone());
+        let mut changed = ComputeSession::with_flow_unobserved(&auto, auto.invalidated.clone());
         let error = changed.accept_float_child(&packet).unwrap_err();
         assert_eq!(error.operation(), LayoutOperation::InlineWrapping);
         assert!(matches!(

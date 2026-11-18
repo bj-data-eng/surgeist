@@ -15,6 +15,7 @@ use super::contracts::{
 };
 use super::entry_staging::{self, Rows};
 use super::hidden::HiddenRequest;
+use crate::accounting::Meter;
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
@@ -112,6 +113,7 @@ where
     cache: CacheStaging<Tree::Node, Tree::Scalar>,
     memo: Option<memo::Memo<Tree::Node, Tree::Scalar>>,
     entry_storage: Option<EntryStorage>,
+    meter: Meter,
 }
 
 struct BlockScopeStaging<Node, S: LayoutScalar> {
@@ -371,7 +373,7 @@ pub(crate) fn observe_grid_probe<'input, Tree: LayoutTree>(
     Tree::Scalar,
     Tree::MeasureError,
 > {
-    let mut owner = ComputeSession::new(tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(tree, Vec::new());
     let result = owner.observe_grid_overflow(node, probe);
     assert!(owner.outputs.unrounded.is_empty());
     assert!(owner.outputs.rounded.is_empty());
@@ -399,7 +401,7 @@ pub(crate) fn seed_grid_leaf_requests<Tree: LayoutTree>(
     tree: &Tree,
     requests: &[(Tree::Node, ComputeInputOf<Tree::Scalar>)],
 ) -> GridLeafSeedResult<Tree::Node, Tree::Scalar, Tree::MeasureError> {
-    let mut owner = ComputeSession::new(tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(tree, Vec::new());
     for &(node, input) in requests {
         assert!(tree.has_leaf_measurement(node));
         owner.compute_child(node, input)?;
@@ -451,19 +453,37 @@ where
             .is_some_and(|scopes| scopes.dispatch.owners.contains(&node))
     }
 
-    pub(crate) fn new(tree: &'a Tree, invalidated_nodes: Vec<Tree::Node>) -> Self {
+    /// A session whose work is charged through `meter`, the accounting of the layout call
+    /// that owns it.
+    pub(crate) fn new(tree: &'a Tree, invalidated_nodes: Vec<Tree::Node>, meter: Meter) -> Self {
         let cache_clear_entries = invalidated_nodes
             .iter()
             .copied()
             .map(LayoutCacheClearEntry::new)
             .collect();
-        Self::with_invalidations(tree, invalidated_nodes, cache_clear_entries)
+        Self::with_invalidations(tree, invalidated_nodes, cache_clear_entries, meter)
+    }
+
+    /// A session whose counts no test reads.
+    #[cfg(test)]
+    pub(crate) fn unobserved(tree: &'a Tree, invalidated_nodes: Vec<Tree::Node>) -> Self {
+        Self::new(tree, invalidated_nodes, Meter::new())
+    }
+
+    /// A session over a flow capture whose counts no test reads.
+    #[cfg(test)]
+    pub(crate) fn with_flow_unobserved(
+        capture: &'a crate::LayoutFlowInput<'_, Tree>,
+        invalidated_nodes: Vec<Tree::Node>,
+    ) -> Self {
+        Self::with_flow(capture, invalidated_nodes, Meter::new())
     }
 
     fn with_invalidations(
         tree: &'a Tree,
         invalidated_nodes: Vec<Tree::Node>,
         cache_clear_entries: Vec<LayoutCacheClearEntry<Tree::Node>>,
+        meter: Meter,
     ) -> Self {
         Self {
             tree,
@@ -485,6 +505,7 @@ where
             },
             memo: None,
             entry_storage: None,
+            meter,
         }
     }
 
@@ -644,7 +665,7 @@ where
         }
         let (dirty, dirty_storage) = dirty.into_parts();
         let (clears, clears_storage) = clears.into_parts();
-        let mut probe = Self::with_invalidations(self.tree, dirty, clears);
+        let mut probe = Self::with_invalidations(self.tree, dirty, clears, self.meter.clone());
         if self.cache.indexed_stores.is_some() && incoming.is_none() && funding_ref.is_none() {
             probe.cache.indexed_stores = Some(cache_stores::CacheStores::new());
         }
@@ -805,8 +826,9 @@ where
     pub(crate) fn with_flow(
         capture: &'a crate::LayoutFlowInput<'_, Tree>,
         invalidated_nodes: Vec<Tree::Node>,
+        meter: Meter,
     ) -> Self {
-        let mut session = Self::new(capture.tree, invalidated_nodes);
+        let mut session = Self::new(capture.tree, invalidated_nodes, meter);
         session.bound = capture.publication_basis();
         session.install_wrapping(capture.wrapping.clone(), &capture.graph);
         let semantic = capture
@@ -1761,7 +1783,11 @@ where
 
     // Observation children share the original fork policy with synchronous probes.
     fn grid_observation_session(&self, node: Tree::Node) -> SessionResult<Tree, Self> {
-        let mut observation = Self::new(self.tree, self.cache.invalidated.clone());
+        let mut observation = Self::new(
+            self.tree,
+            self.cache.invalidated.clone(),
+            self.meter.clone(),
+        );
         observation.block_floats = self.block_floats.fork();
         observation.entry_sources = self.entry_sources.clone();
         if self.entry_sources.is_none() {
@@ -2232,6 +2258,10 @@ where
     ) -> Option<&mut crate::text_layout::state::TextComputation<'input, Self::Node, Self::Scalar>>
     {
         self.text.as_mut()
+    }
+
+    fn meter(&self) -> Meter {
+        self.meter.clone()
     }
 
     fn staged_unrounded(
@@ -3036,7 +3066,7 @@ mod tests {
                         ..sized(10.0, Some(30.0))
                     },
                 );
-            let mut session = ComputeSession::new(&tree, Vec::new());
+            let mut session = ComputeSession::unobserved(&tree, Vec::new());
             let input = ComputeInputOf::leaf_layout(
                 Size::NONE,
                 Size::new(Some(S::from_f64(100.0)), None),
@@ -3114,7 +3144,7 @@ mod tests {
                         ..NodeInputOf::default()
                     },
                 );
-            let mut session = ComputeSession::new(&source, Vec::new());
+            let mut session = ComputeSession::unobserved(&source, Vec::new());
             let view = session.layout_input(1);
             let borrowed = view.as_box().unwrap();
             let projection = crate::node_projection::CommonBoxProjection::from_node(borrowed);
@@ -3219,7 +3249,7 @@ mod tests {
             adjacency_queries: std::cell::Cell::new(0),
             remaining_adjacency_budget: std::cell::Cell::new(6),
         };
-        let mut session = ComputeSession::new(&tree, Vec::new());
+        let mut session = ComputeSession::unobserved(&tree, Vec::new());
         for node in [2, 4, 5, 3, 1, 0] {
             let normal = crate::output::NormalGeometryOf::box_geometry(
                 Point::ZERO,
@@ -3261,7 +3291,7 @@ mod tests {
     fn compute_session_rejects_missing_staged_unrounded_output() {
         let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::new()
             .style(0, NodeInput::default());
-        let session = ComputeSession::new(&tree, Vec::new());
+        let session = ComputeSession::unobserved(&tree, Vec::new());
 
         let error = Round::unrounded(&session, 0).unwrap_err();
 
@@ -3318,7 +3348,7 @@ mod tests {
                 0,
             )],
         ] {
-            let mut session = ComputeSession::with_flow(&capture, Vec::new());
+            let mut session = ComputeSession::with_flow_unobserved(&capture, Vec::new());
             let mut output = NodeOutputOf::new();
             output.location = Point::new(S::from_f64(0.25), S::from_f64(0.5));
             Compute::set_unrounded(
@@ -3352,6 +3382,22 @@ mod tests {
     fn prepared_fragments_keep_common_anchor_geometry_without_independent_rounding() {
         assert_prepared_fragment_staging::<f32>();
         assert_prepared_fragment_staging::<f64>();
+    }
+
+    #[test]
+    fn a_session_and_its_observation_forks_count_into_the_meter_of_their_call() {
+        use crate::accounting::{LayoutWork, Meter};
+        let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::<f64>::new()
+            .children(0, [])
+            .style(0, NodeInputOf::default());
+        let meter = Meter::for_test();
+        let session = ComputeSession::new(&tree, Vec::new(), meter.clone());
+        session.meter().charge(LayoutWork::LineSearch, 2);
+        let fork = session
+            .grid_observation_session(0)
+            .unwrap_or_else(|_| panic!("a plain session forks an observation session"));
+        fork.meter().charge(LayoutWork::LineSearch, 3);
+        assert_eq!(meter.work(LayoutWork::LineSearch), 5);
     }
 }
 
@@ -3714,7 +3760,8 @@ mod grid_overflow_observation_tests {
                     Vec::new(),
                 )
                 .unwrap();
-                let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
+                let mut session =
+                    ComputeSession::with_flow_unobserved(&capture, capture.invalidated.clone());
                 let measured = crate::grid::compute_grid(
                     &mut session,
                     2,
@@ -3800,7 +3847,8 @@ mod grid_overflow_observation_tests {
                     Vec::new(),
                 )
                 .unwrap();
-                let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
+                let mut session =
+                    ComputeSession::with_flow_unobserved(&capture, capture.invalidated.clone());
                 let error = crate::grid::compute_grid(
                     &mut session,
                     2,
@@ -3934,7 +3982,8 @@ mod grid_overflow_observation_tests {
             Vec::new(),
         )
         .unwrap();
-        let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
+        let mut session =
+            ComputeSession::with_flow_unobserved(&capture, capture.invalidated.clone());
         // Both real Flex dimensions are authored100x20. This is a normal
         // publication/replay request, not a formal intrinsic query.
         let request = crate::LayoutRootRequestOf::standalone(

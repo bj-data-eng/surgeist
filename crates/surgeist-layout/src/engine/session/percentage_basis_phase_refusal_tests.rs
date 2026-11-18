@@ -17,7 +17,7 @@ fn actual_final_root_entry_cannot_replace_current_trial_measured_basis_custody()
         .map(|row| row.fragment().finalized_fragment().clone())
         .collect::<Vec<_>>();
 
-    let mut session = ComputeSession::with_flow(&flow, Vec::new());
+    let mut session = ComputeSession::with_flow_unobserved(&flow, Vec::new());
     stage(&mut session); // actual compute_root and round_layout, no fabricated entries
     let valid = session.canonical_frames(0).unwrap();
     let slot = session

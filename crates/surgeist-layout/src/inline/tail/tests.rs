@@ -75,7 +75,7 @@ fn clear_trials() {
 }
 
 fn ordinary<S: LayoutScalar>(input: MixedInlineRunInputOf<S>) -> MixedInlineRunReportOf<S> {
-    let supplied = project_inline_participants(&input.participants);
+    let supplied = project_inline_participants(&input.meter, &input.participants);
     let available = resolved_inline_available(&input, &supplied).unwrap();
     layout_mixed_inline_run_with_formatted_observation(
         input,
@@ -212,10 +212,12 @@ fn unrelated_forced_prefix_work_is_not_repeated_for_terminal_targets() {
             .flat_map(|_| [30.0, 30.0, 10.0])
             .collect::<Vec<_>>();
         let forced = (0..groups_count).map(|i| 3 * i + 2).collect::<Vec<_>>();
-        reset_inline_candidate_scan_visits();
-        let report = ordinary(input::<f64>(&widths, &forced, Direction::Ltr, style));
+        let meter = crate::accounting::Meter::for_test();
+        let mut query = input::<f64>(&widths, &forced, Direction::Ltr, style);
+        query.meter = meter.clone();
+        let report = ordinary(query);
         assert_eq!(report.line_bands.len(), 2 * (groups_count + 1));
-        inline_candidate_scan_visits()
+        usize::try_from(meter.work(crate::accounting::LayoutWork::InlineCandidateScan)).unwrap()
     }
     let auto8 = work(8, crate::TextWrapStyle::Auto);
     let auto16 = work(16, crate::TextWrapStyle::Auto);
@@ -540,7 +542,7 @@ fn actual_tail_walk_receipts_reject_count_terminal_prefix_frontier_and_domain_ch
         mut band: impl FnMut(f64) -> f64,
         clear: impl FnMut(f64, PostLineClearIntent) -> f64,
     ) -> (NumericSequence<f64>, NumericWalkOutcome) {
-        let supplied = project_inline_participants(&query.participants);
+        let supplied = project_inline_participants(&query.meter, &query.participants);
         let mut sequence = NumericSequence::new(query, true);
         let boundaries = numeric_line_boundaries(query);
         let outcome = walk_numeric_sequence(

@@ -107,6 +107,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             crate::engine::BlockScopeEntryRequest {
                 pending,
                 binding: crate::engine::BlockFrameBinding {
+                    meter: self.environment.meter.clone(),
                     allocations: Vec::new(),
                     intrinsics: self.environment.intrinsics(bounds)?,
                     dispatch: self.dispatch(work),
@@ -150,6 +151,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             crate::engine::BlockScopeEntryRequest {
                 pending,
                 binding: crate::engine::BlockFrameBinding {
+                    meter: self.environment.meter.clone(),
                     allocations: Vec::new(),
                     intrinsics: self.environment.intrinsics(bounds)?,
                     dispatch: self.dispatch(work),

@@ -209,6 +209,7 @@ struct FlexCollection<'input, Node, S: LayoutScalar> {
     items: ItemCollection<'input, Node, S>,
     constants: Constants<S>,
     used_overflow: crate::scroll::UsedOverflow,
+    meter: crate::accounting::Meter,
 }
 
 enum CollectionPhase<S: LayoutScalar> {
@@ -609,6 +610,7 @@ where
             items: ItemCollection::new(tree, node, first_run_mode),
             constants,
             used_overflow,
+            meter: tree.meter(),
         }),
     ))))
 }
@@ -620,6 +622,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexCollection<'input, Node, S> {
             items,
             constants,
             used_overflow,
+            meter,
         } = self;
         let items = items.finish();
         let run_mode = match phase {
@@ -627,7 +630,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexCollection<'input, Node, S> {
             CollectionPhase::Accepted { contents_run_mode } => contents_run_mode,
             CollectionPhase::RatioMinimum(_) => RunMode::ComputeSize,
         };
-        let rounds = FlexRounds::begin(node, &items, constants, run_mode)?;
+        let rounds = FlexRounds::begin(node, &items, constants, run_mode, &meter)?;
         let collection = CollectedFlexItems {
             phase,
             items,
@@ -729,6 +732,7 @@ where
                         items: ItemCollection::new(tree, node, RunMode::ComputeSize),
                         constants: minimum,
                         used_overflow,
+                        meter: tree.meter(),
                     }),
                 ))));
             }
@@ -996,6 +1000,7 @@ impl<S: LayoutScalar> AcceptedFlexContents<S> {
             items: ItemCollection::new(tree, node, run_mode),
             constants,
             used_overflow,
+            meter: tree.meter(),
         }))))
     }
 }

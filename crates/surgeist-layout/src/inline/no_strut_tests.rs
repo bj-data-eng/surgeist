@@ -18,6 +18,7 @@ fn no_strut<S: LayoutScalar>() {
         alignment: InlineControlAlignment::Baseline,
     };
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        meter: crate::accounting::Meter::new(),
         inline_baseline_context: reference,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,

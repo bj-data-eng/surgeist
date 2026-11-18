@@ -5,6 +5,7 @@ use super::boxes::{
 };
 use super::formatted::FormattedTailSnapshot;
 pub(crate) use super::roles::{RoleBasis, RoleUse, RoleUseRows};
+use crate::accounting::LayoutWork;
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
 use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
 use crate::{TextAlign, TextAlignLast, TextJustification};
@@ -366,6 +367,7 @@ impl From<crate::inline_wrapping::WrappingScopeError> for FitError {
 pub(crate) type WrappingClassifier<'a> = dyn BoxResolver + 'a;
 
 pub(crate) struct FitInput<'a> {
+    pub meter: crate::accounting::Meter,
     pub entry_funding: Option<super::scope_alignment::EntryFundingRef<'a>>,
     pub adjoining_displacement: f64,
     pub groups: crate::group_alignment::Snapshot,
@@ -1084,7 +1086,12 @@ struct ScopedChoices {
 }
 
 impl ScopedChoices {
-    fn consider(&mut self, classify: &WrappingClassifier<'_>, candidate: EvaluatedCandidate) {
+    fn consider(
+        &mut self,
+        classify: &WrappingClassifier<'_>,
+        candidate: EvaluatedCandidate,
+        meter: &crate::accounting::Meter,
+    ) {
         if self.error.is_some() {
             return;
         }
@@ -1094,7 +1101,7 @@ impl ScopedChoices {
             .ok_or(FitError::InvalidGeometry)
             .and_then(|boxes| classify.classify(boxes))
             .and_then(|class| {
-                let frontier = self.frontier.get_or_insert_with(|| class.frontier());
+                let frontier = self.frontier.get_or_insert_with(|| class.frontier(meter));
                 if let Some(goal) = self.goal {
                     candidate
                         .quality_key(goal)
@@ -1406,7 +1413,7 @@ where
                 let class =
                     resolver.classify(trial.boxes.as_ref().ok_or(FitError::InvalidGeometry)?)?;
                 frontier
-                    .get_or_insert_with(|| class.frontier())
+                    .get_or_insert_with(|| class.frontier(&input.meter))
                     .consider(class, trial)?;
             }
             return frontier
@@ -2584,6 +2591,21 @@ struct SequenceScope {
     opportunity_end: usize,
 }
 
+impl SequenceScope {
+    /// The meter that receives the work of a run over this scope: a forced-break group has its
+    /// own attribution, every other scope charges `meter` directly.
+    fn meter<'a>(
+        &self,
+        meter: &'a crate::accounting::Meter,
+    ) -> std::borrow::Cow<'a, crate::accounting::Meter> {
+        if self.stop_at_forced {
+            meter.group((self.opportunity_start, self.opportunity_end))
+        } else {
+            std::borrow::Cow::Borrowed(meter)
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ScopeExhaustion {
     NoAdmissibleCandidate,
@@ -2630,8 +2652,9 @@ where
         scope: SequenceScope,
         result: &mut Vec<FittedLine>,
     ) -> Result<SequenceOutcome, FitError> {
-        #[cfg(test)]
-        balance::observe_work(scope, false);
+        scope
+            .meter(&self.input.meter)
+            .charge(LayoutWork::SequenceRun, 1);
         let input = &self.input;
         let environment = &mut self.environment;
         let opportunities = &self.opportunities[scope.opportunity_start..scope.opportunity_end];
@@ -2679,7 +2702,6 @@ where
                         rejected_choices,
                         goal,
                         constrained,
-                        #[cfg(test)]
                         scope,
                     },
                 )?;
@@ -2777,36 +2799,6 @@ where
     }
 }
 
-/// Line searches, the break opportunities they evaluate as candidates and the line searches that
-/// stopped early, counted on the current thread so a test can bound the work of one layout.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) struct CandidateWork {
-    pub(super) line_searches: usize,
-    pub(super) candidates: usize,
-    pub(super) early_stops: usize,
-}
-
-/// What one call of `observe_candidate_work` counts.
-#[cfg(test)]
-#[derive(Clone, Copy)]
-enum Observation {
-    LineSearch,
-    Candidate,
-    EarlyStop,
-}
-
-#[cfg(test)]
-thread_local! {
-    static CANDIDATE_WORK: std::cell::Cell<CandidateWork> =
-        const { std::cell::Cell::new(CandidateWork { line_searches: 0, candidates: 0, early_stops: 0 }) };
-}
-
-#[cfg(test)]
-pub(super) fn take_candidate_work() -> CandidateWork {
-    CANDIDATE_WORK.with(std::cell::Cell::take)
-}
-
 #[cfg(test)]
 thread_local! {
     static FULL_WALK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -2834,19 +2826,6 @@ fn full_walk_forced() -> bool {
 #[cfg(not(test))]
 const fn full_walk_forced() -> bool {
     false
-}
-
-#[cfg(test)]
-fn observe_candidate_work(observation: Observation) {
-    CANDIDATE_WORK.with(|cell| {
-        let mut work = cell.get();
-        match observation {
-            Observation::LineSearch => work.line_searches += 1,
-            Observation::Candidate => work.candidates += 1,
-            Observation::EarlyStop => work.early_stops += 1,
-        }
-        cell.set(work);
-    });
 }
 
 fn query_bands(

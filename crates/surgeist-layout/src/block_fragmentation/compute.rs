@@ -2,6 +2,7 @@
 mod scoped;
 use super::source::{Inventory, unsupported};
 use super::{BoundMode, FragmentBoxAllocation};
+use crate::accounting::Meter;
 use crate::geometry::LogicalSizeOf;
 use crate::output::{GeometryStateOf, NormalGeometryOf};
 use crate::*;
@@ -31,6 +32,8 @@ struct NativeProvider<'a, 'tree, Tree: LayoutTree> {
     target: LayoutTargetBasis,
     template: LayoutRootRequestOf<Tree::Scalar>,
     intrinsics: Rc<RefCell<Vec<IntrinsicContext<Tree>>>>,
+    /// The accounting of the layout call this provider computes for.
+    meter: Meter,
 }
 impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
     fn failure(
@@ -119,6 +122,7 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
             request,
             self.target.clone(),
             self.axes,
+            &self.meter,
         )?);
         self.intrinsics.borrow_mut().push(context.clone());
         Ok(context)
@@ -139,6 +143,7 @@ pub(crate) fn compute<Tree: LayoutTree>(
     capture: &LayoutFlowInput<'_, Tree>,
     root: Tree::Node,
     changed_nodes: &[Tree::Node],
+    meter: Meter,
 ) -> NativeResult<Tree, CompletedLayoutBatchOf<Tree::Node, Tree::Scalar>> {
     let bound = capture
         .bound
@@ -180,6 +185,7 @@ pub(crate) fn compute<Tree: LayoutTree>(
         target: bound.target_basis(),
         template: bound.root_request(),
         intrinsics: Rc::new(RefCell::new(Vec::new())),
+        meter,
     };
     scoped::compute(
         &provider,

@@ -87,6 +87,7 @@ fn query<S: LayoutScalar>(purpose: EntryPurpose) -> EntryQuery<u32, S> {
             Size::splat(S::from_f64(100.0)),
             S::from_f64(100.0),
             LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+            crate::accounting::Meter::new(),
         );
         float_context::Incoming {
             cut: None,
@@ -123,7 +124,7 @@ fn opaque<S: LayoutScalar>() {
             .style(1, block(5.0, 7.0, None))
             .style(2, block(29.0, 0.0, Some(20.0)))
             .measure_with(1, measure);
-        let mut owner = ComputeSession::new(&tree, Vec::new());
+        let mut owner = ComputeSession::unobserved(&tree, Vec::new());
         CALLS.with(|calls| calls.set(0));
         assert!(matches!(
             owner.qualify_entry(query(EntryPurpose::StartOnly)).unwrap(),
@@ -174,7 +175,7 @@ fn framed_entry_suspends_before_unqualified_clear_top_and_later_body() {
             },
         )
         .measure_with(2, positive::<f64>);
-    let mut owner = ComputeSession::new(&tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(&tree, Vec::new());
     CALLS.with(|calls| calls.set(0));
     let EntryObservation::Demand(demand) = owner
         .qualify_entry(query(EntryPurpose::FramedEntry))
@@ -198,7 +199,7 @@ fn framed_entry_requires_the_exact_target_request_before_sampling() {
         .style(0, block::<f64>(0.0, 0.0, None))
         .style(1, block(5.0, 7.0, None))
         .measure_with(1, zero::<f64>);
-    let mut owner = ComputeSession::new(&tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(&tree, Vec::new());
     for absent in [true, false] {
         let mut request = query(EntryPurpose::FramedEntry);
         if absent {
@@ -236,7 +237,7 @@ fn numeric_frontier_retains_the_actual_source_range_without_placing_it() {
         )
         .style(3, atomic)
         .style(4, block(20.0, 0.0, Some(10.0)));
-    let mut owner = ComputeSession::new(&tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(&tree, Vec::new());
     let EntryObservation::Demand(demand) = owner
         .qualify_entry(query(EntryPurpose::FramedEntry))
         .unwrap()
@@ -262,7 +263,7 @@ fn hidden_break_does_not_create_a_native_frontier_in_framed_entry() {
             crate::LayoutInputOf::line_break(crate::LineBreakInputOf::new().hidden()),
         )
         .style(2, block(29.0, 0.0, Some(20.0)));
-    let mut owner = ComputeSession::new(&tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(&tree, Vec::new());
     let EntryObservation::Summary(summary) = owner
         .qualify_entry(query(EntryPurpose::FramedEntry))
         .unwrap()
@@ -293,7 +294,7 @@ fn native_frontier_keeps_issued_section_custody_without_placing_source() {
         Vec::new(),
     )
     .unwrap();
-    let mut owner = ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = ComputeSession::with_flow_unobserved(&capture, Vec::new());
     let expected = owner
         .text_computation()
         .unwrap()
@@ -331,7 +332,7 @@ fn native_frontier_keeps_issued_section_custody_without_placing_source() {
         Vec::new(),
     )
     .unwrap();
-    let mut foreign_owner = ComputeSession::with_flow(&foreign_capture, Vec::new());
+    let mut foreign_owner = ComputeSession::with_flow_unobserved(&foreign_capture, Vec::new());
     demand.window.as_mut().unwrap().segment = Some(
         foreign_owner
             .text_computation()
@@ -390,7 +391,7 @@ fn component<S: LayoutScalar>(left: f64, right: f64, own_top: f64) {
                 ..block(20.0, 0.0, Some(10.0))
             },
         );
-    let mut owner = ComputeSession::new(&tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(&tree, Vec::new());
     let mut request = query(EntryPurpose::FramedEntry);
     let parent = block_container_projection::<_, core::convert::Infallible>(&owner, 0);
     let constants = Constants::from_projection::<_, core::convert::Infallible>(
@@ -407,6 +408,7 @@ fn component<S: LayoutScalar>(left: f64, right: f64, own_top: f64) {
         Size::splat(S::from_f64(100.0)),
         S::from_f64(100.0),
         LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+        crate::accounting::Meter::new(),
     );
     for (source_index, node) in [1, 6].into_iter().enumerate() {
         let style = BlockChildProjection::from_node(owner.node_input(node));
@@ -517,7 +519,7 @@ fn native_samples<S: LayoutScalar>() {
         .style(2, block(29.0, 0.0, Some(20.0)))
         .measure_with(1, zero::<S>);
     CALLS.with(|calls| calls.set(0));
-    let mut owner = ComputeSession::new(&tree, Vec::new());
+    let mut owner = ComputeSession::unobserved(&tree, Vec::new());
     for _ in 0..2 {
         let EntryObservation::Summary(summary) = owner
             .qualify_entry(query(EntryPurpose::FramedEntry))
@@ -530,7 +532,7 @@ fn native_samples<S: LayoutScalar>() {
     }
     // The independent publication operation samples anew: the entry memo is
     // neither host-cache geometry nor a persistent provider result cache.
-    let mut next = ComputeSession::new(&tree, Vec::new());
+    let mut next = ComputeSession::unobserved(&tree, Vec::new());
     let EntryObservation::Summary(summary) = next
         .qualify_entry(query(EntryPurpose::FramedEntry))
         .unwrap()
@@ -609,7 +611,7 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
         Vec::new(),
     )
     .unwrap();
-    let mut owner = ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = ComputeSession::with_flow_unobserved(&capture, Vec::new());
     let expected = owner
         .text_computation()
         .unwrap()
@@ -654,7 +656,7 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
     }
     drop(summary);
     drop(owner);
-    let mut owner = ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = ComputeSession::with_flow_unobserved(&capture, Vec::new());
     FAIL_FIRST.set(true);
     ORDER.with(|order| order.borrow_mut().clear());
     let error = owner
@@ -669,7 +671,7 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
     ORDER.with(|order| assert_eq!(&*order.borrow(), &[1], "later source producer must not run"));
     FAIL_FIRST.set(false);
     drop(owner);
-    let mut owner = ComputeSession::with_flow(&capture, Vec::new());
+    let mut owner = ComputeSession::with_flow_unobserved(&capture, Vec::new());
     FAIL_SECOND.set(true);
     ORDER.with(|order| order.borrow_mut().clear());
     let error = owner

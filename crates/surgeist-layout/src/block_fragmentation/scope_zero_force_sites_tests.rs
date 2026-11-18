@@ -100,6 +100,7 @@ fn raw_before_and_inside_force<S: LayoutScalar>(capped: bool) {
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
+        meter: crate::accounting::Meter::new(),
     };
 
     let resolved = Driver::new(&environment, &scopes)

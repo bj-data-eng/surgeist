@@ -103,8 +103,15 @@ fn snapshot<S: LayoutScalar>(
     target: LayoutTargetBasis,
 ) -> Arc<intrinsic::FragmentContext<u32, S>> {
     Arc::new(
-        crate::engine::prepare_block_fragment_intrinsics(tree, 0, request(width), target, axes())
-            .unwrap(),
+        crate::engine::prepare_block_fragment_intrinsics(
+            tree,
+            0,
+            request(width),
+            target,
+            axes(),
+            &crate::accounting::Meter::new(),
+        )
+        .unwrap(),
     )
 }
 fn binding<S: LayoutScalar>(target: LayoutTargetBasis) -> ContentInsetBinding<u32, S> {
@@ -146,6 +153,7 @@ fn perform<S: LayoutScalar>(
         frame(width),
         snapshot.clone(),
         binding.clone(),
+        &crate::accounting::Meter::new(),
     )
     .unwrap();
     let produced = crate::engine::compute_block_content_frame(
@@ -161,6 +169,7 @@ fn perform<S: LayoutScalar>(
             accepted: Some(binding.clone()),
             carrier: Some(candidate),
             binding: crate::engine::BlockFrameBinding {
+                meter: crate::accounting::Meter::new(),
                 allocations: Vec::new(),
                 intrinsics: snapshot,
                 dispatch: Dispatch {
@@ -218,7 +227,7 @@ fn exact_path_adoption<S: LayoutScalar>() {
             &current,
         )
         .unwrap();
-    let session = crate::engine::ComputeSession::new(&tree, Vec::new());
+    let session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
     let origin = accepted
         .origin(&session, ProductionId(13), &binding, 1, None)
         .unwrap();
@@ -293,7 +302,7 @@ fn no_block_authority<S: LayoutScalar>() {
             &snapshot,
         )
         .unwrap();
-    let session = crate::engine::ComputeSession::new(&tree, Vec::new());
+    let session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
     let error = path
         .origin(&session, ProductionId(13), &binding, 1, None)
         .unwrap_err();
@@ -402,7 +411,7 @@ fn real_reserving_gutter_normal_context<S: LayoutScalar>() {
             &snapshot,
         )
         .unwrap();
-    let session = crate::engine::ComputeSession::new(&tree, Vec::new());
+    let session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
     let origin = accepted
         .origin(&session, ProductionId(13), &binding, 1, None)
         .unwrap();

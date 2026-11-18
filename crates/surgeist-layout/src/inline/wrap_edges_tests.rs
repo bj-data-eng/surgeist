@@ -154,6 +154,7 @@ impl<S: LayoutScalar> Fixture<S> {
             )
             .unwrap();
         MixedInlineRunInputOf {
+            meter: crate::accounting::Meter::new(),
             inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             text_wrap_style: crate::TextWrapStyle::Auto,
@@ -365,10 +366,11 @@ fn simple_matrix<S: LayoutScalar>() {
                 assert_eq!(hi - lo, n(10.0 * nodes.len() as f64 + 5.0));
             }
             let input = f.numeric();
-            let supplied = project_inline_participants(&input.participants);
+            let supplied = project_inline_participants(&input.meter, &input.participants);
             let run = ProjectedInlineRun {
                 participants: &input.participants,
                 supplied: &supplied,
+                meter: &input.meter,
             };
             assert_eq!(
                 inline_min_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
@@ -426,10 +428,11 @@ fn force_matrix<S: LayoutScalar>() {
             );
             check_simple(&f, &[&[1], &[2, 3]], &[Forced, Paragraph]);
             let input = f.numeric();
-            let supplied = project_inline_participants(&input.participants);
+            let supplied = project_inline_participants(&input.meter, &input.participants);
             let run = ProjectedInlineRun {
                 participants: &input.participants,
                 supplied: &supplied,
+                meter: &input.meter,
             };
             assert_eq!(
                 inline_min_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
@@ -641,10 +644,12 @@ fn propagation<S: LayoutScalar>() {
                 [Forced, Paragraph]
             );
             // Endpoint BP stays on the real selected line; no post-subtraction.
-            let supplied = project_inline_participants(&f.participants);
+            let supplied =
+                project_inline_participants(&crate::accounting::Meter::new(), &f.participants);
             let run = ProjectedInlineRun {
                 participants: &f.participants,
                 supplied: &supplied,
+                meter: &crate::accounting::Meter::new(),
             };
             let input = f.numeric();
             let mut cursor = InlineSourceCursor::default();
@@ -1098,7 +1103,7 @@ fn mixed_inside_edge<S: LayoutScalar>() {
             [2, 0, 1],
             [2, 1, 0],
         ] {
-            let mut frontier = wrapping.frontier();
+            let mut frontier = wrapping.frontier(&crate::accounting::Meter::new());
             for candidate in order {
                 frontier
                     .consider(wrapping.class(cuts[candidate]).unwrap(), candidate)
@@ -1107,7 +1112,7 @@ fn mixed_inside_edge<S: LayoutScalar>() {
             assert_eq!(frontier.into_preferred(), Some(2));
         }
         for order in [[0, 1], [1, 0]] {
-            let mut frontier = wrapping.frontier();
+            let mut frontier = wrapping.frontier(&crate::accounting::Meter::new());
             for candidate in order {
                 frontier
                     .consider(wrapping.class(cuts[candidate]).unwrap(), candidate)
@@ -1343,6 +1348,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     .unwrap();
                 let report = layout_mixed_inline_run_with_formatted_observation(
                     MixedInlineRunInputOf {
+                        meter: crate::accounting::Meter::new(),
                         inline_baseline_context: crate::InlineBaselineContext::Physical,
                         groups: crate::group_alignment::Snapshot::default(),
                         text_wrap_style: crate::TextWrapStyle::Auto,
