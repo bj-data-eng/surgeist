@@ -273,8 +273,8 @@ fn lane<S: LayoutScalar>() {
         Size::splat(S::from_f64(100.0)),
         S::from_f64(100.0),
         crate::geometry::LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
-    )
-    .with_meter(meter.clone());
+        meter.clone(),
+    );
     let failure = |error| {
         super::super::inline_run::text_run_error::<u32, S, core::convert::Infallible>(0, error)
     };

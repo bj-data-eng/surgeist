@@ -52,6 +52,7 @@ fn growing_source<S: LayoutScalar>() {
             Size::splat(S::from_f64(100.0)),
             S::from_f64(100.0),
             LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+            crate::accounting::Meter::new(),
         );
         let style = BlockChildProjection::from_node(owner.node_input(1));
         let mut first = true;

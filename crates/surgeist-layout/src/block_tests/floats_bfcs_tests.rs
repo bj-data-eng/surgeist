@@ -1907,8 +1907,8 @@ fn fri06_c04_float_ledger_evaluates_each_float_span_pair_once_per_candidate_pass
             flow_axes.physical_size(logical_container),
             scalar_value(100.0),
             crate::geometry::LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
-        )
-        .with_meter(meter.clone());
+            meter.clone(),
+        );
         exclusions.record_test_float(
             FloatLedgerSide::LineStart,
             FloatExclusion::MarginBox,
@@ -1959,8 +1959,8 @@ fn fri06_c04_float_ledger_shape_is_not_approximated_by_rectangular_line_band() {
         Size::new(100.0, 100.0),
         100.0,
         crate::geometry::LogicalEdgesOf::new(0.0, 0.0, 0.0, 0.0),
-    )
-    .with_meter(meter.clone());
+        meter.clone(),
+    );
     exclusions.record_test_float(
         FloatLedgerSide::LineStart,
         FloatExclusion::Shape,

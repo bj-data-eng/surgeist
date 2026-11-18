@@ -87,6 +87,7 @@ fn query<S: LayoutScalar>(purpose: EntryPurpose) -> EntryQuery<u32, S> {
             Size::splat(S::from_f64(100.0)),
             S::from_f64(100.0),
             LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+            crate::accounting::Meter::new(),
         );
         float_context::Incoming {
             cut: None,
@@ -407,6 +408,7 @@ fn component<S: LayoutScalar>(left: f64, right: f64, own_top: f64) {
         Size::splat(S::from_f64(100.0)),
         S::from_f64(100.0),
         LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+        crate::accounting::Meter::new(),
     );
     for (source_index, node) in [1, 6].into_iter().enumerate() {
         let style = BlockChildProjection::from_node(owner.node_input(node));

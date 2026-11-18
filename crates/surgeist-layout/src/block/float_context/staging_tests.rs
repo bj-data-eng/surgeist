@@ -92,6 +92,7 @@ fn framed<S: LayoutScalar>() {
         Size::new(S::from_f64(40.0), S::from_f64(10.0)),
         S::from_f64(40.0),
         LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+        crate::accounting::Meter::new(),
     );
     resident_ledger.inherit_into_child(&resident_frame).unwrap();
     owner

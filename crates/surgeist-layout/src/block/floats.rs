@@ -524,6 +524,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         containing_size: Size<S>,
         content_inline_size: S,
         inset: LogicalEdgesOf<S>,
+        meter: Meter,
     ) -> Self {
         Self {
             flow_axes,
@@ -534,19 +535,13 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             ledger: Vec::new(),
             backing: EntryBacking::default(),
             funding: None,
-            meter: Meter::new(),
+            meter,
         }
     }
 
     /// The counts of the layout call these exclusions compute for.
     pub(super) fn meter(&self) -> &Meter {
         &self.meter
-    }
-
-    /// These exclusions count the work of their band queries into `meter`.
-    pub(crate) fn with_meter(mut self, meter: Meter) -> Self {
-        self.meter = meter;
-        self
     }
 
     pub(super) fn fund_entry(&mut self, funding: Option<&EntryFunding<S>>) {
@@ -1494,8 +1489,8 @@ where
         container_size,
         (logical_container_size.inline - logical_inset.inline_sum()).max(S::ZERO),
         logical_inset,
-    )
-    .with_meter(tree.meter());
+        tree.meter(),
+    );
 
     for float in floats {
         let normal_location = if let Some(accepted) = float.placement.text() {
