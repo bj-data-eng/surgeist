@@ -926,4 +926,37 @@ mod colour {
         );
         assert_eq!(coloured(&ledger), [0, 0]);
     }
+
+    #[test]
+    fn a_host_cap_on_colour_input_units_admits_neither_change() {
+        let facts = facts();
+        let input = CssColorInput::Utf8(b"red");
+        let caps = CssLimits::new(
+            CssWorkTable::new(CssWorkFields {
+                ColorInputUnit: 2,
+                ..CssWorkFields::splat(u64::MAX)
+            }),
+            CssResourceTable::splat(u64::MAX),
+        );
+        let (ledger, host) = host(caps, ProfileMode::Off);
+        let stop = input
+            .accounted(&host)
+            .parse_used_color(
+                CssColorGrammarRequest::WholeColor,
+                &facts,
+                facts.identity(),
+                used_limits(usize::MAX),
+            )
+            .unwrap_err();
+        let refusal = stop.host_refusal().unwrap();
+        assert_eq!(
+            refusal.change(),
+            CssChange::Work(CssWork::ColorInputUnit, 3)
+        );
+        assert_eq!(
+            (refusal.limit(), refusal.total(), refusal.amount()),
+            (2, 0, 3)
+        );
+        assert_eq!(coloured(&ledger), [0, 0]);
+    }
 }
