@@ -107,6 +107,7 @@ fn input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        meter: crate::accounting::Meter::new(),
         inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,

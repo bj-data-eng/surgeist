@@ -36,6 +36,7 @@ fn common_named_reference<S: LayoutScalar>() {
     let mut probes = Vec::new();
     let report = layout_mixed_inline_run_with_band_source(
         MixedInlineRunInputOf {
+            meter: crate::accounting::Meter::new(),
             inline_baseline_context: reference,
             groups: crate::group_alignment::Snapshot::default(),
             text_wrap_style: crate::TextWrapStyle::Auto,

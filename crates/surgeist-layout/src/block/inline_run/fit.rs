@@ -207,6 +207,7 @@ where
             .text_computation()
             .is_some_and(|state| state.formatted_active());
     let input = MixedInlineRunInputOf {
+        meter: tree.meter(),
         inline_baseline_context: constants.inline_baseline_context,
         groups: tree
             .group_computation()

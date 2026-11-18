@@ -9,6 +9,7 @@ fn input<S: LayoutScalar>(mode: WritingMode, amount: S) -> MixedInlineRunInputOf
         S::from_f64(10.0),
     ));
     MixedInlineRunInputOf {
+        meter: crate::accounting::Meter::new(),
         inline_baseline_context: reference,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,

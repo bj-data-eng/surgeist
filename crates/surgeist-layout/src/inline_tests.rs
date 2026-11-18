@@ -1,10 +1,11 @@
+use crate::accounting::{LayoutWork, Meter};
 use crate::inline::{
     AtomicInlineBoxParticipant, InlineControlAlignment, InlineParticipant,
     InlineParticipantLayoutKind, InlineRunInput, LogicalLineBandQueryResultOf,
     MixedInlineParticipantOf, MixedInlineRunInputOf, PostLineClearIntent,
-    inline_candidate_scan_visits, inline_run_max_content_width, inline_run_min_content_width,
-    layout_inline_run, layout_mixed_inline_run, layout_mixed_inline_run_with_band_source,
-    mapped_post_line_clear_intent, reset_inline_candidate_scan_visits,
+    inline_run_max_content_width, inline_run_min_content_width, layout_inline_run,
+    layout_mixed_inline_run, layout_mixed_inline_run_with_band_source,
+    mapped_post_line_clear_intent,
 };
 use crate::*;
 
@@ -41,6 +42,7 @@ fn mr02_input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        meter: crate::accounting::Meter::new(),
         inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
@@ -58,6 +60,35 @@ fn mr02_input<S: LayoutScalar>(
         indent_state: crate::text_indent::IndentLineState::default(),
         participants,
     }
+}
+
+/// `layout_mixed_inline_run` of `input`, counting its work into `meter`.
+fn layout_counting<S: LayoutScalar>(
+    meter: &Meter,
+    mut input: MixedInlineRunInputOf<S>,
+) -> Result<crate::inline::MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError>
+{
+    input.meter = meter.clone();
+    layout_mixed_inline_run(input)
+}
+
+/// The participants projected, searched for hard line ends, and the calls into Text's
+/// leading-edge query, in that order.
+fn inline_work_visits(meter: &Meter) -> [usize; 3] {
+    [
+        LayoutWork::InlineProjection,
+        LayoutWork::InlineBoundaryScan,
+        LayoutWork::InlineLeadingQuery,
+    ]
+    .map(|work| usize::try_from(meter.work(work)).unwrap())
+}
+
+fn inline_candidate_scan_visits(meter: &Meter) -> usize {
+    usize::try_from(meter.work(LayoutWork::InlineCandidateScan)).unwrap()
+}
+
+fn inline_leading_query_units(meter: &Meter) -> usize {
+    usize::try_from(meter.work(LayoutWork::InlineLeadingQueryUnit)).unwrap()
 }
 
 #[test]
@@ -618,19 +649,22 @@ fn mr02_candidate_scan_work(participant_count: usize) -> usize {
             )
         })
         .collect();
-    reset_inline_candidate_scan_visits();
-    let report = layout_mixed_inline_run(mr02_input(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(1_000_000.0).unwrap(),
+    let meter = Meter::for_test();
+    let report = layout_counting(
+        &meter,
+        mr02_input(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(1_000_000.0).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
             ),
-            crate::SizingOperation::Normal,
+            participants,
         ),
-        participants,
-    ))
+    )
     .unwrap();
     assert_eq!(report.atomics.len(), participant_count);
-    inline_candidate_scan_visits()
+    inline_candidate_scan_visits(&meter)
 }
 
 #[test]
@@ -860,6 +894,7 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
         )
         .unwrap();
         let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+            meter: crate::accounting::Meter::new(),
             inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             text_wrap_style: crate::TextWrapStyle::Auto,
@@ -925,6 +960,7 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         let mut queries = Vec::new();
         let report = layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
+                meter: crate::accounting::Meter::new(),
                 inline_baseline_context: crate::InlineBaselineContext::Physical,
                 groups: crate::group_alignment::Snapshot::default(),
                 text_wrap_style: crate::TextWrapStyle::Auto,
@@ -2191,32 +2227,33 @@ fn resolved_bidi_level_126_preserves_l2_mixed_line_order_both_scalars() {
 
 #[test]
 fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter_work() {
-    use crate::inline::{inline_work_visits, reset_inline_work_visits};
     for count in [64, 128] {
         let participants = (0..count)
             .map(|index| {
                 mr02_atomic::<f64>(index, 1.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited)
             })
             .collect();
-        reset_inline_work_visits();
-        reset_inline_candidate_scan_visits();
-        let report = layout_mixed_inline_run(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(1_000_000.0).unwrap(),
+        let meter = Meter::for_test();
+        let report = layout_counting(
+            &meter,
+            mr02_input(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(1_000_000.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
                 ),
-                crate::SizingOperation::Normal,
+                participants,
             ),
-            participants,
-        ))
+        )
         .unwrap();
         assert_eq!(report.atomics.len(), count);
         assert_eq!(
             report.inline_extent,
             f64::from(u32::try_from(count).unwrap())
         );
-        assert_eq!(inline_work_visits(), [count, count, 2]);
-        assert_eq!(inline_candidate_scan_visits(), count * 2);
+        assert_eq!(inline_work_visits(&meter), [count, count, 2]);
+        assert_eq!(inline_candidate_scan_visits(&meter), count * 2);
 
         let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let metrics = InlineMetricsOf::<f64>::from_ascent_descent(
@@ -2233,19 +2270,27 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
                 ]
             })
             .collect();
-        reset_inline_work_visits();
-        let report = layout_mixed_inline_run(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
-                crate::SizingOperation::Normal,
+        let meter = Meter::for_test();
+        let report = layout_counting(
+            &meter,
+            mr02_input(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                participants,
             ),
-            participants,
-        ))
+        )
         .unwrap();
         assert!(report.atomics.is_empty());
         assert_eq!(report.controls.len(), count * 2);
         assert_eq!(report.inline_extent, 0.0);
-        assert_eq!(inline_work_visits(), [count * 2, count * 2, count * 2]);
+        assert_eq!(
+            inline_work_visits(&meter),
+            [count * 2, count * 2, count * 2]
+        );
         assert_eq!(report.controls.first().unwrap().source_index, 0);
         assert_eq!(report.controls.last().unwrap().source_index, count * 2 - 1);
 
@@ -2254,14 +2299,19 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
                 mr02_atomic::<f64>(index, 1.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed)
             })
             .collect();
-        reset_inline_work_visits();
-        let report = layout_mixed_inline_run(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(1.0).unwrap()),
-                crate::SizingOperation::Normal,
+        let meter = Meter::for_test();
+        let report = layout_counting(
+            &meter,
+            mr02_input(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(1.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                participants,
             ),
-            participants,
-        ))
+        )
         .unwrap();
         assert_eq!(report.atomics.len(), count);
         assert_eq!(report.atomics.last().unwrap().line_index, count - 1);
@@ -2269,29 +2319,30 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
             crate::inline::expect_logical_position(report.atomics.last().unwrap().position).inline,
             0.0
         );
-        assert_eq!(inline_work_visits(), [count, count, count * 2]);
+        assert_eq!(inline_work_visits(&meter), [count, count, count * 2]);
     }
 }
 
 fn assert_mandatory_atomic_queries_are_confined_to_each_actual_line<S: LayoutScalar>() {
-    use crate::inline::{inline_leading_query_units, inline_work_visits, reset_inline_work_visits};
     for count in [4, 8] {
         let participants = (0..count)
             .map(|index| {
                 mr02_atomic::<S>(index, 1.0, 10.0, 8.0, 1, InlineBreakOpportunity::Mandatory)
             })
             .collect();
-        reset_inline_work_visits();
-        reset_inline_candidate_scan_visits();
-        let report = layout_mixed_inline_run(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+        let meter = Meter::for_test();
+        let report = layout_counting(
+            &meter,
+            mr02_input(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
                 ),
-                crate::SizingOperation::Normal,
+                participants,
             ),
-            participants,
-        ))
+        )
         .unwrap();
         assert_eq!(report.atomics.len(), count);
         assert_eq!(report.inline_extent, S::ONE);
@@ -2317,9 +2368,9 @@ fn assert_mandatory_atomic_queries_are_confined_to_each_actual_line<S: LayoutSca
                 .collect::<Vec<_>>(),
             (0..count).collect::<Vec<_>>()
         );
-        assert_eq!(inline_candidate_scan_visits(), count * 2);
-        assert_eq!(inline_work_visits(), [count, count, count * 2]);
-        assert_eq!(inline_leading_query_units(), count * 2);
+        assert_eq!(inline_candidate_scan_visits(&meter), count * 2);
+        assert_eq!(inline_work_visits(&meter), [count, count, count * 2]);
+        assert_eq!(inline_leading_query_units(&meter), count * 2);
         // Text remains the actual edge owner. A separately supplied line of
         // discardable text slots retains each logical slot while suppressing ink.
         let text = vec![

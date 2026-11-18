@@ -128,7 +128,7 @@ fn clear_proofs() {
 }
 
 fn run<S: LayoutScalar>(input: MixedInlineRunInputOf<S>) -> MixedInlineRunReportOf<S> {
-    let supplied = project_inline_participants(&input.participants);
+    let supplied = project_inline_participants(&input.meter, &input.participants);
     let available = resolved_inline_available(&input, &supplied).unwrap();
     layout_mixed_inline_run_with_formatted_observation(
         input,
@@ -747,7 +747,7 @@ fn actual_body_walk_receipts_reject_count_terminal_and_optional_domain_changes()
         limit: Option<usize>,
         mut width: impl FnMut(f64) -> f64,
     ) -> (NumericSequence<f64>, NumericWalkOutcome) {
-        let supplied = project_inline_participants(&query.participants);
+        let supplied = project_inline_participants(&query.meter, &query.participants);
         let mut sequence = NumericSequence::new(query, true);
         let boundaries = numeric_line_boundaries(query);
         let outcome = walk_numeric_sequence(
