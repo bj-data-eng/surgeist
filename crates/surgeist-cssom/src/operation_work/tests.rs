@@ -257,9 +257,9 @@ fn a_host_refusal_poisons_the_batch() {
     assert_eq!(charged(&ledger)[0], 1);
 }
 
-#[test]
-fn a_limit_refusal_is_charged_the_work_before_it() {
-    // A context linking a snapshot adds entries the empty state counts.
+/// A context linking a snapshot, which adds entries and walk steps to the
+/// census of an empty state.
+fn linked_context() -> CssomContext {
     let mut donor = CssomStore::new(CssomLimits::default(), CssomContext::default()).unwrap();
     let mut edit = donor.batch(guard(&donor)).unwrap();
     let ticket = edit
@@ -269,14 +269,19 @@ fn a_limit_refusal_is_charged_the_work_before_it() {
         )
         .unwrap();
     let sheet = donor.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
-    let context = CssomContext {
+    CssomContext {
         inputs: Vec::new(),
         linked: vec![CssomLinkedInput {
             version: version("link"),
             snapshot: donor.snapshot(),
             sheet,
         }],
-    };
+    }
+}
+
+#[test]
+fn a_limit_refusal_is_charged_the_work_before_it() {
+    let context = linked_context();
     let admitted = |limits| CssomStore::new(limits, context.clone()).is_ok();
     let entries = smallest(|max_entries| {
         admitted(CssomLimits {
@@ -316,6 +321,63 @@ fn a_limit_refusal_is_charged_the_work_before_it() {
     );
     // The string bytes are checked last, after the totals and the walk.
     assert_eq!(charged(&ledger), [1, 0, entries, steps, 0]);
+}
+
+#[test]
+fn a_refused_walk_is_charged_the_steps_it_took() {
+    let context = linked_context();
+    let admitted = |limits| CssomStore::new(limits, context.clone()).is_ok();
+    let entries = smallest(|max_entries| {
+        admitted(CssomLimits {
+            max_entries,
+            ..CssomLimits::default()
+        })
+    });
+    let steps = smallest(|max_source_traversal_steps| {
+        admitted(CssomLimits {
+            max_source_traversal_steps,
+            ..CssomLimits::default()
+        })
+    });
+    assert!(steps > 1);
+    let (ledger, host) = open_host();
+    let limits = CssomLimits {
+        max_source_traversal_steps: usize::try_from(steps).unwrap() - 1,
+        ..CssomLimits::default()
+    };
+    let refused = CssomStore::with_host(limits, context, host);
+    assert!(matches!(refused, Err(CssomError::Limit { .. })));
+    // The step the limit refused is not taken.
+    assert_eq!(charged(&ledger), [1, 0, entries, steps - 1, 0]);
+}
+
+#[test]
+fn a_host_refusal_inside_a_replacement_publishes_nothing() {
+    // The runs before the replacement, and the replacement's three.
+    let (ledger, host) = open_host();
+    with_sheet(CssomLimits::default(), Some(host)).unwrap();
+    let before = charged(&ledger)[0];
+    let caps = CssLimits::new(
+        CssWorkTable::new(CssWorkFields {
+            CensusRun: before + 2,
+            ..CssWorkFields::splat(u64::MAX)
+        }),
+        CssResourceTable::splat(u64::MAX),
+    );
+    let (ledger, host) = self::host(caps, ProfileMode::Off);
+    let (mut store, sheet) = with_sheet(CssomLimits::default(), Some(host)).unwrap();
+    let published = store.snapshot();
+    let refused = store.begin_replace_sheet(guard(&store), &sheet, ".e { color: blue }");
+    let Err(CssomError::Accounting(stop)) = refused else {
+        panic!("the host refuses the replacement's charge");
+    };
+    assert_eq!(
+        stop.host_refusal().unwrap().change(),
+        CssChange::Work(CssWork::CensusRun, 3)
+    );
+    assert_eq!(store.snapshot().revision(), published.revision());
+    assert_eq!(store.pending_sheet_replacement(&sheet).unwrap(), None);
+    assert_eq!(charged(&ledger)[0], before);
 }
 
 #[test]
