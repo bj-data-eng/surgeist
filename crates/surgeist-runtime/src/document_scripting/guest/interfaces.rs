@@ -759,7 +759,7 @@ struct NativeRead<'a> {
     events: &'a GuestEvents,
     account_scope: AccountScope,
     source: Option<SourceReadRequest<'a>>,
-    dom: RefCell<crate::DomEventDom<'a>>,
+    dom: RefCell<crate::internal::dom_event::DomEventDom<'a>>,
     hosted: HostedRuntime,
     cancel: &'a AtomicBool,
 }
@@ -1254,7 +1254,7 @@ impl Capture {
             }
             Attribute::Trusted => scope.primitive(Primitive::Boolean(event.is_trusted()))?,
             Attribute::Phase => {
-                use crate::DomEventPhase;
+                use crate::internal::dom_event::DomEventPhase;
                 let phase = match event.phase() {
                     DomEventPhase::None => 0.0,
                     DomEventPhase::Capturing => 1.0,

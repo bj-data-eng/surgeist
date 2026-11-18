@@ -1,7 +1,7 @@
 //! DOMImplementation identity in the native Window.
 
 use super::*;
-use crate::DomSourceDriveError;
+use crate::internal::dom_source::DomSourceDriveError;
 
 pub(super) fn document_implementation_is_the_same_object() {
     let cancel = Arc::new(AtomicBool::new(false));

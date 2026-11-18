@@ -78,7 +78,7 @@ fn check_legacy_script(label: &str, script: &str) {
         DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
             "legacy Document {label}: guest={:?}; source={:?}",
             failure.cause::<DocumentGuestEventError>(),
-            failure.cause::<crate::DomSourceDriveError>()
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>()
         ),
         _ => panic!("legacy Document {label}: {error:?}"),
     });
@@ -557,7 +557,9 @@ fn legacy_method_cancellation_refuses_before_entry(member: &str) {
     assert!(matches!(
         original,
         DocumentGuestEventError::Document(DocumentScriptError::Native(
-            DocumentScriptNativeError::Hosted(crate::DomHostedRuntimeError::Cancelled)
+            DocumentScriptNativeError::Hosted(
+                crate::internal::dom_lifecycle::DomHostedRuntimeError::Cancelled
+            )
         ))
     ));
     assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());

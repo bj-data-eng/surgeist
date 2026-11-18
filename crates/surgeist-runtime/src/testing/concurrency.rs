@@ -18,7 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{WakeBridge, WakeError};
+use crate::{internal::proxy::WakeBridge, internal::proxy::WakeError};
 
 const CHILD_SCENARIO: &str = "SURGEIST_RUNTIME_TEST_CHILD_SCENARIO";
 const OUTPUT_LIMIT: u64 = 64 * 1024;

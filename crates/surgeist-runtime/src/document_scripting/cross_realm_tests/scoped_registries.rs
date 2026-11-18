@@ -115,7 +115,7 @@ pub(super) fn scoped_registries_keep_independent_native_associations() {
         panic!(
             "scoped registry scenario refused: {:?}; source: {:?}",
             failure.cause::<DocumentGuestEventError>(),
-            failure.cause::<crate::DomSourceDriveError>()
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>()
         );
     }
     result.unwrap();

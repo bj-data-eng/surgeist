@@ -2,7 +2,9 @@
 
 use super::super::interfaces::GuestNodeProjection;
 use super::*;
-use crate::{DomSourceDriveError, DomSourceRuntimeError};
+use crate::{
+    internal::dom_source::DomSourceDriveError, internal::dom_source::DomSourceRuntimeError,
+};
 use surgeist_dom::{
     DomBatch, edit::DomChildListObservationLimits, identity::NodeId, limits::DomResource,
 };

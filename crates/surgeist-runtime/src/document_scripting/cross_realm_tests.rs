@@ -44,13 +44,21 @@ mod whole_text;
 
 use super::*;
 use crate::{
-    DomElementTaskRuntimeLimits, DomEventCallback, DomEventDispatchError, DomEventDispatchLimits,
-    DomEventDispatcher, DomEventHostError, DomEventListenerOptions, DomEventRegistryLimits,
-    DomEventStorageLimits, DomEventType, DomHostedRuntimeLimits, DomHostedTaskProgress,
-    DomSessionLimits, DomShutdownOutcome, DomSourceDriveProgress, DomSourceEventRuntimeError,
-    DomSourceEventRuntimeLimits, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
-    DomSourceExecutionScope, DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
-    DomStyleRuntimeLimits, NativeDomEvent,
+    internal::dom_dialog::DomSourceEventRuntimeError,
+    internal::dom_dialog::DomSourceEventRuntimeLimits,
+    internal::dom_dialog::DomSourceEventServiceLimits,
+    internal::dom_dialog::DomSourceEventServiceProgress, internal::dom_event::DomEventCallback,
+    internal::dom_event::DomEventDispatchError, internal::dom_event::DomEventDispatchLimits,
+    internal::dom_event::DomEventDispatcher, internal::dom_event::DomEventHostError,
+    internal::dom_event::DomEventListenerOptions, internal::dom_event::DomEventRegistryLimits,
+    internal::dom_event::DomEventStorageLimits, internal::dom_event::DomEventType,
+    internal::dom_event::NativeDomEvent, internal::dom_lifecycle::DomHostedRuntimeLimits,
+    internal::dom_lifecycle::DomHostedTaskProgress,
+    internal::dom_lifecycle::DomSourceExecutionScope, internal::dom_source::DomSourceDriveProgress,
+    internal::dom_source::DomSourceRuntimeError, internal::dom_source::DomSourceServices,
+    internal::dom_source::DomSourceUnavailable, internal::dom_style::DomSessionLimits,
+    internal::dom_style::DomShutdownOutcome, internal::dom_style::DomStyleRuntimeLimits,
+    internal::element_tasks::DomElementTaskRuntimeLimits,
 };
 use surgeist_bindings_js::{Root, Value, ValueKind};
 use surgeist_css::source::CssUtf16InputLimits;
@@ -1218,7 +1226,9 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
         host.service_attached_source_event(&permit, &request, bounded)
             .unwrap(),
         DomSourceEventServiceProgress::Retained {
-            dispatch: crate::DomEventDispatchOutcome::Retained(crate::DomEventResource::Callbacks)
+            dispatch: crate::internal::dom_event::DomEventDispatchOutcome::Retained(
+                crate::internal::dom_event::DomEventResource::Callbacks
+            )
         }
     ));
     assert_eq!(observations.borrow().len(), 1);

@@ -59,7 +59,7 @@ fn check_data_time_script(tag: &str, member: &str, attribute: &str, script: &str
         DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
             "{tag}.{member}: guest={:?}; source={:?}",
             failure.cause::<DocumentGuestEventError>(),
-            failure.cause::<crate::DomSourceDriveError>()
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>()
         ),
         _ => panic!("{tag}.{member}: {error:?}"),
     });
@@ -495,9 +495,11 @@ fn data_time_setters_admit_source_outputs_before_publication(
                 panic!("one-short {tag} Source output must refuse before publication: {result:?}");
             };
             assert!(matches!(
-                failure.cause::<crate::DomSourceDriveError>(),
-                Some(crate::DomSourceDriveError::Source(
-                    crate::DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
+                failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                    crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                        DomError::SourceOutputLimit
+                    )
                 ))
             ));
             assert_eq!(after.stamp(), before.stamp());

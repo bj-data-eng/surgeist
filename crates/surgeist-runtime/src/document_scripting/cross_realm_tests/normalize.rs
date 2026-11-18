@@ -1,6 +1,6 @@
 use super::*;
-use crate::DomSourceDriveError;
 use crate::document_scripting::guest::tests::{attach_public_nodes, projected_node_id};
+use crate::internal::dom_source::DomSourceDriveError;
 
 pub(super) fn normalize_keeps_native_text_and_range_identity() {
     let cancel = Arc::new(AtomicBool::new(false));

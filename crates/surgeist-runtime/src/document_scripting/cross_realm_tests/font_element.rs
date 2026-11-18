@@ -432,9 +432,11 @@ fn font_reflections_admit_source_outputs_before_publication() {
                     );
                 };
                 assert!(matches!(
-                    failure.cause::<crate::DomSourceDriveError>(),
-                    Some(crate::DomSourceDriveError::Source(
-                        crate::DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
+                    failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                    Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                        crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                            DomError::SourceOutputLimit
+                        )
                     ))
                 ));
                 assert_eq!(after.stamp(), before.stamp());

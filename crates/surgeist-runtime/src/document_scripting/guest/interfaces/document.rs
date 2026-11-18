@@ -1,7 +1,7 @@
 //! Document and Node bindings for the real attached Window.
 
 use super::*;
-use crate::DomSourceDriveProgress;
+use crate::internal::dom_source::DomSourceDriveProgress;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
 use surgeist_dom::{
     DomBatch,
@@ -68,8 +68,8 @@ fn guest_source_services(
     style_policy: &mut dyn FnMut(
         &surgeist_dom::style::DomStyleSource,
     ) -> Option<surgeist_dom::style::DomStyleInlineCspObservation>,
-) -> crate::DomSourceServices<'_> {
-    crate::DomSourceServices {
+) -> crate::internal::dom_source::DomSourceServices<'_> {
+    crate::internal::dom_source::DomSourceServices {
         meta: None,
         execution_scope: None,
         style_policy,
@@ -80,10 +80,10 @@ fn guest_source_services(
 /// The guest receives the original DOM result. A completed composition's
 /// producer receipts have already published and carry no further authority.
 fn guest_source_terminal(
-    result: crate::DomSourceDriveProgress,
+    result: crate::internal::dom_source::DomSourceDriveProgress,
 ) -> Option<Result<surgeist_dom::source::DomSourceCompletion, surgeist_dom::source::DomSourceFailure>>
 {
-    use crate::DomSourceDriveProgress as Drive;
+    use crate::internal::dom_source::DomSourceDriveProgress as Drive;
     use surgeist_dom::source::DomSourceProgress as Source;
 
     let source = match result {

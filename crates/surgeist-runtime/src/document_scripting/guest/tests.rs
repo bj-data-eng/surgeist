@@ -170,14 +170,15 @@ pub(in crate::document_scripting) fn a_new_heap_cannot_claim_an_existing_executa
     .unwrap();
     let original = host.snapshot().unwrap();
     let mut session = host.stop().into_session().unwrap();
-    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
-        registrations: 8,
-        pending_events: 2,
-        nested_dispatches: 2,
-        storage_bytes: 32_000,
-        work: 10_000,
-    })
-    .unwrap();
+    let mut registry =
+        DomEventDispatcher::new(crate::internal::dom_event::DomEventRegistryLimits {
+            registrations: 8,
+            pending_events: 2,
+            nested_dispatches: 2,
+            storage_bytes: 32_000,
+            work: 10_000,
+        })
+        .unwrap();
     registry.bind(&mut session.dom(), &cancel).unwrap();
     let stamp = session.snapshot().stamp();
     let mut registry = Some(registry);
@@ -250,14 +251,15 @@ pub(in crate::document_scripting) fn only_public_origin_projection_requires_cons
     );
     assert_eq!(public.snapshot().unwrap().stamp(), stamp);
     let mut session = public.stop().into_session().unwrap();
-    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
-        registrations: 8,
-        pending_events: 2,
-        nested_dispatches: 2,
-        storage_bytes: 32_000,
-        work: 10_000,
-    })
-    .unwrap();
+    let mut registry =
+        DomEventDispatcher::new(crate::internal::dom_event::DomEventRegistryLimits {
+            registrations: 8,
+            pending_events: 2,
+            nested_dispatches: 2,
+            storage_bytes: 32_000,
+            work: 10_000,
+        })
+        .unwrap();
     registry.bind(&mut session.dom(), &cancel).unwrap();
     let mut event_only = PreparedDocumentScriptHost::prepare(session, 2_000_000, cancel)
         .unwrap()
@@ -846,7 +848,7 @@ fn prepare_failed_tree_edit(
 }
 
 pub(in crate::document_scripting) fn custom_element_reacts_to_an_inline_joined_failure() {
-    use crate::dom_source::inline_tests::{bind, inline_parser, requests};
+    use crate::internal::dom_source::inline_tests::{bind, inline_parser, requests};
     use surgeist_dom::style::inline::{DomInlineStyleProfile, DomInlineStyleSourceContext};
 
     let mut host = public_node_host(20_000, 200_000);
@@ -903,7 +905,7 @@ pub(in crate::document_scripting) fn custom_element_reacts_to_an_inline_joined_f
     );
     host.run_guest_joined_tree_edit_fixture(
         &permit,
-        crate::DomSourceInlineStyleEdit::new(edit, context, requests()),
+        crate::internal::dom_source::DomSourceInlineStyleEdit::new(edit, context, requests()),
     )
     .unwrap();
     host.in_document(&permit, |scope| {
@@ -1068,14 +1070,15 @@ pub(in crate::document_scripting) fn registry_upgrade_attempts_adopted_candidate
 pub(in crate::document_scripting) fn registry_upgrade_retains_unfinished_candidates_on_refusal() {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
-    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
-        registrations: 64,
-        pending_events: 8,
-        nested_dispatches: 4,
-        storage_bytes: 32_000,
-        work: 100_000,
-    })
-    .unwrap();
+    let mut registry =
+        DomEventDispatcher::new(crate::internal::dom_event::DomEventRegistryLimits {
+            registrations: 64,
+            pending_events: 8,
+            nested_dispatches: 4,
+            storage_bytes: 32_000,
+            work: 100_000,
+        })
+        .unwrap();
     registry.bind(&mut session.dom(), &cancellation).unwrap();
     let mut host = attach_public_nodes_with_registry_and_reports(
         session,
@@ -1114,14 +1117,15 @@ pub(in crate::document_scripting) fn registry_upgrade_retains_unfinished_candida
 pub(in crate::document_scripting) fn insertion_upgrade_keeps_only_unentered_callbacks_on_refusal() {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
-    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
-        registrations: 64,
-        pending_events: 8,
-        nested_dispatches: 4,
-        storage_bytes: 32_000,
-        work: 100_000,
-    })
-    .unwrap();
+    let mut registry =
+        DomEventDispatcher::new(crate::internal::dom_event::DomEventRegistryLimits {
+            registrations: 64,
+            pending_events: 8,
+            nested_dispatches: 4,
+            storage_bytes: 32_000,
+            work: 100_000,
+        })
+        .unwrap();
     registry.bind(&mut session.dom(), &cancellation).unwrap();
     let mut host = attach_public_nodes_with_registry_and_reports(
         session,
@@ -1294,9 +1298,11 @@ pub(in crate::document_scripting) fn registry_definition_preserves_guest_identit
         failure.cause::<DocumentGuestEventError>(),
         Some(DocumentGuestEventError::Document(
             DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
-                crate::DomHostedRuntimeError::Dom(surgeist_dom::hosted::DomHostedError::Dom(
-                    DomError::SourceWorkLimit { limit: 0 }
-                ))
+                crate::internal::dom_lifecycle::DomHostedRuntimeError::Dom(
+                    surgeist_dom::hosted::DomHostedError::Dom(DomError::SourceWorkLimit {
+                        limit: 0
+                    })
+                )
             ))
         ))
     ));
@@ -1674,14 +1680,15 @@ fn attach_public_nodes_with_reports(
     source_edits: DomSourceLimits,
     pending_exception_reports: usize,
 ) -> DocumentScriptHost {
-    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
-        registrations: 8,
-        pending_events: 2,
-        nested_dispatches: 2,
-        storage_bytes: 32_000,
-        work: 10_000,
-    })
-    .unwrap();
+    let mut registry =
+        DomEventDispatcher::new(crate::internal::dom_event::DomEventRegistryLimits {
+            registrations: 8,
+            pending_events: 2,
+            nested_dispatches: 2,
+            storage_bytes: 32_000,
+            work: 10_000,
+        })
+        .unwrap();
     registry.bind(&mut session.dom(), &cancellation).unwrap();
     let mut registry = Some(registry);
     enable_public_nodes(
@@ -1936,7 +1943,7 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
             .unwrap();
         assert!((0..256).any(|_| matches!(
             hosted.run_next(dom, retirement.traversable(), &cancellation).unwrap(),
-            crate::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
+            crate::internal::dom_lifecycle::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
         )));
         hosted.destroy_host(dom, origin.host(), &cancellation).unwrap();
         let mut detach = DomBatch::new();
@@ -2724,9 +2731,11 @@ pub(in crate::document_scripting) fn character_data_source_refusal_preserves_nat
         panic!("the original canonical Source limit must refuse the edit");
     };
     assert!(matches!(
-        failure.cause::<crate::DomSourceDriveError>(),
-        Some(crate::DomSourceDriveError::Source(
-            crate::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit { limit: 0 })
+        failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+        Some(crate::internal::dom_source::DomSourceDriveError::Source(
+            crate::internal::dom_source::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit {
+                limit: 0
+            })
         ))
     ));
     let after = host.snapshot().unwrap();
@@ -2738,7 +2747,7 @@ pub(in crate::document_scripting) fn character_data_source_refusal_preserves_nat
     host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
         .unwrap();
 }
-use crate::DomEventRegistryLimits;
+use crate::internal::dom_event::DomEventRegistryLimits;
 use surgeist_bindings_js::{ExceptionPhase, Primitive, PropertyKey};
 
 fn units(text: &str) -> Vec<u16> {
@@ -3683,7 +3692,9 @@ pub(in crate::document_scripting) fn nested_guest_reports_keep_observation_order
             assert!(matches!(
                 failure.cause::<DocumentGuestEventError>(),
                 Some(DocumentGuestEventError::Dispatch(
-                    DomEventDispatchError::Admission(crate::DomEventResource::NestedDispatches),
+                    DomEventDispatchError::Admission(
+                        crate::internal::dom_event::DomEventResource::NestedDispatches
+                    ),
                 ))
             ));
             assert!(inner.native().target().is_none());
@@ -3801,7 +3812,7 @@ pub(in crate::document_scripting) fn full_guest_report_bank_preserves_original_r
                     DocumentScriptNativeError::StorageLimit,
                 ))) => Refusal::ReportStorage,
                 Some(DocumentGuestEventError::Dispatch(DomEventDispatchError::Admission(
-                    crate::DomEventResource::Work,
+                    crate::internal::dom_event::DomEventResource::Work,
                 ))) => Refusal::RegistryWork,
                 cause => panic!("unexpected original dispatch refusal: {cause:?}"),
             })
@@ -3832,7 +3843,7 @@ pub(in crate::document_scripting) fn full_guest_report_bank_preserves_original_r
         let probe_admitted = match probe {
             Ok(_) => true,
             Err(DomEventConstructionError::Event(DomEventDispatchError::Admission(
-                crate::DomEventResource::Work,
+                crate::internal::dom_event::DomEventResource::Work,
             ))) => false,
             Err(other) => panic!("unexpected native work-probe refusal: {other:?}"),
         };

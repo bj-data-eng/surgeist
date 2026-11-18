@@ -1,7 +1,10 @@
 //! Web IDL CharacterData reads and the original canonical Source edit.
 
 use super::*;
-use crate::{DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError};
+use crate::{
+    internal::dom_source::DomSourceDriveError, internal::dom_source::DomSourceDriveProgress,
+    internal::dom_source::DomSourceRuntimeError,
+};
 use surgeist_bindings_js::conversion::{
     IntegerType,
     declarations::{

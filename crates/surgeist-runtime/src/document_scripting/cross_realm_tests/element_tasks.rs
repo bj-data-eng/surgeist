@@ -2,7 +2,9 @@
 
 use super::*;
 use crate::{
-    DomElementTask, DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskRuntime,
+    internal::element_tasks::DomElementTask, internal::element_tasks::DomElementTaskProgress,
+    internal::element_tasks::DomElementTaskRunLimits,
+    internal::element_tasks::DomElementTaskRuntime,
 };
 use surgeist_dom::task::DomElementTaskSourceKind;
 
@@ -115,7 +117,7 @@ fn attached_registry_runs_the_original_queued_details_toggle() {
             progress,
             DomElementTaskProgress::Retained {
                 task,
-                dispatch: crate::DomEventDispatchOutcome::Retained(crate::DomEventResource::Callbacks),
+                dispatch: crate::internal::dom_event::DomEventDispatchOutcome::Retained(crate::internal::dom_event::DomEventResource::Callbacks),
                 displaced_owner: None,
             } if task.id() == original.id()
         ),
@@ -382,7 +384,7 @@ fn attached_element_task_refuses_a_foreign_window_before_dispatch() {
     assert!(matches!(
         result,
         Err(DocumentScriptEventError::Task(
-            crate::DomElementTaskRuntimeError::Binding
+            crate::internal::element_tasks::DomElementTaskRuntimeError::Binding
         ))
     ));
     assert_eq!(

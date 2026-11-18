@@ -60,7 +60,7 @@ fn check_li_script(member: &str, script: &str) {
         DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
             "li.{member}: guest={:?}; source={:?}",
             failure.cause::<DocumentGuestEventError>(),
-            failure.cause::<crate::DomSourceDriveError>()
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>()
         ),
         _ => panic!("li.{member}: {error:?}"),
     });
@@ -549,9 +549,11 @@ fn li_setters_admit_original_source_outputs(member: &str) {
                 panic!("one-short LI {member} output: {result:?}")
             };
             assert!(matches!(
-                failure.cause::<crate::DomSourceDriveError>(),
-                Some(crate::DomSourceDriveError::Source(
-                    crate::DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
+                failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                    crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                        DomError::SourceOutputLimit
+                    )
                 ))
             ));
             assert_eq!(after.stamp(), before.stamp());
@@ -596,9 +598,11 @@ fn li_setters_admit_original_source_outputs(member: &str) {
         panic!("LI {member} must consume Source work: {result:?}")
     };
     assert!(matches!(
-        failure.cause::<crate::DomSourceDriveError>(),
-        Some(crate::DomSourceDriveError::Source(
-            crate::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit { limit: 0 })
+        failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+        Some(crate::internal::dom_source::DomSourceDriveError::Source(
+            crate::internal::dom_source::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit {
+                limit: 0
+            })
         ))
     ));
     assert_eq!(host.snapshot().unwrap().stamp(), before);

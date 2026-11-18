@@ -13,7 +13,7 @@ use surgeist_dom::hosted::{DomHostedError, DomHostedRuntimeRetention};
 use surgeist_html_semantics::HtmlScriptingStatus;
 
 use super::{DocumentScriptNativeError, DocumentScriptPermit, NativeOwner, refuse};
-use crate::{DomHostedRuntimeError, DomSession};
+use crate::{internal::dom_lifecycle::DomHostedRuntimeError, internal::dom_style::DomSession};
 
 const fn ascii<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     let mut units = [0; N];

@@ -21,7 +21,7 @@ wiring and facade composition.
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
 | Public front door and exported surface | [src/lib.rs](src/lib.rs) and its reexports |
 | Behavior and domain boundary | [README.md](README.md) and implementation under [src/](src/) |
-| Focused verification | [src/tests.rs](src/tests.rs), test modules in [src/resource.rs](src/resource.rs) and [src/coord.rs](src/coord.rs), and private fixtures in [src/testing.rs](src/testing.rs) |
+| Focused verification | [src/tests.rs](src/tests.rs), test modules in [src/internal/resource.rs](src/internal/resource.rs) and [src/internal/coord.rs](src/internal/coord.rs), and private fixtures in [src/testing.rs](src/testing.rs) |
 
 [README.md](README.md) links usage, contract and attribution documentation.
 
@@ -30,7 +30,7 @@ wiring and facade composition.
 Select affected checks under the root process/resource policy; commands below
 run from this crate directory.
 
-Focused evidence is in `src/tests.rs`, `src/resource.rs`, and `src/coord.rs`;
+Focused evidence is in `src/tests.rs`, `src/internal/resource.rs`, and `src/internal/coord.rs`;
 private fixtures live in `src/testing.rs`.
 
 ```sh

@@ -1,7 +1,7 @@
 //! ToggleEvent construction and observation in the attached Window.
 
 use super::*;
-use crate::dom_event::AuthoredToggleInit;
+use crate::internal::dom_event::AuthoredToggleInit;
 use document::{GuestNode, GuestNodeProjection};
 use surgeist_bindings_js::conversion::declarations::toggle_event_constructor_0_type;
 

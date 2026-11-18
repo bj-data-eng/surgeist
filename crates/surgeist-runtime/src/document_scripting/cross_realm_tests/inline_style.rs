@@ -2,7 +2,7 @@ use super::*;
 use crate::document_scripting::guest::tests::{
     attach_public_nodes, expose_public_node_for_source_test,
 };
-use crate::{DomSourceDriveError, DomStyleRuntimeError};
+use crate::{internal::dom_source::DomSourceDriveError, internal::dom_style::DomStyleRuntimeError};
 use std::sync::atomic::Ordering;
 use surgeist_cssom::CssomStore;
 use surgeist_dom::style::DomStyleCssomRoot;
@@ -354,7 +354,7 @@ fn check_parked_style_edit(with_reaction: bool, live_resume: bool) {
         stopped.settle_pending_style_edit(parked.operation(), SOURCE).unwrap().unwrap(),
         DomSourceDriveProgress::Pending {
             request: DomSourceRequest::Style(request),
-            reason: DomSourceUnavailable::Style(crate::DomStyleUnavailable::RootList),
+            reason: DomSourceUnavailable::Style(crate::internal::dom_style::DomStyleUnavailable::RootList),
         } if request.source().operation() == parked.operation()
     ));
     stopped
@@ -496,7 +496,7 @@ pub(super) fn guest_style_preserves_foreign_and_unavailable_policy() {
                     retried,
                     Ok(DomSourceDriveProgress::Pending {
                     request: DomSourceRequest::Style(ref request),
-                        reason: DomSourceUnavailable::Style(crate::DomStyleUnavailable::InlinePolicy),
+                        reason: DomSourceUnavailable::Style(crate::internal::dom_style::DomStyleUnavailable::InlinePolicy),
                     }) if request.source().operation() == original.operation()
                 ),
                 "{retried:?}"
@@ -618,7 +618,9 @@ pub(super) fn guest_style_reports_to_current_window_for_another_document() {
             .unwrap()
             .unwrap(),
         DomSourceDriveProgress::Pending {
-            reason: DomSourceUnavailable::Style(crate::DomStyleUnavailable::ViolationTarget),
+            reason: DomSourceUnavailable::Style(
+                crate::internal::dom_style::DomStyleUnavailable::ViolationTarget
+            ),
             ..
         }
     ));

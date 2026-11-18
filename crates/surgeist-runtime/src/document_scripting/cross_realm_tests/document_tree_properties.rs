@@ -141,7 +141,7 @@ fn check_document_tree_script(label: &str, script: &str) {
         DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
             "document tree {label}: guest={:?}; source={:?}",
             failure.cause::<DocumentGuestEventError>(),
-            failure.cause::<crate::DomSourceDriveError>()
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>()
         ),
         _ => panic!("document tree {label}: {error:?}"),
     });
@@ -980,9 +980,11 @@ fn document_tree_source_output_and_work_admission_precede_publication() {
                     panic!("one-short Document {member} output: {result:?}");
                 };
                 assert!(matches!(
-                    failure.cause::<crate::DomSourceDriveError>(),
-                    Some(crate::DomSourceDriveError::Source(
-                        crate::DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
+                    failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                    Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                        crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                            DomError::SourceOutputLimit
+                        )
                     ))
                 ));
                 assert_eq!(after.stamp(), before.stamp());
@@ -1048,9 +1050,11 @@ fn document_tree_source_output_and_work_admission_precede_publication() {
                     panic!("one-short Document body replace={replacing}: {result:?}");
                 };
                 assert!(matches!(
-                    failure.cause::<crate::DomSourceDriveError>(),
-                    Some(crate::DomSourceDriveError::Source(
-                        crate::DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
+                    failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                    Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                        crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                            DomError::SourceOutputLimit
+                        )
                     ))
                 ));
                 assert_eq!(after.stamp(), before.stamp());
@@ -1124,9 +1128,11 @@ fn document_tree_source_output_and_work_admission_precede_publication() {
             panic!("Document {member} must retain original Source work refusal: {result:?}");
         };
         assert!(matches!(
-            failure.cause::<crate::DomSourceDriveError>(),
-            Some(crate::DomSourceDriveError::Source(
-                crate::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit { limit: 0 })
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+            Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                    DomError::SourceWorkLimit { limit: 0 }
+                )
             ))
         ));
         assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());

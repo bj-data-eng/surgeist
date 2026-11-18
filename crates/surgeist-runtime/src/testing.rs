@@ -6,10 +6,14 @@ use std::{
     time::Duration,
 };
 
-use super::{
-    AppInput, AppProxy, InputProvenance, ProxyInput, QueuePolicy, Reducer, ReducerCommit,
-    ReducerResult, Runtime, RuntimeBudget, RuntimeDrainReport, ServiceInput, TaskInput,
-    TaskIntentAttemptId, TaskIntentId, UiInput, WakeBridge, WakeError,
+use crate::{
+    internal::input::AppInput, internal::provenance::InputProvenance, internal::proxy::AppProxy,
+    internal::proxy::ProxyInput, internal::proxy::QueuePolicy, internal::proxy::WakeBridge,
+    internal::proxy::WakeError, internal::reducer::Reducer, internal::reducer::ReducerCommit,
+    internal::reducer::ReducerResult, internal::runtime::Runtime, internal::runtime::RuntimeBudget,
+    internal::runtime::RuntimeDrainReport, internal::runtime::ServiceInput,
+    internal::runtime::TaskInput, internal::runtime::UiInput, internal::task::TaskIntentAttemptId,
+    internal::task::TaskIntentId,
 };
 
 #[derive(Clone, Debug, Default)]

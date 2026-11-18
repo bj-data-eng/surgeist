@@ -367,7 +367,7 @@ pub(in crate::document_scripting) fn scoped_registry_outlives_its_original_navig
         let retirement = hosted.destroy_top_level(dom, origin.navigable(), &cancel).unwrap();
         assert!((0..256).any(|_| matches!(
             hosted.run_next(dom, retirement.traversable(), &cancel).unwrap(),
-            crate::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
+            crate::internal::dom_lifecycle::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
         )));
         hosted.destroy_host(dom, origin.host(), &cancel).unwrap();
     }).unwrap();
@@ -529,7 +529,7 @@ fn retired_origin_with_moved_element() -> RegisteredOrigin {
             .unwrap();
         assert!((0..256).any(|_| matches!(
             hosted.run_next(dom, retirement.traversable(), &cancellation).unwrap(),
-            crate::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
+            crate::internal::dom_lifecycle::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
         )));
         hosted.destroy_host(dom, origin.host(), &cancellation).unwrap();
 

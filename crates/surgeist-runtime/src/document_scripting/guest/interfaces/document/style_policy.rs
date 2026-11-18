@@ -4,8 +4,9 @@ use crate::document_scripting::guest::reports::{
 };
 use crate::trusted_types_csp::{ReportError, ViolationReport, prepare_style_violation};
 use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceUnavailable, DomStyleRuntimeError,
-    DomStyleUnavailable,
+    internal::dom_source::DomSourceDriveError, internal::dom_source::DomSourceDriveProgress,
+    internal::dom_source::DomSourceUnavailable, internal::dom_style::DomStyleRuntimeError,
+    internal::dom_style::DomStyleUnavailable,
 };
 use surgeist_dom::{
     source::{DomSourceLimits, DomSourceRequest},

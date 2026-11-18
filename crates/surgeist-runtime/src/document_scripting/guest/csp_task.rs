@@ -1,7 +1,7 @@
 //! Deferred delivery for the attached Window's native CSP violation queue.
 
 use super::*;
-use crate::dom_lifecycle::{CspTaskCustody, EventCreation};
+use crate::internal::dom_lifecycle::{CspTaskCustody, EventCreation};
 
 /// Progress of one attached Window's deferred CSP violation task.
 #[derive(Debug)]
@@ -78,7 +78,7 @@ impl DocumentScriptHost {
             return Ok(DocumentCspViolationProgress::Empty);
         };
 
-        let mut usage = crate::dom_event::DispatchUsage::default();
+        let mut usage = crate::internal::dom_event::DispatchUsage::default();
         loop {
             let progress = self
                 .with_native(|dom, _, _| {

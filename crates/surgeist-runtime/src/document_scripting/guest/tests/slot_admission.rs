@@ -78,14 +78,14 @@ fn fixture_with_policy(source_work: u64, manual: bool, policy: bool) -> Fixture 
             .unwrap();
         let head = snapshot.node(html).unwrap().children()[0];
         let full = public_node_source_limits(2_000_000, 64);
-        let mut services = crate::DomSourceServices {
+        let mut services = crate::internal::dom_source::DomSourceServices {
             meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
         };
         let mut source = session.source_execution();
-        let crate::DomSourceDriveProgress::Pending {
+        let crate::internal::dom_source::DomSourceDriveProgress::Pending {
             request: surgeist_dom::source::DomSourceRequest::MetaCsp(request),
             ..
         } = source
@@ -113,7 +113,7 @@ fn fixture_with_policy(source_work: u64, manual: bool, policy: bool) -> Fixture 
                     &cancel
                 )
                 .unwrap(),
-            crate::DomSourceDriveProgress::Complete(_)
+            crate::internal::dom_source::DomSourceDriveProgress::Complete(_)
         ));
     }
     let mut host = attach_public_nodes(session, target, cancel.clone(), 200_000, source_work);
@@ -241,9 +241,11 @@ pub(in crate::document_scripting) fn slot_queries_and_assign_preserve_native_ref
         panic!("Slot assignment must consume the original Source allowance: {result:?}");
     };
     assert!(matches!(
-        failure.cause::<crate::DomSourceDriveError>(),
-        Some(crate::DomSourceDriveError::Source(
-            crate::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit { limit: 0 })
+        failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+        Some(crate::internal::dom_source::DomSourceDriveError::Source(
+            crate::internal::dom_source::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit {
+                limit: 0
+            })
         ))
     ));
     let after = host.snapshot().unwrap();

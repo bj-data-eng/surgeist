@@ -60,7 +60,7 @@ pub(super) fn meta_reflections_read_and_mutate_the_live_native_element() {
         projected_node_id(scope, &meta)
     }).unwrap_or_else(|error| match &error {
         DocumentScriptError::Script(Error::HostFailure(failure)) => {
-            panic!("reflected meta setup: {:?}, {:?}", failure.cause::<DocumentGuestEventError>(), failure.cause::<crate::DomSourceDriveError>())
+            panic!("reflected meta setup: {:?}, {:?}", failure.cause::<DocumentGuestEventError>(), failure.cause::<crate::internal::dom_source::DomSourceDriveError>())
         }
         _ => panic!("reflected meta setup: {error:?}"),
     });

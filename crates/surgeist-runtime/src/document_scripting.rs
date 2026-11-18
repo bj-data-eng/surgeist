@@ -26,8 +26,10 @@ use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
 
 use crate::{
-    DomEventDom, DomHostedRuntimeError, DomHostedTopLevel, DomSession, DomSourceRuntime,
-    DomSourceRuntimeError, HostedRuntime,
+    internal::dom_event::DomEventDom, internal::dom_lifecycle::DomHostedRuntimeError,
+    internal::dom_lifecycle::DomHostedTopLevel, internal::dom_lifecycle::HostedRuntime,
+    internal::dom_source::DomSourceRuntime, internal::dom_source::DomSourceRuntimeError,
+    internal::dom_style::DomSession,
 };
 
 pub(crate) mod guest;
@@ -228,7 +230,8 @@ impl From<DocumentScriptNativeError> for DocumentScriptError {
 }
 
 type FailureSlot = HostFailureSlot<DocumentScriptNativeError, DomHostedRuntimeRetention>;
-type SourceFailureSlot = HostFailureSlot<crate::DomSourceDriveError, DomHostedRuntimeRetention>;
+type SourceFailureSlot =
+    HostFailureSlot<crate::internal::dom_source::DomSourceDriveError, DomHostedRuntimeRetention>;
 
 struct Attachment {
     target: DomHostedTopLevel,
