@@ -12,7 +12,7 @@
 //! smallest value of that limit at which the call still succeeds, found once
 //! outside the timed region by doubling and bisection, the way the
 //! characterization adapter finds charged work. A dimension that no public limit
-//! reaches prints `-`. The parse, serialization and normalization cases "with a host" run the
+//! reaches prints `-`. The parse, serialization, normalization and colour cases "with a host" run the
 //! accounted front against a host operation with no caps; their volume is what
 //! one call charges to that operation. Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts`.
@@ -964,6 +964,27 @@ fn colour_cases(cases: &mut Vec<Case>) {
                 usize::from(matches!(result.outcome(), CssColorOrdinaryOutcome::Used(_)))
             },
         ));
+        if kind == "ordinary" {
+            let (_, host) = bench_host(ProfileMode::Off);
+            cases.push(Case::new(
+                format!("parse_used_color with a host, {kind}: {text}"),
+                Some(text.len()),
+                vec![("input units", Some(text.len()))],
+                move || {
+                    let result = CssColorInput::Utf8(bytes)
+                        .accounted(&host)
+                        .parse_used_color(
+                            CssColorGrammarRequest::WholeColor,
+                            facts,
+                            facts.identity(),
+                            black_box(wide),
+                        )
+                        .expect("a host without caps admits the charge")
+                        .expect("within limits");
+                    usize::from(matches!(result.outcome(), CssColorOrdinaryOutcome::Used(_)))
+                },
+            ));
+        }
 
         // The authored colour of `color: <text>`.
         let report: &'static CssParseReport<CssDeclarationList> =
@@ -1031,6 +1052,26 @@ fn colour_cases(cases: &mut Vec<Case>) {
                 ))
             },
         ));
+        if kind == "ordinary" {
+            let (_, host) = bench_host(ProfileMode::Off);
+            let value = color.value();
+            cases.push(Case::new(
+                format!("CssColor::resolve with a host, {kind}: {text}"),
+                Some(text.len()),
+                Vec::new(),
+                move || {
+                    let result = value
+                        .accounted(&host)
+                        .resolve(facts, facts.identity(), black_box(wide))
+                        .expect("a host without caps admits the charge")
+                        .expect("within limits");
+                    usize::from(matches!(
+                        result.outcome(),
+                        surgeist_css::color::CssAuthoredColorOutcome::Used(_)
+                    ))
+                },
+            ));
+        }
     }
 }
 
