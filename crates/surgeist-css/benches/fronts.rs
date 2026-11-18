@@ -12,9 +12,9 @@
 //! smallest value of that limit at which the call still succeeds, found once
 //! outside the timed region by doubling and bisection, the way the
 //! characterization adapter finds charged work. A dimension that no public limit
-//! reaches prints `-`. The parse cases "with a host" run the accounted front
-//! against a host operation with no caps; their volume is what one call charges
-//! to that operation. Run with
+//! reaches prints `-`. The parse and serialization cases "with a host" run the
+//! accounted front against a host operation with no caps; their volume is what
+//! one call charges to that operation. Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts`.
 
 use std::hint::black_box;
@@ -450,6 +450,23 @@ fn bench_host(mode: ProfileMode) -> (CssLedger, CssHostScope) {
     (operation, host)
 }
 
+/// What one serialization call charges to a fresh host operation.
+fn charged_serialization(
+    serialize: impl FnOnce(&CssHostScope),
+) -> Vec<(&'static str, Option<usize>)> {
+    let (ledger, host) = bench_host(ProfileMode::Off);
+    serialize(&host);
+    let usage = ledger
+        .usage(ledger.root())
+        .expect("the root of the bench operation");
+    let read = |dimension| usize::try_from(usage.work(dimension)).ok();
+    vec![
+        ("input nodes", read(CssWork::SerializedInputNode)),
+        ("projection nodes", read(CssWork::SerializedProjectionNode)),
+        ("output bytes", read(CssWork::SerializedByte)),
+    ]
+}
+
 /// What one call of `parse` charges to a fresh host operation.
 fn charged_volume(parse: impl FnOnce(&CssHostScope)) -> Vec<(&'static str, Option<usize>)> {
     let (ledger, host) = bench_host(ProfileMode::Off);
@@ -715,6 +732,55 @@ fn serialization_cases(cases: &mut Vec<Case>) {
             black_box(text).len()
         },
     ));
+
+    // The same sheet and rule graph through a host handle.
+    let counts = charged_serialization(|host| {
+        let _ = sheet.syntax().accounted(host).serialize_cssom(wide);
+    });
+    let (_, host) = bench_host(ProfileMode::Off);
+    cases.push(Case::new(
+        "CssSheet::serialize_cssom with a host, 256 KiB synthetic sheet",
+        Some(source.len()),
+        counts,
+        move || {
+            let text = black_box(sheet.syntax())
+                .accounted(&host)
+                .serialize_cssom(wide)
+                .expect("a host without caps admits the charge")
+                .expect("serialized");
+            black_box(text).len()
+        },
+    ));
+    for (name, mode) in [
+        (
+            "CssRuleGraphInput::from_rule(..).serialize_specified with a host, @media rule",
+            ProfileMode::Off,
+        ),
+        (
+            "CssRuleGraphInput::from_rule(..).serialize_specified with a host and a timed summary, @media rule",
+            ProfileMode::Summary { timing: true },
+        ),
+    ] {
+        let counts = charged_serialization(|host| {
+            let _ = CssRuleGraphInput::from_rule(rule)
+                .accounted(host)
+                .serialize_specified(graph_limits(wide));
+        });
+        let (_, host) = bench_host(mode);
+        cases.push(Case::new(
+            name,
+            Some(rule_source.len()),
+            counts,
+            move || {
+                let text = CssRuleGraphInput::from_rule(black_box(rule))
+                    .accounted(&host)
+                    .serialize_specified(graph_limits(wide))
+                    .expect("a host without caps admits the charge")
+                    .expect("serialized");
+                black_box(text).len()
+            },
+        ));
+    }
 }
 
 fn normalize_cases(cases: &mut Vec<Case>) {
