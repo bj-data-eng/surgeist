@@ -76,7 +76,7 @@ pub enum DocumentScriptNativeError {
     /// obligation.
     SourcePending,
     /// The pending Source operation, event, retained frame or delegated node the
-    /// operation needs is missing or does not match this hook.
+    /// operation needs is missing, unfinished or does not match this hook.
     SourceAccess,
     /// The creation Global of a node or registry is unavailable in this
     /// attachment.
@@ -121,7 +121,7 @@ impl fmt::Display for DocumentScriptNativeError {
                 "a native Source or hosted operation has an unfinished synchronous obligation"
             }
             Self::SourceAccess => {
-                "the pending Source operation, event, retained frame or delegated node the operation needs is missing or does not match this hook"
+                "the pending Source operation, event, retained frame or delegated node the operation needs is missing, unfinished or does not match this hook"
             }
             Self::CreationGlobalUnavailable => {
                 "the creation Global is unavailable in this attachment"

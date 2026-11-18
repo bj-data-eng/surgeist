@@ -75,7 +75,8 @@ impl std::error::Error for DomEventTimestampUnavailable {
 /// Event and EventTarget construction preserves the actual hosted or storage refusal.
 #[derive(Debug)]
 pub enum DomEventConstructionError {
-    /// Actual creation Global, Source owner or native clock refused observation.
+    /// The hosted runtime, creation Global, Source owner or native clock refused
+    /// the Event or EventTarget creation.
     Hosted(crate::DomHostedRuntimeError),
     /// Event or target storage, or exact type construction was refused.
     Event(DomEventDispatchError),
@@ -88,7 +89,7 @@ impl std::fmt::Display for DomEventConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Hosted(_) => f.write_str(
-                "the creation Global, Source owner or native clock refused the Event observation",
+                "the hosted runtime, creation Global, Source owner or native clock refused the Event or EventTarget creation",
             ),
             Self::Event(_) => {
                 f.write_str("the Event or EventTarget storage or type construction was refused")
