@@ -1146,13 +1146,24 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 ))))
             }
             ControlFlow::Continue(child) => {
-                pending
-                    .grids
-                    .try_reserve(1)
-                    .map_err(|_| reserve_error(node))?;
+                // The capture stays open for the computation to close; a
+                // failure to schedule it closes the capture here.
+                if pending.grids.try_reserve(1).is_err() {
+                    self.end_effect_capture(effects_start);
+                    return Err(reserve_error(node).into());
+                }
                 let mut pending_child = None;
-                let request =
-                    Self::schedule_grid_request(child, &mut pending_child, &mut pending.order)?;
+                let request = match Self::schedule_grid_request(
+                    child,
+                    &mut pending_child,
+                    &mut pending.order,
+                ) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        self.end_effect_capture(effects_start);
+                        return Err(error);
+                    }
+                };
                 pending.grids.push(GridRequest {
                     computation,
                     completion: GridCompletion::Context { effects_start },
