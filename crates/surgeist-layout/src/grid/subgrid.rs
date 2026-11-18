@@ -2729,8 +2729,8 @@ fn prepare_wrapper_resolution<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    #[cfg(test)]
-    super::subgrid_work::observe(super::subgrid_work::Observation::WrapperPreparation);
+    tree.meter()
+        .charge(crate::accounting::LayoutWork::SubgridWrapperPreparation, 1);
     let WrapperResolutionIdentity {
         node,
         axis: queried_axis,

@@ -1299,10 +1299,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
                 tree.replay_effects(effects)?;
                 continue;
             }
-            #[cfg(test)]
-            crate::grid::subgrid_work::observe(
-                crate::grid::subgrid_work::Observation::BaselineRefresh,
-            );
+            tree.meter()
+                .charge(crate::accounting::LayoutWork::BaselineRefresh, 1);
             self.in_flight = Some(RefreshInFlight {
                 index,
                 sizing,

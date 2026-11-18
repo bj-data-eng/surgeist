@@ -10,6 +10,7 @@ use super::{
     RunMode, Scalar, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf,
     TrackComponentOf, TrackRepeat, TrackSizingOf, Traverse,
 };
+use crate::accounting::LayoutWork;
 use crate::engine::containment::{
     compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
 };
@@ -337,7 +338,7 @@ where
 /// the container needs one, precedes the real run, and every run starts from
 /// the initial scrollbar state with its parent context rebuilt per pass.
 pub(crate) fn begin_grid_context_computation<'input, Tree, M>(
-    _tree: &mut Tree,
+    tree: &mut Tree,
     request: GridContextRequest<'input, Tree::Node, Tree::Scalar>,
 ) -> GridContextStart<'input, Tree::Node, Tree::Scalar, M>
 where
@@ -352,8 +353,8 @@ where
         stage,
         parent_context,
     } = request;
-    #[cfg(test)]
-    subgrid_work::observe(subgrid_work::Observation::ContextualGrid);
+    tree.meter()
+        .charge(LayoutWork::ContextualGridComputation, 1);
     let contextual_minimum =
         standalone_intrinsic_minimum_phases(&child.projection(), child.inherited_axes());
     let intrinsic_minimum = Size::new(
@@ -362,8 +363,7 @@ where
     );
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let (run_input, boundary, entry) = if intrinsic_axes.width || intrinsic_axes.height {
-        #[cfg(test)]
-        subgrid_work::observe(subgrid_work::Observation::MinimumProbe);
+        tree.meter().charge(LayoutWork::StandaloneMinimumProbe, 1);
         let available = Size::new(
             intrinsic_minimum
                 .width
@@ -1200,8 +1200,8 @@ fn compute_grid_with_context_source<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    #[cfg(test)]
-    subgrid_work::observe(subgrid_work::Observation::ContextualGrid);
+    tree.meter()
+        .charge(LayoutWork::ContextualGridComputation, 1);
     let style_input = container;
     let inherited_axes = container.inherited_axes();
     let contextual_minimum =
@@ -1256,8 +1256,7 @@ where
         .with_settled_auto_scrollbars(input.settled_auto_scrollbars())
         .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass())
         .with_baseline_demand_from(input);
-        #[cfg(test)]
-        subgrid_work::observe(subgrid_work::Observation::MinimumProbe);
+        tree.meter().charge(LayoutWork::StandaloneMinimumProbe, 1);
         let measured = compute_grid_with_scrollbar_settlement(
             tree,
             node,

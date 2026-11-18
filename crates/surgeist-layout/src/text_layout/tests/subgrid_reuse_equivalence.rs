@@ -7,7 +7,8 @@
 //! layout, in which a staged effect of the first pass must not outlive its pass.
 
 use super::*;
-use crate::grid::subgrid_work::{SubgridWork, take_subgrid_work, with_subgrid_reuse_disabled};
+use crate::accounting::{SubgridWork, TestHost};
+use crate::grid::subgrid_work::with_subgrid_reuse_disabled;
 use crate::{
     ChildOrderCompleteness, GeneratedBoxRef, GridPlacement, InlineChildOrderInput,
     NativeInlineBoxFamilyInput, SubgridTrack, TextGroupAlign, TrackComponentOf,
@@ -86,7 +87,12 @@ fn px<S: LayoutScalar>(width: f64, height: f64) -> Size<PreferredSizeOf<S>> {
 // subgrids in both axes, each the only item of its parent and spanning both tracks of each axis.
 // The innermost holds two Blocks, `depth + 1` in the first track of each axis and `depth + 2` in
 // the second. For text, `depth + 3` is the text child of the first Block.
-fn lay_out<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String {
+fn lay_out<S: LayoutScalar>(
+    depth: u32,
+    content: Content,
+    width: f64,
+    host: Option<&TestHost>,
+) -> String {
     let text_node = depth + 3;
     let has_text = matches!(
         content,
@@ -175,7 +181,7 @@ fn lay_out<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String 
         Content::Formatter => native_formatters(&[depth + 1, depth + 2]),
         _ => crate::WrappingInput::default(),
     };
-    complete_flow(&tree, bindings, wrapping, width)
+    complete_flow(&tree, bindings, wrapping, width, host)
 }
 
 // Node 0 is a Grid with two automatic columns and an automatic row. Nodes 1..=depth are Grid
@@ -183,9 +189,14 @@ fn lay_out<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String 
 // in the first row and a Block `depth + level` in the second, so each level sizes its own rows
 // from content. The second Block holds text, a group alignment, or neither (a fixed size).
 // For text, `2 * depth + level` is the text child of the Block of that level.
-fn lay_out_levels<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String {
+fn lay_out_levels<S: LayoutScalar>(
+    depth: u32,
+    content: Content,
+    width: f64,
+    host: Option<&TestHost>,
+) -> String {
     let (tree, bindings, wrapping) = levels_document::<S>(depth, content, width);
-    complete_flow(&tree, bindings, wrapping, width)
+    complete_flow(&tree, bindings, wrapping, width, host)
 }
 
 type Document<S> = (
@@ -285,8 +296,9 @@ fn complete_flow<S: LayoutScalar>(
     bindings: Vec<TextParagraphBinding<u32>>,
     wrapping: crate::WrappingInput<u32>,
     width: f64,
+    host: Option<&TestHost>,
 ) -> String {
-    match compute_flow(tree, bindings, wrapping, width) {
+    match compute_flow(tree, bindings, wrapping, width, host) {
         Ok(batch) => format!("{batch:?}"),
         Err(error) => format!("refused: {error:?}"),
     }
@@ -297,6 +309,7 @@ fn compute_flow<Tree, S>(
     bindings: Vec<TextParagraphBinding<u32>>,
     wrapping: crate::WrappingInput<u32>,
     width: f64,
+    host: Option<&TestHost>,
 ) -> Result<CompletedLayoutBatchOf<u32, S>, crate::LayoutErrorOf<u32, S, Tree::MeasureError>>
 where
     S: LayoutScalar,
@@ -304,13 +317,15 @@ where
     Tree::MeasureError: core::fmt::Debug,
 {
     let capture = LayoutFlowInput::try_new(tree, 0, bindings, wrapping, Vec::new()).unwrap();
-    compute_layout_with_flow(
+    crate::engine::compute_layout_with_flow_invalidated_accounted(
         &capture,
         0,
         request(width, {
             let root_input = crate::LayoutTree::node_input(capture.tree(), 0);
             crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
+        &[],
+        host.map(TestHost::scope).as_ref(),
     )
 }
 
@@ -410,7 +425,7 @@ fn lay_out_levels_on_a_warm_host<S: LayoutScalar>(
             )
             .unwrap()
         } else {
-            compute_flow(host, bindings.clone(), wrapping.clone(), width).unwrap()
+            compute_flow(host, bindings.clone(), wrapping.clone(), width, None).unwrap()
         }
     };
     let cold = compute(&host);
@@ -430,15 +445,15 @@ fn assert_same_without_reuse<S: LayoutScalar>(
     content: Content,
     width: f64,
 ) -> (SubgridWork, SubgridWork) {
-    let document = || match shape {
-        Shape::Inherited => lay_out::<S>(depth, content, width),
-        Shape::OwnRows => lay_out_levels::<S>(depth, content, width),
+    let document = |host: &TestHost| match shape {
+        Shape::Inherited => lay_out::<S>(depth, content, width, Some(host)),
+        Shape::OwnRows => lay_out_levels::<S>(depth, content, width, Some(host)),
     };
-    take_subgrid_work();
-    let reused = document();
-    let reused_work = take_subgrid_work();
-    let repeated = with_subgrid_reuse_disabled(document);
-    let repeated_work = take_subgrid_work();
+    let (reused_host, repeated_host) = (TestHost::new(), TestHost::new());
+    let reused = document(&reused_host);
+    let reused_work = reused_host.subgrid_work();
+    let repeated = with_subgrid_reuse_disabled(|| document(&repeated_host));
+    let repeated_work = repeated_host.subgrid_work();
     assert!(
         !reused.starts_with("refused"),
         "{label}: the document lays out: {reused:.300}"
@@ -614,7 +629,7 @@ fn lay_out_formatter_beside_subgrid<S: LayoutScalar>() -> String {
                 ..NodeInputOf::default()
             },
         );
-    complete_flow(&tree, Vec::new(), native_formatters(&[2, 3]), 100.0)
+    complete_flow(&tree, Vec::new(), native_formatters(&[2, 3]), 100.0, None)
 }
 
 #[test]
@@ -738,7 +753,7 @@ fn lay_out_float_formatter_beside_subgrid<S: LayoutScalar>() -> String {
                 ..NodeInputOf::default()
             },
         );
-    complete_flow(&tree, Vec::new(), native_formatters(&[3, 4]), 100.0)
+    complete_flow(&tree, Vec::new(), native_formatters(&[3, 4]), 100.0, None)
 }
 
 #[test]
@@ -805,7 +820,7 @@ fn hidden_items_in_subgrid_levels_leave_the_baseline_refresh_skip_on() {
         .stack_size(256 * 1024 * 1024)
         .spawn(|| {
             let depth = 3;
-            let document = |hidden: bool| {
+            let document = |hidden: bool, host: &TestHost| {
                 let (mut tree, bindings, wrapping) =
                     levels_document::<f64>(depth, Content::BaselineText, 140.0);
                 if hidden {
@@ -825,16 +840,17 @@ fn hidden_items_in_subgrid_levels_leave_the_baseline_refresh_skip_on() {
                             .children(level, children);
                     }
                 }
-                complete_flow(&tree, bindings, wrapping, 140.0)
+                complete_flow(&tree, bindings, wrapping, 140.0, Some(host))
             };
-            take_subgrid_work();
-            let plain = document(false);
-            let plain_work = take_subgrid_work();
+            let (plain_host, reused_host, repeated_host) =
+                (TestHost::new(), TestHost::new(), TestHost::new());
+            let plain = document(false, &plain_host);
+            let plain_work = plain_host.subgrid_work();
             assert!(!plain.starts_with("refused"), "the document lays out: {plain:.300}");
-            let reused = document(true);
-            let reused_work = take_subgrid_work();
-            let repeated = with_subgrid_reuse_disabled(|| document(true));
-            let repeated_work = take_subgrid_work();
+            let reused = document(true, &reused_host);
+            let reused_work = reused_host.subgrid_work();
+            let repeated = with_subgrid_reuse_disabled(|| document(true, &repeated_host));
+            let repeated_work = repeated_host.subgrid_work();
             assert!(!reused.starts_with("refused"), "the document lays out: {reused:.300}");
             assert!(reused == repeated, "the hidden items lay out the same with reuse");
             assert!(
@@ -861,13 +877,13 @@ fn deep_chains_of_native_formatters_keep_their_reuse() {
         .stack_size(256 * 1024 * 1024)
         .spawn(|| {
             let at = |depth: u32| {
-                take_subgrid_work();
-                let laid_out = lay_out::<f64>(depth, Content::Formatter, 140.0);
+                let host = TestHost::new();
+                let laid_out = lay_out::<f64>(depth, Content::Formatter, 140.0, Some(&host));
                 assert!(
                     !laid_out.starts_with("refused"),
                     "the document lays out: {laid_out:.300}"
                 );
-                take_subgrid_work()
+                host.subgrid_work()
             };
             let (shallow, deep) = (at(6), at(12));
             assert!(

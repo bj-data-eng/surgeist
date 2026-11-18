@@ -1,5 +1,5 @@
 use super::*;
-use crate::grid::subgrid_work::{SubgridWork, take_subgrid_work};
+use crate::accounting::{SubgridWork, TestHost};
 use crate::{
     AlignContent, AlignItems, ComputedOverflow, GridAxisKind, GridLanesFlow, GridPlacement,
     MinSizeOf, Overflow, PreferredSizeOf, ScrollbarWidthOf, SizeContainment, SubgridTrack,
@@ -519,10 +519,24 @@ fn assert_subgrid_work_grows_linearly(name: &str, work: &[SubgridWork]) {
     }
 }
 
+/// The completed layout of `tree` and the work it reported to a fresh host.
+fn accounted_layout<S: LayoutScalar>(
+    tree: &PublicLayoutTreeOf<S>,
+) -> (crate::CompletedLayoutBatchOf<u32, S>, SubgridWork) {
+    let host = TestHost::new();
+    let batch = crate::engine::compute_layout_invalidated_accounted(
+        tree,
+        0,
+        standalone(),
+        &[],
+        Some(&host.scope()),
+    )
+    .expect("subgrid chain layout");
+    (batch, host.subgrid_work())
+}
+
 fn subgrid_work_of<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> SubgridWork {
-    take_subgrid_work();
-    compute_layout(tree, 0, standalone()).expect("subgrid chain layout");
-    take_subgrid_work()
+    accounted_layout(tree).1
 }
 
 /// The work of the chain at each of `WORK_DEPTHS`. The thread has a stack that
@@ -700,9 +714,9 @@ fn fragmented_subgrid_chain_reuses_nothing_and_lays_out_the_same() {
         .children(0, [1])
         .children(1, [2]);
     let layout = || {
-        take_subgrid_work();
-        let batch = super::scoped_flex::scoped_layout(&tree, nodes);
-        (format!("{batch:?}"), take_subgrid_work())
+        let host = TestHost::new();
+        let batch = super::scoped_flex::scoped_layout_accounted(&tree, nodes, Some(&host));
+        (format!("{batch:?}"), host.subgrid_work())
     };
     let (reused, reused_work) = layout();
     let (repeated, repeated_work) = crate::grid::subgrid_work::with_subgrid_reuse_disabled(layout);
@@ -791,9 +805,8 @@ fn hidden_items_in_a_subgrid_chain_leave_the_reuse_on_and_the_layout_the_same() 
         .stack_size(256 * 1024 * 1024)
         .spawn(|| {
             let layout = |tree: &PublicLayoutTreeOf<f64>| {
-                take_subgrid_work();
-                let batch = compute_layout(tree, 0, standalone()).expect("hidden item chain");
-                (format!("{batch:?}"), take_subgrid_work())
+                let (batch, work) = accounted_layout(tree);
+                (format!("{batch:?}"), work)
             };
             let shallow = hidden_item_subgrid_chain::<f64>(3);
             let (reused, _) = layout(&shallow);

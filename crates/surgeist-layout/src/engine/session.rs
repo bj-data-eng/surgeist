@@ -17,7 +17,7 @@ use super::contracts::{
 };
 use super::entry_staging::{self, Rows};
 use super::hidden::HiddenRequest;
-use crate::accounting::Meter;
+use crate::accounting::{LayoutWork, Meter};
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
@@ -2506,11 +2506,8 @@ where
         self.effects
             .restore(compacted.as_deref().unwrap_or(&writes));
         let compacted = compacted?;
-        #[cfg(test)]
-        crate::grid::subgrid_work::observe_many(
-            crate::grid::subgrid_work::Observation::EffectsCaptured,
-            compacted.len(),
-        );
+        self.meter
+            .charge(LayoutWork::EffectCaptured, compacted.len());
         Some(std::sync::Arc::from(compacted))
     }
 
@@ -2521,11 +2518,7 @@ where
         let allocation = |node| {
             crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
         };
-        #[cfg(test)]
-        crate::grid::subgrid_work::observe_many(
-            crate::grid::subgrid_work::Observation::EffectsReplayed,
-            effects.len(),
-        );
+        self.meter.charge(LayoutWork::EffectReplayed, effects.len());
         for effect in effects.iter() {
             match effect {
                 StagedEffect::Store {
