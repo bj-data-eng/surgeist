@@ -265,6 +265,52 @@ fn a_refused_serialization_is_returned_inside_ok_and_charged_what_was_admitted()
     }
 }
 
+/// A refused call is charged the work admitted before the refusal: the
+/// sheet's root node is admitted before any byte, and a larger limit admits
+/// at least as much.
+#[test]
+fn a_refused_serialization_is_charged_the_work_admitted_before_it() {
+    let sheet = sheet(SOURCES[2]);
+    let full = smallest_limits(|limits| sheet.serialize_cssom(limits).is_ok());
+    let bytes = usize::try_from(full[2]).unwrap();
+    let mut previous = [0; 3];
+    for short in [0, 1, bytes / 2, bytes - 1] {
+        let (ledger, host) = open_host();
+        let refused = sheet
+            .accounted(&host)
+            .serialize_cssom(limits(usize::MAX, usize::MAX, short))
+            .unwrap();
+        assert!(refused.is_err());
+        let now = charged(&ledger);
+        assert!(now[0] >= 1, "the root node is admitted: {now:?}");
+        for (dimension, (now, before)) in now.iter().zip(previous).enumerate() {
+            assert!(
+                *now >= before,
+                "dimension {dimension} at {short}: {now} < {before}"
+            );
+        }
+        previous = now;
+    }
+    // One byte short, everything but the last appended text is admitted.
+    assert!(previous[2] > 0);
+
+    // Refused on input nodes, one short of what the sheet needs.
+    let input = usize::try_from(full[0]).unwrap();
+    let (ledger, host) = open_host();
+    let refused = sheet
+        .accounted(&host)
+        .serialize_cssom(limits(input - 1, usize::MAX, usize::MAX))
+        .unwrap()
+        .unwrap_err();
+    assert!(refused.is_resource_limit());
+    let [charged_input, _, charged_bytes] = charged(&ledger);
+    assert!(
+        charged_input >= 1 && charged_input <= full[0] - 1,
+        "{charged_input}"
+    );
+    assert!(charged_bytes > 0);
+}
+
 #[test]
 fn a_host_cap_on_serialized_bytes_replaces_the_result_and_charges_nothing() {
     let sheet = sheet("a { color: red }");
