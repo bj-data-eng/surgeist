@@ -20,8 +20,13 @@
 //! `CssomLimits` fields at which creation still succeeds, found by doubling and
 //! bisection where a probe is cheap enough, and `-` elsewhere.
 //!
-//! The 100 000-rule creation holds about 1.7 GB while it runs, and the edit
-//! case keeps its own store of that size alive for the whole run.
+//! Each case also runs on a store built with a host scope of a ledger
+//! operation without caps ("with a host"), whose charged column gives what
+//! one call charges to the `cssom` scope: census runs, objects, entries and
+//! source walk steps.
+//!
+//! The 100 000-rule creation holds about 1.7 GB while it runs, and the two edit
+//! cases keep their own stores of that size alive for the whole run.
 //! Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-cssom --bench store_edits`.
 
@@ -29,6 +34,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_cssom::accounting::{CssFront, CssHostScope, CssLedger, CssLimits, CssWork};
 use surgeist_cssom::{
     CssomContext, CssomEditGuard, CssomInputRole, CssomInputVersion, CssomLimits, CssomSheetId,
     CssomSheetInputs, CssomStore,
@@ -114,6 +120,39 @@ fn inputs() -> CssomSheetInputs {
 
 fn new_store() -> CssomStore {
     CssomStore::new(limits(), CssomContext::default()).expect("a store")
+}
+
+/// A host operation without caps, and the CSS scopes below its root.
+fn bench_host() -> (CssLedger, CssHostScope) {
+    let caps: CssLimits = surgeist_ledger::Limits::unlimited();
+    let operation = surgeist_ledger::Operation::new("bench", caps, 1 + CssFront::ALL.len())
+        .expect("the bench operation")
+        .share();
+    let host =
+        CssHostScope::open(operation.clone(), operation.root()).expect("the CSS scopes are opened");
+    (operation, host)
+}
+
+/// A store whose operations charge `host`, or a plain store.
+fn store_for(host: Option<&CssHostScope>) -> CssomStore {
+    match host {
+        Some(host) => {
+            CssomStore::with_host(limits(), CssomContext::default(), host.clone()).expect("a store")
+        }
+        None => new_store(),
+    }
+}
+
+/// The census runs, objects, entries and walk steps `ledger` holds.
+fn charged(ledger: &CssLedger) -> [u64; 4] {
+    let usage = ledger.usage(ledger.root()).expect("the root");
+    [
+        CssWork::CensusRun,
+        CssWork::CensusObject,
+        CssWork::CensusEntry,
+        CssWork::SourceVisit,
+    ]
+    .map(|dimension| usage.work(dimension))
 }
 
 /// Adopts `text` into `store` and returns the sheet, or `None` when a limit
@@ -217,6 +256,9 @@ struct Case {
     store: Option<(CssomStore, CssomSheetId)>,
     disabled: bool,
     census: String,
+    /// The host of the case's stores, and the ledger it charges.
+    host: Option<(CssLedger, CssHostScope)>,
+    charged: String,
 }
 
 impl Case {
@@ -224,7 +266,7 @@ impl Case {
     fn call(&mut self) -> Duration {
         match self.kind {
             Kind::Create => {
-                let mut store = new_store();
+                let mut store = store_for(self.host.as_ref().map(|(_, host)| host));
                 let start = Instant::now();
                 let sheet = create(&mut store, black_box(&self.text));
                 let elapsed = start.elapsed();
@@ -239,6 +281,38 @@ impl Case {
                 start.elapsed()
             }
         }
+    }
+
+    /// What one call charges its host: runs, objects, entries and steps, after
+    /// the creation of a store for a creation.
+    fn charge(&mut self) -> String {
+        let Some((ledger, _)) = &self.host else {
+            return "-".to_owned();
+        };
+        let before = charged(ledger);
+        let after = match self.kind {
+            Kind::Create => {
+                let (ledger, host) = bench_host();
+                let mut store = store_for(Some(&host));
+                let before = charged(&ledger);
+                create(&mut store, &self.text);
+                let after = charged(&ledger);
+                return format!(
+                    "{:?}",
+                    std::array::from_fn::<u64, 4, _>(|i| after[i] - before[i])
+                );
+            }
+            Kind::Edit => {
+                let (store, sheet) = self.store.as_mut().expect("a store with the sheet");
+                self.disabled = !self.disabled;
+                toggle(store, sheet, self.disabled);
+                charged(ledger)
+            }
+        };
+        format!(
+            "{:?}",
+            std::array::from_fn::<u64, 4, _>(|i| after[i] - before[i])
+        )
     }
 
     /// The calls of one round.
@@ -259,29 +333,39 @@ fn main() {
         } else {
             "-".to_owned()
         };
-        for kind in [Kind::Create, Kind::Edit] {
+        for (kind, hosted) in [
+            (Kind::Create, false),
+            (Kind::Create, true),
+            (Kind::Edit, false),
+            (Kind::Edit, true),
+        ] {
+            let host = hosted.then(bench_host);
             let (label, store) = match kind {
                 Kind::Create => ("create_parsed_sheet + commit", None),
                 Kind::Edit => {
-                    let mut store = new_store();
+                    let mut store = store_for(host.as_ref().map(|(_, host)| host));
                     let sheet = create(&mut store, &text);
                     assert_eq!(retained_rules(&store, &sheet), size.rules);
                     ("set_disabled + commit", Some((store, sheet)))
                 }
             };
-            cases.push(Case {
-                name: format!("{label}, {} rules", size.rules),
+            let mut case = Case {
+                name: format!(
+                    "{label}{}, {} rules",
+                    if hosted { " with a host" } else { "" },
+                    size.rules
+                ),
                 size,
-                text: if matches!(kind, Kind::Create) {
-                    text.clone()
-                } else {
-                    String::new()
-                },
+                text: text.clone(),
                 store,
                 disabled: false,
                 census: counted.clone(),
                 kind,
-            });
+                host,
+                charged: String::new(),
+            };
+            case.charged = case.charge();
+            cases.push(case);
         }
     }
 
@@ -307,7 +391,7 @@ fn main() {
         "each round starts one case later; rounds per size and commits per edit round are set per size"
     );
     println!(
-        "case\trounds\tcalls/round\tmedian ns/call\tmin ns/call\tmax ns/call\tmedian ns/rule\tinput bytes\tretained rules\tcensus"
+        "case\trounds\tcalls/round\tmedian ns/call\tmin ns/call\tmax ns/call\tmedian ns/rule\tinput bytes\tretained rules\tcensus\tcharged runs/objects/entries/steps"
     );
     for (index, case) in cases.iter().enumerate() {
         let per_rule = |time: f64| match case.kind {
@@ -324,7 +408,7 @@ fn main() {
             continue;
         };
         println!(
-            "{}\t{}\t{}\t{time:.0}\t{:.0}\t{:.0}\t{}\t{bytes}\t{}\t{}",
+            "{}\t{}\t{}\t{time:.0}\t{:.0}\t{:.0}\t{}\t{bytes}\t{}\t{}\t{}",
             case.name,
             sorted.len(),
             case.calls(),
@@ -333,6 +417,7 @@ fn main() {
             per_rule(time),
             case.size.rules,
             case.census,
+            case.charged,
         );
     }
 }
