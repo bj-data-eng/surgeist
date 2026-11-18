@@ -2923,7 +2923,7 @@ where
             resolution
         }
         None => {
-            let start = tree.begin_effect_capture();
+            let start = tree.begin_effect_capture(crate::engine::CaptureKind::Preparation);
             let prepared = prepare_wrapper_resolution::<Tree, M>(
                 tree,
                 &identity,

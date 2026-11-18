@@ -3,7 +3,7 @@ mod memo;
 mod staged_effects;
 #[cfg(test)]
 pub(crate) use memo::compute_ordinary_with_request_trace;
-pub(crate) use staged_effects::{StagedEffect, StagedEffects};
+pub(crate) use staged_effects::{CaptureKind, StagedEffect, StagedEffects};
 mod requests;
 
 #[cfg(test)]
@@ -1364,11 +1364,26 @@ where
         batch
     }
 
+    fn reset_native_family(&mut self, family: usize) {
+        if self.effects.recording() {
+            self.effects
+                .record(Some(StagedEffect::NativeReset { family }));
+        }
+        self.wrapping.native_runs.retain(|run| run.family != family);
+        self.wrapping
+            .native_completions
+            .retain(|completion| completion.family != family);
+    }
+
     fn retain_native_completion(
         &mut self,
         node: Tree::Node,
         completion: crate::inline_wrapping::family::NativeFormatterCompletion<Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
+        if self.effects.recording() {
+            self.effects
+                .record(Some(StagedEffect::NativeCompletion { node, completion }));
+        }
         if let Some(old) = self
             .wrapping
             .native_completions
@@ -1396,6 +1411,13 @@ where
         node: Tree::Node,
         run: crate::inline_wrapping::family::NativePublication<Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
+        if self.effects.recording() {
+            let copy = run
+                .try_clone()
+                .ok()
+                .map(|run| StagedEffect::NativeRun { node, run });
+            self.effects.record(copy);
+        }
         if let Some(index) = self
             .wrapping
             .native_runs
@@ -1744,20 +1766,24 @@ where
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
     ) -> UncachedLayout<'a, Tree::Scalar> {
-        if input.run_mode().is_perform_layout()
-            && let Some(index) = self.wrapping.context.as_ref().and_then(|context| {
+        if input.run_mode().is_perform_layout() {
+            if self.text.is_some() {
+                // Text placement is staged by the node it places and written
+                // last by whichever computation of that node ran last, so a
+                // preparation that places text cannot be reused where other
+                // computations of the node may have run since.
+                self.effects.poison(Some(CaptureKind::Preparation));
+            }
+            if let Some(index) = self.wrapping.context.as_ref().and_then(|context| {
                 context
                     .families
                     .iter()
                     .position(|family| family.formatter() == node)
-            })
-        {
-            // Recompute this formatter's accepted runs rather than appending an
-            // earlier scrollbar/size trial. Intrinsic probes do not clear them.
-            self.wrapping.native_runs.retain(|run| run.family != index);
-            self.wrapping
-                .native_completions
-                .retain(|completion| completion.family != index);
+            }) {
+                // Recompute this formatter's accepted runs rather than appending an
+                // earlier scrollbar/size trial. Intrinsic probes do not clear them.
+                self.reset_native_family(index);
+            }
         }
         UncachedLayout {
             style: self.tree.node_input(node),
@@ -1913,6 +1939,9 @@ where
         if let Some(memo) = &self.memo {
             memo.barrier();
         }
+        // An entry trial observes the float state of its enclosing computations,
+        // which the log does not replay, so no capture around it is reused.
+        self.effects.poison(None);
         if !query
             .incoming
             .as_ref()
@@ -2264,31 +2293,65 @@ where
         self.groups.as_mut()
     }
 
-    fn begin_effect_capture(&mut self) -> usize {
-        self.effects.begin()
+    fn begin_effect_capture(&mut self, kind: CaptureKind) -> usize {
+        self.effects.begin(kind)
     }
 
     fn end_effect_capture(
         &mut self,
         start: usize,
     ) -> Option<crate::engine::StagedEffects<Self::Node, Self::Scalar>> {
-        self.effects.end(start)
+        let captured = self.effects.end(start);
+        // A formatted receipt that appeared during the capture may have
+        // decided a cache lookup inside it.
+        if self
+            .text
+            .as_ref()
+            .is_some_and(|text| text.formatted_active())
+        {
+            return None;
+        }
+        captured
     }
 
     fn replay_effects(
         &mut self,
         effects: &crate::engine::StagedEffects<Self::Node, Self::Scalar>,
     ) -> SessionResult<Tree, ()> {
+        let allocation = |node| {
+            crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
+        };
         for effect in effects.iter() {
-            match *effect {
+            match effect {
                 StagedEffect::Store {
                     node,
                     input,
                     context,
                     output,
-                } => self.cache_store(node, &input, context, output)?,
-                StagedEffect::Clear(node) => self.cache_clear(node)?,
-                StagedEffect::Geometry(entry) => self.set_unrounded(entry),
+                } => self.cache_store(*node, input, *context, *output)?,
+                StagedEffect::Clear(node) => self.cache_clear(*node)?,
+                StagedEffect::Geometry(entry) => self.set_unrounded(*entry),
+                StagedEffect::InlineFragments { node, fragments } => {
+                    let fragments = match fragments {
+                        Some(fragments) => {
+                            let mut copy = Vec::new();
+                            copy.try_reserve_exact(fragments.len())
+                                .map_err(|_| allocation(*node))?;
+                            copy.extend_from_slice(fragments);
+                            Some(copy)
+                        }
+                        None => None,
+                    };
+                    self.set_unrounded_inline_fragment_state(*node, fragments);
+                }
+                StagedEffect::NativeReset { family } => self.reset_native_family(*family),
+                StagedEffect::NativeRun { node, run } => {
+                    let run = run.try_clone().map_err(|_| allocation(*node))?;
+                    self.replace_native_run(*node, run)?;
+                }
+                StagedEffect::NativeCompletion { node, completion } => {
+                    self.retain_native_completion(*node, *completion)?;
+                }
             }
         }
         Ok(())
@@ -2297,7 +2360,17 @@ where
     fn reuses_subgrid_computations(&self) -> bool {
         // Group alignment numbers its owners and members by the sequence of
         // computations, so a skipped repeat renumbers every later one.
+        // Fragmentation stages block bodies, scope receipts and margin groups
+        // that the log does not cover. Entry funding charges every visit, so a
+        // skipped repeat would charge less and move the first refusal. Active
+        // formatted receipts decide cache lookups from the pass's own history.
         self.groups.is_none()
+            && self.fragmentation.is_none()
+            && self.entry_storage.is_none()
+            && !self
+                .text
+                .as_ref()
+                .is_some_and(|text| text.formatted_active())
     }
 
     fn wrapper_resolutions(
@@ -2353,7 +2426,9 @@ where
     }
 
     fn set_unrounded(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
-        self.effects.record(StagedEffect::Geometry(entry));
+        if self.effects.recording() {
+            self.effects.record(Some(StagedEffect::Geometry(entry)));
+        }
         if let Some(scopes) = self.block_scopes_mut() {
             scopes.stage_adoption(entry.node());
         }
@@ -2468,6 +2543,20 @@ where
         node: Self::Node,
         fragments: Option<Vec<InlineFragmentOutputOf<Self::Scalar>>>,
     ) {
+        if self.effects.recording() {
+            let copy = match &fragments {
+                Some(fragments) => {
+                    let mut copy = Vec::new();
+                    copy.try_reserve_exact(fragments.len()).ok().map(|()| {
+                        copy.extend_from_slice(fragments);
+                        Some(copy)
+                    })
+                }
+                None => Some(None),
+            };
+            self.effects
+                .record(copy.map(|fragments| StagedEffect::InlineFragments { node, fragments }));
+        }
         let replayable = self.memo.is_some()
             && fragments.is_none()
             && self.memo_hidden_effect_index(node).is_some();
@@ -2955,12 +3044,14 @@ where
         context: crate::CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
     ) -> SessionResult<Tree, ()> {
-        self.effects.record(StagedEffect::Store {
-            node,
-            input: *input,
-            context,
-            output,
-        });
+        if self.effects.recording() {
+            self.effects.record(Some(StagedEffect::Store {
+                node,
+                input: *input,
+                context,
+                output,
+            }));
+        }
         if let Some(formatted) = self.text.as_mut().and_then(|text| text.formatted.as_mut()) {
             formatted
                 .bind_output(node, input, context, output)
@@ -3036,7 +3127,9 @@ where
     }
 
     fn cache_clear(&mut self, node: Self::Node) -> SessionResult<Tree, ()> {
-        self.effects.record(StagedEffect::Clear(node));
+        if self.effects.recording() {
+            self.effects.record(Some(StagedEffect::Clear(node)));
+        }
         let hidden_effect_index = self
             .memo
             .as_ref()

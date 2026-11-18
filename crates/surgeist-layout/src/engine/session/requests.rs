@@ -1110,7 +1110,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         pending: &mut SessionPending<'input, Tree>,
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let node = request.node();
-        let effects_start = self.begin_effect_capture();
+        let effects_start = self.begin_effect_capture(super::CaptureKind::Request);
         let mut computation = begin_grid_context_computation(self, request)?;
         match computation.advance(self)? {
             ControlFlow::Break(result) => {

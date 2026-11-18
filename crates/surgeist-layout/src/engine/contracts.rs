@@ -35,7 +35,7 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     }
     /// Opens a capture of the writes this computation stages, and returns
     /// where they begin. Captures nest and close in reverse order.
-    fn begin_effect_capture(&mut self) -> usize {
+    fn begin_effect_capture(&mut self, _kind: crate::engine::CaptureKind) -> usize {
         0
     }
     /// Closes the innermost capture and returns its writes, or `None` when

@@ -92,7 +92,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContextRequest<'input, Node, 
             stage,
             parent_context,
         } = self;
-        let start = tree.begin_effect_capture();
+        let start = tree.begin_effect_capture(crate::engine::CaptureKind::Request);
         let outcome = compute_grid_with_context_source(
             tree,
             node,
