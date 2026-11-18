@@ -710,30 +710,31 @@ impl<S: LayoutScalar> SubgridCandidateLeafIndex<S> {
 
 /// Preparation streams through live wrapper frames. Hypothetical plain leaves
 /// reuse earlier retained leaves only after complete contribution qualification.
-struct SubgridIntrinsicFold<'input, 'a, Node, S: LayoutScalar> {
-    intrinsic_min: &'a [bool],
+pub(super) struct SubgridIntrinsicFold<'input, Node, S: LayoutScalar> {
+    intrinsic_min: Vec<bool>,
     report: SubgridTraversalReport<'input, Node, S>,
     adjustment_path: Vec<usize>,
     candidate_index: Option<SubgridCandidateLeafIndex<S>>,
     error: Option<SubgridTraversalError>,
 }
 
-impl<'input, 'a, Node: Copy + Eq, S: LayoutScalar> SubgridIntrinsicFold<'input, 'a, Node, S> {
-    fn new(facts: IntrinsicMinTrackFacts<'a>) -> Self {
+impl<'input, Node: Copy + Eq, S: LayoutScalar> SubgridIntrinsicFold<'input, Node, S> {
+    pub(super) fn new(facts: IntrinsicMinTrackFacts<'_>) -> Self {
         let (intrinsic_min, error) = match facts {
-            IntrinsicMinTrackFacts::Known(facts) => (facts, None),
+            IntrinsicMinTrackFacts::Known(facts) => (facts.to_vec(), None),
             IntrinsicMinTrackFacts::Unknown => (
-                &[][..],
+                Vec::new(),
                 Some(SubgridTraversalError::MissingIntrinsicMinTrackFacts),
             ),
         };
+        let track_count = intrinsic_min.len();
         Self {
             intrinsic_min,
             report: SubgridTraversalReport {
-                edge_lower_bounds: vec![S::ZERO; intrinsic_min.len()],
+                edge_lower_bounds: vec![S::ZERO; track_count],
                 leaves: Vec::new(),
                 adjustments: SubgridAdjustmentFrames {
-                    track_count: intrinsic_min.len(),
+                    track_count,
                     frames: Vec::new(),
                 },
             },
@@ -753,7 +754,7 @@ impl<'input, 'a, Node: Copy + Eq, S: LayoutScalar> SubgridIntrinsicFold<'input, 
             return context;
         }
         match apply_subgrid_edge_placeholders(
-            self.intrinsic_min,
+            &self.intrinsic_min,
             &mut self.report.edge_lower_bounds,
             &mut self.report.adjustments,
             &mut self.adjustment_path,
@@ -877,7 +878,7 @@ impl<'input, 'a, Node: Copy + Eq, S: LayoutScalar> SubgridIntrinsicFold<'input, 
                 translate_span_to_ancestor(context.transform, GridTrackSpan::new(1, span_len + 1))
                     .expect("enter validated the wrapper span");
             apply_empty_subgrid_floor(
-                self.intrinsic_min,
+                &self.intrinsic_min,
                 &mut self.report.edge_lower_bounds,
                 &self.report.adjustments,
                 &mut self.adjustment_path,
@@ -893,7 +894,9 @@ impl<'input, 'a, Node: Copy + Eq, S: LayoutScalar> SubgridIntrinsicFold<'input, 
         }
     }
 
-    fn finish(self) -> Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError> {
+    pub(super) fn finish(
+        self,
+    ) -> Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError> {
         self.error.map_or(Ok(self.report), Err)
     }
 }
@@ -1831,6 +1834,8 @@ pub(super) struct GridSubgridIntrinsicTraversalInput<'input, 'a, Node, S: Layout
     pub(super) query: IntrinsicGridQuery<'a, S>,
 }
 
+/// The report of the traversal of a grid's subgrid items, run to its end on the
+/// native stack.
 #[expect(
     clippy::type_complexity,
     reason = "nested traversal preserves both session errors and existing traversal outcomes"
@@ -1850,74 +1855,154 @@ pub(super) fn collect_grid_subgrid_intrinsic_traversal<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let column_geometry = input.column_gutters.map(|gutters| {
-        UsedGridAxisGeometryOf::from_sizing_gutters(input.column_sizes.to_vec(), gutters)
-    });
-    let row_geometry = input.row_gutters.map(|gutters| {
-        UsedGridAxisGeometryOf::from_sizing_gutters(input.row_sizes.to_vec(), gutters)
-    });
     let mut fold = SubgridIntrinsicFold::new(input.intrinsic_min_track_facts);
-    for (index, ((child, area), item_report)) in input
-        .children
-        .iter()
-        .copied()
-        .zip(input.placed_areas.iter().copied())
-        .zip(input.subgrid_report.items.iter().copied())
-        .enumerate()
-    {
-        let Some(area) = area else {
-            continue;
-        };
-        let child_input = input.placements.child_input(index);
-        let child_style = child_input.item();
-        if !is_in_flow_grid_child(child_style) {
-            continue;
+    let mut root = RootTraversal::new(&input);
+    while let Some(entry) = root.next_wrapper::<Tree, M>(tree, &input, &mut fold)? {
+        visit_wrapper_levels(tree, *entry, &mut fold)?;
+    }
+    Ok(fold.finish())
+}
+
+/// The root items of a subgrid traversal, with the position the traversal has
+/// reached: each inherited-axis item of the grid, once for its placed area and
+/// once for each automatic lane candidate. A traversal that waits on a nested
+/// wrapper resumes here.
+pub(super) struct RootTraversal<S: LayoutScalar> {
+    steps: Vec<RootStep<S>>,
+    cursor: usize,
+    column_geometry: Option<UsedGridAxisGeometryOf<S>>,
+    row_geometry: Option<UsedGridAxisGeometryOf<S>>,
+}
+
+struct RootStep<S: LayoutScalar> {
+    index: usize,
+    area: GridArea<S>,
+    traversal: GridMinimumWrapperTraversal,
+}
+
+impl<S: LayoutScalar> RootTraversal<S> {
+    pub(super) fn new<Node: Copy>(
+        input: &GridSubgridIntrinsicTraversalInput<'_, '_, Node, S>,
+    ) -> Self {
+        let column_geometry = input.column_gutters.map(|gutters| {
+            UsedGridAxisGeometryOf::from_sizing_gutters(input.column_sizes.to_vec(), gutters)
+        });
+        let row_geometry = input.row_gutters.map(|gutters| {
+            UsedGridAxisGeometryOf::from_sizing_gutters(input.row_sizes.to_vec(), gutters)
+        });
+        let lane_grid_axis = input
+            .grid
+            .style
+            .display
+            .establishes_grid_lanes_formatting_context()
+            .then(|| grid_axis_for_grid_lanes(input.grid.style));
+        let mut steps = Vec::new();
+        for (index, (area, item_report)) in input
+            .placed_areas
+            .iter()
+            .copied()
+            .zip(input.subgrid_report.items.iter().copied())
+            .enumerate()
+        {
+            let Some(area) = area else {
+                continue;
+            };
+            if index >= input.children.len() {
+                continue;
+            }
+            let child_input = input.placements.child_input(index);
+            let child_style = child_input.item();
+            if !is_in_flow_grid_child(child_style) {
+                continue;
+            }
+            let Some(child_axis) = inherited_subgrid_axis_for_parent_axis(item_report, input.axis)
+            else {
+                continue;
+            };
+            let (placement, track_count, gutters) = match input.axis {
+                GridAxisKind::Column => (
+                    input.placements.items[index].column,
+                    input.column_sizes.len(),
+                    input.column_gutters,
+                ),
+                GridAxisKind::Row => (
+                    input.placements.items[index].row,
+                    input.row_sizes.len(),
+                    input.row_gutters,
+                ),
+            };
+            let expand_lane_wrapper = lane_grid_axis.is_none()
+                && automatic_lane_subgrid(child_input, placement, child_axis);
+            let collapsed = gutters
+                .map(OrdinaryGridAxisGuttersOf::collapsed)
+                .unwrap_or(&[]);
+            steps.extend(
+                subgrid_root_intrinsic_areas(
+                    area,
+                    input.axis,
+                    track_count,
+                    collapsed,
+                    expand_lane_wrapper,
+                    false,
+                )
+                .map(|(area, traversal)| RootStep {
+                    index,
+                    area,
+                    traversal,
+                }),
+            );
         }
-        let Some(child_axis) = inherited_subgrid_axis_for_parent_axis(item_report, input.axis)
-        else {
-            continue;
-        };
-        let minimum_source = SubgridParentTrackSource {
-            baseline_references: input.grid.style.baseline_references,
-            flow_axes: input.containing_flow_axes,
-            gap: input.parent_gap,
-            columns: column_geometry.as_ref(),
-            rows: row_geometry.as_ref(),
-            minimum_functions: input.grid.minimum_functions,
-            algorithm: Some(sizing_algorithm_for_grid_display(input.grid.style.display)),
-            lane_grid_axis: input
-                .grid
-                .style
-                .display
-                .establishes_grid_lanes_formatting_context()
-                .then(|| grid_axis_for_grid_lanes(input.grid.style)),
-            allocated: LogicalSizeOf::new(input.query.columns, input.query.rows),
-        };
-        let (placement, track_count, gutters) = match input.axis {
-            GridAxisKind::Column => (
-                input.placements.items[index].column,
-                input.column_sizes.len(),
-                input.column_gutters,
-            ),
-            GridAxisKind::Row => (
-                input.placements.items[index].row,
-                input.row_sizes.len(),
-                input.row_gutters,
-            ),
-        };
-        let expand_lane_wrapper = minimum_source.lane_grid_axis.is_none()
-            && automatic_lane_subgrid(child_input, placement, child_axis);
-        let collapsed = gutters
-            .map(OrdinaryGridAxisGuttersOf::collapsed)
-            .unwrap_or(&[]);
-        for (area, traversal) in subgrid_root_intrinsic_areas(
-            area,
-            input.axis,
-            track_count,
-            collapsed,
-            expand_lane_wrapper,
-            false,
-        ) {
+        Self {
+            steps,
+            cursor: 0,
+            column_geometry,
+            row_geometry,
+        }
+    }
+
+    /// Visits the root items from the current position, recording leaves in
+    /// `fold`, until one is a wrapper whose children remain to be traversed,
+    /// and returns that wrapper's entry; `None` when the items are exhausted.
+    pub(super) fn next_wrapper<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        input: &GridSubgridIntrinsicTraversalInput<'input, '_, Tree::Node, S>,
+        fold: &mut SubgridIntrinsicFold<'input, Tree::Node, S>,
+    ) -> NextWrapper<'input, Tree::Node, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        while let Some(step) = self.steps.get(self.cursor) {
+            let (index, area, traversal) = (step.index, step.area, step.traversal);
+            self.cursor += 1;
+            let (Some(&child), Some(&item_report)) = (
+                input.children.get(index),
+                input.subgrid_report.items.get(index),
+            ) else {
+                continue;
+            };
+            let child_input = input.placements.child_input(index);
+            let child_style = child_input.item();
+            let Some(child_axis) = inherited_subgrid_axis_for_parent_axis(item_report, input.axis)
+            else {
+                continue;
+            };
+            let minimum_source = SubgridParentTrackSource {
+                baseline_references: input.grid.style.baseline_references,
+                flow_axes: input.containing_flow_axes,
+                gap: input.parent_gap,
+                columns: self.column_geometry.as_ref(),
+                rows: self.row_geometry.as_ref(),
+                minimum_functions: input.grid.minimum_functions,
+                algorithm: Some(sizing_algorithm_for_grid_display(input.grid.style.display)),
+                lane_grid_axis: input
+                    .grid
+                    .style
+                    .display
+                    .establishes_grid_lanes_formatting_context()
+                    .then(|| grid_axis_for_grid_lanes(input.grid.style)),
+                allocated: LogicalSizeOf::new(input.query.columns, input.query.rows),
+            };
             let area_size = intrinsic_traversal_area_size(
                 area,
                 input.column_sizes,
@@ -1961,7 +2046,7 @@ where
                 },
             )?;
 
-            subgrid_traversal_child(
+            let entry = subgrid_traversal_child_enter(
                 tree,
                 child,
                 child_style,
@@ -1972,8 +2057,8 @@ where
                 child_axis,
                 input.containing_flow_axes,
                 input.parent_gap,
-                column_geometry.as_ref(),
-                row_geometry.as_ref(),
+                self.column_geometry.as_ref(),
+                self.row_geometry.as_ref(),
                 input.named_columns,
                 input.named_rows,
                 input.area_facts,
@@ -1986,13 +2071,15 @@ where
                 minimum_source,
                 prepared,
                 traversal,
-                &mut fold,
+                fold,
                 SubgridTraversalContext::ROOT,
             )?;
+            if let ChildEntry::Wrapper(entry) = entry {
+                return Ok(Some(entry));
+            }
         }
+        Ok(None)
     }
-
-    Ok(fold.finish())
 }
 
 fn automatic_lane_subgrid<S: LayoutScalar>(
@@ -2043,8 +2130,24 @@ fn subgrid_root_intrinsic_areas<S: LayoutScalar>(
     std::iter::once((area, GridMinimumWrapperTraversal::Shared { lane_track })).chain(candidates)
 }
 
+/// The entry of the next wrapper a traversal reaches, if it reaches one.
+pub(super) type NextWrapper<'input, Node, S, M> =
+    LayoutResultOf<Node, Option<Box<WrapperEntry<'input, Node, S>>>, S, M>;
+
+/// The wrapper resolution a preparation produced, or why it failed.
+type ResolutionOutcome<'input, Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    WrapperResolution<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
+/// How a level's conclusion turned out.
+type LevelConclusion<'input, Node, S, M> =
+    LayoutResultOf<Node, Option<WrapperLevel<'input, Node, S>>, S, M>;
+
 /// What entering one traversal child leaves to do.
-enum ChildEntry<'input, Node, S: LayoutScalar> {
+pub(super) enum ChildEntry<'input, Node, S: LayoutScalar> {
     /// A leaf, which the fold recorded.
     Done,
     /// An inherited wrapper, whose children the traversal visits next.
@@ -2066,7 +2169,7 @@ type WrapperLevelRequestResult<'input, Tree, M> = LayoutResultOf<
 >;
 
 /// A wrapper the traversal entered and has not yet left.
-struct WrapperEntry<'input, Node, S: LayoutScalar> {
+pub(super) struct WrapperEntry<'input, Node, S: LayoutScalar> {
     node: Node,
     request: WrapperLevelRequest<'input, Node, S>,
     /// The wrapper's resolved gap, which its children's parent gap is.
@@ -2122,12 +2225,9 @@ impl<'input, Node, S: LayoutScalar> WrapperLevelRequest<'input, Node, S> {
     }
 }
 
-/// A wrapper whose children the traversal is visiting.
-struct WrapperFrame<'input, Node, S: LayoutScalar> {
-    level: WrapperLevel<'input, Node, S>,
-    slot: usize,
-    /// The children visited so far.
-    child_count: usize,
+/// What a wrapper's traversal needs back once its level is ready.
+struct WrapperTail<S: LayoutScalar> {
+    /// The wrapper's resolved gap, which its children's parent gap is.
     gap: Size<S>,
     context: SubgridTraversalContext,
     span_len: usize,
@@ -2135,78 +2235,23 @@ struct WrapperFrame<'input, Node, S: LayoutScalar> {
     leaf_checkpoint: usize,
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "subgrid traversal child creation carries explicit grid layout phase inputs"
-)]
-fn subgrid_traversal_child<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    style: &GridItemProjection<'input, Tree::Scalar>,
-    nested_container: Option<&GridContainerInput<'input, Tree::Scalar>>,
-    area: GridArea<Tree::Scalar>,
-    area_size: Size<Tree::Scalar>,
-    item_report: SubgridItemReport<<Tree as Traverse>::Node>,
-    queried_axis: GridAxisKind,
-    containing_flow_axes: crate::geometry::FlowAxes,
-    parent_semantic_gap: Size<Tree::Scalar>,
-    parent_column_geometry: Option<&UsedGridAxisGeometryOf<Tree::Scalar>>,
-    parent_row_geometry: Option<&UsedGridAxisGeometryOf<Tree::Scalar>>,
-    parent_named_columns: &NamedGridLines,
-    parent_named_rows: &NamedGridLines,
-    parent_area_facts: Option<&GridAreaNameFacts>,
-    align_self: AlignItems,
-    query: IntrinsicGridQuery<'_, Tree::Scalar>,
-    minimum_source: SubgridParentTrackSource<'_, Tree::Scalar>,
-    prepared: ComputeInputOf<Tree::Scalar>,
-    traversal: GridMinimumWrapperTraversal,
-    fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
-    context: SubgridTraversalContext,
-) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let entry = subgrid_traversal_child_enter(
-        tree,
-        node,
-        style,
-        nested_container,
-        area,
-        area_size,
-        item_report,
-        queried_axis,
-        containing_flow_axes,
-        parent_semantic_gap,
-        parent_column_geometry,
-        parent_row_geometry,
-        parent_named_columns,
-        parent_named_rows,
-        parent_area_facts,
-        align_self,
-        query,
-        minimum_source,
-        prepared,
-        traversal,
-        fold,
-        context,
-    )?;
-    match entry {
-        ChildEntry::Done => Ok(()),
-        ChildEntry::Wrapper(entry) => visit_wrapper_levels(tree, *entry, fold),
-    }
+/// A wrapper whose children the traversal is visiting.
+struct WrapperFrame<'input, Node, S: LayoutScalar> {
+    level: WrapperLevel<'input, Node, S>,
+    slot: usize,
+    /// The children visited so far.
+    child_count: usize,
+    tail: WrapperTail<S>,
 }
 
 /// Visits the children of a wrapper and of every wrapper below it in source
-/// order, with the wrappers' frames on a heap stack instead of the native one,
-/// so that the depth of the nesting does not bound the traversal.
-///
-/// A level's preparation, with the effect capture around it, runs to completion
-/// inside one call, so the captures it opens are never held open by a frame that
-/// is waiting, and they close in the order the native recursion closed them.
-fn visit_wrapper_levels<'input, Tree, M>(
+/// order, with the wrappers' frames on a heap stack instead of the native one.
+/// A wrapper's preparation, with the effect capture around it, runs to
+/// completion inside one call.
+pub(super) fn visit_wrapper_levels<'input, Tree, M>(
     tree: &mut Tree,
     root: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
-    fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
+    fold: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -2234,7 +2279,7 @@ where
                     .ok_or_else(|| minimum_source_error(child.node))?,
                 child.child_axis,
                 child.minimum_source.flow_axes,
-                frame.gap,
+                frame.tail.gap,
                 Some(child.column_geometry),
                 Some(child.row_geometry),
                 execution.grid.named_columns,
@@ -2246,7 +2291,7 @@ where
                 child.prepared,
                 child.traversal,
                 fold,
-                frame.context,
+                frame.tail.context,
             )?);
         }
         match entered {
@@ -2266,7 +2311,7 @@ fn enter_wrapper_level<'input, Tree, M>(
     tree: &mut Tree,
     frames: &mut Vec<WrapperFrame<'input, Tree::Node, Tree::Scalar>>,
     entry: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
-    fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
+    fold: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -2280,45 +2325,44 @@ where
         frame_checkpoint,
         leaf_checkpoint,
     } = entry;
-    let level = WrapperLevel::prepare::<Tree, M>(tree, node, request.as_input())?;
-    let frame = WrapperFrame {
-        level: match level {
-            Some(level) => level,
-            None => {
-                fold.finish_wrapper(context, span_len, true, frame_checkpoint, leaf_checkpoint);
-                if let Some(parent) = frames.last_mut() {
-                    parent.child_count += 1;
-                }
-                return Ok(());
-            }
-        },
-        slot: 0,
-        child_count: 0,
+    let tail = WrapperTail {
         gap,
         context,
         span_len,
         frame_checkpoint,
         leaf_checkpoint,
     };
+    let Some(level) = WrapperLevel::prepare::<Tree, M>(tree, node, request.as_input())? else {
+        fold.finish_wrapper(context, span_len, true, frame_checkpoint, leaf_checkpoint);
+        if let Some(parent) = frames.last_mut() {
+            parent.child_count += 1;
+        }
+        return Ok(());
+    };
     frames.try_reserve(1).map_err(|_| allocation_error(node))?;
-    frames.push(frame);
+    frames.push(WrapperFrame {
+        level,
+        slot: 0,
+        child_count: 0,
+        tail,
+    });
     Ok(())
 }
 
 /// Leaves the innermost wrapper once its children are visited.
 fn leave_wrapper_level<'input, Node: Copy + Eq, S: LayoutScalar>(
     frames: &mut Vec<WrapperFrame<'input, Node, S>>,
-    fold: &mut SubgridIntrinsicFold<'input, '_, Node, S>,
+    fold: &mut SubgridIntrinsicFold<'input, Node, S>,
 ) {
     let Some(frame) = frames.pop() else {
         return;
     };
     fold.finish_wrapper(
-        frame.context,
-        frame.span_len,
+        frame.tail.context,
+        frame.tail.span_len,
         frame.child_count == 0,
-        frame.frame_checkpoint,
-        frame.leaf_checkpoint,
+        frame.tail.frame_checkpoint,
+        frame.tail.leaf_checkpoint,
     );
     if let Some(parent) = frames.last_mut() {
         parent.child_count += 1;
@@ -2350,7 +2394,7 @@ fn subgrid_traversal_child_enter<'input, Tree, M>(
     minimum_source: SubgridParentTrackSource<'_, Tree::Scalar>,
     prepared: ComputeInputOf<Tree::Scalar>,
     traversal: GridMinimumWrapperTraversal,
-    fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
+    fold: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
     mut context: SubgridTraversalContext,
 ) -> ChildEntryResult<'input, Tree, M>
 where
@@ -2858,9 +2902,6 @@ type WrapperResolutionEntry<'input, Node, S> = (
     std::sync::Arc<WrapperResolution<'input, Node, S>>,
 );
 
-type WrapperResolutionResult<'input, Node, S, M> =
-    LayoutResultOf<Node, WrapperResolution<'input, Node, S>, S, M>;
-
 /// The wrapper resolutions of one wrapper, which every visit of it with equal
 /// inputs shares.
 pub(crate) struct WrapperResolutions<'input, Node, S: LayoutScalar> {
@@ -2888,24 +2929,27 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> WrapperResolutions<'input,
 
     fn insert(
         &mut self,
-        identity: &WrapperResolutionIdentity<'input, '_, Node, S>,
+        key: WrapperResolutionKey<'input, Node, S>,
         resolution: &std::sync::Arc<WrapperResolution<'input, Node, S>>,
     ) -> Result<(), std::collections::TryReserveError> {
         self.entries.try_reserve(1)?;
-        self.entries.push((
-            WrapperResolutionKey {
-                node: identity.node,
-                axis: identity.axis,
-                container: *identity.container,
-                parent_context: identity.parent_context.clone(),
-                prepared: identity.prepared,
-                lane_track: identity.lane_track,
-                containing_flow_axes: identity.containing_flow_axes,
-                stage: identity.stage,
-            },
-            resolution.clone(),
-        ));
+        self.entries.push((key, resolution.clone()));
         Ok(())
+    }
+}
+
+impl<'input, Node: Copy, S: LayoutScalar> WrapperResolutionKey<'input, Node, S> {
+    fn of(identity: &WrapperResolutionIdentity<'input, '_, Node, S>) -> Self {
+        Self {
+            node: identity.node,
+            axis: identity.axis,
+            container: *identity.container,
+            parent_context: identity.parent_context.clone(),
+            prepared: identity.prepared,
+            lane_track: identity.lane_track,
+            containing_flow_axes: identity.containing_flow_axes,
+            stage: identity.stage,
+        }
     }
 }
 
@@ -2952,12 +2996,12 @@ fn allocation_error<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node,
     )
 }
 
-fn prepare_wrapper_resolution<'input, Tree, M>(
+fn start_wrapper_resolution<'input, Tree, M>(
     tree: &mut Tree,
     identity: &WrapperResolutionIdentity<'input, '_, Tree::Node, Tree::Scalar>,
     container_style: &GridContainerProjection<'input, Tree::Scalar>,
     containment: crate::SizeContainment,
-) -> WrapperResolutionResult<'input, Tree::Node, Tree::Scalar, M>
+) -> ResolutionStarted<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -3038,12 +3082,14 @@ where
     let column_count = initialized.column_tracks.len();
     let row_count = initialized.row_tracks.len();
     if column_count == 0 || row_count == 0 {
-        return Ok(WrapperResolution {
-            constants,
-            initialized,
-            resolved: None,
-            effects: None,
-        });
+        return Ok(WrapperResolutionStart::Complete(Box::new(
+            WrapperResolution {
+                constants,
+                initialized,
+                resolved: None,
+                effects: None,
+            },
+        )));
     }
     let opposite = match queried_axis {
         GridAxisKind::Column => GridAxisKind::Row,
@@ -3057,45 +3103,272 @@ where
     // opposite remains unbounded; neither estimates nor zero loans become an
     // allocation. A later prefix obtains its own standalone opposite through
     // the same canonical stage owner used by ordinary Grid.
-    let resolved = if !opposite_inherited && stage.has_resolved_axis(opposite) {
-        Some(intrinsic_stage::resolve_tracks(
-            tree,
-            node,
-            GridTrackResolutionInput {
-                style: container_style,
-                constants: &constants,
-                column_tracks: &initialized.column_tracks,
-                row_tracks: &initialized.row_tracks,
-                minimum_functions: minimum_parent_functions(
-                    &initialized.column_tracks,
-                    &initialized.row_tracks,
-                    initialized.context.percent_basis,
-                    parent_context,
-                ),
-                context: std::borrow::Cow::Borrowed(&initialized.context),
-                subgrid_report: &initialized.subgrid_report,
-                sizing_flow_axes: constants.flow_axes,
-                available: initialized.track_available,
-                placements: &initialized.placements,
-                stage,
+    if opposite_inherited || !stage.has_resolved_axis(opposite) {
+        return Ok(WrapperResolutionStart::Complete(Box::new(
+            WrapperResolution {
+                constants,
+                initialized,
+                resolved: None,
+                effects: None,
             },
-            intrinsic_stage::GridTrackRun::Intrinsic,
-        )?)
-    } else {
-        None
-    };
-    Ok(WrapperResolution {
-        constants,
-        initialized,
-        resolved,
-        effects: None,
-    })
+        )));
+    }
+    Ok(WrapperResolutionStart::Resolving(Box::new(
+        WrapperResolving {
+            container_style: *container_style,
+            parent_context: parent_context.clone(),
+            constants,
+            initialized,
+            stage,
+            sizing: GridTrackSizing::intrinsic(),
+        },
+    )))
+}
+
+/// A wrapper's standalone track resolution, started and not yet finished.
+struct WrapperResolving<'input, Node, S: LayoutScalar> {
+    container_style: GridContainerProjection<'input, S>,
+    parent_context: GridParentContext<S, Node>,
+    constants: Constants<S>,
+    initialized: InitializedGridTracks<'input, Node, S>,
+    stage: GridSizingStage,
+    sizing: GridTrackSizing<Node, S>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperResolving<'input, Node, S> {
+    /// The input of the resolution, with the sizing it advances.
+    fn parts(
+        &mut self,
+    ) -> (
+        GridTrackResolutionInput<'input, '_, Node, S>,
+        &mut GridTrackSizing<Node, S>,
+    ) {
+        (
+            GridTrackResolutionInput {
+                style: &self.container_style,
+                constants: &self.constants,
+                column_tracks: &self.initialized.column_tracks,
+                row_tracks: &self.initialized.row_tracks,
+                minimum_functions: minimum_parent_functions(
+                    &self.initialized.column_tracks,
+                    &self.initialized.row_tracks,
+                    self.initialized.context.percent_basis,
+                    &self.parent_context,
+                ),
+                context: std::borrow::Cow::Borrowed(&self.initialized.context),
+                subgrid_report: &self.initialized.subgrid_report,
+                sizing_flow_axes: self.constants.flow_axes,
+                available: self.initialized.track_available,
+                placements: &self.initialized.placements,
+                stage: self.stage,
+            },
+            &mut self.sizing,
+        )
+    }
+
+    fn finish<M>(
+        self,
+        resolved: GridTrackResolution<Node, S>,
+    ) -> LayoutResultOf<Node, WrapperResolution<'input, Node, S>, S, M> {
+        Ok(WrapperResolution {
+            constants: self.constants,
+            initialized: self.initialized,
+            resolved: Some(resolved),
+            effects: None,
+        })
+    }
+}
+
+/// How a wrapper's resolution begins: finished, or waiting on its track sizing.
+enum WrapperResolutionStart<'input, Node, S: LayoutScalar> {
+    Complete(Box<WrapperResolution<'input, Node, S>>),
+    Resolving(Box<WrapperResolving<'input, Node, S>>),
+}
+
+type ResolutionStarted<'input, Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    WrapperResolutionStart<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
+/// What the suspended track sizing of a pending level waits on.
+enum PendingStep<Node, S: LayoutScalar> {
+    /// A child to compute.
+    Child(Node, ComputeInputOf<S>),
+    /// The traversal of subgrid items, with the intrinsic-minimum facts of its
+    /// axis's tracks.
+    Traversal(Vec<bool>),
+    Done,
+}
+
+/// What a level's visit is inputs of, once its resolution is known.
+struct LevelParams<'input, Node, S: LayoutScalar> {
+    container_style: GridContainerProjection<'input, S>,
+    parent_context: GridParentContext<S, Node>,
+    queried_axis: GridAxisKind,
+    prepared: ComputeInputOf<S>,
+    containing_flow_axes: FlowAxes,
+    content_box_estimate: Option<Size<S>>,
+    traversal: GridMinimumWrapperTraversal,
+    /// The query without its track slices, which the flags record.
+    query: IntrinsicGridQuery<'static, S>,
+    query_columns: bool,
+    query_rows: bool,
+}
+
+/// A level whose resolution is being prepared, with the effect capture around
+/// the preparation still open.
+pub(super) struct PendingLevel<'input, Node, S: LayoutScalar> {
+    node: Node,
+    params: LevelParams<'input, Node, S>,
+    key: WrapperResolutionKey<'input, Node, S>,
+    capture: usize,
+    reuse: bool,
+    resolving: WrapperResolving<'input, Node, S>,
+}
+
+/// How a level's visit begins.
+pub(super) enum LevelBegun<'input, Node, S: LayoutScalar> {
+    /// The wrapper has no children to traverse.
+    Empty,
+    Ready(Box<WrapperLevel<'input, Node, S>>),
+    /// The level waits on its resolution.
+    Resolving(Box<PendingLevel<'input, Node, S>>),
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> PendingLevel<'input, Node, S> {
+    fn node(&self) -> Node {
+        self.node
+    }
+
+    /// Where the preparation's effect capture began.
+    fn capture(&self) -> usize {
+        self.capture
+    }
+
+    /// The next step of the suspended track sizing.
+    fn advance<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> LayoutResultOf<Node, PendingStep<Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let node = self.node;
+        let (input, sizing) = self.resolving.parts();
+        Ok(match sizing.advance_deferred(tree, node, &input)? {
+            intrinsic_stage::DeferredTrack::Child(child, request) => {
+                PendingStep::Child(child, request)
+            }
+            intrinsic_stage::DeferredTrack::Traversal(facts) => PendingStep::Traversal(facts),
+            intrinsic_stage::DeferredTrack::Done => PendingStep::Done,
+        })
+    }
+
+    fn accept<M>(&mut self, output: ComputeOutputOf<S>) -> LayoutResultOf<Node, (), S, M> {
+        let node = self.node;
+        let (input, sizing) = self.resolving.parts();
+        sizing.accept(node, &input, output)
+    }
+
+    fn next_wrapper<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        fold: &mut SubgridIntrinsicFold<'input, Node, S>,
+    ) -> NextWrapper<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let node = self.node;
+        let (input, sizing) = self.resolving.parts();
+        sizing.next_wrapper(tree, node, &input, fold)
+    }
+
+    fn finish_traversal<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        traversal: Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let node = self.node;
+        let (input, sizing) = self.resolving.parts();
+        sizing.finish_traversal(tree, node, &input, traversal)
+    }
+
+    /// The level, once its track sizing is done; the effect capture closes
+    /// whether or not the resolution succeeded.
+    fn finish<Tree, M>(mut self, tree: &mut Tree) -> LevelConclusion<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let node = self.node;
+        let (input, sizing) = self.resolving.parts();
+        let sizing = std::mem::replace(sizing, GridTrackSizing::intrinsic());
+        let resolved = sizing.finish(node, input);
+        self.conclude(tree, resolved)
+    }
+
+    /// Closes the preparation's capture and completes the level from the
+    /// outcome of the resolution.
+    fn conclude<Tree, M>(
+        self,
+        tree: &mut Tree,
+        resolved: GridTrackResolutionResult<Node, S, M>,
+    ) -> LayoutResultOf<Node, Option<WrapperLevel<'input, Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self {
+            node,
+            params,
+            key,
+            capture,
+            reuse,
+            resolving,
+        } = self;
+        let resolution = match resolved {
+            Ok(resolved) => resolving.finish(resolved),
+            Err(error) => Err(error),
+        };
+        conclude_level(tree, node, params, key, capture, reuse, resolution)
+    }
+}
+
+/// Closes the effect capture of a wrapper's preparation, retains the
+/// resolution it produced, and completes the wrapper's level.
+fn conclude_level<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    params: LevelParams<'input, Tree::Node, Tree::Scalar>,
+    key: WrapperResolutionKey<'input, Tree::Node, Tree::Scalar>,
+    capture: usize,
+    reuse: bool,
+    resolution: ResolutionOutcome<'input, Tree, M>,
+) -> LevelConclusion<'input, Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let effects = tree.end_effect_capture(capture);
+    let mut resolution = resolution?;
+    resolution.effects = effects;
+    let resolution = std::sync::Arc::new(resolution);
+    if resolution.effects.is_some()
+        && let Some(memo) = tree.wrapper_resolutions(node).filter(|_| reuse)
+    {
+        memo.insert(key, &resolution)
+            .map_err(|_| allocation_error(node))?;
+    }
+    WrapperLevel::from_resolution(tree, node, resolution, params)
 }
 
 /// One visit of a subgrid wrapper, owned: the wrapper's resolution and what the
 /// visit derives from it, so that its children can be handed out one at a time
 /// and a child's view rebuilt whenever the traversal returns to this wrapper.
 pub(super) struct WrapperLevel<'input, Node, S: LayoutScalar> {
+    node: Node,
     resolution: std::sync::Arc<WrapperResolution<'input, Node, S>>,
     container_style: GridContainerProjection<'input, S>,
     parent_context: GridParentContext<S, Node>,
@@ -3126,9 +3399,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
         self.areas.len()
     }
 
-    /// The wrapper's visit up to its children: its resolution, reused or
-    /// prepared, and the geometry its children are traversed on. `None` when
-    /// the wrapper has no children to traverse.
+    /// The wrapper's visit up to its children, with the track resolution it may
+    /// need run to completion on the native stack.
     fn prepare<Tree, M>(
         tree: &mut Tree,
         node: Node,
@@ -3137,9 +3409,41 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        match Self::begin::<Tree, M>(tree, node, request)? {
+            LevelBegun::Empty => Ok(None),
+            LevelBegun::Ready(level) => Ok(Some(*level)),
+            LevelBegun::Resolving(mut pending) => {
+                let node = pending.node();
+                let (input, _) = pending.resolving.parts();
+                let resolved = intrinsic_stage::resolve_tracks(
+                    tree,
+                    node,
+                    input,
+                    intrinsic_stage::GridTrackRun::Intrinsic,
+                );
+                pending.conclude(tree, resolved)
+            }
+        }
+    }
+
+    fn node(&self) -> Node {
+        self.node
+    }
+
+    /// The wrapper's visit up to its children: its resolution when it is
+    /// reused or needs no track sizing, and otherwise the preparation that
+    /// computes it, with its effect capture open.
+    fn begin<Tree, M>(
+        tree: &mut Tree,
+        node: Node,
+        request: GridMinimumWrapperInput<'input, '_, Node, S>,
+    ) -> LayoutResultOf<Node, LevelBegun<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
         let containment = size_containment(tree.node_input(node));
         if grid_minimum_wrapper_contained(tree.node_input(node), request.axis) {
-            return Ok(None);
+            return Ok(LevelBegun::Empty);
         }
         let GridMinimumWrapperInput {
             axis: queried_axis,
@@ -3172,44 +3476,103 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
             containing_flow_axes,
             stage: query.stage,
         };
+        let params = LevelParams {
+            container_style,
+            parent_context: parent_context.clone(),
+            queried_axis,
+            prepared,
+            containing_flow_axes,
+            content_box_estimate,
+            traversal,
+            query_columns: query.columns.is_some(),
+            query_rows: query.rows.is_some(),
+            query: IntrinsicGridQuery {
+                purpose: query.purpose,
+                axis: query.axis,
+                stage: query.stage,
+                available: query.available,
+                columns: None,
+                rows: None,
+                observe_auto: query.observe_auto,
+                include_flexible_tracks: query.include_flexible_tracks,
+            },
+        };
         let reuse = !super::subgrid_reuse_disabled();
         let reused = tree
             .wrapper_resolutions(node)
             .filter(|_| reuse)
             .and_then(|memo| memo.get(&identity));
-        let resolution = match reused {
-            Some(resolution) => {
-                // A recomputation would stage its writes again, each replacing its
-                // earlier write and moving last. The reuse stages the same writes
-                // in the same order, so the order the batch publishes is the same.
-                if let Some(effects) = &resolution.effects {
-                    tree.replay_effects(effects)?;
-                }
-                resolution
+        if let Some(resolution) = reused {
+            // A recomputation would stage its writes again, each replacing its
+            // earlier write and moving last. The reuse stages the same writes
+            // in the same order, so the order the batch publishes is the same.
+            if let Some(effects) = &resolution.effects {
+                tree.replay_effects(effects)?;
             }
-            None => {
-                // The capture opens and closes within this call, so no
-                // suspended traversal frame ever holds one open.
-                let start = tree.begin_effect_capture(crate::engine::CaptureKind::Preparation);
-                let prepared = prepare_wrapper_resolution::<Tree, M>(
-                    tree,
-                    &identity,
-                    &container_style,
-                    containment,
-                );
-                let effects = tree.end_effect_capture(start);
-                let mut resolution = prepared?;
-                resolution.effects = effects;
-                let resolution = std::sync::Arc::new(resolution);
-                if resolution.effects.is_some()
-                    && let Some(memo) = tree.wrapper_resolutions(node).filter(|_| reuse)
-                {
-                    memo.insert(&identity, &resolution)
-                        .map_err(|_| allocation_error(node))?;
-                }
-                resolution
+            return Ok(Self::begun(Self::from_resolution(
+                tree, node, resolution, params,
+            )?));
+        }
+        let key = WrapperResolutionKey::of(&identity);
+        let capture = tree.begin_effect_capture(crate::engine::CaptureKind::Preparation);
+        match start_wrapper_resolution::<Tree, M>(tree, &identity, &container_style, containment) {
+            Err(error) => {
+                tree.end_effect_capture(capture);
+                Err(error)
             }
-        };
+            Ok(WrapperResolutionStart::Complete(resolution)) => Ok(Self::begun(conclude_level(
+                tree,
+                node,
+                params,
+                key,
+                capture,
+                reuse,
+                Ok(*resolution),
+            )?)),
+            Ok(WrapperResolutionStart::Resolving(resolving)) => {
+                Ok(LevelBegun::Resolving(Box::new(PendingLevel {
+                    node,
+                    params,
+                    key,
+                    capture,
+                    reuse,
+                    resolving: *resolving,
+                })))
+            }
+        }
+    }
+
+    fn begun(level: Option<Self>) -> LevelBegun<'input, Node, S> {
+        match level {
+            Some(level) => LevelBegun::Ready(Box::new(level)),
+            None => LevelBegun::Empty,
+        }
+    }
+
+    /// The level of a wrapper whose resolution is known: the geometry its
+    /// children are traversed on. `None` when the wrapper has none.
+    fn from_resolution<Tree, M>(
+        tree: &mut Tree,
+        node: Node,
+        resolution: std::sync::Arc<WrapperResolution<'input, Node, S>>,
+        params: LevelParams<'input, Node, S>,
+    ) -> LayoutResultOf<Node, Option<Self>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let LevelParams {
+            container_style,
+            parent_context,
+            queried_axis,
+            prepared,
+            containing_flow_axes,
+            content_box_estimate,
+            traversal,
+            query,
+            query_columns,
+            query_rows,
+        } = params;
+        let parent_context = &parent_context;
         let constants = &resolution.constants;
         let initialized = &resolution.initialized;
         let resolved = resolution.resolved.as_ref();
@@ -3343,19 +3706,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
             })
             .chain(lane_areas)
             .collect::<Vec<_>>();
-        let query_columns = query.columns.is_some();
-        let query_rows = query.rows.is_some();
-        let query = IntrinsicGridQuery {
-            purpose: query.purpose,
-            axis: query.axis,
-            stage: query.stage,
-            available: query.available,
-            columns: None,
-            rows: None,
-            observe_auto: query.observe_auto,
-            include_flexible_tracks: query.include_flexible_tracks,
-        };
         Ok(Some(Self {
+            node,
             parent_context: parent_context.clone(),
             container_style,
             queried_axis,

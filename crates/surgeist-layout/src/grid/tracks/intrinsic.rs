@@ -1,7 +1,8 @@
 use super::subgrid_intrinsic::{
-    IntrinsicGridChildInput, SubgridIntrinsicContributionInput, SubgridIntrinsicContributionReport,
-    apply_subgrid_intrinsic_contributions, compute_prepared_intrinsic_grid_child,
-    prepare_intrinsic_grid_child,
+    IntrinsicGridChildInput, SubgridContributionStart, SubgridIntrinsicContributionInput,
+    SubgridIntrinsicContributionReport, compute_prepared_intrinsic_grid_child,
+    finish_subgrid_intrinsic_contributions, prepare_intrinsic_grid_child,
+    start_subgrid_intrinsic_contributions,
 };
 use super::*;
 
@@ -775,22 +776,89 @@ impl<Node: Copy, S: LayoutScalar> IntrinsicTrackChild<Node, S> {
     }
 }
 
-type IntrinsicTrackStep<Node, S, M> =
-    LayoutResultOf<Node, Option<IntrinsicTrackChild<Node, S>>, S, M>;
+fn traversal_input<'input, 'a, Node: Copy, S: LayoutScalar>(
+    grid: IntrinsicGrid<'input, 'a, Node, S>,
+    axis: GridAxisKind,
+    children: &'a [Node],
+    placed_areas: &'a [Option<GridArea<S>>],
+    column_sizes: &'a [S],
+    row_sizes: &'a [S],
+    facts: &'a [bool],
+) -> GridSubgridIntrinsicTraversalInput<'input, 'a, Node, S> {
+    GridSubgridIntrinsicTraversalInput {
+        grid,
+        axis,
+        containing_flow_axes: grid.constants.flow_axes,
+        children,
+        placed_areas,
+        subgrid_report: grid.subgrid_report,
+        placements: grid.placements,
+        named_columns: grid.named_columns,
+        named_rows: grid.named_rows,
+        area_facts: grid.area_facts,
+        parent_gap: Size::new(grid.gap.inline, grid.gap.block),
+        column_gutters: grid.column_gutters,
+        row_gutters: grid.row_gutters,
+        column_sizes,
+        row_sizes,
+        container_size: grid.constants.node_inner_size,
+        intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(facts),
+        query: grid.query,
+    }
+}
 
-impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackRole<Node, S> {
-    pub(in crate::grid) fn begin<'input, Tree, M>(
+/// Which axis's subgrid contributions a role's beginning is collecting.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BeginAxis {
+    Column,
+    Row,
+}
+
+/// The traversal of one axis's subgrid items, started and not yet finished.
+struct BeginTraversal<S: LayoutScalar> {
+    facts: Vec<bool>,
+    root: RootTraversal<S>,
+}
+
+/// What a role's beginning waits for next.
+pub(in crate::grid) enum IntrinsicTrackBeginStep<Node, S: LayoutScalar> {
+    /// The subgrid items of the current axis are to be traversed, with these
+    /// intrinsic-minimum facts for the axis's tracks.
+    Traverse(Vec<bool>),
+    Done(Box<IntrinsicTrackRole<Node, S>>),
+}
+
+/// The beginning of an intrinsic track role: the contributions of each axis's
+/// subgrid items, whose traversals the owner may drive one step at a time.
+pub(in crate::grid) struct IntrinsicTrackBegin<Node, S: LayoutScalar> {
+    columns: Vec<S>,
+    rows: Vec<S>,
+    column_base_floors: Vec<S>,
+    row_base_floors: Vec<S>,
+    column_receipts: Vec<GridContributionReceipt<Node, S>>,
+    row_receipts: Vec<GridContributionReceipt<Node, S>>,
+    children: Vec<Node>,
+    placed_areas: Vec<Option<GridArea<S>>>,
+    column_area_sizes: Vec<S>,
+    row_area_sizes: Vec<S>,
+    axis: BeginAxis,
+    column_contributions: Option<SubgridIntrinsicContributionReport<Node, S>>,
+    traversal: Option<BeginTraversal<S>>,
+    /// The contributions of the current axis, from its finished traversal.
+    finished: Option<SubgridIntrinsicContributionReport<Node, S>>,
+}
+
+impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
+    pub(in crate::grid) fn new<'input, Tree, M>(
         tree: &mut Tree,
         node: Node,
         grid: IntrinsicGrid<'input, '_, Node, S>,
         lower_bounds: IntrinsicGridLowerBounds<'_, S>,
-    ) -> LayoutResultOf<Node, Self, S, M>
+    ) -> Self
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let available = grid.query.available;
         let style = grid.style;
-        let constants = grid.constants;
         let column_tracks = grid.column_tracks;
         let row_tracks = grid.row_tracks;
         let column_count = column_tracks.len();
@@ -805,10 +873,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackRole<Node, S> {
             .map(|bounds| bounds.iter().copied().take(row_count).collect())
             .unwrap_or_else(|| vec![S::ZERO; row_count]);
         row_base_floors.resize(row_count, S::ZERO);
-        let mut columns = vec![S::ZERO; column_count];
-        let mut rows = vec![S::ZERO; row_count];
-        let mut column_receipts = Vec::new();
-        let mut row_receipts = Vec::new();
+        let columns = vec![S::ZERO; column_count];
+        let rows = vec![S::ZERO; row_count];
         let zero_columns: Vec<S> = grid
             .query
             .columns
@@ -880,107 +946,278 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackRole<Node, S> {
             .columns
             .map_or_else(|| columns.clone(), <[_]>::to_vec);
         let row_area_sizes = grid.query.rows.map_or_else(|| rows.clone(), <[_]>::to_vec);
-        let column_subgrid_contributions = if grid.query.includes(GridAxisKind::Column) {
-            apply_subgrid_intrinsic_contributions(
-                tree,
-                SubgridIntrinsicContributionInput {
-                    grid,
-                    owner: node,
-                    constants,
-                    container_style: style,
-                    placements: grid.placements,
-                    axis: GridAxisKind::Column,
-                    tracks: column_tracks,
-                    sizes: &mut columns,
-                    base_floors: &mut column_base_floors,
-                    column_gutters: grid.column_gutters,
-                    row_gutters: grid.row_gutters,
-                    container_gap: grid.gap,
-                    available,
-                    children: &children,
-                    placed_areas: &placed_areas,
-                    subgrid_report: grid.subgrid_report,
-                    named_columns: grid.named_columns,
-                    named_rows: grid.named_rows,
-                    area_facts: grid.area_facts,
-                    column_sizes: &column_area_sizes,
-                    row_sizes: &row_area_sizes,
-                    query: grid.query,
-                },
-            )?
-        } else {
-            SubgridIntrinsicContributionReport::empty(
-                node,
-                GridAxisKind::Column,
-                column_count,
-                constants.flow_axes,
-                grid_baseline_reference(grid.style.baseline_references, GridAxisKind::Column),
-            )
-        };
-        column_receipts.extend(column_subgrid_contributions.receipts.iter().copied());
-        let column_area_sizes = grid
-            .query
-            .columns
-            .map_or_else(|| columns.clone(), <[_]>::to_vec);
-        let row_area_sizes = grid.query.rows.map_or_else(|| rows.clone(), <[_]>::to_vec);
-        let row_subgrid_contributions = if grid.query.includes(GridAxisKind::Row) {
-            apply_subgrid_intrinsic_contributions(
-                tree,
-                SubgridIntrinsicContributionInput {
-                    grid,
-                    owner: node,
-                    constants,
-                    container_style: style,
-                    placements: grid.placements,
-                    axis: GridAxisKind::Row,
-                    tracks: row_tracks,
-                    sizes: &mut rows,
-                    base_floors: &mut row_base_floors,
-                    column_gutters: grid.column_gutters,
-                    row_gutters: grid.row_gutters,
-                    container_gap: grid.gap,
-                    available,
-                    children: &children,
-                    placed_areas: &placed_areas,
-                    subgrid_report: grid.subgrid_report,
-                    named_columns: grid.named_columns,
-                    named_rows: grid.named_rows,
-                    area_facts: grid.area_facts,
-                    column_sizes: &column_area_sizes,
-                    row_sizes: &row_area_sizes,
-                    query: grid.query,
-                },
-            )?
-        } else {
-            SubgridIntrinsicContributionReport::empty(
-                node,
-                GridAxisKind::Row,
-                row_count,
-                constants.flow_axes,
-                grid_baseline_reference(grid.style.baseline_references, GridAxisKind::Row),
-            )
-        };
-        row_receipts.extend(row_subgrid_contributions.receipts.iter().copied());
-        let subgrid_row_count = row_subgrid_contributions.row_contributions.len();
-        let row_contributions = row_subgrid_contributions.row_contributions;
-
-        Ok(Self {
-            children: children.into_iter().zip(placed_areas).enumerate(),
-            sizes: IntrinsicTrackSizes {
-                purpose: grid.query.purpose,
-                columns,
-                rows,
-                column_base_floors,
-                row_base_floors,
-                column_receipts,
-                row_receipts,
-            },
-            row_contributions,
-            subgrid_row_count,
-            column_baselines: column_subgrid_contributions.ancestor_baseline_group,
-        })
+        Self {
+            columns,
+            rows,
+            column_base_floors,
+            row_base_floors,
+            column_receipts: Vec::new(),
+            row_receipts: Vec::new(),
+            children,
+            placed_areas,
+            column_area_sizes,
+            row_area_sizes,
+            axis: BeginAxis::Column,
+            column_contributions: None,
+            traversal: None,
+            finished: None,
+        }
     }
 
+    fn grid_axis(&self) -> GridAxisKind {
+        match self.axis {
+            BeginAxis::Column => GridAxisKind::Column,
+            BeginAxis::Row => GridAxisKind::Row,
+        }
+    }
+
+    /// The input of the current axis's contributions.
+    fn contribution_input<'input, 'a>(
+        &'a mut self,
+        node: Node,
+        grid: IntrinsicGrid<'input, 'a, Node, S>,
+    ) -> SubgridIntrinsicContributionInput<'input, 'a, Node, S> {
+        let (tracks, sizes, base_floors) = match self.axis {
+            BeginAxis::Column => (
+                grid.column_tracks,
+                &mut self.columns[..],
+                &mut self.column_base_floors[..],
+            ),
+            BeginAxis::Row => (
+                grid.row_tracks,
+                &mut self.rows[..],
+                &mut self.row_base_floors[..],
+            ),
+        };
+        SubgridIntrinsicContributionInput {
+            grid,
+            owner: node,
+            constants: grid.constants,
+            container_style: grid.style,
+            placements: grid.placements,
+            axis: match self.axis {
+                BeginAxis::Column => GridAxisKind::Column,
+                BeginAxis::Row => GridAxisKind::Row,
+            },
+            tracks,
+            sizes,
+            base_floors,
+            available: grid.query.available,
+            children: &self.children,
+            placed_areas: &self.placed_areas,
+            subgrid_report: grid.subgrid_report,
+            column_sizes: &self.column_area_sizes,
+            row_sizes: &self.row_area_sizes,
+            query: grid.query,
+        }
+    }
+
+    /// Collects the contributions of each axis in turn until one needs its
+    /// subgrid items traversed, or both are done.
+    pub(in crate::grid) fn advance<M>(
+        &mut self,
+        node: Node,
+        grid: IntrinsicGrid<'_, '_, Node, S>,
+    ) -> LayoutResultOf<Node, IntrinsicTrackBeginStep<Node, S>, S, M> {
+        loop {
+            let axis = self.grid_axis();
+            let report = if let Some(report) = self.finished.take() {
+                report
+            } else if !grid.query.includes(axis) {
+                SubgridIntrinsicContributionReport::empty(
+                    node,
+                    axis,
+                    match axis {
+                        GridAxisKind::Column => grid.column_tracks.len(),
+                        GridAxisKind::Row => grid.row_tracks.len(),
+                    },
+                    grid.constants.flow_axes,
+                    grid_baseline_reference(grid.style.baseline_references, axis),
+                )
+            } else {
+                match start_subgrid_intrinsic_contributions(&self.contribution_input(node, grid)) {
+                    SubgridContributionStart::Empty(report) => report,
+                    SubgridContributionStart::Traverse { facts } => {
+                        let root = RootTraversal::new(&traversal_input(
+                            grid,
+                            axis,
+                            &self.children,
+                            &self.placed_areas,
+                            &self.column_area_sizes,
+                            &self.row_area_sizes,
+                            &facts,
+                        ));
+                        self.traversal = Some(BeginTraversal {
+                            facts: facts.clone(),
+                            root,
+                        });
+                        return Ok(IntrinsicTrackBeginStep::Traverse(facts));
+                    }
+                }
+            };
+            if let Some(role) = self.axis_done::<M>(node, grid, report)? {
+                return Ok(IntrinsicTrackBeginStep::Done(Box::new(role)));
+            }
+        }
+    }
+
+    /// Takes the contributions of the current axis and moves to the next axis.
+    /// The role once both axes are done.
+    fn axis_done<M>(
+        &mut self,
+        node: Node,
+        grid: IntrinsicGrid<'_, '_, Node, S>,
+        report: SubgridIntrinsicContributionReport<Node, S>,
+    ) -> LayoutResultOf<Node, Option<IntrinsicTrackRole<Node, S>>, S, M> {
+        match self.axis {
+            BeginAxis::Column => {
+                self.column_receipts.extend(report.receipts.iter().copied());
+                self.column_contributions = Some(report);
+                self.column_area_sizes = grid
+                    .query
+                    .columns
+                    .map_or_else(|| self.columns.clone(), <[_]>::to_vec);
+                self.row_area_sizes = grid
+                    .query
+                    .rows
+                    .map_or_else(|| self.rows.clone(), <[_]>::to_vec);
+                self.axis = BeginAxis::Row;
+                Ok(None)
+            }
+            BeginAxis::Row => {
+                self.row_receipts.extend(report.receipts.iter().copied());
+                let subgrid_row_count = report.row_contributions.len();
+                let row_contributions = report.row_contributions;
+                let Some(columns) = self.column_contributions.take() else {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::InternalInvariant(
+                            LayoutInternalInvariant::InvalidGridTrackSizing,
+                        ),
+                    ));
+                };
+                Ok(Some(IntrinsicTrackRole {
+                    children: std::mem::take(&mut self.children)
+                        .into_iter()
+                        .zip(std::mem::take(&mut self.placed_areas))
+                        .enumerate(),
+                    sizes: IntrinsicTrackSizes {
+                        purpose: grid.query.purpose,
+                        columns: std::mem::take(&mut self.columns),
+                        rows: std::mem::take(&mut self.rows),
+                        column_base_floors: std::mem::take(&mut self.column_base_floors),
+                        row_base_floors: std::mem::take(&mut self.row_base_floors),
+                        column_receipts: std::mem::take(&mut self.column_receipts),
+                        row_receipts: std::mem::take(&mut self.row_receipts),
+                    },
+                    row_contributions,
+                    subgrid_row_count,
+                    column_baselines: columns.ancestor_baseline_group,
+                }))
+            }
+        }
+    }
+
+    /// Visits the root items of the current axis's traversal until one is a
+    /// wrapper whose children remain to be traversed.
+    pub(in crate::grid) fn next_wrapper<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+        fold: &mut SubgridIntrinsicFold<'input, Node, S>,
+    ) -> NextWrapper<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let axis = self.grid_axis();
+        let Self {
+            traversal,
+            children,
+            placed_areas,
+            column_area_sizes,
+            row_area_sizes,
+            ..
+        } = self;
+        let Some(traversal) = traversal else {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::InternalInvariant(
+                    LayoutInternalInvariant::InvalidGridTrackSizing,
+                ),
+            ));
+        };
+        let input = traversal_input(
+            grid,
+            axis,
+            children,
+            placed_areas,
+            column_area_sizes,
+            row_area_sizes,
+            &traversal.facts,
+        );
+        traversal.root.next_wrapper::<Tree, M>(tree, &input, fold)
+    }
+
+    /// Runs the current axis's traversal to its end on the native stack.
+    pub(in crate::grid) fn traverse_to_end<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+        facts: &[bool],
+    ) -> LayoutResultOf<
+        Node,
+        Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
+        S,
+        M,
+    >
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let axis = self.grid_axis();
+        collect_grid_subgrid_intrinsic_traversal(
+            tree,
+            traversal_input(
+                grid,
+                axis,
+                &self.children,
+                &self.placed_areas,
+                &self.column_area_sizes,
+                &self.row_area_sizes,
+                facts,
+            ),
+        )
+    }
+
+    /// Takes the report of the current axis's traversal and the contributions
+    /// it leads to.
+    pub(in crate::grid) fn finish_traversal<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+        traversal: Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.traversal = None;
+        let report = finish_subgrid_intrinsic_contributions(
+            tree,
+            self.contribution_input(node, grid),
+            traversal,
+        )?;
+        self.finished = Some(report);
+        Ok(())
+    }
+}
+
+type IntrinsicTrackStep<Node, S, M> =
+    LayoutResultOf<Node, Option<IntrinsicTrackChild<Node, S>>, S, M>;
+
+impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackRole<Node, S> {
     pub(in crate::grid) fn next<'input, Tree, M>(
         &mut self,
         tree: &mut Tree,

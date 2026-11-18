@@ -338,6 +338,16 @@ where
     }
 }
 
+/// What a track sizing step waits on.
+pub(super) enum DeferredTrack<Node, S: LayoutScalar> {
+    /// A child to compute.
+    Child(Node, ComputeInputOf<S>),
+    /// The traversal of subgrid items, with the intrinsic-minimum facts of its
+    /// axis's tracks.
+    Traversal(Vec<bool>),
+    Done,
+}
+
 pub(super) type TrackSizingStep<Node, S, M> =
     LayoutResultOf<Node, ControlFlow<(), (Node, ComputeInputOf<S>)>, S, M>;
 
@@ -487,12 +497,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
         })
     }
 
-    pub(super) fn advance<'input, Tree, M>(
+    /// The next step of the sizing, which may wait on the traversal of subgrid
+    /// items instead of running it.
+    pub(super) fn advance_deferred<'input, Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         input: &GridTrackResolutionInput<'input, '_, Node, S>,
-    ) -> TrackSizingStep<Node, S, M>
+    ) -> LayoutResultOf<Node, DeferredTrack<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -517,12 +529,16 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
                 .take()
                 .expect("current axis owns its active work");
             let source = self.source(node, input, &active.mode)?;
-            let result = match active.collection.advance(tree, node, source)? {
-                ControlFlow::Continue(request) => {
+            let result = match active.collection.advance_deferred(tree, node, source)? {
+                DeferredContribution::Child(child, request) => {
                     self.active = Some(active);
-                    return Ok(ControlFlow::Continue(request));
+                    return Ok(DeferredTrack::Child(child, request));
                 }
-                ControlFlow::Break(result) => result,
+                DeferredContribution::Traversal(facts) => {
+                    self.active = Some(active);
+                    return Ok(DeferredTrack::Traversal(facts));
+                }
+                DeferredContribution::Done(result) => result,
             };
             match (active.mode, result) {
                 (TrackAxisMode::Observe, CollectedContributions::Observation(observation)) => {
@@ -605,7 +621,93 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
                 _ => unreachable!("track result belongs to its active axis phase"),
             }
         }
-        Ok(ControlFlow::Break(()))
+        Ok(DeferredTrack::Done)
+    }
+
+    /// The next step of the sizing, running a traversal of subgrid items to
+    /// its end on the native stack.
+    pub(super) fn advance<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+    ) -> TrackSizingStep<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            match self.advance_deferred(tree, node, input)? {
+                DeferredTrack::Done => return Ok(ControlFlow::Break(())),
+                DeferredTrack::Child(child, request) => {
+                    return Ok(ControlFlow::Continue((child, request)));
+                }
+                DeferredTrack::Traversal(facts) => {
+                    let Some(mut active) = self.active.take() else {
+                        return Err(grid_track_sizing_error(
+                            node,
+                            SpanningContributionError::InvalidIncidence,
+                        ));
+                    };
+                    let source = self.source(node, input, &active.mode)?;
+                    let grid = source.grid_for(node, active.collection.purpose())?;
+                    let result = active.collection.beginning(node).and_then(|beginning| {
+                        let traversal = beginning.traverse_to_end(tree, grid, &facts)?;
+                        beginning.finish_traversal(tree, node, grid, traversal)
+                    });
+                    self.active = Some(active);
+                    result?;
+                }
+            }
+        }
+    }
+
+    /// Visits the root items of the traversal the sizing waits on until one is
+    /// a wrapper whose children remain to be traversed.
+    pub(super) fn next_wrapper<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+        fold: &mut SubgridIntrinsicFold<'input, Node, S>,
+    ) -> NextWrapper<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Some(mut active) = self.active.take() else {
+            return Err(grid_track_sizing_error(
+                node,
+                SpanningContributionError::InvalidIncidence,
+            ));
+        };
+        let source = self.source(node, input, &active.mode)?;
+        let result = active.collection.next_wrapper(tree, node, source, fold);
+        self.active = Some(active);
+        result
+    }
+
+    /// Takes the report of the traversal the sizing waited on.
+    pub(super) fn finish_traversal<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+        traversal: Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Some(mut active) = self.active.take() else {
+            return Err(grid_track_sizing_error(
+                node,
+                SpanningContributionError::InvalidIncidence,
+            ));
+        };
+        let source = self.source(node, input, &active.mode)?;
+        let result = active
+            .collection
+            .finish_traversal(tree, node, source, traversal);
+        self.active = Some(active);
+        result
     }
 
     pub(super) fn accept<M>(
@@ -1099,6 +1201,8 @@ enum TrackContributionRequest<Node, S: LayoutScalar> {
 }
 
 enum ContributionRole<Node, S: LayoutScalar> {
+    /// An ordinary role collecting the contributions of its subgrid items.
+    GridBegin(Box<IntrinsicTrackBegin<Node, S>>),
     Grid(IntrinsicTrackRole<Node, S>),
     Lanes(LaneIntrinsicRole<Node, S>),
 }
@@ -1140,6 +1244,16 @@ struct ContributionCollection<Node, S: LayoutScalar> {
 enum CollectedContributions<Node, S: LayoutScalar> {
     Observation(MinContentObservation<Node, S>),
     Axis(EvaluatedAxis<Node, S>),
+}
+
+/// What a collection step waits on.
+enum DeferredContribution<Node, S: LayoutScalar> {
+    /// A child to compute.
+    Child(Node, ComputeInputOf<S>),
+    /// The traversal of subgrid items, with the intrinsic-minimum facts of its
+    /// axis's tracks.
+    Traversal(Vec<bool>),
+    Done(CollectedContributions<Node, S>),
 }
 
 type ContributionStep<Node, S, M> = LayoutResultOf<
@@ -1215,12 +1329,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
         }
     }
 
-    fn advance<'input, Tree, M>(
+    /// The next step of the collection, which may wait on the traversal of
+    /// subgrid items instead of running it.
+    fn advance_deferred<'input, Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         source: ContributionSource<'input, '_, Node, S>,
-    ) -> ContributionStep<Node, S, M>
+    ) -> LayoutResultOf<Node, DeferredContribution<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -1243,13 +1359,31 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
                         let grid = source.grid_for(node, purpose)?;
                         self.role = Some(ActiveContributionRole {
                             available: grid.query.available,
-                            role: ContributionRole::Grid(IntrinsicTrackRole::begin(
+                            role: ContributionRole::GridBegin(Box::new(IntrinsicTrackBegin::new(
                                 tree,
                                 node,
                                 grid,
                                 IntrinsicGridLowerBounds::default(),
-                            )?),
+                            ))),
                         });
+                    }
+                    if let Some(ActiveContributionRole {
+                        role: ContributionRole::GridBegin(beginning),
+                        ..
+                    }) = self.role.as_mut()
+                    {
+                        let grid = source.grid_for(node, purpose)?;
+                        match beginning.advance(node, grid)? {
+                            IntrinsicTrackBeginStep::Traverse(facts) => {
+                                return Ok(DeferredContribution::Traversal(facts));
+                            }
+                            IntrinsicTrackBeginStep::Done(role) => {
+                                self.role = Some(ActiveContributionRole {
+                                    available: grid.query.available,
+                                    role: ContributionRole::Grid(*role),
+                                });
+                            }
+                        }
                     }
                     let active = self.role.as_mut().expect("active ordinary role");
                     let grid = source.project_grid(purpose, active.available);
@@ -1262,7 +1396,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
                             .map(TrackContributionRequest::Grid);
                     }
                     if let Some(TrackContributionRequest::Grid(child)) = &self.pending {
-                        return Ok(ControlFlow::Continue((child.node, child.input(grid)?)));
+                        return Ok(DeferredContribution::Child(child.node, child.input(grid)?));
                     }
                     let Some(ActiveContributionRole {
                         role: ContributionRole::Grid(role),
@@ -1306,7 +1440,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
                             .map(TrackContributionRequest::Lanes);
                     }
                     if let Some(TrackContributionRequest::Lanes(child)) = &self.pending {
-                        return Ok(ControlFlow::Continue((child.node, child.input())));
+                        return Ok(DeferredContribution::Child(child.node, child.input()));
                     }
                     let Some(ActiveContributionRole {
                         role: ContributionRole::Lanes(role),
@@ -1322,16 +1456,16 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
             self.index += 1;
         }
         if self.observe_only {
-            return Ok(ControlFlow::Break(CollectedContributions::Observation(
-                MinContentObservation {
+            return Ok(DeferredContribution::Done(
+                CollectedContributions::Observation(MinContentObservation {
                     grid: self.grid[1]
                         .take()
                         .expect("min-content observation completed"),
                     lanes: self.lanes[1]
                         .take()
                         .unwrap_or_else(LanePurposeContributions::empty),
-                },
-            )));
+                }),
+            ));
         }
         let CombinedGridContributions { group, rows } = self
             .combined
@@ -1349,7 +1483,87 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
             _ => unreachable!("lane contributions settle all three roles"),
         };
         finish_axis_contributions(node, group, rows, lanes)
-            .map(|axis| ControlFlow::Break(CollectedContributions::Axis(axis)))
+            .map(|axis| DeferredContribution::Done(CollectedContributions::Axis(axis)))
+    }
+
+    /// The next step of the collection, running a traversal of subgrid items to
+    /// its end on the native stack.
+    fn advance<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        source: ContributionSource<'input, '_, Node, S>,
+    ) -> ContributionStep<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            match self.advance_deferred(tree, node, source)? {
+                DeferredContribution::Child(child, request) => {
+                    return Ok(ControlFlow::Continue((child, request)));
+                }
+                DeferredContribution::Done(result) => return Ok(ControlFlow::Break(result)),
+                DeferredContribution::Traversal(facts) => {
+                    let grid = source.grid_for(node, self.purpose())?;
+                    let beginning = self.beginning(node)?;
+                    let traversal = beginning.traverse_to_end(tree, grid, &facts)?;
+                    beginning.finish_traversal(tree, node, grid, traversal)?;
+                }
+            }
+        }
+    }
+
+    fn purpose(&self) -> GridContributionPurpose {
+        CONTRIBUTION_PURPOSES[self.step().map_or(0, |(_, slot)| slot)]
+    }
+
+    /// The beginning of the active ordinary role, which waits on a traversal.
+    fn beginning<M>(
+        &mut self,
+        node: Node,
+    ) -> LayoutResultOf<Node, &mut IntrinsicTrackBegin<Node, S>, S, M> {
+        match self.role.as_mut() {
+            Some(ActiveContributionRole {
+                role: ContributionRole::GridBegin(beginning),
+                ..
+            }) => Ok(beginning),
+            _ => Err(grid_track_sizing_error(
+                node,
+                SpanningContributionError::InvalidIncidence,
+            )),
+        }
+    }
+
+    /// Visits the root items of the traversal the collection waits on until
+    /// one is a wrapper whose children remain to be traversed.
+    fn next_wrapper<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        source: ContributionSource<'input, '_, Node, S>,
+        fold: &mut SubgridIntrinsicFold<'input, Node, S>,
+    ) -> NextWrapper<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let grid = source.grid_for(node, self.purpose())?;
+        self.beginning(node)?.next_wrapper(tree, node, grid, fold)
+    }
+
+    /// Takes the report of the traversal the collection waited on.
+    fn finish_traversal<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        source: ContributionSource<'input, '_, Node, S>,
+        traversal: Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let grid = source.grid_for(node, self.purpose())?;
+        self.beginning(node)?
+            .finish_traversal(tree, node, grid, traversal)
     }
 
     fn accept<M>(
