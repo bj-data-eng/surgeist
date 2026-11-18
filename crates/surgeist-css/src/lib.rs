@@ -23,9 +23,8 @@
 //! [`CssValidationFailure`], the diagnostics of a rejected clean-report check. It also holds
 //! [`CssAccountedParser`], the same front door charged to a host's ledger scope, and
 //! [`CssAccounted`], a sheet, rule or rule graph whose serialization is charged the same way.
-//! Every other
-//! public item has exactly one path, in the module that owns its domain, and a root path to a
-//! module item does not resolve.
+//! Every other public item has exactly one path, in the module that owns its domain, and a
+//! root path to a module item does not resolve.
 //!
 //! | Module | Domain |
 //! | --- | --- |
@@ -400,8 +399,8 @@
 //! animation; or expose a mutable CSSOM.
 //!
 //! Public items live in their domain modules; the crate root re-exports only the
-//! parser, the accounted forms and its report types, so a root path to a module item does not resolve
-//! (CF24):
+//! parser, its report types and the accounted parser and values, so a root path to a module
+//! item does not resolve (CF24):
 //!
 //! ```compile_fail,E0432
 //! use surgeist_css::CssSheet;

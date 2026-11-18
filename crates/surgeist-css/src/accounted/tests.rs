@@ -305,7 +305,7 @@ fn a_refused_serialization_is_charged_the_work_admitted_before_it() {
     assert!(refused.is_resource_limit());
     let [charged_input, _, charged_bytes] = charged(&ledger);
     assert!(
-        charged_input >= 1 && charged_input <= full[0] - 1,
+        charged_input >= 1 && charged_input < full[0],
         "{charged_input}"
     );
     assert!(charged_bytes > 0);

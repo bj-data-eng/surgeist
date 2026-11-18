@@ -13,7 +13,9 @@ layout belong to downstream consumers.
 Everything a task needs starts at the crate root: `CssParser` (the configured front
 door), `CssParserContext`, `CssParserMode`, `CssParseReport` and
 `CssValidationFailure`. `CssAccountedParser`, which `CssParser::accounted` returns,
-is the same front door charged to a host's ledger scope. Every other item has exactly one path, in the module that owns
+is the same front door charged to a host's ledger scope, and `CssAccounted`, which
+`accounted` on a sheet, rule or rule graph returns, charges its serialization the same
+way. Every other item has exactly one path, in the module that owns
 its domain: `source`, `diagnostic`, `component`, `numeric`, `color`, `selector`,
 `query`, `rule`, `declaration`, `property`, `values`, `serialization`, `normalize` and
 `conformance`. The crate-level [rustdoc](src/lib.rs) lists them with the compiled

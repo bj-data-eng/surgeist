@@ -450,7 +450,6 @@ fn bench_host(mode: ProfileMode) -> (CssLedger, CssHostScope) {
     (operation, host)
 }
 
-/// What one call of `parse` charges to a fresh host operation.
 /// What one serialization call charges to a fresh host operation.
 fn charged_serialization(
     serialize: impl FnOnce(&CssHostScope),
@@ -468,6 +467,7 @@ fn charged_serialization(
     ]
 }
 
+/// What one call of `parse` charges to a fresh host operation.
 fn charged_volume(parse: impl FnOnce(&CssHostScope)) -> Vec<(&'static str, Option<usize>)> {
     let (ledger, host) = bench_host(ProfileMode::Off);
     parse(&host);
