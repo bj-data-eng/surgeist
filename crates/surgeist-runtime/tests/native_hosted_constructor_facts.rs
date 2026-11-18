@@ -18,18 +18,28 @@ use surgeist_dom::{
 use surgeist_html::security::opener_policy::HtmlOpenerPolicyValue;
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::HtmlAboutBaseUrl;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    event::DomEventDom,
+    hosted::{
+        DomHostedDestructionQueued, DomHostedRuntimeError, DomHostedRuntimeLimits,
+        DomHostedTaskProgress, DomHostedTopLevel, HostedRuntime,
+    },
+    session::DomSessionLimits,
+    style::DomStyleRuntimeLimits,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
-        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+        source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 16_000_000,
             work: 1_000_000,

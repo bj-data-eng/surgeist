@@ -16,7 +16,9 @@ use surgeist_dom::{
 };
 use surgeist_html::construction::{HtmlConstructionLimits, HtmlDoctype, HtmlFragment};
 use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
-use surgeist_runtime::*;
+use surgeist_runtime::source::{
+    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
+};
 
 fn authoring() -> HtmlConstructionLimits {
     HtmlConstructionLimits::new(32, 32, 16, 4096, 16)
@@ -96,7 +98,7 @@ fn refused(
     cancelled: &AtomicBool,
 ) -> DomNativeHtmlInstallError {
     match install(fixture, source, target, limits, cancelled).unwrap_err() {
-        surgeist_runtime::DomSourceDriveError::Source(
+        surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::NativeInstallation(error),
         ) => error,
         other => panic!("the native installer must retain its precise refusal: {other:?}"),

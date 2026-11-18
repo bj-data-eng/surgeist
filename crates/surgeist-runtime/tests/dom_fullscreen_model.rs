@@ -28,9 +28,15 @@ use surgeist_dom::{
 };
 use surgeist_html::values::Namespace;
 use surgeist_runtime::{
-    DomElementTaskRuntimeLimits, DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskKind,
-    DomHostedTaskProgress, DomHostedTopLevel, DomSession, DomSessionLimits, DomSourceDriveProgress,
-    DomSourceEventRuntimeLimits, DomSourceServices, DomStyleRuntimeLimits, HostedRuntime,
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskKind, DomHostedTaskProgress,
+        DomHostedTopLevel, HostedRuntime,
+    },
+    session::DomSessionLimits,
+    source::{DomSourceDriveProgress, DomSourceEventRuntimeLimits, DomSourceServices},
+    style::DomStyleRuntimeLimits,
 };
 
 fn session() -> DomSession {
@@ -54,7 +60,7 @@ fn session() -> DomSession {
         )
         .unwrap(),
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },

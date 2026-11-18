@@ -41,10 +41,7 @@ impl App {
     /// Creates a snapshot bound to one root declared by this application's manifest.
     ///
     /// ```
-    /// use surgeist_runtime::{
-    ///     App, AppDescriptor, AppId, AppManifest, RootDescriptor, RootId, SnapshotBinding,
-    ///     SnapshotBindingId, SnapshotEntry, SnapshotSourceType, SnapshotValue, StateVersion,
-    /// };
+    /// use surgeist_runtime::{identity::{AppId, RootId, StateVersion}, manifest::{App, AppDescriptor, AppManifest, RootDescriptor}, snapshot::{SnapshotBinding, SnapshotBindingId, SnapshotEntry, SnapshotSourceType, SnapshotValue}};
     ///
     /// let manifest = AppManifest::new(AppDescriptor::new(AppId::new("photo.lab"), "1.0"))
     ///     .root(

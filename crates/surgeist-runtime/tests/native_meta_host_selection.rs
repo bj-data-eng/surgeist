@@ -16,11 +16,21 @@ use surgeist_dom::{
 };
 use surgeist_html::attributes::HtmlReferrerPolicy;
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession, Runtime,
+    element_task::DomElementTaskRuntimeLimits,
+    host_capture::SurfaceDomBindingLimits,
+    hosted::DomHostedRuntimeLimits,
+    identity::{ElementId, RootId, SurfaceId, WindowId},
+    session::{DomSessionLimits, DomShutdownOutcome},
+    source::DomSourceEventRuntimeLimits,
+    style::DomStyleRuntimeLimits,
+    surface::{ElementPhase, ElementRegistration, SurfaceElementRef, SurfaceRoot, UiSurface},
+};
 
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },

@@ -37,7 +37,29 @@ use surgeist_dom::{
 use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlScriptingStatus};
-use surgeist_runtime::{document_scripting::*, *};
+use surgeist_runtime::{
+    DomSession,
+    document_scripting::*,
+    element_task::DomElementTaskRuntimeLimits,
+    event::{
+        DomEventCallback, DomEventCallbackError, DomEventDispatchError, DomEventDispatchLimits,
+        DomEventDispatcher, DomEventDom, DomEventHostError, DomEventInit,
+        DomEventListenerFailureKind, DomEventListenerOptions, DomEventRegistrationId,
+        DomEventRegistryLimits, DomEventStorageLimits, DomEventTarget, DomEventType,
+        DomStandaloneEventTarget, NativeDomEvent,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel,
+        DomSourceExecutionScope, HostedRuntime,
+    },
+    session::{DomSessionLimits, DomShutdownOutcome},
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventRuntimeError,
+        DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceRuntimeError,
+        DomSourceServices, DomSourceUnavailable, DomSourceUrlService,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
@@ -64,7 +86,7 @@ fn limits() -> DomSessionLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
-        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+        source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 16_000_000,
             work: 1_000_000,

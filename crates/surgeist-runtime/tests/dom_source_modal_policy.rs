@@ -25,7 +25,21 @@ use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
     HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,
 };
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
+        DomEventRegistryLimits, DomEventTarget, DomEventType,
+    },
+    hosted::{DomHostedRuntimeLimits, DomHostedTopLevel},
+    session::DomSessionLimits,
+    source::{
+        DomSourceDriveProgress, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+        DomSourceEventServiceProgress, DomSourceServices, DomSourceUnavailable,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -64,7 +78,7 @@ fn headless_top() -> (DomSession, DomHostedTopLevel) {
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },

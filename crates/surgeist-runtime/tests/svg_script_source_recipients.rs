@@ -13,7 +13,24 @@ use surgeist_dom::{
     style::{DomStyleCssomRoot, DomStyleInlineCspObservation, DomStyleSource},
 };
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    event::{
+        DomEventCallback, DomEventDispatchError, DomEventDispatchLimits, DomEventDispatcher,
+        DomEventListenerOptions, DomEventRegistrationId, DomEventRegistryLimits, DomEventType,
+    },
+    hosted::DomHostedRuntimeLimits,
+    session::DomSessionLimits,
+    source::{
+        DomSourceDriveProgress, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+        DomSourceEventServiceProgress, DomSourceServices, DomSourceUnavailable,
+    },
+    style::{
+        DomStyleEventContext, DomStyleNetworkingProgress, DomStyleRuntime, DomStyleRuntimeLimits,
+        DomStyleUnavailable,
+    },
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -35,7 +52,7 @@ fn dispatch_limits() -> DomEventDispatchLimits {
 
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },

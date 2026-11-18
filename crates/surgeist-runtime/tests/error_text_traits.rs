@@ -8,7 +8,7 @@
 
 use std::error::Error;
 
-use surgeist_runtime::{DomEventCallbackError, DomEventDispatchError, DomEventHostError};
+use surgeist_runtime::event::{DomEventCallbackError, DomEventDispatchError, DomEventHostError};
 
 fn assert_send_sync<E: Error + Send + Sync + 'static>() {}
 

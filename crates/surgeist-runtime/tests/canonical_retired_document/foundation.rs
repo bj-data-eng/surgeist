@@ -20,7 +20,9 @@ use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
-use surgeist_runtime::*;
+use surgeist_runtime::source::{
+    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
+};
 
 // The expected kinds, names, data and identities follow DOM's creation steps.
 // Actual lifecycle teardown changes execution permission, not these operands.
@@ -668,7 +670,7 @@ fn malformed_foreign_stale_cancelled_and_late_failed_edits_leave_retired_documen
             DomNativeHtmlInstallLimits::new(32, 100_000, 1_000_000),
             &cancel()
         ),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::NativeInstallation(
                 DomNativeHtmlInstallError::StaleDestination { .. }
             )
@@ -687,7 +689,7 @@ fn malformed_foreign_stale_cancelled_and_late_failed_edits_leave_retired_documen
             DomNativeHtmlInstallLimits::new(0, 100_000, 1_000_000),
             &cancel()
         ),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::NativeInstallation(DomNativeHtmlInstallError::ResourceLimit {
                 resource: DomNativeHtmlInstallResource::MappedNodes,
                 limit: 0

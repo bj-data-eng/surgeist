@@ -49,7 +49,7 @@ listed below through their public front doors. It also exposes
 | Root module | Source crate |
 | --- | --- |
 | `animation` | [surgeist-animation](../crates/surgeist-animation/src/lib.rs) |
-| `app`, `runtime` | [surgeist-runtime](../crates/surgeist-runtime/src/lib.rs) |
+| `runtime` | [surgeist-runtime](../crates/surgeist-runtime/src/lib.rs) |
 | `color` | [surgeist-color](../crates/surgeist-color/src/lib.rs) |
 | `css` | [surgeist-css](../crates/surgeist-css/src/lib.rs) |
 | `css_parser` | [surgeist-css-parser](../crates/surgeist-css-parser/src/lib.rs) |

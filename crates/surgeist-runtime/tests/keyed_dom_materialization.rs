@@ -11,8 +11,11 @@ use surgeist_dom::{
     limits::{DomLimits, DomResource},
 };
 use surgeist_runtime::{
-    AppInput, InputProvenance, Reducer, ReducerCommit, ReducerResult, Runtime, RuntimeBudget,
-    UiInput,
+    Runtime,
+    drain::RuntimeBudget,
+    input::{AppInput, UiInput},
+    provenance::InputProvenance,
+    reducer::{Reducer, ReducerCommit, ReducerResult},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

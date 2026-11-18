@@ -24,7 +24,25 @@ use surgeist_dom::{
 };
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::HtmlAboutBaseUrl;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatchReceipt, DomEventDispatcher,
+        DomEventListenerOptions, DomEventRegistryLimits, DomEventType,
+    },
+    hosted::{
+        DomHostedDestructionQueued, DomHostedRuntimeError, DomHostedRuntimeLimits,
+        DomHostedSettings, DomHostedTaskProgress, DomHostedTopLevel, HostedRuntime,
+    },
+    session::{DomSessionLimits, DomShutdownOutcome, DomShutdownReason},
+    source::{DomSourceDriveProgress, DomSourceEventRuntimeLimits, DomSourceServices},
+    style::{
+        DomStyleEventContext, DomStyleNetworkingProgress, DomStyleRootWithdrawal,
+        DomStyleRootWithdrawalError, DomStyleRuntime, DomStyleRuntimeError, DomStyleRuntimeLimits,
+        DomStyleSheetSetCommit, DomStyleSheetSetObservation,
+    },
+};
 
 #[path = "dom_style_hosted_base/idle_destruction.rs"]
 mod idle_destruction;
@@ -37,7 +55,7 @@ fn source_limits() -> DomSourceLimits {
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },

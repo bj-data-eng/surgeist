@@ -28,7 +28,25 @@ use surgeist_dom::{
     },
 };
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
+        DomEventRegistryLimits, DomEventType,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskKind, DomHostedTaskProgress,
+        DomHostedTopLevel,
+    },
+    session::DomSessionLimits,
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventRuntimeLimits,
+        DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceRuntime,
+        DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
+    },
+    style::{DomStyleRuntimeError, DomStyleRuntimeLimits},
+};
 
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 4_000_000, 100_000_000, 128, 8192, 8192, 8)
@@ -72,7 +90,7 @@ fn session(exits: usize, events: usize) -> DomSession {
         )
         .unwrap(),
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
@@ -634,7 +652,7 @@ fn a_model_only_child_with_unflagged_parent_reports_the_actual_collector_asserti
     )
     .unwrap_err();
     assert!(
-        matches!(error, surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::FullscreenExitAssertionFailed { document })) if document == top.document())
+        matches!(error, surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::FullscreenExitAssertionFailed { document })) if document == top.document())
     );
     assert_eq!(session.snapshot().stamp(), before.stamp());
     assert!(
@@ -776,7 +794,7 @@ fn zero_optional_exit_or_event_capacity_refuses_before_disconnected_prefix_or_ru
         )
         .unwrap_err();
         assert!(
-            matches!(error, surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::ResourceLimit { resource: actual, limit: 0 })) if actual == resource)
+            matches!(error, surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::ResourceLimit { resource: actual, limit: 0 })) if actual == resource)
         );
         let after = session.snapshot();
         assert_eq!(after.stamp(), before.stamp());
@@ -829,7 +847,7 @@ fn failed_runtime_job_reservation_preserves_prefix_and_retry_hands_off_the_origi
     .unwrap_err();
     assert!(matches!(
         error,
-        surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Hosted(
+        surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Hosted(
             DomHostedRuntimeError::Admission
         ))
     ));
@@ -961,9 +979,9 @@ fn preprefix_cancellation_preserves_model_and_queue_and_does_not_enqueue_backgro
     .unwrap_err();
     assert!(matches!(
         error,
-        surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+        surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
             DomError::Cancelled
-        )) | surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Style(
+        )) | surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Style(
             DomStyleRuntimeError::Dom(DomError::Cancelled)
         ))
     ));
@@ -1115,7 +1133,7 @@ fn parked_exit_slots_and_pending_event_rows_each_enforce_their_independent_one_s
         )
         .unwrap_err();
         assert!(
-            matches!(error, surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::ResourceLimit { resource: actual, limit: 1 })) if actual == resource)
+            matches!(error, surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::ResourceLimit { resource: actual, limit: 1 })) if actual == resource)
         );
         let after = session.snapshot();
         assert_eq!(after.stamp(), before.stamp());

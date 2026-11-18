@@ -6,7 +6,7 @@
 invalidation, frame scheduling and provenance. Reducers describe state changes
 and work; Runtime validates and records the result. Each consuming subsystem owns
 its adapters to the lower-level contracts it uses. Runtime consumes those
-contracts directly. Its [public reexports](../src/lib.rs) expose Runtime-owned
+contracts directly. Its [public modules](../src/lib.rs) expose Runtime-owned
 contracts and its [manifest](../Cargo.toml) declares the dependencies; root
 `surgeist` owns facade composition.
 

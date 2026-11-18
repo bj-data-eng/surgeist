@@ -129,7 +129,7 @@ impl AppEffect {
 
     /// Forwards the complete resource operation token for loading in `scope`.
     ///
-    /// The token is issued by [`ResourceState`](crate::ResourceState) and is
+    /// The token is issued by [`ResourceState`](crate::resource::ResourceState) and is
     /// retained unchanged so an adapter can complete or cancel that exact
     /// operation, including its generation.
     #[must_use]
@@ -570,7 +570,7 @@ pub enum RuntimeIntent {
 /// combination.
 ///
 /// ```compile_fail
-/// use surgeist_runtime::{EffectDisposition, EffectKindId, EffectOutcome, InputProvenance};
+/// use surgeist_runtime::{effect::{EffectDisposition, EffectKindId, EffectOutcome}, provenance::InputProvenance};
 ///
 /// let _ = EffectOutcome {
 ///     kind: EffectKindId::REQUEST_REDRAW,
@@ -579,6 +579,15 @@ pub enum RuntimeIntent {
 ///     intent: None,
 ///     diagnostic: None,
 /// };
+/// ```
+///
+/// The same imports compile when the values are only inspected:
+///
+/// ```
+/// use surgeist_runtime::{effect::{EffectDisposition, EffectKindId, EffectOutcome}, provenance::InputProvenance};
+///
+/// let _ = (EffectKindId::REQUEST_REDRAW, EffectDisposition::Applied, InputProvenance::system());
+/// let _: Option<EffectOutcome> = None;
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EffectOutcome {

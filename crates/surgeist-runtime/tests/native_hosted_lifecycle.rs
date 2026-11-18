@@ -28,18 +28,36 @@ use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace},
 };
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{
+        DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
+        DomElementTaskRuntime, DomElementTaskRuntimeError, DomElementTaskRuntimeLimits,
+    },
+    event::{
+        DomEventCallback, DomEventDispatchError, DomEventDispatchLimits, DomEventDispatcher,
+        DomEventDom, DomEventListenerOptions, DomEventPhase, DomEventRegistryLimits,
+        DomEventTarget, DomEventType, DomToggleEvent, NativeDomEvent,
+    },
+    hosted::{
+        DomHostedDestructionQueued, DomHostedRuntimeError, DomHostedRuntimeLimits,
+        DomHostedTaskProgress, DomHostedTopLevel, HostedRuntime,
+    },
+    session::{DomSessionLimits, DomShutdownOutcome, DomShutdownReason},
+    source::{DomSourceDriveProgress, DomSourceServices},
+    style::DomStyleRuntimeLimits,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
-        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+        source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 16_000_000,
             work: 1_000_000,

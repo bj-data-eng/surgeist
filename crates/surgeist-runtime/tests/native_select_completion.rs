@@ -20,11 +20,21 @@ use surgeist_dom::{
     task::{DomNativeCheckpoint, DomNativeCheckpointLimits},
 };
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{DomElementTaskRuntimeError, DomElementTaskRuntimeLimits},
+    hosted::DomHostedRuntimeLimits,
+    session::{DomSessionLimits, DomShutdownOutcome},
+    source::{
+        DomSelectCompletionProgress, DomSourceDriveProgress, DomSourceEventRuntimeLimits,
+        DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
+    },
+    style::{DomStyleRuntimeLimits, DomStyleUnavailable},
+};
 
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
@@ -201,7 +211,7 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                 },
                 &cancel,
             ),
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Binding)
             ))
         ));
@@ -219,7 +229,7 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                 },
                 &cancel,
             ),
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::Dom(DomError::ForeignOwner)
             ))
         ));
@@ -263,7 +273,7 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                     },
                     &AtomicBool::new(cancelled),
                 ),
-                Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(actual))) if actual == expected
+                Err(surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(actual))) if actual == expected
             ));
             assert_eq!(session.snapshot().stamp(), before.stamp());
             assert!(session.dom().pending_source_edit().is_none());
@@ -318,7 +328,7 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                 },
                 &cancel,
             ),
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::Dom(DomError::InvalidNativeTask)
             ))
         ));
@@ -712,7 +722,7 @@ fn live_select_copy(meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>) {
             },
             &cancel,
         ),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Dom(DomError::InvalidNativeTask)
         ))
     ));

@@ -18,8 +18,12 @@ use surgeist_dom::{
 };
 use surgeist_html::values::DocumentString;
 use surgeist_runtime::{
-    DomElementTaskRuntimeLimits, DomHostedRuntimeLimits, DomSession, DomSessionLimits,
-    DomSourceDriveProgress, DomSourceEventRuntimeLimits, DomSourceServices, DomStyleRuntimeLimits,
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    hosted::DomHostedRuntimeLimits,
+    session::DomSessionLimits,
+    source::{DomSourceDriveProgress, DomSourceEventRuntimeLimits, DomSourceServices},
+    style::DomStyleRuntimeLimits,
 };
 
 const CHUNK: usize = 8192;
@@ -77,7 +81,7 @@ fn source_limits() -> DomSourceLimits {
 
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
@@ -324,9 +328,14 @@ fn production_session_parked_source_reentry_scale() {
     };
     use surgeist_html::values::Namespace;
     use surgeist_runtime::{
-        DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
-        DomEventRegistryLimits, DomEventType, DomSourceEventServiceLimits,
-        DomSourceEventServiceProgress, DomSourceRuntime, DomSourceUnavailable,
+        event::{
+            DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
+            DomEventRegistryLimits, DomEventType,
+        },
+        source::{
+            DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceRuntime,
+            DomSourceUnavailable,
+        },
     };
     require_release();
     let cancel = AtomicBool::new(false);

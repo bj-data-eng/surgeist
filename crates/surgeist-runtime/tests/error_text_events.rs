@@ -14,7 +14,7 @@ use std::error::Error;
 use std::fmt::Debug;
 
 use surgeist_dom::{DomError, event::DomSourceEventClockFailure, hosted::DomHostedError};
-use surgeist_runtime::{
+use surgeist_runtime::event::{
     DomEventDispatchError, DomEventDispatcher, DomEventHostError, DomEventRegistryLimits,
     DomEventResource, DomEventTimestampUnavailable,
 };

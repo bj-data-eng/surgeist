@@ -122,7 +122,7 @@ impl MailboxPolicy {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-/// FIFO mailbox owned by one service registration.
+/// Registration of one service: its identity, scope, mailbox policy and lifecycle policies.
 pub struct ServiceRegistration {
     id: ServiceId,
     scope: AppScope,

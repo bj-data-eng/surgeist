@@ -525,7 +525,7 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
                 assert!(
                     matches!(
                         result,
-                        Err(surgeist_runtime::DomSourceDriveError::Source(
+                        Err(surgeist_runtime::source::DomSourceDriveError::Source(
                             DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Dom(
                                 DomError::SourceOutputLimit
                             ))

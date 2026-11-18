@@ -102,7 +102,7 @@ fn retired_original_global_preserves_host_scope_but_refuses_new_toggle_queue() {
     drop(receipt);
     assert!(matches!(
         resume(&mut session, event.operation(), Some(&scope)),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Dom(
                 DomError::HostedSourceUnavailable
             ))
@@ -323,7 +323,7 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     let before = session.snapshot();
     assert!(matches!(
         resume(&mut session, event.operation(), Some(&conflict)),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(DomHostedError::Dom(
                 DomError::InvalidSourceOperation
             )))
@@ -411,7 +411,7 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     );
     assert!(matches!(
         refused,
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Dom(DomError::Cancelled)
         ))
     ));
