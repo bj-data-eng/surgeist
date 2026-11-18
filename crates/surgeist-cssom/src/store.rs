@@ -36,6 +36,15 @@ pub struct CssomStore {
     pub(crate) updating: Option<CssomBlockId>,
     /// The host the store's operations charge, if any.
     pub(crate) host: Option<Arc<CssHostScope>>,
+    /// The size of the published state the store holds in its host's gauges;
+    /// zero without a host.
+    pub(crate) retained: crate::operation_work::Retained,
+}
+impl Drop for CssomStore {
+    /// Releases what the store holds in its host's gauges.
+    fn drop(&mut self) {
+        crate::operation_work::release_all(self.host.as_deref(), self.retained);
+    }
 }
 impl CssomStore {
     pub fn new(limits: CssomLimits, context: CssomContext) -> Result<Self, CssomError> {
@@ -109,9 +118,18 @@ impl CssomStore {
             media: crate::shared_table::SharedTable::new(),
             maps: crate::shared_table::SharedTable::new(),
         };
-        crate::operation_work::charged(state.owner.key(), host.as_deref(), || {
-            state.check_limits(&limits)
-        })?;
+        let mut retained = crate::operation_work::Retained::default();
+        let size = crate::operation_work::charged_before_publication(
+            state.owner.key(),
+            host.as_deref(),
+            || {
+                crate::state_limits::Census::of(&state, &limits, std::iter::empty())
+                    .map(|census| census.retained())
+            },
+            |size| retained.changes(*size, true),
+        )?;
+        crate::operation_work::Acquisition::acquired(host.as_ref(), retained, size)
+            .publish(&mut retained);
         Ok(Self {
             state: Arc::new(state),
             limits,
@@ -121,6 +139,7 @@ impl CssomStore {
             next_effect: 1,
             updating: None,
             host,
+            retained,
         })
     }
     pub fn snapshot(&self) -> CssomSnapshot {

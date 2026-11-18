@@ -65,6 +65,23 @@ fn a_commit_holds_the_size_of_the_state_it_publishes() {
 }
 
 #[test]
+fn a_commit_that_shrinks_the_state_releases_the_difference() {
+    let (ledger, host) = open_host();
+    let (mut store, sheet) = with_sheet(CssomLimits::default(), Some(host)).unwrap();
+    let before = held(&ledger);
+    let mut edit = store.batch(guard(&store)).unwrap();
+    assert!(edit.remove_sheet(&sheet).unwrap());
+    store.commit(edit).unwrap();
+    let after = held(&ledger);
+    let census =
+        crate::state_limits::Census::of(&store.state, &CssomLimits::default(), std::iter::empty())
+            .unwrap()
+            .retained();
+    assert_eq!(super::Retained(after), census);
+    assert!(after[1] < before[1], "{before:?} -> {after:?}");
+}
+
+#[test]
 fn a_gauge_cap_refuses_the_commit_and_publishes_nothing() {
     let (ledger, host) = open_host();
     let (probe, _) = with_sheet(CssomLimits::default(), Some(host)).unwrap();
