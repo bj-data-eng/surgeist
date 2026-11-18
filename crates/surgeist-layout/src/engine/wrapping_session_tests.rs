@@ -215,3 +215,147 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
     lane::<f32>();
     lane::<f64>();
 }
+
+// A float Block that is a native inline-box formatter holding two atomic inlines, beside which
+// nothing else lays out.
+fn float_formatter_tree<S: LayoutScalar>() -> PublicLayoutTreeOf<S> {
+    let atomic = || NodeInputOf {
+        display: Display::InlineBlock,
+        size: Size::new(
+            PreferredSizeOf::px(S::from_f64(10.0)),
+            PreferredSizeOf::px(S::from_f64(10.0)),
+        ),
+        atomic_inline_participation: Some(AtomicInlineParticipation::new(
+            BidiLevel::try_new(0).unwrap(),
+            InlineBreakOpportunity::Allowed,
+        )),
+        ..NodeInputOf::default()
+    };
+    PublicLayoutTreeOf::new()
+        .children(0, vec![4])
+        .children(4, vec![5, 6])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(25.0)),
+                    PreferredSizeOf::AUTO,
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            4,
+            NodeInputOf {
+                display: Display::Block,
+                float: Float::Left,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(20.0)),
+                    PreferredSizeOf::AUTO,
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(5, atomic())
+        .style(6, atomic())
+}
+
+fn float_formatter_wrapping() -> crate::WrappingInput<u32> {
+    let child = |node| GeneratedChildBoxInput {
+        box_: GeneratedBoxRef::Node(node),
+        participation: GeneratedBoxParticipation::InFlow,
+    };
+    crate::WrappingInput {
+        native_inline_boxes: vec![NativeInlineBoxFamilyInput { formatter: 4 }],
+        gaps: Vec::new(),
+        scopes: Vec::new(),
+        child_order: vec![InlineChildOrderInput {
+            parent: GeneratedBoxRef::Node(4),
+            children: vec![child(5), child(6)],
+            prefix: ChildOrderCompleteness::Complete,
+            suffix: ChildOrderCompleteness::Complete,
+            formatting_context: 4,
+        }],
+    }
+}
+
+fn native_runs_of<Tree: LayoutTree>(
+    session: &ComputeSession<'_, Tree>,
+) -> Vec<(usize, std::ops::Range<usize>)> {
+    session
+        .wrapping
+        .native_runs
+        .iter()
+        .map(|run| (run.family, run.source.clone()))
+        .collect()
+}
+
+// A float formatter's packet is accepted into the session in place of the formatter's own
+// computation. A formatter that completed again with no run removes the runs of its family, and a
+// reuse that stands in for the acceptance must remove them as well.
+#[test]
+fn replaying_a_float_formatter_acceptance_removes_the_runs_the_acceptance_removed() {
+    fn lane<S: LayoutScalar>() {
+        let tree = float_formatter_tree::<S>();
+        let flow =
+            LayoutFlowInput::try_new(&tree, 0, Vec::new(), float_formatter_wrapping(), Vec::new())
+                .unwrap();
+        let session = || ComputeSession::with_flow_unobserved(&flow, flow.invalidated.clone());
+        let mut probing = session();
+        let probe = |probing: &mut ComputeSession<'_, PublicLayoutTreeOf<S>>| {
+            probing
+                .probe_float_child(
+                    4,
+                    input(RunMode::PerformLayout),
+                    crate::engine::FloatChildTrial::Detached,
+                )
+                .unwrap()
+        };
+        let with_runs = probe(&mut probing);
+        assert!(
+            !with_runs.native_inline_runs.is_empty()
+                && !with_runs.native_inline_completions.is_empty(),
+            "the formatter completes with runs"
+        );
+        // The same completion with no run: what a formatter without inline content publishes.
+        let mut without_runs = probe(&mut probing);
+        std::sync::Arc::get_mut(&mut without_runs)
+            .expect("the packet is not shared")
+            .native_inline_runs
+            .clear();
+
+        let mut original = session();
+        let mut replayed = session();
+        original.accept_float_child(&with_runs).unwrap();
+        replayed.accept_float_child(&with_runs).unwrap();
+        assert!(
+            !native_runs_of(&original).is_empty(),
+            "the session holds the runs"
+        );
+        assert_eq!(native_runs_of(&original), native_runs_of(&replayed));
+
+        let start = original.begin_effect_capture(crate::engine::CaptureKind::Preparation);
+        original.accept_float_child(&without_runs).unwrap();
+        let effects = original
+            .end_effect_capture(start)
+            .expect("the acceptance is recorded");
+        assert!(
+            native_runs_of(&original).is_empty(),
+            "the acceptance removes the runs of the family"
+        );
+
+        replayed.replay_effects(&effects).unwrap();
+        assert_eq!(
+            native_runs_of(&replayed),
+            native_runs_of(&original),
+            "the replay removes the runs the acceptance removed"
+        );
+        assert_eq!(
+            replayed.wrapping.native_completions.len(),
+            original.wrapping.native_completions.len()
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
