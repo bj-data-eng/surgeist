@@ -165,8 +165,7 @@ pub use protocol::{ActionLayout, DigitSlot, Kernel, OperationOwner};
 mod controlled;
 pub use controlled::{
     Computation, DigitReceipt, Emit, NumericalRequest, ReadDigit, Serialization,
-    SerializationAction, SerializationCompute, SerializationError, SerializationLimits,
-    SerializationReceipt, SerializationResource, SerializationStep, WriteDigit, serialize,
+    SerializationAction, SerializationCompute, SerializationReceipt, SerializationStep, WriteDigit,
 };
 mod alpha;
 pub mod format;

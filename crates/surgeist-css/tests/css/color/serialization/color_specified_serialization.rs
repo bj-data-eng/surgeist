@@ -262,18 +262,11 @@ fn every_byte_alpha_has_recoverable_specified_and_used_serialization() {
             expected,
             "specified {alpha}"
         );
-        let limits = surgeist_color::SerializationLimits {
-            actions: 4_000_000,
-            digits: 4096,
-            output_bytes: 256,
-        };
         assert_eq!(
-            surgeist_color::serialize(
+            crate::css::support::color_text::color_text(
                 Color::from_srgba8([0, 0, 0, alpha]),
                 SerializationRequest::Css,
-                limits,
-            )
-            .unwrap(),
+            ),
             expected,
             "used {alpha}",
         );

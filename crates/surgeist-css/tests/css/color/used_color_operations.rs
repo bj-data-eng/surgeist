@@ -1,5 +1,6 @@
 //! Public standalone used-value phases, independent of the authored grammar join.
 
+use crate::css::support::color_text::color_text;
 use surgeist_color::{
     Color, ColorSpace, PredefinedColorSpace, SerializationRequest, Transformation,
 };
@@ -22,13 +23,6 @@ fn limits() -> CssColorOrdinaryLimits {
     // The default ordinary logical ceilings cover these short literal fixtures.
     // They are neither a physical allocator bound nor an HTML work ledger.
     CssColorOrdinaryLimits::default()
-}
-fn numerical_limits() -> surgeist_color::SerializationLimits {
-    surgeist_color::SerializationLimits {
-        actions: 4_000_000,
-        digits: 4096,
-        output_bytes: 256,
-    }
 }
 fn absent_facts() -> CssColorFacts<'static> {
     CssColorFacts::new(
@@ -75,8 +69,7 @@ fn equal_absolute_relative_and_mixed_channels_preserve_selected_serialization() 
         let actual = value(input, &facts);
         assert_eq!(actual.srgb_bytes(), None, "{input}");
         assert_eq!(
-            surgeist_color::serialize(actual, SerializationRequest::Css, numerical_limits())
-                .unwrap(),
+            color_text(actual, SerializationRequest::Css),
             expected,
             "{input}"
         );
@@ -101,8 +94,7 @@ fn authored_negative_zero_is_the_unsigned_zero_in_color_calculations() {
     ] {
         let actual = value(input, &facts);
         assert_eq!(
-            surgeist_color::serialize(actual, SerializationRequest::Css, numerical_limits())
-                .unwrap(),
+            color_text(actual, SerializationRequest::Css),
             expected,
             "{input}"
         );
@@ -129,13 +121,9 @@ fn equal_floating_and_byte_alpha_keep_their_distinct_serialization_policies() {
         let byte = Color::from_srgba8([0, 0, 0, byte]);
         let floating = value(floating, &facts);
         assert_eq!(byte.alpha(), floating.alpha());
+        assert_eq!(color_text(byte, SerializationRequest::Css), expected_byte,);
         assert_eq!(
-            surgeist_color::serialize(byte, SerializationRequest::Css, numerical_limits()).unwrap(),
-            expected_byte,
-        );
-        assert_eq!(
-            surgeist_color::serialize(floating, SerializationRequest::Css, numerical_limits())
-                .unwrap(),
+            color_text(floating, SerializationRequest::Css),
             expected_float,
         );
     }
@@ -200,7 +188,7 @@ fn missing_components_and_alpha_are_preserved_until_explicit_transform() {
     assert_eq!(missing.channels(), [None, Some(100.0), Some(50.0)]);
     assert_eq!(missing.alpha(), None);
     assert_eq!(
-        surgeist_color::serialize(missing, SerializationRequest::Css, numerical_limits()).unwrap(),
+        color_text(missing, SerializationRequest::Css),
         "hsl(none 100% 50% / none)"
     );
     let present = value("rgb(100% 0 0 / .5)", &facts);
@@ -211,12 +199,7 @@ fn missing_components_and_alpha_are_preserved_until_explicit_transform() {
     let bytes = opaque.transformed(Transformation::QuantizeSrgb);
     assert_eq!(bytes.srgb_bytes(), Some([255, 0, 0]));
     assert_eq!(
-        surgeist_color::serialize(
-            bytes,
-            SerializationRequest::HtmlCompatible,
-            numerical_limits()
-        )
-        .unwrap(),
+        color_text(bytes, SerializationRequest::HtmlCompatible),
         "#ff0000"
     );
 }
@@ -371,8 +354,7 @@ fn utf16_prefix_input_and_native_conversion_retain_actual_units_and_phase_meanin
     let cylindrical = modern.transformed(Transformation::Convert(ColorSpace::Hwb));
     assert_eq!(cylindrical.channels(), [Some(0.0); 3]);
     assert_eq!(
-        surgeist_color::serialize(cylindrical, SerializationRequest::Css, numerical_limits())
-            .unwrap(),
+        color_text(cylindrical, SerializationRequest::Css),
         "color(srgb 1 0 0)"
     );
 }

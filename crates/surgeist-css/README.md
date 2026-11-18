@@ -376,9 +376,10 @@ original-unit range. `CssColorOrdinaryOutcome` contains a
 actions; they do not bound allocator capacity or replace a consumer's resource
 controller. Their `Default` covers inputs of up to 1,024 units; a caller with
 longer inputs passes explicit limits, and an input beyond a ceiling is refused
-with a `CssColorResolveError` whose `exhausted_limit()` names the resource. For
-a native numerical value, use Color's `serialize` with `SerializationRequest`
-and `SerializationLimits`. See the
+with a `CssColorResolveError` whose `exhausted_limit()` names the resource. To
+serialize the numerical value, drive Color's `Serialization` with a
+`SerializationRequest`; the caller lends and bounds its digit and output
+storage. See the
 [public operation examples](tests/css/color/used_color_operations.rs).
 
 The shared grammar recognizes all 21 retained color branches: currentcolor,

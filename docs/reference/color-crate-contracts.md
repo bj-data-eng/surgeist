@@ -41,7 +41,7 @@ Public CSS items are named with their module, as in the
 | `color/authored.rs`: `Events`, `Builder`; called by `parser/color.rs` | CSS owns canonical checked-authored construction, exact component tokens, original origins and closure recovery. `color/authored_resolution/` feeds the borrowed authored graph to resolution (`color::CssColor::resolve`); the authored value is never serialized and parsed again. |
 | `color/grammar.rs`, `tokens.rs`, `literal.rs`, `decimal.rs`, `syntax_pass.rs`, `component.rs`, `component_value.rs`, `expression.rs`, `operation.rs`, `resolution.rs` | CSS owns original source decoding, tokens, grammar, exact numeric admission/evaluation, resolver state and errors. Numerical requests contain fixed resolved operands, not any of these records. |
 | `color/controlled/protocol.rs`: the mixed `Data` record, owner/phase/bank/index qualification (`color::controlled::CssColorOperationOwner`, `CssColorBank`, `CssColorSlot`); `color/controlled/bounded.rs`: the typestate `color::controlled::CssColorParse`, its action guards and the `CssUsedColorCheckpoint` | CSS owns these records. They hold no numerical algorithm and no format-digit variant. Color digit slots occupy a distinct caller-owned numerical bank and borrow a separately lent Color owner. CSS has three parse-bank identities (`CssColorBank::{Algorithm, Arithmetic, Evaluation}`); no CSS-private union is Color's public protocol. |
-| Serialization of a used color (CSS holds none); `color::controlled::CssUsedColorCheckpoint::value()` yields the `Color` | Color owns the resolved serialization plan, finite digit work and byte emission. A consumer drives `surgeist_color::Serialization` on that value with its own digit and output storage; CSS defines no serialization wrapper. `color::parse_used_color` and `color::CssColor::resolve` return a `Color` (inside `CssColorOrdinaryOutcome::Used` or `CssAuthoredColorOutcome::Used`) that `surgeist_color::serialize` accepts directly. |
+| Serialization of a used color (CSS holds none); `color::controlled::CssUsedColorCheckpoint::value()` yields the `Color` | Color owns the resolved serialization plan, finite digit work and byte emission. A consumer drives `surgeist_color::Serialization` on that value with its own digit and output storage; CSS defines no serialization wrapper. `color::parse_used_color` and `color::CssColor::resolve` return a `Color` (inside `CssColorOrdinaryOutcome::Used` or `CssAuthoredColorOutcome::Used`) that `surgeist_color::Serialization::new` takes directly. |
 | `serialization/numeric_formatting.rs` (finite portion); used by resolved/ordinary color and non-color projection | Color owns the single finite-bit formatter, digit continuation, rounded-millionths operation and finite zero classification (`format::format_finite`, `format::rounds_to_zero`). Exact decimal parsing, representation and specified-value policy stay CSS. |
 | `serialization/exact_decimal.rs`; used by exact rationals and finite formatting | Color owns the small `RoundingMode` with the shared tie decision. CSS exact-decimal arithmetic calls `RoundingMode::rounds_up`; its arbitrary-precision storage and digit scans stay CSS. |
 | `color/syntax/serialization.rs`, which calls Color's `byte_alpha_for_serialization` | One Color `byte_alpha_for_serialization(u8) -> f64` supplies the byte-alpha path. Floating alpha never gains byte provenance by numerical equality. |
@@ -123,17 +123,12 @@ impl Color {
     pub fn black_white_contrast(self) -> Self;
 }
 pub enum SerializationRequest { Css, HtmlCompatible }
-pub struct SerializationLimits {
-    pub actions: usize, pub digits: usize, pub output_bytes: usize,
-}
-pub fn serialize(color: Color, request: SerializationRequest, limits: SerializationLimits)
-    -> Result<String, SerializationError>;
 pub fn byte_alpha_for_serialization(alpha: u8) -> f64;
 ```
 
 `PredefinedColorSpace`, `ColorSpace`, `HueInterpolation`, `RectangularSpace`
-and the three error enums (`InterpolationError`, `SerializationError` and
-`format::FormatError`) are `#[non_exhaustive]`; `SerializationRequest`,
+and the two error enums (`InterpolationError` and `format::FormatError`) are
+`#[non_exhaustive]`; `SerializationRequest`,
 `Transformation` and `SerializationFamily` are closed. These are pre-v1
 breaking moves, with no old-path aliases or public CSS reexports of numerical
 names. `Finite`, `UnitInterval`, `Color` and the coordinate carriers are
@@ -392,13 +387,9 @@ action and releases its storage; restarting uses a new phase and the retained
 original request or checkpoint. A local output prefix can exist after
 acknowledged bytes, but is never a successful public result. A refused
 serialization discards it. Only the complete receipt and fully built output may
-be installed. Ordinary `serialize` services the same actions with local
-vectors, checked logical action, digit and output ceilings and fallible
-allocation. Its `SerializationError` distinguishes `Limit` (a
-`SerializationResource` of `Actions`, `Digits` or `OutputBytes`, with the
-required and allowed counts), `Allocation` (the resource whose allocation
-failed) and `CountOverflow`. Those ordinary ceilings do not claim physical
-allocation accounting or manufacture an HTML controller.
+be installed. A caller that needs ceilings counts the actions, digit records
+and output bytes as it services them; the continuation itself claims no
+physical allocation accounting.
 
 ## One finite formatter and one rounding policy
 
@@ -678,9 +669,8 @@ CSS does not wrap serialization. The consumer serializes `checkpoint.value()`
 with `surgeist_color::Serialization::new(&mut OperationOwner, value,
 SerializationRequest)`, drives its `step()` and `SerializationAction` guards
 with its own caller-owned `DigitSlot` bank, and keeps `standard_failure()`,
-`source()` and `consumed()` from the checkpoint for publication. The ordinary
-`surgeist_color::serialize(value, request, limits)` serves callers without a
-controller. The two anchors are separate: `CssColorOperationOwner` serves the
+`source()` and `consumed()` from the checkpoint for publication. The two
+anchors are separate: `CssColorOperationOwner` serves the
 source parse, and a Color `OperationOwner` serves transformation and
 serialization. Digit records borrow the numerical owner, so a new numerical
 operation cannot start while old digits live.
@@ -713,8 +703,9 @@ transforms and serializes through the Color types above. Authored callers use
 This native example is the intended Color-only public consumer.
 
 ```rust
-use surgeist_color::{Color, ColorSpace, Finite, PredefinedColorSpace, SerializationLimits,
-    SerializationRequest, Transformation, UnitInterval, serialize};
+use surgeist_color::{Color, ColorSpace, DigitSlot, Finite, OperationOwner,
+    PredefinedColorSpace, Serialization, SerializationAction, SerializationRequest,
+    SerializationStep, Transformation, UnitInterval};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let p3 = Color::new(
@@ -724,8 +715,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let srgb = p3.converted(ColorSpace::Predefined(PredefinedColorSpace::Srgb));
     let quantized = srgb.transformed(Transformation::QuantizeSrgb);
-    let text = serialize(quantized, SerializationRequest::Css,
-        SerializationLimits { actions: 100_000, digits: 4_096, output_bytes: 1_024 })?;
+    let mut owner = OperationOwner::new();
+    let mut serialization = Serialization::new(&mut owner, quantized, SerializationRequest::Css);
+    let (mut digits, mut text): (Vec<DigitSlot<'_>>, String) = (Vec::new(), String::new());
+    loop {
+        let action = match serialization.step() {
+            SerializationStep::Complete(_) => break,
+            SerializationStep::Pending(action) => action,
+        };
+        serialization = match action {
+            SerializationAction::Compute(compute) => compute.compute(),
+            SerializationAction::ReadDigit(read) => {
+                let slot = &digits[read.index()];
+                read.read(slot)
+            }
+            SerializationAction::AppendDigit(write) => {
+                let (record, receipt) = write.record();
+                digits.push(record);
+                receipt.stored(&digits[digits.len() - 1])
+            }
+            SerializationAction::ReplaceDigit(write) => {
+                let index = write.index();
+                let (record, receipt) = write.record();
+                digits[index] = record;
+                receipt.stored(&digits[index])
+            }
+            SerializationAction::Emit(emit) => {
+                text.push(char::from(emit.unit()));
+                emit.emitted()
+            }
+        };
+    }
     assert!(quantized.srgb_bytes().is_some());
     assert_eq!(quantized.alpha_byte(), None);
     assert!(text.starts_with("color(srgb ") && text.ends_with(" / 0.75)"));
@@ -742,9 +762,9 @@ rounds them to bytes, so the color gains sRGB byte channels while its alpha
 stays floating at 0.75 and gains no alpha byte. Because the original value was
 built in a predefined space, it carries the color-function family through both
 steps, and the Css request spells it as `color(srgb ...)` rather than `rgb()`.
-Only two steps can refuse: building an operand, where `Finite::new` or
-`UnitInterval::new` returns `None`, and `serialize`, which can refuse a limit or
-an allocation.
+Only building an operand can refuse, where `Finite::new` or
+`UnitInterval::new` returns `None`. Servicing the serialization cannot refuse:
+the caller lends the digit bank and the output, and bounds them if it needs to.
 
 These numerical limits are caller choices, not product defaults. A render
 consumer can use `srgb.channels()` and `alpha()` without serialization. Render
@@ -829,8 +849,7 @@ branch requires bytes, then select the required modern family. The CSS action
 layout maps to actual kernel/layout admission before the action. Serialized
 ASCII units append to the parser's admitted UTF-16 output buffer. The parser
 installs value/output/provenance only after complete receipt and all required
-storage cleanup. HtmlParseStop retains `CssColorError` and, where serialization
-is driven directly, the typed Color `SerializationError`; cancellation/limits retain
+storage cleanup. HtmlParseStop retains `CssColorError`; cancellation/limits retain
 their original stop. The fixed unavailable-environment identity in the existing
 adapter qualifies that explicit environment policy, not an invented native
 numerical source issuer.
