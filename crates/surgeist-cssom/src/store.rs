@@ -36,8 +36,8 @@ pub struct CssomStore {
     pub(crate) updating: Option<CssomBlockId>,
     /// The host the store's operations charge, if any.
     pub(crate) host: Option<Arc<CssHostScope>>,
-    /// The size of the published state the store holds in its host's gauges;
-    /// zero without a host.
+    /// The size of the published state, which the store holds in its host's
+    /// gauges; it is kept without a host too, and then held nowhere.
     pub(crate) retained: crate::operation_work::Retained,
 }
 impl Drop for CssomStore {
@@ -83,7 +83,7 @@ impl CssomStore {
     /// [`CssResource::RetainedStringByte`](crate::accounting::CssResource::RetainedStringByte),
     /// the figures `max_objects`, `max_entries` and `max_string_bytes` are
     /// checked against. A commit acquires the increases in the same batch as
-    /// its work, before it publishes, so a cap on either refuses the commit;
+    /// its work, before it publishes, so a cap on any of them refuses the commit;
     /// publishing releases the decreases, a prepared commit dropped
     /// unpublished releases its increases, and dropping the store releases
     /// everything it holds. Pending replacement inputs, batches, snapshots

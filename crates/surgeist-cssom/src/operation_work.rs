@@ -7,6 +7,11 @@
 //! record is charged as one batch. A commit inside an operation settles the
 //! record before it publishes, so that a refused charge publishes nothing.
 //! With no host no record is open, and adding to it does nothing.
+//!
+//! A store with a host also holds the size of the state it has published in
+//! the scope's gauges: a commit acquires the increases in the batch that
+//! settles its work, publishing releases the decreases in a batch of its own,
+//! and an abandoned preparation or the store's drop releases what it holds.
 use crate::CssomError;
 use std::cell::Cell;
 use std::sync::Arc;
@@ -284,6 +289,11 @@ impl Retained {
 /// The holding of a store in its host's `cssom` gauges as a commit changes
 /// it: the increases acquired before the commit publishes, released again if
 /// it never does.
+///
+/// It is made only once the ledger has admitted the increases. A batch the
+/// ledger admits and then reports as a latched defect makes none, so its
+/// increases stay held; the ledger has latched the defect and reports it on
+/// every later call.
 pub(crate) struct Acquisition {
     host: Option<Arc<CssHostScope>>,
     held: Retained,

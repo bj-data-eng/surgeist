@@ -506,7 +506,7 @@ fn finishing_and_cancelling_a_replacement_are_charged_once_each() {
     assert!(matches!(done.outcome(), CssomReplaceOutcome::Replaced));
     let after = batches_and_phases(&ledger, &host);
     // The work with the gauge increases before the commit publishes, and the
-    // release of the smaller sheet's decreases when it does.
+    // release of the gauge decreases when it does.
     assert_eq!((after.0 - before.0, after.1 - before.1), (2, 1));
     assert!(charged(&ledger)[0] - runs >= 2);
 
