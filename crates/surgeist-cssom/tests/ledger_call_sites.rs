@@ -7,19 +7,26 @@
 //! lexically inside a `for`, `while` or `loop` body or inside the arguments of
 //! an iterator adaptor such as `map` or `for_each`.
 //!
-//! A ledger call is `charge` or `timed` whose first argument is a `CssFront`
-//! (a `CssFront::` path or a binding named `front`), or `apply_batch` or
-//! `with_phase`. The token builder's own `Meter` charges take other first
-//! arguments and are not ledger calls. The check is lexical: it does not
-//! follow a call into the function it calls. Test modules and test files are
-//! not read.
+//! A ledger call is a method or path call of `charge` or `timed` one of whose
+//! first two arguments names a front (`CssFront::...` or a binding whose name
+//! contains `front`), or of `apply_batch`, `with_phase` or `record_largest`,
+//! with or without a turbofish. The token builder's own `Meter` charges take
+//! other arguments and are not ledger calls. A loop is a `for`, `while` or
+//! `loop` body, or the arguments of an iterator adaptor, of a slice or vector
+//! method that takes a per-item closure, or of a method whose name starts with
+//! `for_each` or ends in `each`. The check is lexical: it does not follow a
+//! call into the function it calls, nor recognise a block written directly as
+//! a `for` loop's iterator. Test modules and test files are not read.
 
 use std::path::{Path, PathBuf};
 
-/// Iterator adaptors whose closure runs once per item.
-const ADAPTORS: [&str; 18] = [
+/// Iterator adaptors, and slice and vector methods, whose closure runs once
+/// per item.
+const ADAPTORS: [&str; 33] = [
     "all",
     "any",
+    "dedup_by",
+    "dedup_by_key",
     "filter",
     "filter_map",
     "find",
@@ -30,13 +37,31 @@ const ADAPTORS: [&str; 18] = [
     "inspect",
     "map",
     "map_while",
+    "max_by",
+    "max_by_key",
+    "min_by",
+    "min_by_key",
+    "partition",
     "position",
+    "reduce",
+    "retain",
+    "retain_mut",
+    "rposition",
     "scan",
     "skip_while",
+    "sort_by",
+    "sort_by_cached_key",
+    "sort_by_key",
+    "sort_unstable_by",
+    "sort_unstable_by_key",
     "take_while",
     "try_fold",
-    "try_for_each",
 ];
+
+/// Whether a call of `name` runs its closure argument once per item.
+fn repeats_closure(name: &str) -> bool {
+    ADAPTORS.contains(&name) || name.starts_with("for_each") || name.ends_with("each")
+}
 
 /// The source with comments and the contents of string and character
 /// literals replaced by spaces, so that braces, parentheses and calls in them
@@ -159,8 +184,13 @@ fn is_char_literal(chars: &[char], index: usize) -> bool {
 /// One open brace or parenthesis.
 #[derive(Clone, Copy)]
 enum Frame {
-    /// A block; whether it is the body of a loop, and whether it is test code.
-    Brace { repeats: bool, test: bool },
+    /// A block; whether it is the body of a loop, whether it is test code, and
+    /// where the statement that holds it began.
+    Brace {
+        repeats: bool,
+        test: bool,
+        head: usize,
+    },
     /// Parentheses; whether they hold the arguments of an iterator adaptor.
     Paren { repeats: bool },
 }
@@ -206,7 +236,7 @@ fn ledger_calls_in_loops(source: &str) -> (Vec<usize>, usize) {
             '#' => {
                 let rest: String = text[index..text.len().min(index + 14)].iter().collect();
                 let compact: String = rest.chars().filter(|c| !c.is_whitespace()).collect();
-                if compact.starts_with("#[cfg(test)]") {
+                if compact.starts_with("#[cfg(test)]") || compact.starts_with("#[cfg(all(test") {
                     pending_test = true;
                 }
             }
@@ -219,13 +249,19 @@ fn ledger_calls_in_loops(source: &str) -> (Vec<usize>, usize) {
                 stack.push(Frame::Brace {
                     repeats: opens_loop(&head),
                     test,
+                    head: head_start,
                 });
                 pending_test = false;
                 head_start = index + 1;
             }
             '}' => {
-                stack.pop();
-                head_start = index + 1;
+                let closed = stack.pop();
+                // A block inside parentheses, such as a closure body in a loop's
+                // iterator, belongs to the statement around it.
+                head_start = match (closed, stack.last()) {
+                    (Some(Frame::Brace { head, .. }), Some(Frame::Paren { .. })) => head,
+                    _ => index + 1,
+                };
             }
             ';' => {
                 head_start = index + 1;
@@ -235,16 +271,20 @@ fn ledger_calls_in_loops(source: &str) -> (Vec<usize>, usize) {
                 }
             }
             '(' => {
-                let name = word_before(&text, index);
-                let dotted = {
-                    let mut at = index - name.len();
+                let end = before_turbofish(&text, index);
+                let name = word_before(&text, end);
+                let (dotted, pathed) = {
+                    let mut at = end - name.len();
                     while at > 0 && text[at - 1] == ' ' {
                         at -= 1;
                     }
-                    at > 0 && text[at - 1] == '.'
+                    (
+                        at > 0 && text[at - 1] == '.',
+                        at > 1 && text[at - 1] == ':' && text[at - 2] == ':',
+                    )
                 };
-                let repeats = dotted && ADAPTORS.contains(&name.as_str());
-                if dotted && is_ledger_call(&name, &text[index + 1..]) {
+                let repeats = dotted && repeats_closure(&name);
+                if (dotted || pathed) && is_ledger_call(&name, &text[index + 1..]) {
                     calls += 1;
                     let in_test = stack
                         .iter()
@@ -269,19 +309,69 @@ fn ledger_calls_in_loops(source: &str) -> (Vec<usize>, usize) {
     (found, calls)
 }
 
-/// Whether a method call of `name` whose arguments start at `arguments` is a
-/// ledger call.
+/// The end of the name of the call whose `(` is at `open`: before a
+/// turbofish `::<...>` if there is one.
+fn before_turbofish(text: &[char], open: usize) -> usize {
+    let mut end = open;
+    while end > 0 && text[end - 1] == ' ' {
+        end -= 1;
+    }
+    if end == 0 || text[end - 1] != '>' {
+        return open;
+    }
+    let mut depth = 0;
+    let mut at = end;
+    while at > 0 {
+        at -= 1;
+        match text[at] {
+            '>' => depth += 1,
+            '<' => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    if at >= 2 && text[at - 1] == ':' && text[at - 2] == ':' {
+        at - 2
+    } else {
+        open
+    }
+}
+
+/// Whether a call of `name` whose arguments start at `arguments` is a ledger
+/// call.
 fn is_ledger_call(name: &str, arguments: &[char]) -> bool {
     match name {
         "apply_batch" | "with_phase" | "record_largest" => true,
         "charge" | "timed" => {
-            let first: String = arguments
-                .iter()
-                .skip_while(|c| c.is_whitespace())
-                .take_while(|c| **c != ',' && **c != ')')
-                .collect();
-            let first = first.trim();
-            first.starts_with("CssFront::") || first == "front"
+            // The first two arguments, at the top level of the call.
+            let mut depth = 0;
+            let mut arguments_read = vec![String::new()];
+            for c in arguments {
+                match c {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' | ']' | '}' if depth == 0 => break,
+                    ')' | ']' | '}' => depth -= 1,
+                    ',' if depth == 0 => {
+                        if arguments_read.len() == 2 {
+                            break;
+                        }
+                        arguments_read.push(String::new());
+                        continue;
+                    }
+                    _ => {}
+                }
+                if let Some(last) = arguments_read.last_mut() {
+                    last.push(*c);
+                }
+            }
+            arguments_read.iter().any(|argument| {
+                let argument = argument.trim();
+                argument.contains("CssFront::") || argument.to_lowercase().contains("front")
+            })
         }
         _ => false,
     }
@@ -349,6 +439,13 @@ fn the_check_finds_a_ledger_call_in_each_kind_of_loop() {
         "fn a() { items.iter().for_each(|item| account.charge(CssFront::Parse, &[])); }",
         "fn a() { items.iter().map(|item| { account.charge(CssFront::Color, &[item]) }).count(); }",
         "fn a() { 'outer: for x in 0..3 { if x > 1 { ledger.with_phase(scope, run); } } }",
+        "fn a() { for x in y { account.timed::<u8>(CssFront::Parse, || 1); } }",
+        "fn a() { for x in y { CssAccount::charge(&account, CssFront::Color, &[]); } }",
+        "fn a() { for x in y { Operation::apply_batch(&op, scope, changes); } }",
+        "fn a() { items.retain(|item| account.charge(this_front, &[]).is_ok()); }",
+        "fn a() { sheet.for_each_rule(|rule| { account.charge(CssFront::Parse, &[]); }); }",
+        "fn a() { for x in it.filter(|a| { a > 1 }) { account.charge(CssFront::Parse, &[]); } }",
+        "fn a() { while let Some(x) = it.next() { account.charge(CssFront::Parse, &[]); } }",
     ];
     for source in flagged {
         assert_eq!(ledger_calls_in_loops(source).0, vec![1], "{source}");
