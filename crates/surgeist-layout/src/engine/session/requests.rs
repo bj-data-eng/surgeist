@@ -1111,8 +1111,17 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let node = request.node();
         let effects_start = self.begin_effect_capture(super::CaptureKind::Request);
-        let mut computation = begin_grid_context_computation(self, request)?;
-        match computation.advance(self)? {
+        let started = begin_grid_context_computation(self, request)
+            .and_then(|mut computation| computation.advance(self).map(|step| (computation, step)));
+        let (computation, step) = match started {
+            Ok(started) => started,
+            Err(error) => {
+                // The failed computation leaves no writes to replay.
+                self.end_effect_capture(effects_start);
+                return Err(error.into());
+            }
+        };
+        match step {
             ControlFlow::Break(result) => {
                 let result = result.with_effects(self.end_effect_capture(effects_start));
                 Ok(Request::Complete(CompletedRequest::Context(Box::new(

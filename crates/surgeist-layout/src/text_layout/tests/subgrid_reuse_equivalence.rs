@@ -470,12 +470,21 @@ fn assert_same_at_depths(label: &str, shape: Shape, content: Content) {
         for width in [90.0, 140.0] {
             let (reused, repeated) =
                 assert_same_without_reuse::<f32>(label, shape, depth, content, width);
-            // A group session may repeat every computation: group alignment numbers its
-            // owners and members by the sequence of computations.
-            if !content.has_group() {
+            if content.has_group() {
+                // Group alignment numbers its owners and members by the sequence of
+                // computations, so a group session skips no baseline refresh.
+                assert_eq!(
+                    reused.baseline_refreshes, repeated.baseline_refreshes,
+                    "{label}: a group session reuses nothing at depth {depth}: {reused:?} against {repeated:?}"
+                );
+            } else {
                 assert!(
                     reused.wrapper_preparations < repeated.wrapper_preparations,
                     "{label}: the reuse engages at depth {depth}: {reused:?} against {repeated:?}"
+                );
+                assert!(
+                    reused.baseline_refreshes < repeated.baseline_refreshes,
+                    "{label}: the baseline refresh is skipped at depth {depth}: {reused:?} against {repeated:?}"
                 );
             }
             assert_same_without_reuse::<f64>(label, shape, depth, content, width);
