@@ -12,7 +12,7 @@ use skrifa::{
     outline::{DrawSettings, Hinting, OutlineGlyphFormat, OutlinePen, pen::PathStyle},
     raw::TableProvider,
 };
-use std::mem::size_of;
+use std::{fmt, mem::size_of};
 
 /// A font-outline representation not qualified by this geometry entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -32,7 +32,7 @@ pub enum FontOutlineCapability {
 /// Precise refusal of an outline query, independent of missing painted ink.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FontOutlineError {
-    /// Malformed directory, outline, metrics, or variation source.
+    /// Malformed directory, header, outline, metrics, or variation source.
     InvalidFont,
     /// Requested glyph is outside the actual face's glyph range.
     GlyphRange {
@@ -41,7 +41,7 @@ pub enum FontOutlineError {
     },
     /// This face has no available outline representation.
     UnavailableOutline,
-    /// A present representation lies outside the qualified domain.
+    /// A present representation or feature lies outside the qualified domain.
     Unsupported {
         /// Actual unqualified capability.
         capability: FontOutlineCapability,
@@ -51,10 +51,51 @@ pub enum FontOutlineError {
         /// Actual failing glyph, possibly a composite child.
         glyph: u32,
     },
-    /// An actual scratch extent cannot be represented.
+    /// An actual scratch size or count cannot be represented.
     CapacityOverflow,
     /// Reserving actual temporary backing failed.
     AllocationRefused,
+}
+
+impl fmt::Display for FontOutlineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidFont => f.write_str(
+                "the font has a malformed directory, header, outline or variation source",
+            ),
+            Self::GlyphRange { count } => write!(
+                f,
+                "the requested glyph is outside the face's {count} glyphs"
+            ),
+            Self::UnavailableOutline => {
+                f.write_str("the face has no available outline representation")
+            }
+            Self::Unsupported { .. } => f.write_str(
+                "the face uses an outline representation or feature that is not supported",
+            ),
+            Self::ProviderRefused { glyph } => {
+                write!(f, "the font provider cannot decode or draw glyph {glyph}")
+            }
+            Self::CapacityOverflow => {
+                f.write_str("an outline scratch size or count exceeds the representable range")
+            }
+            Self::AllocationRefused => f.write_str("reserving temporary outline storage failed"),
+        }
+    }
+}
+
+impl std::error::Error for FontOutlineError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidFont
+            | Self::GlyphRange { .. }
+            | Self::UnavailableOutline
+            | Self::Unsupported { .. }
+            | Self::ProviderRefused { .. }
+            | Self::CapacityOverflow
+            | Self::AllocationRefused => None,
+        }
+    }
 }
 
 /// Geometry of the exact retained instance, in baseline-relative y-down units.

@@ -7,9 +7,30 @@
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BidiLevel(u8);
 
+/// A supplied level above the highest resolved Unicode bidi level.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BidiLevelError {
+    /// The level exceeds 126, the highest resolved level.
     OutOfRange { level: u8 },
+}
+
+impl core::fmt::Display for BidiLevelError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::OutOfRange { level } => write!(
+                f,
+                "bidi level {level} is above the highest resolved level 126"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for BidiLevelError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::OutOfRange { .. } => None,
+        }
+    }
 }
 
 impl BidiLevel {
@@ -141,9 +162,30 @@ pub struct SuppliedVisualOrder<'a, 'o> {
     order: &'o [usize],
 }
 
+/// A refused visual-order request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SuppliedLineError {
+    /// The order buffer does not have one slot per participant of the line.
     OrderBufferLength { expected: usize, actual: usize },
+}
+
+impl core::fmt::Display for SuppliedLineError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::OrderBufferLength { expected, actual } => write!(
+                f,
+                "the visual-order buffer holds {actual} slots but the line has {expected} participants"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for SuppliedLineError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::OrderBufferLength { .. } => None,
+        }
+    }
 }
 
 impl<'a> SuppliedLine<'a> {

@@ -96,15 +96,60 @@ impl InlineBoxEdgeContext {
 /// A source/parent declaration or selected incidence that cannot be represented.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InlineBoxEdgeError {
+    /// The operation, paragraph or control has no contextual capture.
     MissingCapture,
+    /// A handle belongs to a different contextual capture.
     ForeignCapture,
+    /// The handles belong to different content domains, or to a domain other
+    /// than the prepared paragraph's.
     WrongDomain,
+    /// The declared box-edge owner is not a usable inline box.
     InvalidOwner,
+    /// The endpoints are not a valid, properly nested pair of boundary controls.
     InvalidPair,
+    /// The declared parent does not immediately contain the box.
     InvalidParent,
+    /// A box carries edge contexts that differ between declarations or from
+    /// its boundary's context.
     InconsistentContext,
+    /// The requested box incidence is not represented.
     UnrepresentedIncidence,
 }
+
+impl core::fmt::Display for InlineBoxEdgeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::MissingCapture => "the box-edge operation has no contextual capture",
+            Self::ForeignCapture => "the box-edge handles belong to a different contextual capture",
+            Self::WrongDomain => {
+                "the box-edge handles belong to different content domains or to a domain other than the prepared paragraph's"
+            }
+            Self::InvalidOwner => "the declared box-edge owner is not a usable inline box",
+            Self::InvalidPair => {
+                "the box-edge endpoints are not a valid, properly nested pair of boundary controls"
+            }
+            Self::InvalidParent => "the declared box parent does not immediately contain the box",
+            Self::InconsistentContext => "a box has inconsistent edge contexts",
+            Self::UnrepresentedIncidence => "the requested box incidence is not represented",
+        })
+    }
+}
+
+impl core::error::Error for InlineBoxEdgeError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::MissingCapture
+            | Self::ForeignCapture
+            | Self::WrongDomain
+            | Self::InvalidOwner
+            | Self::InvalidPair
+            | Self::InvalidParent
+            | Self::InconsistentContext
+            | Self::UnrepresentedIncidence => None,
+        }
+    }
+}
+
 pub(crate) fn invalid(reason: InlineBoxEdgeError) -> crate::Error {
     protocol_error(ProtocolError::InlineBoxEdge(reason))
 }

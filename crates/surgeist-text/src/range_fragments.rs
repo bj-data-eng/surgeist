@@ -30,33 +30,26 @@ use std::{fmt, sync::Arc};
 /// A valid source request cannot invent a placed unit or an actual font lender.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceRangeFragmentError {
+    /// The requested range is empty.
     EmptyRange,
+    /// The requested range lies outside the captured range of its origin.
     OutsideOrigin {
         origin: usize,
         local: Range,
         captured: Range,
     },
-    OutsidePlacement {
-        aggregate: Range,
-    },
-    MissingOriginalMapping {
-        aggregate: Range,
-    },
-    AmbiguousOriginalMapping {
-        aggregate: Range,
-    },
-    MissingUnitGeometry {
-        line: usize,
-        unit: usize,
-    },
-    UnsupportedPartition {
-        line: usize,
-        unit: usize,
-    },
-    MissingFontMetrics {
-        line: usize,
-        unit: usize,
-    },
+    /// The requested range lies outside the source the placement covers.
+    OutsidePlacement { aggregate: Range },
+    /// The placement has no original mapping for the range, or part of it.
+    MissingOriginalMapping { aggregate: Range },
+    /// The range has more than one original mapping.
+    AmbiguousOriginalMapping { aggregate: Range },
+    /// The unit of the line has no geometry for the range.
+    MissingUnitGeometry { line: usize, unit: usize },
+    /// The unit of the line cannot be partitioned for the range.
+    UnsupportedPartition { line: usize, unit: usize },
+    /// The unit of the line has no retained font metrics.
+    MissingFontMetrics { line: usize, unit: usize },
     /// The actual retained font/native-layout reference for this inner EGC is missing.
     MissingCellReference {
         line: usize,
@@ -76,6 +69,86 @@ pub enum SourceRangeFragmentError {
         selection_unit: usize,
     },
 }
+
+impl fmt::Display for SourceRangeFragmentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyRange => f.write_str("the source range is empty"),
+            Self::OutsideOrigin {
+                origin,
+                local,
+                captured,
+            } => write!(
+                f,
+                "source range {}..{} lies outside the captured range {}..{} of origin {origin}",
+                local.start, local.end, captured.start, captured.end
+            ),
+            Self::OutsidePlacement { aggregate } => write!(
+                f,
+                "source range {}..{} lies outside the source covered by the placement",
+                aggregate.start, aggregate.end
+            ),
+            Self::MissingOriginalMapping { aggregate } => write!(
+                f,
+                "the placement has no original mapping for source range {}..{}",
+                aggregate.start, aggregate.end
+            ),
+            Self::AmbiguousOriginalMapping { aggregate } => write!(
+                f,
+                "source range {}..{} has more than one original mapping",
+                aggregate.start, aggregate.end
+            ),
+            Self::MissingUnitGeometry { line, unit } => {
+                write!(
+                    f,
+                    "unit {unit} of line {line} has no geometry for the source range"
+                )
+            }
+            Self::UnsupportedPartition { line, unit } => write!(
+                f,
+                "unit {unit} of line {line} cannot be partitioned for the source range"
+            ),
+            Self::MissingFontMetrics { line, unit } => {
+                write!(f, "unit {unit} of line {line} has no retained font metrics")
+            }
+            Self::MissingCellReference { line, cell, unit } => write!(
+                f,
+                "inner unit {unit} of cell {cell} on line {line} has no retained font or layout reference"
+            ),
+            Self::UnsupportedCellPartition { line, cell, unit } => write!(
+                f,
+                "the provider members of cell {cell} on line {line} cannot be partitioned into inner unit {unit}"
+            ),
+            Self::AmbiguousCellUnit {
+                line,
+                cell,
+                selection_unit,
+            } => write!(
+                f,
+                "source unit {selection_unit} of cell {cell} on line {line} has no unique inner-unit closure"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SourceRangeFragmentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::EmptyRange
+            | Self::OutsideOrigin { .. }
+            | Self::OutsidePlacement { .. }
+            | Self::MissingOriginalMapping { .. }
+            | Self::AmbiguousOriginalMapping { .. }
+            | Self::MissingUnitGeometry { .. }
+            | Self::UnsupportedPartition { .. }
+            | Self::MissingFontMetrics { .. }
+            | Self::MissingCellReference { .. }
+            | Self::UnsupportedCellPartition { .. }
+            | Self::AmbiguousCellUnit { .. } => None,
+        }
+    }
+}
+
 fn failure(reason: SourceRangeFragmentError) -> Error {
     let code = match reason {
         SourceRangeFragmentError::MissingFontMetrics { .. }

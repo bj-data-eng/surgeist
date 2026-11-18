@@ -15,64 +15,187 @@ pub struct SourceProcessingJointFlow {
     pub facts_owner: usize,
 }
 
+/// Invalid evidence for a supplied joint-flow declaration. Ordinals refer to
+/// the declarations, scopes and paragraphs of the same `ContextualSourceInput`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingJointFlowError {
-    EmptyMembers {
-        declaration: usize,
-    },
-    InvalidScope {
-        declaration: usize,
-        scope: usize,
-    },
-    NotDomainRoot {
-        declaration: usize,
-        scope: usize,
-    },
+    /// The declaration lists no paragraphs.
+    EmptyMembers { declaration: usize },
+    /// The declaration names a scope that does not exist.
+    InvalidScope { declaration: usize, scope: usize },
+    /// The declared scope is not the root of a content domain.
+    NotDomainRoot { declaration: usize, scope: usize },
+    /// The declaration names a paragraph that does not exist.
     InvalidMember {
         declaration: usize,
         paragraph: usize,
     },
+    /// The declaration lists the paragraph twice.
     DuplicateMember {
         declaration: usize,
         paragraph: usize,
     },
+    /// The paragraph already belongs to an earlier declaration.
     MemberAlreadyAssigned {
         declaration: usize,
         paragraph: usize,
         first_declaration: usize,
     },
+    /// The paragraph lies outside the domain of the declared scope.
     WrongDomain {
         declaration: usize,
         paragraph: usize,
     },
+    /// The declaration lists the paragraph after `previous`, out of event order.
     MemberOrder {
         declaration: usize,
         previous: usize,
         paragraph: usize,
     },
+    /// The declaration skips this paragraph of its range.
     SkippedMember {
         declaration: usize,
         paragraph: usize,
     },
+    /// The paragraph named as facts owner is not a member of the declaration.
     FactsOwnerNotMember {
         declaration: usize,
         paragraph: usize,
     },
+    /// The paragraph's base direction differs from the facts owner's.
     DirectionMismatch {
         declaration: usize,
         paragraph: usize,
         owner: usize,
     },
+    /// The paragraph's strut differs from the facts owner's.
     StrutMismatch {
         declaration: usize,
         paragraph: usize,
         owner: usize,
     },
+    /// Neighboring origins of the declaration have no connection between them.
     MissingConnection {
         declaration: usize,
         before_origin: usize,
         after_origin: usize,
     },
+}
+
+impl std::fmt::Display for SourceProcessingJointFlowError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyMembers { declaration } => {
+                write!(
+                    f,
+                    "joint-flow declaration {declaration} lists no paragraphs"
+                )
+            }
+            Self::InvalidScope { declaration, scope } => write!(
+                f,
+                "joint-flow declaration {declaration} names scope {scope}, which does not exist"
+            ),
+            Self::NotDomainRoot { declaration, scope } => write!(
+                f,
+                "scope {scope} of joint-flow declaration {declaration} is not a content-domain root"
+            ),
+            Self::InvalidMember {
+                declaration,
+                paragraph,
+            } => write!(
+                f,
+                "joint-flow declaration {declaration} names paragraph {paragraph}, which does not exist"
+            ),
+            Self::DuplicateMember {
+                declaration,
+                paragraph,
+            } => write!(
+                f,
+                "joint-flow declaration {declaration} lists paragraph {paragraph} twice"
+            ),
+            Self::MemberAlreadyAssigned {
+                declaration,
+                paragraph,
+                first_declaration,
+            } => write!(
+                f,
+                "paragraph {paragraph} of joint-flow declaration {declaration} already belongs to declaration {first_declaration}"
+            ),
+            Self::WrongDomain {
+                declaration,
+                paragraph,
+            } => write!(
+                f,
+                "paragraph {paragraph} is outside the domain of joint-flow declaration {declaration}"
+            ),
+            Self::MemberOrder {
+                declaration,
+                previous,
+                paragraph,
+            } => write!(
+                f,
+                "joint-flow declaration {declaration} lists paragraph {paragraph} out of order after paragraph {previous}"
+            ),
+            Self::SkippedMember {
+                declaration,
+                paragraph,
+            } => write!(
+                f,
+                "joint-flow declaration {declaration} skips paragraph {paragraph} of its range"
+            ),
+            Self::FactsOwnerNotMember {
+                declaration,
+                paragraph,
+            } => write!(
+                f,
+                "the facts owner, paragraph {paragraph}, of joint-flow declaration {declaration} is not one of its members"
+            ),
+            Self::DirectionMismatch {
+                declaration,
+                paragraph,
+                owner,
+            } => write!(
+                f,
+                "paragraph {paragraph} of joint-flow declaration {declaration} has a base direction that differs from owner paragraph {owner}"
+            ),
+            Self::StrutMismatch {
+                declaration,
+                paragraph,
+                owner,
+            } => write!(
+                f,
+                "paragraph {paragraph} of joint-flow declaration {declaration} has a strut that differs from owner paragraph {owner}"
+            ),
+            Self::MissingConnection {
+                declaration,
+                before_origin,
+                after_origin,
+            } => write!(
+                f,
+                "joint-flow declaration {declaration} lacks a connection between origins {before_origin} and {after_origin}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SourceProcessingJointFlowError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::EmptyMembers { .. }
+            | Self::InvalidScope { .. }
+            | Self::NotDomainRoot { .. }
+            | Self::InvalidMember { .. }
+            | Self::DuplicateMember { .. }
+            | Self::MemberAlreadyAssigned { .. }
+            | Self::WrongDomain { .. }
+            | Self::MemberOrder { .. }
+            | Self::SkippedMember { .. }
+            | Self::FactsOwnerNotMember { .. }
+            | Self::DirectionMismatch { .. }
+            | Self::StrutMismatch { .. }
+            | Self::MissingConnection { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

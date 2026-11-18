@@ -103,7 +103,8 @@ pub enum ScopeAlignmentLimitKind {
 /// Typed scope-alignment admission, resource or occurrence-custody refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScopeAlignmentError {
-    /// New source facts were supplied without early feature limits.
+    /// The operation needs explicit feature limits that were not supplied,
+    /// for example because new source facts arrived without early limits.
     LimitsRequired,
     /// An explicit resource bound cannot admit the actual requirement.
     Limit {
@@ -119,7 +120,8 @@ pub enum ScopeAlignmentError {
     MissingCapture,
     /// A supplied captured handle belongs to another immutable capture.
     ForeignCapture,
-    /// A supplied scope does not belong to the required actual content domain.
+    /// A supplied scope or computed cause does not belong to the required
+    /// actual content domain.
     WrongDomain,
     /// An active scope or required inline ancestor lacks its early formatting
     /// classification; absent evidence cannot stand in for Initial alignment.
@@ -136,16 +138,108 @@ pub enum ScopeAlignmentError {
     UnrepresentedOwnership { scope: usize },
     /// An independently demanded scope boundary divides an indivisible unit.
     UnpartitionableUnit { scope: usize },
-    /// An allocated handle belongs to a different selected presentation.
+    /// A scope handle belongs to a different selected presentation.
     ForeignSelectedScope,
     /// One actual selected scope received more than one allocation.
     DuplicateAllocation { scope: usize },
-    /// A demanded selected scope has no complete allocation.
+    /// A demanded selected scope has no allocation.
     MissingAllocation { scope: usize },
     /// Jointly owned native output was assigned inconsistent composed frames.
     IncompatibleFrames { first: usize, second: usize },
     /// Late alignment disagrees with the captured early formatting class.
     BoundaryMismatch { scope: usize },
+}
+
+impl std::fmt::Display for ScopeAlignmentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LimitsRequired => f.write_str(
+                "scope alignment needs explicit resource limits, but none were supplied",
+            ),
+            Self::Limit {
+                required, limit, ..
+            } => write!(
+                f,
+                "a scope-alignment resource limit of {limit} cannot admit the required {required}"
+            ),
+            Self::Overflow { .. } => {
+                f.write_str("scope-alignment count or byte arithmetic overflowed or underflowed")
+            }
+            Self::Allocation { .. } => f.write_str("reserving scope-alignment storage was refused"),
+            Self::MissingCapture => f.write_str("the operation has no contextual capture"),
+            Self::ForeignCapture => f.write_str("a supplied handle belongs to a different capture"),
+            Self::WrongDomain => f.write_str(
+                "a scope or computed cause belongs to a different content domain than the operation's",
+            ),
+            Self::MissingBoundary { scope } => write!(
+                f,
+                "scope {scope} lacks its early formatting classification"
+            ),
+            Self::MissingStyle { scope } => {
+                write!(f, "scope {scope} has no supplied effective style")
+            }
+            Self::MissingFontReference { scope } => write!(
+                f,
+                "scope {scope} lacks its supplied script, axis and baseline facts"
+            ),
+            Self::MissingMetrics { scope } => write!(
+                f,
+                "this preparation did not retain the metrics demanded for scope {scope}"
+            ),
+            Self::UnsupportedReference { scope } => write!(
+                f,
+                "the supplied font reference for scope {scope} cannot be used by the operation's frame"
+            ),
+            Self::UnrepresentedOwnership { scope } => write!(
+                f,
+                "content custody cannot represent the frame requested for scope {scope}"
+            ),
+            Self::UnpartitionableUnit { scope } => write!(
+                f,
+                "a boundary of scope {scope} divides an indivisible unit"
+            ),
+            Self::ForeignSelectedScope => f
+                .write_str("a scope handle belongs to a different selected presentation"),
+            Self::DuplicateAllocation { scope } => {
+                write!(f, "scope {scope} received more than one allocation")
+            }
+            Self::MissingAllocation { scope } => write!(f, "scope {scope} has no allocation"),
+            Self::IncompatibleFrames { first, second } => write!(
+                f,
+                "scopes {first} and {second} jointly own output but were assigned different frames"
+            ),
+            Self::BoundaryMismatch { scope } => write!(
+                f,
+                "late alignment disagrees with the captured early classification of scope {scope}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ScopeAlignmentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::LimitsRequired
+            | Self::Limit { .. }
+            | Self::Overflow { .. }
+            | Self::Allocation { .. }
+            | Self::MissingCapture
+            | Self::ForeignCapture
+            | Self::WrongDomain
+            | Self::MissingBoundary { .. }
+            | Self::MissingStyle { .. }
+            | Self::MissingFontReference { .. }
+            | Self::MissingMetrics { .. }
+            | Self::UnsupportedReference { .. }
+            | Self::UnrepresentedOwnership { .. }
+            | Self::UnpartitionableUnit { .. }
+            | Self::ForeignSelectedScope
+            | Self::DuplicateAllocation { .. }
+            | Self::MissingAllocation { .. }
+            | Self::IncompatibleFrames { .. }
+            | Self::BoundaryMismatch { .. } => None,
+        }
+    }
 }
 
 /// Executed feature-local accounting for one complete transaction.

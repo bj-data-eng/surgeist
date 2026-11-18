@@ -10,19 +10,56 @@ use crate::processing::{delimiter_crosses, reserve};
 /// Invalid evidence for an explicitly supplied source connection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingConnectionError {
-    Endpoints {
-        connection: usize,
-    },
-    Domain {
-        connection: usize,
-    },
-    Position {
-        connection: usize,
-    },
+    /// The connection names origins that do not exist or are not adjacent.
+    Endpoints { connection: usize },
+    /// The connection does not lie in the content domain of both its paragraphs.
+    Domain { connection: usize },
+    /// The connection is at an invalid source position.
+    Position { connection: usize },
+    /// The connection starts at the same origin as an earlier connection.
     Duplicate {
         connection: usize,
         first_connection: usize,
     },
+}
+
+impl std::fmt::Display for SourceProcessingConnectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Endpoints { connection } => write!(
+                f,
+                "connection {connection} names origins that do not exist or are not adjacent"
+            ),
+            Self::Domain { connection } => write!(
+                f,
+                "connection {connection} does not lie in the content domain of both its paragraphs"
+            ),
+            Self::Position { connection } => {
+                write!(
+                    f,
+                    "connection {connection} is at an invalid source position"
+                )
+            }
+            Self::Duplicate {
+                connection,
+                first_connection,
+            } => write!(
+                f,
+                "connection {connection} starts at the same origin as connection {first_connection}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SourceProcessingConnectionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Endpoints { .. }
+            | Self::Domain { .. }
+            | Self::Position { .. }
+            | Self::Duplicate { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

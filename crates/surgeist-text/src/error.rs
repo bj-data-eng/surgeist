@@ -106,6 +106,11 @@ pub struct SpacingConstraint {
 }
 
 /// Stable text diagnostic.
+///
+/// `Display` prints [`Self::message`] and nothing else. The classification is
+/// read through [`Self::code`] and the typed context through [`Self::detail`];
+/// [`Self::source`] holds the underlying error, which a reporter that walks the
+/// chain prints separately.
 #[derive(Debug)]
 pub struct Error {
     pub code: ErrorCode,
@@ -142,7 +147,7 @@ impl Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}: {}", self.code, self.message)
+        f.write_str(&self.message)
     }
 }
 
@@ -498,48 +503,143 @@ pub enum ErrorDetail {
 pub enum TextTransformError {
     /// Required original-unit envelope for diagnostics. Actual original pieces,
     /// rather than this envelope, establish membership in the requested view.
-    IndivisibleCoverage {
-        source: crate::Range,
-    },
+    /// The transform cannot keep that indivisible unit whole: a structural
+    /// frontier would divide it, or its transformed unit exceeds its exact
+    /// output coverage.
+    IndivisibleCoverage { source: crate::Range },
+    /// The retained phrase model data is invalid.
     InvalidPhraseData,
-    MissingPhraseTopology {
-        at: usize,
-    },
-    MissingPhraseScopeStyle {
-        scope: usize,
-        at: usize,
-    },
+    /// Phrase separator insertion at `at` has no captured scope topology.
+    MissingPhraseTopology { at: usize },
+    /// The captured scope has no style from which to insert a phrase separator.
+    MissingPhraseScopeStyle { scope: usize, at: usize },
+    /// A separator control lacks the boundary event order of the connection.
     MissingSeparatorBoundaryContext {
         control: usize,
         at: usize,
         connection: usize,
     },
     /// An original separator's forced adjacency depends on an uncaptured
-    /// connection side. The range identifies original text, never a control.
+    /// connection side. The range identifies original text, never a control;
+    /// `at` is the position of the connection.
     MissingOriginalSeparatorBoundaryContext {
         source: crate::Range,
         at: usize,
         connection: usize,
     },
+    /// The separator control sits inside the retained original unit, so it has
+    /// no exact scalar seam.
     UnrepresentableSeparatorSeam {
         control: usize,
         at: usize,
         retained: crate::Range,
     },
+    /// The text-node range is reversed or extends beyond the node's content,
+    /// measured in UTF-16 code units.
     InvalidTextNodeRange {
         range: crate::Range,
         text_len: usize,
     },
-    TextNodeMismatch {
-        origin: usize,
-    },
-    MissingTextNodeContext {
-        origin: usize,
-    },
+    /// The text-node content differs from its original occurrence.
+    TextNodeMismatch { origin: usize },
+    /// The transform requires complete original text-node context that the
+    /// origin does not supply.
+    MissingTextNodeContext { origin: usize },
+    /// The casing data is unavailable.
     CasingDataUnavailable,
+    /// The casing data holds an invalid exception or scalar.
     InvalidCasingData,
+    /// The content locale is not a valid language tag.
     InvalidContentLocale,
+    /// The transform could not reserve storage for its result.
     Capacity,
+}
+
+impl fmt::Display for TextTransformError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::IndivisibleCoverage { source } => write!(
+                f,
+                "the transform cannot keep the indivisible original unit {}..{} whole",
+                source.start, source.end
+            ),
+            Self::InvalidPhraseData => f.write_str("the retained phrase model data is invalid"),
+            Self::MissingPhraseTopology { at } => write!(
+                f,
+                "phrase separator insertion at {at} needs the captured scope topology"
+            ),
+            Self::MissingPhraseScopeStyle { scope, at } => write!(
+                f,
+                "phrase separator insertion at {at} needs the style of scope {scope}"
+            ),
+            Self::MissingSeparatorBoundaryContext {
+                control,
+                at,
+                connection,
+            } => write!(
+                f,
+                "separator control {control} at {at} lacks the boundary event order of connection {connection}"
+            ),
+            Self::MissingOriginalSeparatorBoundaryContext {
+                source,
+                at,
+                connection,
+            } => write!(
+                f,
+                "the original separator {}..{} depends on an uncaptured side of connection {connection} at {at}",
+                source.start, source.end
+            ),
+            Self::UnrepresentableSeparatorSeam {
+                control,
+                at,
+                retained,
+            } => write!(
+                f,
+                "separator control {control} at {at} lies inside the retained unit {}..{} and has no exact scalar seam",
+                retained.start, retained.end
+            ),
+            Self::InvalidTextNodeRange { range, text_len } => write!(
+                f,
+                "text-node range {}..{} is reversed or extends beyond the node's {text_len} code units",
+                range.start, range.end
+            ),
+            Self::TextNodeMismatch { origin } => write!(
+                f,
+                "the text-node content for origin {origin} differs from its original occurrence"
+            ),
+            Self::MissingTextNodeContext { origin } => write!(
+                f,
+                "the transform requires complete original text-node context for origin {origin}"
+            ),
+            Self::CasingDataUnavailable => f.write_str("the casing data is unavailable"),
+            Self::InvalidCasingData => f.write_str("the casing data is invalid"),
+            Self::InvalidContentLocale => {
+                f.write_str("the content locale is not a valid language tag")
+            }
+            Self::Capacity => f.write_str("the transform could not reserve storage for its result"),
+        }
+    }
+}
+
+impl error::Error for TextTransformError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::IndivisibleCoverage { .. }
+            | Self::InvalidPhraseData
+            | Self::MissingPhraseTopology { .. }
+            | Self::MissingPhraseScopeStyle { .. }
+            | Self::MissingSeparatorBoundaryContext { .. }
+            | Self::MissingOriginalSeparatorBoundaryContext { .. }
+            | Self::UnrepresentableSeparatorSeam { .. }
+            | Self::InvalidTextNodeRange { .. }
+            | Self::TextNodeMismatch { .. }
+            | Self::MissingTextNodeContext { .. }
+            | Self::CasingDataUnavailable
+            | Self::InvalidCasingData
+            | Self::InvalidContentLocale
+            | Self::Capacity => None,
+        }
+    }
 }
 
 /// Structural invalidity of one supplied document delimiter occurrence.
@@ -551,10 +651,34 @@ pub enum DocumentSegmentBreakError {
     Reversed,
     /// At least one endpoint exceeds captured source bounds.
     OutOfBounds,
-    /// The occurrence precedes the previous supplied occurrence.
+    /// The occurrence starts before the previous supplied occurrence starts.
     Unordered,
-    /// Ordered occurrences overlap.
+    /// The occurrence starts inside the previous supplied occurrence.
     Overlap,
+}
+
+impl fmt::Display for DocumentSegmentBreakError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Empty => "the delimiter occurrence covers no source units",
+            Self::Reversed => "the delimiter occurrence ends before it starts",
+            Self::OutOfBounds => "the delimiter occurrence extends beyond the source",
+            Self::Unordered => {
+                "the delimiter occurrence starts before the previous occurrence starts"
+            }
+            Self::Overlap => "the delimiter occurrence starts inside the previous occurrence",
+        })
+    }
+}
+
+impl error::Error for DocumentSegmentBreakError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Empty | Self::Reversed | Self::OutOfBounds | Self::Unordered | Self::Overlap => {
+                None
+            }
+        }
+    }
 }
 
 /// Capacity failure during off-side source processing.
@@ -564,6 +688,25 @@ pub enum ProcessingCapacityError {
     Overflow,
     /// A fallible buffer reservation was refused.
     Allocation,
+}
+
+impl fmt::Display for ProcessingCapacityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Overflow => {
+                "a source-processing count or byte size exceeded the representable range"
+            }
+            Self::Allocation => "a source-processing buffer reservation was refused",
+        })
+    }
+}
+
+impl error::Error for ProcessingCapacityError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Overflow | Self::Allocation => None,
+        }
+    }
 }
 
 /// A shaping input boundary that must not divide a surrogate pair.
@@ -611,6 +754,10 @@ pub enum FontMetricTable {
     Base,
 }
 /// Used metric-table refusal.
+///
+/// The enum names the cause. The table that was refused is named by the
+/// [`ErrorDetail::FontMetricTable`] value that carries it, so the messages
+/// speak of "the table".
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FontMetricTableError {
     /// Required table is absent.
@@ -620,7 +767,8 @@ pub enum FontMetricTableError {
         /// Required absent table.
         required: FontMetricTable,
     },
-    /// Long metric count is outside the glyph inventory.
+    /// Long metric count is outside the glyph inventory: it is zero or exceeds
+    /// the glyph count.
     LongMetricCount {
         /// Declared long metric count.
         count: u16,
@@ -644,7 +792,7 @@ pub enum FontMetricTableError {
     },
     /// Value tags are duplicated or not strictly ascending.
     VariationRecordOrder {
-        /// Actual record ordinal.
+        /// Actual ordinal of the record whose tag does not follow its predecessor's.
         record: u16,
     },
     /// A declared store or data offset cannot be resolved completely.
@@ -657,11 +805,12 @@ pub enum FontMetricTableError {
         /// Actual declared format.
         format: u16,
     },
-    /// Region inventory differs from the actual face axes.
+    /// Two axis counts that must agree differ: the face's axes and the region
+    /// list's axes, or the region list's axes and the face's coordinates.
     VariationAxisCount {
-        /// Actual fvar axis count.
+        /// The count that was required.
         expected: usize,
-        /// Declared region-list axis count.
+        /// The count that was found.
         actual: u16,
     },
     /// Region count is outside the format's domain.
@@ -738,6 +887,9 @@ pub enum FontMetricTableError {
     /// A used VariationIndex has no actual BASE variation store.
     BaselineVariationStoreMissing,
     /// A used stored outline cannot validate the actual point reference.
+    ///
+    /// `source()` returns the outline refusal; the message names only the
+    /// glyph and point that could not be validated.
     BaselineOutline {
         glyph: u16,
         point: u16,
@@ -749,14 +901,179 @@ pub enum FontMetricTableError {
         point: u16,
         count: usize,
     },
-    /// Actual run script metadata has no canonical Unicode short name.
+    /// Actual run script metadata has no canonical four-letter Unicode short name.
     BaselineScriptUnavailable,
-    /// OpenType units-per-em is invalid.
+    /// OpenType units-per-em is outside 16 through 16384.
     InvalidUnitsPerEm {
         /// Actual rejected value.
         value: u16,
     },
 }
+
+impl fmt::Display for FontMetricTableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Missing => f.write_str("a required table is absent"),
+            Self::MissingCompanion { .. } => {
+                f.write_str("a present table lacks its required companion table")
+            }
+            Self::LongMetricCount { count, glyph_count } => write!(
+                f,
+                "long metric count {count} must be at least 1 and at most the face's {glyph_count} glyphs"
+            ),
+            Self::Duplicate => f.write_str("more than one directory entry claims the table"),
+            Self::Inaccessible => f.write_str("the table's recorded range cannot be read"),
+            Self::Malformed => f.write_str("the table is truncated or malformed"),
+            Self::UnsupportedVersion => f.write_str("the table version is not supported"),
+            Self::VariationWithoutAxes => f.write_str(
+                "a metric variation source is present but the face has no variation axes",
+            ),
+            Self::UnsupportedRecordSize { size } => write!(
+                f,
+                "the value-record size {size} is larger than the supported eight bytes"
+            ),
+            Self::VariationRecordOrder { record } => write!(
+                f,
+                "value record {record} has a tag that is not greater than the previous record's tag"
+            ),
+            Self::VariationOffset { offset } => {
+                write!(f, "variation offset {offset} cannot be resolved")
+            }
+            Self::VariationStoreFormat { format } => write!(
+                f,
+                "variation store format {format} is not the supported format 1"
+            ),
+            Self::VariationAxisCount { expected, actual } => write!(
+                f,
+                "the variation axis count is {actual} where {expected} was expected"
+            ),
+            Self::VariationRegionCount { count } => {
+                write!(f, "variation region count {count} is not below 32768")
+            }
+            Self::VariationRegionCoordinate { region, axis, .. } => write!(
+                f,
+                "variation region {region} axis {axis} has a coordinate outside the range minus one to one"
+            ),
+            Self::VariationDeltaIndex {
+                record,
+                outer,
+                inner,
+            } => write!(
+                f,
+                "record {record} refers to delta set {outer}:{inner}, which its variation store does not contain"
+            ),
+            Self::VariationRegionIndex { offset, index } => write!(
+                f,
+                "the data subtable at offset {offset} refers to region {index}, outside the region list"
+            ),
+            Self::VariationWordCount {
+                offset,
+                words,
+                regions,
+            } => write!(
+                f,
+                "the data subtable at offset {offset} declares {words} wide deltas but only {regions} regions"
+            ),
+            Self::VariationRow {
+                offset,
+                inner,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "row {inner} of the data subtable at offset {offset} yields {actual} deltas where {expected} are declared"
+            ),
+            Self::VariationScalar { region, .. } => write!(
+                f,
+                "the scalar of variation region {region} is outside zero through one"
+            ),
+            Self::BaselineTagOrder => {
+                f.write_str("baseline tags are duplicated or not strictly sorted")
+            }
+            Self::BaselineScriptOrder => {
+                f.write_str("baseline script tags are duplicated or not strictly sorted")
+            }
+            Self::BaselineValueCount { expected, actual } => write!(
+                f,
+                "the selected script has {actual} coordinates for {expected} baseline tags"
+            ),
+            Self::BaselineDefaultIndex { index, count } => write!(
+                f,
+                "default baseline index {index} is outside the {count} coordinates"
+            ),
+            Self::BaselineCoordinateFormat { format } => {
+                write!(f, "baseline coordinate format {format} is not 1, 2 or 3")
+            }
+            Self::BaselineDeviceFormat { format } => {
+                write!(f, "baseline device format {format} is invalid")
+            }
+            Self::BaselineVariableDevice => f.write_str(
+                "a device table is not allowed in the baseline table of a variable face",
+            ),
+            Self::BaselineVariationStoreMissing => f.write_str(
+                "a variation index is used but the baseline table has no variation store",
+            ),
+            Self::BaselineOutline { glyph, point, .. } => write!(
+                f,
+                "the stored outline of glyph {glyph} cannot validate point {point}"
+            ),
+            Self::BaselinePointRange {
+                glyph,
+                point,
+                count,
+            } => write!(
+                f,
+                "point {point} of glyph {glyph} is outside its {count} stored points"
+            ),
+            Self::BaselineScriptUnavailable => {
+                f.write_str("the run's script has no canonical four-letter Unicode short name")
+            }
+            Self::InvalidUnitsPerEm { value } => {
+                write!(f, "units-per-em {value} is outside 16 to 16384")
+            }
+        }
+    }
+}
+
+impl error::Error for FontMetricTableError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::BaselineOutline { reason, .. } => Some(reason),
+            Self::Missing
+            | Self::MissingCompanion { .. }
+            | Self::LongMetricCount { .. }
+            | Self::Duplicate
+            | Self::Inaccessible
+            | Self::Malformed
+            | Self::UnsupportedVersion
+            | Self::VariationWithoutAxes
+            | Self::UnsupportedRecordSize { .. }
+            | Self::VariationRecordOrder { .. }
+            | Self::VariationOffset { .. }
+            | Self::VariationStoreFormat { .. }
+            | Self::VariationAxisCount { .. }
+            | Self::VariationRegionCount { .. }
+            | Self::VariationRegionCoordinate { .. }
+            | Self::VariationDeltaIndex { .. }
+            | Self::VariationRegionIndex { .. }
+            | Self::VariationWordCount { .. }
+            | Self::VariationRow { .. }
+            | Self::VariationScalar { .. }
+            | Self::BaselineTagOrder
+            | Self::BaselineScriptOrder
+            | Self::BaselineValueCount { .. }
+            | Self::BaselineDefaultIndex { .. }
+            | Self::BaselineCoordinateFormat { .. }
+            | Self::BaselineDeviceFormat { .. }
+            | Self::BaselineVariableDevice
+            | Self::BaselineVariationStoreMissing
+            | Self::BaselinePointRange { .. }
+            | Self::BaselineScriptUnavailable
+            | Self::InvalidUnitsPerEm { .. } => None,
+        }
+    }
+}
+
 /// Required same-instance metric fields.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FontMetricField {
@@ -822,6 +1139,30 @@ pub enum FontMetricNumericError {
     NonZero,
 }
 
+impl fmt::Display for FontMetricNumericError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::NonFinite => "a required finite metric value is not finite",
+            Self::Negative => "a metric value that must not be negative is negative",
+            Self::Positive => "a metric value that must not be positive is positive",
+            Self::NonPositive => "a metric value that must be positive is zero or negative",
+            Self::NonZero => "a metric value that must be zero is not zero",
+        })
+    }
+}
+
+impl error::Error for FontMetricNumericError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::NonFinite
+            | Self::Negative
+            | Self::Positive
+            | Self::NonPositive
+            | Self::NonZero => None,
+        }
+    }
+}
+
 /// Actual reason a shaping invocation could not complete.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShapingRefusalReason {
@@ -856,10 +1197,37 @@ pub enum TextNumericPhase {
 /// Category which a geometry value failed to preserve.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextNumericError {
+    /// The value, or the result of arithmetic on it, is not finite.
     NonFinite,
+    /// A positive value did not stay positive: the result is zero or negative.
     PositiveLost,
+    /// A nonzero value was lost: it became zero or no longer changed its result.
     NonZeroLost,
+    /// The value is outside the domain the operation admits: negative where a
+    /// nonnegative value is required, too large for its representation, or
+    /// inconsistent with its recorded counterpart.
     OutOfRange,
+}
+
+impl fmt::Display for TextNumericError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::NonFinite => "a geometry value is not finite",
+            Self::PositiveLost => "a positive geometry value did not stay positive",
+            Self::NonZeroLost => {
+                "a nonzero geometry value was lost: it became zero or no longer changed its result"
+            }
+            Self::OutOfRange => "a geometry value is outside the domain the operation admits",
+        })
+    }
+}
+
+impl error::Error for TextNumericError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::NonFinite | Self::PositiveLost | Self::NonZeroLost | Self::OutOfRange => None,
+        }
+    }
 }
 
 pub(crate) fn shaping_refused(reason: surgeist_shaper::ShapingRefusal) -> Error {
