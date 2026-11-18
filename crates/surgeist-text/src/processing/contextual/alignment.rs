@@ -122,8 +122,9 @@ pub enum ScopeAlignmentError {
     /// when a scope has no parent and when a custody is not active or is
     /// already on loan.
     MissingCapture,
-    /// A supplied scope, line or product belongs to a different immutable
-    /// capture or preparation.
+    /// A supplied scope, line, product or metrics row belongs to a different
+    /// immutable capture or preparation, or names a scope other than the
+    /// selected one.
     ForeignCapture,
     /// A supplied scope, computed cause or scope tree does not fit the content
     /// domain the operation requires: it belongs to another domain, is not an
@@ -143,8 +144,10 @@ pub enum ScopeAlignmentError {
     /// The scope has a font reference, orientation or baseline that the actual
     /// operation's frame cannot use.
     UnsupportedReference { scope: usize },
-    /// Actual content custody cannot represent the requested frame. `scope` is
-    /// the scope the operation names, or 0 where no scope applies.
+    /// Actual content custody cannot represent, hold or lend the requested
+    /// frame: the frame is unrepresentable, the custody is already on loan, or
+    /// it has no free output slot. `scope` is the scope the operation names,
+    /// or 0 where no scope applies, so the message does not print it.
     UnrepresentedOwnership { scope: usize },
     /// An independently demanded scope boundary divides an indivisible unit.
     UnpartitionableUnit { scope: usize },
@@ -187,7 +190,7 @@ impl std::fmt::Display for ScopeAlignmentError {
                 "a contextual capture, parent scope or scope-alignment custody that the operation requires is missing or unavailable",
             ),
             Self::ForeignCapture => f.write_str(
-                "a supplied scope, line or product belongs to a different capture or preparation",
+                "a supplied scope, line, product or metrics row belongs to a different capture, preparation or selected scope",
             ),
             Self::WrongDomain => f.write_str(
                 "a scope, computed cause or scope tree does not fit the content domain the operation requires",
@@ -210,10 +213,9 @@ impl std::fmt::Display for ScopeAlignmentError {
                 f,
                 "scope {scope} has a font reference, orientation or baseline that the operation's frame cannot use"
             ),
-            Self::UnrepresentedOwnership { scope } => write!(
-                f,
-                "content custody cannot represent the requested frame (scope {scope}; 0 when no scope applies)"
-            ),
+            Self::UnrepresentedOwnership { .. } => {
+                f.write_str("content custody cannot represent, hold or lend the requested frame")
+            }
             Self::UnpartitionableUnit { scope } => write!(
                 f,
                 "a boundary of scope {scope} divides an indivisible unit"
