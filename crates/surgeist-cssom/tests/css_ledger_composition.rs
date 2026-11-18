@@ -81,6 +81,8 @@ struct Front {
     charges: &'static [(CssFront, u64)],
     /// The batches beyond those, such as the gauge releases of a store.
     extra_batches: u64,
+    /// The scopes each call opens a phase of.
+    phases: &'static [CssFront],
 }
 
 fn parse(host: &CssHostScope) {
@@ -222,6 +224,7 @@ const FRONTS: [Front; 9] = [
         calls: 1,
         charges: &[(CssFront::Parse, 1), (CssFront::Input, 1)],
         extra_batches: 0,
+        phases: &[CssFront::Parse],
     },
     Front {
         name: "parse_sheet_utf16",
@@ -229,6 +232,7 @@ const FRONTS: [Front; 9] = [
         calls: 1,
         charges: &[(CssFront::Parse, 1), (CssFront::Input, 1)],
         extra_batches: 0,
+        phases: &[CssFront::Input, CssFront::Parse],
     },
     Front {
         name: "serialize_cssom",
@@ -236,6 +240,7 @@ const FRONTS: [Front; 9] = [
         calls: 1,
         charges: &[(CssFront::Serialization, 1)],
         extra_batches: 0,
+        phases: &[CssFront::Serialization],
     },
     Front {
         name: "rule graph serialize_specified",
@@ -243,6 +248,7 @@ const FRONTS: [Front; 9] = [
         calls: 1,
         charges: &[(CssFront::Serialization, 1)],
         extra_batches: 0,
+        phases: &[CssFront::Serialization],
     },
     Front {
         name: "normalize",
@@ -250,6 +256,7 @@ const FRONTS: [Front; 9] = [
         calls: 1,
         charges: &[(CssFront::Normalization, 1)],
         extra_batches: 0,
+        phases: &[CssFront::Normalization],
     },
     Front {
         name: "parse_used_color",
@@ -257,6 +264,7 @@ const FRONTS: [Front; 9] = [
         calls: 1,
         charges: &[(CssFront::Color, 1)],
         extra_batches: 0,
+        phases: &[CssFront::Color],
     },
     Front {
         name: "CssColor::resolve",
@@ -264,6 +272,7 @@ const FRONTS: [Front; 9] = [
         calls: 1,
         charges: &[(CssFront::Color, 1)],
         extra_batches: 0,
+        phases: &[CssFront::Color],
     },
     Front {
         name: "charge_walk",
@@ -271,6 +280,7 @@ const FRONTS: [Front; 9] = [
         calls: 1,
         charges: &[(CssFront::SourceRetention, 1)],
         extra_batches: 0,
+        phases: &[CssFront::SourceRetention],
     },
     Front {
         name: "CSSOM store",
@@ -278,6 +288,7 @@ const FRONTS: [Front; 9] = [
         calls: 6,
         charges: &[(CssFront::Cssom, 1)],
         extra_batches: 1,
+        phases: &[CssFront::Cssom],
     },
 ];
 
@@ -326,6 +337,7 @@ fn one_handle_holds_each_front_once_in_its_own_scope() {
             )
         })
         .collect();
+    let mut expected_phases = [0_u64; CssFront::ALL.len()];
     for front in &FRONTS {
         let (ledger, host) = open_host();
         (front.run)(&host);
@@ -363,7 +375,16 @@ fn one_handle_holds_each_front_once_in_its_own_scope() {
                     );
                 }
             }
-            phases += report(&ledger, &host, *scope).phases;
+            // Each call opens a phase of its own scopes and of no other.
+            let opened = report(&ledger, &host, *scope).phases;
+            let calls = if front.phases.contains(scope) {
+                front.calls
+            } else {
+                0
+            };
+            assert_eq!(opened, calls, "{}: phases of {scope:?}", front.name);
+            expected_phases[index] += opened;
+            phases += opened;
         }
         let per_call: u64 = front.charges.iter().map(|(_, batches)| batches).sum();
         assert_eq!(
@@ -387,6 +408,11 @@ fn one_handle_holds_each_front_once_in_its_own_scope() {
     }
     for (index, scope) in CssFront::ALL.iter().enumerate() {
         assert_eq!(usage(&ledger, &host, *scope), expected[index], "{scope:?}");
+        assert_eq!(
+            report(&ledger, &host, *scope).phases,
+            expected_phases[index],
+            "phases of {scope:?}"
+        );
     }
     // The root and one scope per front.
     let scopes = ledger.snapshot().unwrap().unwrap().scopes.len();
