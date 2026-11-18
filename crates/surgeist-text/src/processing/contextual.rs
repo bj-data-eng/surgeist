@@ -21,7 +21,11 @@ pub use alignment::{
     ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
     ScopeAlignmentUsage, ScopeFontReference,
 };
-pub use capture::*;
+pub use capture::{
+    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedConnection,
+    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
+    CapturedJointFlow, CapturedParagraph, CapturedScope, CapturedScopeIntersection, ScopeRole,
+};
 pub use computed::{ComputedLineBoundaryError, ComputedLineBoundaryInput, SourceBoxSide};
 pub use connection::SourceProcessingConnectionError;
 pub use joint_flow::{SourceProcessingJointFlow, SourceProcessingJointFlowError};
@@ -691,7 +695,7 @@ fn process_capture(
     if input.envelope != SourceProcessingEnvelope::Complete {
         return Err(invalid(SourceProcessingError::IncompleteExterior));
     }
-    crate::source_model::validate_structure(&input.source)?;
+    crate::source::validate_structure(&input.source)?;
     super::validate_delimiters(&input.source, &input.segment_breaks)?;
     let scope_alignment =
         alignment::ScopeAlignmentCapture::capture(&input.scopes, input.scope_alignment_limits)?;

@@ -72,7 +72,7 @@ impl AnalyzedStyleRun {
 
 pub(crate) fn analyze_styles(
     source: &Source,
-    spans: &[crate::source_model::ValidatedSpan],
+    spans: &[crate::source::ValidatedSpan],
     default_style: &ValidatedStyle,
     paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Vec<AnalyzedStyleRun> {

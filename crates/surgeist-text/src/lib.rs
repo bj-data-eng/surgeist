@@ -26,8 +26,7 @@ mod processing;
 mod projection;
 mod protocol;
 mod range;
-#[path = "source.rs"]
-mod source_model;
+mod source;
 mod style;
 mod style_support;
 mod supplied_line;
@@ -156,7 +155,7 @@ pub use protocol::{
     WrappingScopeQueryError, scope_alignment_census,
 };
 pub use range::{Range, SourcePosition, SourceRange};
-pub use source_model::{
+pub use source::{
     BaselineShift, InlineBox, InlineBoxKind, Source, SourceIdentity, SourceRevision, Span,
     ValidatedSource, VerticalAlign,
 };

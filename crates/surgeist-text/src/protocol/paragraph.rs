@@ -933,7 +933,7 @@ impl AnalyzedSource {
 }
 
 fn validate(input: &ParagraphInput) -> Result<()> {
-    crate::source_model::validate_structure(&input.source)?;
+    crate::source::validate_structure(&input.source)?;
     validate_origins(input)?;
     validate_connections(input)?;
     validate_controls(&input.source, &input.controls)?;

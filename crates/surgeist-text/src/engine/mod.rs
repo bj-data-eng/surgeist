@@ -225,13 +225,10 @@ pub(crate) fn analyze_paragraph(
 pub(crate) fn admitted_output_styles(
     processed: &crate::ProcessedSource,
     paragraph: &ParagraphContext,
-) -> crate::Result<(
-    Vec<crate::source_model::ValidatedSpan>,
-    crate::ValidatedStyle,
-)> {
+) -> crate::Result<(Vec<crate::source::ValidatedSpan>, crate::ValidatedStyle)> {
     if paragraph.base_direction.is_some() {
         Ok((
-            crate::source_model::processed_span_styles(
+            crate::source::processed_span_styles(
                 processed.source(),
                 paragraph.coverage.as_deref(),
             )?,
@@ -256,7 +253,7 @@ pub(crate) fn admitted_output_styles(
 pub(crate) fn output_style_runs(
     processed: &crate::ProcessedSource,
     paragraph: &ParagraphContext,
-    spans: &[crate::source_model::ValidatedSpan],
+    spans: &[crate::source::ValidatedSpan],
     default: &crate::ValidatedStyle,
 ) -> crate::Result<Vec<resolve::AnalyzedStyleRun>> {
     let mut styles = resolve::analyze_styles(processed.source(), spans, default, paragraph);
