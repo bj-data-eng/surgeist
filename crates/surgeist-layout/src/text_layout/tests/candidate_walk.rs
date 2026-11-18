@@ -155,12 +155,12 @@ fn words_on_widest_line(lines: &[(String, surgeist_text::Rect)]) -> usize {
 
 /// The line searches and candidates one layout reports to its host scope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct CandidateWork {
+struct CandidateUsage {
     line_searches: u64,
     candidates: u64,
 }
 
-impl CandidateWork {
+impl CandidateUsage {
     /// The most candidates `per_line` words per line allow over this many line searches.
     fn per_search_bound(&self, per_line: usize) -> u64 {
         (u64::try_from(per_line).unwrap() + 2) * self.line_searches
@@ -175,21 +175,21 @@ impl CandidateWork {
 }
 
 /// Laying out one document and counting the line searches and candidates it evaluates.
-fn candidate_work(document: &Document) -> (CandidateWork, usize, usize) {
+fn candidate_usage(document: &Document) -> (CandidateUsage, usize, usize) {
     let host = TestHost::new();
     let lines = document.lay_out_reporting::<f64>(Some(&host));
     (
-        CandidateWork::of(&host),
+        CandidateUsage::of(&host),
         lines.len(),
         words_on_widest_line(&lines),
     )
 }
 
 /// The work of one document with every line search forced to visit its whole opportunity window.
-fn full_walk_work(document: &Document) -> CandidateWork {
+fn full_walk_usage(document: &Document) -> CandidateUsage {
     let host = TestHost::new();
     fit::with_full_walk(|| document.lay_out_reporting::<f64>(Some(&host)));
-    CandidateWork::of(&host)
+    CandidateUsage::of(&host)
 }
 
 #[test]
@@ -202,7 +202,7 @@ fn auto_line_search_evaluates_only_the_words_that_fit_plus_the_first_that_does_n
     let mut candidates = Vec::new();
     for count in [50, 100] {
         let document = Document::words(count, 100.0);
-        let (work, lines, per_line) = candidate_work(&document);
+        let (work, lines, per_line) = candidate_usage(&document);
         assert_eq!(lines, count / 2, "{count} words: two words per 100px line");
         assert_eq!(per_line, 2);
         assert!(
@@ -230,7 +230,7 @@ fn auto_line_search_evaluates_only_the_words_that_fit_plus_the_first_that_does_n
 fn assert_negative_spacing_keeps_the_full_walk(document: &mut Document, words_per_line: usize) {
     let count = 50;
     document.source = WORD.repeat(count);
-    let (work, lines, per_line) = candidate_work(document);
+    let (work, lines, per_line) = candidate_usage(document);
     assert_eq!(per_line, words_per_line);
     assert_eq!(lines, count.div_ceil(words_per_line));
     assert!(
@@ -264,7 +264,7 @@ fn word_spacing_that_moves_the_pen_backwards_keeps_the_full_candidate_walk() {
     // content before it, so no candidate may be skipped after one overflows.
     let mut document = Document::new("XXXX ".repeat(50), 100.0);
     document.word_spacing = -25.0;
-    let (work, lines, per_line) = candidate_work(&document);
+    let (work, lines, per_line) = candidate_usage(&document);
     assert!(lines > 1);
     assert!(
         work.candidates > work.per_search_bound(per_line),
@@ -275,8 +275,8 @@ fn word_spacing_that_moves_the_pen_backwards_keeps_the_full_candidate_walk() {
 /// The candidates the early stop saves on one document: the forced full walk evaluates every
 /// candidate of the same line searches, so the early stop evaluates the difference less.
 fn candidates_saved_by_the_early_stop(document: &Document) -> u64 {
-    let (early, ..) = candidate_work(document);
-    let full = full_walk_work(document);
+    let (early, ..) = candidate_usage(document);
+    let full = full_walk_usage(document);
     assert_eq!(
         early.line_searches, full.line_searches,
         "the early stop changes no line search"

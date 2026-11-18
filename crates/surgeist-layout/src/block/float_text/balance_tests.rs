@@ -265,12 +265,16 @@ fn lane<S: LayoutScalar>() {
         (first.feedback().line_height, second.feedback().line_height),
         (10.0, 10.0)
     );
+    let meter = crate::accounting::Meter::for_test();
+    let replay_event_visits =
+        || usize::try_from(meter.work(crate::accounting::LayoutWork::FloatReplayEvent)).unwrap();
     let base = FloatExclusions::new(
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::splat(S::from_f64(100.0)),
         S::from_f64(100.0),
         crate::geometry::LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
-    );
+    )
+    .with_meter(meter.clone());
     let failure = |error| {
         super::super::inline_run::text_run_error::<u32, S, core::convert::Infallible>(0, error)
     };
@@ -319,7 +323,8 @@ fn lane<S: LayoutScalar>() {
         [0]
     );
     assert_eq!(
-        encounters.replay_event_visits, 1,
+        replay_event_visits(),
+        1,
         "the later group's event is not scanned"
     );
     encounters.accept().map_err(failure).unwrap();
@@ -336,13 +341,13 @@ fn lane<S: LayoutScalar>() {
     // A candidate and then an accepted losing trial both use the actual second
     // float packet, at the trial's supplied source-line floor30. Neither may
     // survive restoration to the real group entry at block10.
-    let visits = encounters.replay_event_visits;
+    let visits = replay_event_visits();
     let losing = encounters
         .replay::<core::convert::Infallible>(0, &second, replay_at(30.0), None)
         .unwrap();
     assert_eq!(losing.iter().map(|row| row.event).collect::<Vec<_>>(), [1]);
     assert_eq!(
-        encounters.replay_event_visits - visits,
+        replay_event_visits() - visits,
         1,
         "accepted earlier events are not rescanned"
     );

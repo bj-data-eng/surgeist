@@ -1901,12 +1901,14 @@ fn fri06_c04_float_ledger_evaluates_each_float_span_pair_once_per_candidate_pass
         let flow_axes = FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl);
         let logical_container =
             crate::geometry::LogicalSizeOf::new(scalar_value(100.0), scalar_value(120.0));
+        let meter = crate::accounting::Meter::for_test();
         let mut exclusions = FloatExclusions::new(
             flow_axes,
             flow_axes.physical_size(logical_container),
             scalar_value(100.0),
             crate::geometry::LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
-        );
+        )
+        .with_meter(meter.clone());
         exclusions.record_test_float(
             FloatLedgerSide::LineStart,
             FloatExclusion::MarginBox,
@@ -1938,7 +1940,10 @@ fn fri06_c04_float_ledger_evaluates_each_float_span_pair_once_per_candidate_pass
         assert_eq!(band.inline_start, scalar_value(50.0));
         assert_eq!(band.inline_end, scalar_value(70.0));
         assert_eq!(band.next_transition, Some(scalar_value(20.0)));
-        assert_eq!(band.evaluated, 4);
+        assert_eq!(
+            meter.work(crate::accounting::LayoutWork::FloatLedgerEntry),
+            4
+        );
     }
 
     assert_lane::<f32>();
@@ -1948,12 +1953,14 @@ fn fri06_c04_float_ledger_evaluates_each_float_span_pair_once_per_candidate_pass
 #[test]
 fn fri06_c04_float_ledger_shape_is_not_approximated_by_rectangular_line_band() {
     let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let meter = crate::accounting::Meter::for_test();
     let mut exclusions = FloatExclusions::new(
         flow_axes,
         Size::new(100.0, 100.0),
         100.0,
         crate::geometry::LogicalEdgesOf::new(0.0, 0.0, 0.0, 0.0),
-    );
+    )
+    .with_meter(meter.clone());
     exclusions.record_test_float(
         FloatLedgerSide::LineStart,
         FloatExclusion::Shape,
@@ -1965,7 +1972,10 @@ fn fri06_c04_float_ledger_shape_is_not_approximated_by_rectangular_line_band() {
     assert_eq!(band.inline_start, 0.0);
     assert_eq!(band.inline_end, 100.0);
     assert_eq!(band.next_transition, None);
-    assert_eq!(band.evaluated, 1);
+    assert_eq!(
+        meter.work(crate::accounting::LayoutWork::FloatLedgerEntry),
+        1
+    );
 }
 
 #[test]

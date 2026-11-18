@@ -66,6 +66,7 @@ pub(crate) struct LayoutHostScope {
 
 impl LayoutHostScope {
     /// The scope `scope` of `ledger`, an operation of the layout schema that the host owns.
+    #[cfg(test)]
     pub(crate) fn new(ledger: HostLedger, scope: Scope) -> Self {
         Self { ledger, scope }
     }
