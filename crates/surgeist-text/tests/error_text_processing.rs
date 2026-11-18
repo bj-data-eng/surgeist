@@ -786,7 +786,7 @@ fn scope_alignment_errors_state_their_cause() {
             ),
             (
                 E::ForeignCapture,
-                "a supplied scope, line or product belongs to a different capture or preparation",
+                "a supplied scope, line, product or metrics row belongs to a different capture, preparation or selected scope",
             ),
             (
                 E::WrongDomain,
@@ -814,7 +814,7 @@ fn scope_alignment_errors_state_their_cause() {
             ),
             (
                 E::UnrepresentedOwnership { scope: 3 },
-                "content custody cannot represent the requested frame (scope 3; 0 when no scope applies)",
+                "content custody cannot represent, hold or lend the requested frame",
             ),
             (
                 E::UnpartitionableUnit { scope: 3 },
