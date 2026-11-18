@@ -165,7 +165,7 @@ fn drive_and_construction_errors_state_their_own_context() {
         vec![
             (
                 DomEventConstructionError::Hosted(DomHostedRuntimeError::Busy),
-                "the creation Global, Source owner or native clock refused the Event observation",
+                "the hosted runtime, creation Global, Source owner or native clock refused the Event or EventTarget creation",
             ),
             (
                 DomEventConstructionError::Event(DomEventDispatchError::CyclicPath),

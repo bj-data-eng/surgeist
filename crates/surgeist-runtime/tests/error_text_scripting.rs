@@ -213,7 +213,7 @@ fn native_scripting_errors_state_the_refused_native_operation() {
             ),
             (
                 DocumentScriptNativeError::SourceAccess,
-                "the pending Source operation, event, retained frame or delegated node the operation needs is missing or does not match this hook",
+                "the pending Source operation, event, retained frame or delegated node the operation needs is missing, unfinished or does not match this hook",
             ),
             (
                 DocumentScriptNativeError::CreationGlobalUnavailable,
@@ -451,7 +451,7 @@ fn script_outcome_and_event_errors_state_their_own_context() {
         vec![
             (
                 DocumentScriptEventError::Access(native()),
-                "the script owner or its Source capability refused entry",
+                "the script owner, its Source capability or the engine refused the operation",
             ),
             (
                 DocumentScriptEventError::Service(DomSourceRuntimeError::Style(
