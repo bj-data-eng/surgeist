@@ -535,7 +535,7 @@ prints the median, minimum and maximum time of one call, the input bytes, the
 time per byte, and the volume the front counts: from the public result where it
 reports one, otherwise the smallest value of the public limit at which the call
 still succeeds, found outside the timed region. A dimension that no public limit
-reaches prints `-`. The parse, serialization, normalization and colour cases named "with a host" call the accounted front
+reaches prints `-`. The parse, serialization, normalization, colour and retention cases named "with a host" call the accounted front
 against a host operation without caps, on the input of the plain case of the same
 name; their volume is what one call charges.
 
