@@ -107,8 +107,8 @@ fn numeric_balance_uses_real_capacity_without_a_wrapping_context() {
                     .map(|line| line.end)
                     .collect::<Vec<_>>(),
                 [
-                    surgeist_text::LineEnd::Soft,
-                    surgeist_text::LineEnd::Paragraph
+                    surgeist_text::selection::LineEnd::Soft,
+                    surgeist_text::selection::LineEnd::Paragraph
                 ]
             );
         }
@@ -133,10 +133,10 @@ fn numeric_balance_keeps_forced_groups_intrinsics_and_real_zero_atomics() {
             assert_eq!(
                 report.lines.iter().map(|line| line.end).collect::<Vec<_>>(),
                 [
-                    surgeist_text::LineEnd::Soft,
-                    surgeist_text::LineEnd::Forced,
-                    surgeist_text::LineEnd::Soft,
-                    surgeist_text::LineEnd::Paragraph,
+                    surgeist_text::selection::LineEnd::Soft,
+                    surgeist_text::selection::LineEnd::Forced,
+                    surgeist_text::selection::LineEnd::Soft,
+                    surgeist_text::selection::LineEnd::Paragraph,
                 ]
             );
             for available in [

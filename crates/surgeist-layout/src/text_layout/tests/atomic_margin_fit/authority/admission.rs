@@ -10,10 +10,10 @@ enum Coupling {
     NormalBorderInlineSize,
 }
 impl Coupling {
-    fn change(self, request: &mut text::LineSelectionRequest) {
+    fn change(self, request: &mut text::selection::LineSelectionRequest) {
         // The second ACTUAL issued atomic has index1 even though all three
         // source occurrences have the same original source position0.
-        let text::AtomicLineAllocation::InFlow {
+        let text::allocation::AtomicLineAllocation::InFlow {
             flow, box_geometry, ..
         } = &mut request.atomics[1].allocation
         else {
@@ -41,7 +41,10 @@ impl Coupling {
     }
 }
 
-fn invalid_css_geometry(prepared: &text::PreparedText, request: text::LineSelectionRequest) {
+fn invalid_css_geometry(
+    prepared: &text::prepared::PreparedText,
+    request: text::selection::LineSelectionRequest,
+) {
     let error = match prepared.select(request) {
         Err(error) => error,
         Ok(_) => panic!("a mismatched CSS receipt must not issue SelectedLine authority"),
@@ -50,7 +53,7 @@ fn invalid_css_geometry(prepared: &text::PreparedText, request: text::LineSelect
     assert!(matches!(
         error.detail(),
         Some(text::ErrorDetail::InvalidTextProtocol {
-            reason: text::ProtocolError::InvalidAtomicGeometry { occurrence: 1 },
+            reason: text::prepared::ProtocolError::InvalidAtomicGeometry { occurrence: 1 },
         })
     ));
 }
@@ -100,7 +103,9 @@ fn css_atomic_fit_receipt_must_match_actual_flow_envelope_and_normal_border_at_s
     ] {
         let mut mismatch = issued.clone();
         coupling.change(&mut mismatch);
-        let text::AtomicLineAllocation::InFlow { fit, .. } = mismatch.atomics[1].allocation else {
+        let text::allocation::AtomicLineAllocation::InFlow { fit, .. } =
+            mismatch.atomics[1].allocation
+        else {
             unreachable!("actual in-flow allocation")
         };
         assert_eq!(
@@ -120,7 +125,7 @@ fn css_atomic_fit_receipt_must_match_actual_flow_envelope_and_normal_border_at_s
         // The SAME finite allocation is a valid Native request; only its fit
         // authority changes. No parent/placed-rectangle policy is asserted.
         let mut native_request = mismatch.clone();
-        let text::AtomicLineAllocation::InFlow { fit, .. } =
+        let text::allocation::AtomicLineAllocation::InFlow { fit, .. } =
             &mut native_request.atomics[1].allocation
         else {
             unreachable!()
@@ -148,7 +153,9 @@ fn css_atomic_fit_receipt_must_match_actual_flow_envelope_and_normal_border_at_s
         evidence(&valid, expected);
         positions(&valid, &specs, &incoming);
     }
-    let replay = valid.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = valid
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(replay.selected_line().request(), &issued);
     evidence(&replay, expected);
     positions(&replay, &specs, &incoming);

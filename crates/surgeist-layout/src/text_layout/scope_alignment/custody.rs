@@ -6,9 +6,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 use surgeist_text::{
-    CapturedScope, FinalizedLine, PreparedText, ScopeAlignmentCensusInput, ScopeAlignmentError,
-    ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeAlignmentProduct, ScopeAlignmentProducts,
-    ScopeAlignmentWeakProduct,
+    capture::CapturedScope,
+    finalized::FinalizedLine,
+    prepared::PreparedText,
+    scope_alignment::{
+        ScopeAlignmentCensusInput, ScopeAlignmentError, ScopeAlignmentLimitKind,
+        ScopeAlignmentLimits, ScopeAlignmentProduct, ScopeAlignmentProducts,
+        ScopeAlignmentWeakProduct,
+    },
 };
 
 pub(crate) mod semantic;
@@ -324,7 +329,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
     fn record_census(
         &self,
         limits: ScopeAlignmentLimits,
-        accounting: surgeist_text::ScopeAlignmentCensusAccounting,
+        accounting: surgeist_text::scope_alignment::ScopeAlignmentCensusAccounting,
         request_credit: usize,
     ) -> Result<(), ScopeAlignmentError> {
         let usage = accounting.usage();
@@ -349,7 +354,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
     fn record_completed(
         &self,
         limits: ScopeAlignmentLimits,
-        usage: surgeist_text::ScopeAlignmentUsage,
+        usage: surgeist_text::scope_alignment::ScopeAlignmentUsage,
         new_records: usize,
         borrowed: usize,
     ) -> Result<(), ScopeAlignmentError> {
@@ -414,8 +419,8 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
     pub(crate) fn begin_inline_box_family<'a>(
         &'a self,
         prepared: &PreparedText,
-        native_boxes: &Vec<surgeist_text::InlineBoxSource>,
-        families: &[Option<surgeist_text::PreparedInlineBoxFamily>],
+        native_boxes: &Vec<surgeist_text::inline_box::InlineBoxSource>,
+        families: &[Option<surgeist_text::inline_box::PreparedInlineBoxFamily>],
     ) -> surgeist_text::Result<Option<ScopeOperation<'a>>> {
         self.begin_with_families(
             ScopeAlignmentCensusInput::InlineBoxFamily {
@@ -432,7 +437,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         &'a self,
         input: ScopeAlignmentCensusInput<'_>,
         outputs: usize,
-        families: &[Option<surgeist_text::PreparedInlineBoxFamily>],
+        families: &[Option<surgeist_text::inline_box::PreparedInlineBoxFamily>],
         request_credit: usize,
     ) -> surgeist_text::Result<Option<ScopeOperation<'a>>> {
         let (prepared, retained) = match input {
@@ -594,7 +599,9 @@ pub(crate) struct ScopeOperation<'a> {
     _borrow: std::marker::PhantomData<&'a ()>,
 }
 impl ScopeCensus {
-    pub(super) fn from_retention(value: surgeist_text::ScopeAlignmentRetention) -> Self {
+    pub(super) fn from_retention(
+        value: surgeist_text::scope_alignment::ScopeAlignmentRetention,
+    ) -> Self {
         Self {
             records: value.records(),
             bytes: value.payload_bytes(),
@@ -610,7 +617,7 @@ impl ScopeOperation<'_> {
     }
     pub(crate) fn allowance(
         &self,
-    ) -> surgeist_text::Result<surgeist_text::ScopeAlignmentAllowance> {
+    ) -> surgeist_text::Result<surgeist_text::scope_alignment::ScopeAlignmentAllowance> {
         let live = self.state.lock().live.add(self.external)?;
         check(
             ScopeAlignmentLimitKind::Records,
@@ -622,10 +629,12 @@ impl ScopeOperation<'_> {
             live.bytes,
             self.limits.payload_bytes(),
         )?;
-        Ok(surgeist_text::ScopeAlignmentAllowance::new(
-            self.limits.records() - live.records,
-            self.limits.payload_bytes() - live.bytes,
-        ))
+        Ok(
+            surgeist_text::scope_alignment::ScopeAlignmentAllowance::new(
+                self.limits.records() - live.records,
+                self.limits.payload_bytes() - live.bytes,
+            ),
+        )
     }
     fn reserve_outputs(&mut self, outputs: usize) -> surgeist_text::Result<()> {
         if outputs == 0 {

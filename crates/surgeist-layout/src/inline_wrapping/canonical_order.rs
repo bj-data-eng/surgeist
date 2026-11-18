@@ -5,8 +5,10 @@ use super::{
     context::{Relation, interval_relation},
 };
 use surgeist_text::{
-    CapturedControl, CapturedEventPosition, CapturedParagraph, CapturedScope, ParagraphControlKind,
-    ScopeRole,
+    capture::{
+        CapturedControl, CapturedEventPosition, CapturedParagraph, CapturedScope, ScopeRole,
+    },
+    paragraph::ParagraphControlKind,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -205,7 +207,7 @@ impl CanonicalOrderInventory {
         let mut any = false;
         let mut fences = Vec::new();
         for event in events {
-            use surgeist_text::CapturedFlowEvent as E;
+            use surgeist_text::capture::CapturedFlowEvent as E;
             match event {
                 E::ParagraphStart(paragraph)
                     if paragraph.enter_position() < end && start < paragraph.exit_position() =>
@@ -265,7 +267,7 @@ impl CanonicalOrderInventory {
         parent: &CanonicalBox,
         current: &CanonicalBox,
         sibling: &CanonicalBox,
-        side: surgeist_text::SourceBoxSide,
+        side: surgeist_text::capture::SourceBoxSide,
         native: &[CanonicalBox],
     ) -> Result<(), CanonicalOrderError> {
         if self.parent(current, native)?.as_ref() != Some(parent)
@@ -275,8 +277,8 @@ impl CanonicalOrderInventory {
             return Err(CanonicalOrderError::Contradiction);
         }
         let ordered = match side {
-            surgeist_text::SourceBoxSide::Before => sibling.end() < current.position(),
-            surgeist_text::SourceBoxSide::After => current.end() < sibling.position(),
+            surgeist_text::capture::SourceBoxSide::Before => sibling.end() < current.position(),
+            surgeist_text::capture::SourceBoxSide::After => current.end() < sibling.position(),
         };
         if ordered {
             Ok(())

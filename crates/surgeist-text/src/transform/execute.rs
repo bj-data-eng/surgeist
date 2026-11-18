@@ -185,7 +185,7 @@ pub(super) fn canonical<'a>(
                                 && edge.at <= map.components[row].source.start
                         }) {
                             return Err(edge.unavailable(
-                                crate::processing::SourceContinuityOperation::Transformation,
+                                crate::processing::contextual::SourceContinuityOperation::Transformation,
                             ));
                         }
                     }

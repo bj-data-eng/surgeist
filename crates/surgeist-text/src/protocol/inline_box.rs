@@ -11,7 +11,7 @@ use super::{LineEdgeSide, PreparedText, ProtocolError, protocol_error};
 use crate::engine::scope_alignment::accounting::{self as account, Ledger};
 use crate::{
     Result,
-    processing::{CapturedControl, CapturedEventPosition, CapturedScope, ScopeRole},
+    processing::contextual::{CapturedControl, CapturedEventPosition, CapturedScope, ScopeRole},
     protocol::paragraph::ParagraphControlKind,
 };
 pub(crate) use components::EdgeExecution;
@@ -572,8 +572,8 @@ pub(crate) fn comparison_work(ledger: &mut Ledger, rows: usize) -> Result<()> {
     let count = rows.checked_mul(rows).ok_or_else(|| {
         if ledger.is_some() {
             crate::engine::scope_alignment::refusal(
-                crate::processing::ScopeAlignmentError::Overflow {
-                    kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                crate::processing::contextual::ScopeAlignmentError::Overflow {
+                    kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                 },
             )
         } else {

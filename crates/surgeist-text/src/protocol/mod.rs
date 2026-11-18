@@ -615,7 +615,7 @@ pub struct LineStrut {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineBoxStrut {
     /// Authentic captured owner of this own-box contribution; None is common line.
-    pub scope: Option<crate::processing::CapturedScope>,
+    pub scope: Option<crate::processing::contextual::CapturedScope>,
     pub metrics: LineStrut,
     pub alignment: LineBoxAlignment,
 }

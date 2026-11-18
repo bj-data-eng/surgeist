@@ -223,7 +223,7 @@ fn prepared_fixed_metric_text_retains_actual_font_baseline_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let text = crate::test_support::text::PreparedParagraph::plain(
             1,
-            surgeist_text::Source::new("X"),
+            surgeist_text::source::Source::new("X"),
             crate::test_support::text::ahem_style(10.0, 10.0),
         );
         let tree = PublicBlockTree::default()
@@ -410,7 +410,7 @@ enum Fri08C07T01InlineRunStart {
 fn real_text_for_invalid_role<S: LayoutScalar>() -> LayoutInputOf<S> {
     crate::test_support::text::PreparedParagraph::plain(
         1,
-        surgeist_text::Source::new("X"),
+        surgeist_text::source::Source::new("X"),
         crate::test_support::text::ahem_style(1.0, 1.0),
     )
     .text_input(1)
@@ -426,31 +426,31 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
     let style = ahem_style(10.0, 10.0);
     let first = match start {
         Fri08C07T01InlineRunStart::Text => {
-            ParagraphPart::text(3, surgeist_text::Source::new(""), style.clone())
+            ParagraphPart::text(3, surgeist_text::source::Source::new(""), style.clone())
         }
         Fri08C07T01InlineRunStart::InlineBoundary => ParagraphPart::Control {
             node: 3,
-            kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+            kind: surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
         Fri08C07T01InlineRunStart::ExplicitLineBreak => ParagraphPart::Control {
             node: 3,
-            kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+            kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
         },
         Fri08C07T01InlineRunStart::InlineBox => ParagraphPart::Atomic {
             node: 3,
-            size: surgeist_text::Size::new(0.0, 0.0),
+            size: surgeist_text::geometry::Size::new(0.0, 0.0),
         },
     };
     let paragraph = PreparedParagraph::with_strut_at_boundary(
         vec![
             first,
-            ParagraphPart::text(4, surgeist_text::Source::new("X"), style.clone()),
+            ParagraphPart::text(4, surgeist_text::source::Source::new("X"), style.clone()),
         ],
         style,
-        surgeist_text::ParagraphBaseDirection::LeftToRight,
-        surgeist_text::ParagraphStrut::AllocatedContributions,
+        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::paragraph::ParagraphStrut::AllocatedContributions,
         Vec::new(),
-        surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+        surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
     );
     let fixed_size = |width, height| {
         Size::new(
@@ -5238,7 +5238,7 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
                     let atomic = NodeInputOf {
                         display: Display::InlineBlock,
                         atomic_inline_participation: Some(AtomicInlineParticipation::new(
-                            surgeist_text::BidiLevel::try_new(0).unwrap(),
+                            surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
                             InlineBreakOpportunity::Prohibited,
                         )),
                         size: Size::new(
@@ -5475,7 +5475,7 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
             let atomic = NodeInputOf {
                 display: Display::InlineBlock,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
-                    surgeist_text::BidiLevel::try_new(0).unwrap(),
+                    surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
                     InlineBreakOpportunity::Prohibited,
                 )),
                 size: Size::new(

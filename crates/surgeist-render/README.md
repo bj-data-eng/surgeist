@@ -85,7 +85,7 @@ reference](docs/reference.md#glyph-admission) defines the supported formats,
 effective instances, numeric rules and explicit resource limits.
 
 The optional `render-text` feature adds `prepare_text_layout`. It consumes the
-exact immutable placed `surgeist_text::Layout`, preserving its font instances,
+exact immutable placed `surgeist_text::layout::Layout`, preserving its font instances,
 glyphs, lines and positions, including unrotated native upright and clockwise
 or counterclockwise sideways runs. One `TextLayoutLimits` budget covers the complete
 Scene; a later refusal publishes no prefix. Text shaping, line selection and

@@ -367,7 +367,7 @@ fn completed_batch_exposes_read_only_layout_and_cache_entries() {
 }
 
 fn fragment_value<S: LayoutScalar>(
-    fragment: surgeist_text::FinalizedFragment,
+    fragment: surgeist_text::finalized::FinalizedFragment,
     origin: Point<S>,
     size: Size<S>,
     baseline: Point<S>,

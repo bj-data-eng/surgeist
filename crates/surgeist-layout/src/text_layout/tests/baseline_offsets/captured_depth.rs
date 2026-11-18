@@ -34,7 +34,7 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
         );
         assert_eq!(
             paragraph.prepared.baseline_reference(),
-            Some(text::FontBaseline::Alphabetic)
+            Some(text::font::FontBaseline::Alphabetic)
         );
         let children = if node == depth {
             vec![text]
@@ -131,13 +131,28 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
         // metric band; it neither disappears nor becomes an extra line.
         let expected_fragments = if node == depth {
             vec![
-                (text::Range::new(0, 1), 0, (0.0, 0.0, 10.0, 10.0), 8.0),
-                (text::Range::new(1, 2), 0, (10.0, 0.0, 0.0, 10.0), 8.0),
-                (text::Range::new(2, 3), 1, (0.0, 10.0, 10.0, 10.0), 18.0),
+                (
+                    text::source::Range::new(0, 1),
+                    0,
+                    (0.0, 0.0, 10.0, 10.0),
+                    8.0,
+                ),
+                (
+                    text::source::Range::new(1, 2),
+                    0,
+                    (10.0, 0.0, 0.0, 10.0),
+                    8.0,
+                ),
+                (
+                    text::source::Range::new(2, 3),
+                    1,
+                    (0.0, 10.0, 10.0, 10.0),
+                    18.0,
+                ),
             ]
         } else {
             vec![(
-                text::Range::new(0, 1),
+                text::source::Range::new(0, 1),
                 0,
                 (0.0, text_top, 10.0, 10.0),
                 selected,
@@ -165,7 +180,7 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
                 let issued = fragment.finalized_fragment();
                 assert_eq!(
                     issued.view().owner(),
-                    text::FinalizedFragmentOwner::Origin(origin.clone())
+                    text::finalized::FinalizedFragmentOwner::Origin(origin.clone())
                 );
                 assert_eq!(issued.view().local_range(), Some(*range));
                 assert_eq!(issued.view().aggregate_range(), Some(*range));
@@ -207,7 +222,7 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
         for run in layout.run_views() {
             let origin = run.origin();
             for glyph in run.glyphs() {
-                glyph_tops.push(text::Point::new(
+                glyph_tops.push(text::geometry::Point::new(
                     origin.x + glyph.pen() + f64::from(glyph.x()),
                     origin.y + f64::from(glyph.y()) - 8.0,
                 ));
@@ -218,18 +233,18 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
         let absolute_x = 10.0 * f64::from(node);
         let expected_tops = if node == depth {
             vec![
-                text::Point::new(absolute_x, 0.0),
-                text::Point::new(absolute_x, 10.0),
+                text::geometry::Point::new(absolute_x, 0.0),
+                text::geometry::Point::new(absolute_x, 10.0),
             ]
         } else {
-            vec![text::Point::new(absolute_x, selected - 8.0)]
+            vec![text::geometry::Point::new(absolute_x, selected - 8.0)]
         };
         assert_eq!(glyph_tops, expected_tops, "node {node}");
         if node < depth {
             assert_eq!(layout.inline_boxes().len(), 1);
             assert_eq!(
                 layout.inline_boxes()[0].rect(),
-                text::Rect::new(absolute_x + 10.0, 0.0, width(node + 1), 20.0)
+                text::geometry::Rect::new(absolute_x + 10.0, 0.0, width(node + 1), 20.0)
             );
         } else {
             assert!(layout.inline_boxes().is_empty());

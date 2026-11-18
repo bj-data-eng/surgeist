@@ -20,35 +20,36 @@ const PASS_WORK: usize = 9;
 struct Fixture {
     tree: PublicLayoutTreeOf<f64>,
     binding: TextParagraphBinding<u32>,
-    scope: text::CapturedScope,
+    scope: text::capture::CapturedScope,
 }
 impl Fixture {
     fn new(work: usize) -> Self {
-        use text::SourceProcessingEvent as E;
-        let style = text::Style {
-            font: text::Font::new().family("Ahem"),
+        use text::capture::SourceProcessingEvent as E;
+        let style = text::style::Style {
+            font: text::style::Font::new().family("Ahem"),
             size: 10.0,
-            line_height: text::LineHeight::Absolute(10.0),
-            white_space: text::WhiteSpace::Preserve,
-            word_break: text::WordBreak::BreakAll,
-            wrap: text::Wrap::Word,
-            hyphens: text::Hyphens::None,
-            ..text::Style::default()
+            line_height: text::style::LineHeight::Absolute(10.0),
+            white_space: text::style::WhiteSpace::Preserve,
+            word_break: text::style::WordBreak::BreakAll,
+            wrap: text::style::Wrap::Word,
+            hyphens: text::hyphenation::Hyphens::None,
+            ..text::style::Style::default()
         };
-        let reference = text::ScopeFontReference {
-            script: text::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-            axis: text::FontBaselineAxis::HorizontalY,
-            baseline: text::FontBaseline::Alphabetic,
+        let reference = text::scope_alignment::ScopeFontReference {
+            script: text::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+            axis: text::font::FontBaselineAxis::HorizontalY,
+            baseline: text::font::FontBaseline::Alphabetic,
         };
-        let mut source = text::Source::identified("XXXX", text::Id::from_u64(1578080), 71);
-        source.span(text::Range::new(0, 4), style.clone());
+        let mut source =
+            text::source::Source::identified("XXXX", text::source::Id::from_u64(1578080), 71);
+        source.span(text::source::Range::new(0, 4), style.clone());
         let captured = Arc::new(
-            text::process_contextual_source(text::ContextualSourceInput {
+            text::capture::process_contextual_source(text::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 source,
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: text::SourceProcessingEnvelope::Complete,
-                scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
+                segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: text::capture::SourceProcessingEnvelope::Complete,
+                scope_alignment_limits: Some(text::scope_alignment::ScopeAlignmentLimits::new(
                     10000,
                     100,
                     work,
@@ -56,84 +57,90 @@ impl Fixture {
                 )),
                 origins: [("X", 1578081, 0, 1), ("XXX", 1578082, 1, 4)]
                     .into_iter()
-                    .map(|(raw, id, start, end)| text::ParagraphOrigin {
+                    .map(|(raw, id, start, end)| text::paragraph::ParagraphOrigin {
                         text_node: None,
-                        source: text::Source::identified(raw, text::Id::from_u64(id), 71),
-                        local: text::Range::new(0, raw.len()),
-                        aggregate: text::Range::new(start, end),
-                        kind: text::ParagraphOriginKind::Authored,
+                        source: text::source::Source::identified(
+                            raw,
+                            text::source::Id::from_u64(id),
+                            71,
+                        ),
+                        local: text::source::Range::new(0, raw.len()),
+                        aggregate: text::source::Range::new(start, end),
+                        kind: text::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect(),
-                connections: vec![text::SourceProcessingConnection {
+                connections: vec![text::capture::SourceProcessingConnection {
                     before_origin: 0,
                     after_origin: 1,
-                    kind: text::ParagraphConnectionKind::Continuous,
+                    kind: text::paragraph::ParagraphConnectionKind::Continuous,
                 }],
                 controls: vec![
-                    text::ParagraphControl {
+                    text::paragraph::ParagraphControl {
                         at: 1,
-                        kind: text::ParagraphControlKind::InlineBoundaryStart,
+                        kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                     },
-                    text::ParagraphControl {
+                    text::paragraph::ParagraphControl {
                         at: 4,
-                        kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                        kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                     },
                 ],
                 replacements: vec![],
                 computed_line_boundaries: vec![],
-                boundary_policies: vec![text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(0),
-                    preceding_wrap: text::Wrap::Word,
-                    following_wrap: text::Wrap::Word,
-                    ancestor_wrap: text::Wrap::Word,
+                boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+                    definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                    preceding_wrap: text::style::Wrap::Word,
+                    following_wrap: text::style::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 }],
                 scopes: vec![
-                    text::SourceProcessingScope::Block {
+                    text::capture::SourceProcessingScope::Block {
                         writing_axis: None,
                         horizontal_inner_direction: None,
-                        topology: text::SourceProcessingTopology::Complete,
+                        topology: text::capture::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style.clone(),
-                        used_direction: text::ParagraphBaseDirection::LeftToRight,
+                        used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                         font_reference: Some(reference),
                     },
-                    text::SourceProcessingScope::Inline {
+                    text::capture::SourceProcessingScope::Inline {
                         horizontal_inner_direction: None,
                         trim: Default::default(),
                         style: Some(style),
-                        boundaries: Some(text::SourceProcessingScopeBoundaries {
+                        boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
                             start: 0,
                             end: 1,
                         }),
-                        alignment_boundary: Some(text::ScopeAlignmentBoundary::NonInitial),
+                        alignment_boundary: Some(
+                            text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
+                        ),
                         font_reference: Some(reference),
                     },
                 ],
-                paragraphs: vec![text::SourceProcessingParagraph {
-                    base_direction: text::ParagraphBaseDirection::LeftToRight,
+                paragraphs: vec![text::capture::SourceProcessingParagraph {
+                    base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                     // A root font strut8/2 is present on both semantic lines.
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events: vec![
                     E::EnterScope(0),
                     E::EnterParagraph(0),
                     E::Origin {
                         origin: 0,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     },
                     E::Connection(0),
                     E::EnterScope(1),
                     E::Control {
                         control: 0,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     },
                     E::Origin {
                         origin: 1,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     },
                     E::Control {
                         control: 1,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     },
                     E::ExitScope(1),
                     E::ExitParagraph(0),
@@ -143,13 +150,13 @@ impl Fixture {
             .unwrap(),
         );
         let scope = captured.captured_scope(1).unwrap();
-        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
             captured.paragraphs().next().unwrap(),
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let analyzed =
-            crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+            crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
         let mut system = text::System::default();
         system
             .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
@@ -157,8 +164,8 @@ impl Fixture {
         let prepared = system
             .prepare(
                 &analyzed,
-                text::PreparationOptions::default()
-                    .with_baseline_reference(text::FontBaseline::Alphabetic),
+                text::prepared::PreparationOptions::default()
+                    .with_baseline_reference(text::font::FontBaseline::Alphabetic),
             )
             .unwrap();
         let origins = prepared
@@ -174,8 +181,8 @@ impl Fixture {
             .map(|control| TextControlBinding {
                 occurrence: control.handle(),
                 node: match control.kind() {
-                    text::ParagraphControlKind::InlineBoundaryStart => 20,
-                    text::ParagraphControlKind::InlineBoundaryEnd => 21,
+                    text::paragraph::ParagraphControlKind::InlineBoundaryStart => 20,
+                    text::paragraph::ParagraphControlKind::InlineBoundaryEnd => 21,
                     _ => panic!("the producer declares exactly its two true endpoints"),
                 },
             })
@@ -314,16 +321,16 @@ fn publication(batch: &CompletedLayoutBatchOf<u32, f64>, fixture: &Fixture) {
             .collect::<Vec<_>>(),
         [
             (
-                Some(text::Id::from_u64(1578081)),
+                Some(text::source::Id::from_u64(1578081)),
                 71,
-                text::Range::new(0, 1),
-                text::Range::new(0, 1)
+                text::source::Range::new(0, 1),
+                text::source::Range::new(0, 1)
             ),
             (
-                Some(text::Id::from_u64(1578082)),
+                Some(text::source::Id::from_u64(1578082)),
                 71,
-                text::Range::new(0, 3),
-                text::Range::new(1, 4)
+                text::source::Range::new(0, 3),
+                text::source::Range::new(1, 4)
             ),
         ]
     );
@@ -335,8 +342,8 @@ fn publication(batch: &CompletedLayoutBatchOf<u32, f64>, fixture: &Fixture) {
             .map(|line| (line.range(), line.baseline(), line.bounds().size.height))
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(0, 2), 11.0, 13.0),
-            (text::Range::new(2, 4), 24.0, 13.0)
+            (text::source::Range::new(0, 2), 11.0, 13.0),
+            (text::source::Range::new(2, 4), 24.0, 13.0)
         ]
     );
     for run in layout.run_views() {
@@ -362,10 +369,10 @@ fn publication(batch: &CompletedLayoutBatchOf<u32, f64>, fixture: &Fixture) {
     assert_eq!(
         glyphs,
         [
-            (text::Range::new(0, 1), 58, 10.0, 11.0),
-            (text::Range::new(1, 2), 58, 10.0, 8.0),
-            (text::Range::new(2, 3), 58, 10.0, 21.0),
-            (text::Range::new(3, 4), 58, 10.0, 21.0)
+            (text::source::Range::new(0, 1), 58, 10.0, 11.0),
+            (text::source::Range::new(1, 2), 58, 10.0, 8.0),
+            (text::source::Range::new(2, 3), 58, 10.0, 21.0),
+            (text::source::Range::new(3, 4), 58, 10.0, 21.0)
         ]
     );
     let mut seen = [false; 2];
@@ -395,14 +402,14 @@ fn publication(batch: &CompletedLayoutBatchOf<u32, f64>, fixture: &Fixture) {
             );
             assert_eq!(
                 allocation.boundary,
-                Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
+                Some(text::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
             );
             assert_eq!(
                 allocation.strut,
-                Some(text::ControlStrut {
+                Some(text::allocation::ControlStrut {
                     baseline: 0.0,
                     line_extent: 0.0,
-                    alignment: text::LineBoxAlignment::Baseline
+                    alignment: text::allocation::LineBoxAlignment::Baseline
                 })
             );
         }
@@ -496,7 +503,7 @@ fn global_bridge(work: usize) {
             let Some(text::ErrorDetail::ScopeAlignment { reason }) = error.detail() else {
                 panic!("missing actual global scope resource detail")
             };
-            let text::ScopeAlignmentError::Limit {
+            let text::scope_alignment::ScopeAlignmentError::Limit {
                 kind,
                 required,
                 limit,
@@ -504,7 +511,10 @@ fn global_bridge(work: usize) {
             else {
                 panic!("global refusal must not become a feedback cycle or miss")
             };
-            assert_eq!(kind, text::ScopeAlignmentLimitKind::StructuralWork);
+            assert_eq!(
+                kind,
+                text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork
+            );
             assert_eq!(limit, WORK);
             assert!(required > limit && required <= limit + PASS_WORK);
             // Discovery may legitimately spend before a later refusal. Do not
@@ -524,8 +534,8 @@ fn source_global_pass_bridge_admits_scope_payloads_and_propagates_typed_work_ref
     global_bridge(WORK + PASS_WORK);
 }
 
-fn limits() -> text::ScopeAlignmentLimits {
-    text::ScopeAlignmentLimits::new(10000, 100, WORK, 16 << 20)
+fn limits() -> text::scope_alignment::ScopeAlignmentLimits {
+    text::scope_alignment::ScopeAlignmentLimits::new(10000, 100, WORK, 16 << 20)
 }
 
 /// A session whose entry-source custody is installed, so child staging is
@@ -542,7 +552,7 @@ fn funded_session<'a>(
 
 fn assert_staging_failure_is_resource_limit(
     error: &LayoutErrorOf<u32, f64>,
-    limit: text::ScopeAlignmentLimitKind,
+    limit: text::scope_alignment::ScopeAlignmentLimitKind,
 ) {
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(0), "{error:?}");
     assert_eq!(error.operation(), LayoutOperation::ChildLayout, "{error:?}");
@@ -553,7 +563,7 @@ fn assert_staging_failure_is_resource_limit(
         )
     };
     let Some(text::ErrorDetail::ScopeAlignment {
-        reason: text::ScopeAlignmentError::Limit { kind, .. },
+        reason: text::scope_alignment::ScopeAlignmentError::Limit { kind, .. },
     }) = refusal.detail()
     else {
         panic!("the resource limit must keep the exhausted budget: {refusal:?}")
@@ -587,7 +597,10 @@ fn child_staging_with_spent_scope_work_reports_a_resource_limit_not_text() {
         .child_staging(0, super::FloatChildTrial::InFlow, None)
         .err()
         .expect("staging must refuse once the structural work budget is spent");
-    assert_staging_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::StructuralWork);
+    assert_staging_failure_is_resource_limit(
+        &error,
+        text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
+    );
 }
 
 #[test]
@@ -608,7 +621,10 @@ fn child_staging_with_spent_scope_records_reports_a_resource_limit_not_text() {
         .child_staging(0, super::FloatChildTrial::InFlow, None)
         .err()
         .expect("staging must refuse once the record budget is spent");
-    assert_staging_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::Records);
+    assert_staging_failure_is_resource_limit(
+        &error,
+        text::scope_alignment::ScopeAlignmentLimitKind::Records,
+    );
 }
 
 fn cache_input() -> ComputeInputOf<f64> {
@@ -662,7 +678,8 @@ fn spend_work_leaving(
     resources: &crate::text_layout::scope_alignment::ScopeAlignmentResources<f64>,
     keep: usize,
 ) {
-    let lowered = text::ScopeAlignmentLimits::new(10000, 100, WORK - keep, 16 << 20);
+    let lowered =
+        text::scope_alignment::ScopeAlignmentLimits::new(10000, 100, WORK - keep, 16 << 20);
     let mut step = WORK;
     while step > 0 {
         if resources.visit(lowered, step).is_err() {
@@ -682,7 +699,7 @@ fn exhaust_records(resources: &crate::text_layout::scope_alignment::ScopeAlignme
 
 fn assert_cache_failure_is_resource_limit(
     error: &LayoutErrorOf<u32, f64>,
-    limit: text::ScopeAlignmentLimitKind,
+    limit: text::scope_alignment::ScopeAlignmentLimitKind,
 ) {
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(0), "{error:?}");
     assert_eq!(error.operation(), LayoutOperation::ChildLayout, "{error:?}");
@@ -694,7 +711,7 @@ fn assert_cache_failure_is_resource_limit(
     };
     assert!(
         matches!(refusal.detail(), Some(text::ErrorDetail::ScopeAlignment {
-            reason: text::ScopeAlignmentError::Limit { kind, .. },
+            reason: text::scope_alignment::ScopeAlignmentError::Limit { kind, .. },
         }) if *kind == limit),
         "{refusal:?}"
     );
@@ -715,7 +732,10 @@ fn cache_store_with_spent_scope_records_reports_a_resource_limit_not_text() {
             cache_output(),
         )
         .expect_err("a store must refuse once the record budget is spent");
-    assert_cache_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::Records);
+    assert_cache_failure_is_resource_limit(
+        &error,
+        text::scope_alignment::ScopeAlignmentLimitKind::Records,
+    );
 }
 
 #[test]
@@ -751,7 +771,7 @@ fn cache_store_replacing_a_stored_entry_with_spent_scope_work_reports_a_resource
                 refused += 1;
                 assert_cache_failure_is_resource_limit(
                     &error,
-                    text::ScopeAlignmentLimitKind::StructuralWork,
+                    text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
                 );
             }
         }
@@ -769,7 +789,10 @@ fn cache_clear_with_spent_scope_records_reports_a_resource_limit_not_text() {
     let error = trial
         .cache_clear(0)
         .expect_err("a clear must refuse once the record budget is spent");
-    assert_cache_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::Records);
+    assert_cache_failure_is_resource_limit(
+        &error,
+        text::scope_alignment::ScopeAlignmentLimitKind::Records,
+    );
 }
 
 #[cfg(test)]

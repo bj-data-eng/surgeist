@@ -92,43 +92,47 @@ enum NativeFrontier {
 
 fn native_frontier<S: LayoutScalar>(kind: NativeFrontier) {
     let mut style = ahem_style(10.0, 10.0);
-    style.wrap = text::Wrap::None;
+    style.wrap = text::style::Wrap::None;
     style.letter_spacing = match kind {
         NativeFrontier::OriginalZeroAdvance => -20.0,
         NativeFrontier::OriginalNegativeAdvance => -22.0,
         _ => 0.0,
     };
     let part = match kind {
-        NativeFrontier::Empty => ParagraphPart::text(10, text::Source::new(""), style.clone()),
-        NativeFrontier::Original => ParagraphPart::text(10, text::Source::new("X"), style.clone()),
+        NativeFrontier::Empty => {
+            ParagraphPart::text(10, text::source::Source::new(""), style.clone())
+        }
+        NativeFrontier::Original => {
+            ParagraphPart::text(10, text::source::Source::new("X"), style.clone())
+        }
         NativeFrontier::OriginalZeroAdvance | NativeFrontier::OriginalNegativeAdvance => {
             // Ahem AB has two10px glyphs and one actual internal tracking gap.
-            ParagraphPart::text(10, text::Source::new("AB"), style.clone())
+            ParagraphPart::text(10, text::source::Source::new("AB"), style.clone())
         }
         NativeFrontier::ForcedZero => ParagraphPart::Control {
             node: 10,
-            kind: text::ParagraphControlKind::ForcedBreak,
+            kind: text::paragraph::ParagraphControlKind::ForcedBreak,
         },
         NativeFrontier::InFlowAtomicZero => ParagraphPart::Atomic {
             node: 10,
-            size: text::Size::new(0.0, 0.0),
+            size: text::geometry::Size::new(0.0, 0.0),
         },
         NativeFrontier::OutOfFlowAtomicZero => ParagraphPart::OutOfFlow {
             node: 10,
-            size: text::Size::new(0.0, 0.0),
+            size: text::geometry::Size::new(0.0, 0.0),
         },
     };
     let paragraph = PreparedParagraph::with_strut_at_boundary(
         vec![part],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
         if matches!(kind, NativeFrontier::ForcedZero) {
-            text::ParagraphStrut::AllocatedContributions
+            text::paragraph::ParagraphStrut::AllocatedContributions
         } else {
-            text::ParagraphStrut::DefaultFont
+            text::paragraph::ParagraphStrut::DefaultFont
         },
         Vec::new(),
-        text::ParagraphTerminalEdge::NonBlockBoundary,
+        text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
     );
     let mut binding = paragraph.binding(2);
     let mut tree = PublicLayoutTreeOf::<S>::new()
@@ -147,7 +151,7 @@ fn native_frontier<S: LayoutScalar>(kind: NativeFrontier) {
         );
     tree = match kind {
         NativeFrontier::ForcedZero => {
-            binding.line_strut = Some(text::LineStrut {
+            binding.line_strut = Some(text::allocation::LineStrut {
                 baseline: 0.0,
                 line_extent: 0.0,
             });
@@ -223,9 +227,9 @@ fn native_frontier<S: LayoutScalar>(kind: NativeFrontier) {
             assert!(batch.unrounded_inline_fragments().is_empty());
             let atomics = placed.layout().inline_boxes();
             assert_eq!(atomics.len(), 1);
-            assert_eq!(atomics[0].kind(), text::InlineBoxKind::InFlow);
+            assert_eq!(atomics[0].kind(), text::source::InlineBoxKind::InFlow);
             assert_eq!(atomics[0].line(), 0);
-            assert_eq!(atomics[0].rect().size, text::Size::new(0.0, 0.0));
+            assert_eq!(atomics[0].rect().size, text::geometry::Size::new(0.0, 0.0));
             assert_eq!(
                 atomics[0].id(),
                 binding.atomics[0].occurrence.view().original_box().id()
@@ -329,7 +333,13 @@ fn processed_space_frontier<S: LayoutScalar>() {
     use crate::test_support::inline_endpoint::Fixture;
     for visible in [true, false] {
         let source = if visible { "X" } else { " " };
-        let fixture = Fixture::new(source, (0, 1), text::WhiteSpace::Collapse, false, false);
+        let fixture = Fixture::new(
+            source,
+            (0, 1),
+            text::style::WhiteSpace::Collapse,
+            false,
+            false,
+        );
         // Container0 remains the actual complete BlockEnd paragraph. E is an
         // ordinary child of P50, so no terminal receipt is retagged to place B.
         let tree = fixture
@@ -407,11 +417,11 @@ fn text_in_float_bfc<S: LayoutScalar>() {
     let paragraph = PreparedParagraph::new(
         vec![ParagraphPart::text(
             10,
-            text::Source::new("X"),
+            text::source::Source::new("X"),
             style.clone(),
         )],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     for contents in [false, true] {
         let mut tree = PublicLayoutTreeOf::<S>::new()

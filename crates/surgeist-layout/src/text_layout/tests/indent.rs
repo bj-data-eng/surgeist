@@ -1,7 +1,7 @@
 //! CSS Text3 §8.1 / Text4 §9.1 over real prepared Ahem paragraphs.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use surgeist_text::WhiteSpace;
+use surgeist_text::style::WhiteSpace;
 
 fn indent<S: LayoutScalar>(amount: f64, each_line: bool, hanging: bool) -> TextIndentOf<S> {
     TextIndentOf {
@@ -27,7 +27,7 @@ fn text(node: u32, source: &str, rtl: bool) -> PreparedParagraph {
         } else {
             ParagraphBaseDirection::LeftToRight
         },
-        surgeist_text::ParagraphTerminalEdge::Unknown,
+        surgeist_text::paragraph::ParagraphTerminalEdge::Unknown,
     )
 }
 
@@ -893,7 +893,7 @@ fn native_indent_spacing_budget_uses_the_reduced_capacity_exactly_once_both_scal
 
 fn finalized_lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> Vec<surgeist_text::FinalizedLine> {
+) -> Vec<surgeist_text::finalized::FinalizedLine> {
     let mut result = Vec::new();
     for entry in batch.final_inline_fragments() {
         let line = entry.fragment().finalized_fragment().finalized_line();

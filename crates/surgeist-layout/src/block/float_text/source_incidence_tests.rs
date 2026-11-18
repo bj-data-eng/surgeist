@@ -1,7 +1,7 @@
 //! Single-origin incidence uses issued preparation and occurrence custody.
 fn text_origin_incidence(
-    unit: &surgeist_text::PreparedUnit,
-    origin: &surgeist_text::PreparedOrigin,
+    unit: &surgeist_text::prepared::PreparedUnit,
+    origin: &surgeist_text::prepared::PreparedOrigin,
     local: usize,
     funding: Option<crate::text_layout::scope_alignment::EntryFundingRef<'_>>,
 ) -> Result<Option<super::OriginIncidence>, String> {
@@ -19,7 +19,7 @@ fn paragraph(parts: Vec<ParagraphPart>) -> PreparedParagraph {
     PreparedParagraph::new(
         parts,
         ahem_style(10.0, 10.0),
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     )
 }
 
@@ -28,14 +28,18 @@ fn same_preparation_positive_extent_and_foreign_same_range() {
     let style = ahem_style(10.0, 10.0);
     let actual = paragraph(vec![ParagraphPart::text(
         1,
-        text::Source::new("AB"),
+        text::source::Source::new("AB"),
         style.clone(),
     )]);
-    let foreign = paragraph(vec![ParagraphPart::text(1, text::Source::new("AB"), style)]);
+    let foreign = paragraph(vec![ParagraphPart::text(
+        1,
+        text::source::Source::new("AB"),
+        style,
+    )]);
     let origin = actual.origin(1);
     let mut seen = 0;
     for participant in actual.prepared.participants() {
-        let text::PreparedParticipant::Text(unit) = participant else {
+        let text::prepared::PreparedParticipant::Text(unit) = participant else {
             continue;
         };
         let range = unit.view().source_range();
@@ -58,12 +62,12 @@ fn same_preparation_positive_extent_and_foreign_same_range() {
 fn equal_anchor_empty_originals_keep_distinct_occurrences() {
     let style = ahem_style(10.0, 10.0);
     let actual = paragraph(vec![
-        ParagraphPart::text(1, text::Source::new(""), style.clone()),
-        ParagraphPart::text(2, text::Source::new(""), style),
+        ParagraphPart::text(1, text::source::Source::new(""), style.clone()),
+        ParagraphPart::text(2, text::source::Source::new(""), style),
     ]);
     let mut seen = 0;
     for participant in actual.prepared.participants() {
-        let text::PreparedParticipant::Text(unit) = participant else {
+        let text::prepared::PreparedParticipant::Text(unit) = participant else {
             continue;
         };
         let Some(origin) = unit.view().empty_origin() else {
@@ -92,19 +96,19 @@ fn equal_anchor_empty_originals_keep_distinct_occurrences() {
 #[test]
 fn generated_empty_anchor_does_not_donate_an_original() {
     let mut style = ahem_style(10.0, 10.0);
-    style.word_space_transform = text::WordSpaceTransform::Space;
+    style.word_space_transform = text::style::WordSpaceTransform::Space;
     let actual = paragraph(vec![
-        ParagraphPart::text(1, text::Source::new(""), style.clone()),
+        ParagraphPart::text(1, text::source::Source::new(""), style.clone()),
         ParagraphPart::Control {
             node: 2,
-            kind: text::ParagraphControlKind::Wbr {
+            kind: text::paragraph::ParagraphControlKind::Wbr {
                 style: Box::new(style),
             },
         },
     ]);
     let mut generated = 0;
     for participant in actual.prepared.participants() {
-        let text::PreparedParticipant::Text(unit) = participant else {
+        let text::prepared::PreparedParticipant::Text(unit) = participant else {
             continue;
         };
         let view = unit.view();
@@ -128,7 +132,7 @@ fn nonzero_local_range_rejects_outside_endpoints_without_losing_membership() {
     let actual = crate::test_support::inline_endpoint::Fixture::new(
         "AB",
         (1, 2),
-        text::WhiteSpace::Preserve,
+        text::style::WhiteSpace::Preserve,
         false,
         false,
     );
@@ -142,7 +146,7 @@ fn nonzero_local_range_rejects_outside_endpoints_without_losing_membership() {
         .clone();
     let mut seen = 0;
     for participant in actual.binding.prepared.participants() {
-        let text::PreparedParticipant::Text(unit) = participant else {
+        let text::prepared::PreparedParticipant::Text(unit) = participant else {
             continue;
         };
         let Some(at_start) = text_origin_incidence(&unit, &origin, 1, None).unwrap() else {

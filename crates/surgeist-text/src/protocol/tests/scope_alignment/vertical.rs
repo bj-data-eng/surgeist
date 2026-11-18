@@ -12,8 +12,11 @@ use crate::{
     layout::{Affinity, Cursor, Hit, Layout, Selection},
     options::Alignment,
     processing::{
-        CapturedScope, ContextualSourceInput, ProcessedSource, ScopeAlignmentBoundary,
-        ScopeAlignmentError, ScopeFontReference, SourceProcessingScope, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            CapturedScope, ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError,
+            ScopeFontReference, SourceProcessingScope, process_contextual_source,
+        },
     },
     protocol::{
         FinalizedLine, LineAllocations, LineAnchor, LineBoxAlignment, LineBoxDirection,

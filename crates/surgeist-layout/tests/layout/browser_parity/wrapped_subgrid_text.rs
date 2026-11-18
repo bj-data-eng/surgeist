@@ -182,7 +182,7 @@ enum Width {
 
 struct Placement {
     size: layout::Size,
-    layout: text::Layout,
+    layout: text::layout::Layout,
 }
 
 // Measure a single anonymous block from the same prepared paragraph the Flex
@@ -190,7 +190,7 @@ struct Placement {
 fn paragraph_tree(
     label: &str,
     flow: layout::FlowAxes,
-    prepared: text::PreparedText,
+    prepared: text::prepared::PreparedText,
 ) -> Result<TestTree, Error> {
     let origin = prepared
         .origin_views()
@@ -325,9 +325,9 @@ pub(super) fn verify(
         }
         for observed in &occurrence.words {
             let selected = placement
-                .selection(text::Selection::new(
-                    text::Cursor::new(observed.start, text::Affinity::After),
-                    text::Cursor::new(observed.end, text::Affinity::Before),
+                .selection(text::layout::Selection::new(
+                    text::layout::Cursor::new(observed.start, text::layout::Affinity::After),
+                    text::layout::Cursor::new(observed.end, text::layout::Affinity::Before),
                 ))
                 .map_err(invalid)?;
             let [selection] = selected.rects() else {

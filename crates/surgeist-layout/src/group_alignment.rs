@@ -1,6 +1,6 @@
 //! Accepted natural line groups and their immutable alignment-frame replay.
 use crate::{AxisSizingRequestOf, ComputeInputOf, LayoutScalar, TextGroupAlign};
-use surgeist_text::{LineAlignmentInsets, LineBoxDirection};
+use surgeist_text::{allocation::LineAlignmentInsets, selection::LineBoxDirection};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct NumericError {
@@ -194,7 +194,7 @@ struct Owner<Node, S: LayoutScalar> {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Witness<S: LayoutScalar> {
     Text {
-        request: Box<surgeist_text::LineSelectionRequest>,
+        request: Box<surgeist_text::selection::LineSelectionRequest>,
         amounts: Vec<f64>,
     },
     Numeric {
@@ -202,7 +202,7 @@ pub(crate) enum Witness<S: LayoutScalar> {
         discarded: Vec<bool>,
         descriptor_start: usize,
         next: (usize, usize, bool),
-        end: surgeist_text::LineEnd,
+        end: surgeist_text::selection::LineEnd,
         band: crate::inline::LogicalLineBandOf<S>,
     },
 }

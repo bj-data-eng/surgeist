@@ -41,34 +41,39 @@ fn oriented_pad_start<S: LayoutScalar>(input: &mut NodeInputOf<S>, mode: Writing
     }
 }
 
-fn oriented_source(layout: &text::Layout, native: &Native) -> text::Rect {
+fn oriented_source(layout: &text::layout::Layout, native: &Native) -> text::geometry::Rect {
     custody(layout, &native.original);
     raw(layout, 10.0, 10.0);
     assert_eq!(layout.lines().len(), 1);
-    assert_eq!(layout.lines()[0].range(), text::Range::new(0, 1));
+    assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 1));
     let clusters = layout.clusters();
     assert_eq!(clusters.len(), 1);
-    assert_eq!(clusters[0].range(), text::Range::new(0, 1));
+    assert_eq!(clusters[0].range(), text::source::Range::new(0, 1));
     clusters[0].bounds()
 }
 
 // Ordinary cluster bounds cover the complete normal line interaction band,
 // while its inline extent remains this actual X cluster's10px contribution.
-fn oriented_interaction_rect(mode: WritingMode, inline: f64, cross: f64, band: f64) -> text::Rect {
+fn oriented_interaction_rect(
+    mode: WritingMode,
+    inline: f64,
+    cross: f64,
+    band: f64,
+) -> text::geometry::Rect {
     if vertical(mode) {
-        text::Rect::new(cross, inline, band, 10.0)
+        text::geometry::Rect::new(cross, inline, band, 10.0)
     } else {
-        text::Rect::new(inline, cross, 10.0, band)
+        text::geometry::Rect::new(inline, cross, 10.0, band)
     }
 }
 
 // Actual paint origin of the same retained real X packet, independently of
 // the cluster's whole-line interaction band. No synthetic font rectangle.
-fn oriented_glyph_origin(layout: &text::Layout) -> text::Point {
+fn oriented_glyph_origin(layout: &text::layout::Layout) -> text::geometry::Point {
     let mut runs = layout.run_views();
     let run = runs.next().expect("actual X glyph run");
     assert!(runs.next().is_none());
-    assert_eq!(run.range(), text::Range::new(0, 1));
+    assert_eq!(run.range(), text::source::Range::new(0, 1));
     let origin = run.origin();
     assert!(origin.x.is_finite() && origin.y.is_finite());
     origin
@@ -78,11 +83,11 @@ fn oriented_node_text_agree<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32,
     let layout = placed(batch, 0);
     let boxes = layout.inline_boxes();
     assert_eq!(boxes.len(), 1);
-    assert_eq!(boxes[0].id(), text::Id::from_u64(u64::from(node)));
+    assert_eq!(boxes[0].id(), text::source::Id::from_u64(u64::from(node)));
     let packet = output(batch, node);
     assert_eq!(
         boxes[0].rect(),
-        text::Rect::new(
+        text::geometry::Rect::new(
             packet.location.x.to_f64(),
             packet.location.y.to_f64(),
             packet.size.width.to_f64(),
@@ -292,9 +297,9 @@ fn oriented_ancestor_and_normal_padding<S: LayoutScalar>() {
         let outside_padded = oriented_glyph_origin(placed(&published[2], 0));
         assert_eq!(outside_control, outside_relative);
         let expected_padded = if vertical(mode) {
-            text::Point::new(outside_relative.x + signed_move, outside_relative.y)
+            text::geometry::Point::new(outside_relative.x + signed_move, outside_relative.y)
         } else {
-            text::Point::new(outside_relative.x, outside_relative.y + signed_move)
+            text::geometry::Point::new(outside_relative.x, outside_relative.y + signed_move)
         };
         assert_eq!(outside_padded, expected_padded);
         let inner_origins = published
@@ -302,9 +307,9 @@ fn oriented_ancestor_and_normal_padding<S: LayoutScalar>() {
             .map(|batch| oriented_glyph_origin(placed(batch, 2)))
             .collect::<Vec<_>>();
         let shifted_inner = if vertical(mode) {
-            text::Point::new(inner_origins[0].x + signed_move, inner_origins[0].y)
+            text::geometry::Point::new(inner_origins[0].x + signed_move, inner_origins[0].y)
         } else {
-            text::Point::new(inner_origins[0].x, inner_origins[0].y + signed_move)
+            text::geometry::Point::new(inner_origins[0].x, inner_origins[0].y + signed_move)
         };
         assert_eq!(inner_origins[1], shifted_inner);
         assert_eq!(inner_origins[2], shifted_inner);

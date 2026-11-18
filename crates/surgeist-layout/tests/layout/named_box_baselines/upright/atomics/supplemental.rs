@@ -48,7 +48,7 @@ fn attach<S: l::LayoutScalar>(
     let occurrence = parent.prepared.atomic_views().next().unwrap().handle();
     assert_eq!(
         occurrence.view().original_box().id(),
-        t::Id::from_u64(u64::from(atomic_node))
+        t::source::Id::from_u64(u64::from(atomic_node))
     );
     let mut bindings = vec![l::TextParagraphBinding {
         inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
@@ -151,7 +151,7 @@ fn margin<S: l::LayoutScalar>(value: f64) -> l::LengthAutoOf<S> {
 fn receipts<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     binding: &l::TextParagraphBinding<u32>,
-) -> std::collections::BTreeMap<usize, t::FinalizedLine> {
+) -> std::collections::BTreeMap<usize, t::finalized::FinalizedLine> {
     let mut lines = std::collections::BTreeMap::new();
     for row in batch.unrounded_inline_fragments() {
         if matches!(row.owner(), l::InlineFragmentOwner::Node(node) if binding.origins.iter().any(|origin| origin.node == *node))
@@ -170,7 +170,7 @@ fn receipts<S: l::LayoutScalar>(
 fn atomic_rect<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     binding: &l::TextParagraphBinding<u32>,
-    expected: t::Rect,
+    expected: t::geometry::Rect,
 ) {
     let text = placed(batch, binding.container);
     let boxes = text.inline_boxes();
@@ -220,9 +220,9 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
     qualify_native_pair(&child, small.clone(), [2.0, 6.0], (6.0, 4.0));
     let parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 4.0),
+        t::geometry::Size::new(6.0, 4.0),
         false,
-        t::Id::from_u64(2),
+        t::source::Id::from_u64(2),
     );
     for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
         for (source, b, h) in [
@@ -241,7 +241,7 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
             atomic_rect(
                 &batch,
                 &scene.bindings[0],
-                t::Rect::new(c - b, 4.0, 6.0, 4.0),
+                t::geometry::Rect::new(c - b, 4.0, 6.0, 4.0),
             );
             assert_central(
                 node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
@@ -258,7 +258,7 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
                 (12.0, 8.0, h)
             );
             let selected = lines[&0].selected_line();
-            let t::AtomicLineAllocation::InFlow { flow, .. } =
+            let t::allocation::AtomicLineAllocation::InFlow { flow, .. } =
                 selected.request().atomics[0].allocation
             else {
                 panic!("actual InFlow allocation required")
@@ -309,7 +309,7 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
         atomic_rect(
             &batch,
             &scene.bindings[0],
-            t::Rect::new(c - 6.0, 1.0, 6.0, 14.0),
+            t::geometry::Rect::new(c - 6.0, 1.0, 6.0, 14.0),
         );
         let lines = receipts(&batch, &scene.bindings[0]);
         assert_eq!(
@@ -321,7 +321,7 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
             (20.0, 8.0, 12.0)
         );
         let slot = lines[&0].atomic_slots().next().unwrap();
-        let t::AtomicLineAllocation::InFlow { flow, .. } = slot.allocation else {
+        let t::allocation::AtomicLineAllocation::InFlow { flow, .. } = slot.allocation else {
             panic!("actual InFlow allocation required")
         };
         assert_eq!(
@@ -365,7 +365,7 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
             atomic_rect(
                 &batch,
                 &scene.bindings[0],
-                t::Rect::new(
+                t::geometry::Rect::new(
                     first
                         + if alignment == l::VerticalAlignOf::Top {
                             2.0
@@ -386,7 +386,7 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
                 (8.0, 10.0)
             );
             let slot = lines[&0].atomic_slots().next().unwrap();
-            let t::AtomicLineAllocation::InFlow {
+            let t::allocation::AtomicLineAllocation::InFlow {
                 alignment: actual, ..
             } = slot.allocation
             else {
@@ -395,9 +395,9 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
             assert_eq!(
                 actual,
                 if alignment == l::VerticalAlignOf::Top {
-                    t::LineBoxAlignment::Top
+                    t::allocation::LineBoxAlignment::Top
                 } else {
-                    t::LineBoxAlignment::Bottom
+                    t::allocation::LineBoxAlignment::Bottom
                 }
             );
         }
@@ -415,14 +415,19 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
             atomic_rect(
                 &batch,
                 &scene.bindings[0],
-                t::Rect::new(c - 2.0, if atomic_line == 0 { 4.0 } else { 0.0 }, 6.0, 14.0),
+                t::geometry::Rect::new(
+                    c - 2.0,
+                    if atomic_line == 0 { 4.0 } else { 0.0 },
+                    6.0,
+                    14.0,
+                ),
             );
             assert_eq!(text.inline_boxes()[0].line(), atomic_line);
             let lines = receipts(&batch, &scene.bindings[0]);
             let last = lines.values().last().unwrap();
             assert_eq!(
                 last.selected_line().request().context.end,
-                t::LineEnd::Paragraph
+                t::selection::LineEnd::Paragraph
             );
             assert_eq!(last.feedback().advance, 4.0);
         }
@@ -453,36 +458,36 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
             atomic_rect(
                 &batch,
                 &scene.bindings[0],
-                t::Rect::new(c - 2.0, if columns == 1 { 4.0 } else { 0.0 }, 6.0, 14.0),
+                t::geometry::Rect::new(c - 2.0, if columns == 1 { 4.0 } else { 0.0 }, 6.0, 14.0),
             );
         }
         let only = captured_parent(
             &child.bytes,
-            t::Size::new(6.0, 14.0),
+            t::geometry::Size::new(6.0, 14.0),
             true,
-            t::Id::from_u64(1),
+            t::source::Id::from_u64(1),
         );
         let scene = make_scene::<S>(&only, mode, (40.0, 14.0), child_input(), Some(&child));
         let batch = run(&scene, available(40.0, 14.0), &[]).unwrap();
         let text = placed(&batch, 0);
         assert!(text.source().text().is_empty());
         assert_eq!(text.lines().len(), 1);
-        assert_eq!(text.lines()[0].range(), t::Range::new(0, 0));
+        assert_eq!(text.lines()[0].range(), t::source::Range::new(0, 0));
         assert_eq!(text.lines()[0].baseline(), first);
         assert_eq!(
             text.lines()[0].bounds(),
-            t::Rect::new(first - 2.0, 0.0, 10.0, 14.0)
+            t::geometry::Rect::new(first - 2.0, 0.0, 10.0, 14.0)
         );
         assert!(text.run_views().next().is_none());
         assert_eq!(text.nonformatted_lines().count(), 0);
         atomic_rect(
             &batch,
             &scene.bindings[0],
-            t::Rect::new(first - 2.0, 0.0, 6.0, 14.0),
+            t::geometry::Rect::new(first - 2.0, 0.0, 6.0, 14.0),
         );
         assert_eq!(
-            text.hit(t::Point::new(first, 5.0)),
-            t::Hit::InlineBox(t::Id::from_u64(1))
+            text.hit(t::geometry::Point::new(first, 5.0)),
+            t::layout::Hit::InlineBox(t::source::Id::from_u64(1))
         );
     }
 }
@@ -496,7 +501,7 @@ fn numeric_descendant<S: l::LayoutScalar>() -> l::NodeInputOf<S> {
     input.display = l::Display::InlineBlock;
     input.size = l::Size::new(px(2.0), px(8.0));
     input.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
-        t::BidiLevel::try_new(0).unwrap(),
+        t::supplied_line::BidiLevel::try_new(0).unwrap(),
         l::InlineBreakOpportunity::Allowed,
     ));
     input
@@ -592,9 +597,9 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
     let parent = parent(&child.bytes);
     let wrapped_parent = captured_parent(
         &child.bytes,
-        t::Size::new(6.0, 14.0),
+        t::geometry::Size::new(6.0, 14.0),
         false,
-        t::Id::from_u64(3),
+        t::source::Id::from_u64(3),
     );
     for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
         let c = if mode == l::WritingMode::VerticalRl {
@@ -617,7 +622,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
         atomic_rect(
             &batch,
             &fractional.bindings[0],
-            t::Rect::new(c_global - 2.0, 14.0, 6.0, 14.0),
+            t::geometry::Rect::new(c_global - 2.0, 14.0, 6.0, 14.0),
         );
         let final_parent = node(crate::layout::observation::phase(&batch, true), 1);
         let pair = final_parent.named_baselines.get(l::BaselineName::Central);
@@ -638,7 +643,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
         atomic_rect(
             &batch,
             &scene.bindings[0],
-            t::Rect::new(c + 1.0, 6.0, 6.0, 14.0),
+            t::geometry::Rect::new(c + 1.0, 6.0, 6.0, 14.0),
         );
         assert_eq!(placed(&batch, 0).lines()[0].baseline(), c);
         assert_eq!(placed(&batch, 2).lines()[0].baseline(), c + 3.0);
@@ -673,7 +678,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
         atomic_rect(
             &batch,
             &scene.bindings[0],
-            t::Rect::new(c - 4.0, 4.0, 6.0, 14.0),
+            t::geometry::Rect::new(c - 4.0, 4.0, 6.0, 14.0),
         );
         let output = node(crate::layout::observation::phase(&batch, false), 2);
         let content_box = output.scroll_geometry.unwrap().content_box();
@@ -686,10 +691,11 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
         assert_eq!((range.y().minimum(), range.y().maximum()), (n(0.0), n(0.0)));
         let line = &receipts(&batch, &scene.bindings[0])[&0];
         let slot = line.atomic_slots().next().unwrap();
-        let t::AtomicLineAllocation::InFlow { box_geometry, .. } = slot.allocation else {
+        let t::allocation::AtomicLineAllocation::InFlow { box_geometry, .. } = slot.allocation
+        else {
             panic!("InFlow content required")
         };
-        assert_eq!(box_geometry.content.size, t::Size::new(9.0, 3.0));
+        assert_eq!(box_geometry.content.size, t::geometry::Size::new(9.0, 3.0));
         assert_eq!(
             (line.feedback().baseline, line.feedback().line_height),
             (8.0, 12.0)
@@ -745,7 +751,7 @@ fn replay_and_failure<S: l::LayoutScalar>(child: &Fixture, parent: &Parent, mode
     atomic_rect(
         &changed,
         &scene.bindings[0],
-        t::Rect::new(centers[0] - 2.0, 4.0, 6.0, 18.0),
+        t::geometry::Rect::new(centers[0] - 2.0, 4.0, 6.0, 18.0),
     );
     let mut fresh = wrapped::<S>(parent, mode, child, false);
     fresh
@@ -766,7 +772,7 @@ fn replay_and_failure<S: l::LayoutScalar>(child: &Fixture, parent: &Parent, mode
     assert_eq!(
         error.detail(),
         Some(&t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::ForeignPlacement
+            reason: t::prepared::ProtocolError::ForeignPlacement
         })
     );
     changed.apply_to(&mut scene.host).unwrap();
@@ -814,13 +820,13 @@ fn replay_and_failure<S: l::LayoutScalar>(child: &Fixture, parent: &Parent, mode
     assert_eq!(placed(&warm, 1).lines().len(), 1);
     assert_eq!(
         placed(&cold, 1).inline_boxes()[0].rect().size,
-        t::Size::new(6.0, 14.0)
+        t::geometry::Size::new(6.0, 14.0)
     );
     assert_eq!(
         placed(scene.host.published.batch.as_ref().unwrap(), 1).inline_boxes()[0]
             .rect()
             .size,
-        t::Size::new(6.0, 18.0)
+        t::geometry::Size::new(6.0, 18.0)
     );
 }
 
@@ -917,7 +923,11 @@ fn physical_none_signed_margins<S: l::LayoutScalar>() {
             );
         }
         let binding = &scene.bindings[0];
-        atomic_rect(&batch, binding, t::Rect::new(cross - 2.0, 1.0, 6.0, 14.0));
+        atomic_rect(
+            &batch,
+            binding,
+            t::geometry::Rect::new(cross - 2.0, 1.0, 6.0, 14.0),
+        );
         let lines = receipts(&batch, binding);
         assert_eq!(lines.len(), 1);
         let line = &lines[&0];
@@ -932,14 +942,14 @@ fn physical_none_signed_margins<S: l::LayoutScalar>() {
         let slots = line.atomic_slots().collect::<Vec<_>>();
         assert_eq!(slots.len(), 1);
         assert_eq!(slots[0].occurrence, binding.atomics[0].occurrence);
-        assert_eq!(slots[0].origin, t::Point::new(4.0, 8.0));
-        let t::AtomicLineAllocation::InFlow {
+        assert_eq!(slots[0].origin, t::geometry::Point::new(4.0, 8.0));
+        let t::allocation::AtomicLineAllocation::InFlow {
             flow, alignment, ..
         } = slots[0].allocation
         else {
             panic!("actual empty child must retain its InFlow allocation");
         };
-        assert_eq!(alignment, t::LineBoxAlignment::Baseline);
+        assert_eq!(alignment, t::allocation::LineBoxAlignment::Baseline);
         assert_eq!(
             (
                 flow.advance,
@@ -954,7 +964,7 @@ fn physical_none_signed_margins<S: l::LayoutScalar>() {
         assert_eq!(text.lines()[0].baseline(), cross);
         assert_eq!(
             text.lines()[0].bounds(),
-            t::Rect::new(cross - 2.0, 0.0, 10.0, 20.0)
+            t::geometry::Rect::new(cross - 2.0, 0.0, 10.0, 20.0)
         );
         assert_eq!(
             text.run_views()

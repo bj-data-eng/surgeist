@@ -26,8 +26,8 @@ fn error_of<M>(kind: LayoutErrorKindOf<f64, M>) -> LayoutErrorOf<u32, f64, M> {
 fn limit_error() -> text::Error {
     text::Error::new(text::ErrorCode::ScopeAlignmentRefused, "budget spent").with_detail(
         text::ErrorDetail::ScopeAlignment {
-            reason: text::ScopeAlignmentError::Limit {
-                kind: text::ScopeAlignmentLimitKind::StructuralWork,
+            reason: text::scope_alignment::ScopeAlignmentError::Limit {
+                kind: text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
                 required: 11,
                 limit: 10,
             },
@@ -130,8 +130,8 @@ fn resource_limit_is_distinct_from_text_and_sources_the_exhausted_budget() {
     assert!(matches!(
         cause.detail(),
         Some(text::ErrorDetail::ScopeAlignment {
-            reason: text::ScopeAlignmentError::Limit {
-                kind: text::ScopeAlignmentLimitKind::StructuralWork,
+            reason: text::scope_alignment::ScopeAlignmentError::Limit {
+                kind: text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
                 required: 11,
                 limit: 10,
             },
@@ -154,11 +154,11 @@ fn staging_refusal_is_a_resource_limit_only_for_exhausted_budgets() {
     };
     for budget in [
         limit_error(),
-        scope(text::ScopeAlignmentError::Overflow {
-            kind: text::ScopeAlignmentLimitKind::Records,
+        scope(text::scope_alignment::ScopeAlignmentError::Overflow {
+            kind: text::scope_alignment::ScopeAlignmentLimitKind::Records,
         }),
-        scope(text::ScopeAlignmentError::Allocation {
-            kind: text::ScopeAlignmentLimitKind::PayloadBytes,
+        scope(text::scope_alignment::ScopeAlignmentError::Allocation {
+            kind: text::scope_alignment::ScopeAlignmentLimitKind::PayloadBytes,
         }),
     ] {
         assert!(
@@ -167,8 +167,8 @@ fn staging_refusal_is_a_resource_limit_only_for_exhausted_budgets() {
         );
     }
     for other in [
-        scope(text::ScopeAlignmentError::MissingCapture),
-        scope(text::ScopeAlignmentError::LimitsRequired),
+        scope(text::scope_alignment::ScopeAlignmentError::MissingCapture),
+        scope(text::scope_alignment::ScopeAlignmentError::LimitsRequired),
         text::Error::new(text::ErrorCode::InvalidTextProtocol, "bad request"),
     ] {
         assert!(

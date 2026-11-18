@@ -77,7 +77,7 @@ pub enum HyphenateLimitLast {
 /// immutable line/request and pass basis, not a duplicate request allocation.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CommittedInlineLine {
-    pub end: surgeist_text::LineEnd,
+    pub end: surgeist_text::selection::LineEnd,
     pub content: bool,
     pub hyphenated: bool,
 }
@@ -133,7 +133,7 @@ impl BlockTailLedger {
         }
         if last > 0 {
             let previous = &lines[last - 1];
-            return previous.end == surgeist_text::LineEnd::Soft && previous.hyphenated;
+            return previous.end == surgeist_text::selection::LineEnd::Soft && previous.hyphenated;
         }
         // A first content line in a later run (or a real child block) has no
         // authenticated parent Soft link. Preserve that gap if relevant; a real
@@ -143,7 +143,7 @@ impl BlockTailLedger {
                 TailEntry::ChildBlock => continue,
                 TailEntry::Run(lines) => {
                     for line in lines.iter().rev() {
-                        if line.end == surgeist_text::LineEnd::Forced {
+                        if line.end == surgeist_text::selection::LineEnd::Forced {
                             return false;
                         }
                         if line.hyphenated {

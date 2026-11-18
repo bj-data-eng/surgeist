@@ -116,7 +116,7 @@ fn prepare_group_reference<S: LayoutScalar>(
     let last = lines.last()?;
     // A trailing nonformatted Paragraph receipt is NOT permission to target
     // the preceding Forced occurrence or to walk backward across that receipt.
-    if last.ending != surgeist_text::LineEnd::Paragraph || !numeric_is_formatted(last) {
+    if last.ending != surgeist_text::selection::LineEnd::Paragraph || !numeric_is_formatted(last) {
         return None;
     }
     let formatted = lines

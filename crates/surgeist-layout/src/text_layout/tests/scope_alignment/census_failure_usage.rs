@@ -19,14 +19,14 @@ struct Descriptors {
 
 fn fund_descriptors<S: LayoutScalar>(
     facts: &ScopeAlignmentResources<S>,
-    prepared: &text::PreparedText,
-    retained: text::ScopeAlignmentRetention,
+    prepared: &text::prepared::PreparedText,
+    retained: text::scope_alignment::ScopeAlignmentRetention,
 ) -> Descriptors {
     let operation = facts
         .begin(
-            text::ScopeAlignmentCensusInput::Product(text::ScopeAlignmentProduct::Prepared(
-                prepared,
-            )),
+            text::scope_alignment::ScopeAlignmentCensusInput::Product(
+                text::scope_alignment::ScopeAlignmentProduct::Prepared(prepared),
+            ),
             0,
         )
         .unwrap()
@@ -70,15 +70,15 @@ fn fund_descriptors<S: LayoutScalar>(
 /// or an inspection of shared counters. The captured ceiling bounds this walk.
 fn remaining_work<S: LayoutScalar>(
     facts: &ScopeAlignmentResources<S>,
-    limits: text::ScopeAlignmentLimits,
+    limits: text::scope_alignment::ScopeAlignmentLimits,
 ) -> usize {
     for remaining in 0..=limits.structural_work() {
         if let Err(error) = facts.visit(limits, 1) {
             assert_eq!(error.code, text::ErrorCode::ScopeAlignmentRefused);
             assert!(
                 matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
-                reason: text::ScopeAlignmentError::Limit {
-                    kind: text::ScopeAlignmentLimitKind::StructuralWork,
+                reason: text::scope_alignment::ScopeAlignmentError::Limit {
+                    kind: text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
                     required, limit,
                 },
             }) if *required == WORK + 1 && *limit == WORK)
@@ -90,10 +90,10 @@ fn remaining_work<S: LayoutScalar>(
 }
 
 fn compare<S: LayoutScalar>(census_failure: bool) {
-    let limits = text::ScopeAlignmentLimits::new(RECORDS, 100, WORK, BYTES);
+    let limits = text::scope_alignment::ScopeAlignmentLimits::new(RECORDS, 100, WORK, BYTES);
     let case = Case::new_with_limits(
         Shape::Single,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         10.0,
         "",
         1.0,
@@ -112,18 +112,18 @@ fn compare<S: LayoutScalar>(census_failure: bool) {
     let batch = compute_layout_with_flow(&flow, 0, request(100.0, axes)).unwrap();
     let prior = readback::continuous_custody(&batch, Phase::Final);
     let prior_source = placed(&batch).source().clone();
-    let input = text::ScopeAlignmentCensusInput::Product(text::ScopeAlignmentProduct::Prepared(
-        &case.binding.prepared,
-    ));
+    let input = text::scope_alignment::ScopeAlignmentCensusInput::Product(
+        text::scope_alignment::ScopeAlignmentProduct::Prepared(&case.binding.prepared),
+    );
     // A successful public census of these exact roots proves the actual input
     // custody and positive traversal without querying a font or fitting a line.
-    let census = text::scope_alignment_census(
+    let census = text::scope_alignment::scope_alignment_census(
         input,
-        text::ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies {
+        text::scope_alignment::ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies {
             finalized: &[],
             families: &[],
         },
-        text::ScopeAlignmentAllowance::new(RECORDS, BYTES),
+        text::scope_alignment::ScopeAlignmentAllowance::new(RECORDS, BYTES),
     )
     .unwrap();
     assert!(census.usage().structural_work() > 0);
@@ -159,8 +159,8 @@ fn compare<S: LayoutScalar>(census_failure: bool) {
         assert_eq!(error.code, text::ErrorCode::ScopeAlignmentRefused);
         assert!(
             matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
-            reason: text::ScopeAlignmentError::Limit {
-                kind: text::ScopeAlignmentLimitKind::PayloadBytes, required, limit,
+            reason: text::scope_alignment::ScopeAlignmentError::Limit {
+                kind: text::scope_alignment::ScopeAlignmentLimitKind::PayloadBytes, required, limit,
             },
         }) if *limit == census.input_retention().payload_bytes() && required > limit)
         );

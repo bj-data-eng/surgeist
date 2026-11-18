@@ -2,13 +2,13 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 
 fn fractional_atomic_paragraph(
-    nominal: surgeist_text::Size,
+    nominal: surgeist_text::geometry::Size,
     trailing: bool,
 ) -> crate::test_support::text::PreparedParagraph {
     use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
     let style = ahem_style(10.0, 10.0);
     let mut parts = vec![
-        ParagraphPart::text(1, surgeist_text::Source::new("X"), style.clone()),
+        ParagraphPart::text(1, surgeist_text::source::Source::new("X"), style.clone()),
         ParagraphPart::Atomic {
             node: 2,
             size: nominal,
@@ -17,20 +17,20 @@ fn fractional_atomic_paragraph(
     if trailing {
         parts.push(ParagraphPart::text(
             3,
-            surgeist_text::Source::new("X"),
+            surgeist_text::source::Source::new("X"),
             style.clone(),
         ));
     }
     PreparedParagraph::new(
         parts,
         style,
-        surgeist_text::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
     )
 }
 
 fn fractional_atomic_layout<S: LayoutScalar>(
     paragraph: &crate::test_support::text::PreparedParagraph,
-    nominal: surgeist_text::Size,
+    nominal: surgeist_text::geometry::Size,
     inset: Edges<LengthAutoOf<S>>,
     trailing: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
@@ -153,7 +153,7 @@ fn fractional_atomic_source_and_font<S: LayoutScalar>(
     assert_eq!(lines.len(), 1);
     assert_eq!(
         lines[0].range(),
-        surgeist_text::Range::new(0, if trailing { 2 } else { 1 })
+        surgeist_text::source::Range::new(0, if trailing { 2 } else { 1 })
     );
     let runs = layout.glyph_runs();
     assert_eq!(
@@ -174,7 +174,7 @@ fn fractional_atomic_source_and_font<S: LayoutScalar>(
     }
     if !trailing {
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].range(), surgeist_text::Range::new(0, 1));
+        assert_eq!(runs[0].range(), surgeist_text::source::Range::new(0, 1));
         assert_eq!(runs[0].advance(), 10.0);
     }
     assert_eq!(layout.inline_boxes().len(), 1);
@@ -192,7 +192,7 @@ fn fractional_atomic_visual_agreement<S: LayoutScalar>(batch: &CompletedLayoutBa
 }
 
 fn fractional_atomic_top_preserves_normal_line<S: LayoutScalar>() {
-    let nominal = surgeist_text::Size::new(10.0, 10.4);
+    let nominal = surgeist_text::geometry::Size::new(10.0, 10.4);
     let paragraph = fractional_atomic_paragraph(nominal, false);
     for top in [0.0, 0.72] {
         let batch = fractional_atomic_layout::<S>(
@@ -238,7 +238,7 @@ fn fractional_atomic_top_preserves_normal_line<S: LayoutScalar>() {
 }
 
 fn fractional_atomic_left_preserves_following_text<S: LayoutScalar>() {
-    let nominal = surgeist_text::Size::new(10.4, 10.0);
+    let nominal = surgeist_text::geometry::Size::new(10.4, 10.0);
     let paragraph = fractional_atomic_paragraph(nominal, true);
     for left in [0.0, 0.32] {
         let batch = fractional_atomic_layout::<S>(

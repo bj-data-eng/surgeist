@@ -12,9 +12,13 @@ use crate::{
     engine::validation::{ValidationGraph, discover_graph},
 };
 use surgeist_text::{
-    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedControl,
-    CapturedEventPosition, CapturedScope, ComputedLineBoundaryInput, ContextualSourceInput,
-    ParagraphControlKind, ProcessedSource, SourceProcessingScope,
+    capture::{
+        CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedControl,
+        CapturedEventPosition, CapturedScope, ComputedLineBoundaryInput, ContextualSourceInput,
+        SourceProcessingScope,
+    },
+    paragraph::ParagraphControlKind,
+    processing::ProcessedSource,
 };
 
 /// A borrow of the actual host inventory before Text preparation exists.
@@ -123,7 +127,7 @@ struct SourceSnapshot<Node> {
     locations: Vec<EdgeLocation<Node, usize>>,
 }
 struct SourceInventory {
-    scopes: Vec<Option<surgeist_text::SourceProcessingScopeBoundaries>>,
+    scopes: Vec<Option<surgeist_text::capture::SourceProcessingScopeBoundaries>>,
     inline: Vec<bool>,
     controls: Vec<ParagraphControlKind>,
     origins: usize,
@@ -189,7 +193,7 @@ pub fn process_wrapping_source<Source: WrapEdgeSource>(
                 }
             }
             GeneratedBoxRef::Inline(InlineBoxRef::NativePair { start, end }) => {
-                let node = if location.side == surgeist_text::SourceBoxSide::Before {
+                let node = if location.side == surgeist_text::capture::SourceBoxSide::Before {
                     start
                 } else {
                     end
@@ -220,7 +224,7 @@ pub fn process_wrapping_source<Source: WrapEdgeSource>(
     // Keep caller causes, duplicates, and their actual request lineage. Text
     // alone normalizes identical targets into retained cause identities.
     let requests = input.computed_line_boundaries.clone();
-    let processed = surgeist_text::process_contextual_source(input).map_err(|cause| {
+    let processed = surgeist_text::capture::process_contextual_source(input).map_err(|cause| {
         crate::error::staging_text_error(
             crate::LayoutErrorSiteOf::Node(root),
             crate::LayoutOperation::TextCapture,
@@ -729,7 +733,7 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
             .find(|scope| {
                 scope.flow_events().is_some_and(|mut events| {
                     events.any(|event| {
-                        use surgeist_text::CapturedFlowEvent as E;
+                        use surgeist_text::capture::CapturedFlowEvent as E;
                         match event {
                             E::Origin {
                                 position: actual, ..
@@ -880,7 +884,7 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
         inventory: &CanonicalOrderInventory,
         native: &[CanonicalBox],
     ) -> Result<(), WrappingScopeError> {
-        use surgeist_text::SourceBoxSide;
+        use surgeist_text::capture::SourceBoxSide;
         for location in &self.snapshot.locations {
             if !location.effect.forced {
                 continue;
@@ -999,7 +1003,7 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
         self.validate_parent_paths(&inventory, &native)?;
         for association in &self.snapshot.associations {
             let scope = &self.scopes[association.scope];
-            if scope.role() != surgeist_text::ScopeRole::Inline {
+            if scope.role() != surgeist_text::capture::ScopeRole::Inline {
                 return Err(WrappingScopeError::NonInlineScope);
             }
             let positions = self

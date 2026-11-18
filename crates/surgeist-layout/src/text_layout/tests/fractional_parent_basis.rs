@@ -135,7 +135,7 @@ fn fractional_parent_premises<S: LayoutScalar>(
     let layout = placed[0].layout();
     assert_eq!(layout.source().text().code_units(), &[0x58]);
     assert_eq!(layout.lines().len(), 1);
-    assert_eq!(layout.lines()[0].range(), text::Range::new(0, 1));
+    assert_eq!(layout.lines()[0].range(), text::source::Range::new(0, 1));
     assert_eq!(layout.lines()[0].baseline(), 10.0);
     let mut glyph_count = 0;
     for run in layout.run_views() {
@@ -149,7 +149,7 @@ fn fractional_parent_premises<S: LayoutScalar>(
         );
         assert_eq!(run.face().index(), 0);
         assert_eq!(run.font_size(), 10.0);
-        assert_eq!(run.range(), text::Range::new(0, 1));
+        assert_eq!(run.range(), text::source::Range::new(0, 1));
         for glyph in run.glyphs() {
             assert_eq!((glyph.id(), glyph.advance()), (58, 10.0));
             glyph_count += 1;
@@ -165,12 +165,15 @@ fn fractional_parent_premises<S: LayoutScalar>(
     let issued = source.finalized_fragment();
     assert_eq!(
         issued.view().owner(),
-        text::FinalizedFragmentOwner::Origin(binding.origins[0].origin.clone())
+        text::finalized::FinalizedFragmentOwner::Origin(binding.origins[0].origin.clone())
     );
-    assert_eq!(issued.view().local_range(), Some(text::Range::new(0, 1)));
+    assert_eq!(
+        issued.view().local_range(),
+        Some(text::source::Range::new(0, 1))
+    );
     assert_eq!(
         issued.view().aggregate_range(),
-        Some(text::Range::new(0, 1))
+        Some(text::source::Range::new(0, 1))
     );
     // The real1px left float leaves49px. X10 + normal atomic10 fit beside it.
     assert_eq!(

@@ -6,61 +6,63 @@ use super::*;
 #[path = "composed_fonts.rs"]
 mod fonts;
 
-fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) {
+fn finalized(
+    source: text::source::Source,
+) -> (text::prepared::PreparedText, text::finalized::FinalizedLine) {
     let mut system = system(AHEM.to_vec());
-    let analyzed = text::AnalyzedSource::new(
+    let analyzed = text::analyzed::AnalyzedSource::new(
         source,
         style(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let termination = prepared
         .opportunity_views()
-        .find(|opportunity| opportunity.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|opportunity| opportunity.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let selected = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(termination),
+            termination: text::selection::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
             boundary_context: vec![],
             line_strut: None,
-            context: text::LineContext {
-                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
-                formatted_line: text::FormattedLineContext::default(),
-                orientation: text::LineOrientation::Horizontal,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::selection::LineBoxDirection::LeftToRight,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                orientation: text::selection::LineOrientation::Horizontal,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 // The external selector deliberately retains this overflowing
                 // line. Render cannot run a width-based paragraph wrapper.
                 available_inline: Some(5.0),
                 indent: 0.0,
-                alignment: text::Alignment::Left,
-                tabs: text::TabContext::NoTabs,
+                alignment: text::options::Alignment::Left,
+                tabs: text::tabs::TabContext::NoTabs,
 
-                spacing: text::SpacingPolicy::None,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap();
     let stats = system.stats();
     let line = selected
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 40.0);
@@ -71,30 +73,32 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
 }
 
 fn placed(
-    prepared: text::PreparedText,
-    line: text::FinalizedLine,
+    prepared: text::prepared::PreparedText,
+    line: text::finalized::FinalizedLine,
     x: f64,
     baseline: f64,
-) -> text::Layout {
-    text::Layout::from_finalized_lines(text::PlacementRequest {
+) -> text::layout::Layout {
+    text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: x,
-                baseline,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: x,
+                    baseline,
+                },
+                orientation: text::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap()
 }
 
 #[test]
 fn explicit_placement_keeps_selected_glyphs_and_fractional_outer_origin() {
-    let (prepared, line) = finalized(text::Source::new("AX"));
+    let (prepared, line) = finalized(text::source::Source::new("AX"));
     let x = 2.0_f64.powi(24) + 0.25;
     let baseline = 2.0_f64.powi(24) + 0.5;
     let input = placed(prepared.clone(), line.clone(), x, baseline);
@@ -107,7 +111,7 @@ fn explicit_placement_keeps_selected_glyphs_and_fractional_outer_origin() {
     .unwrap();
     assert!(std::ptr::eq(scene.layout(), &input));
     assert_eq!(input.lines().len(), 1);
-    assert_eq!(input.lines()[0].range(), text::Range::new(0, 2));
+    assert_eq!(input.lines()[0].range(), text::source::Range::new(0, 2));
     assert_eq!(input.lines()[0].baseline(), baseline);
     assert_eq!(scene.scene().commands.len(), 1);
     let (paint, transform) = outline(&scene.scene().commands[0]);
@@ -129,10 +133,13 @@ fn explicit_placement_keeps_selected_glyphs_and_fractional_outer_origin() {
         Some(Rect::try_new(0.0, -16.0, 40.0, 20.0).unwrap())
     );
     let cursor = input
-        .cursor(text::Cursor::new(1, text::Affinity::After))
+        .cursor(text::layout::Cursor::new(1, text::layout::Affinity::After))
         .unwrap()
         .rect();
-    assert_eq!(cursor.origin, text::Point::new(x + 20.0, baseline - 16.0));
+    assert_eq!(
+        cursor.origin,
+        text::geometry::Point::new(x + 20.0, baseline - 16.0)
+    );
     assert_eq!(cursor.size.height, 20.0);
 
     // Replacing only the physical anchor keeps the exact finalized owner and
@@ -152,7 +159,7 @@ fn explicit_placement_keeps_selected_glyphs_and_fractional_outer_origin() {
 
 #[test]
 fn placed_line_refuses_a_backend_transform_that_collapses_positive_ink() {
-    let (prepared, line) = finalized(text::Source::new("AX"));
+    let (prepared, line) = finalized(text::source::Source::new("AX"));
     let input = placed(prepared, line, 2.0_f64.powi(40), 2.0_f64.powi(40));
     // The logical Text placement is valid. At this magnitude the backend's
     // f32 affine collapses the actual 40x20 outline; it must refuse paint.
@@ -183,61 +190,61 @@ fn placed_line_refuses_a_backend_transform_that_collapses_positive_ink() {
 #[test]
 fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
     let mut system = system(AHEM.to_vec());
-    let analyzed = text::AnalyzedSource::new(
-        text::Source::new("A."),
-        text::Style {
-            hanging_punctuation: text::HangingPunctuation::new(
+    let analyzed = text::analyzed::AnalyzedSource::new(
+        text::source::Source::new("A."),
+        text::style::Style {
+            hanging_punctuation: text::style::HangingPunctuation::new(
                 false,
-                Some(text::HangingPunctuationEnd::ForceEnd),
+                Some(text::style::HangingPunctuationEnd::ForceEnd),
                 false,
             ),
             ..style()
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let ending = prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: ending.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(ending),
+            termination: text::selection::PreparedTermination::Ordinary(ending),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
             boundary_context: vec![],
             line_strut: None,
-            context: text::LineContext {
-                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
-                formatted_line: text::FormattedLineContext::new(Some(true), Some(true)),
-                orientation: text::LineOrientation::Horizontal,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                formatted_line: text::selection::FormattedLineContext::new(Some(true), Some(true)),
+                orientation: text::selection::LineOrientation::Horizontal,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(20.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     // Retained Ahem has A35/period16 with one-em advances. ForceEnd changes
@@ -248,8 +255,8 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
     let input = placed(prepared, line, 3.25, 41.5);
     assert_eq!(input.lines().len(), 1);
     assert_eq!(input.lines()[0].bounds().size.width, 20.0);
-    assert_eq!(input.lines()[0].range(), text::Range::new(0, 2));
-    assert_eq!(input.source().text(), &text::Text::from("A."));
+    assert_eq!(input.lines()[0].range(), text::source::Range::new(0, 2));
+    assert_eq!(input.source().text(), &text::source::Text::from("A."));
     let stats = system.stats();
     let scene = prepare_text_layout(
         &input,
@@ -271,7 +278,7 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
         ]
     );
     let caret = input
-        .cursor(text::Cursor::new(1, text::Affinity::After))
+        .cursor(text::layout::Cursor::new(1, text::layout::Affinity::After))
         .unwrap()
         .rect();
     assert_eq!(caret.origin.x, 23.25);
@@ -316,73 +323,73 @@ fn aggregate_placed_run_refusal_preserves_an_already_admitted_scene() {
 fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_substitution() {
     let bytes = fonts::mark_ahem();
     let mut system = system(bytes.clone());
-    let analyzed = text::AnalyzedSource::new(
-        text::Source::new("A\u{301}"),
-        text::Style {
+    let analyzed = text::analyzed::AnalyzedSource::new(
+        text::source::Source::new("A\u{301}"),
+        text::style::Style {
             size: 12.5,
-            line_height: text::LineHeight::Absolute(16.0),
+            line_height: text::style::LineHeight::Absolute(16.0),
             ..style()
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let termination = prepared
         .opportunity_views()
-        .find(|opportunity| opportunity.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|opportunity| opportunity.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let finalized = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(termination),
+            termination: text::selection::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
             boundary_context: vec![],
             line_strut: None,
-            context: text::LineContext {
-                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
-                formatted_line: text::FormattedLineContext::default(),
-                orientation: text::LineOrientation::Horizontal,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::selection::LineBoxDirection::LeftToRight,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                orientation: text::selection::LineOrientation::Horizontal,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(100.0),
                 indent: 0.0,
-                alignment: text::Alignment::Left,
-                tabs: text::TabContext::NoTabs,
+                alignment: text::options::Alignment::Left,
+                tabs: text::tabs::TabContext::NoTabs,
 
-                spacing: text::SpacingPolicy::None,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(finalized.feedback().advance, 12.5);
     let input = placed(prepared, finalized, 3.25, 41.5);
     assert_eq!(input.source().text().code_units(), &[0x41, 0x301]);
     assert_eq!(input.lines().len(), 1);
-    assert_eq!(input.lines()[0].range(), text::Range::new(0, 2));
+    assert_eq!(input.lines()[0].range(), text::source::Range::new(0, 2));
     assert_eq!(input.lines()[0].baseline(), 41.5);
     assert_eq!(input.lines()[0].bounds().size.width, 100.0);
     let mut runs = input.run_views();
     let run = runs.next().unwrap();
     assert!(runs.next().is_none());
-    assert_eq!(run.range(), text::Range::new(0, 2));
-    assert_eq!(run.origin(), text::Point::new(3.25, 41.5));
+    assert_eq!(run.range(), text::source::Range::new(0, 2));
+    assert_eq!(run.origin(), text::geometry::Point::new(3.25, 41.5));
     let instance = run.effective_instance().unwrap();
     assert!(instance.face().is_same_face(&run.face()));
     assert_eq!(instance.face().bytes(), bytes);

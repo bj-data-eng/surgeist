@@ -2,8 +2,11 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
-    HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
-    PreparedAlternativeDefinition, Range, Text,
+    hyphenation::{
+        HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
+    },
+    prepared::PreparedAlternativeDefinition,
+    source::{Range, Text},
 };
 
 fn paragraph(node: u32) -> PreparedParagraph {
@@ -113,7 +116,7 @@ fn assert_block<S: LayoutScalar>(
             assert!(ending.is_none());
             assert_eq!(
                 selected.request().context.end,
-                surgeist_text::LineEnd::Paragraph
+                surgeist_text::selection::LineEnd::Paragraph
             );
         }
     }

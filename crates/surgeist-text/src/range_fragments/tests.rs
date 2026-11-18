@@ -8,9 +8,12 @@ use crate::{
     layout::{Affinity, Layout},
     options::Alignment,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-        SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks, PlaintextItem,
+        contextual::{
+            ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+            SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+            WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         AtomicAllocation, AtomicLineAllocation, AtomicPlacement, ControlAllocation, FinalizedLine,
@@ -1068,7 +1071,7 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::processing::SourceProcessingTopology::Unknown,
+                topology: crate::processing::contextual::SourceProcessingTopology::Unknown,
                 used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(10.0),
@@ -1077,7 +1080,7 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::processing::SourceProcessingTopology::Unknown,
+                topology: crate::processing::contextual::SourceProcessingTopology::Unknown,
                 used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(20.0),

@@ -26,7 +26,7 @@ fn demanded_family_keeps_attached_mark_packet_and_the_childs_actual_source_membe
     let scope = control.scope();
     assert_eq!(
         scope.domain_topology(),
-        crate::processing::SourceProcessingTopology::Complete
+        crate::processing::contextual::SourceProcessingTopology::Complete
     );
     let owner = crate::protocol::InlineBoxSource::captured(scope);
     let base = p

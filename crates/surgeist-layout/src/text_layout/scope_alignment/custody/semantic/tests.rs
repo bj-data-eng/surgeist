@@ -6,30 +6,30 @@ use surgeist_text as text;
 const LIMITS: ScopeAlignmentLimits = ScopeAlignmentLimits::new(1_000_000, 100, 1_000_000, 16 << 20);
 
 fn captured(raw: &str) -> PreparedText {
-    use text::SourceProcessingEvent as E;
-    let source = text::Source::new(raw);
+    use text::capture::SourceProcessingEvent as E;
+    let source = text::source::Source::new(raw);
     let end = raw.encode_utf16().count();
     let style = crate::test_support::text::ahem_style(10.0, 10.0);
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, end),
-                aggregate: text::Range::new(0, end),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, end),
+                aggregate: text::source::Range::new(0, end),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             controls: vec![
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 0,
-                    kind: text::ParagraphControlKind::InlineBoundaryStart,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: end,
-                    kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
             ],
             connections: vec![],
@@ -38,33 +38,33 @@ fn captured(raw: &str) -> PreparedText {
             computed_line_boundaries: vec![],
             joint_flows: vec![],
             scope_alignment_limits: Some(LIMITS),
-            scopes: vec![text::SourceProcessingScope::Block {
-                topology: text::SourceProcessingTopology::Complete,
+            scopes: vec![text::capture::SourceProcessingScope::Block {
+                topology: text::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: text::ParagraphBaseDirection::LeftToRight,
+                used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
             }],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
                 E::EnterParagraph(0),
                 E::Control {
                     control: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Control {
                     control: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::ExitScope(0),
@@ -72,12 +72,13 @@ fn captured(raw: &str) -> PreparedText {
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
     let mut system = text::System::default();
     system
         .register_fonts(
@@ -87,7 +88,7 @@ fn captured(raw: &str) -> PreparedText {
         )
         .unwrap();
     system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap()
 }
 
@@ -127,7 +128,7 @@ fn funded(
         request
             .push_control(SemanticControlAllocation {
                 occurrence: view.handle(),
-                boundary: Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                boundary: Some(text::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
             })
             .unwrap();
     }
@@ -141,12 +142,15 @@ fn input(prepared: &PreparedText) -> ScopeAlignmentCensusInput<'_> {
 fn external_roots<const N: usize>(
     prepared: &PreparedText,
     roots: [&SemanticWindowEvidence; N],
-) -> text::ScopeAlignmentRetention {
+) -> text::scope_alignment::ScopeAlignmentRetention {
     let products = roots.map(ScopeAlignmentProduct::SemanticWindow);
-    text::scope_alignment_census(
+    text::scope_alignment::scope_alignment_census(
         input(prepared),
         ScopeAlignmentProducts::Mixed(&products),
-        text::ScopeAlignmentAllowance::new(LIMITS.records(), LIMITS.payload_bytes()),
+        text::scope_alignment::ScopeAlignmentAllowance::new(
+            LIMITS.records(),
+            LIMITS.payload_bytes(),
+        ),
     )
     .unwrap()
     .external_retention()
@@ -187,7 +191,7 @@ fn semantic_roots_are_strong_unique_per_observation_and_deduplicated_across_case
             0
         );
     }
-    let expected = text::scope_alignment_census(
+    let expected = text::scope_alignment::scope_alignment_census(
         input(&q),
         ScopeAlignmentProducts::Mixed(&[
             ScopeAlignmentProduct::Prepared(&p),
@@ -196,7 +200,10 @@ fn semantic_roots_are_strong_unique_per_observation_and_deduplicated_across_case
             ScopeAlignmentProduct::SemanticWindow(b.evidence()),
             ScopeAlignmentProduct::SemanticWindow(c.evidence()),
         ]),
-        text::ScopeAlignmentAllowance::new(LIMITS.records(), LIMITS.payload_bytes()),
+        text::scope_alignment::ScopeAlignmentAllowance::new(
+            LIMITS.records(),
+            LIMITS.payload_bytes(),
+        ),
     )
     .unwrap();
     let operation = trial.begin(input(&q), 2).unwrap().unwrap();
@@ -333,7 +340,7 @@ fn partial_record_seed_is_borrowed_input_and_never_new_materialization() {
             )
             .unwrap()
             .unwrap();
-        let allowance = text::ScopeAlignmentAllowance::new(
+        let allowance = text::scope_alignment::ScopeAlignmentAllowance::new(
             if seed_records {
                 operation.input.records
             } else {
@@ -347,7 +354,7 @@ fn partial_record_seed_is_borrowed_input_and_never_new_materialization() {
         let usage = failure.scope_alignment_usage().unwrap();
         assert_eq!(
             failure.input_retention(),
-            text::ScopeAlignmentRetention::default()
+            text::scope_alignment::ScopeAlignmentRetention::default()
         );
         assert_eq!(
             usage.records(),
@@ -397,7 +404,7 @@ fn request_capacity_refusal_preserves_funded_roots_and_later_valid_admission() {
 fn pure_native_semantic_observation_never_activates_scope_funding() {
     let p = crate::test_support::text::PreparedParagraph::plain(
         10,
-        text::Source::new("X"),
+        text::source::Source::new("X"),
         crate::test_support::text::ahem_style(10.0, 10.0),
     )
     .prepared;
@@ -444,7 +451,7 @@ fn entry_funding_requires_the_live_captured_owner_and_keeps_native_inactive() {
     use crate::text_layout::scope_alignment::EntryFunding;
     let native = crate::test_support::text::PreparedParagraph::plain(
         10,
-        text::Source::new("X"),
+        text::source::Source::new("X"),
         crate::test_support::text::ahem_style(10.0, 10.0),
     )
     .prepared;

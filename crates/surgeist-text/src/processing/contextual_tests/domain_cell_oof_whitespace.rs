@@ -13,8 +13,11 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ProcessedSource, SourceProcessingConnection, SourceProcessingEvent, SourceProcessingScope,
-        SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            SourceProcessingConnection, SourceProcessingEvent, SourceProcessingScope,
+            SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection,

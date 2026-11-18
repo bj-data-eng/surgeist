@@ -532,7 +532,7 @@ fn real_controls_and_inline_owner_from_another_domain_of_the_same_capture_refuse
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
     });
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     value.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),

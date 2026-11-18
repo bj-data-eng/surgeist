@@ -31,7 +31,10 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     let c = cs.captured_control().unwrap().scope();
     assert_eq!(c.parent(), Some(p.clone()));
     let domain = p.parent().unwrap();
-    assert_eq!(domain.role(), crate::processing::ScopeRole::Domain);
+    assert_eq!(
+        domain.role(),
+        crate::processing::contextual::ScopeRole::Domain
+    );
     assert_eq!(p.entry_control(), ps.captured_control());
     assert_eq!(p.exit_control(), pe.captured_control());
     assert_eq!(c.entry_control(), cs.captured_control());

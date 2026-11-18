@@ -1,3 +1,5 @@
+//! Incremental construction of a source.
+
 use crate::{
     Result,
     geometry::Size,

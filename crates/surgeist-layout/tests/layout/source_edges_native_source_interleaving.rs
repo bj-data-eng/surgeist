@@ -14,7 +14,7 @@ struct MixedHost<S: layout::LayoutScalar> {
 }
 impl<S: layout::LayoutScalar> MixedHost<S> {
     fn new(
-        side: text::SourceBoxSide,
+        side: text::capture::SourceBoxSide,
         empty: bool,
         direction: layout::Direction,
         reverse: bool,
@@ -37,8 +37,8 @@ impl<S: layout::LayoutScalar> MixedHost<S> {
         };
         let mut edge = layout::WrapEdges::AUTO;
         match side {
-            text::SourceBoxSide::Before => edge.before = layout::WrapEdge::Line,
-            text::SourceBoxSide::After => edge.after = layout::WrapEdge::Line,
+            text::capture::SourceBoxSide::Before => edge.before = layout::WrapEdge::Line,
+            text::capture::SourceBoxSide::After => edge.after = layout::WrapEdge::Line,
         }
         let mut declarations = vec![
             layout::SourceWrappingScopeInput {
@@ -58,8 +58,8 @@ impl<S: layout::LayoutScalar> MixedHost<S> {
         let mut inside = vec![child(inline(inner.clone()))];
         if empty {
             match side {
-                text::SourceBoxSide::Before => inside.insert(0, child(inline(e.clone()))),
-                text::SourceBoxSide::After => inside.push(child(inline(e.clone()))),
+                text::capture::SourceBoxSide::Before => inside.insert(0, child(inline(e.clone()))),
+                text::capture::SourceBoxSide::After => inside.push(child(inline(e.clone()))),
             }
         }
         let mut orders = vec![
@@ -175,27 +175,27 @@ impl<S: layout::LayoutScalar> layout::WrapEdgeSource for MixedHost<S> {
     }
 }
 fn mixed_input(
-    side: text::SourceBoxSide,
+    side: text::capture::SourceBoxSide,
     empty: bool,
     direction: layout::Direction,
-) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let base = if direction == layout::Direction::Ltr {
-        text::ParagraphBaseDirection::LeftToRight
+        text::paragraph::ParagraphBaseDirection::LeftToRight
     } else {
-        text::ParagraphBaseDirection::RightToLeft
+        text::paragraph::ParagraphBaseDirection::RightToLeft
     };
     let origin = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let start = |control| E::Control {
         control,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let end = |control| E::Control {
         control,
-        affinity: text::Affinity::Before,
+        affinity: text::layout::Affinity::Before,
     };
     let mut events = vec![
         E::EnterScope(0),
@@ -204,7 +204,7 @@ fn mixed_input(
         E::Connection(0),
         start(0),
     ];
-    if empty && side == text::SourceBoxSide::Before {
+    if empty && side == text::capture::SourceBoxSide::Before {
         events.extend([E::EnterScope(2), E::ExitScope(2)]);
     }
     events.extend([
@@ -214,7 +214,7 @@ fn mixed_input(
         end(2),
         E::ExitScope(1),
     ]);
-    if empty && side == text::SourceBoxSide::After {
+    if empty && side == text::capture::SourceBoxSide::After {
         events.extend([E::EnterScope(2), E::ExitScope(2)]);
     }
     events.extend([
@@ -225,30 +225,30 @@ fn mixed_input(
         E::ExitScope(0),
     ]);
     let mut scopes = vec![
-        text::SourceProcessingScope::Block {
+        text::capture::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: text::SourceProcessingTopology::Complete,
+            topology: text::capture::SourceProcessingTopology::Complete,
             trim: Default::default(),
-            base_style: text::Style {
-                wrap: text::Wrap::None,
-                hyphens: text::Hyphens::None,
-                ..text::Style::default()
+            base_style: text::style::Style {
+                wrap: text::style::Wrap::None,
+                hyphens: text::hyphenation::Hyphens::None,
+                ..text::style::Style::default()
             },
             used_direction: base,
         },
-        text::SourceProcessingScope::Inline {
+        text::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
             style: None,
-            boundaries: Some(text::SourceProcessingScopeBoundaries { start: 1, end: 2 }),
+            boundaries: Some(text::capture::SourceProcessingScopeBoundaries { start: 1, end: 2 }),
         },
     ];
     if empty {
-        scopes.push(text::SourceProcessingScope::Inline {
+        scopes.push(text::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
@@ -257,67 +257,75 @@ fn mixed_input(
             boundaries: None,
         });
     }
-    text::ContextualSourceInput {
+    text::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
-        source: text::Source::identified("PAQ", text::Id::from_u64(659100), 23),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: text::SourceProcessingEnvelope::Complete,
+        source: text::source::Source::identified("PAQ", text::source::Id::from_u64(659100), 23),
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: text::capture::SourceProcessingEnvelope::Complete,
         origins: ["P", "A", "Q"]
             .into_iter()
             .enumerate()
-            .map(|(i, s)| text::ParagraphOrigin {
+            .map(|(i, s)| text::paragraph::ParagraphOrigin {
                 text_node: None,
-                source: text::Source::identified(s, text::Id::from_u64(659101 + i as u64), 23),
-                local: text::Range::new(0, 1),
-                aggregate: text::Range::new(i, i + 1),
-                kind: text::ParagraphOriginKind::Authored,
+                source: text::source::Source::identified(
+                    s,
+                    text::source::Id::from_u64(659101 + i as u64),
+                    23,
+                ),
+                local: text::source::Range::new(0, 1),
+                aggregate: text::source::Range::new(i, i + 1),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
         connections: (0..2)
-            .map(|i| text::SourceProcessingConnection {
+            .map(|i| text::capture::SourceProcessingConnection {
                 before_origin: i,
                 after_origin: i + 1,
-                kind: text::ParagraphConnectionKind::Continuous,
+                kind: text::paragraph::ParagraphConnectionKind::Continuous,
             })
             .collect(),
         boundary_policies: (0..2)
-            .map(|i| text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(i),
-                preceding_wrap: text::Wrap::None,
-                following_wrap: text::Wrap::None,
-                ancestor_wrap: text::Wrap::None,
+            .map(|i| text::paragraph::ParagraphBoundaryPolicy {
+                definition: text::paragraph::ParagraphBoundaryDefinition::Connection(i),
+                preceding_wrap: text::style::Wrap::None,
+                following_wrap: text::style::Wrap::None,
+                ancestor_wrap: text::style::Wrap::None,
             })
             .collect(),
         controls: vec![
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 1,
-                kind: text::ParagraphControlKind::InlineBoundaryStart,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 1,
-                kind: text::ParagraphControlKind::InlineBoundaryStart,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 2,
-                kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 2,
-                kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
             },
         ],
         computed_line_boundaries: vec![],
         replacements: vec![],
         scopes,
-        paragraphs: vec![text::SourceProcessingParagraph {
+        paragraphs: vec![text::capture::SourceProcessingParagraph {
             base_direction: base,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
         }],
         events,
     }
 }
-fn qualify_capture(p: &text::ProcessedSource, side: text::SourceBoxSide, empty: bool) {
+fn qualify_capture(
+    p: &text::processing::ProcessedSource,
+    side: text::capture::SourceBoxSide,
+    empty: bool,
+) {
     let root = p.captured_scope(0).unwrap();
     let s = p.captured_scope(1).unwrap();
     let outer_start = p.captured_control(0).unwrap();
@@ -327,16 +335,24 @@ fn qualify_capture(p: &text::ProcessedSource, side: text::SourceBoxSide, empty: 
     for (control, expected_kind, expected_at) in [
         (
             &outer_start,
-            text::ParagraphControlKind::InlineBoundaryStart,
+            text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             1,
         ),
         (
             &inner_start,
-            text::ParagraphControlKind::InlineBoundaryStart,
+            text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             1,
         ),
-        (&inner_end, text::ParagraphControlKind::InlineBoundaryEnd, 2),
-        (&outer_end, text::ParagraphControlKind::InlineBoundaryEnd, 2),
+        (
+            &inner_end,
+            text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
+            2,
+        ),
+        (
+            &outer_end,
+            text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
+            2,
+        ),
     ] {
         assert_eq!(control.kind(), &expected_kind);
         assert_eq!(control.source_position().get(), expected_at);
@@ -360,49 +376,52 @@ fn qualify_capture(p: &text::ProcessedSource, side: text::SourceBoxSide, empty: 
         assert!(e.entry_control().is_none());
         assert!(e.exit_control().is_none());
         match side {
-            text::SourceBoxSide::Before => {
+            text::capture::SourceBoxSide::Before => {
                 assert!(outer_start.event_position() < e.enter_position());
                 assert!(e.exit_position() < s.enter_position());
             }
-            text::SourceBoxSide::After => {
+            text::capture::SourceBoxSide::After => {
                 assert!(s.exit_position() < e.enter_position());
                 assert!(e.exit_position() < outer_end.event_position());
             }
         }
     }
-    assert_eq!(p.source().id(), Some(text::Id::from_u64(659100)));
+    assert_eq!(p.source().id(), Some(text::source::Id::from_u64(659100)));
     assert_eq!(p.source().revision(), 23);
-    assert_eq!(p.source().text(), &text::Text::from("PAQ"));
+    assert_eq!(p.source().text(), &text::source::Text::from("PAQ"));
     assert_eq!(p.processed_text().code_units(), [0x50, 0x41, 0x51]);
 }
 fn mixed_force<S: layout::LayoutScalar>(empty: bool) {
     for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
-        for side in [text::SourceBoxSide::Before, text::SourceBoxSide::After] {
+        for side in [
+            text::capture::SourceBoxSide::Before,
+            text::capture::SourceBoxSide::After,
+        ] {
             // Text independently accepts both the original nested controls and
             // the exact effective semantic target, without a fabricated scope N.
             let mut direct = mixed_input(side, empty, direction);
             direct.computed_line_boundaries = vec![if empty {
-                text::ComputedLineBoundaryInput::Scope { scope: 1, side }
+                text::capture::ComputedLineBoundaryInput::Scope { scope: 1, side }
             } else {
-                text::ComputedLineBoundaryInput::Endpoint {
-                    control: if side == text::SourceBoxSide::Before {
+                text::capture::ComputedLineBoundaryInput::Endpoint {
+                    control: if side == text::capture::SourceBoxSide::Before {
                         0
                     } else {
                         3
                     },
                 }
             }];
-            let direct = text::process_contextual_source(direct).unwrap();
+            let direct = text::capture::process_contextual_source(direct).unwrap();
             qualify_capture(&direct, side, empty);
             let direct_expected = if empty {
-                text::CapturedComputedLineBoundaryTarget::Scope {
+                text::capture::CapturedComputedLineBoundaryTarget::Scope {
                     scope: direct.captured_scope(1).unwrap(),
                     side,
                 }
             } else {
-                text::CapturedComputedLineBoundaryTarget::Endpoint(
+                text::capture::CapturedComputedLineBoundaryTarget::Endpoint(
                     direct
-                        .captured_control(if side == text::SourceBoxSide::Before {
+                        .captured_control(if side == text::capture::SourceBoxSide::Before {
                             0
                         } else {
                             3
@@ -429,14 +448,14 @@ fn mixed_force<S: layout::LayoutScalar>(empty: bool) {
                 let cause = processed.captured_computed_line_boundary(0).unwrap();
                 assert!(processed.captured_computed_line_boundary(1).is_none());
                 let expected = if empty {
-                    text::CapturedComputedLineBoundaryTarget::Scope {
+                    text::capture::CapturedComputedLineBoundaryTarget::Scope {
                         scope: processed.captured_scope(1).unwrap(),
                         side,
                     }
                 } else {
-                    text::CapturedComputedLineBoundaryTarget::Endpoint(
+                    text::capture::CapturedComputedLineBoundaryTarget::Endpoint(
                         processed
-                            .captured_control(if side == text::SourceBoxSide::Before {
+                            .captured_control(if side == text::capture::SourceBoxSide::Before {
                                 0
                             } else {
                                 3
@@ -447,7 +466,7 @@ fn mixed_force<S: layout::LayoutScalar>(empty: bool) {
                 assert_eq!(cause.target(), expected);
                 assert_eq!(
                     cause.source_position().get(),
-                    if side == text::SourceBoxSide::Before {
+                    if side == text::capture::SourceBoxSide::Before {
                         1
                     } else {
                         2

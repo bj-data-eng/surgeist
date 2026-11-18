@@ -4,9 +4,9 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 
 fn two_atomics() -> PreparedParagraph {
-    let style = text::Style {
-        wrap: text::Wrap::Word,
-        white_space: text::WhiteSpace::Preserve,
+    let style = text::style::Style {
+        wrap: text::style::Wrap::Word,
+        white_space: text::style::WhiteSpace::Preserve,
         letter_spacing: 0.0,
         word_spacing: 0.0,
         ..ahem_style(10.0, 10.0)
@@ -15,11 +15,11 @@ fn two_atomics() -> PreparedParagraph {
         vec![
             ParagraphPart::Atomic {
                 node: 1,
-                size: text::Size::new(10.0, 10.0),
+                size: text::geometry::Size::new(10.0, 10.0),
             },
             ParagraphPart::Atomic {
                 node: 2,
-                size: text::Size::new(10.0, 10.0),
+                size: text::geometry::Size::new(10.0, 10.0),
             },
         ],
         style,
@@ -34,8 +34,14 @@ fn two_atomics() -> PreparedParagraph {
     let binding = p.binding(0);
     for (index, view) in views.iter().enumerate() {
         assert_eq!(view.source_position().get(), 0);
-        assert_eq!(view.original_box().kind(), text::InlineBoxKind::InFlow);
-        assert_eq!(view.original_box().size(), text::Size::new(10.0, 10.0));
+        assert_eq!(
+            view.original_box().kind(),
+            text::source::InlineBoxKind::InFlow
+        );
+        assert_eq!(
+            view.original_box().size(),
+            text::geometry::Size::new(10.0, 10.0)
+        );
         assert_eq!(
             binding.atomics[index].node,
             u32::try_from(index + 1).unwrap()
@@ -46,7 +52,7 @@ fn two_atomics() -> PreparedParagraph {
         prepared.participants().collect::<Vec<_>>(),
         views
             .iter()
-            .map(|view| text::PreparedParticipant::Atomic(view.handle()))
+            .map(|view| text::prepared::PreparedParticipant::Atomic(view.handle()))
             .collect::<Vec<_>>()
     );
     let middle = prepared
@@ -56,7 +62,7 @@ fn two_atomics() -> PreparedParagraph {
     let [offer] = middle.as_slice() else {
         panic!("one real middle atomic opportunity");
     };
-    assert_eq!(offer.kind(), text::PreparedBreakKind::Allowed);
+    assert_eq!(offer.kind(), text::prepared::PreparedBreakKind::Allowed);
     assert_eq!(offer.boundary().view().source_before().get(), 0);
     assert_eq!(offer.boundary().view().source_after().get(), 0);
     p
@@ -189,15 +195,15 @@ fn one_line<S: LayoutScalar>(
     for (index, (item, x)) in boxes.iter().zip(xs).enumerate() {
         assert_eq!(
             item.id(),
-            text::Id::from_u64(u64::try_from(index + 1).unwrap())
+            text::source::Id::from_u64(u64::try_from(index + 1).unwrap())
         );
-        assert_eq!(item.kind(), text::InlineBoxKind::InFlow);
+        assert_eq!(item.kind(), text::source::InlineBoxKind::InFlow);
         assert_eq!(
             item.line(),
             0,
             "both actual issued boxes, not a one-unit overflow fallback"
         );
-        assert_eq!(item.rect(), text::Rect::new(x, 0.0, 10.0, 10.0));
+        assert_eq!(item.rect(), text::geometry::Rect::new(x, 0.0, 10.0, 10.0));
     }
     for entries in [
         readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
@@ -254,11 +260,20 @@ fn zero_total_does_not_cancel_positive_indent<S: LayoutScalar>() {
     );
     let boxes = layout.inline_boxes();
     assert_eq!(boxes.len(), 2);
-    assert_eq!((boxes[0].id(), boxes[0].line()), (text::Id::from_u64(1), 0));
-    assert_eq!((boxes[1].id(), boxes[1].line()), (text::Id::from_u64(2), 1));
-    assert_eq!(boxes[0].rect(), text::Rect::new(10.0, 0.0, 10.0, 10.0));
+    assert_eq!(
+        (boxes[0].id(), boxes[0].line()),
+        (text::source::Id::from_u64(1), 0)
+    );
+    assert_eq!(
+        (boxes[1].id(), boxes[1].line()),
+        (text::source::Id::from_u64(2), 1)
+    );
+    assert_eq!(
+        boxes[0].rect(),
+        text::geometry::Rect::new(10.0, 0.0, 10.0, 10.0)
+    );
     assert_eq!(boxes[1].rect().origin.x, 0.0); // ordinary second line has no first-line indent.
-    assert_eq!(boxes[1].rect().size, text::Size::new(10.0, 10.0));
+    assert_eq!(boxes[1].rect().size, text::geometry::Size::new(10.0, 10.0));
     assert!(boxes[1].rect().origin.y > 0.0);
     assert!(
         layout

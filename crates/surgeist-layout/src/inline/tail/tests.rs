@@ -12,7 +12,7 @@ struct TrialProof {
     cursors: Vec<InlineSourceCursor>,
     bands: Vec<[f64; 4]>,
     advances: Vec<f64>,
-    endings: Vec<surgeist_text::LineEnd>,
+    endings: Vec<surgeist_text::selection::LineEnd>,
     admission: TailAdmission,
     frozen_frontier: bool,
 }
@@ -449,8 +449,8 @@ fn source_triangle_trial_reaches_and_fails_only_the_natural_tail_guard() {
         assert_eq!(
             trial.endings,
             [
-                surgeist_text::LineEnd::Soft,
-                surgeist_text::LineEnd::Paragraph
+                surgeist_text::selection::LineEnd::Soft,
+                surgeist_text::selection::LineEnd::Paragraph
             ]
         );
         assert_eq!(
@@ -653,7 +653,7 @@ fn actual_tail_walk_receipts_reject_count_terminal_prefix_frontier_and_domain_ch
     assert_eq!(terminal.selected_lines.len(), 2);
     assert_eq!(
         terminal.selected_lines.last().unwrap().ending,
-        surgeist_text::LineEnd::Forced
+        surgeist_text::selection::LineEnd::Forced
     );
     assert!(finish_trial(&terminal, entry, &reference.reference, outcome).is_none());
 }

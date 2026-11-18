@@ -932,8 +932,8 @@ fn reorder(
         .checked_mul(passes * 4 + 3)
         .ok_or_else(|| {
             crate::engine::scope_alignment::refusal(
-                crate::processing::ScopeAlignmentError::Overflow {
-                    kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                crate::processing::contextual::ScopeAlignmentError::Overflow {
+                    kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                 },
             )
         })?;
@@ -1091,7 +1091,7 @@ pub(crate) fn order_presentation(
     } else {
         if ledger.is_none() {
             return Err(crate::engine::scope_alignment::refusal(
-                crate::processing::ScopeAlignmentError::LimitsRequired,
+                crate::processing::contextual::ScopeAlignmentError::LimitsRequired,
             ));
         }
         ledger

@@ -470,7 +470,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         assert_eq!(semantic(&changed, &host), accepted);
         host.change(1, |input| {
             input.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
-                t::BidiLevel::try_new(0).unwrap(),
+                t::supplied_line::BidiLevel::try_new(0).unwrap(),
                 l::InlineBreakOpportunity::Allowed,
             ))
         });

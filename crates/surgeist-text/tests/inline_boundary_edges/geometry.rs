@@ -1,39 +1,47 @@
 //! Independent native endpoint contributions and consumed joining context.
 use super::*;
 
-fn block(mut base: t::Style, rtl: bool, break_all: bool) -> t::SourceProcessingScope {
+fn block(
+    mut base: t::style::Style,
+    rtl: bool,
+    break_all: bool,
+) -> t::capture::SourceProcessingScope {
     if break_all {
-        base.word_break = t::WordBreak::BreakAll;
+        base.word_break = t::style::WordBreak::BreakAll;
     }
-    t::SourceProcessingScope::Block {
+    t::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: t::SourceProcessingTopology::Complete,
-        trim: t::WhiteSpaceTrim::default(),
+        topology: t::capture::SourceProcessingTopology::Complete,
+        trim: t::capture::WhiteSpaceTrim::default(),
         base_style: base,
         used_direction: if rtl {
-            t::ParagraphBaseDirection::RightToLeft
+            t::paragraph::ParagraphBaseDirection::RightToLeft
         } else {
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         },
     }
 }
 
-fn context(p: &t::PreparedText, index: usize, width: f64) -> t::InlineBoundaryContextAllocation {
-    t::InlineBoundaryContextAllocation {
+fn context(
+    p: &t::prepared::PreparedText,
+    index: usize,
+    width: f64,
+) -> t::allocation::InlineBoundaryContextAllocation {
+    t::allocation::InlineBoundaryContextAllocation {
         occurrence: p.control_views().nth(index).unwrap().handle(),
-        boundary: t::InlineBoundaryAllocation::contribution(width).unwrap(),
+        boundary: t::allocation::InlineBoundaryAllocation::contribution(width).unwrap(),
     }
 }
 
 fn request(
-    p: &t::PreparedText,
-    start: t::PreparedBoundary,
-    end: t::PreparedOpportunity,
+    p: &t::prepared::PreparedText,
+    start: t::prepared::PreparedBoundary,
+    end: t::prepared::PreparedOpportunity,
     facts: &[(usize, f64)],
     width: f64,
-) -> t::LineSelectionRequest {
+) -> t::selection::LineSelectionRequest {
     let boundary = end.view().boundary();
     let from = start.view().participant_offset();
     let to = boundary.view().participant_offset();
@@ -45,27 +53,26 @@ fn request(
     let controls = participants
         .iter()
         .filter_map(|part| match part {
-            t::PreparedParticipant::Control(occurrence) => {
+            t::prepared::PreparedParticipant::Control(occurrence) => {
                 let index = control_indices(p, std::iter::once(occurrence.clone()))[0];
-                Some(t::ControlAllocation {
+                Some(t::allocation::ControlAllocation {
                     occurrence: occurrence.clone(),
                     strut: None,
-                    boundary: facts
-                        .iter()
-                        .find(|fact| fact.0 == index)
-                        .map(|fact| t::InlineBoundaryAllocation::contribution(fact.1).unwrap()),
+                    boundary: facts.iter().find(|fact| fact.0 == index).map(|fact| {
+                        t::allocation::InlineBoundaryAllocation::contribution(fact.1).unwrap()
+                    }),
                 })
             }
             _ => None,
         })
         .collect();
-    t::LineSelectionRequest {
+    t::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
         participants,
-        termination: t::PreparedTermination::Ordinary(end.clone()),
+        termination: t::selection::PreparedTermination::Ordinary(end.clone()),
         alternative: None,
         incoming: None,
         atomics: vec![],
@@ -73,40 +80,46 @@ fn request(
         boundary_context: vec![],
         line_box_struts: Vec::new(),
         line_strut: None,
-        context: t::LineContext {
-            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-            formatted_line: surgeist_text::FormattedLineContext::default(),
-            base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
-                t::ParagraphBaseDirection::RightToLeft
+        context: t::selection::LineContext {
+            alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+            formatted_line: surgeist_text::selection::FormattedLineContext::default(),
+            base_direction: if p.analyzed_source().direction() == t::style::Direction::RightToLeft {
+                t::paragraph::ParagraphBaseDirection::RightToLeft
             } else {
-                t::ParagraphBaseDirection::LeftToRight
+                t::paragraph::ParagraphBaseDirection::LeftToRight
             },
-            line_box_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
-                surgeist_text::LineBoxDirection::RightToLeft
+            line_box_direction: if p.analyzed_source().direction()
+                == t::style::Direction::RightToLeft
+            {
+                surgeist_text::selection::LineBoxDirection::RightToLeft
             } else {
-                surgeist_text::LineBoxDirection::LeftToRight
+                surgeist_text::selection::LineBoxDirection::LeftToRight
             },
-            orientation: t::LineOrientation::Horizontal,
+            orientation: t::selection::LineOrientation::Horizontal,
             start: if from == 0 {
-                t::LineStart::Paragraph
+                t::selection::LineStart::Paragraph
             } else {
-                t::LineStart::Continuation
+                t::selection::LineStart::Continuation
             },
             end: match end.view().kind() {
-                t::PreparedBreakKind::Forced => t::LineEnd::Forced,
-                t::PreparedBreakKind::ParagraphEnd => t::LineEnd::Paragraph,
-                _ => t::LineEnd::Soft,
+                t::prepared::PreparedBreakKind::Forced => t::selection::LineEnd::Forced,
+                t::prepared::PreparedBreakKind::ParagraphEnd => t::selection::LineEnd::Paragraph,
+                _ => t::selection::LineEnd::Soft,
             },
             available_inline: Some(width),
             indent: 0.0,
-            alignment: t::Alignment::Start,
-            tabs: t::TabContext::NoTabs,
-            spacing: t::SpacingPolicy::Spaces,
+            alignment: t::options::Alignment::Start,
+            tabs: t::tabs::TabContext::NoTabs,
+            spacing: t::spacing::SpacingPolicy::Spaces,
         },
     }
 }
 
-fn answer(p: &t::PreparedText, request: &mut t::LineSelectionRequest, facts: &[(usize, f64)]) {
+fn answer(
+    p: &t::prepared::PreparedText,
+    request: &mut t::selection::LineSelectionRequest,
+    facts: &[(usize, f64)],
+) {
     while let Some(occurrence) = p.boundary_context_demand(request).unwrap() {
         let index = control_indices(p, std::iter::once(occurrence.clone()))[0];
         let width = facts
@@ -116,24 +129,27 @@ fn answer(p: &t::PreparedText, request: &mut t::LineSelectionRequest, facts: &[(
             .1;
         request
             .boundary_context
-            .push(t::InlineBoundaryContextAllocation {
+            .push(t::allocation::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: t::InlineBoundaryAllocation::contribution(width).unwrap(),
+                boundary: t::allocation::InlineBoundaryAllocation::contribution(width).unwrap(),
             });
     }
 }
 
-fn finalize(p: &t::PreparedText, request: t::LineSelectionRequest) -> t::FinalizedLine {
+fn finalize(
+    p: &t::prepared::PreparedText,
+    request: t::selection::LineSelectionRequest,
+) -> t::finalized::FinalizedLine {
     p.select(request)
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
 
-fn ids(line: &t::FinalizedLine) -> Vec<(t::Range, u32)> {
+fn ids(line: &t::finalized::FinalizedLine) -> Vec<(t::source::Range, u32)> {
     let mut ids = line
         .run_views()
         .flat_map(|run| {
@@ -146,7 +162,7 @@ fn ids(line: &t::FinalizedLine) -> Vec<(t::Range, u32)> {
     ids
 }
 
-fn measures(line: &t::FinalizedLine) -> [f64; 5] {
+fn measures(line: &t::finalized::FinalizedLine) -> [f64; 5] {
     let values = line.measurements();
     [
         line.feedback().advance,
@@ -160,8 +176,8 @@ fn measures(line: &t::FinalizedLine) -> [f64; 5] {
 #[test]
 fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geometry() {
     let p = prepare_capture(
-        t::Source::new("X \nY"),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::new("X \nY"),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 2), (2, 4)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 2)],
         &[(0, 1)],
@@ -178,7 +194,7 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
     );
     let forced = p
         .opportunity_views()
-        .find(|offer| offer.kind() == t::PreparedBreakKind::Forced)
+        .find(|offer| offer.kind() == t::prepared::PreparedBreakKind::Forced)
         .unwrap()
         .handle();
     let start = p.boundary_views().next().unwrap().handle();
@@ -209,7 +225,9 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
     );
     let fragment = positive
         .fragment_views()
-        .find(|fragment| fragment.owner() == t::FinalizedFragmentOwner::Control(end.clone()))
+        .find(|fragment| {
+            fragment.owner() == t::finalized::FinalizedFragmentOwner::Control(end.clone())
+        })
         .unwrap();
     assert_eq!(fragment.bounds().unwrap().size.width, 5.0);
     assert!(
@@ -222,33 +240,33 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
     answer(&p, &mut last, &[(0, 0.0), (1, 5.0)]);
     let last = finalize(&p, last);
     let owner = p.origin_views().next().unwrap().handle();
-    let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
+    let layout = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: p.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
         entries: vec![
-            t::PlacementEntry::Formatted(t::LinePlacement {
+            t::placement::PlacementEntry::Formatted(t::placement::LinePlacement {
                 line: positive,
-                anchor: t::LineAnchor {
+                anchor: t::placement::LineAnchor {
                     inline_origin: 0.0,
                     baseline: 8.0,
                 },
-                orientation: t::LineOrientation::Horizontal,
+                orientation: t::selection::LineOrientation::Horizontal,
                 atomics: vec![],
             }),
-            t::PlacementEntry::Formatted(t::LinePlacement {
+            t::placement::PlacementEntry::Formatted(t::placement::LinePlacement {
                 line: last,
-                anchor: t::LineAnchor {
+                anchor: t::placement::LineAnchor {
                     inline_origin: 0.0,
                     baseline: 18.0,
                 },
-                orientation: t::LineOrientation::Horizontal,
+                orientation: t::selection::LineOrientation::Horizontal,
                 atomics: vec![],
             }),
         ],
     })
     .unwrap();
     let units = layout
-        .source_range_fragments(&owner, t::Range::new(1, 2))
+        .source_range_fragments(&owner, t::source::Range::new(1, 2))
         .unwrap();
     assert_eq!(
         units
@@ -256,7 +274,7 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
             .flat_map(|unit| unit
                 .pieces()
                 .map(|piece| {
-                    let t::SourceRangeGeometry::Line(piece) = piece else {
+                    let t::range_fragments::SourceRangeGeometry::Line(piece) = piece else {
                         panic!("ordinary Range fixture must retain Line geometry");
                     };
                     piece.advance_edges()
@@ -265,10 +283,10 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
             .collect::<Vec<_>>(),
         [(10.0, 20.0)]
     );
-    let t::Hit::Text(left) = layout.hit(t::Point::new(21.0, 5.0)) else {
+    let t::layout::Hit::Text(left) = layout.hit(t::geometry::Point::new(21.0, 5.0)) else {
         panic!("endpoint interval admits an actual placed position")
     };
-    let t::Hit::Text(right) = layout.hit(t::Point::new(24.0, 5.0)) else {
+    let t::layout::Hit::Text(right) = layout.hit(t::geometry::Point::new(24.0, 5.0)) else {
         panic!("endpoint's other side admits an actual placed position")
     };
     assert_eq!(
@@ -292,11 +310,13 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
     );
     let before = layout
         .positions()
-        .find(|position| position.source_cursor() == t::Cursor::new(0, t::Affinity::After))
+        .find(|position| {
+            position.source_cursor() == t::layout::Cursor::new(0, t::layout::Affinity::After)
+        })
         .unwrap();
     let mixed = layout.position_selection(&before, &right).unwrap();
-    assert_eq!(mixed.source_text(), &t::Text::from("X "));
-    assert_eq!(mixed.plaintext(), &t::Text::from("X "));
+    assert_eq!(mixed.source_text(), &t::source::Text::from("X "));
+    assert_eq!(mixed.plaintext(), &t::source::Text::from("X "));
     assert_eq!(
         mixed
             .geometry()
@@ -314,21 +334,30 @@ fn a_positive_edge_splits_real_joint_shaping_but_not_an_indivisible_grapheme() {
     for (value, expected_positive, expected_zero, raw_zero) in [
         (
             "AA",
-            vec![(t::Range::new(0, 1), 35), (t::Range::new(1, 2), 35)],
-            vec![(t::Range::new(0, 2), 58)],
+            vec![
+                (t::source::Range::new(0, 1), 35),
+                (t::source::Range::new(1, 2), 35),
+            ],
+            vec![(t::source::Range::new(0, 2), 58)],
             10.0,
         ),
         (
             "A\u{301}B",
-            vec![(t::Range::new(0, 2), 58), (t::Range::new(2, 3), 36)],
-            vec![(t::Range::new(0, 2), 58), (t::Range::new(2, 3), 36)],
+            vec![
+                (t::source::Range::new(0, 2), 58),
+                (t::source::Range::new(2, 3), 36),
+            ],
+            vec![
+                (t::source::Range::new(0, 2), 58),
+                (t::source::Range::new(2, 3), 36),
+            ],
             20.0,
         ),
     ] {
         let len = value.encode_utf16().count();
         let p = prepare_capture(
-            t::Source::new(value),
-            block(style(t::WhiteSpace::Preserve), false, false),
+            t::source::Source::new(value),
+            block(style(t::style::WhiteSpace::Preserve), false, false),
             &[(0, 1), (1, len)],
             &[(K::InlineBoundaryStart, 1), (K::InlineBoundaryEnd, len)],
             &[(0, 1)],
@@ -363,7 +392,7 @@ fn a_positive_edge_splits_real_joint_shaping_but_not_an_indivisible_grapheme() {
         assert_eq!(zero.feedback().advance, raw_zero);
         assert_eq!(positive.feedback().advance, 25.0);
         if len == 3 {
-            let pens = |line: &t::FinalizedLine| {
+            let pens = |line: &t::finalized::FinalizedLine| {
                 line.run_views()
                     .flat_map(|run| {
                         run.glyphs()
@@ -388,14 +417,14 @@ fn consumed_off_line_endpoint_context_changes_joining_without_allocating_its_wid
     for rtl in [false, true] {
         for first_size in [10.0, 20.0] {
             let bytes = font::arabic();
-            let mut source = t::Source::new("\u{628}\u{628}\u{628}");
-            let mut first_style = style(t::WhiteSpace::Preserve);
-            first_style.word_break = t::WordBreak::BreakAll;
+            let mut source = t::source::Source::new("\u{628}\u{628}\u{628}");
+            let mut first_style = style(t::style::WhiteSpace::Preserve);
+            first_style.word_break = t::style::WordBreak::BreakAll;
             first_style.size = first_size;
-            source.span(t::Range::new(0, 1), first_style);
+            source.span(t::source::Range::new(0, 1), first_style);
             let p = prepare_capture(
                 source,
-                block(style(t::WhiteSpace::Preserve), rtl, true),
+                block(style(t::style::WhiteSpace::Preserve), rtl, true),
                 &[(0, 1), (1, 2), (2, 3)],
                 &[(K::InlineBoundaryStart, 1), (K::InlineBoundaryEnd, 2)],
                 &[(0, 1)],
@@ -434,12 +463,12 @@ fn consumed_off_line_endpoint_context_changes_joining_without_allocating_its_wid
                     .is_none()
             );
             let positive = finalize(&p, positive_request.clone());
-            assert_eq!(ids(&positive), [(t::Range::new(0, 1), 35)]);
+            assert_eq!(ids(&positive), [(t::source::Range::new(0, 1), 35)]);
             assert_eq!(positive.feedback().advance, f64::from(first_size));
             assert_eq!(positive.control_slots().count(), 0);
             assert!(positive.fragment_views().all(|fragment| !matches!(
                 fragment.owner(),
-                t::FinalizedFragmentOwner::Control(_)
+                t::finalized::FinalizedFragmentOwner::Control(_)
             )));
             let mut zero_request = base.clone();
             zero_request.boundary_context.push(context(&p, 0, 0.0));
@@ -451,13 +480,13 @@ fn consumed_off_line_endpoint_context_changes_joining_without_allocating_its_wid
             assert!(matches!(
                 error.detail(),
                 Some(t::ErrorDetail::InvalidTextProtocol {
-                    reason: t::ProtocolError::MissingBoundaryContext { occurrence: 1 }
+                    reason: t::prepared::ProtocolError::MissingBoundaryContext { occurrence: 1 }
                 })
             ));
             zero_request.boundary_context.push(context(&p, 1, 0.0));
             assert!(p.boundary_context_demand(&zero_request).unwrap().is_none());
             let zero = finalize(&p, zero_request);
-            assert_eq!(ids(&zero), [(t::Range::new(0, 1), 100)]);
+            assert_eq!(ids(&zero), [(t::source::Range::new(0, 1), 100)]);
             assert_eq!(zero.feedback().advance, f64::from(first_size));
             // Actual canonical sizes distinguish the instances; neither side is
             // a metric-only attestation. Both execute the same qualified font face.
@@ -484,7 +513,10 @@ fn consumed_off_line_endpoint_context_changes_joining_without_allocating_its_wid
                 let receiving = finalize(&p, receiving);
                 assert_eq!(
                     ids(&receiving),
-                    [(t::Range::new(1, 2), first_form), (t::Range::new(2, 3), 82)]
+                    [
+                        (t::source::Range::new(1, 2), first_form),
+                        (t::source::Range::new(2, 3), 82)
+                    ]
                 );
                 assert_eq!(receiving.feedback().advance, 20.0 + edge);
                 let opening = receiving
@@ -508,7 +540,7 @@ fn consumed_off_line_endpoint_context_changes_joining_without_allocating_its_wid
             assert!(matches!(
                 p.select(surplus).unwrap_err().detail(),
                 Some(t::ErrorDetail::InvalidTextProtocol {
-                    reason: t::ProtocolError::UnexpectedBoundaryContext { occurrence: 1 }
+                    reason: t::prepared::ProtocolError::UnexpectedBoundaryContext { occurrence: 1 }
                 })
             ));
             let mut duplicate = positive_request;
@@ -516,11 +548,11 @@ fn consumed_off_line_endpoint_context_changes_joining_without_allocating_its_wid
             assert!(matches!(
                 p.select(duplicate).unwrap_err().detail(),
                 Some(t::ErrorDetail::InvalidTextProtocol {
-                    reason: t::ProtocolError::DuplicateBoundaryContext { occurrence: 0 }
+                    reason: t::prepared::ProtocolError::DuplicateBoundaryContext { occurrence: 0 }
                 })
             ));
-            assert_eq!(ids(&zero), [(t::Range::new(0, 1), 100)]);
-            assert_eq!(ids(&positive), [(t::Range::new(0, 1), 35)]);
+            assert_eq!(ids(&zero), [(t::source::Range::new(0, 1), 100)]);
+            assert_eq!(ids(&positive), [(t::source::Range::new(0, 1), 35)]);
         }
     }
 }
@@ -532,11 +564,12 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
     let value = "\u{628}\u{628}\u{ad}\u{628}\u{628}\u{628}";
     let bytes = font::arabic();
     for indication in ["", "\u{628}"] {
-        let mut base = style(t::WhiteSpace::Preserve);
-        base.hyphens = t::Hyphens::Manual;
-        base.hyphenate_character = t::HyphenateCharacter::String(t::Text::from(indication));
+        let mut base = style(t::style::WhiteSpace::Preserve);
+        base.hyphens = t::hyphenation::Hyphens::Manual;
+        base.hyphenate_character =
+            t::hyphenation::HyphenateCharacter::String(t::source::Text::from(indication));
         let p = prepare_capture(
-            t::Source::new(value),
+            t::source::Source::new(value),
             block(base, false, false),
             &[(0, 3), (3, 4), (4, 6)],
             &[(K::InlineBoundaryStart, 3), (K::InlineBoundaryEnd, 4)],
@@ -557,14 +590,20 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
         let end = p
             .opportunity_views()
             .find(|offer| {
-                offer.kind() == t::PreparedBreakKind::Discretionary
+                offer.kind() == t::prepared::PreparedBreakKind::Discretionary
                     && offer.boundary().view().source_after().get() == 3
             })
             .expect("actual source SHY has an admitted indication")
             .handle();
         let alternative = end.view().alternatives().next().unwrap().handle();
-        assert_eq!(alternative.view().text(), &t::Text::from(indication));
-        assert_eq!(alternative.view().source_range(), Some(t::Range::new(2, 3)));
+        assert_eq!(
+            alternative.view().text(),
+            &t::source::Text::from(indication)
+        );
+        assert_eq!(
+            alternative.view().source_range(),
+            Some(t::source::Range::new(2, 3))
+        );
         let mut zero_request = request(
             &p,
             p.boundary_views().next().unwrap().handle(),
@@ -587,7 +626,7 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
         assert!(positive_request.controls.is_empty());
         let zero = finalize(&p, zero_request);
         let positive = finalize(&p, positive_request);
-        let originals = |line: &t::FinalizedLine| {
+        let originals = |line: &t::finalized::FinalizedLine| {
             ids(line)
                 .into_iter()
                 .filter(|row| !row.0.is_empty())
@@ -595,13 +634,19 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
         };
         assert_eq!(
             originals(&zero),
-            [(t::Range::new(0, 1), 100), (t::Range::new(1, 2), 277)]
+            [
+                (t::source::Range::new(0, 1), 100),
+                (t::source::Range::new(1, 2), 277)
+            ]
         );
         assert_eq!(
             originals(&positive),
-            [(t::Range::new(0, 1), 100), (t::Range::new(1, 2), 82)]
+            [
+                (t::source::Range::new(0, 1), 100),
+                (t::source::Range::new(1, 2), 82)
+            ]
         );
-        let computed = |line: &t::FinalizedLine| {
+        let computed = |line: &t::finalized::FinalizedLine| {
             ids(line)
                 .into_iter()
                 .filter(|row| row.0.is_empty())
@@ -610,7 +655,7 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
         let expected = if indication.is_empty() {
             vec![]
         } else {
-            vec![(t::Range::new(3, 3), 82)]
+            vec![(t::source::Range::new(3, 3), 82)]
         };
         // Computed joining sees only the selected presentation; it never
         // borrows the unselected original letters after this line.
@@ -630,10 +675,16 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
         answer(&p, &mut receiving, &[(0, 5.0), (1, 0.0)]);
         let receiving = finalize(&p, receiving);
         assert_eq!(receiving.feedback().advance, 35.0);
-        assert_eq!(p.analyzed_source().source().text(), &t::Text::from(value));
+        assert_eq!(
+            p.analyzed_source().source().text(),
+            &t::source::Text::from(value)
+        );
         assert_eq!(
             originals(&zero),
-            [(t::Range::new(0, 1), 100), (t::Range::new(1, 2), 277)]
+            [
+                (t::source::Range::new(0, 1), 100),
+                (t::source::Range::new(1, 2), 277)
+            ]
         );
     }
 }
@@ -641,20 +692,20 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
 #[test]
 fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
     assert_eq!(
-        t::InlineBoundaryAllocation::contribution(-0.0)
+        t::allocation::InlineBoundaryAllocation::contribution(-0.0)
             .unwrap()
             .advance()
             .to_bits(),
         0.0_f64.to_bits()
     );
     for (value, category) in [
-        (-1.0, t::TextNumericError::OutOfRange),
-        (f64::INFINITY, t::TextNumericError::NonFinite),
-        (f64::NAN, t::TextNumericError::NonFinite),
+        (-1.0, t::geometry::TextNumericError::OutOfRange),
+        (f64::INFINITY, t::geometry::TextNumericError::NonFinite),
+        (f64::NAN, t::geometry::TextNumericError::NonFinite),
     ] {
-        let error = t::InlineBoundaryAllocation::contribution(value).unwrap_err();
+        let error = t::allocation::InlineBoundaryAllocation::contribution(value).unwrap_err();
         assert!(
-            matches!(error.detail(), Some(t::ErrorDetail::InvalidTextNumeric { phase: t::TextNumericPhase::Selection, category: actual, .. }) if *actual == category)
+            matches!(error.detail(), Some(t::ErrorDetail::InvalidTextNumeric { phase: t::geometry::TextNumericPhase::Selection, category: actual, .. }) if *actual == category)
         );
     }
     let p = closing("X Y");
@@ -672,7 +723,7 @@ fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
     assert!(matches!(
         p.select(absent).unwrap_err().detail(),
         Some(t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::MissingControlBoundaryGeometry { occurrence: 0 }
+            reason: t::prepared::ProtocolError::MissingControlBoundaryGeometry { occurrence: 0 }
         })
     ));
     let mut overlap = complete;
@@ -680,7 +731,7 @@ fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
     assert!(matches!(
         p.select(overlap).unwrap_err().detail(),
         Some(t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::DuplicateBoundaryContext { occurrence: 0 }
+            reason: t::prepared::ProtocolError::DuplicateBoundaryContext { occurrence: 0 }
         })
     ));
     let foreign = closing("X Y");
@@ -692,7 +743,7 @@ fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
     assert!(matches!(
         p.select(foreign_request).unwrap_err().detail(),
         Some(t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::ForeignPreparation { .. }
+            reason: t::prepared::ProtocolError::ForeignPreparation { .. }
         })
     ));
     assert_eq!(good.feedback().advance, 35.0);
@@ -702,20 +753,20 @@ fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
 fn an_incoming_after_indication_stays_on_its_authentic_side_of_the_opening_edge() {
     let bytes = font::arabic();
     let value = "\u{628}\u{628}\u{ad}\u{628}\u{628}\u{628}";
-    let mut base = style(t::WhiteSpace::Preserve);
-    base.hyphens = t::Hyphens::Manual;
+    let mut base = style(t::style::WhiteSpace::Preserve);
+    base.hyphens = t::hyphenation::Hyphens::Manual;
     base.locale = Some("und-Arab".into());
     base.native_hyphenation_convention = Some(
-        t::NativeHyphenationConvention::language_script(
+        t::hyphenation::NativeHyphenationConvention::language_script(
             "und-Arab",
             "Arab",
-            t::Text::from("\u{628}"),
-            t::HyphenationPlacement::LogicalAfter,
+            t::source::Text::from("\u{628}"),
+            t::hyphenation::HyphenationPlacement::LogicalAfter,
         )
         .unwrap(),
     );
     let p = prepare_capture(
-        t::Source::new(value),
+        t::source::Source::new(value),
         block(base, false, false),
         &[(0, 3), (3, 4), (4, 6)],
         &[(K::InlineBoundaryStart, 3), (K::InlineBoundaryEnd, 4)],
@@ -735,7 +786,7 @@ fn an_incoming_after_indication_stays_on_its_authentic_side_of_the_opening_edge(
     );
     let ending = p
         .opportunity_views()
-        .find(|offer| offer.kind() == t::PreparedBreakKind::Discretionary)
+        .find(|offer| offer.kind() == t::prepared::PreparedBreakKind::Discretionary)
         .unwrap()
         .handle();
     let alternative = ending.view().alternatives().next().unwrap().handle();
@@ -774,10 +825,10 @@ fn an_incoming_after_indication_stays_on_its_authentic_side_of_the_opening_edge(
         assert_eq!(
             ids(&receiving),
             [
-                (t::Range::new(3, 3), computed),
-                (t::Range::new(3, 4), first_original),
-                (t::Range::new(4, 5), 277),
-                (t::Range::new(5, 6), 82),
+                (t::source::Range::new(3, 3), computed),
+                (t::source::Range::new(3, 4), first_original),
+                (t::source::Range::new(4, 5), 277),
+                (t::source::Range::new(5, 6), 82),
             ]
         );
         assert_eq!(receiving.feedback().advance, receiving_raw);
@@ -790,7 +841,8 @@ fn an_incoming_after_indication_stays_on_its_authentic_side_of_the_opening_edge(
         if edge > 0.0 {
             for run in receiving.run_views() {
                 for glyph in run.glyphs().filter(|glyph| {
-                    glyph.range() == t::Range::new(3, 3) || glyph.range() == t::Range::new(3, 4)
+                    glyph.range() == t::source::Range::new(3, 3)
+                        || glyph.range() == t::source::Range::new(3, 4)
                 }) {
                     let x = run.origin().x + glyph.pen() + f64::from(glyph.x());
                     if slot.level().is_rtl() {
@@ -815,7 +867,10 @@ fn an_incoming_after_indication_stays_on_its_authentic_side_of_the_opening_edge(
                 }
             }
         }
-        assert_eq!(p.analyzed_source().source().text(), &t::Text::from(value));
+        assert_eq!(
+            p.analyzed_source().source().text(),
+            &t::source::Text::from(value)
+        );
     }
 }
 
@@ -825,20 +880,20 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
     // in an RTL block. All four endpoint anchors have After affinity to those
     // originals, so this fixture's actual L2 sequence remains left-to-right.
     for rtl in [false, true] {
-        let mut base = style(t::WhiteSpace::Preserve);
-        base.hyphens = t::Hyphens::Manual;
+        let mut base = style(t::style::WhiteSpace::Preserve);
+        base.hyphens = t::hyphenation::Hyphens::Manual;
         base.locale = Some("und-Latn".into());
         base.native_hyphenation_convention = Some(
-            t::NativeHyphenationConvention::language_script(
+            t::hyphenation::NativeHyphenationConvention::language_script(
                 "und-Latn",
                 "Latn",
-                t::Text::from("A"),
-                t::HyphenationPlacement::LogicalAfter,
+                t::source::Text::from("A"),
+                t::hyphenation::HyphenationPlacement::LogicalAfter,
             )
             .unwrap(),
         );
         let p = prepare_capture(
-            t::Source::new("AA\u{ad}AAA"),
+            t::source::Source::new("AA\u{ad}AAA"),
             block(base, rtl, false),
             &[(0, 3), (3, 4), (4, 6)],
             &[
@@ -869,7 +924,7 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
         assert!(p.control_views().all(|view| view.level().get() == level));
         let ending = p
             .opportunity_views()
-            .find(|offer| offer.kind() == t::PreparedBreakKind::Discretionary)
+            .find(|offer| offer.kind() == t::prepared::PreparedBreakKind::Discretionary)
             .unwrap()
             .handle();
         let alternative = ending.view().alternatives().next().unwrap().handle();
@@ -925,10 +980,10 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
             assert_eq!(
                 positions,
                 [
-                    (t::Range::new(3, 3), inner_end),
-                    (t::Range::new(3, 4), inner_end + 10.0),
-                    (t::Range::new(4, 5), inner_end + 20.0),
-                    (t::Range::new(5, 6), inner_end + 30.0),
+                    (t::source::Range::new(3, 3), inner_end),
+                    (t::source::Range::new(3, 4), inner_end + 10.0),
+                    (t::source::Range::new(4, 5), inner_end + 20.0),
+                    (t::source::Range::new(5, 6), inner_end + 30.0),
                 ]
             );
             assert_eq!(
@@ -938,7 +993,7 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
             assert_eq!(slots[3].strip_interval(), slots[2].strip_interval());
             assert_eq!(
                 p.analyzed_source().source().text(),
-                &t::Text::from("AA\u{ad}AAA")
+                &t::source::Text::from("AA\u{ad}AAA")
             );
         }
     }
@@ -948,7 +1003,7 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
 fn an_empty_original_occurrence_does_not_hide_the_actual_closing_endpoint() {
     let p = capture(
         "X Y",
-        t::WhiteSpace::Preserve,
+        t::style::WhiteSpace::Preserve,
         &[(0, 2), (2, 2), (2, 3)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 2)],
         &[(0, 1)],

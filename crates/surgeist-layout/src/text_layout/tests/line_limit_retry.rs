@@ -12,7 +12,9 @@ fn root_limit<S: LayoutScalar>(width: f64, limit: HyphenateLimitLines) -> NodeIn
         ..NodeInputOf::default()
     }
 }
-fn ranges<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<(text::Range, f64)> {
+fn ranges<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<(text::source::Range, f64)> {
     batch.placed_text()[0]
         .layout()
         .lines()
@@ -22,16 +24,17 @@ fn ranges<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<(text:
 }
 fn check<S: LayoutScalar>() {
     let mut style = ahem_style(10.0, 10.0);
-    style.hyphens = text::Hyphens::Auto;
+    style.hyphens = text::hyphenation::Hyphens::Auto;
     style.locale = Some("en-US".into());
-    style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+    style.hyphenate_character =
+        text::hyphenation::HyphenateCharacter::String(text::source::Text::from("A"));
     let paragraph = PreparedParagraph::new(
         vec![
             ParagraphPart::text(10, Source::new(""), style.clone()),
             ParagraphPart::text(11, Source::new("cooperate"), style.clone()),
         ],
         style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
@@ -53,8 +56,8 @@ fn check<S: LayoutScalar>() {
     assert_eq!(
         ranges(&first),
         [
-            (text::Range::new(0, 2), 18.0),
-            (text::Range::new(2, 9), 28.0)
+            (text::source::Range::new(0, 2), 18.0),
+            (text::source::Range::new(2, 9), 28.0)
         ]
     );
     assert_eq!(output(&first, 2).size.height.to_f64(), 30.0);
@@ -80,7 +83,7 @@ fn check<S: LayoutScalar>() {
             .unwrap()
             .view()
             .definition(),
-        text::PreparedAlternativeDefinition::Automatic { .. }
+        text::prepared::PreparedAlternativeDefinition::Automatic { .. }
     ));
     // Several rejected prefixes and the shortened band must not consume capacity.
     first.apply_to(&mut host).unwrap();
@@ -120,8 +123,8 @@ fn check<S: LayoutScalar>() {
     assert_eq!(
         ranges(&changed),
         [
-            (text::Range::new(0, 4), 8.0),
-            (text::Range::new(4, 9), 18.0)
+            (text::source::Range::new(0, 4), 8.0),
+            (text::source::Range::new(4, 9), 18.0)
         ]
     );
     changed.apply_to(&mut host).unwrap();

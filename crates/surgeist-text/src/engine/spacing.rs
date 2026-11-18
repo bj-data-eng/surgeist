@@ -111,7 +111,7 @@ pub(crate) fn authored_selected(
     let has_cells = !shaped.cells.is_empty();
     if funded && ledger.is_none() {
         return Err(crate::engine::scope_alignment::refusal(
-            crate::processing::ScopeAlignmentError::LimitsRequired,
+            crate::processing::contextual::ScopeAlignmentError::LimitsRequired,
         ));
     }
     let mut native = None;

@@ -3,8 +3,8 @@ use crate::text_layout::scope_alignment::{
     ScopeAlignmentFacts, ScopeAlignmentResources, ScopeAlignmentSnapshot,
 };
 
-const LIMITS: surgeist_text::ScopeAlignmentLimits =
-    surgeist_text::ScopeAlignmentLimits::new(100_000, 100, 1_000_000, 16 << 20);
+const LIMITS: surgeist_text::scope_alignment::ScopeAlignmentLimits =
+    surgeist_text::scope_alignment::ScopeAlignmentLimits::new(100_000, 100, 1_000_000, 16 << 20);
 
 fn owner(binding: &crate::TextParagraphBinding<u32>) -> ScopeAlignmentResources<f64> {
     ScopeAlignmentResources::new(
@@ -89,8 +89,8 @@ fn funded_ledger_growth_replay_and_drop_keep_cumulative_work() {
         assert!(matches!(
             error.detail(),
             Some(surgeist_text::ErrorDetail::ScopeAlignment {
-                reason: surgeist_text::ScopeAlignmentError::Limit {
-                    kind: surgeist_text::ScopeAlignmentLimitKind::StructuralWork,
+                reason: surgeist_text::scope_alignment::ScopeAlignmentError::Limit {
+                    kind: surgeist_text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
                     ..
                 }
             })

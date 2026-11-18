@@ -2,7 +2,7 @@
 //! independently of the actual paragraph's LTR/RTL base direction.
 use std::{convert::Infallible, slice};
 use surgeist_layout as l;
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 struct Tree<S: l::LayoutScalar> {
     inputs: [l::NodeInputOf<S>; 2],

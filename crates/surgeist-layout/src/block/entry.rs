@@ -94,7 +94,7 @@ pub(crate) struct EntryDemand<Node, S: LayoutScalar> {
 #[derive(Clone)]
 pub(crate) struct EntryWindow {
     pub(crate) nodes: std::ops::Range<usize>,
-    pub(crate) segment: Option<surgeist_text::PreparedSourceSegment>,
+    pub(crate) segment: Option<surgeist_text::prepared::PreparedSourceSegment>,
 }
 
 pub(crate) type EntryResult<Node, S, M> = LayoutResultOf<Node, EntryObservation<Node, S>, S, M>;

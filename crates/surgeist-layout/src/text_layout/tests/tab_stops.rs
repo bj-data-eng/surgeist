@@ -1,7 +1,10 @@
 //! Literal Ahem geometry and the captured block grid, through the real adapter.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use surgeist_text::{TabContext, TabSize, WhiteSpace};
+use surgeist_text::{
+    style::WhiteSpace,
+    tabs::{TabContext, TabSize},
+};
 
 fn paragraph(source: &str, rtl: bool, block_rtl: bool, zero: bool) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
@@ -103,7 +106,7 @@ fn glyphs<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<(usize
 
 fn lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> Vec<surgeist_text::FinalizedLine> {
+) -> Vec<surgeist_text::finalized::FinalizedLine> {
     let mut result = Vec::new();
     for fragment in batch.final_inline_fragments() {
         let line = fragment.fragment().finalized_fragment().finalized_line();
@@ -168,9 +171,9 @@ fn assert_directions<S: LayoutScalar>() {
         assert_eq!(
             selected.request().context.line_box_direction,
             if block_rtl {
-                surgeist_text::LineBoxDirection::RightToLeft
+                surgeist_text::selection::LineBoxDirection::RightToLeft
             } else {
-                surgeist_text::LineBoxDirection::LeftToRight
+                surgeist_text::selection::LineBoxDirection::LeftToRight
             }
         );
         assert_eq!(
@@ -390,8 +393,8 @@ fn intrinsic_with_indent(
                     next_transition: None,
                 })
             },
-            clear: |_, _: &surgeist_text::LineSelectionRequest| Ok(None),
-            replay: |_: &surgeist_text::FinalizedLine, _| Ok(Vec::new()),
+            clear: |_, _: &surgeist_text::selection::LineSelectionRequest| Ok(None),
+            replay: |_: &surgeist_text::finalized::FinalizedLine, _| Ok(Vec::new()),
             accept: || Ok(()),
         },
     )

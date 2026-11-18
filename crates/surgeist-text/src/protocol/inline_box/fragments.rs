@@ -22,7 +22,7 @@ use crate::engine::{
 };
 use crate::{
     Result,
-    processing::ScopeAlignmentUsage,
+    processing::contextual::ScopeAlignmentUsage,
     protocol::{PreparedText, ScopeAlignmentAllowance, ScopeAlignmentRetention},
 };
 use std::{fmt, ops::Range, sync::Arc};
@@ -200,20 +200,22 @@ pub(crate) struct FamilyData {
 impl FamilyData {
     pub(crate) fn source(&self, owner: Owner) -> InlineBoxSource {
         match owner {
-            Owner::Scope(index) => InlineBoxSource::captured(crate::processing::CapturedScope {
-                capture: Arc::clone(
-                    &self
-                        .prepared
-                        .inner
-                        .analyzed
-                        .paragraph
-                        .scope_topology
-                        .as_ref()
-                        .expect("admitted family capture")
-                        .capture,
-                ),
-                index,
-            }),
+            Owner::Scope(index) => {
+                InlineBoxSource::captured(crate::processing::contextual::CapturedScope {
+                    capture: Arc::clone(
+                        &self
+                            .prepared
+                            .inner
+                            .analyzed
+                            .paragraph
+                            .scope_topology
+                            .as_ref()
+                            .expect("admitted family capture")
+                            .capture,
+                    ),
+                    index,
+                })
+            }
             Owner::Native(index) => self.native_boxes[index].clone(),
         }
     }

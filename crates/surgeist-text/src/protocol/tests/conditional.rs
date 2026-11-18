@@ -1749,9 +1749,12 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         id::Id,
         layout::Affinity,
         processing::{
-            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
-            SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-            SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+            DocumentSegmentBreaks,
+            contextual::{
+                ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+                SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+                WhiteSpaceTrim, process_contextual_source,
+            },
         },
         protocol::paragraph::{
             ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
@@ -1800,7 +1803,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::processing::SourceProcessingTopology::Unknown,
+                topology: crate::processing::contextual::SourceProcessingTopology::Unknown,
                 used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: Style {
@@ -1812,7 +1815,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::processing::SourceProcessingTopology::Unknown,
+                topology: crate::processing::contextual::SourceProcessingTopology::Unknown,
                 used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(),

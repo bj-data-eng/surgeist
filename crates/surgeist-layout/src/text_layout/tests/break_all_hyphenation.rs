@@ -6,28 +6,34 @@ use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
-fn style(word_break: text::WordBreak) -> text::Style {
-    text::Style {
-        white_space: text::WhiteSpace::Preserve,
+fn style(word_break: text::style::WordBreak) -> text::style::Style {
+    text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
         word_break,
         wrap: Wrap::Word,
-        overflow_wrap: text::OverflowWrap::Normal,
-        hyphens: text::Hyphens::Manual,
-        hyphenate_character: text::HyphenateCharacter::String(text::Text::from("X")),
-        hyphenate_limit_chars: text::HyphenateLimitChars {
-            total: text::HyphenationMinimum::Count(0),
-            before: text::HyphenationMinimum::Count(0),
-            after: text::HyphenationMinimum::Count(0),
+        overflow_wrap: text::style::OverflowWrap::Normal,
+        hyphens: text::hyphenation::Hyphens::Manual,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::String(
+            text::source::Text::from("X"),
+        ),
+        hyphenate_limit_chars: text::hyphenation::HyphenateLimitChars {
+            total: text::hyphenation::HyphenationMinimum::Count(0),
+            before: text::hyphenation::HyphenationMinimum::Count(0),
+            after: text::hyphenation::HyphenationMinimum::Count(0),
         },
         ..ahem_style(10.0, 10.0)
     }
 }
 
-fn paragraph(owner: text::WordBreak, following: text::WordBreak, rtl: bool) -> PreparedParagraph {
+fn paragraph(
+    owner: text::style::WordBreak,
+    following: text::style::WordBreak,
+    rtl: bool,
+) -> PreparedParagraph {
     let own = style(owner);
-    let mut source = Source::identified("a\u{ad}b", text::Id::from_u64(65051), 7);
-    source.span(text::Range::new(1, 2), own.clone());
-    source.span(text::Range::new(2, 3), style(following));
+    let mut source = Source::identified("a\u{ad}b", text::source::Id::from_u64(65051), 7);
+    source.span(text::source::Range::new(1, 2), own.clone());
+    source.span(text::source::Range::new(2, 3), style(following));
     PreparedParagraph::new(
         vec![ParagraphPart::text(1, source, own.clone())],
         own,
@@ -41,12 +47,15 @@ fn paragraph(owner: text::WordBreak, following: text::WordBreak, rtl: bool) -> P
 
 fn inventory(
     paragraph: &PreparedParagraph,
-    kind: Option<text::PreparedBreakKind>,
+    kind: Option<text::prepared::PreparedBreakKind>,
     manual: bool,
-) -> text::PreparedBoundary {
+) -> text::prepared::PreparedBoundary {
     let p = &paragraph.prepared;
     let origin = paragraph.origin(1);
-    assert_eq!(origin.view().source().id(), Some(text::Id::from_u64(65051)));
+    assert_eq!(
+        origin.view().source().id(),
+        Some(text::source::Id::from_u64(65051))
+    );
     assert_eq!(origin.view().source().revision(), 7);
     assert_eq!(origin.view().source().text().code_units(), [97, 0xad, 98]);
     assert_eq!(
@@ -58,18 +67,21 @@ fn inventory(
     );
     assert!(
         p.participants()
-            .all(|row| !matches!(row, text::PreparedParticipant::Control(_)))
+            .all(|row| !matches!(row, text::prepared::PreparedParticipant::Control(_)))
     );
     let cuts = p.hyphenation_cut_views().collect::<Vec<_>>();
     assert_eq!(cuts.len(), 1);
-    assert_eq!(cuts[0].provenance(), text::HyphenationProvenance::Source);
+    assert_eq!(
+        cuts[0].provenance(),
+        text::hyphenation::HyphenationProvenance::Source
+    );
     let cut = cuts[0].boundary();
     assert_eq!(cut.view().source_before().get(), 2);
     assert_eq!(cut.view().source_after().get(), 2);
     assert_eq!(cut.view().participant_offset(), 2);
     let offers = p
         .opportunity_views()
-        .filter(|row| row.kind() != text::PreparedBreakKind::ParagraphEnd)
+        .filter(|row| row.kind() != text::prepared::PreparedBreakKind::ParagraphEnd)
         .collect::<Vec<_>>();
     assert_eq!(
         offers.iter().map(|row| row.kind()).collect::<Vec<_>>(),
@@ -81,11 +93,11 @@ fn inventory(
         assert_eq!(alternatives.len(), usize::from(manual));
         for alternative in alternatives {
             assert!(
-                matches!(alternative.definition(), text::PreparedAlternativeDefinition::Source { origin: actual_origin, source } if actual_origin == origin && source == text::Range::new(1, 2))
+                matches!(alternative.definition(), text::prepared::PreparedAlternativeDefinition::Source { origin: actual_origin, source } if actual_origin == origin && source == text::source::Range::new(1, 2))
             );
             assert_eq!(alternative.hyphenation_cut(), cuts[0].handle());
             assert_eq!(alternative.insertion_anchor().get(), 2);
-            assert_eq!(alternative.text(), &text::Text::from("X"));
+            assert_eq!(alternative.text(), &text::source::Text::from("X"));
         }
     }
     cut
@@ -162,7 +174,7 @@ fn compute<S: LayoutScalar>(
 fn assert_plain<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     paragraph: &PreparedParagraph,
-    cut: &text::PreparedBoundary,
+    cut: &text::prepared::PreparedBoundary,
     split: bool,
 ) {
     assert_eq!(batch.placed_text().len(), 1);
@@ -206,15 +218,18 @@ fn assert_plain<S: LayoutScalar>(
             if split { 10.0 } else { 20.0 }
         );
         if split && index == 0 {
-            let text::PreparedTermination::Ordinary(offer) = &request.termination else {
+            let text::selection::PreparedTermination::Ordinary(offer) = &request.termination else {
                 panic!("the actual ordinary after-SHY offer must be selected")
             };
-            assert_eq!(offer.view().kind(), text::PreparedBreakKind::Allowed);
+            assert_eq!(
+                offer.view().kind(),
+                text::prepared::PreparedBreakKind::Allowed
+            );
             assert_eq!(offer.view().boundary(), *cut);
             assert_eq!(request.end, *cut);
-            assert_eq!(request.context.end, text::LineEnd::Soft);
+            assert_eq!(request.context.end, text::selection::LineEnd::Soft);
         } else {
-            assert_eq!(request.context.end, text::LineEnd::Paragraph);
+            assert_eq!(request.context.end, text::selection::LineEnd::Paragraph);
         }
         if split && index == 1 {
             assert_eq!(request.start, *cut);
@@ -239,8 +254,8 @@ fn assert_plain<S: LayoutScalar>(
     assert_eq!(
         glyphs,
         [
-            (0, text::Range::new(0, 1), 67, 10.0),
-            (usize::from(split), text::Range::new(2, 3), 68, 10.0)
+            (0, text::source::Range::new(0, 1), 67, 10.0),
+            (usize::from(split), text::source::Range::new(2, 3), 68, 10.0)
         ]
     );
     let mut placed_glyphs = placed
@@ -264,7 +279,7 @@ fn assert_plain<S: LayoutScalar>(
 #[test]
 fn source_shy_mixed_break_all_owners_drive_plain_native_lines_both_directions_and_scalars() {
     fn lane<S: LayoutScalar>() {
-        use text::WordBreak::{BreakAll, Normal};
+        use text::style::WordBreak::{BreakAll, Normal};
         for rtl in [false, true] {
             for (owner, following, manual, split) in [
                 (BreakAll, BreakAll, false, true),
@@ -274,7 +289,7 @@ fn source_shy_mixed_break_all_owners_drive_plain_native_lines_both_directions_an
                 let p = paragraph(owner, following, rtl);
                 let cut = inventory(
                     &p,
-                    split.then_some(text::PreparedBreakKind::Allowed),
+                    split.then_some(text::prepared::PreparedBreakKind::Allowed),
                     manual,
                 );
                 // A zero successive-line limit suppresses Auto only. Manual X
@@ -329,8 +344,16 @@ fn source_shy_mixed_break_all_owners_drive_plain_native_lines_both_directions_an
 fn normal_shy_keeps_manual_only_inventory_without_promoting_a_plain_cut() {
     fn lane<S: LayoutScalar>() {
         for rtl in [false, true] {
-            let p = paragraph(text::WordBreak::Normal, text::WordBreak::Normal, rtl);
-            let cut = inventory(&p, Some(text::PreparedBreakKind::Discretionary), true);
+            let p = paragraph(
+                text::style::WordBreak::Normal,
+                text::style::WordBreak::Normal,
+                rtl,
+            );
+            let cut = inventory(
+                &p,
+                Some(text::prepared::PreparedBreakKind::Discretionary),
+                true,
+            );
             // Both source letters fit20px. Count0 does not revoke Manual;
             // Layout legitimately chooses the later whole-word plain ending.
             let batch = compute::<S>(

@@ -9,7 +9,7 @@ fn receiver_tree<S: l::LayoutScalar>(native_edge: bool, tail: bool) -> Host<S> {
     let mut first = atomic(mode, direction, 10.0, (0.0, 0.0));
     first.vertical_align = l::VerticalAlignOf::Top;
     first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
-        t::BidiLevel::try_new(0).unwrap(),
+        t::supplied_line::BidiLevel::try_new(0).unwrap(),
         if native_edge {
             l::InlineBreakOpportunity::Prohibited
         } else {
@@ -136,7 +136,8 @@ fn matrix_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, tail: bool) -> Host<S>
     );
     first.vertical_align = spec.alignment;
     first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
-        t::BidiLevel::try_new(u8::from(spec.direction == l::Direction::Rtl)).unwrap(),
+        t::supplied_line::BidiLevel::try_new(u8::from(spec.direction == l::Direction::Rtl))
+            .unwrap(),
         if spec.native_edge {
             l::InlineBreakOpportunity::Prohibited
         } else {
@@ -966,7 +967,7 @@ fn sizing_receiver_tree<S: l::LayoutScalar>(name: l::BaselineName, native_edge: 
     source.vertical_align = l::VerticalAlignOf::Top;
     source.inline_baseline_context = reference;
     source.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
-        t::BidiLevel::try_new(0).unwrap(),
+        t::supplied_line::BidiLevel::try_new(0).unwrap(),
         if native_edge {
             l::InlineBreakOpportunity::Prohibited
         } else {

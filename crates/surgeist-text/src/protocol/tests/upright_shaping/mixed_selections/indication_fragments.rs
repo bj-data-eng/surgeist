@@ -12,7 +12,7 @@ fn unit_at(p: &PreparedText, source: Range) -> crate::protocol::PreparedUnit {
 
 fn original_inside(
     p: &PreparedText,
-    scope: &crate::processing::CapturedScope,
+    scope: &crate::processing::contextual::CapturedScope,
     source: Range,
 ) -> bool {
     // These two authored originals are disjoint and cover the actual raw
@@ -198,7 +198,7 @@ fn attached_indications(scope_start: usize) {
     assert_eq!(scope.domain_topology(), SourceProcessingTopology::Complete);
     assert_eq!(
         scope.parent().unwrap().role(),
-        crate::processing::ScopeRole::Domain
+        crate::processing::contextual::ScopeRole::Domain
     );
     let owner = crate::protocol::InlineBoxSource::captured(scope.clone());
     let p = prepare(&mut system_with(&bytes), &processed);

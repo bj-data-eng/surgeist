@@ -17,7 +17,7 @@ fn native_batch<S: LayoutScalar>(
 ) -> (PreparedParagraph, CompletedLayoutBatchOf<u32, S>) {
     let paragraph = PreparedParagraph::plain(
         1,
-        Source::identified(source, surgeist_text::Id::from_u64(42), 7),
+        Source::identified(source, surgeist_text::source::Id::from_u64(42), 7),
         ahem_style(10.0, 10.0),
     );
     let mut tree = PublicLayoutTreeOf::<S>::new()
@@ -95,12 +95,12 @@ fn assert_actual_text<S: LayoutScalar>(
     assert_eq!(placed.lines().len(), 1);
     assert_eq!(
         placed.lines()[0].range(),
-        surgeist_text::Range::new(0, source.len())
+        surgeist_text::source::Range::new(0, source.len())
     );
     let origin = paragraph.origin(1);
     assert_eq!(
         origin.view().source().id(),
-        Some(surgeist_text::Id::from_u64(42))
+        Some(surgeist_text::source::Id::from_u64(42))
     );
     assert_eq!(origin.view().source().revision(), 7);
     let mut lines = Vec::new();
@@ -108,7 +108,7 @@ fn assert_actual_text<S: LayoutScalar>(
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
             fragment.view().owner(),
-            surgeist_text::FinalizedFragmentOwner::Origin(origin.clone())
+            surgeist_text::finalized::FinalizedFragmentOwner::Origin(origin.clone())
         );
         let line = fragment.finalized_line();
         let feedback = line.feedback();
@@ -148,7 +148,7 @@ fn assert_moves_below_float<S: LayoutScalar>(source: &str, expected_advance: f64
     // Once no float remains, even the 120px word may legitimately overflow 100.
     assert_eq!(
         line.bounds(),
-        surgeist_text::Rect::new(0.0, 20.0, 100.0, 10.0)
+        surgeist_text::geometry::Rect::new(0.0, 20.0, 100.0, 10.0)
     );
     assert_eq!(line.baseline(), 28.0);
     let root = readback::single_box_output(&batch, 0, Phase::Final);
@@ -181,7 +181,7 @@ fn assert_fitting_and_float_free_controls<S: LayoutScalar>() {
     let line = &batch.placed_text()[0].layout().lines()[0];
     assert_eq!(
         line.bounds(),
-        surgeist_text::Rect::new(80.0, 0.0, 20.0, 10.0)
+        surgeist_text::geometry::Rect::new(80.0, 0.0, 20.0, 10.0)
     );
     assert_eq!(line.baseline(), 8.0);
 
@@ -190,7 +190,7 @@ fn assert_fitting_and_float_free_controls<S: LayoutScalar>() {
     let line = &batch.placed_text()[0].layout().lines()[0];
     assert_eq!(
         line.bounds(),
-        surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
+        surgeist_text::geometry::Rect::new(0.0, 0.0, 20.0, 10.0)
     );
     assert_eq!(line.baseline(), 8.0);
     let root = readback::single_box_output(&batch, 0, Phase::Final);
@@ -216,7 +216,7 @@ fn intrinsic_root_batch<S: LayoutScalar>(
 ) -> (PreparedParagraph, CompletedLayoutBatchOf<u32, S>) {
     let paragraph = PreparedParagraph::plain(
         1,
-        Source::identified("XXXX", surgeist_text::Id::from_u64(42), 7),
+        Source::identified("XXXX", surgeist_text::source::Id::from_u64(42), 7),
         ahem_style(10.0, 10.0),
     );
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -310,7 +310,10 @@ fn assert_min_content_root<S: LayoutScalar>() {
     // separately, rather than requiring their 120px side-by-side sum.
     assert_eq!(root.size, Size::new(S::from_f64(80.0), S::from_f64(30.0)));
     let line = &batch.placed_text()[0].layout().lines()[0];
-    assert_eq!(line.bounds().origin, surgeist_text::Point::new(0.0, 20.0));
+    assert_eq!(
+        line.bounds().origin,
+        surgeist_text::geometry::Point::new(0.0, 20.0)
+    );
     assert_eq!(line.baseline(), 28.0);
     assert_eq!(line.bounds().size.height, 10.0);
 }
@@ -326,7 +329,10 @@ fn assert_max_content_root<S: LayoutScalar>() {
     // 80px followed by the word's 40px. Its 20px float determines the height.
     assert_eq!(root.size, Size::new(S::from_f64(120.0), S::from_f64(20.0)));
     let line = &batch.placed_text()[0].layout().lines()[0];
-    assert_eq!(line.bounds().origin, surgeist_text::Point::new(80.0, 0.0));
+    assert_eq!(
+        line.bounds().origin,
+        surgeist_text::geometry::Point::new(80.0, 0.0)
+    );
     assert_eq!(line.baseline(), 8.0);
     assert_eq!(line.bounds().size.height, 10.0);
 }

@@ -10,9 +10,12 @@ use crate::{
     layout::Affinity,
     options::Options,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingEnvelope,
-        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            ContextualSourceInput, SourceProcessingEnvelope, SourceProcessingEvent,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+            WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         LineOrientation, ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge,
@@ -453,15 +456,15 @@ fn contradictory_captured_used_rtl_refuses_at_both_native_fronts_without_relabel
 
 #[test]
 fn actual_contextual_computed_edges_cut_used_bodies_without_inserting_source_text() {
-    use crate::processing::SourceProcessingEvent as E;
-    use crate::processing::{ComputedLineBoundaryInput, SourceBoxSide};
+    use crate::processing::contextual::SourceProcessingEvent as E;
+    use crate::processing::contextual::{ComputedLineBoundaryInput, SourceBoxSide};
     let original = source("Aא");
     let mut input = contextual(original.clone());
     input.origins = vec![
         origin(&original, Range::new(0, 1)),
         origin(&original, Range::new(1, 2)),
     ];
-    input.connections = vec![crate::processing::SourceProcessingConnection {
+    input.connections = vec![crate::processing::contextual::SourceProcessingConnection {
         before_origin: 0,
         after_origin: 1,
         kind: ParagraphConnectionKind::Continuous,

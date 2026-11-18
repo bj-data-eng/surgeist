@@ -6,9 +6,12 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ContextualSourceInput, ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
-        SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            ContextualSourceInput, SourceProcessingConnection, SourceProcessingEvent,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+            SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection,

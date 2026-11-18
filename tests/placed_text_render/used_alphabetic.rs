@@ -3,7 +3,7 @@
 use super::*;
 
 const AHEM: &[u8] = include_bytes!("../../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-const ALPHA: text::FontBaseline = text::FontBaseline::Alphabetic;
+const ALPHA: text::font::FontBaseline = text::font::FontBaseline::Alphabetic;
 
 fn u16_at(bytes: &[u8], at: usize) -> u16 {
     u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap())
@@ -175,32 +175,32 @@ fn qualify_font(bytes: &[u8]) {
 
 fn prepare(
     system: &mut text::System,
-    source: &text::Source,
-    orientation: text::LineOrientation,
-) -> text::PreparedText {
-    let authored = text::Style {
-        font: text::Font::new().family("Ahem"),
+    source: &text::source::Source,
+    orientation: text::selection::LineOrientation,
+) -> text::prepared::PreparedText {
+    let authored = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
+        ..text::style::Style::default()
     };
     let ancestor_wrap = authored.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: authored,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: text::Range::new(0, 2),
-                aggregate: text::Range::new(0, 2),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 2),
+                aggregate: text::source::Range::new(0, 2),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -208,19 +208,19 @@ fn prepare(
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| text::WrappingPolicy {
+        .map(|row| text::analyzed::WrappingPolicy {
             relation: row.handle(),
             ancestor_wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let options = text::PreparationOptions::default()
+    let options = text::prepared::PreparationOptions::default()
         .with_orientation(orientation)
         .with_baseline_reference(ALPHA);
     let prepared = system.prepare(&analyzed, options).unwrap();
@@ -239,11 +239,12 @@ fn prepare(
 fn composition(bytes: &[u8], mode: layout::WritingMode) {
     let horizontal = mode == layout::WritingMode::HorizontalTb;
     let orientation = if horizontal {
-        text::LineOrientation::Horizontal
+        text::selection::LineOrientation::Horizontal
     } else {
-        text::LineOrientation::SidewaysClockwise
+        text::selection::LineOrientation::SidewaysClockwise
     };
-    let source = text::Source::identified("A\u{3a7}", text::Id::from_u64(1561008), 5);
+    let source =
+        text::source::Source::identified("A\u{3a7}", text::source::Id::from_u64(1561008), 5);
     let mut system = text::System::default();
     system
         .register_fonts(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
@@ -346,18 +347,21 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
     assert_eq!(placed.lines().len(), 1);
     assert_eq!(placed.lines()[0].baseline(), common);
     let bounds = if horizontal {
-        text::Rect::new(0.0, 0.0, 40.0, 12.0)
+        text::geometry::Rect::new(0.0, 0.0, 40.0, 12.0)
     } else {
-        text::Rect::new(common - 3.0, 0.0, 12.0, 40.0)
+        text::geometry::Rect::new(common - 3.0, 0.0, 12.0, 40.0)
     };
     assert_eq!(placed.lines()[0].bounds(), bounds);
     assert_eq!(placed.bounds(), bounds);
     let expected_origins = if horizontal {
-        [text::Point::new(0.0, 10.0), text::Point::new(10.0, 8.0)]
+        [
+            text::geometry::Point::new(0.0, 10.0),
+            text::geometry::Point::new(10.0, 8.0),
+        ]
     } else {
         [
-            text::Point::new(common - 1.0, 0.0),
-            text::Point::new(common + 1.0, 10.0),
+            text::geometry::Point::new(common - 1.0, 0.0),
+            text::geometry::Point::new(common + 1.0, 10.0),
         ]
     };
     let runs = placed.run_views().collect::<Vec<_>>();
@@ -373,14 +377,14 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
             run.face().catalogue_identity(),
             prepared.font_catalogue_identity()
         );
-        assert_eq!(run.range(), text::Range::new(index, index + 1));
+        assert_eq!(run.range(), text::source::Range::new(index, index + 1));
         assert_eq!(run.origin(), expected_origins[index]);
         assert_eq!(
             run.glyph_basis(),
             if horizontal {
-                text::GlyphBasis::Unrotated
+                text::geometry::GlyphBasis::Unrotated
             } else {
-                text::GlyphBasis::Clockwise
+                text::geometry::GlyphBasis::Clockwise
             }
         );
         let instance = run.effective_instance().unwrap();
@@ -394,7 +398,7 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         let reference = run
             .baseline(
                 prepared.font_catalogue_identity(),
-                text::FontBaselineAxis::HorizontalY,
+                text::font::FontBaselineAxis::HorizontalY,
                 ALPHA,
             )
             .unwrap();
@@ -402,13 +406,13 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
             reference.script().iso15924(),
             if index == 0 { *b"Latn" } else { *b"Grek" }
         );
-        let text::FontBaselineOutcome::Available(value) = reference.outcome() else {
+        let text::font::FontBaselineOutcome::Available(value) = reference.outcome() else {
             panic!("the independently qualified script romn coordinate is present")
         };
         assert_eq!(value.coordinate(), if index == 0 { 1.0 } else { -1.0 });
         assert_eq!(
             value.provenance(),
-            text::FontBaselineProvenance::BaseCoordinate
+            text::font::FontBaselineProvenance::BaseCoordinate
         );
         assert_eq!(
             value.base_script(),
@@ -452,19 +456,19 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
     );
     for (range, expected) in [
         (
-            text::Range::new(0, 1),
+            text::source::Range::new(0, 1),
             if horizontal {
-                text::Rect::new(0.0, 2.0, 10.0, 10.0)
+                text::geometry::Rect::new(0.0, 2.0, 10.0, 10.0)
             } else {
-                text::Rect::new(common - 3.0, 0.0, 10.0, 10.0)
+                text::geometry::Rect::new(common - 3.0, 0.0, 10.0, 10.0)
             },
         ),
         (
-            text::Range::new(1, 2),
+            text::source::Range::new(1, 2),
             if horizontal {
-                text::Rect::new(10.0, 0.0, 10.0, 10.0)
+                text::geometry::Rect::new(10.0, 0.0, 10.0, 10.0)
             } else {
-                text::Rect::new(common - 1.0, 10.0, 10.0, 10.0)
+                text::geometry::Rect::new(common - 1.0, 10.0, 10.0, 10.0)
             },
         ),
     ] {
@@ -479,13 +483,13 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         );
     }
     let first_caret = if horizontal {
-        text::Rect::new(0.0, 0.0, 1.0, 12.0)
+        text::geometry::Rect::new(0.0, 0.0, 1.0, 12.0)
     } else {
-        text::Rect::new(common - 3.0, 0.0, 12.0, 1.0)
+        text::geometry::Rect::new(common - 3.0, 0.0, 12.0, 1.0)
     };
     assert_eq!(
         placed
-            .cursor(text::Cursor::new(0, text::Affinity::After))
+            .cursor(text::layout::Cursor::new(0, text::layout::Affinity::After))
             .unwrap()
             .rect(),
         first_caret
@@ -525,7 +529,7 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         assert_eq!(
             paint
                 .layout()
-                .cursor(text::Cursor::new(0, text::Affinity::After))
+                .cursor(text::layout::Cursor::new(0, text::layout::Affinity::After))
                 .unwrap()
                 .rect(),
             first_caret

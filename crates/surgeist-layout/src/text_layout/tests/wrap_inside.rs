@@ -12,21 +12,21 @@ const PHRASE: &[u8] =
 
 struct Captured {
     binding: TextParagraphBinding<u32>,
-    scopes: Vec<text::CapturedScope>,
+    scopes: Vec<text::capture::CapturedScope>,
 }
 
 #[derive(Clone, Copy)]
 struct CaptureProfile {
     rtl: bool,
     endpoints: bool,
-    topology: text::SourceProcessingTopology,
+    topology: text::capture::SourceProcessingTopology,
 }
 
-fn break_all() -> text::Style {
-    text::Style {
-        word_break: text::WordBreak::BreakAll,
-        hyphens: text::Hyphens::None,
-        white_space: text::WhiteSpace::Preserve,
+fn break_all() -> text::style::Style {
+    text::style::Style {
+        word_break: text::style::WordBreak::BreakAll,
+        hyphens: text::hyphenation::Hyphens::None,
+        white_space: text::style::WhiteSpace::Preserve,
         ..ahem_style(10.0, 10.0)
     }
 }
@@ -35,7 +35,7 @@ fn break_all() -> text::Style {
 /// Every split is an actual scalar boundary. No inline endpoint is fabricated.
 fn captured(
     raw: &str,
-    style: text::Style,
+    style: text::style::Style,
     ranges: &[Range<usize>],
     extra: &[(usize, ParagraphControlKind)],
     rtl: bool,
@@ -50,7 +50,7 @@ fn captured(
         CaptureProfile {
             rtl,
             endpoints,
-            topology: text::SourceProcessingTopology::Complete,
+            topology: text::capture::SourceProcessingTopology::Complete,
         },
         font,
     )
@@ -58,13 +58,13 @@ fn captured(
 
 fn captured_with_profile(
     raw: &str,
-    style: text::Style,
+    style: text::style::Style,
     ranges: &[Range<usize>],
     extra: &[(usize, ParagraphControlKind)],
     profile: CaptureProfile,
     font: &[u8],
 ) -> Captured {
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let CaptureProfile {
         rtl,
         endpoints,
@@ -77,8 +77,8 @@ fn captured_with_profile(
         ParagraphBaseDirection::LeftToRight
     };
     let mut source = Source::new(raw);
-    source.span(text::Range::new(0, units.len()), style.clone());
-    let mut scopes = vec![text::SourceProcessingScope::Block {
+    source.span(text::source::Range::new(0, units.len()), style.clone());
+    let mut scopes = vec![text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
@@ -87,14 +87,18 @@ fn captured_with_profile(
         base_style: style.clone(),
         used_direction: direction,
     }];
-    scopes.extend(ranges.iter().map(|_| text::SourceProcessingScope::Inline {
-        horizontal_inner_direction: None,
-        alignment_boundary: None,
-        font_reference: None,
-        trim: Default::default(),
-        style: Some(style.clone()),
-        boundaries: None,
-    }));
+    scopes.extend(
+        ranges
+            .iter()
+            .map(|_| text::capture::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
+                trim: Default::default(),
+                style: Some(style.clone()),
+                boundaries: None,
+            }),
+    );
     let mut cuts = vec![0, units.len()];
     cuts.extend(ranges.iter().flat_map(|r| [r.start, r.end]));
     cuts.extend(extra.iter().map(|(at, _)| *at));
@@ -110,19 +114,20 @@ fn captured_with_profile(
             if range.end == at {
                 if endpoints {
                     let end = controls.len();
-                    controls.push(text::ParagraphControl {
+                    controls.push(text::paragraph::ParagraphControl {
                         at,
                         kind: ParagraphControlKind::InlineBoundaryEnd,
                     });
                     events.push(E::Control {
                         control: end,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     });
-                    let text::SourceProcessingScope::Inline { boundaries, .. } = &mut scopes[i + 1]
+                    let text::capture::SourceProcessingScope::Inline { boundaries, .. } =
+                        &mut scopes[i + 1]
                     else {
                         unreachable!()
                     };
-                    *boundaries = Some(text::SourceProcessingScopeBoundaries {
+                    *boundaries = Some(text::capture::SourceProcessingScopeBoundaries {
                         start: pair_starts[i],
                         end,
                     });
@@ -132,10 +137,10 @@ fn captured_with_profile(
         }
         if position > 0 && position + 1 < cuts.len() {
             let connection = connections.len();
-            connections.push(text::SourceProcessingConnection {
+            connections.push(text::capture::SourceProcessingConnection {
                 before_origin: origins.len() - 1,
                 after_origin: origins.len(),
-                kind: text::ParagraphConnectionKind::Continuous,
+                kind: text::paragraph::ParagraphConnectionKind::Continuous,
             });
             events.push(E::Connection(connection));
         }
@@ -144,45 +149,45 @@ fn captured_with_profile(
                 events.push(E::EnterScope(i + 1));
                 if endpoints {
                     pair_starts[i] = controls.len();
-                    controls.push(text::ParagraphControl {
+                    controls.push(text::paragraph::ParagraphControl {
                         at,
                         kind: ParagraphControlKind::InlineBoundaryStart,
                     });
                     events.push(E::Control {
                         control: pair_starts[i],
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     });
                 }
             }
         }
         for (_, kind) in extra.iter().filter(|(point, _)| *point == at) {
             let control = controls.len();
-            controls.push(text::ParagraphControl {
+            controls.push(text::paragraph::ParagraphControl {
                 at,
                 kind: kind.clone(),
             });
             events.push(E::Control {
                 control,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             });
         }
         if let Some(&end) = cuts.get(position + 1) {
             let original = Source::identified(
                 String::from_utf16(&units[at..end]).unwrap(),
-                text::Id::from_u64(650_000 + origins.len() as u64),
+                text::source::Id::from_u64(650_000 + origins.len() as u64),
                 31,
             );
             let origin = origins.len();
-            origins.push(text::ParagraphOrigin {
+            origins.push(text::paragraph::ParagraphOrigin {
                 text_node: None,
-                local: text::Range::new(0, end - at),
+                local: text::source::Range::new(0, end - at),
                 source: original,
-                aggregate: text::Range::new(at, end),
-                kind: text::ParagraphOriginKind::Authored,
+                aggregate: text::source::Range::new(at, end),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             });
             events.push(E::Origin {
                 origin,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             });
         }
     }
@@ -196,38 +201,38 @@ fn captured_with_profile(
         })
         .collect();
     let boundary_policies = (0..connections.len())
-        .map(|i| text::ParagraphBoundaryPolicy {
-            definition: text::ParagraphBoundaryDefinition::Connection(i),
+        .map(|i| text::paragraph::ParagraphBoundaryPolicy {
+            definition: text::paragraph::ParagraphBoundaryDefinition::Connection(i),
             preceding_wrap: style.wrap,
             following_wrap: style.wrap,
             ancestor_wrap: style.wrap,
         })
         .collect();
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins,
             connections,
             controls,
             boundary_policies,
             replacements: vec![],
             scopes,
-            paragraphs: vec![text::SourceProcessingParagraph {
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
                 base_direction: direction,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, style.wrap);
@@ -236,7 +241,7 @@ fn captured_with_profile(
         .register_fonts(font.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let members = prepared
         .captured_owner()
@@ -247,7 +252,7 @@ fn captured_with_profile(
     let scopes = members[0]
         .scope_intersections()
         .map(|i| i.scope())
-        .filter(|s| s.role() == text::ScopeRole::Inline)
+        .filter(|s| s.role() == text::capture::ScopeRole::Inline)
         .collect();
     let origins = prepared
         .origin_views()
@@ -255,7 +260,7 @@ fn captured_with_profile(
         .map(|(i, origin)| {
             assert_eq!(
                 origin.source().id(),
-                Some(text::Id::from_u64(650_000 + i as u64))
+                Some(text::source::Id::from_u64(650_000 + i as u64))
             );
             assert_eq!(origin.source().revision(), 31);
             TextOriginBinding {
@@ -386,14 +391,16 @@ fn policies(fixture: &Captured, values: &[WrapInside]) -> Vec<WrappingScopeInput
         .cloned()
         .zip(values)
         .map(|(scope, &wrap_inside)| WrappingScopeInput::Captured {
-            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
-                scope: None,
-                metrics: text::LineStrut {
-                    baseline: 8.0,
-                    line_extent: 10.0,
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                text::allocation::LineBoxStrut {
+                    scope: None,
+                    metrics: text::allocation::LineStrut {
+                        baseline: 8.0,
+                        line_extent: 10.0,
+                    },
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
-                alignment: text::LineBoxAlignment::Baseline,
-            })),
+            )),
             edges: Default::default(),
             scope,
             wrap_inside,
@@ -442,7 +449,9 @@ fn cuts<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<usize> {
         .collect()
 }
 
-fn finalized<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
+fn finalized<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<text::finalized::FinalizedLine> {
     let mut lines = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -460,7 +469,7 @@ fn assert_ascii_custody<S: LayoutScalar>(
     raw: &str,
 ) {
     let placed = batch.placed_text()[0].layout();
-    assert_eq!(placed.source().text(), &text::Text::from(raw));
+    assert_eq!(placed.source().text(), &text::source::Text::from(raw));
     let rows = finalized(batch);
     let mut ranges = Vec::new();
     for line in rows {
@@ -478,7 +487,7 @@ fn assert_ascii_custody<S: LayoutScalar>(
     assert_eq!(
         ranges,
         (0..raw.len())
-            .map(|i| text::Range::new(i, i + 1))
+            .map(|i| text::source::Range::new(i, i + 1))
             .collect::<Vec<_>>()
     );
 }
@@ -693,8 +702,8 @@ fn avoidance_yields_to_necessary_legal_cuts_and_preserves_intrinsics() {
 }
 
 fn incomparable<S: LayoutScalar>() {
-    let normal = text::Style {
-        word_break: text::WordBreak::Normal,
+    let normal = text::style::Style {
+        word_break: text::style::WordBreak::Normal,
         ..break_all()
     };
     let f = captured(
@@ -742,8 +751,8 @@ fn unrelated_scope_chains_preserve_normal_preference_instead_of_depth_ranking() 
 }
 
 fn restrictions<S: LayoutScalar>() {
-    let normal = text::Style {
-        word_break: text::WordBreak::Normal,
+    let normal = text::style::Style {
+        word_break: text::style::WordBreak::Normal,
         ..break_all()
     };
     let f = captured(
@@ -792,11 +801,11 @@ fn restrictions<S: LayoutScalar>() {
     assert_eq!(cuts(&batch), [3, 5]);
     assert_eq!(
         finalized(&batch)[0].selected_line().request().context.end,
-        text::LineEnd::Forced
+        text::selection::LineEnd::Forced
     );
     let f = captured(
         "AB CD",
-        text::Style {
+        text::style::Style {
             wrap: Wrap::None,
             ..normal.clone()
         },
@@ -918,7 +927,7 @@ fn numeric_tree<S: LayoutScalar>(
                 ),
                 margin: margin::<S>(rtl).map(LengthAutoOf::px),
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
-                    text::BidiLevel::try_new(0).unwrap(),
+                    text::supplied_line::BidiLevel::try_new(0).unwrap(),
                     following,
                 )),
                 ..NodeInputOf::default()
@@ -1341,7 +1350,10 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
         let prepared = &f.binding.prepared;
         assert_eq!(
             prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
-            [text::Range::new(0, 2), text::Range::new(2, 3)]
+            [
+                text::source::Range::new(0, 2),
+                text::source::Range::new(2, 3)
+            ]
         );
         for control in &f.binding.controls {
             assert_eq!(
@@ -1357,12 +1369,12 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
                 .iter()
                 .position(|participant| {
                     matches!(participant,
-            text::PreparedParticipant::Text(unit) if unit.view().source_range() == range)
+            text::prepared::PreparedParticipant::Text(unit) if unit.view().source_range() == range)
                 })
                 .unwrap()
         };
-        let base = at(text::Range::new(0, 1));
-        let mark = at(text::Range::new(1, 2));
+        let base = at(text::source::Range::new(0, 1));
+        let mark = at(text::source::Range::new(1, 2));
         for offer in prepared.opportunity_views() {
             let end = offer.boundary().view().participant_offset();
             assert_eq!(base < end, mark < end);
@@ -1370,7 +1382,7 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
         let start = prepared.boundary_views().next().unwrap().handle();
         let end = prepared
             .opportunity_views()
-            .find(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+            .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
             .unwrap()
             .handle();
         let mut source_segments = prepared.source_segments();
@@ -1381,9 +1393,9 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
                 &start,
                 None,
                 &end,
-                text::ConditionalPurpose::MinContent,
+                text::conditional::ConditionalPurpose::MinContent,
                 &[],
-                surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
+                surgeist_text::conditional::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap();
         assert!(search.begin(&[]).unwrap().opportunities().is_empty());
@@ -1424,7 +1436,7 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
         assert_eq!(cuts(&batch), [2, 3]);
         assert_eq!(
             batch.placed_text()[0].layout().source().text(),
-            &text::Text::from("A\u{301}B")
+            &text::source::Text::from("A\u{301}B")
         );
         let lines = finalized(&batch);
         assert_eq!(
@@ -1448,8 +1460,8 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
         assert_eq!(
             glyphs,
             [
-                (165, text::Range::new(0, 2), 10.0),
-                (36, text::Range::new(2, 3), 10.0)
+                (165, text::source::Range::new(0, 2), 10.0),
+                (36, text::source::Range::new(2, 3), 10.0)
             ]
         );
     }
@@ -1458,12 +1470,12 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
 }
 
 fn phrase<S: LayoutScalar>() {
-    let style = text::Style {
-        font: text::Font::new().family("Surgeist Phrase Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Surgeist Phrase Ahem"),
         locale: Some("ja-Jpan".into()),
-        word_break: text::WordBreak::AutoPhrase,
-        hyphens: text::Hyphens::None,
-        overflow_wrap: text::OverflowWrap::Anywhere,
+        word_break: text::style::WordBreak::AutoPhrase,
+        hyphens: text::hyphenation::Hyphens::None,
+        overflow_wrap: text::style::OverflowWrap::Anywhere,
         ..ahem_style(10.0, 10.0)
     };
     // Published Japanese provider row: 日本へ | ようこそ. The first phrase
@@ -1491,7 +1503,7 @@ fn phrase<S: LayoutScalar>() {
     assert_eq!(cuts(&batch), [1, 3, 5, 7]);
     let rows = finalized(&batch);
     assert!(
-        matches!(&rows[0].selected_line().request().termination, text::PreparedTermination::Conditional(point) if point.stage() == text::ConditionalStage::Normal)
+        matches!(&rows[0].selected_line().request().termination, text::selection::PreparedTermination::Conditional(point) if point.stage() == text::conditional::ConditionalStage::Normal)
     );
     // First restored cut1 is outside, restored cut2 is inside the avoided box.
     // No arbitrary stage may bypass this fitting Normal candidate.
@@ -1508,13 +1520,13 @@ fn source_phrase_restoration_keeps_stage_order_and_ranks_actual_restored_cuts() 
 fn hanging<S: LayoutScalar>() {
     let f = captured(
         "AB.CDEF",
-        text::Style {
+        text::style::Style {
             // Explicit Anywhere supplies the cut before IS period;
             // BreakAll alone must retain the ordinary punctuation restriction.
-            line_break: text::LineBreak::Anywhere,
-            hanging_punctuation: text::HangingPunctuation::new(
+            line_break: text::style::LineBreak::Anywhere,
+            hanging_punctuation: text::style::HangingPunctuation::new(
                 false,
-                Some(text::HangingPunctuationEnd::ForceEnd),
+                Some(text::style::HangingPunctuationEnd::ForceEnd),
                 false,
             ),
             ..break_all()
@@ -1564,7 +1576,7 @@ fn priority_consumes_actual_hanging_measurements_and_preserves_glyphs() {
 fn spacing<S: LayoutScalar>() {
     let f = captured(
         "ABCDEF",
-        text::Style {
+        text::style::Style {
             letter_spacing: 5.0,
             ..break_all()
         },
@@ -1634,16 +1646,16 @@ fn native_tree<S: LayoutScalar>(p: &PreparedParagraph) -> PublicLayoutTreeOf<S> 
 
 fn receiving<S: LayoutScalar>() {
     for placement in [
-        text::HyphenationPlacement::LogicalBefore,
-        text::HyphenationPlacement::LogicalAfter,
-        text::HyphenationPlacement::BothSides,
+        text::hyphenation::HyphenationPlacement::LogicalBefore,
+        text::hyphenation::HyphenationPlacement::LogicalAfter,
+        text::hyphenation::HyphenationPlacement::BothSides,
     ] {
-        let style = text::Style {
-            hyphens: text::Hyphens::Manual,
-            hyphenate_character: text::HyphenateCharacter::Auto,
+        let style = text::style::Style {
+            hyphens: text::hyphenation::Hyphens::Manual,
+            hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
             locale: Some("und-Latn".into()),
             native_hyphenation_convention: Some(
-                text::NativeHyphenationConvention::language_script(
+                text::hyphenation::NativeHyphenationConvention::language_script(
                     "und-Latn",
                     "Latn",
                     "A".into(),
@@ -1661,7 +1673,7 @@ fn receiving<S: LayoutScalar>() {
                 },
                 ParagraphPart::text(
                     1,
-                    Source::identified("AB\u{ad}CDE", text::Id::from_u64(650_900), 8),
+                    Source::identified("AB\u{ad}CDE", text::source::Id::from_u64(650_900), 8),
                     style.clone(),
                 ),
                 ParagraphPart::Control {
@@ -1689,13 +1701,13 @@ fn receiving<S: LayoutScalar>() {
                     wrap_inside: WrapInside::Avoid,
                     edges: Default::default(),
                     metric_contribution: Some(InlineBoxMetricContribution::Strut(
-                        text::LineBoxStrut {
+                        text::allocation::LineBoxStrut {
                             scope: None,
-                            metrics: text::LineStrut {
+                            metrics: text::allocation::LineStrut {
                                 baseline: 8.0,
                                 line_extent: 10.0,
                             },
-                            alignment: text::LineBoxAlignment::Baseline,
+                            alignment: text::allocation::LineBoxAlignment::Baseline,
                         },
                     )),
                 }],
@@ -1726,7 +1738,8 @@ fn receiving<S: LayoutScalar>() {
         assert!(rows[0].selected_line().request().alternative.is_some());
         let after = matches!(
             placement,
-            text::HyphenationPlacement::LogicalAfter | text::HyphenationPlacement::BothSides
+            text::hyphenation::HyphenationPlacement::LogicalAfter
+                | text::hyphenation::HyphenationPlacement::BothSides
         );
         assert_eq!(rows[0].hyphenation_continuation().is_some(), after);
         assert_eq!(
@@ -1735,7 +1748,7 @@ fn receiving<S: LayoutScalar>() {
         );
         assert_eq!(
             rows[0].feedback().advance,
-            if placement == text::HyphenationPlacement::LogicalAfter {
+            if placement == text::hyphenation::HyphenationPlacement::LogicalAfter {
                 20.0
             } else {
                 30.0
@@ -1744,19 +1757,19 @@ fn receiving<S: LayoutScalar>() {
         assert_eq!(rows[1].feedback().advance, if after { 40.0 } else { 30.0 });
         assert_eq!(
             batch.placed_text()[0].layout().source().text(),
-            &text::Text::from("AB\u{ad}CDE")
+            &text::source::Text::from("AB\u{ad}CDE")
         );
     }
     for placement in [
-        text::HyphenationPlacement::LogicalAfter,
-        text::HyphenationPlacement::BothSides,
+        text::hyphenation::HyphenationPlacement::LogicalAfter,
+        text::hyphenation::HyphenationPlacement::BothSides,
     ] {
-        let style = text::Style {
-            hyphens: text::Hyphens::Auto,
+        let style = text::style::Style {
+            hyphens: text::hyphenation::Hyphens::Auto,
             locale: Some("en-US".into()),
-            hyphenate_character: text::HyphenateCharacter::Auto,
+            hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
             native_hyphenation_convention: Some(
-                text::NativeHyphenationConvention::language_script(
+                text::hyphenation::NativeHyphenationConvention::language_script(
                     "en-US",
                     "Latn",
                     "A".into(),
@@ -1774,7 +1787,7 @@ fn receiving<S: LayoutScalar>() {
                 },
                 ParagraphPart::text(
                     1,
-                    Source::identified("as\u{ad}sociate", text::Id::from_u64(650_902), 10),
+                    Source::identified("as\u{ad}sociate", text::source::Id::from_u64(650_902), 10),
                     style.clone(),
                 ),
                 ParagraphPart::Control {
@@ -1790,10 +1803,13 @@ fn receiving<S: LayoutScalar>() {
             .word_views()
             .find(|word| word.query() == Some("associate"))
             .unwrap();
-        assert_eq!(word.resource(), text::HyphenationResource::EnUs2005);
+        assert_eq!(
+            word.resource(),
+            text::hyphenation::HyphenationResource::EnUs2005
+        );
         assert_eq!(
             word.provenance(),
-            Some(text::HyphenationProvenance::SourceException { entry: "associate" })
+            Some(text::hyphenation::HyphenationProvenance::SourceException { entry: "associate" })
         );
         let tree = native_tree::<S>(&p);
         let flow = LayoutFlowInput::try_new(
@@ -1812,13 +1828,13 @@ fn receiving<S: LayoutScalar>() {
                     wrap_inside: WrapInside::Avoid,
                     edges: Default::default(),
                     metric_contribution: Some(InlineBoxMetricContribution::Strut(
-                        text::LineBoxStrut {
+                        text::allocation::LineBoxStrut {
                             scope: None,
-                            metrics: text::LineStrut {
+                            metrics: text::allocation::LineStrut {
                                 baseline: 8.0,
                                 line_extent: 10.0,
                             },
-                            alignment: text::LineBoxAlignment::Baseline,
+                            alignment: text::allocation::LineBoxAlignment::Baseline,
                         },
                     )),
                 }],
@@ -1857,7 +1873,7 @@ fn receiving<S: LayoutScalar>() {
                         .unwrap()
                         .view()
                         .definition(),
-                    text::PreparedAlternativeDefinition::Automatic { .. }
+                    text::prepared::PreparedAlternativeDefinition::Automatic { .. }
                 ),
                 automatic
             );
@@ -1881,8 +1897,8 @@ fn full_manual_alternatives_and_real_receivers_retain_native_scope_custody() {
 }
 
 fn replacement_and_terminal<S: LayoutScalar>() {
-    let style = text::Style {
-        hyphens: text::Hyphens::Manual,
+    let style = text::style::Style {
+        hyphens: text::hyphenation::Hyphens::Manual,
         ..ahem_style(10.0, 10.0)
     };
     let p = PreparedParagraph::with_replacements(
@@ -1893,7 +1909,7 @@ fn replacement_and_terminal<S: LayoutScalar>() {
             },
             ParagraphPart::text(
                 1,
-                Source::identified("AB\u{ad}CDE", text::Id::from_u64(650_901), 9),
+                Source::identified("AB\u{ad}CDE", text::source::Id::from_u64(650_901), 9),
                 style.clone(),
             ),
             ParagraphPart::Control {
@@ -1904,13 +1920,13 @@ fn replacement_and_terminal<S: LayoutScalar>() {
         style,
         ParagraphBaseDirection::LeftToRight,
         vec![
-            text::ParagraphReplacement::resolved_native_logical_before(
-                text::ParagraphReplacementDefinition::Source {
+            text::paragraph::ParagraphReplacement::resolved_native_logical_before(
+                text::paragraph::ParagraphReplacementDefinition::Source {
                     origin: 0,
-                    source: text::Range::new(2, 3),
+                    source: text::source::Range::new(2, 3),
                 },
                 3,
-                vec![text::Text::from("")],
+                vec![text::source::Text::from("")],
             )
             .unwrap(),
         ],
@@ -1957,13 +1973,13 @@ fn replacement_and_terminal<S: LayoutScalar>() {
             .unwrap()
             .view()
             .text(),
-        &text::Text::from("")
+        &text::source::Text::from("")
     );
     assert_eq!(rows[0].feedback().advance, 20.0);
     assert_eq!(rows[1].feedback().advance, 30.0);
     assert_eq!(
         batch.placed_text()[0].layout().source().text(),
-        &text::Text::from("AB\u{ad}CDE")
+        &text::source::Text::from("AB\u{ad}CDE")
     );
 
     let f = captured(
@@ -1992,7 +2008,7 @@ fn replacement_and_terminal<S: LayoutScalar>() {
     assert_eq!(completions.len(), 1);
     let completion = completions[0].line.finalized_line();
     assert_eq!(completion.prepared_text(), f.binding.prepared);
-    assert_eq!(placed.source().text(), &text::Text::from("AB\n"));
+    assert_eq!(placed.source().text(), &text::source::Text::from("AB\n"));
     assert_eq!(
         (
             completion
@@ -2018,16 +2034,16 @@ fn replacement_and_terminal<S: LayoutScalar>() {
     assert_eq!(completions[0].origin.y, 10.0);
     let selected = completion.selected_line();
     let request = selected.request();
-    assert_eq!(request.context.end, text::LineEnd::Paragraph);
+    assert_eq!(request.context.end, text::selection::LineEnd::Paragraph);
     assert!(matches!(&request.termination,
-        text::PreparedTermination::Ordinary(offer)
-            if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd));
+        text::selection::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == text::prepared::PreparedBreakKind::ParagraphEnd));
     assert_eq!(request.start, request.end);
     assert!(request.participants.is_empty());
     let forced = finalized(&batch).remove(0);
     assert_eq!(
         forced.selected_line().request().context.end,
-        text::LineEnd::Forced
+        text::selection::LineEnd::Forced
     );
     assert_eq!(request.start, forced.selected_line().request().end);
 }
@@ -2039,8 +2055,8 @@ fn empty_native_replacement_and_nonformatted_terminal_completion_keep_their_owne
 }
 
 fn atomic_and_float<S: LayoutScalar>() {
-    let style = text::Style {
-        hyphens: text::Hyphens::None,
+    let style = text::style::Style {
+        hyphens: text::hyphenation::Hyphens::None,
         ..ahem_style(10.0, 10.0)
     };
     let p = PreparedParagraph::new(
@@ -2052,7 +2068,7 @@ fn atomic_and_float<S: LayoutScalar>() {
             ParagraphPart::text(1, Source::new("A\u{2060}"), style.clone()),
             ParagraphPart::Atomic {
                 node: 9,
-                size: text::Size::new(30.0, 10.0),
+                size: text::geometry::Size::new(30.0, 10.0),
             },
             ParagraphPart::text(3, Source::new("B"), style.clone()),
             ParagraphPart::Control {
@@ -2178,9 +2194,9 @@ fn glue_next_to_atomic_and_real_float_bands_keep_their_own_constraints() {
 }
 
 fn collapsed_and_explicit<S: LayoutScalar>() {
-    let style = text::Style {
-        word_break: text::WordBreak::Normal,
-        white_space: text::WhiteSpace::Collapse,
+    let style = text::style::Style {
+        word_break: text::style::WordBreak::Normal,
+        white_space: text::style::WhiteSpace::Collapse,
         ..break_all()
     };
     let f = captured(
@@ -2208,7 +2224,7 @@ fn collapsed_and_explicit<S: LayoutScalar>() {
         assert_eq!(finalized(&batch)[0].measurements().fit().advance(), 20.0);
         assert_eq!(
             batch.placed_text()[0].layout().source().text(),
-            &text::Text::from("AB  CDEF")
+            &text::source::Text::from("AB  CDEF")
         );
     }
     let f = captured(
@@ -2464,18 +2480,18 @@ fn mixed_fixture(rtl: bool, captured_range: Range<usize>, native: Range<usize>) 
         CaptureProfile {
             rtl,
             endpoints: false,
-            topology: text::SourceProcessingTopology::Unknown,
+            topology: text::capture::SourceProcessingTopology::Unknown,
         },
         AHEM,
     )
 }
 
-fn mixed_positions(f: &Captured) -> [text::CapturedEventPosition; 4] {
+fn mixed_positions(f: &Captured) -> [text::capture::CapturedEventPosition; 4] {
     assert_eq!(f.scopes.len(), 1);
     let scope = &f.scopes[0];
     assert_eq!(
         scope.domain().domain_topology(),
-        text::SourceProcessingTopology::Unknown
+        text::capture::SourceProcessingTopology::Unknown
     );
     assert!(scope.entry_control().is_none());
     assert!(scope.exit_control().is_none());
@@ -2504,7 +2520,10 @@ fn mixed_positions(f: &Captured) -> [text::CapturedEventPosition; 4] {
     ]
 }
 
-fn before(first: &text::CapturedEventPosition, second: &text::CapturedEventPosition) {
+fn before(
+    first: &text::capture::CapturedEventPosition,
+    second: &text::capture::CapturedEventPosition,
+) {
     assert_eq!(first.partial_cmp(second), Some(std::cmp::Ordering::Less));
 }
 
@@ -2526,7 +2545,7 @@ fn assert_mixed_facts(f: &Captured, reverse: bool) {
     let cut = p
         .opportunity_views()
         .find(|offer| {
-            offer.kind() == text::PreparedBreakKind::Allowed
+            offer.kind() == text::prepared::PreparedBreakKind::Allowed
                 && offer.boundary().view().source_before().get() == 4
                 && offer.boundary().view().source_after().get() == 4
         })
@@ -2548,7 +2567,7 @@ fn assert_mixed_facts(f: &Captured, reverse: bool) {
         let cut = p
             .opportunity_views()
             .find(|offer| {
-                offer.kind() == text::PreparedBreakKind::Allowed
+                offer.kind() == text::prepared::PreparedBreakKind::Allowed
                     && offer.boundary().view().source_before().get() == at
                     && offer.boundary().view().source_after().get() == at
             })
@@ -2614,14 +2633,16 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
         // Baseline8/10 allocation, matching its actual physical endpoints.
         // Endpoint-free trials still need that same-box metric witness.
         let native = WrappingScopeInput::NativePair {
-            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
-                scope: None,
-                metrics: text::LineStrut {
-                    baseline: 8.0,
-                    line_extent: 10.0,
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                text::allocation::LineBoxStrut {
+                    scope: None,
+                    metrics: text::allocation::LineStrut {
+                        baseline: 8.0,
+                        line_extent: 10.0,
+                    },
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
-                alignment: text::LineBoxAlignment::Baseline,
-            })),
+            )),
             edges: Default::default(),
             start: 10000,
             end: 10001,
@@ -2630,14 +2651,16 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
         // This actual semantic box independently owns the same fixture font
         // and absolute line-height; supply its own native Baseline allocation.
         let canonical = WrappingScopeInput::Captured {
-            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
-                scope: None,
-                metrics: text::LineStrut {
-                    baseline: 8.0,
-                    line_extent: 10.0,
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                text::allocation::LineBoxStrut {
+                    scope: None,
+                    metrics: text::allocation::LineStrut {
+                        baseline: 8.0,
+                        line_extent: 10.0,
+                    },
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
-                alignment: text::LineBoxAlignment::Baseline,
-            })),
+            )),
             edges: Default::default(),
             scope: f.scopes[0].clone(),
             wrap_inside: WrapInside::Avoid,

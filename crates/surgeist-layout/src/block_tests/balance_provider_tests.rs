@@ -3,7 +3,7 @@ use crate::test_support::readback::{self, Phase};
 use std::cell::RefCell;
 
 use crate::*;
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ContourFailure {

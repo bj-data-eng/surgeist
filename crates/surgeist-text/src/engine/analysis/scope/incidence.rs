@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use super::{ScopeIndexCapacity, anchor_exact};
 use crate::engine::AnalyzedCore;
 use crate::processing::contextual::canonical::CanonicalFlow;
-use crate::processing::{SourceBoxSide, SourceProcessingEvent};
+use crate::processing::contextual::{SourceBoxSide, SourceProcessingEvent};
 use crate::protocol::paragraph::SemanticAnchorItem;
 use crate::transform::relation::{ComponentOwner, RelationEvent};
 

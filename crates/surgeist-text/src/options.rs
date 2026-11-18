@@ -1,3 +1,5 @@
+//! Paragraph-level layout options.
+
 use crate::{
     Error, ErrorCode, ErrorDetail, Result,
     error::NumericRequirement,

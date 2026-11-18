@@ -1,7 +1,11 @@
 //! Real candidate ordering and branch-local terminal reselection.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use surgeist_text::{HyphenateCharacter, Hyphens, OverflowWrap, Range, Text, WhiteSpace};
+use surgeist_text::{
+    hyphenation::{HyphenateCharacter, Hyphens},
+    source::{Range, Text},
+    style::{OverflowWrap, WhiteSpace},
+};
 
 fn paragraph(text: &str, indication: &str, overflow: OverflowWrap) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
@@ -60,7 +64,9 @@ fn manual_later_ceiling_and_anti_permanent_ban_are_real_selected_sequences() {
             let manual = p
                 .prepared
                 .opportunity_views()
-                .find(|offer| offer.kind() == surgeist_text::PreparedBreakKind::Discretionary)
+                .find(|offer| {
+                    offer.kind() == surgeist_text::prepared::PreparedBreakKind::Discretionary
+                })
                 .unwrap();
             assert_eq!(manual.boundary().view().source_before().get(), 3);
             assert_eq!(manual.alternatives().count(), 1);
@@ -151,7 +157,7 @@ fn batch_with_style<S: LayoutScalar>(
             atomic.node,
             NodeInputOf {
                 display: Display::InlineBlock,
-                position: if original.kind() == surgeist_text::InlineBoxKind::OutOfFlow {
+                position: if original.kind() == surgeist_text::source::InlineBoxKind::OutOfFlow {
                     Position::Absolute
                 } else {
                     Position::default()
@@ -282,7 +288,7 @@ fn real_zero_atomic_and_out_of_flow_tails_do_not_share_content_authority() {
         let mut source = Source::new("XXXX associate\n");
         source.span(
             Range::new(14, 15),
-            surgeist_text::Style {
+            surgeist_text::style::Style {
                 white_space: WhiteSpace::Preserve,
                 ..style.clone()
             },
@@ -291,12 +297,12 @@ fn real_zero_atomic_and_out_of_flow_tails_do_not_share_content_authority() {
             let tail = if inflow {
                 ParagraphPart::Atomic {
                     node: 2,
-                    size: surgeist_text::Size::new(0.0, 0.0),
+                    size: surgeist_text::geometry::Size::new(0.0, 0.0),
                 }
             } else {
                 ParagraphPart::OutOfFlow {
                     node: 2,
-                    size: surgeist_text::Size::new(0.0, 0.0),
+                    size: surgeist_text::geometry::Size::new(0.0, 0.0),
                 }
             };
             let p = PreparedParagraph::new(
@@ -333,26 +339,35 @@ fn real_zero_atomic_and_out_of_flow_tails_do_not_share_content_authority() {
                 assert_eq!(layout.lines()[2].bounds().size.height, 10.0);
                 let atomics = layout.inline_boxes();
                 assert_eq!(atomics.len(), 1);
-                assert_eq!(atomics[0].kind(), surgeist_text::InlineBoxKind::InFlow);
+                assert_eq!(
+                    atomics[0].kind(),
+                    surgeist_text::source::InlineBoxKind::InFlow
+                );
                 assert_eq!(atomics[0].line(), 2);
-                assert_eq!(atomics[0].rect().size, surgeist_text::Size::new(0.0, 0.0));
+                assert_eq!(
+                    atomics[0].rect().size,
+                    surgeist_text::geometry::Size::new(0.0, 0.0)
+                );
             } else {
                 let completions = layout.nonformatted_lines().collect::<Vec<_>>();
                 assert_eq!(completions.len(), 1);
                 let completion = completions[0];
-                assert_eq!(completion.origin, surgeist_text::Point::new(0.0, 20.0));
+                assert_eq!(
+                    completion.origin,
+                    surgeist_text::geometry::Point::new(0.0, 20.0)
+                );
                 let receipt = completion.line.finalized_line();
                 assert_eq!(receipt.prepared_text(), p.prepared);
                 assert!(!receipt.has_in_flow_content());
                 let selected = receipt.selected_line();
                 assert_eq!(
                     selected.request().context.end,
-                    surgeist_text::LineEnd::Paragraph
+                    surgeist_text::selection::LineEnd::Paragraph
                 );
                 assert_eq!(selected.request().atomics.len(), 1);
                 assert!(matches!(
                     selected.request().atomics[0].allocation,
-                    surgeist_text::AtomicLineAllocation::OutOfFlow
+                    surgeist_text::allocation::AtomicLineAllocation::OutOfFlow
                 ));
                 assert_eq!(completion.atomics.len(), 1);
                 assert_eq!(
@@ -437,7 +452,8 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
         let mut style = ahem_style(10.0, 10.0);
         style.hyphens = Hyphens::Manual;
         style.hyphenate_character = HyphenateCharacter::String(Text::from("A"));
-        style.hyphenate_limit_chars.after = surgeist_text::HyphenationMinimum::Count(0);
+        style.hyphenate_limit_chars.after =
+            surgeist_text::hyphenation::HyphenationMinimum::Count(0);
         let first = PreparedParagraph::at_boundary(
             vec![ParagraphPart::text(
                 1,
@@ -446,13 +462,13 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
             )],
             style.clone(),
             ParagraphBaseDirection::LeftToRight,
-            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+            surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
         );
         let tail = PreparedParagraph::plain(3, Source::new("Y"), style);
         let offer = first
             .prepared
             .opportunity_views()
-            .find(|o| o.kind() == surgeist_text::PreparedBreakKind::Discretionary)
+            .find(|o| o.kind() == surgeist_text::prepared::PreparedBreakKind::Discretionary)
             .expect("actual trailing authored SHY admitted by real after=0 policy");
         assert_eq!(offer.boundary().view().source_before().get(), 10);
         let tree = PublicLayoutTreeOf::<S>::new()
@@ -518,7 +534,8 @@ fn source_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pro
             } else {
                 Hyphens::None
             };
-            style.hyphenate_limit_chars.after = surgeist_text::HyphenationMinimum::Count(0);
+            style.hyphenate_limit_chars.after =
+                surgeist_text::hyphenation::HyphenationMinimum::Count(0);
             style.hyphenate_character = HyphenateCharacter::String(Text::from("A"));
             let mut source = Source::new(if forced {
                 "as\u{ad}sociate\n"
@@ -528,7 +545,7 @@ fn source_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pro
             if forced {
                 source.span(
                     Range::new(10, 11),
-                    surgeist_text::Style {
+                    surgeist_text::style::Style {
                         white_space: WhiteSpace::Preserve,
                         ..style.clone()
                     },
@@ -538,7 +555,7 @@ fn source_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pro
                 vec![ParagraphPart::text(1, source.clone(), style.clone())],
                 style.clone(),
                 ParagraphBaseDirection::LeftToRight,
-                surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+                surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
             );
             let tail = PreparedParagraph::plain(3, Source::new("Y"), style);
             let tree = PublicLayoutTreeOf::<S>::new()
@@ -604,13 +621,9 @@ fn source_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pro
             assert_eq!(line.selected_line().request().alternative.is_some(), forced);
             assert_eq!(line.feedback().advance, if forced { 30.0 } else { 90.0 });
             if forced {
-                assert!(
-                    first
-                        .prepared
-                        .opportunity_views()
-                        .any(|o| o.kind() == surgeist_text::PreparedBreakKind::Forced
-                            && o.boundary().view().source_before().get() == 11)
-                );
+                assert!(first.prepared.opportunity_views().any(|o| o.kind()
+                    == surgeist_text::prepared::PreparedBreakKind::Forced
+                    && o.boundary().view().source_before().get() == 11));
             }
         }
     }
@@ -627,7 +640,7 @@ fn a_later_one_line_forced_segment_stays_independent_before_a_child_block_tail()
         let mut source = Source::new("as\u{ad}sociate\nY");
         source.span(
             Range::new(10, 11),
-            surgeist_text::Style {
+            surgeist_text::style::Style {
                 white_space: WhiteSpace::Preserve,
                 ..style.clone()
             },
@@ -636,17 +649,14 @@ fn a_later_one_line_forced_segment_stays_independent_before_a_child_block_tail()
             vec![ParagraphPart::text(1, source.clone(), style.clone())],
             style,
             ParagraphBaseDirection::LeftToRight,
-            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+            surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
         );
         assert!(p.prepared.opportunity_views().any(|o| o.kind()
-            == surgeist_text::PreparedBreakKind::Discretionary
+            == surgeist_text::prepared::PreparedBreakKind::Discretionary
             && o.boundary().view().source_before().get() == 3));
-        assert!(
-            p.prepared
-                .opportunity_views()
-                .any(|o| o.kind() == surgeist_text::PreparedBreakKind::Forced
-                    && o.boundary().view().source_before().get() == 11)
-        );
+        assert!(p.prepared.opportunity_views().any(|o| o.kind()
+            == surgeist_text::prepared::PreparedBreakKind::Forced
+            && o.boundary().view().source_before().get() == 11));
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1, 2])
             .children(1, [])
@@ -729,7 +739,7 @@ fn a_rejected_fitting_paragraph_cannot_manufacture_emergency_exhaustion() {
         let mut source = Source::new("cooperate");
         source.span(
             Range::new(5, 6),
-            surgeist_text::Style {
+            surgeist_text::style::Style {
                 hyphenate_character: HyphenateCharacter::String(Text::from("AAAAAAAAAA")),
                 ..style.clone()
             },
@@ -829,11 +839,15 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
             .unwrap();
         assert_eq!(
             word.resource(),
-            surgeist_text::HyphenationResource::EnUs2005
+            surgeist_text::hyphenation::HyphenationResource::EnUs2005
         );
         assert_eq!(
             word.provenance(),
-            Some(surgeist_text::HyphenationProvenance::SourceException { entry: "associate" })
+            Some(
+                surgeist_text::hyphenation::HyphenationProvenance::SourceException {
+                    entry: "associate"
+                }
+            )
         );
         let cut = word
             .cuts()
@@ -861,18 +875,19 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
             .participants()
             .take(request.end.view().participant_offset())
             .collect();
-        request.termination = surgeist_text::PreparedTermination::Ordinary(offer.clone());
+        request.termination =
+            surgeist_text::selection::PreparedTermination::Ordinary(offer.clone());
         request.alternative = Some(alternative);
         request.context.available_inline = None;
-        request.context.end = surgeist_text::LineEnd::Soft;
-        request.context.spacing = surgeist_text::SpacingPolicy::None;
+        request.context.end = surgeist_text::selection::LineEnd::Soft;
+        request.context.spacing = surgeist_text::spacing::SpacingPolicy::None;
         let first = p
             .prepared
             .select(request)
             .unwrap()
-            .finalize(surgeist_text::LineAllocations {
-                spacing: surgeist_text::SpacingAllocations::None,
-                scopes: surgeist_text::ScopeAllocations::None,
+            .finalize(surgeist_text::scope_alignment::LineAllocations {
+                spacing: surgeist_text::spacing::SpacingAllocations::None,
+                scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
             })
             .unwrap();
         let measure = first.measurements().min_content_contribution();

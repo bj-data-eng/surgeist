@@ -29,8 +29,8 @@ fn exact_refusal(error: text::Error, required: usize, limit: usize) {
     };
     assert_eq!(
         *reason,
-        text::ScopeAlignmentError::Limit {
-            kind: text::ScopeAlignmentLimitKind::StructuralWork,
+        text::scope_alignment::ScopeAlignmentError::Limit {
+            kind: text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
             required,
             limit,
         }
@@ -40,8 +40,8 @@ fn exact_refusal(error: text::Error, required: usize, limit: usize) {
 fn native<S: LayoutScalar>(
     case: &Case,
     batch: &CompletedLayoutBatchOf<u32, S>,
-    line: &text::FinalizedLine,
-    limits: text::ScopeAlignmentLimits,
+    line: &text::finalized::FinalizedLine,
+    limits: text::scope_alignment::ScopeAlignmentLimits,
 ) {
     assert_eq!(line.prepared_text(), case.binding.prepared);
     assert_eq!(
@@ -58,7 +58,7 @@ fn native<S: LayoutScalar>(
     assert_eq!(case.scopes[1].scope_alignment_limits(), Some(limits));
     assert_eq!(
         case.scopes[1].alignment_boundary(),
-        Some(text::ScopeAlignmentBoundary::NonInitial)
+        Some(text::scope_alignment::ScopeAlignmentBoundary::NonInitial)
     );
     let selected = line.selected_line();
     assert_eq!(selected.scopes().len(), 1);
@@ -88,14 +88,14 @@ fn native<S: LayoutScalar>(
             .unwrap();
         assert_eq!(
             allocation.boundary,
-            Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
+            Some(text::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
         );
         assert_eq!(
             allocation.strut,
-            Some(text::ControlStrut {
+            Some(text::allocation::ControlStrut {
                 baseline: 0.0,
                 line_extent: 0.0,
-                alignment: text::LineBoxAlignment::Baseline,
+                alignment: text::allocation::LineBoxAlignment::Baseline,
             })
         );
     }
@@ -112,26 +112,29 @@ fn native<S: LayoutScalar>(
             .collect::<Vec<_>>(),
         [
             (
-                Some(text::Id::from_u64(1578101)),
+                Some(text::source::Id::from_u64(1578101)),
                 7,
-                text::Range::new(0, 1),
-                text::Range::new(0, 1)
+                text::source::Range::new(0, 1),
+                text::source::Range::new(0, 1)
             ),
             (
-                Some(text::Id::from_u64(1578102)),
+                Some(text::source::Id::from_u64(1578102)),
                 7,
-                text::Range::new(0, 1),
-                text::Range::new(1, 2)
+                text::source::Range::new(0, 1),
+                text::source::Range::new(1, 2)
             ),
         ]
     );
     assert_eq!(placed(batch).source().text().code_units(), [88, 88]);
-    assert_eq!(placed(batch).lines()[0].range(), text::Range::new(0, 2));
+    assert_eq!(
+        placed(batch).lines()[0].range(),
+        text::source::Range::new(0, 2)
+    );
     assert_eq!(
         glyph_references(placed(batch)),
         [
-            (text::Range::new(0, 1), 11.0),
-            (text::Range::new(1, 2), 8.0)
+            (text::source::Range::new(0, 1), 11.0),
+            (text::source::Range::new(1, 2), 8.0)
         ]
     );
     assert_eq!(
@@ -145,10 +148,10 @@ fn native<S: LayoutScalar>(
 fn qualify<S: LayoutScalar>(work: usize) {
     // Only the structural-work cap differs from the existing Case defaults.
     // In particular, no post-capture or PreparedText metadata is rewritten.
-    let limits = text::ScopeAlignmentLimits::new(10000, 100, work, 16 << 20);
+    let limits = text::scope_alignment::ScopeAlignmentLimits::new(10000, 100, work, 16 << 20);
     let case = Case::new_with_limits(
         Shape::Single,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         10.0,
         "",
         1.0,
@@ -238,10 +241,10 @@ fn qualify<S: LayoutScalar>(work: usize) {
 }
 
 fn small_capture_refuses_during_compute<S: LayoutScalar>() {
-    let limits = text::ScopeAlignmentLimits::new(10000, 100, SMALL_WORK, 16 << 20);
+    let limits = text::scope_alignment::ScopeAlignmentLimits::new(10000, 100, SMALL_WORK, 16 << 20);
     let case = Case::new_with_limits(
         Shape::Single,
-        text::ScopeAlignmentBoundary::NonInitial,
+        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
         10.0,
         "",
         1.0,
@@ -264,7 +267,7 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
     assert_eq!(case.scopes[1].scope_alignment_limits(), Some(limits));
     assert_eq!(
         case.scopes[1].alignment_boundary(),
-        Some(text::ScopeAlignmentBoundary::NonInitial)
+        Some(text::scope_alignment::ScopeAlignmentBoundary::NonInitial)
     );
     let tree = case.tree::<S>(100.0, VerticalAlignOf::Baseline);
     let row = case.row(1, shifted::<S>(3.0));
@@ -298,7 +301,7 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
     let Some(text::ErrorDetail::ScopeAlignment { reason }) = error.detail() else {
         panic!("expected scope work refusal, got {error:?}")
     };
-    let text::ScopeAlignmentError::Limit {
+    let text::scope_alignment::ScopeAlignmentError::Limit {
         kind,
         required,
         limit,
@@ -306,7 +309,10 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
     else {
         panic!("expected the actual immutable work limit, got {reason:?}")
     };
-    assert_eq!(kind, text::ScopeAlignmentLimitKind::StructuralWork);
+    assert_eq!(
+        kind,
+        text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork
+    );
     assert_eq!(limit, SMALL_WORK);
     assert!(required > limit);
     assert_eq!(case.scopes[1].scope_alignment_usage(), capture_usage);
@@ -351,16 +357,16 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
             .collect::<Vec<_>>(),
         [
             (
-                Some(text::Id::from_u64(1578101)),
+                Some(text::source::Id::from_u64(1578101)),
                 7,
-                text::Range::new(0, 1),
-                text::Range::new(0, 1)
+                text::source::Range::new(0, 1),
+                text::source::Range::new(0, 1)
             ),
             (
-                Some(text::Id::from_u64(1578102)),
+                Some(text::source::Id::from_u64(1578102)),
                 7,
-                text::Range::new(0, 1),
-                text::Range::new(1, 2)
+                text::source::Range::new(0, 1),
+                text::source::Range::new(1, 2)
             ),
         ]
     );

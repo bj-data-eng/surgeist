@@ -114,7 +114,7 @@ where
         &FinalizedLine,
         Band,
         f64,
-        &[surgeist_text::LineBoxStrut],
+        &[surgeist_text::allocation::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
     X: FnMut(EncounterReset) -> Result<(), FitError>,

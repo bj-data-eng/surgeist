@@ -460,9 +460,11 @@ fn body(
     // then scans and reverses per level. Admit its full bound before entry;
     // discovering our bound above shares the already-required slot visit.
     let work = slots.len().checked_mul(3 + 4 * passes).ok_or_else(|| {
-        crate::engine::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
-        })
+        crate::engine::scope_alignment::refusal(
+            crate::processing::contextual::ScopeAlignmentError::Overflow {
+                kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
+            },
+        )
     })?;
     account::work(ledger, work)?;
     SuppliedLine::new(&slots)

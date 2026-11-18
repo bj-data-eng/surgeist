@@ -11,14 +11,14 @@ enum Definition {
     Control,
 }
 
-fn style(placement: text::HyphenationPlacement) -> text::Style {
-    text::Style {
-        hyphens: text::Hyphens::Manual,
-        white_space: text::WhiteSpace::Collapse,
+fn style(placement: text::hyphenation::HyphenationPlacement) -> text::style::Style {
+    text::style::Style {
+        hyphens: text::hyphenation::Hyphens::Manual,
+        white_space: text::style::WhiteSpace::Collapse,
         locale: Some("und-Latn".into()),
-        hyphenate_character: text::HyphenateCharacter::Auto,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
         native_hyphenation_convention: Some(
-            text::NativeHyphenationConvention::language_script(
+            text::hyphenation::NativeHyphenationConvention::language_script(
                 "und-Latn",
                 "Latn",
                 "A".into(),
@@ -42,8 +42,8 @@ fn original(definition: Definition, consecutive: bool) -> &'static str {
 fn prepare(
     definition: Definition,
     consecutive: bool,
-    placement: text::HyphenationPlacement,
-) -> text::Result<text::PreparedText> {
+    placement: text::hyphenation::HyphenationPlacement,
+) -> text::Result<text::prepared::PreparedText> {
     let style = style(placement);
     let parts: &[&str] = match (definition, consecutive) {
         (Definition::Source, false) => &["AB\u{ad}", "CDE"],
@@ -59,52 +59,52 @@ fn prepare(
     let mut offset = 0;
     for (index, part) in parts.iter().enumerate() {
         if index != 0 {
-            connections.push(text::ParagraphConnection {
+            connections.push(text::paragraph::ParagraphConnection {
                 at: offset,
-                kind: text::ParagraphConnectionKind::Continuous,
+                kind: text::paragraph::ParagraphConnectionKind::Continuous,
             });
-            boundary_policies.push(text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(index - 1),
-                preceding_wrap: text::Wrap::Word,
-                following_wrap: text::Wrap::Word,
-                ancestor_wrap: text::Wrap::Word,
+            boundary_policies.push(text::paragraph::ParagraphBoundaryPolicy {
+                definition: text::paragraph::ParagraphBoundaryDefinition::Connection(index - 1),
+                preceding_wrap: text::style::Wrap::Word,
+                following_wrap: text::style::Wrap::Word,
+                ancestor_wrap: text::style::Wrap::Word,
             });
             if matches!(definition, Definition::Control) {
-                anchors.push(text::ParagraphAnchor {
-                    item: text::ParagraphAnchorItem::Control(controls.len()),
-                    affinity: text::Affinity::Before,
+                anchors.push(text::paragraph::ParagraphAnchor {
+                    item: text::paragraph::ParagraphAnchorItem::Control(controls.len()),
+                    affinity: text::layout::Affinity::Before,
                 });
-                controls.push(text::ParagraphControl {
+                controls.push(text::paragraph::ParagraphControl {
                     at: offset,
-                    kind: text::ParagraphControlKind::DiscretionaryBreak {
+                    kind: text::paragraph::ParagraphControlKind::DiscretionaryBreak {
                         style: Box::new(style.clone()),
                     },
                 });
             }
         }
-        let source = Source::identified(*part, text::Id::from_u64(66100 + index as u64), 7);
+        let source = Source::identified(*part, text::source::Id::from_u64(66100 + index as u64), 7);
         let len = source.text().len();
-        origins.push(text::ParagraphOrigin {
+        origins.push(text::paragraph::ParagraphOrigin {
             text_node: None,
             source,
-            local: text::Range::new(0, len),
-            aggregate: text::Range::new(offset, offset + len),
-            kind: text::ParagraphOriginKind::Authored,
+            local: text::source::Range::new(0, len),
+            aggregate: text::source::Range::new(offset, offset + len),
+            kind: text::paragraph::ParagraphOriginKind::Authored,
         });
         offset += len;
     }
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: Source::identified(
                 original(definition, consecutive),
-                text::Id::from_u64(66199),
+                text::source::Id::from_u64(66199),
                 7,
             ),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins,
             connections,
@@ -113,15 +113,16 @@ fn prepare(
             replacements: Vec::new(),
             anchor_order: anchors,
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )?;
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
     let mut system = text::System::default();
     system.register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)?;
-    system.prepare(&analyzed, text::PreparationOptions::default())
+    system.prepare(&analyzed, text::prepared::PreparationOptions::default())
 }
 
-fn qualify(p: &text::PreparedText, definition: Definition, consecutive: bool) {
+fn qualify(p: &text::prepared::PreparedText, definition: Definition, consecutive: bool) {
     assert_eq!(
         p.analyzed_source().source().text().code_units(),
         original(definition, consecutive)
@@ -130,19 +131,19 @@ fn qualify(p: &text::PreparedText, definition: Definition, consecutive: bool) {
     );
     let expected = if consecutive {
         vec![
-            text::HyphenationCounts {
+            text::hyphenation::HyphenationCounts {
                 total: 6,
                 before: 2,
                 after: 4,
             },
-            text::HyphenationCounts {
+            text::hyphenation::HyphenationCounts {
                 total: 6,
                 before: 4,
                 after: 2,
             },
         ]
     } else {
-        vec![text::HyphenationCounts {
+        vec![text::hyphenation::HyphenationCounts {
             total: 5,
             before: 2,
             after: 3,
@@ -154,13 +155,13 @@ fn qualify(p: &text::PreparedText, definition: Definition, consecutive: bool) {
                 assert_eq!(
                     cut.provenance(),
                     match definition {
-                        Definition::Source => text::HyphenationProvenance::Source,
-                        Definition::Control => text::HyphenationProvenance::Control,
+                        Definition::Source => text::hyphenation::HyphenationProvenance::Source,
+                        Definition::Control => text::hyphenation::HyphenationProvenance::Control,
                     }
                 );
                 assert_eq!(
                     cut.opportunity().unwrap().view().kind(),
-                    text::PreparedBreakKind::Discretionary
+                    text::prepared::PreparedBreakKind::Discretionary
                 );
                 cut.counts().unwrap()
             })
@@ -182,7 +183,7 @@ fn qualify(p: &text::PreparedText, definition: Definition, consecutive: bool) {
         match (definition, alternative.definition()) {
             (
                 Definition::Source,
-                text::PreparedAlternativeDefinition::Source { origin, source },
+                text::prepared::PreparedAlternativeDefinition::Source { origin, source },
             ) => {
                 assert_eq!(source.end - source.start, 1);
                 assert_eq!(
@@ -191,10 +192,13 @@ fn qualify(p: &text::PreparedText, definition: Definition, consecutive: bool) {
                 );
                 assert_eq!(origin.view().source().revision(), 7);
             }
-            (Definition::Control, text::PreparedAlternativeDefinition::Control { control, .. }) => {
+            (
+                Definition::Control,
+                text::prepared::PreparedAlternativeDefinition::Control { control, .. },
+            ) => {
                 assert!(matches!(
                     control.view().kind(),
-                    text::ParagraphControlKind::DiscretionaryBreak { .. }
+                    text::paragraph::ParagraphControlKind::DiscretionaryBreak { .. }
                 ));
                 assert!(alternative.source_range().is_none());
             }
@@ -204,7 +208,7 @@ fn qualify(p: &text::PreparedText, definition: Definition, consecutive: bool) {
 }
 
 fn compute<S: LayoutScalar>(
-    p: &text::PreparedText,
+    p: &text::prepared::PreparedText,
     available: crate::AxisSizingRequestOf<S>,
     width: Option<f64>,
 ) -> CompletedLayoutBatchOf<u32, S> {
@@ -212,7 +216,7 @@ fn compute<S: LayoutScalar>(
 }
 
 fn compute_with_style<S: LayoutScalar>(
-    p: &text::PreparedText,
+    p: &text::prepared::PreparedText,
     available: crate::AxisSizingRequestOf<S>,
     width: Option<f64>,
     wrap_style: crate::TextWrapStyle,
@@ -329,7 +333,9 @@ fn compute_with_style<S: LayoutScalar>(
     compute_layout_with_flow(&captured, 0, input).unwrap()
 }
 
-fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
+fn lines<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<text::finalized::FinalizedLine> {
     let mut rows = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -343,10 +349,10 @@ fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::F
 }
 
 fn assert_lines<S: LayoutScalar>(
-    p: &text::PreparedText,
+    p: &text::prepared::PreparedText,
     definition: Definition,
     consecutive: bool,
-    placement: text::HyphenationPlacement,
+    placement: text::hyphenation::HyphenationPlacement,
 ) {
     assert_lines_with_style::<S>(
         p,
@@ -358,10 +364,10 @@ fn assert_lines<S: LayoutScalar>(
 }
 
 fn assert_lines_with_style<S: LayoutScalar>(
-    p: &text::PreparedText,
+    p: &text::prepared::PreparedText,
     definition: Definition,
     consecutive: bool,
-    placement: text::HyphenationPlacement,
+    placement: text::hyphenation::HyphenationPlacement,
     wrap_style: crate::TextWrapStyle,
 ) {
     let source = original(definition, consecutive)
@@ -387,8 +393,8 @@ fn assert_lines_with_style<S: LayoutScalar>(
     } else {
         2
     };
-    let before = placement == text::HyphenationPlacement::LogicalBefore;
-    let after = placement == text::HyphenationPlacement::LogicalAfter;
+    let before = placement == text::hyphenation::HyphenationPlacement::LogicalBefore;
+    let after = placement == text::hyphenation::HyphenationPlacement::LogicalAfter;
     let ends = if consecutive && after {
         vec![2 * cut, source.len()]
     } else if consecutive && !before {
@@ -397,12 +403,12 @@ fn assert_lines_with_style<S: LayoutScalar>(
         vec![cut, source.len()]
     };
     let advances: &[f64] = match (consecutive, placement) {
-        (false, text::HyphenationPlacement::LogicalBefore) => &[30.0, 30.0],
-        (false, text::HyphenationPlacement::LogicalAfter) => &[20.0, 40.0],
-        (false, text::HyphenationPlacement::BothSides) => &[30.0, 40.0],
-        (true, text::HyphenationPlacement::LogicalBefore) => &[30.0, 40.0],
-        (true, text::HyphenationPlacement::LogicalAfter) => &[40.0, 30.0],
-        (true, text::HyphenationPlacement::BothSides) => &[30.0, 40.0, 30.0],
+        (false, text::hyphenation::HyphenationPlacement::LogicalBefore) => &[30.0, 30.0],
+        (false, text::hyphenation::HyphenationPlacement::LogicalAfter) => &[20.0, 40.0],
+        (false, text::hyphenation::HyphenationPlacement::BothSides) => &[30.0, 40.0],
+        (true, text::hyphenation::HyphenationPlacement::LogicalBefore) => &[30.0, 40.0],
+        (true, text::hyphenation::HyphenationPlacement::LogicalAfter) => &[40.0, 30.0],
+        (true, text::hyphenation::HyphenationPlacement::BothSides) => &[30.0, 40.0, 30.0],
     };
     let actual = lines(&batch);
     assert_eq!(actual.len(), advances.len());
@@ -424,7 +430,7 @@ fn assert_lines_with_style<S: LayoutScalar>(
         }
         assert_eq!(
             batch.placed_text()[0].layout().lines()[ordinal].range(),
-            text::Range::new(start, end)
+            text::source::Range::new(start, end)
         );
         assert_eq!(
             batch.placed_text()[0].layout().lines()[ordinal].baseline(),
@@ -443,19 +449,19 @@ fn assert_lines_with_style<S: LayoutScalar>(
 
         let mut expected = Vec::new();
         if ordinal != 0 && !before {
-            expected.push((text::Range::new(start, start), 35));
+            expected.push((text::source::Range::new(start, start), 35));
         }
         for (offset, &cp) in source.iter().enumerate().take(end).skip(start) {
             if cp != 173 {
                 assert!((65..=70).contains(&cp));
                 expected.push((
-                    text::Range::new(offset, offset + 1),
+                    text::source::Range::new(offset, offset + 1),
                     35 + u32::from(cp - 65),
                 ));
             }
         }
         if outgoing && !after {
-            expected.push((text::Range::new(end, end), 35));
+            expected.push((text::source::Range::new(end, end), 35));
         }
         let expected = expected
             .into_iter()
@@ -503,7 +509,7 @@ fn assert_lines_with_style<S: LayoutScalar>(
         let actual_owners = line
             .fragment_views()
             .filter_map(|row| match row.owner() {
-                text::FinalizedFragmentOwner::Alternative(owner) => Some(owner),
+                text::finalized::FinalizedFragmentOwner::Alternative(owner) => Some(owner),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -519,7 +525,11 @@ fn assert_lines_with_style<S: LayoutScalar>(
     assert!(incoming.is_none());
 }
 
-fn assert_intrinsics<S: LayoutScalar>(p: &text::PreparedText, minimum: f64, maximum: f64) {
+fn assert_intrinsics<S: LayoutScalar>(
+    p: &text::prepared::PreparedText,
+    minimum: f64,
+    maximum: f64,
+) {
     for (available, expected) in [
         (
             crate::AxisSizingRequestOf::new(
@@ -542,12 +552,12 @@ fn assert_intrinsics<S: LayoutScalar>(p: &text::PreparedText, minimum: f64, maxi
     }
 }
 
-fn assert_outgoing_counter_once(p: &text::PreparedText) {
+fn assert_outgoing_counter_once(p: &text::prepared::PreparedText) {
     assert_outgoing_counter_once_with_style(p, crate::TextWrapStyle::Auto);
 }
 
 fn assert_outgoing_counter_once_with_style(
-    p: &text::PreparedText,
+    p: &text::prepared::PreparedText,
     wrap_style: crate::TextWrapStyle,
 ) {
     // Exercise the actual private fitter's committed state, not a duplicated
@@ -555,7 +565,7 @@ fn assert_outgoing_counter_once_with_style(
     use crate::text_layout::fit;
     let controls = p
         .control_views()
-        .map(|row| text::ControlAllocation {
+        .map(|row| text::allocation::ControlAllocation {
             occurrence: row.handle(),
             strut: None,
             boundary: None,
@@ -592,8 +602,8 @@ fn assert_outgoing_counter_once_with_style(
                 crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
                 crate::SizingOperation::Normal,
             ),
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            block_direction: text::ParagraphBaseDirection::LeftToRight,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            block_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             alignment: TextAlign::Start,
             last_alignment: TextAlignLast::Auto,
             justification: TextJustification::None,
@@ -604,7 +614,7 @@ fn assert_outgoing_counter_once_with_style(
             ),
             hyphenate_limit_zone: LengthPercentageOf::ZERO,
             tail: fit::TailContext::Unrestricted,
-            orientation: text::LineOrientation::Horizontal,
+            orientation: text::selection::LineOrientation::Horizontal,
             atomics: &[],
             controls: &controls,
             line_strut: None,
@@ -634,7 +644,7 @@ fn assert_outgoing_counter_once_with_style(
         |_, _| Ok(None),
         fit::EncounterCallbacks {
             checkpoint_group: || Ok(()),
-            replay: |_: &text::FinalizedLine, _: fit::EncounterReplay| Ok(Vec::new()),
+            replay: |_: &text::finalized::FinalizedLine, _: fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),
             reset: |_| Ok(()),
         },
@@ -665,15 +675,15 @@ fn assert_outgoing_counter_once_with_style(
 
 fn check<S: LayoutScalar>(definition: Definition, consecutive: bool) {
     for placement in [
-        text::HyphenationPlacement::LogicalBefore,
-        text::HyphenationPlacement::LogicalAfter,
+        text::hyphenation::HyphenationPlacement::LogicalBefore,
+        text::hyphenation::HyphenationPlacement::LogicalAfter,
     ] {
         let p = prepare(definition, consecutive, placement).unwrap();
         qualify(&p, definition, consecutive);
         assert_lines::<S>(&p, definition, consecutive, placement);
         assert_intrinsics::<S>(
             &p,
-            if consecutive || placement == text::HyphenationPlacement::LogicalBefore {
+            if consecutive || placement == text::hyphenation::HyphenationPlacement::LogicalBefore {
                 30.0
             } else {
                 40.0
@@ -686,7 +696,7 @@ fn check<S: LayoutScalar>(definition: Definition, consecutive: bool) {
     let p = prepare(
         definition,
         consecutive,
-        text::HyphenationPlacement::BothSides,
+        text::hyphenation::HyphenationPlacement::BothSides,
     )
     .expect("native exact-string BothSides must admit one indication on each actual side");
     qualify(&p, definition, consecutive);
@@ -694,7 +704,7 @@ fn check<S: LayoutScalar>(definition: Definition, consecutive: bool) {
         &p,
         definition,
         consecutive,
-        text::HyphenationPlacement::BothSides,
+        text::hyphenation::HyphenationPlacement::BothSides,
     );
     assert_intrinsics::<S>(&p, 40.0, if consecutive { 60.0 } else { 50.0 });
     if consecutive {
@@ -745,7 +755,7 @@ fn check_pretty<S: LayoutScalar>() {
             let p = prepare(
                 definition,
                 consecutive,
-                text::HyphenationPlacement::BothSides,
+                text::hyphenation::HyphenationPlacement::BothSides,
             )
             .expect("real native BothSides fixture must prepare");
             qualify(&p, definition, consecutive);
@@ -753,7 +763,7 @@ fn check_pretty<S: LayoutScalar>() {
                 &p,
                 definition,
                 consecutive,
-                text::HyphenationPlacement::BothSides,
+                text::hyphenation::HyphenationPlacement::BothSides,
                 crate::TextWrapStyle::Pretty,
             );
             if consecutive {

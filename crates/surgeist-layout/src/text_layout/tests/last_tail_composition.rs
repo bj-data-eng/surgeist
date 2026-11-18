@@ -1,8 +1,11 @@
 //! Actual forced/empty tails and nonpositive content through public composition.
 use super::*;
 use surgeist_text::{
-    HyphenateCharacter, HyphenationProvenance, HyphenationResource, Hyphens, LineEnd, OverflowWrap,
-    PreparedAlternativeDefinition, PreparedBreakKind, Range, Text, WhiteSpace,
+    hyphenation::{HyphenateCharacter, HyphenationProvenance, HyphenationResource, Hyphens},
+    prepared::{PreparedAlternativeDefinition, PreparedBreakKind},
+    selection::LineEnd,
+    source::{Range, Text},
+    style::{OverflowWrap, WhiteSpace},
 };
 
 const AHEM: &[u8] = include_bytes!(concat!(
@@ -34,7 +37,7 @@ fn paragraph(text: &str, y_adjustment: f64) -> (PreparedParagraph, Vec<u8>) {
     style.font = style.font.feature("\"kern\" 1");
     let control = |enabled| {
         let mut own = style.clone();
-        own.font = surgeist_text::Font::new()
+        own.font = surgeist_text::style::Font::new()
             .family("Ahem")
             .feature(if enabled { "\"kern\" 1" } else { "\"kern\" 0" });
         let p = PreparedParagraph::with_registered_font(
@@ -62,7 +65,7 @@ fn paragraph(text: &str, y_adjustment: f64) -> (PreparedParagraph, Vec<u8>) {
         if byte == b'\n' {
             source.span(
                 Range::new(offset, offset + 1),
-                surgeist_text::Style {
+                surgeist_text::style::Style {
                     white_space: WhiteSpace::Preserve,
                     ..style.clone()
                 },
@@ -197,7 +200,7 @@ fn check<S: LayoutScalar>(
         assert_eq!(line.baseline(), 8.0 + 10.0 * index as f64);
         assert_eq!(
             line.bounds(),
-            surgeist_text::Rect::new(0.0, 10.0 * index as f64, 100.0, 10.0)
+            surgeist_text::geometry::Rect::new(0.0, 10.0 * index as f64, 100.0, 10.0)
         );
         let finalized = batch
             .final_inline_fragments()
@@ -233,7 +236,7 @@ fn check<S: LayoutScalar>(
         let completion = completions[0];
         assert_eq!(
             completion.origin,
-            surgeist_text::Point::new(0.0, 10.0 * formatted.len() as f64)
+            surgeist_text::geometry::Point::new(0.0, 10.0 * formatted.len() as f64)
         );
         assert!(completion.atomics.is_empty());
         let receipt = completion.line.finalized_line();
@@ -253,7 +256,7 @@ fn check<S: LayoutScalar>(
         );
         assert!(selected.request().alternative.is_none());
         assert!(matches!(&selected.request().termination,
-            surgeist_text::PreparedTermination::Ordinary(offer)
+            surgeist_text::selection::PreparedTermination::Ordinary(offer)
                 if offer.view().kind() == PreparedBreakKind::ParagraphEnd));
     }
 }
@@ -512,7 +515,7 @@ fn check_choice_order<S: LayoutScalar>() {
             assert_eq!(line.baseline(), 8.0 + 10.0 * index as f64);
             assert_eq!(
                 line.bounds(),
-                surgeist_text::Rect::new(0.0, 10.0 * index as f64, 60.0, 10.0)
+                surgeist_text::geometry::Rect::new(0.0, 10.0 * index as f64, 60.0, 10.0)
             );
             let finalized = batch
                 .final_inline_fragments()
@@ -552,7 +555,7 @@ fn check_choice_order<S: LayoutScalar>() {
                 if policy == HyphenateLimitLast::Always && index == 1 {
                     assert!(matches!(
                         selected.request().termination,
-                        surgeist_text::PreparedTermination::Conditional(_)
+                        surgeist_text::selection::PreparedTermination::Conditional(_)
                     ));
                 }
             }

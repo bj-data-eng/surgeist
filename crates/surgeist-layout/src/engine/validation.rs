@@ -364,8 +364,11 @@ mod tests {
     #[test]
     fn shared_text_role_is_checked_for_each_incoming_parent_edge() {
         use crate::test_support::text::{PreparedParagraph, ahem_style};
-        let paragraph =
-            PreparedParagraph::plain(3, surgeist_text::Source::new("X"), ahem_style(10.0, 10.0));
+        let paragraph = PreparedParagraph::plain(
+            3,
+            surgeist_text::source::Source::new("X"),
+            ahem_style(10.0, 10.0),
+        );
         let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::<f64>::new()
             .children(0, [1, 2])
             .children(1, [3])

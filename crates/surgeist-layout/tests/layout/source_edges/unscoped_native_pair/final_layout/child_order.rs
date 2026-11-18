@@ -33,20 +33,24 @@ fn native_order<Scope>(
         },
     ]
 }
-fn native_only_input(direction: layout::Direction, empty: bool) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+fn native_only_input(
+    direction: layout::Direction,
+    empty: bool,
+) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let mut raw = unscoped_native_pair_input(direction);
     assert_eq!(raw.scopes.len(), 1);
     assert!(raw.computed_line_boundaries.is_empty());
     if empty {
-        raw.scopes.push(text::SourceProcessingScope::Inline {
-            horizontal_inner_direction: None,
-            alignment_boundary: None,
-            font_reference: None,
-            trim: Default::default(),
-            style: None,
-            boundaries: None,
-        });
+        raw.scopes
+            .push(text::capture::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
+                trim: Default::default(),
+                style: None,
+                boundaries: None,
+            });
     }
     // Literal original event construction; there is no second event parser or
     // inferred pair. The native pair is still explicitly declared.
@@ -55,12 +59,12 @@ fn native_only_input(direction: layout::Direction, empty: bool) -> text::Context
         E::EnterParagraph(0),
         E::Origin {
             origin: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Connection(0),
         E::Control {
             control: 0,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
     ];
     if empty {
@@ -69,11 +73,11 @@ fn native_only_input(direction: layout::Direction, empty: bool) -> text::Context
     events.extend([
         E::Origin {
             origin: 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::Control {
             control: 1,
-            affinity: text::Affinity::Before,
+            affinity: text::layout::Affinity::Before,
         },
         E::ExitParagraph(0),
         E::ExitScope(0),
@@ -94,25 +98,29 @@ fn direct_pair_fixture<S: layout::LayoutScalar>(
     host.base.orders = native_order(prefix);
     // This is direct lower Text processing: no source-wrapper receipt or
     // computed request participates in the claimed native child-order proof.
-    let processed =
-        Arc::new(text::process_contextual_source(native_only_input(direction, empty)).unwrap());
+    let processed = Arc::new(
+        text::capture::process_contextual_source(native_only_input(direction, empty)).unwrap(),
+    );
     assert!(processed.captured_computed_line_boundary(0).is_none());
-    assert_eq!(processed.source().text(), &text::Text::from("AB"));
+    assert_eq!(processed.source().text(), &text::source::Text::from("AB"));
     assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
     let start = processed.captured_control(0).unwrap();
     let end = processed.captured_control(1).unwrap();
     let b = processed.captured_origin(1).unwrap();
     assert_eq!(
         start.kind(),
-        &text::ParagraphControlKind::InlineBoundaryStart
+        &text::paragraph::ParagraphControlKind::InlineBoundaryStart
     );
-    assert_eq!(end.kind(), &text::ParagraphControlKind::InlineBoundaryEnd);
+    assert_eq!(
+        end.kind(),
+        &text::paragraph::ParagraphControlKind::InlineBoundaryEnd
+    );
     assert!(start.event_position() < b);
     assert!(b < end.event_position());
     assert!(processed.captured_control(2).is_none());
     assert_eq!(
         processed.captured_scope(0).unwrap().domain_topology(),
-        text::SourceProcessingTopology::Complete
+        text::capture::SourceProcessingTopology::Complete
     );
     if empty {
         let e = processed.captured_scope(1).unwrap();
@@ -131,7 +139,7 @@ fn direct_pair_fixture<S: layout::LayoutScalar>(
     assert!(
         !prepared
             .opportunity_views()
-            .any(|o| o.kind() == text::PreparedBreakKind::Forced)
+            .any(|o| o.kind() == text::prepared::PreparedBreakKind::Forced)
     );
     let mut binding = host.base.install(&prepared);
     assert_eq!(binding.nodes, [1, 3, 2, 4]);

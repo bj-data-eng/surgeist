@@ -30,7 +30,13 @@ fn quality_nominal_prefix<S: LayoutScalar>() {
         TextWrapStyle::Pretty,
         TextWrapStyle::AvoidShortLastLine,
     ] {
-        let fixture = Fixture::new("A B C D", (0, 7), text::WhiteSpace::Collapse, false, false);
+        let fixture = Fixture::new(
+            "A B C D",
+            (0, 7),
+            text::style::WhiteSpace::Collapse,
+            false,
+            false,
+        );
         let mut binding = fixture.binding.clone();
         binding.nodes.insert(1, 2);
         let tree = fixture
@@ -108,7 +114,7 @@ fn nominal_prefix_float_reflows_under_each_quality_policy_f64() {
 #[test]
 fn prefix_consumer_keeps_each_individual_edge_even_when_advance_cancels() {
     for (margin, border, padding) in [(0.0, 0.0, 0.0), (-1.0, 1.0, 0.0), (-1.0, 0.0, 1.0)] {
-        let fixture = Fixture::new("X", (0, 1), text::WhiteSpace::Collapse, false, false);
+        let fixture = Fixture::new("X", (0, 1), text::style::WhiteSpace::Collapse, false, false);
         let opening = fixture.binding.controls[0].occurrence.clone();
         let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let scope = opening.captured_control().unwrap().scope();
@@ -180,7 +186,9 @@ fn prefix_consumer_keeps_each_individual_edge_even_when_advance_cancels() {
             .fragment()
             .finalized_fragment()
             .finalized_line();
-        let seam = text::TextSeam::AfterParticipant(text::PreparedParticipant::Control(opening));
+        let seam = text::finalized::TextSeam::AfterParticipant(
+            text::prepared::PreparedParticipant::Control(opening),
+        );
         let prefix = line.prefix_at(&seam).unwrap();
         assert_eq!(prefix.advance(), 0.0);
         assert!(prefix.has_retained_flow_participation());
@@ -206,22 +214,22 @@ fn prefix_consumer_keeps_zero_size_in_flow_atomic_and_ignores_out_of_flow_atomic
         let atomic = if in_flow {
             ParagraphPart::Atomic {
                 node: 1,
-                size: text::Size::new(0.0, 0.0),
+                size: text::geometry::Size::new(0.0, 0.0),
             }
         } else {
             ParagraphPart::OutOfFlow {
                 node: 1,
-                size: text::Size::new(0.0, 0.0),
+                size: text::geometry::Size::new(0.0, 0.0),
             }
         };
         let style = ahem_style(10.0, 10.0);
         let paragraph = PreparedParagraph::new(
             vec![
                 atomic,
-                ParagraphPart::text(10, text::Source::new("X"), style.clone()),
+                ParagraphPart::text(10, text::source::Source::new("X"), style.clone()),
             ],
             style,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let binding = paragraph.binding(0);
         let occurrence = binding.atomics[0].occurrence.clone();
@@ -273,7 +281,9 @@ fn prefix_consumer_keeps_zero_size_in_flow_atomic_and_ignores_out_of_flow_atomic
             .fragment()
             .finalized_fragment()
             .finalized_line();
-        let seam = text::TextSeam::AfterParticipant(text::PreparedParticipant::Atomic(occurrence));
+        let seam = text::finalized::TextSeam::AfterParticipant(
+            text::prepared::PreparedParticipant::Atomic(occurrence),
+        );
         assert_eq!(
             AcceptedFloatPrefix::Seam(seam)
                 .observe(&line)

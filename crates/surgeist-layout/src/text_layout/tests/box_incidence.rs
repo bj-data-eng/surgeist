@@ -10,7 +10,7 @@ const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fon
 
 struct EmptyBox {
     binding: TextParagraphBinding<u32>,
-    scope: text::CapturedScope,
+    scope: text::capture::CapturedScope,
     direction: Direction,
 }
 impl EmptyBox {
@@ -19,70 +19,71 @@ impl EmptyBox {
     }
     fn new_with_context(
         direction: Direction,
-        scope_alignment_limits: Option<text::ScopeAlignmentLimits>,
-        domain_font_reference: Option<text::ScopeFontReference>,
+        scope_alignment_limits: Option<text::scope_alignment::ScopeAlignmentLimits>,
+        domain_font_reference: Option<text::scope_alignment::ScopeFontReference>,
     ) -> Self {
-        use text::SourceProcessingEvent as E;
+        use text::capture::SourceProcessingEvent as E;
         let base_direction = if direction == Direction::Ltr {
-            text::ParagraphBaseDirection::LeftToRight
+            text::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
-            text::ParagraphBaseDirection::RightToLeft
+            text::paragraph::ParagraphBaseDirection::RightToLeft
         };
-        let style = text::Style {
-            word_break: text::WordBreak::BreakAll,
-            hyphens: text::Hyphens::None,
-            wrap: text::Wrap::Word,
+        let style = text::style::Style {
+            word_break: text::style::WordBreak::BreakAll,
+            hyphens: text::hyphenation::Hyphens::None,
+            wrap: text::style::Wrap::Word,
             ..ahem_style(10.0, 10.0)
         };
-        let mut source = text::Source::identified("AB", text::Id::from_u64(651000), 3);
-        source.span(text::Range::new(0, 2), style.clone());
+        let mut source =
+            text::source::Source::identified("AB", text::source::Id::from_u64(651000), 3);
+        source.span(text::source::Range::new(0, 2), style.clone());
         let processed = Arc::new(
-            text::process_contextual_source(text::ContextualSourceInput {
+            text::capture::process_contextual_source(text::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits,
                 source,
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: text::SourceProcessingEnvelope::Complete,
+                segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: text::capture::SourceProcessingEnvelope::Complete,
                 origins: ["A", "B"]
                     .into_iter()
                     .enumerate()
-                    .map(|(i, raw)| text::ParagraphOrigin {
+                    .map(|(i, raw)| text::paragraph::ParagraphOrigin {
                         text_node: None,
-                        source: text::Source::identified(
+                        source: text::source::Source::identified(
                             raw,
-                            text::Id::from_u64(651001 + i as u64),
+                            text::source::Id::from_u64(651001 + i as u64),
                             3,
                         ),
-                        local: text::Range::new(0, 1),
-                        aggregate: text::Range::new(i, i + 1),
-                        kind: text::ParagraphOriginKind::Authored,
+                        local: text::source::Range::new(0, 1),
+                        aggregate: text::source::Range::new(i, i + 1),
+                        kind: text::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect(),
-                connections: vec![text::SourceProcessingConnection {
+                connections: vec![text::capture::SourceProcessingConnection {
                     before_origin: 0,
                     after_origin: 1,
-                    kind: text::ParagraphConnectionKind::Continuous,
+                    kind: text::paragraph::ParagraphConnectionKind::Continuous,
                 }],
                 controls: vec![],
                 replacements: vec![],
                 computed_line_boundaries: vec![],
-                boundary_policies: vec![text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(0),
-                    preceding_wrap: text::Wrap::Word,
-                    following_wrap: text::Wrap::Word,
-                    ancestor_wrap: text::Wrap::Word,
+                boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+                    definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                    preceding_wrap: text::style::Wrap::Word,
+                    following_wrap: text::style::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 }],
                 scopes: vec![
-                    text::SourceProcessingScope::Block {
+                    text::capture::SourceProcessingScope::Block {
                         writing_axis: None,
                         horizontal_inner_direction: None,
                         font_reference: domain_font_reference,
-                        topology: text::SourceProcessingTopology::Complete,
+                        topology: text::capture::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style,
                         used_direction: base_direction,
                     },
-                    text::SourceProcessingScope::Inline {
+                    text::capture::SourceProcessingScope::Inline {
                         horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
@@ -91,23 +92,23 @@ impl EmptyBox {
                         boundaries: None,
                     },
                 ],
-                paragraphs: vec![text::SourceProcessingParagraph {
+                paragraphs: vec![text::capture::SourceProcessingParagraph {
                     base_direction,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events: vec![
                     E::EnterScope(0),
                     E::EnterParagraph(0),
                     E::Origin {
                         origin: 0,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     },
                     E::Connection(0),
                     E::EnterScope(1),
                     E::ExitScope(1),
                     E::Origin {
                         origin: 1,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     },
                     E::ExitParagraph(0),
                     E::ExitScope(0),
@@ -116,19 +117,19 @@ impl EmptyBox {
             .unwrap(),
         );
         let scope = processed.captured_scope(1).unwrap();
-        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let analyzed =
-            crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+            crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
         let mut system = text::System::default();
         system
             .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
             .unwrap();
         let prepared = system
-            .prepare(&analyzed, text::PreparationOptions::default())
+            .prepare(&analyzed, text::prepared::PreparationOptions::default())
             .unwrap();
         assert!(prepared.scopes().all(|s| s.captured_scope() != scope));
         assert_eq!(prepared.control_views().count(), 0);
@@ -140,13 +141,13 @@ impl EmptyBox {
         assert_eq!(
             inventory,
             [
-                (text::PreparedBreakKind::Allowed, 1),
-                (text::PreparedBreakKind::ParagraphEnd, 2)
+                (text::prepared::PreparedBreakKind::Allowed, 1),
+                (text::prepared::PreparedBreakKind::ParagraphEnd, 2)
             ]
         );
         let soft = prepared
             .opportunity_views()
-            .find(|o| o.kind() == text::PreparedBreakKind::Allowed)
+            .find(|o| o.kind() == text::prepared::PreparedBreakKind::Allowed)
             .unwrap()
             .boundary();
         let mut source_segments = prepared.source_segments();
@@ -162,8 +163,8 @@ impl EmptyBox {
                 .map(|i| prepared.incidence_scope_relation(i, &scope).unwrap())
                 .collect::<Vec<_>>(),
             [
-                text::CapturedScopeIncidence::AtBefore,
-                text::CapturedScopeIncidence::AtAfter
+                text::observation::CapturedScopeIncidence::AtBefore,
+                text::observation::CapturedScopeIncidence::AtAfter
             ]
         );
         assert!(incidences.iter().all(|i| i.boundary() == soft));
@@ -173,7 +174,7 @@ impl EmptyBox {
             .map(|(i, origin)| {
                 assert_eq!(
                     origin.source().id(),
-                    Some(text::Id::from_u64(651001 + i as u64))
+                    Some(text::source::Id::from_u64(651001 + i as u64))
                 );
                 assert_eq!(origin.source().revision(), 3);
                 TextOriginBinding {
@@ -304,8 +305,11 @@ impl EmptyBox {
         .unwrap()
     }
 }
-fn expected_owner(scope: &text::CapturedScope, raw: &text::LineBoxStrut) -> text::LineBoxStrut {
-    text::LineBoxStrut {
+fn expected_owner(
+    scope: &text::capture::CapturedScope,
+    raw: &text::allocation::LineBoxStrut,
+) -> text::allocation::LineBoxStrut {
+    text::allocation::LineBoxStrut {
         scope: Some(scope.clone()),
         ..raw.clone()
     }
@@ -315,14 +319,17 @@ fn assert_result<S: LayoutScalar>(
     f: &EmptyBox,
     expected_baselines: [f64; 2],
     expected_heights: [f64; 2],
-    strut: text::LineBoxStrut,
+    strut: text::allocation::LineBoxStrut,
     owning_line: usize,
 ) {
     let placed = batch.placed_text()[0].layout();
-    assert_eq!(placed.source().text(), &text::Text::from("AB"));
+    assert_eq!(placed.source().text(), &text::source::Text::from("AB"));
     assert_eq!(
         placed.lines().iter().map(|l| l.range()).collect::<Vec<_>>(),
-        [text::Range::new(0, 1), text::Range::new(1, 2)]
+        [
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2)
+        ]
     );
     assert_eq!(
         placed
@@ -372,9 +379,9 @@ fn assert_result<S: LayoutScalar>(
         assert_eq!(
             request.context.end,
             if index == 0 {
-                text::LineEnd::Soft
+                text::selection::LineEnd::Soft
             } else {
-                text::LineEnd::Paragraph
+                text::selection::LineEnd::Paragraph
             }
         );
         // Line bounds retain the full available metric frame. Alignment is
@@ -403,12 +410,16 @@ fn assert_result<S: LayoutScalar>(
             .collect::<Vec<_>>();
         assert_eq!(
             glyphs,
-            [(text::Range::new(index, index + 1), 35 + index as u32, 10.0)]
+            [(
+                text::source::Range::new(index, index + 1),
+                35 + index as u32,
+                10.0
+            )]
         );
     }
 }
 fn asymmetric<S: LayoutScalar>() {
-    use text::LineBoxAlignment::{Baseline, Bottom, Top};
+    use text::allocation::LineBoxAlignment::{Baseline, Bottom, Top};
     // Literal geometry, not a test-side MetricGroups implementation. Font8/2
     // supplies the body group. Top20 extends below it; Bottom20 extends above.
     for direction in [Direction::Ltr, Direction::Rtl] {
@@ -418,9 +429,9 @@ fn asymmetric<S: LayoutScalar>() {
             (Top, [8.0, 28.0], [8.0, 18.0]),
             (Bottom, [18.0, 28.0], [8.0, 28.0]),
         ] {
-            let strut = text::LineBoxStrut {
+            let strut = text::allocation::LineBoxStrut {
                 scope: None,
-                metrics: text::LineStrut {
+                metrics: text::allocation::LineStrut {
                     baseline: 16.0,
                     line_extent: 20.0,
                 },
@@ -454,7 +465,7 @@ fn authentic_empty_box_incidence_assigns_its_actual_metric_to_outgoing_or_receiv
 
 fn assigned_rows<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> Vec<Vec<text::LineBoxStrut>> {
+) -> Vec<Vec<text::allocation::LineBoxStrut>> {
     let mut rows = vec![None; 2];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -464,16 +475,19 @@ fn assigned_rows<S: LayoutScalar>(
     rows.into_iter().map(Option::unwrap).collect()
 }
 fn neutral_geometry<S: LayoutScalar>() {
-    use text::LineBoxAlignment::{Baseline, Bottom, Top};
+    use text::allocation::LineBoxAlignment::{Baseline, Bottom, Top};
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = EmptyBox::new(direction);
         for contribution in [None, Some(InlineBoxMetricContribution::NoContribution)] {
             let batch = f.run::<S>(WrapEdges::AUTO, contribution);
             let placed = batch.placed_text()[0].layout();
-            assert_eq!(placed.source().text(), &text::Text::from("AB"));
+            assert_eq!(placed.source().text(), &text::source::Text::from("AB"));
             assert_eq!(
                 placed.lines().iter().map(|l| l.range()).collect::<Vec<_>>(),
-                [text::Range::new(0, 1), text::Range::new(1, 2)]
+                [
+                    text::source::Range::new(0, 1),
+                    text::source::Range::new(1, 2)
+                ]
             );
             assert_eq!(
                 placed
@@ -500,9 +514,9 @@ fn neutral_geometry<S: LayoutScalar>() {
             (Top, [8.0, 28.0], [8.0, 18.0]),
             (Bottom, [18.0, 28.0], [8.0, 28.0]),
         ] {
-            let strut = text::LineBoxStrut {
+            let strut = text::allocation::LineBoxStrut {
                 scope: None,
-                metrics: text::LineStrut {
+                metrics: text::allocation::LineStrut {
                     baseline: 16.0,
                     line_extent: 20.0,
                 },

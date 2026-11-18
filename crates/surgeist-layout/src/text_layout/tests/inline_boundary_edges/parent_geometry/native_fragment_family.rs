@@ -61,9 +61,9 @@ fn lane<S: LayoutScalar>(rtl: bool, box_edges: bool) {
     let parent_scope = control(&fixture, 20).captured_control().unwrap().scope();
     assert_eq!(
         parent_scope.domain().domain_topology(),
-        text::SourceProcessingTopology::Complete
+        text::capture::SourceProcessingTopology::Complete
     );
-    let parent_owner = text::InlineBoxSource::captured(parent_scope);
+    let parent_owner = text::inline_box::InlineBoxSource::captured(parent_scope);
     let native_owner = fixture
         .binding
         .prepared
@@ -76,7 +76,7 @@ fn lane<S: LayoutScalar>(rtl: bool, box_edges: bool) {
     assert_ne!(native_owner, parent_owner);
     let units = fixture.binding.prepared.unit_views().collect::<Vec<_>>();
     assert_eq!(units.len(), 1);
-    let text_participant = text::PreparedParticipant::Text(units[0].handle());
+    let text_participant = text::prepared::PreparedParticipant::Text(units[0].handle());
     let original_levels = fixture
         .binding
         .prepared
@@ -138,13 +138,16 @@ fn lane<S: LayoutScalar>(rtl: bool, box_edges: bool) {
     let members = finalized_piece
         .members()
         .filter_map(|member| match member.participant() {
-            Some(participant @ text::PreparedParticipant::Text(_)) => {
+            Some(participant @ text::prepared::PreparedParticipant::Text(_)) => {
                 Some((participant.clone(), member.unit_source_range()))
             }
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(members, [(text_participant, text::Range::new(0, 1))]);
+    assert_eq!(
+        members,
+        [(text_participant, text::source::Range::new(0, 1))]
+    );
 
     // Literal Ahem and endpoint expectations are the maintained nested case's
     // oracles, independent of the new family projection/readback.
@@ -199,7 +202,9 @@ fn lane<S: LayoutScalar>(rtl: bool, box_edges: bool) {
             );
         }
     }
-    let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(replay.inline_box_family(), Some(view.family()));
     assert_eq!(
         replay

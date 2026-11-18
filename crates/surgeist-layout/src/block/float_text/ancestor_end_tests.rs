@@ -6,57 +6,60 @@ use std::sync::Arc;
 use surgeist_text as text;
 
 fn empty_binding() -> TextParagraphBinding<u32> {
-    use text::SourceProcessingEvent as E;
-    let source = text::Source::new("");
+    use text::capture::SourceProcessingEvent as E;
+    let source = text::source::Source::new("");
     let mut style = crate::test_support::text::ahem_style(10.0, 10.0);
-    style.white_space = text::WhiteSpace::Collapse;
+    style.white_space = text::style::WhiteSpace::Collapse;
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, 0),
-                aggregate: text::Range::new(0, 0),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 0),
+                aggregate: text::source::Range::new(0, 0),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: Vec::new(),
             controls: vec![
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 0,
-                    kind: text::ParagraphControlKind::InlineBoundaryStart,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 0,
-                    kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
             ],
             boundary_policies: Vec::new(),
             replacements: Vec::new(),
             scopes: vec![
-                text::SourceProcessingScope::Block {
+                text::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: text::SourceProcessingTopology::Complete,
+                    topology: text::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style.clone(),
-                    used_direction: text::ParagraphBaseDirection::LeftToRight,
+                    used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
                     style: Some(style),
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
@@ -64,15 +67,15 @@ fn empty_binding() -> TextParagraphBinding<u32> {
                 E::EnterScope(1),
                 E::Control {
                     control: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Control {
                     control: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(1),
                 E::ExitParagraph(0),
@@ -84,12 +87,13 @@ fn empty_binding() -> TextParagraphBinding<u32> {
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
     let mut system = text::System::default();
     system
         .register_fonts(
@@ -98,7 +102,7 @@ fn empty_binding() -> TextParagraphBinding<u32> {
         )
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let controls = prepared
@@ -133,7 +137,7 @@ fn immediate_end<S: LayoutScalar>(end_padding: f64) {
     let origin = &binding.origins[0].origin;
     assert!(origin.view().source().text().is_empty());
     assert!(binding.prepared.participants().any(|participant| {
-        matches!(participant, text::PreparedParticipant::Text(unit)
+        matches!(participant, text::prepared::PreparedParticipant::Text(unit)
             if unit.view().empty_origin().as_ref() == Some(origin))
     }));
     binding.nodes.insert(1, 2);

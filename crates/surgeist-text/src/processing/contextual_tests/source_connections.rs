@@ -6,7 +6,7 @@ use crate::{
     geometry::Size,
     id::Id,
     layout::Affinity,
-    processing::{
+    processing::contextual::{
         ContextualSourceInput, SourceProcessingConnection, SourceProcessingConnectionError,
         SourceProcessingError, SourceProcessingEvent, SourceProcessingJointFlow,
         SourceProcessingJointFlowError, SourceProcessingParagraph, SourceProcessingScope,

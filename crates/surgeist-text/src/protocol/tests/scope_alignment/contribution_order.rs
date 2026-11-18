@@ -8,9 +8,13 @@ use crate::{
     layout::{Affinity, Layout},
     options::Alignment,
     processing::{
-        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentBoundary,
-        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingParagraph,
-        SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            CapturedScope, ContextualSourceInput, ScopeAlignmentBoundary,
+            SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+            process_contextual_source,
+        },
     },
     protocol::{
         FinalizedLine, LineAllocations, LineBoxAlignment, LineBoxStrut, LineStrut,
@@ -179,7 +183,7 @@ fn glyphs(layout: &Layout, baselines: [f64; 3]) {
 
 #[test]
 fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_order() {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     use crate::protocol::LineBoxAlignment::Baseline as B;
     let font = skrifa::FontRef::new(AHEM).unwrap();
     assert_eq!(font.head().unwrap().units_per_em(), 1000);

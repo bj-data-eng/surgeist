@@ -27,49 +27,49 @@ enum Shape {
 
 struct Fixture {
     source: Source,
-    processed: Arc<text::ProcessedSource>,
-    raws: Vec<text::CapturedParagraph>,
-    prepared: Vec<text::PreparedText>,
+    processed: Arc<text::processing::ProcessedSource>,
+    raws: Vec<text::capture::CapturedParagraph>,
+    prepared: Vec<text::prepared::PreparedText>,
     child: bool,
 }
 
-fn block_style(size: f32) -> text::Style {
-    text::Style {
-        white_space: text::WhiteSpace::Preserve,
+fn block_style(size: f32) -> text::style::Style {
+    text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
         ..ahem_style(size, f64::from(size))
     }
 }
 
-fn domain(size: f32) -> text::SourceProcessingScope {
-    text::SourceProcessingScope::Block {
+fn domain(size: f32) -> text::capture::SourceProcessingScope {
+    text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
-        trim: text::WhiteSpaceTrim::default(),
+        topology: text::capture::SourceProcessingTopology::Complete,
+        trim: text::capture::WhiteSpaceTrim::default(),
         base_style: block_style(size),
         used_direction: ParagraphBaseDirection::LeftToRight,
     }
 }
 
 fn fixture(shape: Shape) -> Fixture {
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let child = matches!(shape, Shape::Child { .. });
     let source = Source::identified(
         if child { "ABC" } else { "AC" },
-        text::Id::from_u64(784_901),
+        text::source::Id::from_u64(784_901),
         71,
     );
-    let origin = |start, end| text::ParagraphOrigin {
+    let origin = |start, end| text::paragraph::ParagraphOrigin {
         text_node: None,
         source: source.clone(),
-        local: text::Range::new(start, end),
-        aggregate: text::Range::new(start, end),
-        kind: text::ParagraphOriginKind::Authored,
+        local: text::source::Range::new(start, end),
+        aggregate: text::source::Range::new(start, end),
+        kind: text::paragraph::ParagraphOriginKind::Authored,
     };
     let authored = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let (paragraph_count, scopes, events, joint_flows) = match shape {
         Shape::Single => (
@@ -108,7 +108,7 @@ fn fixture(shape: Shape) -> Fixture {
                 E::ExitScope(0),
             ]);
             let flows = if joined {
-                vec![text::SourceProcessingJointFlow {
+                vec![text::capture::SourceProcessingJointFlow {
                     scope: 0,
                     paragraphs: (0..=last).collect(),
                     facts_owner: if empty_middle { 1 } else { 0 },
@@ -138,7 +138,7 @@ fn fixture(shape: Shape) -> Fixture {
                 E::ExitScope(0),
             ],
             if joined {
-                vec![text::SourceProcessingJointFlow {
+                vec![text::capture::SourceProcessingJointFlow {
                     scope: 0,
                     paragraphs: vec![0, 2],
                     facts_owner: 0,
@@ -149,10 +149,10 @@ fn fixture(shape: Shape) -> Fixture {
         ),
     };
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: if child {
                 vec![origin(0, 1), origin(1, 2), origin(2, 3)]
             } else {
@@ -160,17 +160,17 @@ fn fixture(shape: Shape) -> Fixture {
             },
             // This is the actual parent-domain connection, not a child-domain
             // shortcut. The real Block separates A/C; a raw seam alone does not.
-            connections: vec![text::SourceProcessingConnection {
+            connections: vec![text::capture::SourceProcessingConnection {
                 before_origin: 0,
                 after_origin: if child { 2 } else { 1 },
                 kind: if child {
-                    text::ParagraphConnectionKind::Disconnected
+                    text::paragraph::ParagraphConnectionKind::Disconnected
                 } else {
-                    text::ParagraphConnectionKind::Continuous
+                    text::paragraph::ParagraphConnectionKind::Continuous
                 },
             }],
-            boundary_policies: vec![text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(0),
+            boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+                definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
                 preceding_wrap: Wrap::Word,
                 following_wrap: Wrap::Word,
                 ancestor_wrap: Wrap::Word,
@@ -182,9 +182,9 @@ fn fixture(shape: Shape) -> Fixture {
             scope_alignment_limits: None,
             scopes,
             paragraphs: (0..paragraph_count)
-                .map(|_| text::SourceProcessingParagraph {
+                .map(|_| text::capture::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             events,
@@ -201,9 +201,9 @@ fn fixture(shape: Shape) -> Fixture {
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let analyze = |member| {
-        let batch = text::AnalyzedDomain::from_processed_paragraph(
+        let batch = text::analyzed::AnalyzedDomain::from_processed_paragraph(
             processed.paragraphs().nth(member).unwrap(),
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert!(Arc::ptr_eq(batch.processed_source(), &processed));
@@ -217,7 +217,7 @@ fn fixture(shape: Shape) -> Fixture {
             let analyzed =
                 crate::test_support::text::in_flat_wrapping_context(output.clone(), Wrap::Word);
             let value = system
-                .prepare(&analyzed, text::PreparationOptions::default())
+                .prepare(&analyzed, text::prepared::PreparationOptions::default())
                 .unwrap();
             let analyzed_owner = output.captured_owner().unwrap();
             let prepared_owner = value.captured_owner().unwrap();
@@ -236,7 +236,7 @@ fn fixture(shape: Shape) -> Fixture {
         let child_prepared = system
             .prepare(
                 child_domain.outputs().next().unwrap(),
-                text::PreparationOptions::default(),
+                text::prepared::PreparationOptions::default(),
             )
             .unwrap();
         // Ordered by the first actual member: joined-parent/child, or A/B/C.
@@ -347,16 +347,19 @@ fn capture<'a, S: LayoutScalar>(
     .unwrap()
 }
 
-fn packets(layout: &text::Layout) -> Vec<(text::Range, u32, f64, f64, f32)> {
+fn packets(layout: &text::layout::Layout) -> Vec<(text::source::Range, u32, f64, f64, f32)> {
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
-        assert_eq!(run.glyph_basis(), text::GlyphBasis::Unrotated);
+        assert_eq!(run.glyph_basis(), text::geometry::GlyphBasis::Unrotated);
     }
     let mut values = layout
         .glyph_runs()
         .iter()
         .flat_map(|run| {
-            assert_eq!(run.orientation(), text::LineOrientation::Horizontal);
+            assert_eq!(
+                run.orientation(),
+                text::selection::LineOrientation::Horizontal
+            );
             let origin = run.origin();
             run.glyphs()
                 .iter()
@@ -376,7 +379,7 @@ fn packets(layout: &text::Layout) -> Vec<(text::Range, u32, f64, f64, f32)> {
     values
 }
 
-fn provenance(layout: &text::Layout, prepared: &text::PreparedText) {
+fn provenance(layout: &text::layout::Layout, prepared: &text::prepared::PreparedText) {
     let analyzed = layout.analyzed_source();
     let actual = analyzed.captured_owner().unwrap();
     let expected = prepared.captured_owner().unwrap();
@@ -422,14 +425,17 @@ fn assert_one_run<S: LayoutScalar>(shape: Shape) {
     assert_eq!(
         packets(output.layout()),
         [
-            (text::Range::new(0, 1), 35, 0.0, 8.0, 10.0),
-            (text::Range::new(1, 2), 37, 10.0, 8.0, 10.0),
+            (text::source::Range::new(0, 1), 35, 0.0, 8.0, 10.0),
+            (text::source::Range::new(1, 2), 37, 10.0, 8.0, 10.0),
         ]
     );
     let lines = output.layout().lines();
     assert_eq!(lines.len(), 1);
     // Line bounds retain the allocated 100px band; packets above advance 20px.
-    assert_eq!(lines[0].bounds(), text::Rect::new(0.0, 0.0, 100.0, 10.0));
+    assert_eq!(
+        lines[0].bounds(),
+        text::geometry::Rect::new(0.0, 0.0, 100.0, 10.0)
+    );
     assert_eq!(
         readback::single_box_output(&batch, ROOT, Phase::Final)
             .size
@@ -529,9 +535,9 @@ fn assert_child<S: LayoutScalar>(joined: bool) {
     assert_eq!(
         all,
         [
-            (text::Range::new(0, 1), 35, 0.0, 8.0, 10.0),
-            (text::Range::new(1, 2), 36, 0.0, 26.0, 20.0),
-            (text::Range::new(2, 3), 37, 0.0, 38.0, 10.0),
+            (text::source::Range::new(0, 1), 35, 0.0, 8.0, 10.0),
+            (text::source::Range::new(1, 2), 36, 0.0, 26.0, 20.0),
+            (text::source::Range::new(2, 3), 37, 0.0, 38.0, 10.0),
         ]
     );
     for entries in [
@@ -570,7 +576,10 @@ fn assert_child<S: LayoutScalar>(joined: bool) {
                 .iter()
                 .map(|value| value.0)
                 .collect::<Vec<_>>(),
-            [text::Range::new(0, 1), text::Range::new(2, 3)]
+            [
+                text::source::Range::new(0, 1),
+                text::source::Range::new(2, 3)
+            ]
         );
     }
 }

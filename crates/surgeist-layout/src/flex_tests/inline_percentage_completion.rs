@@ -1132,8 +1132,8 @@ fn captured_normal_wrapping_finishes_auto_main<S: LayoutScalar>() {
     use surgeist_text as text;
 
     let mut style = ahem_style(10.0, 10.0);
-    style.wrap = text::Wrap::Word;
-    let paragraph = PreparedParagraph::plain(7, text::Source::new("XXXXX XXXXX"), style);
+    style.wrap = text::style::Wrap::Word;
+    let paragraph = PreparedParagraph::plain(7, text::source::Source::new("XXXXX XXXXX"), style);
     let origin = paragraph.origin(7);
     let origins = paragraph.prepared.origin_views().collect::<Vec<_>>();
     assert_eq!(origins.len(), 1);
@@ -1142,8 +1142,11 @@ fn captured_normal_wrapping_finishes_auto_main<S: LayoutScalar>() {
         origins[0].source().text().code_units(),
         &[88, 88, 88, 88, 88, 32, 88, 88, 88, 88, 88]
     );
-    assert_eq!(origins[0].local_range(), text::Range::new(0, 11));
-    assert_eq!(origins[0].aggregate_range(), text::Range::new(0, 11));
+    assert_eq!(origins[0].local_range(), text::source::Range::new(0, 11));
+    assert_eq!(
+        origins[0].aggregate_range(),
+        text::source::Range::new(0, 11)
+    );
     assert_eq!(
         paragraph
             .prepared
@@ -1251,8 +1254,8 @@ fn captured_normal_wrapping_finishes_auto_main<S: LayoutScalar>() {
         let lines = layout.lines();
         assert_eq!(lines.len(), 2);
         for (index, (range, top, baseline)) in [
-            (text::Range::new(0, 6), 10.0, 18.0),
-            (text::Range::new(6, 11), 20.0, 28.0),
+            (text::source::Range::new(0, 6), 10.0, 18.0),
+            (text::source::Range::new(6, 11), 20.0, 28.0),
         ]
         .into_iter()
         .enumerate()
@@ -1266,7 +1269,7 @@ fn captured_normal_wrapping_finishes_auto_main<S: LayoutScalar>() {
             let fragment = entry.fragment().finalized_fragment();
             assert_eq!(
                 fragment.view().owner(),
-                text::FinalizedFragmentOwner::Origin(origin.clone())
+                text::finalized::FinalizedFragmentOwner::Origin(origin.clone())
             );
             assert_eq!(fragment.finalized_line().feedback().line_height, 10.0);
             assert_eq!(
@@ -1289,11 +1292,11 @@ fn captured_normal_wrapping_finishes_auto_main<S: LayoutScalar>() {
         assert_eq!(visible.len(), 10);
         for cluster in visible {
             let at = cluster.range().start;
-            assert_eq!(cluster.range(), text::Range::new(at, at + 1));
+            assert_eq!(cluster.range(), text::source::Range::new(at, at + 1));
             let (column, top) = if at < 5 { (at, 10.0) } else { (at - 6, 20.0) };
             assert_eq!(
                 cluster.bounds(),
-                text::Rect::new(column as f64 * 10.0, top, 10.0, 10.0)
+                text::geometry::Rect::new(column as f64 * 10.0, top, 10.0, 10.0)
             );
         }
     }
@@ -1567,8 +1570,8 @@ fn content_basis_uses_cross_margin_fit_content_space<S: LayoutScalar>() {
     use surgeist_text as text;
 
     let mut style = ahem_style(10.0, 10.0);
-    style.wrap = text::Wrap::Word;
-    let paragraph = PreparedParagraph::plain(4, text::Source::new("XXXX XXXX"), style);
+    style.wrap = text::style::Wrap::Word;
+    let paragraph = PreparedParagraph::plain(4, text::source::Source::new("XXXX XXXX"), style);
     for (margin_right, expected_height, expected_lines) in [(0.0, 10.0, 1), (21.0, 20.0, 2)] {
         let tree = PublicLayoutTreeOf::new()
             .children(1, [2])

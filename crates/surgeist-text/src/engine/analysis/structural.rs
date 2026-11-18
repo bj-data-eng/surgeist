@@ -2,7 +2,7 @@
 //! forced controls, atomics and disconnections confer no section boundary.
 use crate::protocol::paragraph::{ParagraphContext, SemanticAnchorItem};
 use crate::transform::relation::{ComponentOwner, RelationEvent, TransformMap};
-use crate::{Result, processing::SourceProcessingEvent, range::Range};
+use crate::{Result, processing::contextual::SourceProcessingEvent, range::Range};
 use std::ops::Range as IndexRange;
 
 #[derive(Clone, Debug)]
@@ -274,7 +274,7 @@ pub(crate) fn sections(
         let exit = span.exit.min(end);
         if entry > exit {
             return Err(crate::processing::contextual::invalid(
-                crate::processing::SourceProcessingError::Domain,
+                crate::processing::contextual::SourceProcessingError::Domain,
             ));
         }
         let atom_start = index.checked_sub(1).map_or(0, |before| atoms[before]);

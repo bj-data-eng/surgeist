@@ -3,14 +3,14 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
-fn paragraph(placement: text::HyphenationPlacement) -> PreparedParagraph {
-    let style = text::Style {
-        hyphens: text::Hyphens::Manual,
-        white_space: text::WhiteSpace::Collapse,
+fn paragraph(placement: text::hyphenation::HyphenationPlacement) -> PreparedParagraph {
+    let style = text::style::Style {
+        hyphens: text::hyphenation::Hyphens::Manual,
+        white_space: text::style::WhiteSpace::Collapse,
         locale: Some("und-Latn".into()),
-        hyphenate_character: text::HyphenateCharacter::Auto,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
         native_hyphenation_convention: Some(
-            text::NativeHyphenationConvention::language_script(
+            text::hyphenation::NativeHyphenationConvention::language_script(
                 "und-Latn",
                 "Latn",
                 "A".into(),
@@ -20,10 +20,10 @@ fn paragraph(placement: text::HyphenationPlacement) -> PreparedParagraph {
         ),
         // The actual atomic terminates this lexical portion at AB + SHY.
         // Its after-count is zero, rather than borrowing CDE through the box.
-        hyphenate_limit_chars: text::HyphenateLimitChars {
-            total: text::HyphenationMinimum::Count(0),
-            before: text::HyphenationMinimum::Count(0),
-            after: text::HyphenationMinimum::Count(0),
+        hyphenate_limit_chars: text::hyphenation::HyphenateLimitChars {
+            total: text::hyphenation::HyphenationMinimum::Count(0),
+            before: text::hyphenation::HyphenationMinimum::Count(0),
+            after: text::hyphenation::HyphenationMinimum::Count(0),
         },
         ..ahem_style(10.0, 10.0)
     };
@@ -31,16 +31,16 @@ fn paragraph(placement: text::HyphenationPlacement) -> PreparedParagraph {
         vec![
             ParagraphPart::text(
                 1,
-                Source::identified("AB\u{ad}", text::Id::from_u64(150301), 7),
+                Source::identified("AB\u{ad}", text::source::Id::from_u64(150301), 7),
                 style.clone(),
             ),
             ParagraphPart::Atomic {
                 node: 2,
-                size: text::Size::new(10.0, 10.0),
+                size: text::geometry::Size::new(10.0, 10.0),
             },
             ParagraphPart::text(
                 3,
-                Source::identified("CDE", text::Id::from_u64(150303), 9),
+                Source::identified("CDE", text::source::Id::from_u64(150303), 9),
                 style.clone(),
             ),
         ],
@@ -49,7 +49,10 @@ fn paragraph(placement: text::HyphenationPlacement) -> PreparedParagraph {
     )
 }
 
-fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: TextWrapStyle) {
+fn check<S: LayoutScalar>(
+    placement: text::hyphenation::HyphenationPlacement,
+    wrap_style: TextWrapStyle,
+) {
     let paragraph = paragraph(placement);
     let prepared = &paragraph.prepared;
     let original = [65, 66, 173, 67, 68, 69];
@@ -63,16 +66,19 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
         (&origins[0], 150301, 7, &[65, 66, 173][..]),
         (&origins[1], 150303, 9, &[67, 68, 69][..]),
     ] {
-        assert_eq!(origin.source().id(), Some(text::Id::from_u64(id)));
+        assert_eq!(origin.source().id(), Some(text::source::Id::from_u64(id)));
         assert_eq!(origin.source().revision(), revision);
         assert_eq!(origin.source().text().code_units(), units);
     }
     let cuts = prepared.hyphenation_cut_views().collect::<Vec<_>>();
     assert_eq!(cuts.len(), 1);
-    assert_eq!(cuts[0].provenance(), text::HyphenationProvenance::Source);
+    assert_eq!(
+        cuts[0].provenance(),
+        text::hyphenation::HyphenationProvenance::Source
+    );
     assert_eq!(
         cuts[0].counts(),
-        Some(text::HyphenationCounts {
+        Some(text::hyphenation::HyphenationCounts {
             total: 2,
             before: 2,
             after: 0
@@ -82,24 +88,30 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
     // Allowed retains its independent None, unlike a Discretionary-only offer.
     // Do not suppress this real permission to force an incoming indication.
     let offer_view = offer.view();
-    assert_eq!(offer_view.kind(), text::PreparedBreakKind::Allowed);
+    assert_eq!(
+        offer_view.kind(),
+        text::prepared::PreparedBreakKind::Allowed
+    );
     let alternatives = offer_view.alternatives().collect::<Vec<_>>();
     assert_eq!(alternatives.len(), 1);
     assert_eq!(prepared.alternative_views().count(), 1);
     assert_eq!(alternatives[0].text().code_units(), [65]);
-    assert_eq!(alternatives[0].source_range(), Some(text::Range::new(2, 3)));
+    assert_eq!(
+        alternatives[0].source_range(),
+        Some(text::source::Range::new(2, 3))
+    );
     assert_eq!(alternatives[0].insertion_anchor().get(), 3);
     assert_eq!(alternatives[0].opportunity(), Some(offer.clone()));
     assert!(matches!(alternatives[0].definition(),
-        text::PreparedAlternativeDefinition::Source { origin, source }
-            if origin == paragraph.origin(1) && source == text::Range::new(2, 3)));
+        text::prepared::PreparedAlternativeDefinition::Source { origin, source }
+            if origin == paragraph.origin(1) && source == text::source::Range::new(2, 3)));
 
     let atomic_views = prepared.atomic_views().collect::<Vec<_>>();
     assert_eq!(atomic_views.len(), 1);
     assert_eq!(atomic_views[0].source_position().get(), 3);
     assert_eq!(
         atomic_views[0].original_box().kind(),
-        text::InlineBoxKind::InFlow
+        text::source::InlineBoxKind::InFlow
     );
     let occurrence = atomic_views[0].handle();
     let binding = paragraph.binding(0);
@@ -184,7 +196,7 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
         assert!(line.hyphenation_continuation().is_none());
         assert!(line.fragment_views().all(|fragment| !matches!(
             fragment.owner(),
-            text::FinalizedFragmentOwner::Alternative(_)
+            text::finalized::FinalizedFragmentOwner::Alternative(_)
         )));
         assert_eq!(line.feedback().advance, 30.0);
         assert_eq!(
@@ -201,7 +213,7 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
         );
         assert_eq!(
             layout.lines()[index].range(),
-            text::Range::new(index * 3, index * 3 + 3)
+            text::source::Range::new(index * 3, index * 3 + 3)
         );
         assert_eq!(layout.lines()[index].baseline(), 10.0 + 10.0 * index as f64);
         let mut glyphs = Vec::new();
@@ -213,7 +225,7 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
             assert_eq!(run.effective_instance().unwrap().font_size(), 10.0);
             for glyph in run.glyphs() {
                 if glyph.advance() == 0.0 {
-                    assert_eq!(glyph.range(), text::Range::new(2, 3));
+                    assert_eq!(glyph.range(), text::source::Range::new(2, 3));
                     assert_eq!(original[2], 173);
                     continue;
                 }
@@ -224,14 +236,14 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
             glyphs,
             if index == 0 {
                 vec![
-                    (text::Range::new(0, 1), 35, 10.0),
-                    (text::Range::new(1, 2), 36, 10.0),
+                    (text::source::Range::new(0, 1), 35, 10.0),
+                    (text::source::Range::new(1, 2), 36, 10.0),
                 ]
             } else {
                 vec![
-                    (text::Range::new(3, 4), 37, 10.0),
-                    (text::Range::new(4, 5), 38, 10.0),
-                    (text::Range::new(5, 6), 39, 10.0),
+                    (text::source::Range::new(3, 4), 37, 10.0),
+                    (text::source::Range::new(4, 5), 38, 10.0),
+                    (text::source::Range::new(5, 6), 39, 10.0),
                 ]
             }
         );
@@ -243,7 +255,7 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
             assert_eq!(slot.occurrence, occurrence);
             assert_eq!(selected.atomics[0].occurrence, occurrence);
             assert_eq!(selected.atomics[0].allocation, slot.allocation);
-            let text::AtomicLineAllocation::InFlow {
+            let text::allocation::AtomicLineAllocation::InFlow {
                 flow, box_geometry, ..
             } = slot.allocation
             else {
@@ -261,7 +273,7 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
     assert_eq!(layout.inline_boxes().len(), 1);
     assert_eq!(
         layout.inline_boxes()[0].rect(),
-        text::Rect::new(20.0, 0.0, 10.0, 10.0)
+        text::geometry::Rect::new(20.0, 0.0, 10.0, 10.0)
     );
     for entries in [
         readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
@@ -294,8 +306,8 @@ fn real_atomic_none_cut_preserves_source_and_geometry_beside_after_and_both_indi
     // Pretty has no Tail gain for equal30/30; the alternative two-line20/40
     // program worsens body residual. Neither mode may force an indication.
     for placement in [
-        text::HyphenationPlacement::LogicalAfter,
-        text::HyphenationPlacement::BothSides,
+        text::hyphenation::HyphenationPlacement::LogicalAfter,
+        text::hyphenation::HyphenationPlacement::BothSides,
     ] {
         for wrap_style in [TextWrapStyle::Auto, TextWrapStyle::Pretty] {
             check::<f32>(placement, wrap_style);

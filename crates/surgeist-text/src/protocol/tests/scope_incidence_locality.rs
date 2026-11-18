@@ -1,29 +1,31 @@
 //! Original enclosing edges are not clipped to paragraph sentinels.
 
 use super::*;
-use crate::{processing::SourceProcessingEvent as E, protocol::CapturedScopeIncidence as R};
+use crate::{
+    processing::contextual::SourceProcessingEvent as E, protocol::CapturedScopeIncidence as R,
+};
 
 #[test]
 fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside() {
     let source = Source::new("AB");
-    let processed =
-        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
+    let processed = crate::processing::contextual::process_contextual_source(
+        crate::processing::contextual::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: crate::processing::SourceProcessingEnvelope::Complete,
+            envelope: crate::processing::contextual::SourceProcessingEnvelope::Complete,
             scopes: vec![
-                crate::processing::SourceProcessingScope::Block {
+                crate::processing::contextual::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: crate::processing::SourceProcessingTopology::Complete,
+                    topology: crate::processing::contextual::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style(),
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
-                crate::processing::SourceProcessingScope::Inline {
+                crate::processing::contextual::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
@@ -33,10 +35,12 @@ fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside
                 },
             ],
             paragraphs: (0..2)
-                .map(|_| crate::processing::SourceProcessingParagraph {
-                    base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: ParagraphStrut::DefaultFont,
-                })
+                .map(
+                    |_| crate::processing::contextual::SourceProcessingParagraph {
+                        base_direction: ParagraphBaseDirection::LeftToRight,
+                        paragraph_strut: ParagraphStrut::DefaultFont,
+                    },
+                )
                 .collect(),
             origins: (0..2)
                 .map(|i| crate::protocol::paragraph::ParagraphOrigin {
@@ -70,8 +74,9 @@ fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside
                 E::ExitParagraph(1),
                 E::ExitScope(0),
             ],
-        })
-        .unwrap();
+        },
+    )
+    .unwrap();
     let processed = std::sync::Arc::new(processed);
     let scope = processed.captured_scope(1).unwrap();
     let mut fonts = system();

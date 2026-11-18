@@ -1,7 +1,7 @@
 //! CSS-composed fit retains positioned Native obligations and replay authority.
 
 use super::*;
-use text::{AtomicFitAllocation, MarginEdgeFitAuthority};
+use text::{allocation::AtomicFitAllocation, finalized::MarginEdgeFitAuthority};
 
 #[derive(Clone, Copy)]
 struct Spec {
@@ -19,7 +19,7 @@ fn native() -> Spec {
     }
 }
 fn css(border: f64, end: f64, advance: f64, occupied: (f64, f64)) -> Spec {
-    let receipt = text::CssMarginBoxFit::try_new(0.0, border, end).unwrap();
+    let receipt = text::allocation::CssMarginBoxFit::try_new(0.0, border, end).unwrap();
     assert_eq!(receipt.margin_start(), 0.0);
     assert_eq!(receipt.border_inline_size(), border);
     assert_eq!(receipt.margin_end(), end);
@@ -41,7 +41,7 @@ fn prepared(specs: &[Spec]) -> PreparedParagraph {
             .enumerate()
             .map(|(index, spec)| ParagraphPart::Atomic {
                 node: 100 + u32::try_from(index).unwrap(),
-                size: text::Size::new(spec.border, 10.0),
+                size: text::geometry::Size::new(spec.border, 10.0),
             })
             .collect(),
         ahem_style(10.0, 10.0),
@@ -54,10 +54,13 @@ fn prepared(specs: &[Spec]) -> PreparedParagraph {
     let binding = p.binding(0);
     for (index, (view, spec)) in views.iter().zip(specs).enumerate() {
         assert_eq!(view.source_position().get(), 0);
-        assert_eq!(view.original_box().kind(), text::InlineBoxKind::InFlow);
+        assert_eq!(
+            view.original_box().kind(),
+            text::source::InlineBoxKind::InFlow
+        );
         assert_eq!(
             view.original_box().size(),
-            text::Size::new(spec.border, 10.0)
+            text::geometry::Size::new(spec.border, 10.0)
         );
         assert_eq!(
             binding.atomics[index].node,
@@ -72,31 +75,35 @@ fn prepared(specs: &[Spec]) -> PreparedParagraph {
         p.prepared.participants().collect::<Vec<_>>(),
         views
             .iter()
-            .map(|view| text::PreparedParticipant::Atomic(view.handle()))
+            .map(|view| text::prepared::PreparedParticipant::Atomic(view.handle()))
             .collect::<Vec<_>>()
     );
     p
 }
-fn request(p: &text::PreparedText, specs: &[Spec], band: f64) -> text::LineSelectionRequest {
+fn request(
+    p: &text::prepared::PreparedText,
+    specs: &[Spec],
+    band: f64,
+) -> text::selection::LineSelectionRequest {
     let segment = p.source_segments().next().unwrap();
     let actual = p.atomic_views().collect::<Vec<_>>();
     assert_eq!(actual.len(), specs.len());
-    text::LineSelectionRequest {
+    text::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: segment.clone(),
         start: segment.start(),
         end: segment.end(),
         participants: p.participants().collect(),
-        termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+        termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
         alternative: None,
         incoming: None,
         atomics: actual
             .into_iter()
             .zip(specs)
-            .map(|(view, spec)| text::AtomicAllocation {
+            .map(|(view, spec)| text::allocation::AtomicAllocation {
                 occurrence: view.handle(),
-                allocation: text::AtomicLineAllocation::InFlow {
-                    flow: text::AtomicFlowAllocation {
+                allocation: text::allocation::AtomicLineAllocation::InFlow {
+                    flow: text::allocation::AtomicFlowAllocation {
                         normal_border_inline_size: spec.border,
                         advance: spec.advance,
                         before_baseline: 8.0,
@@ -105,12 +112,12 @@ fn request(p: &text::PreparedText, specs: &[Spec], band: f64) -> text::LineSelec
                         occupied_end: spec.occupied.1,
                     },
                     fit: spec.fit,
-                    box_geometry: text::AtomicBoxAllocation {
-                        border: text::Rect::new(0.0, -8.0, spec.border, 10.0),
-                        content: text::Rect::new(0.0, -8.0, spec.border, 10.0),
+                    box_geometry: text::allocation::AtomicBoxAllocation {
+                        border: text::geometry::Rect::new(0.0, -8.0, spec.border, 10.0),
+                        content: text::geometry::Rect::new(0.0, -8.0, spec.border, 10.0),
                         baseline: 0.0,
                     },
-                    alignment: text::LineBoxAlignment::Baseline,
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
             })
             .collect(),
@@ -118,28 +125,31 @@ fn request(p: &text::PreparedText, specs: &[Spec], band: f64) -> text::LineSelec
         boundary_context: vec![],
         line_strut: None,
         line_box_struts: vec![],
-        context: text::LineContext {
-            alignment_insets: text::LineAlignmentInsets::ZERO,
-            formatted_line: text::FormattedLineContext::default(),
+        context: text::selection::LineContext {
+            alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+            formatted_line: text::selection::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::LeftToRight,
-            line_box_direction: text::LineBoxDirection::LeftToRight,
-            orientation: text::LineOrientation::Horizontal,
-            start: text::LineStart::Paragraph,
-            end: text::LineEnd::Paragraph,
+            line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+            orientation: text::selection::LineOrientation::Horizontal,
+            start: text::selection::LineStart::Paragraph,
+            end: text::selection::LineEnd::Paragraph,
             available_inline: Some(band),
             indent: 0.0,
-            alignment: text::Alignment::Start,
-            tabs: text::TabContext::NoTabs,
-            spacing: text::SpacingPolicy::None,
+            alignment: text::options::Alignment::Start,
+            tabs: text::tabs::TabContext::NoTabs,
+            spacing: text::spacing::SpacingPolicy::None,
         },
     }
 }
-fn finalize(p: &text::PreparedText, request: text::LineSelectionRequest) -> text::FinalizedLine {
+fn finalize(
+    p: &text::prepared::PreparedText,
+    request: text::selection::LineSelectionRequest,
+) -> text::finalized::FinalizedLine {
     p.select(request)
         .unwrap()
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -152,7 +162,7 @@ struct Expected {
     w: f64,
     raw: (f64, f64),
 }
-fn evidence(line: &text::FinalizedLine, expected: Expected) {
+fn evidence(line: &text::finalized::FinalizedLine, expected: Expected) {
     let measurements = line.measurements();
     // Pure atomic operations have no trimming, hanging or spacing causes to
     // change this selected line between its three operation-specific views.
@@ -175,7 +185,7 @@ fn evidence(line: &text::FinalizedLine, expected: Expected) {
         "no dummy glyph/source"
     );
 }
-fn positions(line: &text::FinalizedLine, specs: &[Spec], incoming: &[f64]) {
+fn positions(line: &text::finalized::FinalizedLine, specs: &[Spec], incoming: &[f64]) {
     let slots = line.atomic_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), specs.len());
     let views = line.prepared_text();
@@ -186,7 +196,7 @@ fn positions(line: &text::FinalizedLine, specs: &[Spec], incoming: &[f64]) {
             slot.origin.x, p,
             "actual incoming pen; never re-zero/clamp a negative rectangle"
         );
-        let text::AtomicLineAllocation::InFlow {
+        let text::allocation::AtomicLineAllocation::InFlow {
             flow,
             fit,
             box_geometry,
@@ -200,7 +210,10 @@ fn positions(line: &text::FinalizedLine, specs: &[Spec], incoming: &[f64]) {
             (flow.advance, flow.occupied_start, flow.occupied_end),
             (spec.advance, spec.occupied.0, spec.occupied.1)
         );
-        assert_eq!(box_geometry.border.size, text::Size::new(spec.border, 10.0));
+        assert_eq!(
+            box_geometry.border.size,
+            text::geometry::Size::new(spec.border, 10.0)
+        );
         assert_eq!(slot.origin.x + box_geometry.border.origin.x, p);
         assert_eq!(
             slot.origin.x + box_geometry.border.origin.x + box_geometry.border.size.width,
@@ -209,7 +222,12 @@ fn positions(line: &text::FinalizedLine, specs: &[Spec], incoming: &[f64]) {
         assert_eq!(slot.origin.y + box_geometry.border.origin.y, 0.0);
     }
 }
-fn execute(specs: &[Spec], incoming: &[f64], band: f64, expected: Expected) -> text::FinalizedLine {
+fn execute(
+    specs: &[Spec],
+    incoming: &[f64],
+    band: f64,
+    expected: Expected,
+) -> text::finalized::FinalizedLine {
     let p = prepared(specs);
     let issued = request(&p.prepared, specs, band);
     let line = finalize(&p.prepared, issued.clone());
@@ -217,7 +235,9 @@ fn execute(specs: &[Spec], incoming: &[f64], band: f64, expected: Expected) -> t
     assert_eq!(line.selected_line().request(), &issued);
     evidence(&line, expected);
     positions(&line, specs, incoming);
-    let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(replay.selected_line().request(), &issued);
     evidence(&replay, expected);
     positions(&replay, specs, incoming);
@@ -328,7 +348,9 @@ fn identical_raw6_over10_geometry_does_not_launder_css_or_native_request_authori
     // Demonstrate the role is the ONLY changed request fact, not different
     // source, geometry, metrics, font, participant order or available width.
     let mut restored = css_request.clone();
-    let text::AtomicLineAllocation::InFlow { fit, .. } = &mut restored.atomics[0].allocation else {
+    let text::allocation::AtomicLineAllocation::InFlow { fit, .. } =
+        &mut restored.atomics[0].allocation
+    else {
         unreachable!();
     };
     *fit = AtomicFitAllocation::NativeOccupied;
@@ -363,7 +385,7 @@ fn identical_raw6_over10_geometry_does_not_launder_css_or_native_request_authori
         (&c, &css_request, css_spec, css_expected),
     ] {
         let replay = original
-            .with_spacing(text::SpacingAllocations::None)
+            .with_spacing(text::spacing::SpacingAllocations::None)
             .unwrap();
         assert_eq!(replay.selected_line().request(), issued);
         evidence(&replay, expected);

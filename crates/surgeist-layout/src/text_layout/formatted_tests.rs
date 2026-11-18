@@ -6,12 +6,12 @@ use crate::inline::{
 };
 use crate::test_support::text::{PreparedParagraph, ahem_style};
 use crate::{ComputeInputOf, Direction, FlowAxes, Size, WritingMode};
-use surgeist_text::PreparedText;
+use surgeist_text::prepared::PreparedText;
 
 fn prepared() -> PreparedText {
     PreparedParagraph::plain(
         1,
-        surgeist_text::Source::new("A AA)"),
+        surgeist_text::source::Source::new("A AA)"),
         ahem_style(10.0, 10.0),
     )
     .prepared
@@ -208,7 +208,7 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
     .unwrap();
     let lines = report.formatted_lines.unwrap();
     assert_eq!(lines.len(), report.line_bands.len());
-    assert_eq!(lines[0].ending, surgeist_text::LineEnd::Forced);
+    assert_eq!(lines[0].ending, surgeist_text::selection::LineEnd::Forced);
     assert!(!report.indent_state.first_formatted());
     lines
 }

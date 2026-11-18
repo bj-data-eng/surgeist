@@ -6,9 +6,12 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-        SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks, PlaintextItem,
+        contextual::{
+            ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+            SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+            SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge,

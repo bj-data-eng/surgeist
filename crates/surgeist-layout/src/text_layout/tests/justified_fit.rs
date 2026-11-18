@@ -16,7 +16,7 @@ const SOURCE: &str = "XX XX XX XX XX XX XX XX";
 struct Document {
     width: f64,
     rtl: bool,
-    white_space: text::WhiteSpace,
+    white_space: text::style::WhiteSpace,
     justify: Option<TextJustification>,
 }
 
@@ -25,14 +25,14 @@ impl Document {
         Self {
             width,
             rtl: true,
-            white_space: text::WhiteSpace::Preserve,
+            white_space: text::style::WhiteSpace::Preserve,
             justify,
         }
     }
 
     /// The source ranges of the placed lines.
     fn breaks<S: LayoutScalar>(&self) -> Vec<(usize, usize)> {
-        let style = text::Style {
+        let style = text::style::Style {
             white_space: self.white_space,
             wrap: Wrap::Word,
             ..ahem_style(5.0, 10.0)
@@ -121,9 +121,9 @@ fn assert_justified_and_start_aligned_paragraphs_break_alike<S: LayoutScalar>() 
     let mut differing = Vec::new();
     for rtl in [true, false] {
         for white_space in [
-            text::WhiteSpace::Preserve,
-            text::WhiteSpace::Collapse,
-            text::WhiteSpace::BreakSpaces,
+            text::style::WhiteSpace::Preserve,
+            text::style::WhiteSpace::Collapse,
+            text::style::WhiteSpace::BreakSpaces,
         ] {
             for width in [69.0, 89.0, 96.0, 101.0, 104.0, 113.0] {
                 let mut start = Document::new(width, None);

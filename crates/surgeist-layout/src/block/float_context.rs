@@ -148,8 +148,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
         if let Some(entry) = entry {
             let count = self.incoming.len().checked_add(1).ok_or_else(|| {
                 crate::text_layout::scope_alignment::refusal(
-                    surgeist_text::ScopeAlignmentError::Overflow {
-                        kind: surgeist_text::ScopeAlignmentLimitKind::Records,
+                    surgeist_text::scope_alignment::ScopeAlignmentError::Overflow {
+                        kind: surgeist_text::scope_alignment::ScopeAlignmentLimitKind::Records,
                     },
                 )
             })?;

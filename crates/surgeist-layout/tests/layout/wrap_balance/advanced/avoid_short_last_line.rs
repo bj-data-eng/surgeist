@@ -17,10 +17,10 @@ pub(super) fn rows<S: l::LayoutScalar>(
         .zip(expected)
         .enumerate()
     {
-        assert_eq!(line.range(), t::Range::new(start, end));
+        assert_eq!(line.range(), t::source::Range::new(start, end));
         assert_eq!(
             line.bounds(),
-            t::Rect::new(0.0, i as f64 * 10.0, fixture.width, 10.0)
+            t::geometry::Rect::new(0.0, i as f64 * 10.0, fixture.width, 10.0)
         );
         assert_eq!(line.baseline(), i as f64 * 10.0 + 8.0);
         let selected = receipt.selected_line();
@@ -28,22 +28,22 @@ pub(super) fn rows<S: l::LayoutScalar>(
         assert_eq!(request.context.available_inline, Some(fixture.width));
         assert_eq!(request.context.indent, 0.0);
         let ending = if i + 1 == expected.len() {
-            t::LineEnd::Paragraph
+            t::selection::LineEnd::Paragraph
         } else {
-            t::LineEnd::Soft
+            t::selection::LineEnd::Soft
         };
         assert_eq!(request.context.end, ending);
         assert_eq!(request.start.view().source_after().get(), start);
         assert_eq!(request.end.view().source_after().get(), end);
-        let t::PreparedTermination::Ordinary(offer) = &request.termination else {
+        let t::selection::PreparedTermination::Ordinary(offer) = &request.termination else {
             panic!("ordinary source offer required")
         };
         assert_eq!(
             offer.view().kind(),
-            if ending == t::LineEnd::Paragraph {
-                t::PreparedBreakKind::ParagraphEnd
+            if ending == t::selection::LineEnd::Paragraph {
+                t::prepared::PreparedBreakKind::ParagraphEnd
             } else {
-                t::PreparedBreakKind::Allowed
+                t::prepared::PreparedBreakKind::Allowed
             }
         );
         assert!(request.alternative.is_none());
@@ -185,7 +185,7 @@ fn avoid_short_last_line_text_revision_invalidates_current_source_without_mutati
 }
 
 fn real_float_cache<S: l::LayoutScalar>() {
-    let mut f = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
+    let mut f = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
     let auto = f.compute(&[]);
     assert_float(&f, &auto, false);
     auto.apply_to(&mut f.host).unwrap();
@@ -213,7 +213,8 @@ fn real_float_cache<S: l::LayoutScalar>() {
             "actual eligible float leaf cache hit required"
         );
         warm.apply_to(&mut f.host).unwrap();
-        let mut fresh = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
+        let mut fresh =
+            Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
         fresh.root(|r| r.text_wrap_style = style);
         assert_float(&fresh, &fresh.compute(&[]), repaired);
         retained.push((switched, repaired));
@@ -278,17 +279,17 @@ fn long_final_group<S: l::LayoutScalar>() {
             left.max_content_contribution(),
             right.max_content_contribution()
         );
-        let spacing = |line: &t::FinalizedLine| {
+        let spacing = |line: &t::finalized::FinalizedLine| {
             line.spacing_slots()
                 .map(|feedback| {
                     (
                         feedback.slot.pieces().collect::<Vec<_>>(),
                         feedback.slot.participants().cloned().collect::<Vec<_>>(),
                         match feedback.slot.target() {
-                            t::SpacingSlotTarget::Separator(unit) => {
+                            t::spacing::SpacingSlotTarget::Separator(unit) => {
                                 unit.pieces().collect::<Vec<_>>()
                             }
-                            t::SpacingSlotTarget::Boundary { .. } => {
+                            t::spacing::SpacingSlotTarget::Boundary { .. } => {
                                 panic!("existing Spaces candidates are complete separator units")
                             }
                         },

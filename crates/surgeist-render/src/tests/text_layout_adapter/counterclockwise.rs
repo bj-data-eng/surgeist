@@ -10,7 +10,8 @@ use skrifa::{
 
 const GX: f64 = -3.25;
 const GY: f64 = 40.5;
-const CCW: text::LineOrientation = text::LineOrientation::SidewaysCounterclockwise;
+const CCW: text::selection::LineOrientation =
+    text::selection::LineOrientation::SidewaysCounterclockwise;
 
 fn words(values: &[u16]) -> Vec<u8> {
     values
@@ -143,10 +144,10 @@ fn premises(bytes: &[u8]) {
     assert_eq!(metrics.left_side_bearing(GlyphId::new(274)), Some(0.0));
 }
 
-fn authored() -> text::Style {
-    text::Style {
+fn authored() -> text::style::Style {
+    text::style::Style {
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
+        line_height: text::style::LineHeight::Absolute(10.0),
         ..style()
     }
 }
@@ -154,36 +155,40 @@ fn authored() -> text::Style {
 fn selected(
     bytes: &[u8],
     raw: &str,
-    authored: text::Style,
-    orientation: text::LineOrientation,
-    direction: text::ParagraphBaseDirection,
-) -> (text::PreparedText, text::FinalizedLine, text::System) {
+    authored: text::style::Style,
+    orientation: text::selection::LineOrientation,
+    direction: text::paragraph::ParagraphBaseDirection,
+) -> (
+    text::prepared::PreparedText,
+    text::finalized::FinalizedLine,
+    text::System,
+) {
     let mut system = system(bytes.to_vec());
-    let analyzed = text::AnalyzedSource::new(
-        text::Source::identified(raw, text::Id::from_u64(1579001), 7),
+    let analyzed = text::analyzed::AnalyzedSource::new(
+        text::source::Source::identified(raw, text::source::Id::from_u64(1579001), 7),
         authored,
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(orientation),
+            text::prepared::PreparationOptions::default().with_orientation(orientation),
         )
         .unwrap();
     assert_eq!(prepared.orientation(), orientation);
     let end = prepared
         .opportunity_views()
-        .find(|o| o.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|o| o.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(end),
+            termination: text::selection::PreparedTermination::Ordinary(end),
             participants: prepared.participants().collect(),
             alternative: None,
             incoming: None,
@@ -192,77 +197,79 @@ fn selected(
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
-                    text::ParagraphBaseDirection::LeftToRight => {
-                        text::LineBoxDirection::LeftToRight
+                    text::paragraph::ParagraphBaseDirection::LeftToRight => {
+                        text::selection::LineBoxDirection::LeftToRight
                     }
-                    text::ParagraphBaseDirection::RightToLeft => {
-                        text::LineBoxDirection::RightToLeft
+                    text::paragraph::ParagraphBaseDirection::RightToLeft => {
+                        text::selection::LineBoxDirection::RightToLeft
                     }
                 },
                 orientation,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Left,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Left,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     (prepared, line, system)
 }
 
 fn place(
-    prepared: text::PreparedText,
-    line: text::FinalizedLine,
-    orientation: text::LineOrientation,
-) -> text::Layout {
-    text::Layout::from_finalized_lines(request(prepared, line, orientation)).unwrap()
+    prepared: text::prepared::PreparedText,
+    line: text::finalized::FinalizedLine,
+    orientation: text::selection::LineOrientation,
+) -> text::layout::Layout {
+    text::layout::Layout::from_finalized_lines(request(prepared, line, orientation)).unwrap()
 }
 fn request(
-    prepared: text::PreparedText,
-    line: text::FinalizedLine,
-    orientation: text::LineOrientation,
-) -> text::PlacementRequest {
-    text::PlacementRequest {
+    prepared: text::prepared::PreparedText,
+    line: text::finalized::FinalizedLine,
+    orientation: text::selection::LineOrientation,
+) -> text::placement::PlacementRequest {
+    text::placement::PlacementRequest {
         prepared,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: if orientation == text::LineOrientation::Horizontal {
-                text::LineAnchor {
-                    inline_origin: GX,
-                    baseline: GY,
-                }
-            } else {
-                text::LineAnchor {
-                    inline_origin: GY,
-                    baseline: GX,
-                }
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: if orientation == text::selection::LineOrientation::Horizontal {
+                    text::placement::LineAnchor {
+                        inline_origin: GX,
+                        baseline: GY,
+                    }
+                } else {
+                    text::placement::LineAnchor {
+                        inline_origin: GY,
+                        baseline: GX,
+                    }
+                },
+                orientation,
+                atomics: vec![],
             },
-            orientation,
-            atomics: vec![],
-        })],
+        )],
     }
 }
 fn native(
     bytes: &[u8],
     raw: &str,
-    authored: text::Style,
-    orientation: text::LineOrientation,
-    direction: text::ParagraphBaseDirection,
-) -> (text::Layout, text::System) {
+    authored: text::style::Style,
+    orientation: text::selection::LineOrientation,
+    direction: text::paragraph::ParagraphBaseDirection,
+) -> (text::layout::Layout, text::System) {
     let (prepared, line, system) = selected(bytes, raw, authored, orientation, direction);
     (place(prepared, line, orientation), system)
 }
@@ -278,20 +285,20 @@ fn native_asymmetric_ccw_basis_uses_raw_pens_offsets_and_one_outer_transform_wit
     premises(&bytes);
     for (orientation, basis, matrix, physical) in [
         (
-            text::LineOrientation::Horizontal,
-            text::GlyphBasis::Unrotated,
+            text::selection::LineOrientation::Horizontal,
+            text::geometry::GlyphBasis::Unrotated,
             [1.0, 0.0, 0.0, 1.0, GX, GY],
             kurbo::Rect::new(-2.0, 32.5, 12.0, 42.5),
         ),
         (
-            text::LineOrientation::SidewaysClockwise,
-            text::GlyphBasis::Clockwise,
+            text::selection::LineOrientation::SidewaysClockwise,
+            text::geometry::GlyphBasis::Clockwise,
             [0.0, 1.0, -1.0, 0.0, GX, GY],
             kurbo::Rect::new(-5.25, 41.75, 4.75, 55.75),
         ),
         (
             CCW,
-            text::GlyphBasis::Counterclockwise,
+            text::geometry::GlyphBasis::Counterclockwise,
             [0.0, -1.0, 1.0, 0.0, GX, GY],
             kurbo::Rect::new(-11.25, 25.25, -1.25, 39.25),
         ),
@@ -301,14 +308,17 @@ fn native_asymmetric_ccw_basis_uses_raw_pens_offsets_and_one_outer_transform_wit
             "AB",
             authored(),
             orientation,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
-        assert_eq!(input.source().id(), Some(text::Id::from_u64(1579001)));
+        assert_eq!(
+            input.source().id(),
+            Some(text::source::Id::from_u64(1579001))
+        );
         assert_eq!(input.source().revision(), 7);
         assert_eq!(input.source().text().code_units(), [65, 66]);
         let run = input.run_views().next().unwrap();
-        assert_eq!(run.range(), text::Range::new(0, 2));
-        assert_eq!(run.origin(), text::Point::new(GX, GY));
+        assert_eq!(run.range(), text::source::Range::new(0, 2));
+        assert_eq!(run.origin(), text::geometry::Point::new(GX, GY));
         assert_eq!(run.orientation(), orientation);
         assert_eq!(run.glyph_basis(), basis);
         assert_eq!(
@@ -361,7 +371,10 @@ fn native_asymmetric_ccw_basis_uses_raw_pens_offsets_and_one_outer_transform_wit
         }
         if orientation == CCW {
             // Font over8/under2 and total advance21.25 are metrics, not ink.
-            assert_eq!(input.bounds(), text::Rect::new(-11.25, 19.25, 10.0, 21.25));
+            assert_eq!(
+                input.bounds(),
+                text::geometry::Rect::new(-11.25, 19.25, 10.0, 21.25)
+            );
         }
     }
 }
@@ -375,14 +388,14 @@ fn rtl_dflt_only_gpos_is_unpositioned_in_both_horizontal_and_native_ccw_profiles
     // fallback disables GPOS independently of orientation or kern's default.
     for (orientation, basis, matrix, physical) in [
         (
-            text::LineOrientation::Horizontal,
-            text::GlyphBasis::Unrotated,
+            text::selection::LineOrientation::Horizontal,
+            text::geometry::GlyphBasis::Unrotated,
             [1.0, 0.0, 0.0, 1.0, GX, GY],
             kurbo::Rect::new(-1.25, 32.5, 16.75, 42.5),
         ),
         (
             CCW,
-            text::GlyphBasis::Counterclockwise,
+            text::geometry::GlyphBasis::Counterclockwise,
             [0.0, -1.0, 1.0, 0.0, GX, GY],
             kurbo::Rect::new(-11.25, 20.5, -1.25, 38.5),
         ),
@@ -392,10 +405,10 @@ fn rtl_dflt_only_gpos_is_unpositioned_in_both_horizontal_and_native_ccw_profiles
             "\u{5d0}\u{5d1}",
             authored(),
             orientation,
-            text::ParagraphBaseDirection::RightToLeft,
+            text::paragraph::ParagraphBaseDirection::RightToLeft,
         );
         assert_eq!(input.source().text().code_units(), [0x5d0, 0x5d1]);
-        assert_eq!(input.direction(), text::Direction::RightToLeft);
+        assert_eq!(input.direction(), text::style::Direction::RightToLeft);
         let raw = input.run_views().next().unwrap();
         assert_eq!(raw.glyph_basis(), basis);
         assert_eq!(
@@ -452,14 +465,14 @@ fn actual_rtl_horizontal_provider_order_keeps_positive_raw_pens_in_upward_ccw_fl
     premises(&bytes);
     for (orientation, basis, matrix, physical) in [
         (
-            text::LineOrientation::Horizontal,
-            text::GlyphBasis::Unrotated,
+            text::selection::LineOrientation::Horizontal,
+            text::geometry::GlyphBasis::Unrotated,
             [1.0, 0.0, 0.0, 1.0, GX, GY],
             kurbo::Rect::new(-1.25, 32.5, 18.0, 42.5),
         ),
         (
             CCW,
-            text::GlyphBasis::Counterclockwise,
+            text::geometry::GlyphBasis::Counterclockwise,
             [0.0, -1.0, 1.0, 0.0, GX, GY],
             kurbo::Rect::new(-11.25, 19.25, -1.25, 38.5),
         ),
@@ -469,10 +482,10 @@ fn actual_rtl_horizontal_provider_order_keeps_positive_raw_pens_in_upward_ccw_fl
             "\u{5d0}\u{5d1}",
             authored(),
             orientation,
-            text::ParagraphBaseDirection::RightToLeft,
+            text::paragraph::ParagraphBaseDirection::RightToLeft,
         );
         assert_eq!(input.source().text().code_units(), [0x5d0, 0x5d1]);
-        assert_eq!(input.direction(), text::Direction::RightToLeft);
+        assert_eq!(input.direction(), text::style::Direction::RightToLeft);
         let raw = input.run_views().next().unwrap();
         assert_eq!(raw.glyph_basis(), basis);
         assert_eq!(
@@ -512,10 +525,10 @@ fn actual_rtl_horizontal_provider_order_keeps_positive_raw_pens_in_upward_ccw_fl
 #[test]
 fn ccw_physical_decoration_gets_only_caller_placement_after_native_line_mapping() {
     let bytes = font(Representation::Outline, true);
-    let authored = text::Style {
-        underline: text::Decoration::solid()
-            .with_offset(text::DecorationOffset::try_absolute(-2.0).unwrap())
-            .with_thickness(text::DecorationThickness::try_absolute(1.0).unwrap()),
+    let authored = text::style::Style {
+        underline: text::style::Decoration::solid()
+            .with_offset(text::style::DecorationOffset::try_absolute(-2.0).unwrap())
+            .with_thickness(text::style::DecorationThickness::try_absolute(1.0).unwrap()),
         ..authored()
     };
     let (input, _) = native(
@@ -523,12 +536,12 @@ fn ccw_physical_decoration_gets_only_caller_placement_after_native_line_mapping(
         "AB",
         authored,
         CCW,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     // Local under2..3 maps RIGHT of baseline, and u0..21.25 maps upward.
     assert_eq!(
         input.decoration_views().next().unwrap().rect(),
-        text::Rect::new(-1.25, 19.25, 1.0, 21.25)
+        text::geometry::Rect::new(-1.25, 19.25, 1.0, 21.25)
     );
     for outer in [
         Transform::identity(),
@@ -565,8 +578,10 @@ fn ccw_physical_decoration_gets_only_caller_placement_after_native_line_mapping(
 #[test]
 fn ccw_synthesis_shears_actual_font_axes_before_rotation_and_nonuniform_scale() {
     let bytes = font(Representation::Outline, true);
-    let authored = text::Style {
-        font: text::Font::new().family("Ahem").style(text::Slant::Italic),
+    let authored = text::style::Style {
+        font: text::style::Font::new()
+            .family("Ahem")
+            .style(text::style::Slant::Italic),
         ..authored()
     };
     let (input, _) = native(
@@ -574,7 +589,7 @@ fn ccw_synthesis_shears_actual_font_axes_before_rotation_and_nonuniform_scale() 
         "A",
         authored,
         CCW,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let raw = input.run_views().next().unwrap();
     let instance = raw.effective_instance().unwrap();
@@ -616,7 +631,7 @@ fn ccw_admits_actual_colr_layers_and_sbix_pixels_with_their_own_ink_and_instance
             "A",
             authored(),
             CCW,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let stats = system.stats();
         let scene = prepare_text_layout(
@@ -695,7 +710,7 @@ fn ccw_numeric_and_resource_refusals_publish_no_prefix_and_keep_the_accepted_sce
         "AB",
         authored(),
         CCW,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let stats = system.stats();
     let accepted = prepare_text_layout(
@@ -761,7 +776,7 @@ fn ccw_selected_images_refuse_synthesis_precisely_and_keep_prior_publication() {
             "BA",
             authored(),
             CCW,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let accepted = prepare_text_layout(
             &ordinary,
@@ -771,8 +786,10 @@ fn ccw_selected_images_refuse_synthesis_precisely_and_keep_prior_publication() {
         )
         .unwrap();
         let previous = accepted.scene().clone();
-        let italic = text::Style {
-            font: text::Font::new().family("Ahem").style(text::Slant::Italic),
+        let italic = text::style::Style {
+            font: text::style::Font::new()
+                .family("Ahem")
+                .style(text::style::Slant::Italic),
             ..authored()
         };
         let (input, system) = native(
@@ -780,7 +797,7 @@ fn ccw_selected_images_refuse_synthesis_precisely_and_keep_prior_publication() {
             "BA",
             italic,
             CCW,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         assert!(
             input
@@ -827,10 +844,13 @@ fn native_ccw_preserves_precise_nonidentity_composite_refusal_after_an_ordinary_
         "AX",
         authored(),
         CCW,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let raw = input.run_views().next().unwrap();
-    assert_eq!(raw.glyph_basis(), text::GlyphBasis::Counterclockwise);
+    assert_eq!(
+        raw.glyph_basis(),
+        text::geometry::GlyphBasis::Counterclockwise
+    );
     assert_eq!(raw.glyphs().map(|g| g.id()).collect::<Vec<_>>(), [35, 58]);
     let stats = system.stats();
     let error = refuse(&input, Transform::identity(), limits());
@@ -853,26 +873,29 @@ fn ccw_selected_line_refuses_cw_placement_without_losing_its_source_or_replay() 
         "AB",
         authored(),
         CCW,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let before = system.stats();
-    let error = text::Layout::from_finalized_lines(request(
+    let error = text::layout::Layout::from_finalized_lines(request(
         prepared.clone(),
         line.clone(),
-        text::LineOrientation::SidewaysClockwise,
+        text::selection::LineOrientation::SidewaysClockwise,
     ))
     .expect_err("actual orientation mismatch");
     assert_eq!(
         error.detail(),
         Some(&text::ErrorDetail::InvalidTextProtocol {
-            reason: text::ProtocolError::MismatchedContext {
-                field: text::ProtocolContextField::Orientation
+            reason: text::prepared::ProtocolError::MismatchedContext {
+                field: text::prepared::ProtocolContextField::Orientation
             },
         })
     );
     let input = place(prepared, line, CCW);
     assert_eq!(input.source().text().code_units(), [65, 66]);
-    assert_eq!(input.source().id(), Some(text::Id::from_u64(1579001)));
+    assert_eq!(
+        input.source().id(),
+        Some(text::source::Id::from_u64(1579001))
+    );
     let scene = prepare_text_layout(
         &input,
         Transform::identity(),
@@ -894,10 +917,10 @@ fn native_ccw_retains_actual_variable_instance_coordinates_and_qualified_ink() {
     for (setting, bits, width) in [(0.0, 0, 1000.0), (0.5, 8192, 1050.0), (1.0, 16384, 1100.0)] {
         // Existing owned fvar axis0..1 and dense gvar tuple add100 to the X
         // outline's right edge at peak1; phantom advances have zero deltas.
-        let authored = text::Style {
+        let authored = text::style::Style {
             size: 1000.0,
-            line_height: text::LineHeight::Absolute(1000.0),
-            font: text::Font::new()
+            line_height: text::style::LineHeight::Absolute(1000.0),
+            font: text::style::Font::new()
                 .family("Ahem")
                 .variation(format!("'wght' {setting}")),
             ..style()
@@ -907,7 +930,7 @@ fn native_ccw_retains_actual_variable_instance_coordinates_and_qualified_ink() {
             "X",
             authored,
             CCW,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let stats = system.stats();
         let scene = prepare_text_layout(

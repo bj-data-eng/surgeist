@@ -5,8 +5,13 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
-    HyphenateCharacter, HyphenateLimitChars, HyphenationCounts, HyphenationMinimum, Hyphens,
-    LineEnd, OverflowWrap, PreparedBreakKind, PreparedTermination, Range, Text,
+    hyphenation::{
+        HyphenateCharacter, HyphenateLimitChars, HyphenationCounts, HyphenationMinimum, Hyphens,
+    },
+    prepared::PreparedBreakKind,
+    selection::{LineEnd, PreparedTermination},
+    source::{Range, Text},
+    style::OverflowWrap,
 };
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -26,7 +31,7 @@ fn automatic_paragraph(source: &str) -> PreparedParagraph {
         1,
         Source::identified(
             source,
-            surgeist_text::Id::from_u64(SOURCE_ID),
+            surgeist_text::source::Id::from_u64(SOURCE_ID),
             SOURCE_REVISION,
         ),
         style,
@@ -60,7 +65,7 @@ fn expected_letters(source: &str, selected: Range) -> Vec<(Range, u32, f32)> {
         .collect()
 }
 
-fn glyphs(line: &surgeist_text::FinalizedLine) -> Vec<(Range, u32, f32)> {
+fn glyphs(line: &surgeist_text::finalized::FinalizedLine) -> Vec<(Range, u32, f32)> {
     let mut actual = Vec::new();
     for run in line.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -130,7 +135,7 @@ fn compute<S: LayoutScalar>(
 fn finalized_lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     paragraph: &PreparedParagraph,
-) -> Vec<surgeist_text::FinalizedLine> {
+) -> Vec<surgeist_text::finalized::FinalizedLine> {
     let mut lines = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -162,7 +167,7 @@ fn qualify_unbroken<S: LayoutScalar>(paragraph: &PreparedParagraph, source: &str
     let origin = paragraph.origin(1);
     assert_eq!(
         origin.view().source().id(),
-        Some(surgeist_text::Id::from_u64(SOURCE_ID))
+        Some(surgeist_text::source::Id::from_u64(SOURCE_ID))
     );
     assert_eq!(origin.view().source().revision(), SOURCE_REVISION);
     assert_eq!(origin.view().source().text().code_units(), original);
@@ -224,7 +229,7 @@ fn assert_choice<S: LayoutScalar>(source: &str, width: f64, cut: usize, manual: 
         assert_eq!(line.baseline(), 8.0 + index as f64 * 10.0);
         assert_eq!(
             line.bounds(),
-            surgeist_text::Rect::new(0.0, index as f64 * 10.0, width, 10.0)
+            surgeist_text::geometry::Rect::new(0.0, index as f64 * 10.0, width, 10.0)
         );
     }
     let lines = finalized_lines(&batch, &paragraph);
@@ -330,7 +335,7 @@ fn native_character_minima_change_the_admitted_partition_and_real_line_choice() 
                 1,
                 Source::identified(
                     source,
-                    surgeist_text::Id::from_u64(SOURCE_ID),
+                    surgeist_text::source::Id::from_u64(SOURCE_ID),
                     SOURCE_REVISION,
                 ),
                 style,
@@ -376,10 +381,18 @@ fn native_character_minima_change_the_admitted_partition_and_real_line_choice() 
             let alternative = selected.request().alternative.as_ref().unwrap();
             assert_eq!(alternative.view().text(), &Text::from("A"));
             match (manual, alternative.view().definition()) {
-                (true, surgeist_text::PreparedAlternativeDefinition::Source { source, .. }) => {
+                (
+                    true,
+                    surgeist_text::prepared::PreparedAlternativeDefinition::Source {
+                        source, ..
+                    },
+                ) => {
                     assert_eq!(source, Range::new(2, 3));
                 }
-                (false, surgeist_text::PreparedAlternativeDefinition::Automatic { cut }) => {
+                (
+                    false,
+                    surgeist_text::prepared::PreparedAlternativeDefinition::Automatic { cut },
+                ) => {
                     assert_eq!(
                         cut.view().counts(),
                         Some(HyphenationCounts {
@@ -438,7 +451,7 @@ fn automatic_manual_partition_excludes_unrelated_prefix_capacity_and_includes_in
             assert_eq!(
                 matches!(
                     alternative.view().definition(),
-                    surgeist_text::PreparedAlternativeDefinition::Automatic { .. }
+                    surgeist_text::prepared::PreparedAlternativeDefinition::Automatic { .. }
                 ),
                 automatic
             );

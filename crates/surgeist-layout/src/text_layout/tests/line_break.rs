@@ -8,25 +8,25 @@ const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fon
 
 fn paragraph(
     source: &str,
-    line_break: text::LineBreak,
+    line_break: text::style::LineBreak,
     ancestor_wrap: Wrap,
     rtl: bool,
 ) -> PreparedParagraph {
-    let child = text::Style {
+    let child = text::style::Style {
         line_break,
         wrap: Wrap::Word,
-        white_space: text::WhiteSpace::Preserve,
-        overflow_wrap: text::OverflowWrap::Normal,
+        white_space: text::style::WhiteSpace::Preserve,
+        overflow_wrap: text::style::OverflowWrap::Normal,
         ..ahem_style(10.0, 10.0)
     };
-    let base = text::Style {
+    let base = text::style::Style {
         wrap: ancestor_wrap,
         ..child.clone()
     };
     PreparedParagraph::new(
         vec![ParagraphPart::text(
             1,
-            Source::identified(source, text::Id::from_u64(65052), 7),
+            Source::identified(source, text::source::Id::from_u64(65052), 7),
             child,
         )],
         base,
@@ -108,14 +108,17 @@ fn assert_lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     paragraph: &PreparedParagraph,
     source: &[u16],
-    expected: &[(text::Range, f64, text::LineEnd)],
+    expected: &[(text::source::Range, f64, text::selection::LineEnd)],
 ) {
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), source);
     assert_eq!(placed.lines().len(), expected.len());
     let origin = paragraph.origin(1);
-    assert_eq!(origin.view().source().id(), Some(text::Id::from_u64(65052)));
+    assert_eq!(
+        origin.view().source().id(),
+        Some(text::source::Id::from_u64(65052))
+    );
     assert_eq!(origin.view().source().revision(), 7);
     assert_eq!(origin.view().source().text().code_units(), source);
     let mut finalized = vec![None; expected.len()];
@@ -135,15 +138,16 @@ fn assert_lines<S: LayoutScalar>(
         assert!(request.alternative.is_none());
         assert!(request.incoming.is_none());
         assert!(line.hyphenation_continuation().is_none());
-        let text::PreparedTermination::Ordinary(offer) = &request.termination else {
+        let text::selection::PreparedTermination::Ordinary(offer) = &request.termination else {
             panic!("native LineBreak must terminate at an ordinary issued opportunity")
         };
         assert_eq!(
             offer.view().kind(),
             match end {
-                text::LineEnd::Soft => text::PreparedBreakKind::Allowed,
-                text::LineEnd::Forced => text::PreparedBreakKind::Forced,
-                text::LineEnd::Paragraph => text::PreparedBreakKind::ParagraphEnd,
+                text::selection::LineEnd::Soft => text::prepared::PreparedBreakKind::Allowed,
+                text::selection::LineEnd::Forced => text::prepared::PreparedBreakKind::Forced,
+                text::selection::LineEnd::Paragraph =>
+                    text::prepared::PreparedBreakKind::ParagraphEnd,
             }
         );
         assert_eq!(line.feedback().advance, *advance);
@@ -170,7 +174,7 @@ fn assert_lines<S: LayoutScalar>(
             .map(|run| run.advance())
             .sum();
         assert_eq!(placed_advance, *advance);
-        if *end == text::LineEnd::Soft {
+        if *end == text::selection::LineEnd::Soft {
             assert_eq!(request.end.view().source_before().get(), range.end);
             assert_eq!(request.end.view().source_after().get(), range.end);
         }
@@ -183,7 +187,7 @@ fn anywhere_has_equal_ordinary_priority_and_contributes_one_tcu_to_min_content()
         for rtl in [false, true] {
             // Both internal edges have equal ordinary priority, so the later
             // fitting edge wins even when punctuation supplies an earlier cut.
-            let punctuation = paragraph("a,b", text::LineBreak::Anywhere, Wrap::Word, rtl);
+            let punctuation = paragraph("a,b", text::style::LineBreak::Anywhere, Wrap::Word, rtl);
             let actual = compute::<S>(
                 &punctuation,
                 crate::AxisSizingRequestOf::new(
@@ -199,13 +203,21 @@ fn anywhere_has_equal_ordinary_priority_and_contributes_one_tcu_to_min_content()
                 &punctuation,
                 &[97, 44, 98],
                 &[
-                    (text::Range::new(0, 2), 20.0, text::LineEnd::Soft),
-                    (text::Range::new(2, 3), 10.0, text::LineEnd::Paragraph),
+                    (
+                        text::source::Range::new(0, 2),
+                        20.0,
+                        text::selection::LineEnd::Soft,
+                    ),
+                    (
+                        text::source::Range::new(2, 3),
+                        10.0,
+                        text::selection::LineEnd::Paragraph,
+                    ),
                 ],
             );
             for (line_break, minimum) in [
-                (text::LineBreak::Normal, 30.0),
-                (text::LineBreak::Anywhere, 10.0),
+                (text::style::LineBreak::Normal, 30.0),
+                (text::style::LineBreak::Anywhere, 10.0),
             ] {
                 let word = paragraph("abc", line_break, Wrap::Word, rtl);
                 // Ordinary cuts reduce min-content; emergency cuts would leave
@@ -241,7 +253,7 @@ fn anywhere_has_equal_ordinary_priority_and_contributes_one_tcu_to_min_content()
 fn anywhere_child_cannot_override_ancestor_nowrap_but_forced_break_remains() {
     fn lane<S: LayoutScalar>() {
         for rtl in [false, true] {
-            let paragraph = paragraph("abc\nde", text::LineBreak::Anywhere, Wrap::None, rtl);
+            let paragraph = paragraph("abc\nde", text::style::LineBreak::Anywhere, Wrap::None, rtl);
             let actual = compute::<S>(
                 &paragraph,
                 crate::AxisSizingRequestOf::new(
@@ -257,8 +269,16 @@ fn anywhere_child_cannot_override_ancestor_nowrap_but_forced_break_remains() {
                 &paragraph,
                 &[97, 98, 99, 10, 100, 101],
                 &[
-                    (text::Range::new(0, 4), 30.0, text::LineEnd::Forced),
-                    (text::Range::new(4, 6), 20.0, text::LineEnd::Paragraph),
+                    (
+                        text::source::Range::new(0, 4),
+                        30.0,
+                        text::selection::LineEnd::Forced,
+                    ),
+                    (
+                        text::source::Range::new(4, 6),
+                        20.0,
+                        text::selection::LineEnd::Paragraph,
+                    ),
                 ],
             );
         }

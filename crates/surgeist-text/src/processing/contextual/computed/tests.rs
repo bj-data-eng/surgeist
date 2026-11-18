@@ -5,11 +5,15 @@ use crate::{
     layout::Affinity,
     options::Alignment,
     processing::{
-        CapturedComputedLineBoundaryTarget, ComputedLineBoundaryError, ComputedLineBoundaryInput,
-        ContextualSourceInput, DocumentSegmentBreaks, SourceBoxSide, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
-        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            CapturedComputedLineBoundaryTarget, ComputedLineBoundaryError,
+            ComputedLineBoundaryInput, ContextualSourceInput, SourceBoxSide,
+            SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingError,
+            SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+            SourceProcessingScopeBoundaries, SourceProcessingTopology, WhiteSpaceTrim,
+            process_contextual_source,
+        },
     },
     protocol::{
         FormattedLineContext, LineBoxDirection, LineContext, LineEnd, LineOrientation,

@@ -40,42 +40,45 @@ impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
     }
 }
 
-fn fixture_empty<S: l::LayoutScalar>()
--> (Tree<S>, Vec<l::TextParagraphBinding<u32>>, t::CapturedScope) {
-    use t::SourceProcessingEvent as E;
-    let base = t::Style {
-        font: t::Font::new().family("Ahem"),
+fn fixture_empty<S: l::LayoutScalar>() -> (
+    Tree<S>,
+    Vec<l::TextParagraphBinding<u32>>,
+    t::capture::CapturedScope,
+) {
+    use t::capture::SourceProcessingEvent as E;
+    let base = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        wrap: t::Wrap::None,
-        hyphens: t::Hyphens::None,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        wrap: t::style::Wrap::None,
+        hyphens: t::hyphenation::Hyphens::None,
+        ..t::style::Style::default()
     };
-    let mut source = t::Source::identified("AX", t::Id::from_u64(658200), 41);
-    source.span(t::Range::new(0, 2), base.clone());
-    let block = || t::SourceProcessingScope::Block {
+    let mut source = t::source::Source::identified("AX", t::source::Id::from_u64(658200), 41);
+    source.span(t::source::Range::new(0, 2), base.clone());
+    let block = || t::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: t::SourceProcessingTopology::Complete,
+        topology: t::capture::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base.clone(),
-        used_direction: t::ParagraphBaseDirection::LeftToRight,
+        used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
     };
     let capture = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins: (0..2)
-                .map(|i| t::ParagraphOrigin {
+                .map(|i| t::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: t::Range::new(i, i + 1),
-                    aggregate: t::Range::new(i, i + 1),
-                    kind: t::ParagraphOriginKind::Authored,
+                    local: t::source::Range::new(i, i + 1),
+                    aggregate: t::source::Range::new(i, i + 1),
+                    kind: t::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             controls: vec![],
@@ -85,7 +88,7 @@ fn fixture_empty<S: l::LayoutScalar>()
             replacements: vec![],
             scopes: vec![
                 block(),
-                t::SourceProcessingScope::Inline {
+                t::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
@@ -96,9 +99,9 @@ fn fixture_empty<S: l::LayoutScalar>()
                 block(),
             ],
             paragraphs: (0..3)
-                .map(|_| t::SourceProcessingParagraph {
-                    base_direction: t::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                .map(|_| t::capture::SourceProcessingParagraph {
+                    base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             events: vec![
@@ -107,14 +110,14 @@ fn fixture_empty<S: l::LayoutScalar>()
                 E::EnterScope(1),
                 E::Origin {
                     origin: 0,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::EnterScope(2),
                 E::EnterParagraph(1),
                 E::Origin {
                     origin: 1,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::ExitParagraph(1),
                 E::ExitScope(2),
@@ -168,26 +171,28 @@ fn fixture_empty<S: l::LayoutScalar>()
             assert_eq!(
                 p.source_range(),
                 if i < 2 {
-                    t::Range::new(i, i + 1)
+                    t::source::Range::new(i, i + 1)
                 } else {
-                    t::Range::new(2, 2)
+                    t::source::Range::new(2, 2)
                 }
             );
-            let a = t::AnalyzedSource::from_processed_paragraph(
+            let a = t::analyzed::AnalyzedSource::from_processed_paragraph(
                 p,
-                t::AnalysisTypography::HorizontalComposition,
+                t::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let missing = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())
-                .map(|r| t::WrappingPolicy {
+                .map(|r| t::analyzed::WrappingPolicy {
                     relation: r.handle(),
-                    ancestor_wrap: t::Wrap::None,
+                    ancestor_wrap: t::style::Wrap::None,
                 })
                 .collect();
             let a = a.with_wrapping_policies(missing).unwrap();
-            let prepared = fonts.prepare(&a, t::PreparationOptions::default()).unwrap();
+            let prepared = fonts
+                .prepare(&a, t::prepared::PreparationOptions::default())
+                .unwrap();
             assert_eq!(
                 prepared
                     .captured_owner()
@@ -199,7 +204,10 @@ fn fixture_empty<S: l::LayoutScalar>()
             let (container, nodes, origins) = if i < 2 {
                 let node = if i == 0 { 1 } else { 3 };
                 let origin = prepared.origin_views().next().unwrap().handle();
-                assert_eq!(origin.view().aggregate_range(), t::Range::new(i, i + 1));
+                assert_eq!(
+                    origin.view().aggregate_range(),
+                    t::source::Range::new(i, i + 1)
+                );
                 inputs[node as usize] =
                     l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone()));
                 (
@@ -246,7 +254,7 @@ fn fixture_empty<S: l::LayoutScalar>()
     )
 }
 
-fn captured_wrapping(scope: t::CapturedScope) -> l::WrappingInput<u32> {
+fn captured_wrapping(scope: t::capture::CapturedScope) -> l::WrappingInput<u32> {
     l::WrappingInput {
         native_inline_boxes: Vec::new(),
         gaps: Vec::new(),

@@ -14,67 +14,67 @@ fn continuation(
 ) -> (PublicLayoutTreeOf<f64>, Vec<TextParagraphBinding<u32>>) {
     let mut base = ahem_style(10.0, 10.0);
     base.locale = Some("ja".into());
-    let authored = text::Style {
+    let authored = text::style::Style {
         word_space_transform: if enabled {
-            text::WordSpaceTransform::SpaceAutoPhrase
+            text::style::WordSpaceTransform::SpaceAutoPhrase
         } else {
-            text::WordSpaceTransform::None
+            text::style::WordSpaceTransform::None
         },
         ..base.clone()
     };
-    let owner = text::Style {
+    let owner = text::style::Style {
         word_space_transform: if enabled {
-            text::WordSpaceTransform::Space
+            text::style::WordSpaceTransform::Space
         } else {
-            text::WordSpaceTransform::None
+            text::style::WordSpaceTransform::None
         },
         ..base.clone()
     };
     let mut source = Source::new(format!("{JAPANESE}X{JAPANESE}"));
     let n = JAPANESE.encode_utf16().count();
     let end = 2 * n + 1;
-    source.span(text::Range::new(0, end), authored);
-    let origin = |start, end| text::ParagraphOrigin {
+    source.span(text::source::Range::new(0, end), authored);
+    let origin = |start, end| text::paragraph::ParagraphOrigin {
         text_node: None,
         source: source.clone(),
-        local: text::Range::new(start, end),
-        aggregate: text::Range::new(start, end),
-        kind: text::ParagraphOriginKind::Authored,
+        local: text::source::Range::new(start, end),
+        aggregate: text::source::Range::new(start, end),
+        kind: text::paragraph::ParagraphOriginKind::Authored,
     };
-    let block = || text::SourceProcessingScope::Block {
+    let block = || text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
-        trim: text::WhiteSpaceTrim::default(),
+        topology: text::capture::SourceProcessingTopology::Complete,
+        trim: text::capture::WhiteSpaceTrim::default(),
         base_style: base.clone(),
         used_direction: ParagraphBaseDirection::LeftToRight,
     };
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let occurrence = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let control = |control| E::Control {
         control,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: vec![origin(0, n), origin(n, n + 1), origin(n + 1, end)],
             connections: vec![],
             controls: vec![
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 0,
                     kind: ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: end,
                     kind: ParagraphControlKind::InlineBoundaryEnd,
                 },
@@ -83,21 +83,22 @@ fn continuation(
             replacements: vec![],
             scopes: vec![
                 block(),
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
-                    trim: text::WhiteSpaceTrim::default(),
+                    trim: text::capture::WhiteSpaceTrim::default(),
                     style: Some(owner),
-                    boundaries: captured_boundaries
-                        .then_some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: captured_boundaries.then_some(
+                        text::capture::SourceProcessingScopeBoundaries { start: 0, end: 1 },
+                    ),
                 },
                 block(),
             ],
             paragraphs: (0..3)
-                .map(|_| text::SourceProcessingParagraph {
+                .map(|_| text::capture::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             // The sole Start is in p0 and the sole End in p2.
@@ -131,15 +132,15 @@ fn continuation(
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                text::AnalysisTypography::HorizontalComposition,
+                text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let analyzed =
                 crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
             system
-                .prepare(&analyzed, text::PreparationOptions::default())
+                .prepare(&analyzed, text::prepared::PreparationOptions::default())
                 .unwrap()
         })
         .collect();
@@ -303,7 +304,8 @@ fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
         );
         let fragment = entry.fragment();
         let view = fragment.finalized_fragment().view();
-        let text::FinalizedFragmentOwner::VirtualSeparator(occurrence) = view.owner() else {
+        let text::finalized::FinalizedFragmentOwner::VirtualSeparator(occurrence) = view.owner()
+        else {
             panic!("real virtual separator authority")
         };
         let at = occurrence.view().source_position().get();
@@ -391,12 +393,12 @@ fn segmented_fixture(
 ) -> (PublicLayoutTreeOf<f64>, Vec<TextParagraphBinding<u32>>) {
     let mut base = ahem_style(10.0, 10.0);
     base.locale = Some("ja".into());
-    let authored = text::Style {
-        word_space_transform: text::WordSpaceTransform::SpaceAutoPhrase,
+    let authored = text::style::Style {
+        word_space_transform: text::style::WordSpaceTransform::SpaceAutoPhrase,
         ..base.clone()
     };
-    let owner = text::Style {
-        word_space_transform: text::WordSpaceTransform::Space,
+    let owner = text::style::Style {
+        word_space_transform: text::style::WordSpaceTransform::Space,
         ..base.clone()
     };
     let mut original = (0..count)
@@ -408,13 +410,13 @@ fn segmented_fixture(
     }
     let mut source = Source::new(original);
     let end = source.text().len();
-    source.span(text::Range::new(0, end), authored);
-    let block = || text::SourceProcessingScope::Block {
+    source.span(text::source::Range::new(0, end), authored);
+    let block = || text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
-        trim: text::WhiteSpaceTrim::default(),
+        topology: text::capture::SourceProcessingTopology::Complete,
+        trim: text::capture::WhiteSpaceTrim::default(),
         base_style: base.clone(),
         used_direction: ParagraphBaseDirection::LeftToRight,
     };
@@ -422,58 +424,58 @@ fn segmented_fixture(
     let mut controls = Vec::new();
     let mut boundary_nodes = Vec::new();
     if nested {
-        controls.push(text::ParagraphControl {
+        controls.push(text::paragraph::ParagraphControl {
             at: 0,
             kind: ParagraphControlKind::InlineBoundaryStart,
         });
         boundary_nodes.push(100);
-        scopes.push(text::SourceProcessingScope::Inline {
+        scopes.push(text::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
-            trim: text::WhiteSpaceTrim::default(),
+            trim: text::capture::WhiteSpaceTrim::default(),
             style: None,
-            boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 3 }),
+            boundaries: Some(text::capture::SourceProcessingScopeBoundaries { start: 0, end: 3 }),
         });
     }
     let owner_scope = scopes.len();
     let start = controls.len();
-    controls.push(text::ParagraphControl {
+    controls.push(text::paragraph::ParagraphControl {
         at: 0,
         kind: ParagraphControlKind::InlineBoundaryStart,
     });
     boundary_nodes.push(101);
-    controls.push(text::ParagraphControl {
+    controls.push(text::paragraph::ParagraphControl {
         at: end,
         kind: ParagraphControlKind::InlineBoundaryEnd,
     });
     boundary_nodes.push(102);
     if nested {
-        controls.push(text::ParagraphControl {
+        controls.push(text::paragraph::ParagraphControl {
             at: end,
             kind: ParagraphControlKind::InlineBoundaryEnd,
         });
         boundary_nodes.push(103);
     }
-    scopes.push(text::SourceProcessingScope::Inline {
+    scopes.push(text::capture::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
-        trim: text::WhiteSpaceTrim::default(),
+        trim: text::capture::WhiteSpaceTrim::default(),
         style: Some(owner),
-        boundaries: Some(text::SourceProcessingScopeBoundaries {
+        boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
             start,
             end: start + 1,
         }),
     });
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     if nested {
         events.extend([
             E::EnterScope(1),
             E::Control {
                 control: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
         ]);
     }
@@ -481,7 +483,7 @@ fn segmented_fixture(
         E::EnterScope(owner_scope),
         E::Control {
             control: start,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
     ]);
     let mut runs: Vec<(u32, Vec<u32>)> = vec![(0, boundary_nodes[..=start].to_vec())];
@@ -503,16 +505,16 @@ fn segmented_fixture(
             let child = 400 + next_block;
             next_block += 1;
             if !empty_blocks {
-                origins.push(text::ParagraphOrigin {
+                origins.push(text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: text::Range::new(cursor, cursor + 1),
-                    aggregate: text::Range::new(cursor, cursor + 1),
-                    kind: text::ParagraphOriginKind::Authored,
+                    local: text::source::Range::new(cursor, cursor + 1),
+                    aggregate: text::source::Range::new(cursor, cursor + 1),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 });
                 events.push(E::Origin {
                     origin: origins.len() - 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 });
                 origin_nodes.push(child);
             }
@@ -539,16 +541,16 @@ fn segmented_fixture(
     for segment in 0..count {
         let node = 300 + segment as u32;
         let next = cursor + JAPANESE.encode_utf16().count();
-        origins.push(text::ParagraphOrigin {
+        origins.push(text::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
-            local: text::Range::new(cursor, next),
-            aggregate: text::Range::new(cursor, next),
-            kind: text::ParagraphOriginKind::Authored,
+            local: text::source::Range::new(cursor, next),
+            aggregate: text::source::Range::new(cursor, next),
+            kind: text::paragraph::ParagraphOriginKind::Authored,
         });
         events.push(E::Origin {
             origin: origins.len() - 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         });
         origin_nodes.push(node);
         runs[paragraph].1.push(node);
@@ -565,7 +567,7 @@ fn segmented_fixture(
     events.extend([
         E::Control {
             control: start + 1,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         },
         E::ExitScope(owner_scope),
     ]);
@@ -573,7 +575,7 @@ fn segmented_fixture(
         events.extend([
             E::Control {
                 control: 3,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(1),
         ]);
@@ -582,13 +584,13 @@ fn segmented_fixture(
     runs[paragraph].1.extend(&boundary_nodes[start + 1..]);
     root_children.extend(&boundary_nodes[start + 1..]);
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins,
             connections: vec![],
             controls,
@@ -597,9 +599,9 @@ fn segmented_fixture(
             scopes,
             paragraphs: runs
                 .iter()
-                .map(|_| text::SourceProcessingParagraph {
+                .map(|_| text::capture::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             events,
@@ -647,14 +649,14 @@ fn segmented_fixture(
     let mut source_node = origin_nodes.into_iter();
     let mut bindings = Vec::new();
     for (processed, (container, nodes)) in processed.paragraphs().zip(runs) {
-        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
             processed,
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
         let prepared = system
-            .prepare(&analyzed, text::PreparationOptions::default())
+            .prepare(&analyzed, text::prepared::PreparationOptions::default())
             .unwrap();
         let origins = prepared
             .origin_views()
@@ -745,7 +747,7 @@ fn middle_continuation_with_neither_endpoint_keeps_one_global_owner_and_local_ge
                 }
             );
             assert_eq!(owner.scope.captured_scope(), owners[0].captured_scope());
-            let text::FinalizedFragmentOwner::VirtualSeparator(v) =
+            let text::finalized::FinalizedFragmentOwner::VirtualSeparator(v) =
                 entry.fragment().finalized_fragment().view().owner()
             else {
                 panic!("virtual authority");
@@ -1017,7 +1019,7 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
                     binding.association,
                     TextScopeAssociation::Inline { start: 1, end: 5 }
                 );
-                let text::FinalizedFragmentOwner::VirtualSeparator(separator) =
+                let text::finalized::FinalizedFragmentOwner::VirtualSeparator(separator) =
                     entry.fragment().finalized_fragment().view().owner()
                 else {
                     panic!("Scope geometry must remain a real separator")
@@ -1048,7 +1050,7 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
     }
     let mut actual = Vec::new();
     for entry in positive.unrounded_inline_fragments() {
-        if let text::FinalizedFragmentOwner::Control(control) =
+        if let text::finalized::FinalizedFragmentOwner::Control(control) =
             entry.fragment().finalized_fragment().view().owner()
         {
             let InlineFragmentOwner::Node(node) = entry.owner() else {

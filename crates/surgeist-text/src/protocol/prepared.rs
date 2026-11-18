@@ -1307,7 +1307,7 @@ fn captured_endpoint(analyzed: &AnalyzedData, occurrence: usize) -> bool {
     let Some(topology) = &analyzed.paragraph.scope_topology else {
         return false;
     };
-    let crate::processing::SourceProcessingEvent::Control { control, .. } =
+    let crate::processing::contextual::SourceProcessingEvent::Control { control, .. } =
         topology.capture.events[topology.control_orders[occurrence]].event
     else {
         return false;

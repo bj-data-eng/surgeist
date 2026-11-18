@@ -1,4 +1,5 @@
 //! Nonempty original-source observations over placed, selected grapheme units.
+
 use crate::protocol::{
     ProtocolError, ProtocolHandleKind,
     paragraph::{FragmentOwner, OriginIntersection},
@@ -190,7 +191,7 @@ pub struct SourceRangeFragments<'a> {
     origin: PreparedOrigin,
     local: Range,
     units: Vec<Unit<'a>>,
-    usage: Option<crate::processing::ScopeAlignmentUsage>,
+    usage: Option<crate::processing::contextual::ScopeAlignmentUsage>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum UnitIdentity {
@@ -244,7 +245,9 @@ impl SourceRangeFragments<'_> {
         self.layout
     }
     /// Actual operation-local accounting when a Cell activates the query ledger.
-    pub fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
+    pub fn scope_alignment_usage(
+        &self,
+    ) -> Option<crate::processing::contextual::ScopeAlignmentUsage> {
         self.usage
     }
     pub fn units(&self) -> impl ExactSizeIterator<Item = SourceRangeUnit<'_>> {

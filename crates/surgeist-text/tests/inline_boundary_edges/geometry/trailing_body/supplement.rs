@@ -2,21 +2,21 @@
 use super::*;
 
 fn zero_tail_request(
-    p: &t::PreparedText,
-    start: t::PreparedBoundary,
-    end: t::PreparedOpportunity,
-    opening: &t::PreparedControl,
-    closing: &t::PreparedControl,
-    context: &t::InlineBoxEdgeContext,
-) -> t::LineSelectionRequest {
+    p: &t::prepared::PreparedText,
+    start: t::prepared::PreparedBoundary,
+    end: t::prepared::PreparedOpportunity,
+    opening: &t::prepared::PreparedControl,
+    closing: &t::prepared::PreparedControl,
+    context: &t::inline_box::InlineBoxEdgeContext,
+) -> t::selection::LineSelectionRequest {
     let edge = || {
-        t::InlineBoundaryAllocation::box_edge(
+        t::allocation::InlineBoundaryAllocation::box_edge(
             context.clone(),
-            t::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap(),
+            t::inline_box::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap(),
         )
     };
     let mut input = request(p, start, end, &[], 100.0);
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     for row in &mut input.controls {
         if &row.occurrence == opening || &row.occurrence == closing {
             row.boundary = Some(edge());
@@ -29,7 +29,7 @@ fn zero_tail_request(
         assert!(&occurrence == opening || &occurrence == closing);
         input
             .boundary_context
-            .push(t::InlineBoundaryContextAllocation {
+            .push(t::allocation::InlineBoundaryContextAllocation {
                 occurrence,
                 boundary: edge(),
             });
@@ -38,12 +38,12 @@ fn zero_tail_request(
 }
 
 fn actual_parts(
-    p: &t::PreparedText,
+    p: &t::prepared::PreparedText,
 ) -> (
-    t::PreparedControl,
-    t::PreparedControl,
-    t::CapturedScope,
-    t::InlineBoxEdgeContext,
+    t::prepared::PreparedControl,
+    t::prepared::PreparedControl,
+    t::capture::CapturedScope,
+    t::inline_box::InlineBoxEdgeContext,
 ) {
     let controls = p
         .control_views()
@@ -54,30 +54,30 @@ fn actual_parts(
     assert_eq!(opening.view().kind(), &K::InlineBoundaryStart);
     assert_eq!(closing.view().kind(), &K::InlineBoundaryEnd);
     let scope = opening.captured_control().unwrap().scope();
-    assert_eq!(scope.role(), t::ScopeRole::Inline);
+    assert_eq!(scope.role(), t::capture::ScopeRole::Inline);
     assert_eq!(scope.entry_control(), opening.captured_control());
     assert_eq!(scope.exit_control(), closing.captured_control());
     assert_eq!(closing.captured_control().unwrap().scope(), scope);
     let domain = scope.parent().unwrap();
-    assert_eq!(domain.role(), t::ScopeRole::Domain);
+    assert_eq!(domain.role(), t::capture::ScopeRole::Domain);
     let context = p
         .inline_box_edge_context(
-            t::InlineBoxSource::captured(scope.clone()),
-            t::InlineBoxSource::captured(domain),
-            t::LineEdgeSide::Start,
+            t::inline_box::InlineBoxSource::captured(scope.clone()),
+            t::inline_box::InlineBoxSource::captured(domain),
+            t::finalized::LineEdgeSide::Start,
         )
         .unwrap();
     (opening, closing, scope, context)
 }
 
 fn mandatory(
-    p: &t::PreparedText,
-    scope: &t::CapturedScope,
-    closing: &t::PreparedControl,
-) -> t::PreparedOpportunity {
+    p: &t::prepared::PreparedText,
+    scope: &t::capture::CapturedScope,
+    closing: &t::prepared::PreparedControl,
+) -> t::prepared::PreparedOpportunity {
     let mut offers = p
         .opportunity_views()
-        .filter(|view| view.kind() == t::PreparedBreakKind::Forced)
+        .filter(|view| view.kind() == t::prepared::PreparedBreakKind::Forced)
         .map(|view| view.handle());
     let offer = offers.next().expect("one actual mandatory break");
     assert!(offers.next().is_none());
@@ -101,23 +101,23 @@ fn mandatory(
 }
 
 fn two_body_custody(
-    p: &t::PreparedText,
-    scope: &t::CapturedScope,
-    closing: &t::PreparedControl,
-    mut first_input: t::LineSelectionRequest,
-    mut tail_input: t::LineSelectionRequest,
+    p: &t::prepared::PreparedText,
+    scope: &t::capture::CapturedScope,
+    closing: &t::prepared::PreparedControl,
+    mut first_input: t::selection::LineSelectionRequest,
+    mut tail_input: t::selection::LineSelectionRequest,
     closing_width: f64,
 ) {
     assert!(first_input.inline_boxes.is_none() && tail_input.inline_boxes.is_none());
     assert!(
         tail_input
             .participants
-            .contains(&t::PreparedParticipant::Control(closing.clone()))
+            .contains(&t::prepared::PreparedParticipant::Control(closing.clone()))
     );
     // These real no-family premises must pass before capability construction.
     let prior_first = finalize(p, first_input.clone());
     let prior_tail = finalize(p, tail_input.clone());
-    assert_eq!(ids(&prior_first), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(ids(&prior_first), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(prior_first.feedback().advance, 10.0);
     assert!(ids(&prior_tail).is_empty());
     assert_eq!(prior_tail.feedback().advance, closing_width);
@@ -143,12 +143,12 @@ fn two_body_custody(
     tail_input.inline_boxes = Some(family.clone());
     let first = finalize(p, first_input);
     let tail = finalize(p, tail_input);
-    assert_eq!(ids(&first), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(ids(&first), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(first.feedback().advance, 10.0);
     assert!(ids(&tail).is_empty());
     assert_eq!(tail.feedback().advance, closing_width);
-    let owner = t::InlineBoxSource::captured(scope.clone());
-    let root_owner = t::InlineBoxSource::captured(scope.parent().unwrap());
+    let owner = t::inline_box::InlineBoxSource::captured(scope.clone());
+    let root_owner = t::inline_box::InlineBoxSource::captured(scope.parent().unwrap());
     let first_pieces = first
         .inline_box_pieces()
         .unwrap()
@@ -184,8 +184,8 @@ fn two_body_custody(
     assert!(matches!(
         a.nearest_common_ancestor(&b).unwrap_err().detail(),
         Some(t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::InlineBoxFragmentation(
-                t::InlineBoxFragmentationError::DifferentBody
+            reason: t::prepared::ProtocolError::InlineBoxFragmentation(
+                t::inline_box::InlineBoxFragmentationError::DifferentBody
             )
         })
     ));
@@ -196,8 +196,8 @@ fn two_body_custody(
 #[test]
 fn preserved_newline_in_one_original_retains_its_following_closing_piece() {
     let p = prepare_capture(
-        t::Source::identified("A\n", t::Id::from_u64(1_646_405), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("A\n", t::source::Id::from_u64(1_646_405), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 2)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 2)],
         &[(0, 1)],
@@ -210,18 +210,27 @@ fn preserved_newline_in_one_original_retains_its_following_closing_piece() {
         ],
         AHEM,
     );
-    assert_eq!(p.analyzed_source().source().text(), &t::Text::from("A\n"));
+    assert_eq!(
+        p.analyzed_source().source().text(),
+        &t::source::Text::from("A\n")
+    );
     assert_eq!(
         p.analyzed_source().processed_source().processed_text(),
-        &t::Text::from("A\n")
+        &t::source::Text::from("A\n")
     );
     let originals = p
         .origin_views()
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     assert_eq!(originals.len(), 1);
-    assert_eq!(originals[0].view().local_range(), t::Range::new(0, 2));
-    assert_eq!(originals[0].view().aggregate_range(), t::Range::new(0, 2));
+    assert_eq!(
+        originals[0].view().local_range(),
+        t::source::Range::new(0, 2)
+    );
+    assert_eq!(
+        originals[0].view().aggregate_range(),
+        t::source::Range::new(0, 2)
+    );
     assert!(
         p.control_views().all(|view| *view.kind() != K::ForcedBreak),
         "the actual preserved LF is not replaced by a fabricated captured control"
@@ -247,14 +256,17 @@ fn preserved_newline_in_one_original_retains_its_following_closing_piece() {
         &context,
     );
     two_body_custody(&p, &scope, &closing, first, tail, 5.0);
-    assert_eq!(originals[0].view().source().text(), &t::Text::from("A\n"));
+    assert_eq!(
+        originals[0].view().source().text(),
+        &t::source::Text::from("A\n")
+    );
 }
 
 #[test]
 fn zero_closing_edge_after_control_break_keeps_real_body_piece_identity() {
     let p = prepare_capture(
-        t::Source::identified("A", t::Id::from_u64(1_646_406), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("A", t::source::Id::from_u64(1_646_406), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -272,7 +284,10 @@ fn zero_closing_edge_after_control_break_keeps_real_body_piece_identity() {
         ],
         AHEM,
     );
-    assert_eq!(p.analyzed_source().source().text(), &t::Text::from("A"));
+    assert_eq!(
+        p.analyzed_source().source().text(),
+        &t::source::Text::from("A")
+    );
     let (opening, closing, scope, context) = actual_parts(&p);
     let forces = p
         .control_views()

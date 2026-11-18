@@ -6,13 +6,13 @@ use std::ops::Range;
 fn reorder(levels: &[u8]) -> Vec<usize> {
     let rows = levels
         .iter()
-        .map(|&level| t::SuppliedInlineParticipant::Text {
-            level: t::BidiLevel::try_new(level).unwrap(),
-            edge: t::InlineWhitespaceEdge::Preserve,
+        .map(|&level| t::supplied_line::SuppliedInlineParticipant::Text {
+            level: t::supplied_line::BidiLevel::try_new(level).unwrap(),
+            edge: t::supplied_line::InlineWhitespaceEdge::Preserve,
         })
         .collect::<Vec<_>>();
     let mut scratch = vec![usize::MAX; rows.len()];
-    t::SuppliedLine::new(&rows)
+    t::supplied_line::SuppliedLine::new(&rows)
         .reorder_into(&mut scratch)
         .unwrap()
         .iter()
@@ -20,11 +20,11 @@ fn reorder(levels: &[u8]) -> Vec<usize> {
         .collect()
 }
 
-fn rows(count: usize) -> Vec<t::SuppliedInlineBoxComponentRow> {
+fn rows(count: usize) -> Vec<t::inline_box::SuppliedInlineBoxComponentRow> {
     (0..count)
-        .map(|row| t::SuppliedInlineBoxComponentRow {
+        .map(|row| t::inline_box::SuppliedInlineBoxComponentRow {
             owners: row..row + 1,
-            participation: t::InlineBoxComponentParticipation::Participating,
+            participation: t::inline_box::InlineBoxComponentParticipation::Participating,
         })
         .collect()
 }
@@ -33,26 +33,28 @@ fn admit(
     root: usize,
     owners: &[usize],
     parents: &[Option<usize>],
-    rows: &[t::SuppliedInlineBoxComponentRow],
+    rows: &[t::inline_box::SuppliedInlineBoxComponentRow],
     memberships: &[usize],
     order: &[usize],
     bodies: &[Range<usize>],
-) -> t::Result<t::SuppliedInlineBoxComponents> {
-    t::SuppliedInlineBoxComponents::try_new(t::SuppliedInlineBoxComponentsInput {
-        root,
-        owners,
-        parents,
-        rows,
-        memberships,
-        order,
-        bodies,
-    })
+) -> t::Result<t::inline_box::SuppliedInlineBoxComponents> {
+    t::inline_box::SuppliedInlineBoxComponents::try_new(
+        t::inline_box::SuppliedInlineBoxComponentsInput {
+            root,
+            owners,
+            parents,
+            rows,
+            memberships,
+            order,
+            bodies,
+        },
+    )
 }
 
 type Description = (usize, usize, Range<usize>);
 type Component = (usize, usize, Range<usize>, Option<Description>);
 
-fn description(data: &t::SuppliedInlineBoxComponents, index: usize) -> Description {
+fn description(data: &t::inline_box::SuppliedInlineBoxComponents, index: usize) -> Description {
     let component = data
         .component(index)
         .expect("the retained component index exists");
@@ -63,7 +65,7 @@ fn description(data: &t::SuppliedInlineBoxComponents, index: usize) -> Descripti
     )
 }
 
-fn snapshot(data: &t::SuppliedInlineBoxComponents) -> Vec<Component> {
+fn snapshot(data: &t::inline_box::SuppliedInlineBoxComponents) -> Vec<Component> {
     let mut components = data
         .components()
         .map(|component| {
@@ -81,7 +83,11 @@ fn snapshot(data: &t::SuppliedInlineBoxComponents) -> Vec<Component> {
     components
 }
 
-fn association(data: &t::SuppliedInlineBoxComponents, row: usize, owner: usize) -> Option<usize> {
+fn association(
+    data: &t::inline_box::SuppliedInlineBoxComponents,
+    row: usize,
+    owner: usize,
+) -> Option<usize> {
     let mut found = data.row_components(row).filter(|&index| {
         data.component(index)
             .expect("the retained component index exists")
@@ -96,7 +102,7 @@ fn association(data: &t::SuppliedInlineBoxComponents, row: usize, owner: usize) 
     component
 }
 
-fn invalid(result: t::Result<t::SuppliedInlineBoxComponents>) {
+fn invalid(result: t::Result<t::inline_box::SuppliedInlineBoxComponents>) {
     let Err(error) = result else {
         panic!("malformed supplied incidence must refuse without publishing components")
     };
@@ -104,8 +110,8 @@ fn invalid(result: t::Result<t::SuppliedInlineBoxComponents>) {
     assert_eq!(
         error.detail(),
         Some(&t::ErrorDetail::InvalidTextProtocol {
-            reason: t::ProtocolError::InlineBoxFragmentation(
-                t::InlineBoxFragmentationError::InvalidIncidence
+            reason: t::prepared::ProtocolError::InlineBoxFragmentation(
+                t::inline_box::InlineBoxFragmentationError::InvalidIncidence
             ),
         })
     );
@@ -227,7 +233,7 @@ fn metadata_is_transparent_but_the_same_foreign_row_when_participating_splits() 
     let order = reorder(&[0, 0, 0]);
     assert_eq!(order, [0, 1, 2]);
     let mut input_rows = rows(3);
-    input_rows[1].participation = t::InlineBoxComponentParticipation::Metadata;
+    input_rows[1].participation = t::inline_box::InlineBoxComponentParticipation::Metadata;
     let transparent = admit(
         0,
         &[0, 1],
@@ -238,7 +244,7 @@ fn metadata_is_transparent_but_the_same_foreign_row_when_participating_splits() 
         std::slice::from_ref(&(0..3)),
     )
     .unwrap();
-    input_rows[1].participation = t::InlineBoxComponentParticipation::Participating;
+    input_rows[1].participation = t::inline_box::InlineBoxComponentParticipation::Participating;
     let separated = admit(
         0,
         &[0, 1],
@@ -454,13 +460,13 @@ fn one_participating_row_retains_both_sibling_components_and_their_shared_root()
     let order = reorder(&[0, 0]);
     assert_eq!(order, [0, 1]);
     let input_rows = [
-        t::SuppliedInlineBoxComponentRow {
+        t::inline_box::SuppliedInlineBoxComponentRow {
             owners: 0..2,
-            participation: t::InlineBoxComponentParticipation::Participating,
+            participation: t::inline_box::InlineBoxComponentParticipation::Participating,
         },
-        t::SuppliedInlineBoxComponentRow {
+        t::inline_box::SuppliedInlineBoxComponentRow {
             owners: 2..3,
-            participation: t::InlineBoxComponentParticipation::Participating,
+            participation: t::inline_box::InlineBoxComponentParticipation::Participating,
         },
     ];
     // One actual normalized row belongs to siblings1/2. Unrelated sibling3
@@ -523,9 +529,9 @@ fn one_participating_row_retains_both_sibling_components_and_their_shared_root()
 
 #[test]
 fn participating_rows_require_real_membership_while_unowned_metadata_remains_valid() {
-    let mut input_rows = [t::SuppliedInlineBoxComponentRow {
+    let mut input_rows = [t::inline_box::SuppliedInlineBoxComponentRow {
         owners: 0..0,
-        participation: t::InlineBoxComponentParticipation::Metadata,
+        participation: t::inline_box::InlineBoxComponentParticipation::Metadata,
     }];
     let metadata = admit(
         0,
@@ -540,7 +546,7 @@ fn participating_rows_require_real_membership_while_unowned_metadata_remains_val
     assert_eq!(snapshot(&metadata), [(0, 0, 0..1, None)]);
     assert!(metadata.row_components(0).next().is_none());
 
-    input_rows[0].participation = t::InlineBoxComponentParticipation::Participating;
+    input_rows[0].participation = t::inline_box::InlineBoxComponentParticipation::Participating;
     input_rows[0].owners = 0..1;
     let rooted = admit(
         0,

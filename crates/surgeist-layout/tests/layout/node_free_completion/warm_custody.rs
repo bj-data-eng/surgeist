@@ -180,7 +180,7 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
     assert!(!receipt.has_in_flow_content());
     assert_eq!(
         receipt.selected_line().request().context.end,
-        t::LineEnd::Paragraph
+        t::selection::LineEnd::Paragraph
     );
     assert_struts(
         &receipt.selected_line().request().line_box_struts,

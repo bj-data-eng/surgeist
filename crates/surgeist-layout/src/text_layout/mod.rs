@@ -14,7 +14,9 @@ pub(crate) mod state;
 mod tests;
 
 pub use scope_alignment::{TextScopeAlignmentInput, TextScopeAlignmentInputOf};
-use surgeist_text::{PreparedAtomic, PreparedControl, PreparedOrigin, PreparedScope, PreparedText};
+use surgeist_text::prepared::{
+    PreparedAtomic, PreparedControl, PreparedOrigin, PreparedScope, PreparedText,
+};
 
 /// One source occurrence participating through its actual Text preparation.
 ///
@@ -105,7 +107,7 @@ pub enum InlineBoxFragmentationDemand {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AdmittedInlineBoxes {
     NotRequested,
-    CompleteBodies(surgeist_text::PreparedInlineBoxFamily),
+    CompleteBodies(surgeist_text::inline_box::PreparedInlineBoxFamily),
 }
 impl AdmittedInlineBoxes {
     pub(crate) fn demand(&self) -> InlineBoxFragmentationDemand {
@@ -114,7 +116,7 @@ impl AdmittedInlineBoxes {
             Self::CompleteBodies(_) => InlineBoxFragmentationDemand::CompleteBodies,
         }
     }
-    pub(crate) fn family(&self) -> Option<&surgeist_text::PreparedInlineBoxFamily> {
+    pub(crate) fn family(&self) -> Option<&surgeist_text::inline_box::PreparedInlineBoxFamily> {
         match self {
             Self::NotRequested => None,
             Self::CompleteBodies(family) => Some(family),
@@ -138,7 +140,7 @@ pub struct TextParagraphBinding<Node> {
     pub controls: Vec<TextControlBinding<Node>>,
     /// Normalized line allocation, when the caller supplies one.
     /// Absence never guesses an empty/default font or a zero-size line.
-    pub line_strut: Option<surgeist_text::LineStrut>,
+    pub line_strut: Option<surgeist_text::allocation::LineStrut>,
 }
 
 /// One admitted native use of the same output-level binding and preparation.
@@ -150,7 +152,7 @@ pub(crate) struct AdmittedRun<'input, Node> {
     pub(crate) binding: &'input TextParagraphBinding<Node>,
     pub(crate) inventory: std::ops::Range<usize>,
     pub(crate) native: std::ops::Range<usize>,
-    pub(crate) segment: surgeist_text::PreparedSourceSegment,
+    pub(crate) segment: surgeist_text::prepared::PreparedSourceSegment,
     pub(crate) inline_boxes: AdmittedInlineBoxes,
 }
 
@@ -322,7 +324,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 continue;
             }
             if paragraph.prepared.preparation_options().tabs()
-                == surgeist_text::TabPreparation::CssStops
+                == surgeist_text::tabs::TabPreparation::CssStops
                 && let Some(reference) = paragraph.prepared.tab_reference()
             {
                 let actual =
@@ -330,10 +332,10 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                         .as_box()
                         .map(|input| match input.direction {
                             crate::Direction::Ltr => {
-                                surgeist_text::ParagraphBaseDirection::LeftToRight
+                                surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight
                             }
                             crate::Direction::Rtl => {
-                                surgeist_text::ParagraphBaseDirection::RightToLeft
+                                surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft
                             }
                         });
                 if actual != Some(reference.direction()) {
@@ -478,12 +480,12 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                     return Err(error(TextBindingError::ParticipantRole));
                 };
                 let applicable = match binding.occurrence.view().original_box().kind() {
-                    surgeist_text::InlineBoxKind::InFlow => {
+                    surgeist_text::source::InlineBoxKind::InFlow => {
                         input.display.is_inline_level()
                             && input.position != crate::Position::Absolute
                             && input.float.is_none()
                     }
-                    surgeist_text::InlineBoxKind::OutOfFlow => {
+                    surgeist_text::source::InlineBoxKind::OutOfFlow => {
                         input.position == crate::Position::Absolute
                             && input.display != crate::Display::None
                     }
@@ -518,15 +520,13 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                     }
                     crate::LayoutInputViewOf::LineBreak(input) => {
                         !input.display().is_none()
-                            && kind == &surgeist_text::ParagraphControlKind::ForcedBreak
+                            && kind == &surgeist_text::paragraph::ParagraphControlKind::ForcedBreak
                     }
                     crate::LayoutInputViewOf::InlineBoundary(input) => match input.kind() {
-                        crate::InlineBoundaryKind::Start => {
-                            kind == &surgeist_text::ParagraphControlKind::InlineBoundaryStart
-                        }
-                        crate::InlineBoundaryKind::End => {
-                            kind == &surgeist_text::ParagraphControlKind::InlineBoundaryEnd
-                        }
+                        crate::InlineBoundaryKind::Start => kind
+                            == &surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart,
+                        crate::InlineBoundaryKind::End => kind
+                            == &surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                     },
                     _ => false,
                 };
@@ -567,7 +567,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             let mut lower = 0;
             for participant in paragraph.prepared.participants() {
                 let positions = match participant {
-                    surgeist_text::PreparedParticipant::Text(unit) => unit
+                    surgeist_text::prepared::PreparedParticipant::Text(unit) => unit
                         .view()
                         .origins()
                         .map(|view| {
@@ -587,7 +587,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                                 .map(|control| control_position(&control)),
                         )
                         .collect::<Vec<_>>(),
-                    surgeist_text::PreparedParticipant::Cell(cell) => cell
+                    surgeist_text::prepared::PreparedParticipant::Cell(cell) => cell
                         .view()
                         .source_cell()
                         .source_pieces()
@@ -606,7 +606,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                             )
                         })
                         .collect::<Vec<_>>(),
-                    surgeist_text::PreparedParticipant::Atomic(atomic) => vec![position(
+                    surgeist_text::prepared::PreparedParticipant::Atomic(atomic) => vec![position(
                         paragraph
                             .atomics
                             .iter()
@@ -614,15 +614,17 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                             .expect("complete atomic inventory")
                             .node,
                     )],
-                    surgeist_text::PreparedParticipant::Control(control) => vec![position(
-                        paragraph
-                            .controls
-                            .iter()
-                            .find(|row| row.occurrence == control)
-                            .expect("complete control inventory")
-                            .node,
-                    )],
-                    surgeist_text::PreparedParticipant::ComputedLineBoundary(_) => {
+                    surgeist_text::prepared::PreparedParticipant::Control(control) => {
+                        vec![position(
+                            paragraph
+                                .controls
+                                .iter()
+                                .find(|row| row.occurrence == control)
+                                .expect("complete control inventory")
+                                .node,
+                        )]
+                    }
+                    surgeist_text::prepared::PreparedParticipant::ComputedLineBoundary(_) => {
                         // This semantic incidence has no host node. The source
                         // registry authenticates its actual group/targets/cut
                         // after graph validation, before this input is issued.

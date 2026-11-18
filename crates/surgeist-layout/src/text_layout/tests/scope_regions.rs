@@ -7,32 +7,32 @@ use surgeist_text as text;
 const JAPANESE: &str = "今日は天気です。";
 const FONT: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
-fn styles() -> (text::Style, text::Style, text::Style) {
+fn styles() -> (text::style::Style, text::style::Style, text::style::Style) {
     let mut plain = ahem_style(10.0, 10.0);
     plain.locale = Some("ja".into());
-    let authored = text::Style {
-        word_space_transform: text::WordSpaceTransform::SpaceAutoPhrase,
+    let authored = text::style::Style {
+        word_space_transform: text::style::WordSpaceTransform::SpaceAutoPhrase,
         ..plain.clone()
     };
-    let owner = text::Style {
-        word_space_transform: text::WordSpaceTransform::Space,
+    let owner = text::style::Style {
+        word_space_transform: text::style::WordSpaceTransform::Space,
         ..plain.clone()
     };
     (plain, authored, owner)
 }
-fn block(style: &text::Style) -> text::SourceProcessingScope {
-    text::SourceProcessingScope::Block {
+fn block(style: &text::style::Style) -> text::capture::SourceProcessingScope {
+    text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
+        topology: text::capture::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: style.clone(),
         used_direction: ParagraphBaseDirection::LeftToRight,
     }
 }
-fn prepare(input: text::ContextualSourceInput) -> Vec<text::PreparedText> {
-    let processed = Arc::new(text::process_contextual_source(input).unwrap());
+fn prepare(input: text::capture::ContextualSourceInput) -> Vec<text::prepared::PreparedText> {
+    let processed = Arc::new(text::capture::process_contextual_source(input).unwrap());
     let mut system = text::System::default();
     system
         .register_fonts(FONT.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
@@ -40,29 +40,29 @@ fn prepare(input: text::ContextualSourceInput) -> Vec<text::PreparedText> {
     processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                text::AnalysisTypography::HorizontalComposition,
+                text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let analyzed =
                 crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
             system
-                .prepare(&analyzed, text::PreparationOptions::default())
+                .prepare(&analyzed, text::prepared::PreparationOptions::default())
                 .unwrap()
         })
         .collect()
 }
-fn definitions(count: usize) -> Vec<text::SourceProcessingParagraph> {
+fn definitions(count: usize) -> Vec<text::capture::SourceProcessingParagraph> {
     (0..count)
-        .map(|_| text::SourceProcessingParagraph {
+        .map(|_| text::capture::SourceProcessingParagraph {
             base_direction: ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
         })
         .collect()
 }
 fn bind(
-    prepared: text::PreparedText,
+    prepared: text::prepared::PreparedText,
     nodes: Vec<u32>,
     source_node: u32,
     control_nodes: &[u32],
@@ -79,8 +79,10 @@ fn bind(
         .zip(control_nodes.iter().copied())
         .map(|(view, node)| {
             let kind = match view.kind() {
-                text::ParagraphControlKind::InlineBoundaryStart => InlineBoundaryKind::Start,
-                text::ParagraphControlKind::InlineBoundaryEnd => InlineBoundaryKind::End,
+                text::paragraph::ParagraphControlKind::InlineBoundaryStart => {
+                    InlineBoundaryKind::Start
+                }
+                text::paragraph::ParagraphControlKind::InlineBoundaryEnd => InlineBoundaryKind::End,
                 _ => panic!("actual inline control"),
             };
             tree.insert_children(node, []);
@@ -122,58 +124,58 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
     const COUNT: usize = 64;
     let (plain, authored, owner) = styles();
     let mut source = Source::new(JAPANESE.repeat(COUNT));
-    source.span(text::Range::new(0, source.text().len()), authored);
+    source.span(text::source::Range::new(0, source.text().len()), authored);
     let n = JAPANESE.encode_utf16().count();
     let mut scopes = vec![block(&plain)];
     let mut controls = Vec::new();
     let mut origins = Vec::new();
-    let mut events = vec![text::SourceProcessingEvent::EnterScope(0)];
+    let mut events = vec![text::capture::SourceProcessingEvent::EnterScope(0)];
     let mut children = Vec::new();
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     for index in 0..COUNT {
         let scope = scopes.len();
-        scopes.push(text::SourceProcessingScope::Inline {
+        scopes.push(text::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
             style: Some(owner.clone()),
-            boundaries: Some(text::SourceProcessingScopeBoundaries {
+            boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
                 start: 2 * index,
                 end: 2 * index + 1,
             }),
         });
         controls.extend([
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: index * n,
                 kind: ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: (index + 1) * n,
                 kind: ParagraphControlKind::InlineBoundaryEnd,
             },
         ]);
-        origins.push(text::ParagraphOrigin {
+        origins.push(text::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
-            local: text::Range::new(index * n, (index + 1) * n),
-            aggregate: text::Range::new(index * n, (index + 1) * n),
-            kind: text::ParagraphOriginKind::Authored,
+            local: text::source::Range::new(index * n, (index + 1) * n),
+            aggregate: text::source::Range::new(index * n, (index + 1) * n),
+            kind: text::paragraph::ParagraphOriginKind::Authored,
         });
         events.extend([
             E::EnterParagraph(2 * index),
             E::EnterScope(scope),
             E::Control {
                 control: 2 * index,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Origin {
                 origin: index,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Control {
                 control: 2 * index + 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(scope),
             E::ExitParagraph(2 * index),
@@ -193,13 +195,13 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
         }
     }
     events.push(E::ExitScope(0));
-    let all = prepare(text::ContextualSourceInput {
+    let all = prepare(text::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: text::SourceProcessingEnvelope::Complete,
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: text::capture::SourceProcessingEnvelope::Complete,
         origins,
         connections: vec![],
         controls,
@@ -270,7 +272,7 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
             let InlineFragmentOwner::Scope(_) = entry.owner() else {
                 return None;
             };
-            let text::FinalizedFragmentOwner::VirtualSeparator(occurrence) =
+            let text::finalized::FinalizedFragmentOwner::VirtualSeparator(occurrence) =
                 entry.fragment().finalized_fragment().view().owner()
             else {
                 panic!("virtual occurrence");
@@ -296,34 +298,34 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
     let (plain, authored, owner) = styles();
     let n = JAPANESE.encode_utf16().count();
     let mut source = Source::new(format!("{JAPANESE}XZ"));
-    source.span(text::Range::new(0, n), authored);
-    source.span(text::Range::new(n, n + 2), plain.clone());
+    source.span(text::source::Range::new(0, n), authored);
+    source.span(text::source::Range::new(n, n + 2), plain.clone());
     let origins = [(0, n), (n, n + 1), (n + 1, n + 2)]
         .into_iter()
-        .map(|(start, end)| text::ParagraphOrigin {
+        .map(|(start, end)| text::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
-            local: text::Range::new(start, end),
-            aggregate: text::Range::new(start, end),
-            kind: text::ParagraphOriginKind::Authored,
+            local: text::source::Range::new(start, end),
+            aggregate: text::source::Range::new(start, end),
+            kind: text::paragraph::ParagraphOriginKind::Authored,
         })
         .collect();
-    use text::SourceProcessingEvent as E;
-    let all = prepare(text::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
+    let all = prepare(text::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: text::SourceProcessingEnvelope::Complete,
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: text::capture::SourceProcessingEnvelope::Complete,
         origins,
         connections: vec![],
         controls: vec![
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 0,
                 kind: ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: n,
                 kind: ParagraphControlKind::InlineBoundaryEnd,
             },
@@ -332,13 +334,16 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
         replacements: vec![],
         scopes: vec![
             block(&plain),
-            text::SourceProcessingScope::Inline {
+            text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),
                 style: Some(owner),
-                boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                    start: 0,
+                    end: 1,
+                }),
             },
             block(&plain),
             block(&plain),
@@ -351,15 +356,15 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
             E::EnterScope(1),
             E::Control {
                 control: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Origin {
                 origin: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Control {
                 control: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(1),
             E::ExitParagraph(0),
@@ -370,7 +375,7 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
             E::EnterParagraph(2),
             E::Origin {
                 origin: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitParagraph(2),
             E::EnterScope(3),
@@ -384,7 +389,7 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
             E::EnterParagraph(5),
             E::Origin {
                 origin: 2,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitParagraph(5),
             E::ExitScope(0),

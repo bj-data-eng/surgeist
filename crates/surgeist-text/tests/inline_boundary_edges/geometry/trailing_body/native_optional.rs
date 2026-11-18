@@ -5,14 +5,14 @@ use super::*;
 #[test]
 fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() {
     let p = prepare_capture(
-        t::Source::identified("A", t::Id::from_u64(1_646_410), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("A", t::source::Id::from_u64(1_646_410), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1)],
         &[
             (K::InlineBoundaryStart, 0),
             (
                 K::OptionalBreak {
-                    wrap: t::Wrap::Word,
+                    wrap: t::style::Wrap::Word,
                 },
                 1,
             ),
@@ -22,10 +22,13 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
         vec![control(0), origin(0), control(1), control(2)],
         AHEM,
     );
-    assert_eq!(p.analyzed_source().source().text(), &t::Text::from("A"));
+    assert_eq!(
+        p.analyzed_source().source().text(),
+        &t::source::Text::from("A")
+    );
     assert_eq!(
         p.analyzed_source().processed_source().processed_text(),
-        &t::Text::from("A")
+        &t::source::Text::from("A")
     );
     assert_eq!(p.source_segments().len(), 1);
     let controls = p
@@ -40,7 +43,7 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
     assert_eq!(
         optional.view().kind(),
         &K::OptionalBreak {
-            wrap: t::Wrap::Word
+            wrap: t::style::Wrap::Word
         }
     );
     assert_eq!(closing.view().kind(), &K::InlineBoundaryEnd);
@@ -48,10 +51,10 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
     let optional_source = optional.captured_control().unwrap();
     let end_source = closing.captured_control().unwrap();
     let domain = start_source.scope();
-    assert_eq!(domain.role(), t::ScopeRole::Domain);
+    assert_eq!(domain.role(), t::capture::ScopeRole::Domain);
     assert_eq!(
         domain.domain_topology(),
-        t::SourceProcessingTopology::Complete
+        t::capture::SourceProcessingTopology::Complete
     );
     assert_eq!(optional_source.scope(), domain);
     assert_eq!(end_source.scope(), domain);
@@ -61,14 +64,17 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
     assert!(captured.members().all(|member| {
         member
             .scope_intersections()
-            .all(|intersection| intersection.scope().role() == t::ScopeRole::Domain)
+            .all(|intersection| intersection.scope().role() == t::capture::ScopeRole::Domain)
     }));
     let originals = p
         .origin_views()
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     assert_eq!(originals.len(), 1);
-    assert_eq!(originals[0].view().aggregate_range(), t::Range::new(0, 1));
+    assert_eq!(
+        originals[0].view().aggregate_range(),
+        t::source::Range::new(0, 1)
+    );
     let original_event = originals[0].view().capture_position().unwrap();
     assert!(start_source.event_position() < original_event);
     assert!(original_event < optional_source.event_position());
@@ -81,7 +87,7 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
         native.captured_scope().is_none(),
         "actual NativePair, not canonical CapturedInline"
     );
-    let root_owner = t::InlineBoxSource::captured(domain.clone());
+    let root_owner = t::inline_box::InlineBoxSource::captured(domain.clone());
     assert_ne!(native, root_owner);
     assert_eq!(
         native,
@@ -90,18 +96,21 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
 
     assert!(
         p.opportunity_views()
-            .all(|v| v.kind() != t::PreparedBreakKind::Forced)
+            .all(|v| v.kind() != t::prepared::PreparedBreakKind::Forced)
     );
     let mut offers = soft_at(&p, 1).into_iter().filter(|offer| {
         let cut = offer.view().boundary();
         let count = cut.view().participant_offset();
         matches!(p.participants().take(count).last(),
-            Some(t::PreparedParticipant::Control(actual)) if actual == *optional)
+            Some(t::prepared::PreparedParticipant::Control(actual)) if actual == *optional)
             && !p.boundary_consumes_control(&cut, closing).unwrap()
     });
     let optional_cut = offers.next().expect("native optional cut before End");
     assert!(offers.next().is_none());
-    assert_eq!(optional_cut.view().kind(), t::PreparedBreakKind::Allowed);
+    assert_eq!(
+        optional_cut.view().kind(),
+        t::prepared::PreparedBreakKind::Allowed
+    );
     let tail_start = optional_cut.view().boundary();
     assert!(p.boundary_consumes_control(&tail_start, optional).unwrap());
     assert!(!p.boundary_consumes_control(&tail_start, closing).unwrap());
@@ -121,23 +130,23 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
     let mut first_input = request(&p, segment.start(), optional_cut, &facts, 100.0);
     let mut tail_input = request(&p, tail_start, paragraph, &facts, 100.0);
     for input in [&mut first_input, &mut tail_input] {
-        input.context.spacing = t::SpacingPolicy::None;
+        input.context.spacing = t::spacing::SpacingPolicy::None;
         answer(&p, input, &facts);
         assert!(input.inline_boxes.is_none());
     }
     assert!(
         tail_input
             .participants
-            .contains(&t::PreparedParticipant::Control(closing.clone()))
+            .contains(&t::prepared::PreparedParticipant::Control(closing.clone()))
     );
     assert!(
         !tail_input
             .participants
-            .contains(&t::PreparedParticipant::Control(optional.clone()))
+            .contains(&t::prepared::PreparedParticipant::Control(optional.clone()))
     );
     assert!(tail_input.participants.iter().all(|part| match part {
-        t::PreparedParticipant::Control(actual) => actual == closing,
-        t::PreparedParticipant::Text(unit) =>
+        t::prepared::PreparedParticipant::Control(actual) => actual == closing,
+        t::prepared::PreparedParticipant::Text(unit) =>
             unit.view().source_range().is_empty() && unit.view().processed_range().is_empty(),
         _ => false,
     }));
@@ -145,7 +154,7 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
     // Establish actual local behavior before demanding a complete native family.
     let prior_first = finalize(&p, first_input.clone());
     let prior_tail = finalize(&p, tail_input.clone());
-    assert_eq!(ids(&prior_first), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(ids(&prior_first), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(prior_first.feedback().advance, 10.0);
     assert!(ids(&prior_tail).is_empty());
     assert_eq!(prior_tail.feedback().advance, 5.0);
@@ -173,7 +182,7 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
     tail_input.inline_boxes = Some(family.clone());
     let first = finalize(&p, first_input);
     let tail = finalize(&p, tail_input);
-    assert_eq!(ids(&first), [(t::Range::new(0, 1), 35)]);
+    assert_eq!(ids(&first), [(t::source::Range::new(0, 1), 35)]);
     assert_eq!(first.feedback().advance, 10.0);
     assert!(ids(&tail).is_empty());
     assert_eq!(tail.feedback().advance, 5.0);
@@ -213,5 +222,8 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
     assert_eq!(a.parent(), b.parent());
     assert_eq!(prior_first.feedback().advance, 10.0);
     assert_eq!(prior_tail.feedback().advance, 5.0);
-    assert_eq!(originals[0].view().source().text(), &t::Text::from("A"));
+    assert_eq!(
+        originals[0].view().source().text(),
+        &t::source::Text::from("A")
+    );
 }

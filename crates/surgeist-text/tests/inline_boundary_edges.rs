@@ -17,46 +17,46 @@ mod geometry;
 #[path = "inline_boundary_edges/scope_incidence.rs"]
 mod scope_incidence;
 
-use t::{ParagraphControlKind as K, SourceProcessingEvent as E};
+use t::{capture::SourceProcessingEvent as E, paragraph::ParagraphControlKind as K};
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 
-fn style(mode: t::WhiteSpace) -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style(mode: t::style::WhiteSpace) -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
+        line_height: t::style::LineHeight::Absolute(10.0),
         white_space: mode,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     }
 }
 
 fn control(control: usize) -> E {
     E::Control {
         control,
-        affinity: t::Affinity::After,
+        affinity: t::layout::Affinity::After,
     }
 }
 
 fn origin(origin: usize) -> E {
     E::Origin {
         origin,
-        affinity: t::Affinity::After,
+        affinity: t::layout::Affinity::After,
     }
 }
 
 fn prepare_capture(
-    source: t::Source,
-    block: t::SourceProcessingScope,
+    source: t::source::Source,
+    block: t::capture::SourceProcessingScope,
     ranges: &[(usize, usize)],
     controls: &[(K, usize)],
     pairs: &[(usize, usize)],
     body: Vec<E>,
     fixture: &[u8],
-) -> t::PreparedText {
+) -> t::prepared::PreparedText {
     let (base, direction) = match &block {
-        t::SourceProcessingScope::Block {
+        t::capture::SourceProcessingScope::Block {
             base_style,
             used_direction,
             ..
@@ -67,63 +67,63 @@ fn prepare_capture(
     scopes.extend(
         pairs
             .iter()
-            .map(|&(start, end)| t::SourceProcessingScope::Inline {
+            .map(|&(start, end)| t::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
-                trim: t::WhiteSpaceTrim::default(),
+                trim: t::capture::WhiteSpaceTrim::default(),
                 style: Some(base.clone()),
-                boundaries: Some(t::SourceProcessingScopeBoundaries { start, end }),
+                boundaries: Some(t::capture::SourceProcessingScopeBoundaries { start, end }),
             }),
     );
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     events.extend(body);
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins: ranges
                 .iter()
-                .map(|&(start, end)| t::ParagraphOrigin {
+                .map(|&(start, end)| t::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: t::Range::new(start, end),
-                    aggregate: t::Range::new(start, end),
-                    kind: t::ParagraphOriginKind::Authored,
+                    local: t::source::Range::new(start, end),
+                    aggregate: t::source::Range::new(start, end),
+                    kind: t::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             connections: (1..ranges.len())
-                .map(|after_origin| t::SourceProcessingConnection {
+                .map(|after_origin| t::capture::SourceProcessingConnection {
                     before_origin: after_origin - 1,
                     after_origin,
-                    kind: t::ParagraphConnectionKind::Continuous,
+                    kind: t::paragraph::ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
             controls: controls
                 .iter()
-                .map(|(kind, at)| t::ParagraphControl {
+                .map(|(kind, at)| t::paragraph::ParagraphControl {
                     kind: kind.clone(),
                     at: *at,
                 })
                 .collect(),
             boundary_policies: (0..ranges.len().saturating_sub(1))
-                .map(|connection| t::ParagraphBoundaryPolicy {
-                    definition: t::ParagraphBoundaryDefinition::Connection(connection),
-                    preceding_wrap: t::Wrap::Word,
-                    following_wrap: t::Wrap::Word,
-                    ancestor_wrap: t::Wrap::Word,
+                .map(|connection| t::paragraph::ParagraphBoundaryPolicy {
+                    definition: t::paragraph::ParagraphBoundaryDefinition::Connection(connection),
+                    preceding_wrap: t::style::Wrap::Word,
+                    following_wrap: t::style::Wrap::Word,
+                    ancestor_wrap: t::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
             scopes,
-            paragraphs: vec![t::SourceProcessingParagraph {
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
                 base_direction: direction,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
@@ -131,9 +131,9 @@ fn prepare_capture(
     );
     assert_eq!(processed.source().text(), source.text());
     let paragraph = processed.paragraphs().next().unwrap();
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         paragraph,
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     // Every relation here has the same captured enclosing block's
@@ -141,9 +141,9 @@ fn prepare_capture(
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| t::WrappingPolicy {
+        .map(|relation| t::analyzed::WrappingPolicy {
             relation: relation.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
@@ -152,7 +152,7 @@ fn prepare_capture(
         .register_fonts(fixture.to_vec(), crate::common::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     let handles = prepared
         .control_views()
@@ -169,22 +169,26 @@ fn prepare_capture(
 
 fn capture(
     value: &str,
-    mode: t::WhiteSpace,
+    mode: t::style::WhiteSpace,
     ranges: &[(usize, usize)],
     controls: &[(K, usize)],
     pairs: &[(usize, usize)],
     body: Vec<E>,
-) -> t::PreparedText {
+) -> t::prepared::PreparedText {
     let prepared = prepare_capture(
-        t::Source::identified(t::Text::from(value), t::Id::from_u64(64072), 1),
-        t::SourceProcessingScope::Block {
+        t::source::Source::identified(
+            t::source::Text::from(value),
+            t::source::Id::from_u64(64072),
+            1,
+        ),
+        t::capture::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: t::SourceProcessingTopology::Complete,
-            trim: t::WhiteSpaceTrim::default(),
+            topology: t::capture::SourceProcessingTopology::Complete,
+            trim: t::capture::WhiteSpaceTrim::default(),
             base_style: style(mode),
-            used_direction: t::ParagraphBaseDirection::LeftToRight,
+            used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
         },
         ranges,
         controls,
@@ -202,7 +206,8 @@ fn capture(
         .filter(|view| {
             matches!(
                 view.kind(),
-                t::PreparedBreakKind::Forced | t::PreparedBreakKind::ParagraphEnd
+                t::prepared::PreparedBreakKind::Forced
+                    | t::prepared::PreparedBreakKind::ParagraphEnd
             )
         })
         .map(|view| view.handle())
@@ -232,8 +237,8 @@ fn capture(
         }
         start = next;
     }
-    assert!(ink_ranges.contains(&t::Range::new(0, 1)));
-    assert!(ink_ranges.contains(&t::Range::new(
+    assert!(ink_ranges.contains(&t::source::Range::new(0, 1)));
+    assert!(ink_ranges.contains(&t::source::Range::new(
         value.encode_utf16().count() - 1,
         value.encode_utf16().count()
     )));
@@ -241,19 +246,19 @@ fn capture(
     prepared
 }
 
-fn paragraph_end(prepared: &t::PreparedText) -> t::PreparedOpportunity {
+fn paragraph_end(prepared: &t::prepared::PreparedText) -> t::prepared::PreparedOpportunity {
     prepared
         .opportunity_views()
-        .find(|view| view.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|view| view.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle()
 }
 
 fn finish(
-    prepared: &t::PreparedText,
-    start: t::PreparedBoundary,
-    end: t::PreparedOpportunity,
-) -> t::FinalizedLine {
+    prepared: &t::prepared::PreparedText,
+    start: t::prepared::PreparedBoundary,
+    end: t::prepared::PreparedOpportunity,
+) -> t::finalized::FinalizedLine {
     let boundary = end.view().boundary();
     let from = start.view().participant_offset();
     let to = boundary.view().participant_offset();
@@ -265,26 +270,28 @@ fn finish(
     let controls = participants
         .iter()
         .filter_map(|part| match part {
-            t::PreparedParticipant::Control(occurrence) => Some(t::ControlAllocation {
-                occurrence: occurrence.clone(),
-                strut: None,
-                // These original custody fixtures author neutral endpoints;
-                // their geometry is affirmatively zero, not unavailable.
-                boundary: matches!(
-                    occurrence.view().kind(),
-                    K::InlineBoundaryStart | K::InlineBoundaryEnd
-                )
-                .then_some(t::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
-            }),
+            t::prepared::PreparedParticipant::Control(occurrence) => {
+                Some(t::allocation::ControlAllocation {
+                    occurrence: occurrence.clone(),
+                    strut: None,
+                    // These original custody fixtures author neutral endpoints;
+                    // their geometry is affirmatively zero, not unavailable.
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        K::InlineBoundaryStart | K::InlineBoundaryEnd
+                    )
+                    .then_some(t::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                })
+            }
             _ => None,
         })
         .collect();
-    let mut request = t::LineSelectionRequest {
+    let mut request = t::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: prepared.source_segments().next().unwrap(),
         start,
         end: boundary,
-        termination: t::PreparedTermination::Ordinary(end.clone()),
+        termination: t::selection::PreparedTermination::Ordinary(end.clone()),
         participants,
         incoming: None,
         alternative: None,
@@ -293,50 +300,50 @@ fn finish(
         boundary_context: vec![],
         line_box_struts: Vec::new(),
         line_strut: None,
-        context: t::LineContext {
-            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-            formatted_line: surgeist_text::FormattedLineContext::default(),
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
-            orientation: t::LineOrientation::Horizontal,
+        context: t::selection::LineContext {
+            alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+            formatted_line: surgeist_text::selection::FormattedLineContext::default(),
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            line_box_direction: surgeist_text::selection::LineBoxDirection::LeftToRight,
+            orientation: t::selection::LineOrientation::Horizontal,
             start: if from == 0 {
-                t::LineStart::Paragraph
+                t::selection::LineStart::Paragraph
             } else {
-                t::LineStart::Continuation
+                t::selection::LineStart::Continuation
             },
             end: match end.view().kind() {
-                t::PreparedBreakKind::Forced => t::LineEnd::Forced,
-                t::PreparedBreakKind::ParagraphEnd => t::LineEnd::Paragraph,
-                _ => t::LineEnd::Soft,
+                t::prepared::PreparedBreakKind::Forced => t::selection::LineEnd::Forced,
+                t::prepared::PreparedBreakKind::ParagraphEnd => t::selection::LineEnd::Paragraph,
+                _ => t::selection::LineEnd::Soft,
             },
             available_inline: Some(100.0),
             indent: 0.0,
-            alignment: t::Alignment::Start,
-            tabs: t::TabContext::NoTabs,
-            spacing: t::SpacingPolicy::Spaces,
+            alignment: t::options::Alignment::Start,
+            tabs: t::tabs::TabContext::NoTabs,
+            spacing: t::spacing::SpacingPolicy::Spaces,
         },
     };
     while let Some(occurrence) = prepared.boundary_context_demand(&request).unwrap() {
         request
             .boundary_context
-            .push(t::InlineBoundaryContextAllocation {
+            .push(t::allocation::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: t::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
+                boundary: t::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
             });
     }
     prepared
         .select(request)
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
 
 fn control_indices(
-    prepared: &t::PreparedText,
-    controls: impl Iterator<Item = t::PreparedControl>,
+    prepared: &t::prepared::PreparedText,
+    controls: impl Iterator<Item = t::prepared::PreparedControl>,
 ) -> Vec<usize> {
     let handles = prepared
         .control_views()
@@ -352,11 +359,14 @@ fn control_indices(
         .collect()
 }
 
-fn fragment_controls(prepared: &t::PreparedText, line: &t::FinalizedLine) -> Vec<usize> {
+fn fragment_controls(
+    prepared: &t::prepared::PreparedText,
+    line: &t::finalized::FinalizedLine,
+) -> Vec<usize> {
     control_indices(
         prepared,
         line.fragment_views().filter_map(|fragment| {
-            if let t::FinalizedFragmentOwner::Control(control) = fragment.owner() {
+            if let t::finalized::FinalizedFragmentOwner::Control(control) = fragment.owner() {
                 assert!(fragment.origin().is_none());
                 assert!(fragment.aggregate_range().is_none());
                 Some(control)
@@ -376,7 +386,7 @@ struct Cut {
     receiving_fragments: Vec<usize>,
 }
 
-fn observe(prepared: &t::PreparedText, offer: t::PreparedOpportunity) -> Cut {
+fn observe(prepared: &t::prepared::PreparedText, offer: t::prepared::PreparedOpportunity) -> Cut {
     let boundary = offer.view().boundary();
     let outgoing = finish(
         prepared,
@@ -399,11 +409,14 @@ fn observe(prepared: &t::PreparedText, offer: t::PreparedOpportunity) -> Cut {
     }
 }
 
-fn soft_at(prepared: &t::PreparedText, source: usize) -> Vec<t::PreparedOpportunity> {
+fn soft_at(
+    prepared: &t::prepared::PreparedText,
+    source: usize,
+) -> Vec<t::prepared::PreparedOpportunity> {
     let offers = prepared
         .opportunity_views()
         .filter(|view| {
-            view.kind() == t::PreparedBreakKind::Allowed
+            view.kind() == t::prepared::PreparedBreakKind::Allowed
                 && view.boundary().view().source_after().get() == source
         })
         .map(|view| view.handle())
@@ -415,10 +428,10 @@ fn soft_at(prepared: &t::PreparedText, source: usize) -> Vec<t::PreparedOpportun
     offers
 }
 
-fn closing(value: &str) -> t::PreparedText {
+fn closing(value: &str) -> t::prepared::PreparedText {
     capture(
         value,
-        t::WhiteSpace::Preserve,
+        t::style::WhiteSpace::Preserve,
         &[(0, 2), (2, 3)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 2)],
         &[(0, 1)],
@@ -468,7 +481,7 @@ fn real_zwsp_after_last_box_character_keeps_the_closing_endpoint_outgoing() {
 fn soft_cut_keeps_the_opening_endpoint_with_its_receiving_content() {
     let prepared = capture(
         "X Y",
-        t::WhiteSpace::Preserve,
+        t::style::WhiteSpace::Preserve,
         &[(0, 2), (2, 3)],
         &[(K::InlineBoundaryStart, 2), (K::InlineBoundaryEnd, 3)],
         &[(0, 1)],
@@ -502,7 +515,7 @@ fn soft_cut_keeps_the_opening_endpoint_with_its_receiving_content() {
 fn nested_closing_sequence_precedes_the_cut_and_opening_sequence_follows_it() {
     let prepared = capture(
         "X Y",
-        t::WhiteSpace::Preserve,
+        t::style::WhiteSpace::Preserve,
         &[(0, 2), (2, 3)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -557,7 +570,7 @@ fn nested_closing_sequence_precedes_the_cut_and_opening_sequence_follows_it() {
 fn deleted_positive_source_space_blocks_attachment_from_an_earlier_owner() {
     let prepared = capture(
         "X  Y",
-        t::WhiteSpace::Collapse,
+        t::style::WhiteSpace::Collapse,
         &[(0, 2), (2, 3), (3, 4)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 3)],
         &[(0, 1)],
@@ -575,7 +588,7 @@ fn deleted_positive_source_space_blocks_attachment_from_an_earlier_owner() {
     );
     let deleted = prepared
         .unit_views()
-        .find(|unit| unit.source_range() == t::Range::new(2, 3))
+        .find(|unit| unit.source_range() == t::source::Range::new(2, 3))
         .unwrap();
     assert!(deleted.processed_range().is_empty());
     let first = soft_at(&prepared, 2);
@@ -601,7 +614,7 @@ fn deleted_positive_source_space_blocks_attachment_from_an_earlier_owner() {
             .participants()
             .take(boundary.view().participant_offset())
             .collect::<Vec<_>>();
-        assert!(participants.contains(&t::PreparedParticipant::Text(deleted.handle())));
+        assert!(participants.contains(&t::prepared::PreparedParticipant::Text(deleted.handle())));
     }
 }
 
@@ -609,7 +622,7 @@ fn deleted_positive_source_space_blocks_attachment_from_an_earlier_owner() {
 fn forced_break_chronology_does_not_relocate_a_later_closing_endpoint() {
     let prepared = capture(
         "XY",
-        t::WhiteSpace::Preserve,
+        t::style::WhiteSpace::Preserve,
         &[(0, 1), (1, 2)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -630,7 +643,7 @@ fn forced_break_chronology_does_not_relocate_a_later_closing_endpoint() {
     );
     let offers = prepared
         .opportunity_views()
-        .filter(|view| view.kind() == t::PreparedBreakKind::Forced)
+        .filter(|view| view.kind() == t::prepared::PreparedBreakKind::Forced)
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     assert_eq!(offers.len(), 1);
@@ -654,16 +667,20 @@ fn real_font_tables_qualify_joining_and_ligature_oracles() {
             font::arabic(),
             "\u{628}\u{628}\u{628}",
             vec![
-                (t::Range::new(0, 1), 100),
-                (t::Range::new(1, 2), 277),
-                (t::Range::new(2, 3), 82),
+                (t::source::Range::new(0, 1), 100),
+                (t::source::Range::new(1, 2), 277),
+                (t::source::Range::new(2, 3), 82),
             ],
         ),
-        (font::ligature(), "AA", vec![(t::Range::new(0, 2), 58)]),
+        (
+            font::ligature(),
+            "AA",
+            vec![(t::source::Range::new(0, 2), 58)],
+        ),
         (
             font::ligature(),
             "A\u{301}",
-            vec![(t::Range::new(0, 2), 58)],
+            vec![(t::source::Range::new(0, 2), 58)],
         ),
     ] {
         let head = font::table(&bytes, *b"head");
@@ -681,9 +698,9 @@ fn real_font_tables_qualify_joining_and_ligature_oracles() {
             .unwrap();
         let layout = system
             .layout(
-                t::Source::new(value),
-                style(t::WhiteSpace::Preserve),
-                t::Options::default(),
+                t::source::Source::new(value),
+                style(t::style::WhiteSpace::Preserve),
+                t::options::Options::default(),
             )
             .unwrap();
         for run in layout.run_views() {
@@ -708,7 +725,7 @@ fn real_font_tables_qualify_joining_and_ligature_oracles() {
             .collect::<Vec<_>>();
         observed.sort_by_key(|entry| (entry.0.start, entry.0.end));
         assert_eq!(observed, expected, "literal font oracle for {value:?}");
-        assert_eq!(layout.source().text(), &t::Text::from(value));
+        assert_eq!(layout.source().text(), &t::source::Text::from(value));
     }
 }
 
@@ -716,7 +733,7 @@ fn real_font_tables_qualify_joining_and_ligature_oracles() {
 fn source_free_bidi_before_end_cannot_strand_the_captured_closing_endpoint() {
     let p = capture(
         "X Y",
-        t::WhiteSpace::Preserve,
+        t::style::WhiteSpace::Preserve,
         &[(0, 2), (2, 3)],
         &[
             (K::InlineBoundaryStart, 0),
@@ -752,7 +769,7 @@ fn source_free_bidi_before_end_cannot_strand_the_captured_closing_endpoint() {
 fn source_free_bidi_after_start_cannot_select_the_captured_opening_endpoint_outgoing() {
     let p = capture(
         "X Y",
-        t::WhiteSpace::Preserve,
+        t::style::WhiteSpace::Preserve,
         &[(0, 2), (2, 3)],
         &[
             (K::InlineBoundaryStart, 2),

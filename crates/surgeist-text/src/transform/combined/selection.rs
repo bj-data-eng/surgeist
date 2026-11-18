@@ -3,7 +3,7 @@
 use super::*;
 use crate::processing::lexical_inventory::{LexicalDisposition, LexicalRecordKind, LexicalState};
 use crate::transform::relation::{ComponentOwner, RelationEvent};
-use crate::{processing::SourceProcessingEvent, style::TextCombineUpright as Mode};
+use crate::{processing::contextual::SourceProcessingEvent, style::TextCombineUpright as Mode};
 
 fn capture<'a>(canonical: &'a Canonical<'_>) -> &'a crate::processing::contextual::ScopeCapture {
     &canonical
@@ -138,7 +138,7 @@ fn output_cuts(canonical: &Canonical<'_>, outputs: &[Option<usize>]) -> Result<V
         let owner = joint.map_or_else(
             || CapturedOwner::Raw(raw.clone()),
             |index| {
-                CapturedOwner::Joint(crate::processing::CapturedJointFlow {
+                CapturedOwner::Joint(crate::processing::contextual::CapturedJointFlow {
                     capture: std::sync::Arc::clone(capture),
                     index,
                 })
@@ -443,7 +443,9 @@ fn qualify(canonical: &Canonical<'_>, left: &Part, right: &Part) -> Result<()> {
         let after = capture.origin_orders[edge.after_origin];
         left.order <= before && after <= right.order
     }) {
-        return Err(edge.unavailable(crate::processing::SourceContinuityOperation::Combination));
+        return Err(
+            edge.unavailable(crate::processing::contextual::SourceContinuityOperation::Combination)
+        );
     }
     Ok(())
 }
@@ -570,7 +572,7 @@ pub(super) fn select(
     while next < selected_units.len() {
         let first = next;
         let unit = &selected_units[first];
-        if axis == Some(crate::processing::SourceWritingAxis::Horizontal) {
+        if axis == Some(crate::processing::contextual::SourceWritingAxis::Horizontal) {
             next += 1;
             continue;
         }

@@ -29,13 +29,23 @@ pub(crate) enum SelectionProgram {
     Pretty(pretty::PrettyBasis),
 }
 use surgeist_text::{
-    Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ConditionalStage,
-    ControlAllocation, FinalizedLine, HyphenationContinuation, LineContext, LineEnd,
-    LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
-    PhraseOverflowDecision, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
-    PreparedParticipant, PreparedPhrasePortion, PreparedTermination, PreparedText,
-    SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext,
-    TabPreparation,
+    allocation::{AtomicAllocation, ControlAllocation},
+    conditional::{
+        ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
+        PreparedPhrasePortion,
+    },
+    finalized::FinalizedLine,
+    hyphenation::HyphenationContinuation,
+    options::Alignment,
+    paragraph::ParagraphBaseDirection,
+    prepared::{
+        PreparedAlternative, PreparedBoundary, PreparedBreakKind, PreparedParticipant, PreparedText,
+    },
+    selection::{
+        LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart, PreparedTermination,
+    },
+    spacing::{SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlotDisposition},
+    tabs::{TabContext, TabPreparation},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -250,7 +260,7 @@ pub(crate) struct LineFlow {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum LineDisposition {
     Formatted,
-    NonFormatted(surgeist_text::NonFormattedLine),
+    NonFormatted(surgeist_text::placement::NonFormattedLine),
 }
 impl LineDisposition {
     pub(crate) fn resolve(line: &FinalizedLine) -> Result<Self, FitError> {
@@ -375,8 +385,8 @@ pub(crate) struct FitInput<'a> {
     pub formatted: &'a FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub prepared: &'a PreparedText,
-    pub inline_boxes: Option<&'a surgeist_text::PreparedInlineBoxFamily>,
-    pub segment: surgeist_text::PreparedSourceSegment,
+    pub inline_boxes: Option<&'a surgeist_text::inline_box::PreparedInlineBoxFamily>,
+    pub segment: surgeist_text::prepared::PreparedSourceSegment,
     pub scope_alignments: &'a dyn super::scope_alignment::ScopeAlignmentFacts,
     pub available: crate::AxisSizingRequestOf<f64>,
     pub base_direction: ParagraphBaseDirection,
@@ -393,15 +403,15 @@ pub(crate) struct FitInput<'a> {
     pub orientation: LineOrientation,
     pub atomics: &'a [AtomicAllocation],
     pub controls: &'a [ControlAllocation],
-    pub line_strut: Option<surgeist_text::LineStrut>,
+    pub line_strut: Option<surgeist_text::allocation::LineStrut>,
     pub reusable: &'a [ReusableLine],
 }
 
 pub(crate) struct LineAllocations {
-    pub line_box_struts: Vec<surgeist_text::LineBoxStrut>,
+    pub line_box_struts: Vec<surgeist_text::allocation::LineBoxStrut>,
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,
-    pub line_strut: Option<surgeist_text::LineStrut>,
+    pub line_strut: Option<surgeist_text::allocation::LineStrut>,
 }
 
 struct FinalizedCandidate {
@@ -412,7 +422,7 @@ struct FinalizedCandidate {
     amounts: Vec<f64>,
     natural_advance: f64,
     /// Admission of the natural line, before any justification spacing was allocated.
-    natural_fit: surgeist_text::MarginEdgeFit,
+    natural_fit: surgeist_text::finalized::MarginEdgeFit,
 }
 
 fn text_alignment(alignment: TextAlign) -> Alignment {
@@ -462,7 +472,10 @@ fn natural_line(
     }
     let selected = {
         let operation = scope_alignments.begin(
-            surgeist_text::ScopeAlignmentCensusInput::Selection { prepared, request },
+            surgeist_text::scope_alignment::ScopeAlignmentCensusInput::Selection {
+                prepared,
+                request,
+            },
             0,
         )?;
         match &operation {
@@ -480,19 +493,19 @@ fn natural_line(
 }
 
 fn finalize_scopes(
-    selected: &surgeist_text::SelectedLine,
+    selected: &surgeist_text::selection::SelectedLine,
     scopes: super::scope_alignment::AllocatedScopes,
     facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
 ) -> Result<FinalizedLine, FitError> {
     // The incoming allocation vector remains metered as Layout storage during
     // census and slot growth, then is handed to Text without double charging.
     let mut operation = facts.begin(
-        surgeist_text::ScopeAlignmentCensusInput::Product(
-            surgeist_text::ScopeAlignmentProduct::Selected(selected),
+        surgeist_text::scope_alignment::ScopeAlignmentCensusInput::Product(
+            surgeist_text::scope_alignment::ScopeAlignmentProduct::Selected(selected),
         ),
         1,
     )?;
-    let allocations = surgeist_text::LineAllocations {
+    let allocations = surgeist_text::scope_alignment::LineAllocations {
         spacing: SpacingAllocations::None,
         scopes: scopes.into_text(),
     };
@@ -514,8 +527,8 @@ fn replay_spacing(
     facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
 ) -> Result<FinalizedLine, FitError> {
     let mut operation = facts.begin(
-        surgeist_text::ScopeAlignmentCensusInput::Product(
-            surgeist_text::ScopeAlignmentProduct::Finalized(line),
+        surgeist_text::scope_alignment::ScopeAlignmentCensusInput::Product(
+            surgeist_text::scope_alignment::ScopeAlignmentProduct::Finalized(line),
         ),
         1,
     )?;
@@ -556,7 +569,7 @@ fn resolve_boundary_context(
         }
         request
             .boundary_context
-            .push(surgeist_text::InlineBoundaryContextAllocation {
+            .push(surgeist_text::allocation::InlineBoundaryContextAllocation {
                 occurrence,
                 boundary,
             });
@@ -659,7 +672,9 @@ fn finalize_candidate(
             .context
             .available_inline
             .map(|width| {
-                if request.context.alignment_insets == surgeist_text::LineAlignmentInsets::ZERO {
+                if request.context.alignment_insets
+                    == surgeist_text::allocation::LineAlignmentInsets::ZERO
+                {
                     finite(width - request.context.indent).and_then(|capacity| {
                         finite(capacity - natural.measurements().alignment().advance())
                             .map(|extra| (capacity, extra))
@@ -766,7 +781,7 @@ fn finalize_with_roles(
     entry: &super::roles::RoleEntry<'_>,
     operation: CandidateOperation,
 ) -> Result<(FinalizedCandidate, Option<RoleBasis>), FitError> {
-    request.context.formatted_line = surgeist_text::FormattedLineContext::default();
+    request.context.formatted_line = surgeist_text::selection::FormattedLineContext::default();
     let mut basis = super::roles::initial_basis(&request, entry.current_first);
     for _ in 0..=2 {
         let mut active = request.clone();
@@ -827,9 +842,9 @@ fn finalize_with_roles(
                 let role = match error.detail() {
                     Some(surgeist_text::ErrorDetail::InvalidTextProtocol {
                         reason:
-                            surgeist_text::ProtocolError::MissingPhaseTwoContext(
-                                role @ (surgeist_text::PhaseTwoContext::FirstFormattedLine
-                                | surgeist_text::PhaseTwoContext::LastFormattedLine),
+                            surgeist_text::prepared::ProtocolError::MissingPhaseTwoContext(
+                                role @ (surgeist_text::prepared::PhaseTwoContext::FirstFormattedLine
+                                | surgeist_text::prepared::PhaseTwoContext::LastFormattedLine),
                             ),
                     }) => *role,
                     _ => return Err(FitError::Text(error)),
@@ -840,11 +855,14 @@ fn finalize_with_roles(
                 };
                 let old = active.context.formatted_line;
                 let next = match role {
-                    surgeist_text::PhaseTwoContext::FirstFormattedLine => {
-                        surgeist_text::FormattedLineContext::new(Some(value), old.last())
+                    surgeist_text::prepared::PhaseTwoContext::FirstFormattedLine => {
+                        surgeist_text::selection::FormattedLineContext::new(Some(value), old.last())
                     }
-                    surgeist_text::PhaseTwoContext::LastFormattedLine => {
-                        surgeist_text::FormattedLineContext::new(old.first(), Some(value))
+                    surgeist_text::prepared::PhaseTwoContext::LastFormattedLine => {
+                        surgeist_text::selection::FormattedLineContext::new(
+                            old.first(),
+                            Some(value),
+                        )
                     }
                     _ => return Err(FitError::Text(error)),
                 };
@@ -868,8 +886,8 @@ fn finalize_spacing(
     facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
 ) -> Result<FinalizedLine, FitError> {
     let mut operation = facts.begin(
-        surgeist_text::ScopeAlignmentCensusInput::Product(
-            surgeist_text::ScopeAlignmentProduct::Finalized(line),
+        surgeist_text::scope_alignment::ScopeAlignmentCensusInput::Product(
+            surgeist_text::scope_alignment::ScopeAlignmentProduct::Finalized(line),
         ),
         1,
     )?;
@@ -1032,12 +1050,12 @@ struct ObservedCandidateBasis {
     candidate: CandidateBasis,
     fits: bool,
     formatted: bool,
-    usage: surgeist_text::FormattedLineUsage,
-    feedback: surgeist_text::LineFeedback,
-    fit: surgeist_text::InlineMeasure,
-    margin_fit: surgeist_text::MarginEdgeFit,
-    alignment: surgeist_text::InlineMeasure,
-    metric_bounds: surgeist_text::Rect,
+    usage: surgeist_text::finalized::FormattedLineUsage,
+    feedback: surgeist_text::finalized::LineFeedback,
+    fit: surgeist_text::finalized::InlineMeasure,
+    margin_fit: surgeist_text::finalized::MarginEdgeFit,
+    alignment: surgeist_text::finalized::InlineMeasure,
+    metric_bounds: surgeist_text::geometry::Rect,
 }
 
 /// Only the first authentic fitting end and whether another distinct end was
@@ -1169,7 +1187,7 @@ enum CandidateOperation {
 
 struct ConditionalQueryRecipe {
     frame: FinalizedLine,
-    ceiling: surgeist_text::PreparedOpportunity,
+    ceiling: surgeist_text::prepared::PreparedOpportunity,
 }
 
 #[derive(Clone, Copy)]
@@ -1233,8 +1251,9 @@ fn box_checkpoint<'a>(
                 .participants()
                 .nth(start.view().participant_offset())
                 .ok_or(FitError::InvalidGeometry)?;
-            let prefix =
-                line.prefix_at(&surgeist_text::TextSeam::BeforeParticipant(participant))?;
+            let prefix = line.prefix_at(&surgeist_text::finalized::TextSeam::BeforeParticipant(
+                participant,
+            ))?;
             return Ok(Some(BoxCheckpoint {
                 entry: if prefix.has_retained_flow_participation() {
                     BoxEntry::ConsumedTo(&boxes.incoming)
@@ -1323,7 +1342,7 @@ where
         &FinalizedLine,
         Band,
         f64,
-        &[surgeist_text::LineBoxStrut],
+        &[surgeist_text::allocation::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
     X: FnMut(EncounterReset) -> Result<(), FitError>,
@@ -1476,7 +1495,7 @@ where
                     .insets::<f64>(request.context.line_box_direction)
                     .map_err(|error| FitError::Numeric(error.value(), error.reason()))?
             } else {
-                surgeist_text::LineAlignmentInsets::ZERO
+                surgeist_text::allocation::LineAlignmentInsets::ZERO
             };
             request.context.tabs = tab_context(input, band, request.context.available_inline)?;
             let mut allocation_bases: Vec<(
@@ -1549,10 +1568,12 @@ where
                     // A nonformatted semantic receipt is not a group member.
                     // Its real allocations were validated above; finalize its
                     // actual zero-used frame before retaining source custody.
-                    if request.context.alignment_insets != surgeist_text::LineAlignmentInsets::ZERO
+                    if request.context.alignment_insets
+                        != surgeist_text::allocation::LineAlignmentInsets::ZERO
                         && !LineDisposition::resolve(&candidate.finalized)?.is_formatted()
                     {
-                        request.context.alignment_insets = surgeist_text::LineAlignmentInsets::ZERO;
+                        request.context.alignment_insets =
+                            surgeist_text::allocation::LineAlignmentInsets::ZERO;
                         continue;
                     }
                     break (
@@ -1670,7 +1691,8 @@ where
                 }
             };
             let css_width = css_margin_edge_width(admission, request.context.indent)?;
-            let fits_width = |admission: surgeist_text::MarginEdgeFit, css_width: Option<f64>| {
+            let fits_width = |admission: surgeist_text::finalized::MarginEdgeFit,
+                              css_width: Option<f64>| {
                 fit_width.is_none_or(|width| match css_width {
                     Some(required) => required <= width,
                     None => admission.required_inline_size() <= width - request.context.indent,
@@ -1779,7 +1801,9 @@ where
             let alternative = endpoint.alternative.clone();
             let automatic = alternative.as_ref().and_then(|alternative| {
                 match alternative.view().definition() {
-                    surgeist_text::PreparedAlternativeDefinition::Automatic { cut } => Some(cut),
+                    surgeist_text::prepared::PreparedAlternativeDefinition::Automatic { cut } => {
+                        Some(cut)
+                    }
                     _ => None,
                 }
             });
@@ -2014,8 +2038,8 @@ where
         &mut self,
         input: &FitInput<'_>,
         query: &EndpointContext<'_>,
-        target: &surgeist_text::PreparedConditionalOpportunity,
-    ) -> Result<Option<surgeist_text::PreparedConditionalOpportunity>, FitError> {
+        target: &surgeist_text::conditional::PreparedConditionalOpportunity,
+    ) -> Result<Option<surgeist_text::conditional::PreparedConditionalOpportunity>, FitError> {
         let recipe = query.conditional_recipe.ok_or(FitError::InvalidGeometry)?;
         if target.start() != *query.start || target.ceiling() != recipe.ceiling {
             return Err(FitError::InvalidGeometry);
@@ -2092,7 +2116,7 @@ where
             &recipe.ceiling,
             target.purpose(),
             &skipped,
-            surgeist_text::ConditionalLineContext::Finalized(&ordinary.finalized),
+            surgeist_text::conditional::ConditionalLineContext::Finalized(&ordinary.finalized),
         )?;
         let staged_query = EndpointContext {
             conditional: true,
@@ -2414,8 +2438,8 @@ fn selection_request(
         alternative: endpoint.alternative,
         incoming: incoming.cloned(),
         context: LineContext {
-            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-            formatted_line: surgeist_text::FormattedLineContext::default(),
+            alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+            formatted_line: surgeist_text::selection::FormattedLineContext::default(),
             line_box_direction,
             base_direction: input.base_direction,
             orientation: input.orientation,
@@ -2457,7 +2481,7 @@ pub(crate) fn fit(
         &FinalizedLine,
         Band,
         f64,
-        &[surgeist_text::LineBoxStrut],
+        &[surgeist_text::allocation::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     clear_source: impl FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
     encounters: EncounterCallbacks<
@@ -2561,7 +2585,7 @@ pub(crate) fn fit(
 
 type Opportunity = (
     usize,
-    surgeist_text::PreparedOpportunity,
+    surgeist_text::prepared::PreparedOpportunity,
     PreparedBreakKind,
     Vec<PreparedAlternative>,
 );
@@ -2639,7 +2663,7 @@ where
         &FinalizedLine,
         Band,
         f64,
-        &[surgeist_text::LineBoxStrut],
+        &[surgeist_text::allocation::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
     X: FnMut(EncounterReset) -> Result<(), FitError>,
@@ -2856,10 +2880,10 @@ fn query_bands(
 /// Compose actual indentation with the unanchored CSS admission operands.
 /// Native-only observations keep their existing caller arithmetic unchanged.
 pub(super) fn css_margin_edge_width(
-    admission: surgeist_text::MarginEdgeFit,
+    admission: surgeist_text::finalized::MarginEdgeFit,
     indent: f64,
 ) -> Result<Option<f64>, FitError> {
-    if admission.authority() == surgeist_text::MarginEdgeFitAuthority::NativeOnly {
+    if admission.authority() == surgeist_text::finalized::MarginEdgeFitAuthority::NativeOnly {
         return Ok(None);
     }
     let add = |base: f64, delta: f64| -> Result<f64, FitError> {
@@ -2914,7 +2938,7 @@ struct ZoneReference {
     alternative: PreparedAlternative,
     request: LineSelectionRequest,
     zone: f64,
-    measure: surgeist_text::InlineMeasure,
+    measure: surgeist_text::finalized::InlineMeasure,
     bands: LineBands,
     encounters: Vec<EncounterBasis>,
     placed_start: f64,
@@ -2939,11 +2963,12 @@ mod tests {
     };
 
     fn selected(
-        style: surgeist_text::Style,
+        style: surgeist_text::style::Style,
         source: &str,
         width: f64,
-    ) -> surgeist_text::SelectedLine {
-        let paragraph = PreparedParagraph::plain(1, surgeist_text::Source::new(source), style);
+    ) -> surgeist_text::selection::SelectedLine {
+        let paragraph =
+            PreparedParagraph::plain(1, surgeist_text::source::Source::new(source), style);
         let original = fragment_for(&paragraph.prepared).finalized_line();
         let mut request = original.selected_line().request().clone();
         request.context.available_inline = Some(width);
@@ -2978,9 +3003,9 @@ mod tests {
     fn native_spacing_budget_refuses_unresolved_actual_advance() {
         let selected = selected(ahem_style(10.0, 10.0), "X X X", 60.0);
         let natural = selected
-            .finalize(surgeist_text::LineAllocations {
+            .finalize(surgeist_text::scope_alignment::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: surgeist_text::ScopeAllocations::None,
+                scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(natural.feedback().advance, 50.0);
@@ -3019,9 +3044,9 @@ mod tests {
         style.word_spacing = -15.0;
         let selected = selected(style, "X X", 25.0);
         let natural = selected
-            .finalize(surgeist_text::LineAllocations {
+            .finalize(surgeist_text::scope_alignment::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: surgeist_text::ScopeAllocations::None,
+                scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(natural.feedback().advance, 15.0);
@@ -3048,17 +3073,17 @@ mod tests {
     fn native_spacing_budget_keeps_actual_text_lost_contribution_refusal() {
         let selected = selected(ahem_style(10.0, 10.0), "X X", 40.0);
         let natural = selected
-            .finalize(surgeist_text::LineAllocations {
+            .finalize(surgeist_text::scope_alignment::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: surgeist_text::ScopeAllocations::None,
+                scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
             })
             .unwrap();
         let amount = 1.0628135541960295e-153;
         match finalize_spacing(&natural, &[amount], &no_scope_resources()) {
             Err(FitError::Text(error)) => assert!(matches!(error.detail(),
                 Some(surgeist_text::ErrorDetail::InvalidTextNumeric {
-                    field:"selected spacing amount",phase:surgeist_text::TextNumericPhase::Finalization,
-                    category:surgeist_text::TextNumericError::NonZeroLost,value,
+                    field:"selected spacing amount",phase:surgeist_text::geometry::TextNumericPhase::Finalization,
+                    category:surgeist_text::geometry::TextNumericError::NonZeroLost,value,
                 }) if *value==amount)),
             _ => panic!("actual Text numeric refusal must pass through unchanged"),
         }

@@ -8,7 +8,7 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 
-fn endpoint(p: &TextParagraphBinding<u32>, node: u32) -> text::PreparedControl {
+fn endpoint(p: &TextParagraphBinding<u32>, node: u32) -> text::prepared::PreparedControl {
     p.controls
         .iter()
         .find(|row| row.node == node)
@@ -79,7 +79,10 @@ fn family(p: &TextParagraphBinding<u32>) -> WrappingInput<u32> {
     };
     assert_eq!(before.parent(), Some(outer.clone()));
     assert_eq!(after.parent(), Some(outer.clone()));
-    assert_eq!(outer.parent().unwrap().role(), text::ScopeRole::Domain);
+    assert_eq!(
+        outer.parent().unwrap().role(),
+        text::capture::ScopeRole::Domain
+    );
     for (scope, (start, end)) in scopes.iter().zip([(100, 101), (102, 103), (104, 105)]) {
         let first = endpoint(p, start).captured_control().unwrap();
         let last = endpoint(p, end).captured_control().unwrap();
@@ -87,7 +90,7 @@ fn family(p: &TextParagraphBinding<u32>) -> WrappingInput<u32> {
         assert_eq!(scope.exit_control(), Some(last.clone()));
         assert_eq!(
             p.prepared.native_inline_box(first, last).unwrap(),
-            text::InlineBoxSource::captured(scope.clone())
+            text::inline_box::InlineBoxSource::captured(scope.clone())
         );
     }
     WrappingInput {
@@ -161,7 +164,9 @@ fn execute<S: LayoutScalar>(
     .unwrap()
 }
 
-fn actual_line<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::FinalizedLine {
+fn actual_line<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> text::finalized::FinalizedLine {
     let mut lines = Vec::new();
     for fragment in batch.final_inline_fragments() {
         let line = fragment.fragment().finalized_fragment().finalized_line();
@@ -173,7 +178,10 @@ fn actual_line<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text:
     lines.pop().unwrap()
 }
 
-fn glyph_rows(line: &text::FinalizedLine, font: &[u8]) -> Vec<(u32, f32, f64, f32, text::Range)> {
+fn glyph_rows(
+    line: &text::finalized::FinalizedLine,
+    font: &[u8],
+) -> Vec<(u32, f32, f64, f32, text::source::Range)> {
     line.run_views()
         .flat_map(|run| {
             assert_eq!(run.face().bytes(), font);
@@ -245,7 +253,7 @@ fn strip<S: LayoutScalar>(
     assert_eq!(fragments.len(), 1);
     assert!(matches!(
         fragments[0].fragment().finalized_fragment().view().owner(),
-        text::FinalizedFragmentOwner::Control(_)
+        text::finalized::FinalizedFragmentOwner::Control(_)
     ));
     let rect = fragments[0].fragment().rect().unwrap();
     assert_eq!(
@@ -315,11 +323,11 @@ fn mark<S: LayoutScalar>(rtl: bool) {
     qualify_source(&p, rtl, true);
     assert_eq!(
         p.origins[0].origin.view().local_range(),
-        text::Range::new(0, 1)
+        text::source::Range::new(0, 1)
     );
     assert_eq!(
         p.origins[1].origin.view().local_range(),
-        text::Range::new(0, 2)
+        text::source::Range::new(0, 2)
     );
     assert_eq!(
         p.origins[0].origin.view().source().text().code_units(),
@@ -354,16 +362,16 @@ fn mark<S: LayoutScalar>(rtl: bool) {
         &p,
         &font,
         SOURCE,
-        &[text::Range::new(0, 3)],
+        &[text::source::Range::new(0, 3)],
         &[(35, 10.0), (100, 0.0), (36, 10.0)],
     )
     .remove(0);
     assert_eq!(
         glyph_rows(&ordinary, &font),
         [
-            (35, 10.0, 0.0, 0.0, text::Range::new(0, 2)),
-            (100, 0.0, 3.0, -4.0, text::Range::new(0, 2)),
-            (36, 10.0, 10.0, 0.0, text::Range::new(2, 3)),
+            (35, 10.0, 0.0, 0.0, text::source::Range::new(0, 2)),
+            (100, 0.0, 3.0, -4.0, text::source::Range::new(0, 2)),
+            (36, 10.0, 10.0, 0.0, text::source::Range::new(2, 3)),
         ]
     );
 
@@ -375,12 +383,14 @@ fn mark<S: LayoutScalar>(rtl: bool) {
     // BoxEdge to the parent's allocated physical side does NOT detach, duplicate
     // or place acute at an endpoint pen. The entire real provider packet moves.
     let expected = [
-        (35, 10.0, base, 0.0, text::Range::new(0, 2)),
-        (100, 0.0, base + 3.0, -4.0, text::Range::new(0, 2)),
-        (36, 10.0, b, 0.0, text::Range::new(2, 3)),
+        (35, 10.0, base, 0.0, text::source::Range::new(0, 2)),
+        (100, 0.0, base + 3.0, -4.0, text::source::Range::new(0, 2)),
+        (36, 10.0, b, 0.0, text::source::Range::new(2, 3)),
     ];
     assert_eq!(glyph_rows(&line, &font), expected);
-    let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(glyph_rows(&replay, &font), expected);
     assert_eq!(
         p.prepared
@@ -429,8 +439,16 @@ fn ccmp<S: LayoutScalar>(rtl: bool) {
     let p = capture(
         ["AA", "B"],
         [
-            style(text::WordBreak::Normal, text::LineBreak::Anywhere, false),
-            style(text::WordBreak::KeepAll, text::LineBreak::Anywhere, false),
+            style(
+                text::style::WordBreak::Normal,
+                text::style::LineBreak::Anywhere,
+                false,
+            ),
+            style(
+                text::style::WordBreak::KeepAll,
+                text::style::LineBreak::Anywhere,
+                false,
+            ),
         ],
         &font,
         true,
@@ -445,23 +463,26 @@ fn ccmp<S: LayoutScalar>(rtl: bool) {
     assert_eq!(
         p.prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
         [
-            text::Range::new(0, 1),
-            text::Range::new(1, 2),
-            text::Range::new(2, 3)
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2),
+            text::source::Range::new(2, 3)
         ]
     );
     for (i, raw, aggregate) in [
-        (0, vec![65, 65], text::Range::new(0, 2)),
-        (1, vec![66], text::Range::new(2, 3)),
+        (0, vec![65, 65], text::source::Range::new(0, 2)),
+        (1, vec![66], text::source::Range::new(2, 3)),
     ] {
         let origin = &p.origins[i].origin;
         assert_eq!(
             origin.view().source().id(),
-            Some(text::Id::from_u64(75001 + i as u64))
+            Some(text::source::Id::from_u64(75001 + i as u64))
         );
         assert_eq!(origin.view().source().revision(), 23);
         assert_eq!(origin.view().source().text().code_units(), raw);
-        assert_eq!(origin.view().local_range(), text::Range::new(0, raw.len()));
+        assert_eq!(
+            origin.view().local_range(),
+            text::source::Range::new(0, raw.len())
+        );
         assert_eq!(origin.view().aggregate_range(), aggregate);
     }
     assert!(
@@ -487,15 +508,15 @@ fn ccmp<S: LayoutScalar>(rtl: bool) {
         &p,
         &font,
         "AAB",
-        &[text::Range::new(0, 3)],
+        &[text::source::Range::new(0, 3)],
         &[(58, 10.0), (36, 10.0)],
     )
     .remove(0);
     assert_eq!(
         glyph_rows(&ordinary, &font),
         [
-            (58, 10.0, 0.0, 0.0, text::Range::new(0, 2)),
-            (36, 10.0, 10.0, 0.0, text::Range::new(2, 3)),
+            (58, 10.0, 0.0, 0.0, text::source::Range::new(0, 2)),
+            (36, 10.0, 10.0, 0.0, text::source::Range::new(2, 3)),
         ]
     );
     let batch = execute::<S>(&p, rtl);
@@ -503,8 +524,8 @@ fn ccmp<S: LayoutScalar>(rtl: bool) {
     let line = actual_line(&batch);
     let (base, b) = if rtl { (6.0, 19.0) } else { (4.0, 16.0) };
     let expected = [
-        (58, 10.0, base, 0.0, text::Range::new(0, 2)),
-        (36, 10.0, b, 0.0, text::Range::new(2, 3)),
+        (58, 10.0, base, 0.0, text::source::Range::new(0, 2)),
+        (36, 10.0, b, 0.0, text::source::Range::new(2, 3)),
     ];
     assert_eq!(glyph_rows(&line, &font), expected);
     assert_eq!(
@@ -513,7 +534,9 @@ fn ccmp<S: LayoutScalar>(rtl: bool) {
             .sum::<usize>(),
         2
     );
-    let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(glyph_rows(&replay, &font), expected);
     assert_eq!(
         p.prepared

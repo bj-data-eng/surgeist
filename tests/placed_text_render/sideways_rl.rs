@@ -9,70 +9,70 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
-    let source = text::Source::identified("AB", text::Id::from_u64(1520001), 3);
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let source = text::source::Source::identified("AB", text::source::Id::from_u64(1520001), 3);
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
-        word_break: text::WordBreak::BreakAll,
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
+        word_break: text::style::WordBreak::BreakAll,
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
     let capture = std::sync::Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: text::Range::new(0, 2),
-                aggregate: text::Range::new(0, 2),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 2),
+                aggregate: text::source::Range::new(0, 2),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![text::SourceProcessingScope::Block {
+            scopes: vec![text::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Unknown,
-                used_direction: text::ParagraphBaseDirection::LeftToRight,
-                trim: text::WhiteSpaceTrim::default(),
+                topology: text::capture::SourceProcessingTopology::Unknown,
+                used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                trim: text::capture::WhiteSpaceTrim::default(),
                 base_style: style,
             }],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
-                text::SourceProcessingEvent::EnterScope(0),
-                text::SourceProcessingEvent::EnterParagraph(0),
-                text::SourceProcessingEvent::Origin {
+                text::capture::SourceProcessingEvent::EnterScope(0),
+                text::capture::SourceProcessingEvent::EnterParagraph(0),
+                text::capture::SourceProcessingEvent::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
-                text::SourceProcessingEvent::ExitParagraph(0),
-                text::SourceProcessingEvent::ExitScope(0),
+                text::capture::SourceProcessingEvent::ExitParagraph(0),
+                text::capture::SourceProcessingEvent::ExitScope(0),
             ],
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         capture.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| text::WrappingPolicy {
+        .map(|row| text::analyzed::WrappingPolicy {
             relation: row.handle(),
             ancestor_wrap,
         })
@@ -81,8 +81,8 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default()
-                .with_orientation(text::LineOrientation::SidewaysClockwise),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::SidewaysClockwise),
         )
         .unwrap();
     assert_eq!(
@@ -152,20 +152,29 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let placed = entry.layout();
     assert_eq!(
         placed.orientation(),
-        text::LineOrientation::SidewaysClockwise
+        text::selection::LineOrientation::SidewaysClockwise
     );
     assert_eq!(placed.source(), &source);
-    assert_eq!(placed.source().id(), Some(text::Id::from_u64(1520001)));
+    assert_eq!(
+        placed.source().id(),
+        Some(text::source::Id::from_u64(1520001))
+    );
     assert_eq!(placed.source().revision(), 3);
     let lines = placed.lines();
     assert_eq!(
         lines.iter().map(|line| line.range()).collect::<Vec<_>>(),
-        [text::Range::new(0, 1), text::Range::new(1, 2)]
+        [
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2)
+        ]
     );
     let runs = placed
         .run_views()
         .map(|run| {
-            assert_eq!(run.orientation(), text::LineOrientation::SidewaysClockwise);
+            assert_eq!(
+                run.orientation(),
+                text::selection::LineOrientation::SidewaysClockwise
+            );
             assert_eq!(run.face().bytes(), AHEM);
             assert_eq!(run.face().index(), 0);
             assert_eq!(
@@ -185,26 +194,26 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
         runs,
         [
             (
-                text::Point::new(32.0, 0.0),
-                text::Range::new(0, 1),
+                text::geometry::Point::new(32.0, 0.0),
+                text::source::Range::new(0, 1),
                 vec![(35, 0.0, 10.0)]
             ),
             (
-                text::Point::new(22.0, 0.0),
-                text::Range::new(1, 2),
+                text::geometry::Point::new(22.0, 0.0),
+                text::source::Range::new(1, 2),
                 vec![(36, 0.0, 10.0)]
             ),
         ]
     );
     let first = placed
-        .source_range_fragments(&origin, text::Range::new(0, 1))
+        .source_range_fragments(&origin, text::source::Range::new(0, 1))
         .unwrap();
     assert_eq!(
         first
             .units()
             .flat_map(|unit| unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>())
             .collect::<Vec<_>>(),
-        [text::Rect::new(30.0, 0.0, 10.0, 10.0)]
+        [text::geometry::Rect::new(30.0, 0.0, 10.0, 10.0)]
     );
     let stats = system.stats();
     let limits = |runs| {
@@ -253,10 +262,10 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
         assert_eq!(
             paint
                 .layout()
-                .cursor(text::Cursor::new(0, text::Affinity::After))
+                .cursor(text::layout::Cursor::new(0, text::layout::Affinity::After))
                 .unwrap()
                 .rect(),
-            text::Rect::new(30.0, 0.0, 10.0, 1.0)
+            text::geometry::Rect::new(30.0, 0.0, 10.0, 1.0)
         );
     }
     assert_eq!(stats.layout_misses(), 0);

@@ -1,12 +1,16 @@
+//! Authored text: exact UTF-16 text, ranges, sources with spans and boxes, and edits.
+
+pub use crate::edit::{Edit, TextEdit};
+pub use crate::engine::analysis::first_letter::FirstLetterSelection;
+pub use crate::id::Id;
+pub use crate::range::{Range, SourcePosition, SourceRange};
+pub use crate::text::Text;
 use crate::{
     Error, ErrorCode, ErrorDetail, Result,
     error::NumericRequirement,
     geometry::Size,
-    id::Id,
     range,
-    range::{Range, SourcePosition, SourceRange},
     style::{Style, ValidatedStyle},
-    text::Text,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

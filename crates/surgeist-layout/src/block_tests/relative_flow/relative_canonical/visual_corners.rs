@@ -6,28 +6,28 @@ use crate::test_support::readback::{self, Phase};
 fn actual_visual_corners_preserve_normal_receipt<S: LayoutScalar>() {
     for (nominal, top, left, trailing, expected) in [
         (
-            surgeist_text::Size::new(10.0, 10.4),
+            surgeist_text::geometry::Size::new(10.0, 10.4),
             0.0,
             0.0,
             false,
             (10.0, 0.0, 10.0, 10.0),
         ),
         (
-            surgeist_text::Size::new(10.0, 10.4),
+            surgeist_text::geometry::Size::new(10.0, 10.4),
             0.72,
             0.0,
             false,
             (10.0, 0.0, 10.0, 11.0),
         ),
         (
-            surgeist_text::Size::new(10.4, 10.0),
+            surgeist_text::geometry::Size::new(10.4, 10.0),
             0.0,
             0.0,
             true,
             (10.0, 0.0, 10.0, 10.0),
         ),
         (
-            surgeist_text::Size::new(10.4, 10.0),
+            surgeist_text::geometry::Size::new(10.4, 10.0),
             0.0,
             0.32,
             true,

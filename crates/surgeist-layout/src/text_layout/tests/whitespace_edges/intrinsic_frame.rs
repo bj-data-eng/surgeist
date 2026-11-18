@@ -3,7 +3,7 @@ use super::*;
 
 fn observed<S: LayoutScalar>(
     source: &str,
-    whitespace: surgeist_text::WhiteSpace,
+    whitespace: surgeist_text::style::WhiteSpace,
     available: crate::AxisSizingRequestOf<S>,
 ) -> (f64, f64, f64, f64, f64) {
     let mut style = ahem_style(10.0, 10.0);
@@ -103,14 +103,15 @@ fn observed<S: LayoutScalar>(
                     next_transition: None,
                 })
             },
-            clear: |_, _: &surgeist_text::LineSelectionRequest| Ok(None),
-            replay: |_: &surgeist_text::FinalizedLine, _| Ok(Vec::new()),
+            clear: |_, _: &surgeist_text::selection::LineSelectionRequest| Ok(None),
+            replay: |_: &surgeist_text::finalized::FinalizedLine, _| Ok(Vec::new()),
             accept: || Ok(()),
         },
     )
     .unwrap_or_else(|_| panic!("actual intrinsic paragraph finalizes"));
     assert_eq!(output.paragraph.entries.len(), 1);
-    let surgeist_text::PlacementEntry::Formatted(placed) = &output.paragraph.entries[0] else {
+    let surgeist_text::placement::PlacementEntry::Formatted(placed) = &output.paragraph.entries[0]
+    else {
         panic!("native intrinsic line remains formatted");
     };
     assert_eq!(
@@ -147,7 +148,7 @@ fn observed<S: LayoutScalar>(
         assert_eq!(run.effective_instance().unwrap().font_size(), 10.0);
         for glyph in run.glyphs() {
             if glyph.id() == 58 {
-                assert_eq!(glyph.range(), surgeist_text::Range::new(0, 1));
+                assert_eq!(glyph.range(), surgeist_text::source::Range::new(0, 1));
                 assert_eq!(glyph.advance(), 10.0);
                 let local = run.origin().x + glyph.pen();
                 glyph_x = Some(placed.anchor.inline_origin + local);
@@ -168,7 +169,7 @@ fn intrinsic_frame<S: LayoutScalar>() {
     assert_eq!(
         observed::<S>(
             "X",
-            surgeist_text::WhiteSpace::Collapse,
+            surgeist_text::style::WhiteSpace::Collapse,
             crate::AxisSizingRequestOf::new(
                 crate::AvailableSpaceOf::Indefinite,
                 crate::SizingOperation::MaxContent
@@ -181,7 +182,7 @@ fn intrinsic_frame<S: LayoutScalar>() {
     assert_eq!(
         observed::<S>(
             "X\u{2003}",
-            surgeist_text::WhiteSpace::Collapse,
+            surgeist_text::style::WhiteSpace::Collapse,
             crate::AxisSizingRequestOf::new(
                 crate::AvailableSpaceOf::Indefinite,
                 crate::SizingOperation::MaxContent
@@ -205,7 +206,7 @@ fn separate_allocation<S: LayoutScalar>() {
     assert_eq!(
         observed::<S>(
             "X",
-            surgeist_text::WhiteSpace::Preserve,
+            surgeist_text::style::WhiteSpace::Preserve,
             crate::AxisSizingRequestOf::new(
                 crate::AvailableSpaceOf::Indefinite,
                 crate::SizingOperation::MinContent
@@ -217,7 +218,7 @@ fn separate_allocation<S: LayoutScalar>() {
     assert_eq!(
         observed::<S>(
             "X ",
-            surgeist_text::WhiteSpace::Preserve,
+            surgeist_text::style::WhiteSpace::Preserve,
             crate::AxisSizingRequestOf::new(
                 crate::AvailableSpaceOf::Indefinite,
                 crate::SizingOperation::MinContent

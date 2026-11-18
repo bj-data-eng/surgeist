@@ -278,10 +278,16 @@ fn hidden_break_does_not_create_a_native_frontier_in_framed_entry() {
 #[test]
 fn native_frontier_keeps_issued_section_custody_without_placing_source() {
     use crate::test_support::text::{PreparedParagraph, ahem_style};
-    let paragraph =
-        PreparedParagraph::plain(10, surgeist_text::Source::new("X"), ahem_style(4.0, 4.0));
-    let foreign =
-        PreparedParagraph::plain(10, surgeist_text::Source::new("X"), ahem_style(4.0, 4.0));
+    let paragraph = PreparedParagraph::plain(
+        10,
+        surgeist_text::source::Source::new("X"),
+        ahem_style(4.0, 4.0),
+    );
+    let foreign = PreparedParagraph::plain(
+        10,
+        surgeist_text::source::Source::new("X"),
+        ahem_style(4.0, 4.0),
+    );
     let tree = PublicLayoutTreeOf::new()
         .children(0, [10])
         .style(0, block::<f64>(0.0, 0.0, None))
@@ -577,12 +583,12 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
     let paragraph = PreparedParagraph::at_boundary(
         vec![ParagraphPart::text(
             10,
-            surgeist_text::Source::new(""),
+            surgeist_text::source::Source::new(""),
             ahem_style(4.0, 4.0),
         )],
         ahem_style(4.0, 4.0),
-        surgeist_text::ParagraphBaseDirection::LeftToRight,
-        surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
     );
     let mut binding = paragraph.binding(0);
     binding.nodes = vec![10, 1, 2];

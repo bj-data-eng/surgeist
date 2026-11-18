@@ -1,4 +1,4 @@
-use surgeist_text::{ErrorCode, Options, Source, Style, System};
+use surgeist_text::{ErrorCode, System, options::Options, source::Source, style::Style};
 
 #[test]
 fn default_text_system_requires_an_application_supplied_font() {

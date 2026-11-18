@@ -25,8 +25,8 @@ pub(super) fn paragraph<S: l::LayoutScalar>(
     host: &mut Host<S>,
     container: u32,
     parts: &[Part<'_>],
-    text_style: t::Style,
-    body: t::ParagraphBaseDirection,
+    text_style: t::style::Style,
+    body: t::paragraph::ParagraphBaseDirection,
 ) -> Paragraph {
     Paragraph::with_preparation(
         host,
@@ -34,7 +34,8 @@ pub(super) fn paragraph<S: l::LayoutScalar>(
         parts,
         text_style,
         body,
-        t::PreparationOptions::default().with_orientation(t::LineOrientation::SidewaysClockwise),
+        t::prepared::PreparationOptions::default()
+            .with_orientation(t::selection::LineOrientation::SidewaysClockwise),
     )
 }
 pub(super) fn available<S: l::LayoutScalar>(
@@ -109,9 +110,9 @@ pub(super) fn run<S: l::LayoutScalar>(
     }
     batch
 }
-pub(super) fn break_all() -> t::Style {
-    t::Style {
-        word_break: t::WordBreak::BreakAll,
+pub(super) fn break_all() -> t::style::Style {
+    t::style::Style {
+        word_break: t::style::WordBreak::BreakAll,
         ..style()
     }
 }
@@ -126,7 +127,10 @@ fn two_columns<S: l::LayoutScalar>(
     request_capacity: Option<f64>,
 ) {
     let layout = placed(batch, p);
-    assert_eq!(layout.orientation(), t::LineOrientation::SidewaysClockwise);
+    assert_eq!(
+        layout.orientation(),
+        t::selection::LineOrientation::SidewaysClockwise
+    );
     assert_eq!(layout.source().text().code_units(), [65, 66]);
     assert_eq!(
         layout.analyzed_source().identity(),
@@ -154,9 +158,9 @@ fn two_columns<S: l::LayoutScalar>(
         assert_eq!(
             line.selected_line().request().context.end,
             if i == 0 {
-                t::LineEnd::Soft
+                t::selection::LineEnd::Soft
             } else {
-                t::LineEnd::Paragraph
+                t::selection::LineEnd::Paragraph
             }
         );
     }
@@ -167,10 +171,13 @@ fn two_columns<S: l::LayoutScalar>(
             .map(|line| (line.baseline(), line.bounds()))
             .collect::<Vec<_>>(),
         [
-            (right - 8.0, t::Rect::new(right - 10.0, top, 10.0, capacity)),
+            (
+                right - 8.0,
+                t::geometry::Rect::new(right - 10.0, top, 10.0, capacity)
+            ),
             (
                 right - 18.0,
-                t::Rect::new(right - 20.0, top, 10.0, capacity)
+                t::geometry::Rect::new(right - 20.0, top, 10.0, capacity)
             ),
         ]
     );
@@ -180,8 +187,8 @@ fn two_columns<S: l::LayoutScalar>(
             .map(|run| run.origin())
             .collect::<Vec<_>>(),
         [
-            t::Point::new(right - 8.0, inline_start),
-            t::Point::new(right - 18.0, inline_start)
+            t::geometry::Point::new(right - 8.0, inline_start),
+            t::geometry::Point::new(right - 18.0, inline_start)
         ]
     );
     assert_eq!(
@@ -193,11 +200,11 @@ fn two_columns<S: l::LayoutScalar>(
                 .collect::<Vec<_>>())
             .collect::<Vec<_>>(),
         [
-            (35, 10.0, t::Range::new(0, 1)),
-            (36, 10.0, t::Range::new(1, 2))
+            (35, 10.0, t::source::Range::new(0, 1)),
+            (36, 10.0, t::source::Range::new(1, 2))
         ]
     );
-    assert_eq!(layout.metrics().size(), t::Size::new(20.0, 10.0));
+    assert_eq!(layout.metrics().size(), t::geometry::Size::new(20.0, 10.0));
 }
 
 fn auto_and_intrinsic<S: l::LayoutScalar>() {
@@ -211,7 +218,7 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
             0,
             &[Part::Text("AB")],
             break_all(),
-            t::ParagraphBaseDirection::LeftToRight,
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch = run(
             &host,
@@ -245,7 +252,7 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
             0,
             &[Part::Text("AB")],
             break_all(),
-            t::ParagraphBaseDirection::LeftToRight,
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch = run(
             &host,
@@ -307,16 +314,16 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
             );
             assert_eq!(
                 rows[0].selected_line().request().context.end,
-                t::LineEnd::Paragraph
+                t::selection::LineEnd::Paragraph
             );
             assert_eq!(layout.lines()[0].baseline(), 2.0);
             assert_eq!(
                 layout.lines()[0].bounds(),
-                t::Rect::new(0.0, 0.0, 10.0, 20.0)
+                t::geometry::Rect::new(0.0, 0.0, 10.0, 20.0)
             );
             assert_eq!(
                 layout.run_views().next().unwrap().origin(),
-                t::Point::new(2.0, 0.0)
+                t::geometry::Point::new(2.0, 0.0)
             );
         }
     }
@@ -333,8 +340,8 @@ fn auto_root_origin_and_actual_intrinsic_requests_f64() {
 fn insets_and_ancestor<S: l::LayoutScalar>() {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         for body in [
-            t::ParagraphBaseDirection::LeftToRight,
-            t::ParagraphBaseDirection::RightToLeft,
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::paragraph::ParagraphBaseDirection::RightToLeft,
         ] {
             let mut host = fixture::<S>(direction, Some(50.0), Some(25.0));
             host.box_change(0, |root| {
@@ -349,7 +356,7 @@ fn insets_and_ancestor<S: l::LayoutScalar>() {
                     l::LengthOf::value(l::LengthPercentageOf::px(S::from_f64(6.0)).unwrap());
             });
             let p = paragraph(&mut host, 0, &[Part::Text("AB")], break_all(), body);
-            let expected_level = if body == t::ParagraphBaseDirection::LeftToRight {
+            let expected_level = if body == t::paragraph::ParagraphBaseDirection::LeftToRight {
                 0
             } else {
                 2
@@ -384,9 +391,9 @@ fn insets_and_ancestor<S: l::LayoutScalar>() {
                 assert_eq!(
                     row.selected_line().request().context.line_box_direction,
                     if direction == l::Direction::Ltr {
-                        t::LineBoxDirection::LeftToRight
+                        t::selection::LineBoxDirection::LeftToRight
                     } else {
-                        t::LineBoxDirection::RightToLeft
+                        t::selection::LineBoxDirection::RightToLeft
                     }
                 );
             }
@@ -408,7 +415,7 @@ fn insets_and_ancestor<S: l::LayoutScalar>() {
         child,
         &[Part::Text("AB")],
         break_all(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let batch = run(&host, &[&p], available(100.0, 100.0), &[]);
     assert_eq!(
@@ -441,7 +448,7 @@ fn cache_and_change<S: l::LayoutScalar>() {
         text_box,
         &[Part::Text("AB")],
         break_all(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let leaf = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
     host.box_change(leaf, |input| {
@@ -512,7 +519,7 @@ fn cache_and_change<S: l::LayoutScalar>() {
         fresh_text_box,
         &[Part::Text("AB")],
         break_all(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let fresh_leaf = fresh.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
     fresh.box_change(fresh_leaf, |input| {
@@ -543,7 +550,7 @@ fn quality_continuation<S: l::LayoutScalar>() {
         0,
         &[Part::Text("AAA BB C")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let mut retained = Vec::new();
     for (mode, cuts, advances) in [
@@ -571,17 +578,17 @@ fn quality_continuation<S: l::LayoutScalar>() {
             assert_eq!(
                 request.context.start,
                 if i == 0 {
-                    t::LineStart::Paragraph
+                    t::selection::LineStart::Paragraph
                 } else {
-                    t::LineStart::Continuation
+                    t::selection::LineStart::Continuation
                 }
             );
             assert_eq!(
                 request.context.end,
                 if i == 0 {
-                    t::LineEnd::Soft
+                    t::selection::LineEnd::Soft
                 } else {
-                    t::LineEnd::Paragraph
+                    t::selection::LineEnd::Paragraph
                 }
             );
             assert!(request.alternative.is_none());
@@ -592,7 +599,7 @@ fn quality_continuation<S: l::LayoutScalar>() {
             );
             assert_eq!(
                 layout.lines()[i].bounds(),
-                t::Rect::new(if i == 0 { 30.0 } else { 20.0 }, 0.0, 10.0, 60.0)
+                t::geometry::Rect::new(if i == 0 { 30.0 } else { 20.0 }, 0.0, 10.0, 60.0)
             );
         }
         assert_eq!(

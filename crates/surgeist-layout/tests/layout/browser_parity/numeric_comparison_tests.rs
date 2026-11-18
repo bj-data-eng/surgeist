@@ -650,7 +650,7 @@ fn assert_original_flex_packets(
     let [first, second] = batch.placed_text() else {
         panic!("only the two visible labels have placed text");
     };
-    let label_range = surgeist_text::Range::new(0, 4);
+    let label_range = surgeist_text::source::Range::new(0, 4);
     for (placed, source) in [(first, children[0]), (second, children[2])] {
         let wrapper = tree.nodes[source].children[0];
         let text = tree.nodes[wrapper].children[0];
@@ -680,7 +680,7 @@ fn assert_original_flex_packets(
             fragments.sort_by_key(|(range, _)| range.start);
             assert_eq!(fragments.len(), label_range.len());
             for (index, (range, fragment)) in fragments.into_iter().enumerate() {
-                assert_eq!(range, surgeist_text::Range::new(index, index + 1));
+                assert_eq!(range, surgeist_text::source::Range::new(index, index + 1));
                 assert_eq!(fragment.line_index(), 0);
                 assert_eq!(fragment.baseline().y, 8.0);
                 assert_eq!(

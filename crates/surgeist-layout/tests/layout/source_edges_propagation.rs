@@ -173,16 +173,19 @@ impl<S: l::LayoutScalar> Host<S> {
     }
     fn install(
         &mut self,
-        processed: &t::ProcessedSource,
-        p: &t::PreparedText,
+        processed: &t::processing::ProcessedSource,
+        p: &t::prepared::PreparedText,
     ) -> l::TextParagraphBinding<u32> {
         let origins = p
             .origin_views()
             .enumerate()
             .map(|(i, o)| {
-                assert_eq!(o.aggregate_range(), t::Range::new(i, i + 1));
-                assert_eq!(o.local_range(), t::Range::new(0, 1));
-                assert_eq!(o.source().id(), Some(t::Id::from_u64(658001 + i as u64)));
+                assert_eq!(o.aggregate_range(), t::source::Range::new(i, i + 1));
+                assert_eq!(o.local_range(), t::source::Range::new(0, 1));
+                assert_eq!(
+                    o.source().id(),
+                    Some(t::source::Id::from_u64(658001 + i as u64))
+                );
                 assert_eq!(o.source().revision(), 21);
                 let node = ORIGIN_NODES[i];
                 self.installed[node as usize] = Some(l::LayoutInputOf::inline_text(
@@ -204,9 +207,9 @@ impl<S: l::LayoutScalar> Host<S> {
                 assert_eq!(
                     actual.kind(),
                     &if i < 2 {
-                        t::ParagraphControlKind::InlineBoundaryStart
+                        t::paragraph::ParagraphControlKind::InlineBoundaryStart
                     } else {
-                        t::ParagraphControlKind::InlineBoundaryEnd
+                        t::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     }
                 );
                 let node = CONTROL_NODES[i];
@@ -229,7 +232,7 @@ impl<S: l::LayoutScalar> Host<S> {
             line_strut: None,
         }
     }
-    fn final_wrapping(&self, processed: &t::ProcessedSource) -> l::WrappingInput<u32> {
+    fn final_wrapping(&self, processed: &t::processing::ProcessedSource) -> l::WrappingInput<u32> {
         let convert = |b: &l::GeneratedBoxRef<u32, usize>| match b {
             l::GeneratedBoxRef::Node(n) => l::GeneratedBoxRef::Node(*n),
             l::GeneratedBoxRef::Inline(l::InlineBoxRef::NativePair { start, end }) => {
@@ -263,13 +266,13 @@ impl<S: l::LayoutScalar> Host<S> {
                         wrap_inside: d.wrap_inside,
                         edges: d.edges,
                         metric_contribution: Some(l::InlineBoxMetricContribution::Strut(
-                            t::LineBoxStrut {
+                            t::allocation::LineBoxStrut {
                                 scope: None,
-                                metrics: t::LineStrut {
+                                metrics: t::allocation::LineStrut {
                                     baseline: 8.0,
                                     line_extent: 10.0,
                                 },
-                                alignment: t::LineBoxAlignment::Baseline,
+                                alignment: t::allocation::LineBoxAlignment::Baseline,
                             },
                         )),
                     },
@@ -363,19 +366,19 @@ impl<S: l::LayoutScalar> l::LayoutTree for Final<'_, S> {
     }
 }
 
-fn source(case: Case) -> t::ContextualSourceInput {
-    use t::SourceProcessingEvent as E;
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+fn source(case: Case) -> t::capture::ContextualSourceInput {
+    use t::capture::SourceProcessingEvent as E;
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        wrap: t::Wrap::None,
-        hyphens: t::Hyphens::None,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        wrap: t::style::Wrap::None,
+        hyphens: t::hyphenation::Hyphens::None,
+        ..t::style::Style::default()
     };
-    let mut source = t::Source::identified("PAQ", t::Id::from_u64(658000), 21);
-    source.span(t::Range::new(0, 3), style.clone());
-    let inline = |boundaries| t::SourceProcessingScope::Inline {
+    let mut source = t::source::Source::identified("PAQ", t::source::Id::from_u64(658000), 21);
+    source.span(t::source::Range::new(0, 3), style.clone());
+    let inline = |boundaries| t::capture::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
@@ -384,31 +387,31 @@ fn source(case: Case) -> t::ContextualSourceInput {
         boundaries,
     };
     let mut scopes = vec![
-        t::SourceProcessingScope::Block {
+        t::capture::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: t::SourceProcessingTopology::Complete,
+            topology: t::capture::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style,
-            used_direction: t::ParagraphBaseDirection::LeftToRight,
+            used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
         },
-        inline(Some(t::SourceProcessingScopeBoundaries {
+        inline(Some(t::capture::SourceProcessingScopeBoundaries {
             start: 0,
             end: 3,
         })),
-        inline(Some(t::SourceProcessingScopeBoundaries {
+        inline(Some(t::capture::SourceProcessingScopeBoundaries {
             start: 1,
             end: 2,
         })),
     ];
     let origin = |origin| E::Origin {
         origin,
-        affinity: t::Affinity::After,
+        affinity: t::layout::Affinity::After,
     };
     let control = |control| E::Control {
         control,
-        affinity: t::Affinity::After,
+        affinity: t::layout::Affinity::After,
     };
     let mut events = vec![
         E::EnterScope(0),
@@ -435,54 +438,58 @@ fn source(case: Case) -> t::ContextualSourceInput {
         E::ExitParagraph(0),
         E::ExitScope(0),
     ]);
-    t::ContextualSourceInput {
+    t::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: t::SourceProcessingEnvelope::Complete,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: t::capture::SourceProcessingEnvelope::Complete,
         origins: ["P", "A", "Q"]
             .into_iter()
             .enumerate()
-            .map(|(i, raw)| t::ParagraphOrigin {
+            .map(|(i, raw)| t::paragraph::ParagraphOrigin {
                 text_node: None,
-                source: t::Source::identified(raw, t::Id::from_u64(658001 + i as u64), 21),
-                local: t::Range::new(0, 1),
-                aggregate: t::Range::new(i, i + 1),
-                kind: t::ParagraphOriginKind::Authored,
+                source: t::source::Source::identified(
+                    raw,
+                    t::source::Id::from_u64(658001 + i as u64),
+                    21,
+                ),
+                local: t::source::Range::new(0, 1),
+                aggregate: t::source::Range::new(i, i + 1),
+                kind: t::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
         connections: (0..2)
-            .map(|i| t::SourceProcessingConnection {
+            .map(|i| t::capture::SourceProcessingConnection {
                 before_origin: i,
                 after_origin: i + 1,
-                kind: t::ParagraphConnectionKind::Continuous,
+                kind: t::paragraph::ParagraphConnectionKind::Continuous,
             })
             .collect(),
         controls: (0..4)
-            .map(|i| t::ParagraphControl {
+            .map(|i| t::paragraph::ParagraphControl {
                 at: if i < 2 { 1 } else { 2 },
                 kind: if i < 2 {
-                    t::ParagraphControlKind::InlineBoundaryStart
+                    t::paragraph::ParagraphControlKind::InlineBoundaryStart
                 } else {
-                    t::ParagraphControlKind::InlineBoundaryEnd
+                    t::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 },
             })
             .collect(),
         boundary_policies: (0..2)
-            .map(|i| t::ParagraphBoundaryPolicy {
-                definition: t::ParagraphBoundaryDefinition::Connection(i),
-                preceding_wrap: t::Wrap::None,
-                following_wrap: t::Wrap::None,
-                ancestor_wrap: t::Wrap::None,
+            .map(|i| t::paragraph::ParagraphBoundaryPolicy {
+                definition: t::paragraph::ParagraphBoundaryDefinition::Connection(i),
+                preceding_wrap: t::style::Wrap::None,
+                following_wrap: t::style::Wrap::None,
+                ancestor_wrap: t::style::Wrap::None,
             })
             .collect(),
         computed_line_boundaries: vec![],
         replacements: vec![],
         scopes,
-        paragraphs: vec![t::SourceProcessingParagraph {
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: t::ParagraphStrut::DefaultFont,
+        paragraphs: vec![t::capture::SourceProcessingParagraph {
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
         }],
         events,
     }
@@ -492,8 +499,8 @@ fn qualify_empty_source() {
     // A separate producer control authenticates the SAME literal input factory.
     // This capture is discarded here, never used as Layout input or a receipt;
     // it is neither an adapter processing pass nor a single-call counter.
-    let processed = t::process_contextual_source(source(Case::EmptyBefore)).unwrap();
-    assert_eq!(processed.source().text(), &t::Text::from("PAQ"));
+    let processed = t::capture::process_contextual_source(source(Case::EmptyBefore)).unwrap();
+    assert_eq!(processed.source().text(), &t::source::Text::from("PAQ"));
     let outer = processed.captured_scope(1).unwrap();
     let inner = processed.captured_scope(2).unwrap();
     let empty = processed.captured_scope(3).unwrap();
@@ -511,9 +518,9 @@ fn qualify_empty_source() {
         assert_eq!(
             control.kind(),
             &if i < 2 {
-                t::ParagraphControlKind::InlineBoundaryStart
+                t::paragraph::ParagraphControlKind::InlineBoundaryStart
             } else {
-                t::ParagraphControlKind::InlineBoundaryEnd
+                t::paragraph::ParagraphControlKind::InlineBoundaryEnd
             }
         );
         assert_eq!(control.source_position().get(), if i < 2 { 1 } else { 2 });
@@ -533,7 +540,7 @@ fn run<S: l::LayoutScalar>(case: Case) {
     };
     let (processed, receipt) = output.into_parts();
     let processed = Arc::new(processed);
-    assert_eq!(processed.source().text(), &t::Text::from("PAQ"));
+    assert_eq!(processed.source().text(), &t::source::Text::from("PAQ"));
     let s = processed.captured_scope(1).unwrap();
     let inner = processed.captured_scope(2).unwrap();
     assert_eq!(inner.parent(), Some(s.clone()));
@@ -550,7 +557,7 @@ fn run<S: l::LayoutScalar>(case: Case) {
     let (target, side, cut, flows, positions, control_rows) = match case {
         Case::Before => (
             s,
-            t::SourceBoxSide::Before,
+            t::capture::SourceBoxSide::Before,
             1,
             [10.0, 34.0],
             [(0.0, 8.0), (8.0, 18.0), (24.0, 18.0)],
@@ -558,7 +565,7 @@ fn run<S: l::LayoutScalar>(case: Case) {
         ),
         Case::After => (
             s,
-            t::SourceBoxSide::After,
+            t::capture::SourceBoxSide::After,
             2,
             [34.0, 10.0],
             [(0.0, 8.0), (18.0, 8.0), (0.0, 18.0)],
@@ -566,7 +573,7 @@ fn run<S: l::LayoutScalar>(case: Case) {
         ),
         Case::EmptyBefore => (
             inner,
-            t::SourceBoxSide::Before,
+            t::capture::SourceBoxSide::Before,
             1,
             [15.0, 29.0],
             [(0.0, 8.0), (3.0, 18.0), (19.0, 18.0)],
@@ -576,24 +583,24 @@ fn run<S: l::LayoutScalar>(case: Case) {
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(
         cause.target(),
-        t::CapturedComputedLineBoundaryTarget::Scope {
+        t::capture::CapturedComputedLineBoundaryTarget::Scope {
             scope: target,
             side
         }
     );
     assert_eq!(cause.source_position().get(), cut);
     assert!(processed.captured_computed_line_boundary(1).is_none());
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let missing = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| t::WrappingPolicy {
+        .map(|r| t::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: t::Wrap::None,
+            ancestor_wrap: t::style::Wrap::None,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(missing).unwrap();
@@ -603,13 +610,13 @@ fn run<S: l::LayoutScalar>(case: Case) {
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = fonts
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(prepared.control_views().count(), 4);
     assert_eq!(
         prepared
             .participants()
-            .filter(|p| matches!(p, t::PreparedParticipant::ComputedLineBoundary(_)))
+            .filter(|p| matches!(p, t::prepared::PreparedParticipant::ComputedLineBoundary(_)))
             .count(),
         1
     );
@@ -620,13 +627,13 @@ fn run<S: l::LayoutScalar>(case: Case) {
     assert_eq!(
         offers,
         [
-            (t::PreparedBreakKind::Forced, cut),
-            (t::PreparedBreakKind::ParagraphEnd, 3)
+            (t::prepared::PreparedBreakKind::Forced, cut),
+            (t::prepared::PreparedBreakKind::ParagraphEnd, 3)
         ]
     );
     let forced = prepared
         .opportunity_views()
-        .find(|o| o.kind() == t::PreparedBreakKind::Forced)
+        .find(|o| o.kind() == t::prepared::PreparedBreakKind::Forced)
         .unwrap();
     assert_eq!(
         forced
@@ -674,12 +681,12 @@ fn run<S: l::LayoutScalar>(case: Case) {
     };
     let batch = l::compute_layout_with_flow(&flow, 0, request).unwrap();
     let placed = batch.placed_text()[0].layout();
-    assert_eq!(placed.source().id(), Some(t::Id::from_u64(658000)));
+    assert_eq!(placed.source().id(), Some(t::source::Id::from_u64(658000)));
     assert_eq!(placed.source().revision(), 21);
-    assert_eq!(placed.source().text(), &t::Text::from("PAQ"));
+    assert_eq!(placed.source().text(), &t::source::Text::from("PAQ"));
     assert_eq!(
         placed.lines().iter().map(|l| l.range()).collect::<Vec<_>>(),
-        [t::Range::new(0, cut), t::Range::new(cut, 3)]
+        [t::source::Range::new(0, cut), t::source::Range::new(cut, 3)]
     );
     assert_eq!(
         placed
@@ -734,10 +741,10 @@ fn run<S: l::LayoutScalar>(case: Case) {
                     .unwrap();
                 assert_eq!(
                     allocation.strut,
-                    Some(t::ControlStrut {
+                    Some(t::allocation::ControlStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
-                        alignment: t::LineBoxAlignment::Baseline
+                        alignment: t::allocation::LineBoxAlignment::Baseline
                     })
                 );
                 assert_eq!(
@@ -754,13 +761,13 @@ fn run<S: l::LayoutScalar>(case: Case) {
         assert_eq!(
             request.line_box_struts,
             if matches!(case, Case::EmptyBefore) && i == 0 {
-                vec![t::LineBoxStrut {
+                vec![t::allocation::LineBoxStrut {
                     scope: Some(processed.captured_scope(3).unwrap()),
-                    metrics: t::LineStrut {
+                    metrics: t::allocation::LineStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
                     },
-                    alignment: t::LineBoxAlignment::Baseline,
+                    alignment: t::allocation::LineBoxAlignment::Baseline,
                 }]
             } else {
                 vec![]
@@ -770,9 +777,9 @@ fn run<S: l::LayoutScalar>(case: Case) {
     assert_eq!(
         source_glyphs,
         [
-            (t::Range::new(0, 1), 50, 10.0),
-            (t::Range::new(1, 2), 35, 10.0),
-            (t::Range::new(2, 3), 51, 10.0),
+            (t::source::Range::new(0, 1), 50, 10.0),
+            (t::source::Range::new(1, 2), 35, 10.0),
+            (t::source::Range::new(2, 3), 51, 10.0),
         ]
     );
     let mut glyphs = vec![];

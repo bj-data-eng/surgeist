@@ -4,10 +4,14 @@ use super::super::zone_composition::RecessedShape;
 use super::*;
 use crate::test_support::readback::{self, Phase};
 
-fn source_then_atomic(source: &str, size: f32, overflow: text::OverflowWrap) -> PreparedParagraph {
-    let style = text::Style {
-        white_space: text::WhiteSpace::Preserve,
-        wrap: text::Wrap::Word,
+fn source_then_atomic(
+    source: &str,
+    size: f32,
+    overflow: text::style::OverflowWrap,
+) -> PreparedParagraph {
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
+        wrap: text::style::Wrap::Word,
         overflow_wrap: overflow,
         letter_spacing: 0.0,
         word_spacing: 0.0,
@@ -17,12 +21,12 @@ fn source_then_atomic(source: &str, size: f32, overflow: text::OverflowWrap) -> 
         vec![
             ParagraphPart::text(
                 1,
-                Source::identified(source, text::Id::from_u64(72_163), 1),
+                Source::identified(source, text::source::Id::from_u64(72_163), 1),
                 style.clone(),
             ),
             ParagraphPart::Atomic {
                 node: 2,
-                size: text::Size::new(10.0, 10.0),
+                size: text::geometry::Size::new(10.0, 10.0),
             },
         ],
         style,
@@ -131,7 +135,7 @@ fn ordinary_batch<S: LayoutScalar>(
 fn owned_line<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     index: usize,
-) -> text::FinalizedLine {
+) -> text::finalized::FinalizedLine {
     batch
         .final_inline_fragments()
         .iter()
@@ -142,7 +146,7 @@ fn owned_line<S: LayoutScalar>(
         .finalized_line()
 }
 
-fn css_receipt(line: &text::FinalizedLine, advance: f64, raw_end: f64) {
+fn css_receipt(line: &text::finalized::FinalizedLine, advance: f64, raw_end: f64) {
     // Raw occupied observations remain Native observations; this new operation
     // does not overwrite them merely because CSS admission uses margin edges.
     assert_eq!(line.measurements().fit().advance(), advance);
@@ -154,7 +158,10 @@ fn css_receipt(line: &text::FinalizedLine, advance: f64, raw_end: f64) {
         (0.0, raw_end)
     );
     let fit = line.measurements().margin_edge_fit();
-    assert_eq!(fit.authority(), text::MarginEdgeFitAuthority::CssComposed);
+    assert_eq!(
+        fit.authority(),
+        text::finalized::MarginEdgeFitAuthority::CssComposed
+    );
     assert_eq!(
         (
             fit.advance(),
@@ -167,7 +174,7 @@ fn css_receipt(line: &text::FinalizedLine, advance: f64, raw_end: f64) {
 }
 
 fn actual_slot(
-    line: &text::FinalizedLine,
+    line: &text::finalized::FinalizedLine,
     paragraph: &PreparedParagraph,
     advance: f64,
     end_margin: f64,
@@ -180,7 +187,7 @@ fn actual_slot(
         slot.occurrence,
         paragraph.prepared.atomic_views().next().unwrap().handle()
     );
-    let text::AtomicLineAllocation::InFlow {
+    let text::allocation::AtomicLineAllocation::InFlow {
         fit,
         flow,
         box_geometry,
@@ -191,8 +198,8 @@ fn actual_slot(
     };
     assert_eq!(
         fit,
-        text::AtomicFitAllocation::CssMarginBox(
-            text::CssMarginBoxFit::try_new(0.0, 10.0, end_margin).unwrap()
+        text::allocation::AtomicFitAllocation::CssMarginBox(
+            text::allocation::CssMarginBoxFit::try_new(0.0, 10.0, end_margin).unwrap()
         )
     );
     assert_eq!(
@@ -200,10 +207,16 @@ fn actual_slot(
         (advance, 0.0, 10.0)
     );
     assert_eq!((flow.before_baseline, flow.after_baseline), (10.0, 0.0));
-    assert_eq!(box_geometry.border.size, text::Size::new(10.0, 10.0));
+    assert_eq!(
+        box_geometry.border.size,
+        text::geometry::Size::new(10.0, 10.0)
+    );
 }
 
-fn ahem_source_packet(line: &text::FinalizedLine, size: f64) -> Vec<(text::Range, u32, f64)> {
+fn ahem_source_packet(
+    line: &text::finalized::FinalizedLine,
+    size: f64,
+) -> Vec<(text::source::Range, u32, f64)> {
     line.run_views()
         .flat_map(|run| {
             assert_eq!(run.face().bytes(), AHEM);
@@ -339,27 +352,27 @@ fn changed_float_band<S: LayoutScalar>() {
     );
     assert_eq!(
         ahem_source_packet(&line, 10.0),
-        [(text::Range::new(0, 1), 35, 10.0)]
+        [(text::source::Range::new(0, 1), 35, 10.0)]
     );
     css_receipt(&line, 15.0, 20.0);
     actual_slot(&line, &paragraph, 5.0, -5.0);
     assert_eq!(
         placed.lines()[0].bounds(),
-        text::Rect::new(40.0, 0.0, 15.0, 12.0)
+        text::geometry::Rect::new(40.0, 0.0, 15.0, 12.0)
     );
     assert_eq!(placed.lines()[0].baseline(), 10.0);
     assert_eq!(
         placed.inline_boxes()[0].rect(),
-        text::Rect::new(50.0, 0.0, 10.0, 10.0)
+        text::geometry::Rect::new(50.0, 0.0, 10.0, 10.0)
     );
     let range = placed
-        .source_range_fragments(&paragraph.origin(1), text::Range::new(0, 1))
+        .source_range_fragments(&paragraph.origin(1), text::source::Range::new(0, 1))
         .unwrap();
     let rects = range
         .units()
         .flat_map(|u| u.pieces().map(|p| p.rect()).collect::<Vec<_>>())
         .collect::<Vec<_>>();
-    assert_eq!(rects, [text::Rect::new(40.0, 2.0, 10.0, 10.0)]);
+    assert_eq!(rects, [text::geometry::Rect::new(40.0, 2.0, 10.0, 10.0)]);
     let queries = host.queries.borrow();
     // No call-count proxy: actual differently intersecting bands were queried.
     // The provisional candidate starts at zero height; other candidate
@@ -383,13 +396,13 @@ fn changed_float_band<S: LayoutScalar>() {
 }
 
 fn intrinsic_paragraph<S: LayoutScalar>() {
-    let paragraph = source_then_atomic("A", 5.0, text::OverflowWrap::Normal);
+    let paragraph = source_then_atomic("A", 5.0, text::style::OverflowWrap::Normal);
     let before = paragraph
         .prepared
         .opportunity_views()
         .find(|o| o.boundary().view().participant_offset() == 1)
         .unwrap();
-    assert_eq!(before.kind(), text::PreparedBreakKind::Allowed);
+    assert_eq!(before.kind(), text::prepared::PreparedBreakKind::Allowed);
     assert_eq!(
         paragraph
             .prepared
@@ -432,7 +445,7 @@ fn intrinsic_paragraph<S: LayoutScalar>() {
         }
         assert_eq!(
             batch.placed_text()[0].layout().source().text(),
-            &text::Text::from("A")
+            &text::source::Text::from("A")
         );
     }
     assert_eq!(minimum.placed_text()[0].layout().lines().len(), 2);
@@ -440,7 +453,7 @@ fn intrinsic_paragraph<S: LayoutScalar>() {
     let line = whole_line(&maximum);
     assert_eq!(
         ahem_source_packet(&line, 5.0),
-        [(text::Range::new(0, 1), 35, 5.0)]
+        [(text::source::Range::new(0, 1), 35, 5.0)]
     );
     assert_eq!(
         (line.feedback().baseline, line.feedback().line_height),
@@ -463,18 +476,18 @@ fn intrinsic_paragraph<S: LayoutScalar>() {
     );
     assert_eq!(
         maximum.placed_text()[0].layout().inline_boxes()[0].rect(),
-        text::Rect::new(5.0, 0.0, 10.0, 10.0)
+        text::geometry::Rect::new(5.0, 0.0, 10.0, 10.0)
     );
 }
 
 fn conditional_then_css_fit<S: LayoutScalar>() {
-    let paragraph = source_then_atomic("AA", 10.0, text::OverflowWrap::Anywhere);
+    let paragraph = source_then_atomic("AA", 10.0, text::style::OverflowWrap::Anywhere);
     let ordinary = paragraph
         .prepared
         .opportunity_views()
         .find(|o| o.boundary().view().participant_offset() == 2)
         .unwrap();
-    assert_eq!(ordinary.kind(), text::PreparedBreakKind::Allowed);
+    assert_eq!(ordinary.kind(), text::prepared::PreparedBreakKind::Allowed);
     assert_eq!(ordinary.boundary().view().source_before().get(), 2);
     let batch = ordinary_batch::<S>(
         &paragraph,
@@ -491,31 +504,39 @@ fn conditional_then_css_fit<S: LayoutScalar>() {
     let first = owned_line(&batch, 0);
     let second = owned_line(&batch, 1);
     let first_selected = first.selected_line();
-    let text::PreparedTermination::Conditional(cut) = &first_selected.request().termination else {
+    let text::selection::PreparedTermination::Conditional(cut) =
+        &first_selected.request().termination
+    else {
         panic!(
             "AA20 cannot fit16 at the ordinary before-atomic cut; first A requires actual anywhere authority"
         )
     };
     assert_eq!(cut.prepared_text(), paragraph.prepared);
-    assert_eq!(cut.purpose(), text::ConditionalPurpose::Overflow);
+    assert_eq!(
+        cut.purpose(),
+        text::conditional::ConditionalPurpose::Overflow
+    );
     assert_eq!(cut.boundary().view().source_before().get(), 1);
     assert_eq!(cut.boundary().view().participant_offset(), 1);
-    assert_eq!(first_selected.request().context.end, text::LineEnd::Soft);
+    assert_eq!(
+        first_selected.request().context.end,
+        text::selection::LineEnd::Soft
+    );
     assert_eq!(
         second.selected_line().request().start,
         first_selected.request().end
     );
     assert_eq!(
         second.selected_line().request().context.end,
-        text::LineEnd::Paragraph
+        text::selection::LineEnd::Paragraph
     );
     assert_eq!(
         ahem_source_packet(&first, 10.0),
-        [(text::Range::new(0, 1), 35, 10.0)]
+        [(text::source::Range::new(0, 1), 35, 10.0)]
     );
     assert_eq!(
         ahem_source_packet(&second, 10.0),
-        [(text::Range::new(1, 2), 35, 10.0)]
+        [(text::source::Range::new(1, 2), 35, 10.0)]
     );
     assert_eq!(first.feedback().advance, 10.0);
     assert_eq!(first.atomic_slots().count(), 0);
@@ -523,11 +544,11 @@ fn conditional_then_css_fit<S: LayoutScalar>() {
     actual_slot(&second, &paragraph, 6.0, -4.0);
     assert_eq!(
         placed.lines()[0].bounds(),
-        text::Rect::new(0.0, 0.0, 16.0, 10.0)
+        text::geometry::Rect::new(0.0, 0.0, 16.0, 10.0)
     );
     assert_eq!(
         placed.lines()[1].bounds(),
-        text::Rect::new(0.0, 10.0, 16.0, 12.0)
+        text::geometry::Rect::new(0.0, 10.0, 16.0, 12.0)
     );
     assert_eq!(
         (placed.lines()[0].baseline(), placed.lines()[1].baseline()),
@@ -535,7 +556,7 @@ fn conditional_then_css_fit<S: LayoutScalar>() {
     );
     assert_eq!(
         placed.inline_boxes()[0].rect(),
-        text::Rect::new(10.0, 10.0, 10.0, 10.0)
+        text::geometry::Rect::new(10.0, 10.0, 10.0, 10.0)
     );
 }
 

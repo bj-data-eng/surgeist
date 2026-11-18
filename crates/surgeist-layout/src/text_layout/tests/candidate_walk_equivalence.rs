@@ -31,12 +31,12 @@ const fn span(source: &str, size: f32, letter_spacing: f64, word_spacing: f64) -
 struct Setup {
     width: f64,
     rtl: bool,
-    white_space: text::WhiteSpace,
+    white_space: text::style::WhiteSpace,
     wrap_style: TextWrapStyle,
     text_align: TextAlign,
     text_align_last: TextAlignLast,
     justification: TextJustification,
-    hanging: text::HangingPunctuation,
+    hanging: text::style::HangingPunctuation,
 }
 
 impl Setup {
@@ -44,12 +44,12 @@ impl Setup {
         Self {
             width,
             rtl: false,
-            white_space: text::WhiteSpace::Collapse,
+            white_space: text::style::WhiteSpace::Collapse,
             wrap_style: TextWrapStyle::Auto,
             text_align: TextAlign::Start,
             text_align_last: TextAlignLast::Auto,
             justification: TextJustification::None,
-            hanging: text::HangingPunctuation::new(false, None, false),
+            hanging: text::style::HangingPunctuation::new(false, None, false),
         }
     }
 
@@ -67,7 +67,7 @@ impl Setup {
         Self { rtl: true, ..self }
     }
 
-    const fn white_space(self, white_space: text::WhiteSpace) -> Self {
+    const fn white_space(self, white_space: text::style::WhiteSpace) -> Self {
         Self {
             white_space,
             ..self
@@ -78,7 +78,7 @@ impl Setup {
 /// The debug rendering of the completed batch, or of the refusal, of one block container of
 /// `spans`, reporting the call's work to `host`.
 fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup, host: &TestHost) -> String {
-    let style = |span: &Span| text::Style {
+    let style = |span: &Span| text::style::Style {
         letter_spacing: span.letter_spacing,
         word_spacing: span.word_spacing,
         hanging_punctuation: setup.hanging,
@@ -93,7 +93,7 @@ fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup, host: &TestHost) -> St
         .collect();
     let paragraph = PreparedParagraph::new(
         parts,
-        text::Style {
+        text::style::Style {
             hanging_punctuation: setup.hanging,
             white_space: setup.white_space,
             wrap: Wrap::Word,
@@ -322,8 +322,16 @@ fn first_and_last_line_roles_do_not_change_with_the_early_stop() {
     let hanging = [
         (false, None, false),
         (true, None, true),
-        (true, Some(text::HangingPunctuationEnd::ForceEnd), false),
-        (false, Some(text::HangingPunctuationEnd::AllowEnd), true),
+        (
+            true,
+            Some(text::style::HangingPunctuationEnd::ForceEnd),
+            false,
+        ),
+        (
+            false,
+            Some(text::style::HangingPunctuationEnd::AllowEnd),
+            true,
+        ),
     ];
     let aligns = [
         (TextAlign::Start, TextAlignLast::Auto),
@@ -339,7 +347,7 @@ fn first_and_last_line_roles_do_not_change_with_the_early_stop() {
                 let setup = Setup {
                     text_align,
                     text_align_last,
-                    hanging: text::HangingPunctuation::new(first, end, last),
+                    hanging: text::style::HangingPunctuation::new(first, end, last),
                     ..Setup::new(width)
                 };
                 saved += assert_same_with_full_walk::<f32>("roles", &spans, setup);
@@ -355,9 +363,9 @@ fn grid_setups(width: f64) -> Vec<Setup> {
     let mut setups = Vec::new();
     for rtl in [false, true] {
         for white_space in [
-            text::WhiteSpace::Collapse,
-            text::WhiteSpace::Preserve,
-            text::WhiteSpace::BreakSpaces,
+            text::style::WhiteSpace::Collapse,
+            text::style::WhiteSpace::Preserve,
+            text::style::WhiteSpace::BreakSpaces,
         ] {
             let base = Setup::new(width).white_space(white_space);
             let base = if rtl { base.right_to_left() } else { base };
@@ -384,7 +392,7 @@ fn justified_text_that_fits_naturally_is_not_treated_as_overflow_by_the_early_st
     let base = Setup::new(90.0)
         .justified()
         .right_to_left()
-        .white_space(text::WhiteSpace::BreakSpaces);
+        .white_space(text::style::WhiteSpace::BreakSpaces);
     for wrap_style in [TextWrapStyle::Stable, TextWrapStyle::Auto] {
         for last in [TextAlignLast::Justify, TextAlignLast::Auto] {
             let setup = Setup {
@@ -405,7 +413,7 @@ fn justified_repeated_words_lay_out_the_same_with_the_early_stop() {
     let setup = Setup::new(100.0)
         .justified()
         .right_to_left()
-        .white_space(text::WhiteSpace::BreakSpaces);
+        .white_space(text::style::WhiteSpace::BreakSpaces);
     let saved = assert_same_with_full_walk::<f32>("repeated words", &spans, setup)
         + assert_same_with_full_walk::<f64>("repeated words", &spans, setup);
     assert!(saved > 0, "no line search stopped early");
@@ -456,10 +464,26 @@ fn hanging_punctuation_with_stretched_justification_lays_out_the_same_with_the_e
     let spans = [span(text, 10.0, 0.0, 0.0)];
     let hanging = [
         (true, None, true),
-        (true, Some(text::HangingPunctuationEnd::ForceEnd), false),
-        (false, Some(text::HangingPunctuationEnd::ForceEnd), true),
-        (false, Some(text::HangingPunctuationEnd::AllowEnd), true),
-        (true, Some(text::HangingPunctuationEnd::AllowEnd), false),
+        (
+            true,
+            Some(text::style::HangingPunctuationEnd::ForceEnd),
+            false,
+        ),
+        (
+            false,
+            Some(text::style::HangingPunctuationEnd::ForceEnd),
+            true,
+        ),
+        (
+            false,
+            Some(text::style::HangingPunctuationEnd::AllowEnd),
+            true,
+        ),
+        (
+            true,
+            Some(text::style::HangingPunctuationEnd::AllowEnd),
+            false,
+        ),
     ];
     let mut saved = 0;
     for (first, end, last) in hanging {
@@ -470,7 +494,7 @@ fn hanging_punctuation_with_stretched_justification_lays_out_the_same_with_the_e
             for width in [70.0, 130.0] {
                 let setup = Setup {
                     justification,
-                    hanging: text::HangingPunctuation::new(first, end, last),
+                    hanging: text::style::HangingPunctuation::new(first, end, last),
                     ..Setup::new(width).justified()
                 };
                 saved += assert_same_with_full_walk::<f32>("hanging, justified", &spans, setup);

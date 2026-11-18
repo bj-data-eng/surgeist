@@ -1209,8 +1209,8 @@ pub(crate) fn finalize(
                 .checked_add(super::scope_alignment::accounting::bytes(&row.run.coords)?)
                 .ok_or_else(|| {
                     super::scope_alignment::refusal(
-                        crate::processing::ScopeAlignmentError::Overflow {
-                            kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+                        crate::processing::contextual::ScopeAlignmentError::Overflow {
+                            kind: crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
                         },
                     )
                 })?;
@@ -3610,17 +3610,17 @@ pub(crate) fn measure_character(
                         .checked_add(1)
                         .ok_or_else(|| {
                             super::scope_alignment::refusal(
-                                crate::processing::ScopeAlignmentError::Overflow {
+                                crate::processing::contextual::ScopeAlignmentError::Overflow {
                                     kind:
-                                        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                                        crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                                 },
                             )
                         })?,
                 )
                 .ok_or_else(|| {
                     super::scope_alignment::refusal(
-                        crate::processing::ScopeAlignmentError::Overflow {
-                            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                        crate::processing::contextual::ScopeAlignmentError::Overflow {
+                            kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                         },
                     )
                 })?,
@@ -3655,17 +3655,17 @@ pub(crate) fn measure_character(
                         .checked_add(1)
                         .ok_or_else(|| {
                             super::scope_alignment::refusal(
-                                crate::processing::ScopeAlignmentError::Overflow {
+                                crate::processing::contextual::ScopeAlignmentError::Overflow {
                                     kind:
-                                        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                                        crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                                 },
                             )
                         })?,
                 )
                 .ok_or_else(|| {
                     super::scope_alignment::refusal(
-                        crate::processing::ScopeAlignmentError::Overflow {
-                            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                        crate::processing::contextual::ScopeAlignmentError::Overflow {
+                            kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
                         },
                     )
                 })?,

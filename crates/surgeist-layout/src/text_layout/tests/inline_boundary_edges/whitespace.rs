@@ -3,7 +3,12 @@
 
 use super::*;
 
-fn actual_pair(fixture: &Fixture) -> (text::PreparedControl, text::PreparedControl) {
+fn actual_pair(
+    fixture: &Fixture,
+) -> (
+    text::prepared::PreparedControl,
+    text::prepared::PreparedControl,
+) {
     let start = fixture
         .binding
         .controls
@@ -23,11 +28,11 @@ fn actual_pair(fixture: &Fixture) -> (text::PreparedControl, text::PreparedContr
     assert_ne!(start, end);
     assert_eq!(
         start.view().kind(),
-        &text::ParagraphControlKind::InlineBoundaryStart
+        &text::paragraph::ParagraphControlKind::InlineBoundaryStart
     );
     assert_eq!(
         end.view().kind(),
-        &text::ParagraphControlKind::InlineBoundaryEnd
+        &text::paragraph::ParagraphControlKind::InlineBoundaryEnd
     );
     let a = start.captured_control().expect("captured start");
     let b = end.captured_control().expect("captured end");
@@ -42,7 +47,7 @@ fn actual_pair(fixture: &Fixture) -> (text::PreparedControl, text::PreparedContr
     (start, end)
 }
 
-fn raw(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32, f64)> {
+fn raw(line: &text::finalized::FinalizedLine) -> Vec<(text::source::Range, u32, f32, f64)> {
     qualify(line);
     line.run_views()
         .flat_map(|run| {
@@ -57,9 +62,9 @@ fn raw(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32, f64)> {
 fn removed_custody<S: LayoutScalar>(
     fixture: &Fixture,
     batch: &CompletedLayoutBatchOf<u32, S>,
-    line: &text::FinalizedLine,
+    line: &text::finalized::FinalizedLine,
     value: &str,
-    space: text::Range,
+    space: text::source::Range,
 ) {
     let rows = line
         .edge_units()
@@ -68,7 +73,10 @@ fn removed_custody<S: LayoutScalar>(
     let [row] = rows.as_slice() else {
         panic!("one real original SPACE edge row")
     };
-    assert_eq!(row.disposition(), text::LineEdgeDisposition::Removed);
+    assert_eq!(
+        row.disposition(),
+        text::finalized::LineEdgeDisposition::Removed
+    );
     assert_eq!(row.advance(), 0.0);
     let origin = fixture
         .binding
@@ -95,7 +103,7 @@ fn removed_custody<S: LayoutScalar>(
         placed.layout().source().text().code_units(),
         value.encode_utf16().collect::<Vec<_>>()
     );
-    let local = text::Range::new(
+    let local = text::source::Range::new(
         origin.view().local_range().start + space.start - origin.view().aggregate_range().start,
         origin.view().local_range().start + space.end - origin.view().aggregate_range().start,
     );
@@ -113,7 +121,13 @@ fn removed_custody<S: LayoutScalar>(
 #[test]
 fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_and_exact_frames() {
     fn lane<S: LayoutScalar>() {
-        let fixture = Fixture::new("A ", (0, 2), text::WhiteSpace::Collapse, false, false);
+        let fixture = Fixture::new(
+            "A ",
+            (0, 2),
+            text::style::WhiteSpace::Collapse,
+            false,
+            false,
+        );
         let (_, end) = actual_pair(&fixture);
         assert_eq!(end.view().source_position().get(), 2);
         let edge =
@@ -151,13 +165,13 @@ fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_
             };
             let selected = line.selected_line();
             let request = selected.request();
-            assert_eq!(request.context.end, text::LineEnd::Paragraph);
+            assert_eq!(request.context.end, text::selection::LineEnd::Paragraph);
             assert_eq!(request.context.available_inline, Some(width));
             assert!(
-                matches!(&request.termination, text::PreparedTermination::Ordinary(offer)
-                if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd)
+                matches!(&request.termination, text::selection::PreparedTermination::Ordinary(offer)
+                if offer.view().kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
             );
-            assert_eq!(raw(line), [(text::Range::new(0, 1), 35, 10.0, 0.0)]);
+            assert_eq!(raw(line), [(text::source::Range::new(0, 1), 35, 10.0, 0.0)]);
             // Text3 boundary transparency removes the SPACE10, not the real
             // border2/padding3 strip. This is terminal classification in a
             // fully admitted paragraph, not an unbreakable-overflow oracle.
@@ -182,7 +196,7 @@ fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_
                 (S::from_f64(2.0), S::from_f64(3.0))
             );
             assert_eq!(strip.content_size, Size::ZERO);
-            removed_custody(&fixture, &batch, line, "A ", text::Range::new(1, 2));
+            removed_custody(&fixture, &batch, line, "A ", text::source::Range::new(1, 2));
         }
     }
     lane::<f32>();
@@ -192,7 +206,13 @@ fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_
 #[test]
 fn collapsible_leading_space_after_real_start_border_padding_is_trimmed() {
     fn lane<S: LayoutScalar>() {
-        let fixture = Fixture::new(" A", (0, 2), text::WhiteSpace::Collapse, false, false);
+        let fixture = Fixture::new(
+            " A",
+            (0, 2),
+            text::style::WhiteSpace::Collapse,
+            false,
+            false,
+        );
         let (start, _) = actual_pair(&fixture);
         assert_eq!(start.view().source_position().get(), 0);
         let edge =
@@ -230,13 +250,13 @@ fn collapsible_leading_space_after_real_start_border_padding_is_trimmed() {
             };
             assert_eq!(
                 line.selected_line().request().context.end,
-                text::LineEnd::Paragraph
+                text::selection::LineEnd::Paragraph
             );
             assert_eq!(
                 line.selected_line().request().context.available_inline,
                 Some(width)
             );
-            assert_eq!(raw(line), [(text::Range::new(1, 2), 35, 10.0, 5.0)]);
+            assert_eq!(raw(line), [(text::source::Range::new(1, 2), 35, 10.0, 5.0)]);
             assert_eq!(
                 (
                     line.feedback().advance,
@@ -259,7 +279,7 @@ fn collapsible_leading_space_after_real_start_border_padding_is_trimmed() {
                 (strip.border.left, strip.padding.left),
                 (S::from_f64(2.0), S::from_f64(3.0))
             );
-            removed_custody(&fixture, &batch, line, " A", text::Range::new(0, 1));
+            removed_custody(&fixture, &batch, line, " A", text::source::Range::new(0, 1));
         }
     }
     lane::<f32>();
@@ -271,7 +291,13 @@ fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip(
     fn lane<S: LayoutScalar>() {
         // <span>A SPACE</span>B. Source capture really closes Inline1
         // before the outside B origin, within its parent Block0.
-        let fixture = Fixture::new("A B", (0, 2), text::WhiteSpace::Collapse, false, false);
+        let fixture = Fixture::new(
+            "A B",
+            (0, 2),
+            text::style::WhiteSpace::Collapse,
+            false,
+            false,
+        );
         let (_, end) = actual_pair(&fixture);
         assert_eq!(fixture.binding.origins.len(), 2);
         let edge =
@@ -309,9 +335,9 @@ fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip(
         assert_eq!(
             raw(line),
             [
-                (text::Range::new(0, 1), 35, 10.0, 0.0),
-                (text::Range::new(1, 2), 3, 10.0, 10.0),
-                (text::Range::new(2, 3), 36, 10.0, 25.0),
+                (text::source::Range::new(0, 1), 35, 10.0, 0.0),
+                (text::source::Range::new(1, 2), 3, 10.0, 10.0),
+                (text::source::Range::new(2, 3), 36, 10.0, 25.0),
             ]
         );
         assert_eq!(line.feedback().advance, 35.0); // A10 + SPACE10 + strip5 + B10.
@@ -328,10 +354,13 @@ fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip(
             .edge_units()
             .find(|row| {
                 row.source_pieces()
-                    .any(|source| source == text::Range::new(1, 2))
+                    .any(|source| source == text::source::Range::new(1, 2))
             })
             .unwrap();
-        assert_ne!(row.disposition(), text::LineEdgeDisposition::Removed);
+        assert_ne!(
+            row.disposition(),
+            text::finalized::LineEdgeDisposition::Removed
+        );
         assert_eq!(row.advance(), 10.0);
     }
     lane::<f32>();
@@ -341,7 +370,13 @@ fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip(
 #[test]
 fn preserved_terminal_space_is_not_trimmed_by_the_collapsible_space_rule() {
     fn lane<S: LayoutScalar>() {
-        let fixture = Fixture::new("A ", (0, 2), text::WhiteSpace::Preserve, false, false);
+        let fixture = Fixture::new(
+            "A ",
+            (0, 2),
+            text::style::WhiteSpace::Preserve,
+            false,
+            false,
+        );
         let (_, end) = actual_pair(&fixture);
         let edge =
             InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::from_f64(3.0)).unwrap();
@@ -378,8 +413,8 @@ fn preserved_terminal_space_is_not_trimmed_by_the_collapsible_space_rule() {
         assert_eq!(
             raw(line),
             [
-                (text::Range::new(0, 1), 35, 10.0, 0.0),
-                (text::Range::new(1, 2), 3, 10.0, 10.0),
+                (text::source::Range::new(0, 1), 35, 10.0, 0.0),
+                (text::source::Range::new(1, 2), 3, 10.0, 10.0),
             ]
         );
         assert_eq!(line.feedback().advance, 25.0);
@@ -396,10 +431,13 @@ fn preserved_terminal_space_is_not_trimmed_by_the_collapsible_space_rule() {
             .edge_units()
             .find(|row| {
                 row.source_pieces()
-                    .any(|source| source == text::Range::new(1, 2))
+                    .any(|source| source == text::source::Range::new(1, 2))
             })
             .unwrap();
-        assert_ne!(row.disposition(), text::LineEdgeDisposition::Removed);
+        assert_ne!(
+            row.disposition(),
+            text::finalized::LineEdgeDisposition::Removed
+        );
         assert_eq!(row.advance(), 10.0);
     }
     lane::<f32>();

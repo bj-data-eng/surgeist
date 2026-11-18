@@ -15,10 +15,14 @@ use crate::{
     layout::{Affinity, Layout},
     options::Alignment,
     processing::{
-        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentBoundary,
-        ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference,
-        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingParagraph,
-        SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            CapturedScope, ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError,
+            ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference,
+            SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+            process_contextual_source,
+        },
     },
     protocol::{
         ControlAllocation, FinalizedLine, FormattedLineContext, LineAlignmentInsets,
@@ -54,7 +58,7 @@ struct Fixture {
 }
 
 fn fixture(classified: bool) -> Fixture {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     let style = Style {
         font: Font::new().family("Ahem"),
         size: 10.0,

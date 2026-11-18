@@ -8,16 +8,16 @@ const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fon
 
 struct Fixture {
     binding: TextParagraphBinding<u32>,
-    scope: text::CapturedScope,
+    scope: text::capture::CapturedScope,
 }
 
 impl Fixture {
     fn new(raw: &str, range: Range<usize>, physical: bool) -> Self {
-        use text::SourceProcessingEvent as E;
-        let style = text::Style {
-            word_break: text::WordBreak::BreakAll,
-            hyphens: text::Hyphens::None,
-            white_space: text::WhiteSpace::Preserve,
+        use text::capture::SourceProcessingEvent as E;
+        let style = text::style::Style {
+            word_break: text::style::WordBreak::BreakAll,
+            hyphens: text::hyphenation::Hyphens::None,
+            white_space: text::style::WhiteSpace::Preserve,
             ..ahem_style(10.0, 10.0)
         };
         let units = raw.encode_utf16().collect::<Vec<_>>();
@@ -26,15 +26,15 @@ impl Fixture {
         assert_eq!(units.len(), raw.chars().count());
         assert!(range.start < range.end && range.end <= units.len());
         let mut source = Source::new(raw);
-        source.span(text::Range::new(0, units.len()), style.clone());
+        source.span(text::source::Range::new(0, units.len()), style.clone());
         let mut controls = Vec::new();
         if physical {
             controls.extend([
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: range.start,
                     kind: ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: range.end,
                     kind: ParagraphControlKind::InlineBoundaryEnd,
                 },
@@ -48,7 +48,7 @@ impl Fixture {
                 if physical {
                     events.push(E::Control {
                         control: 1,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     });
                     nodes.push(21);
                 }
@@ -62,51 +62,53 @@ impl Fixture {
                 if physical {
                     events.push(E::Control {
                         control: 0,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     });
                     nodes.push(20);
                 }
             }
             if at < units.len() {
-                origins.push(text::ParagraphOrigin {
+                origins.push(text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: Source::identified(
                         String::from_utf16(&units[at..at + 1]).unwrap(),
-                        text::Id::from_u64(710_000 + at as u64),
+                        text::source::Id::from_u64(710_000 + at as u64),
                         19,
                     ),
-                    local: text::Range::new(0, 1),
-                    aggregate: text::Range::new(at, at + 1),
-                    kind: text::ParagraphOriginKind::Authored,
+                    local: text::source::Range::new(0, 1),
+                    aggregate: text::source::Range::new(at, at + 1),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 });
                 events.push(E::Origin {
                     origin: at,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 });
                 nodes.push(100 + u32::try_from(at).unwrap());
             }
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let processed = Arc::new(
-            text::process_contextual_source(text::ContextualSourceInput {
+            text::capture::process_contextual_source(text::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source,
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: text::SourceProcessingEnvelope::Complete,
+                segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: text::capture::SourceProcessingEnvelope::Complete,
                 origins,
                 connections: (1..units.len())
-                    .map(|after_origin| text::SourceProcessingConnection {
+                    .map(|after_origin| text::capture::SourceProcessingConnection {
                         before_origin: after_origin - 1,
                         after_origin,
-                        kind: text::ParagraphConnectionKind::Continuous,
+                        kind: text::paragraph::ParagraphConnectionKind::Continuous,
                     })
                     .collect(),
                 controls,
                 boundary_policies: (0..units.len() - 1)
-                    .map(|connection| text::ParagraphBoundaryPolicy {
-                        definition: text::ParagraphBoundaryDefinition::Connection(connection),
+                    .map(|connection| text::paragraph::ParagraphBoundaryPolicy {
+                        definition: text::paragraph::ParagraphBoundaryDefinition::Connection(
+                            connection,
+                        ),
                         preceding_wrap: Wrap::Word,
                         following_wrap: Wrap::Word,
                         ancestor_wrap: Wrap::Word,
@@ -114,36 +116,37 @@ impl Fixture {
                     .collect(),
                 replacements: vec![],
                 scopes: vec![
-                    text::SourceProcessingScope::Block {
+                    text::capture::SourceProcessingScope::Block {
                         writing_axis: None,
                         horizontal_inner_direction: None,
                         font_reference: None,
-                        topology: text::SourceProcessingTopology::Complete,
+                        topology: text::capture::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style.clone(),
                         used_direction: ParagraphBaseDirection::LeftToRight,
                     },
-                    text::SourceProcessingScope::Inline {
+                    text::capture::SourceProcessingScope::Inline {
                         horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
                         trim: Default::default(),
                         style: Some(style),
-                        boundaries: physical
-                            .then_some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                        boundaries: physical.then_some(
+                            text::capture::SourceProcessingScopeBoundaries { start: 0, end: 1 },
+                        ),
                     },
                 ],
-                paragraphs: vec![text::SourceProcessingParagraph {
+                paragraphs: vec![text::capture::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events,
             })
             .unwrap(),
         );
-        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
@@ -152,7 +155,7 @@ impl Fixture {
             .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
             .unwrap();
         let prepared = system
-            .prepare(&analyzed, text::PreparationOptions::default())
+            .prepare(&analyzed, text::prepared::PreparationOptions::default())
             .unwrap();
         let members = prepared
             .captured_owner()
@@ -163,7 +166,7 @@ impl Fixture {
         let scope = members[0]
             .scope_intersections()
             .map(|row| row.scope())
-            .find(|scope| scope.role() == text::ScopeRole::Inline)
+            .find(|scope| scope.role() == text::capture::ScopeRole::Inline)
             .unwrap();
         let origins = prepared
             .origin_views()
@@ -171,7 +174,7 @@ impl Fixture {
             .map(|(at, origin)| {
                 assert_eq!(
                     origin.source().id(),
-                    Some(text::Id::from_u64(710_000 + at as u64))
+                    Some(text::source::Id::from_u64(710_000 + at as u64))
                 );
                 assert_eq!(origin.source().revision(), 19);
                 TextOriginBinding {
@@ -254,14 +257,16 @@ impl Fixture {
         // baseline8, extent10 (ahem_style), explicitly Baseline-aligned. This
         // is not a receipt inferred from descendant glyphs or paragraph strut.
         let scope = WrappingScopeInput::Captured {
-            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
-                scope: None,
-                metrics: text::LineStrut {
-                    baseline: 8.0,
-                    line_extent: 10.0,
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                text::allocation::LineBoxStrut {
+                    scope: None,
+                    metrics: text::allocation::LineStrut {
+                        baseline: 8.0,
+                        line_extent: 10.0,
+                    },
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
-                alignment: text::LineBoxAlignment::Baseline,
-            })),
+            )),
             scope: self.scope.clone(),
             wrap_inside: WrapInside::Auto,
             edges,
@@ -368,7 +373,9 @@ fn edges(before: bool, value: WrapEdge) -> WrapEdges {
     }
 }
 
-fn finalized<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
+fn finalized<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<text::finalized::FinalizedLine> {
     let mut lines = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -383,7 +390,7 @@ fn assert_ascii<S: LayoutScalar>(
     first_end: usize,
 ) {
     let placed = batch.placed_text()[0].layout();
-    assert_eq!(placed.source().text(), &text::Text::from("ABCDE"));
+    assert_eq!(placed.source().text(), &text::source::Text::from("ABCDE"));
     assert_eq!(
         placed
             .lines()
@@ -391,8 +398,8 @@ fn assert_ascii<S: LayoutScalar>(
             .map(|line| line.range())
             .collect::<Vec<_>>(),
         [
-            text::Range::new(0, first_end),
-            text::Range::new(first_end, 5)
+            text::source::Range::new(0, first_end),
+            text::source::Range::new(first_end, 5)
         ]
     );
     for (index, line) in placed.lines().iter().enumerate() {
@@ -410,11 +417,11 @@ fn assert_ascii<S: LayoutScalar>(
     );
     assert_eq!(
         lines[0].selected_line().request().context.end,
-        text::LineEnd::Soft
+        text::selection::LineEnd::Soft
     );
     assert_eq!(
         lines[1].selected_line().request().context.end,
-        text::LineEnd::Paragraph
+        text::selection::LineEnd::Paragraph
     );
     let mut glyphs = Vec::new();
     for line in lines {
@@ -433,7 +440,7 @@ fn assert_ascii<S: LayoutScalar>(
     assert_eq!(
         glyphs,
         (0..5)
-            .map(|i| (text::Range::new(i, i + 1), 35 + i as u32, 10.0))
+            .map(|i| (text::source::Range::new(i, i + 1), 35 + i as u32, 10.0))
             .collect::<Vec<_>>()
     );
 }
@@ -481,7 +488,7 @@ fn physical_before_and_after_avoidance_selects_real_fitting_text_receipts() {
                             .find(|row| row.node == node)
                             .unwrap()
                             .occurrence;
-                        let at = fixture.binding.prepared.participants().position(|p| matches!(p, text::PreparedParticipant::Control(c) if &c == control)).unwrap();
+                        let at = fixture.binding.prepared.participants().position(|p| matches!(p, text::prepared::PreparedParticipant::Control(c) if &c == control)).unwrap();
                         assert_eq!(
                             finalized(&batch)[0]
                                 .selected_line()
@@ -561,21 +568,27 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                     .take(2)
                     .map(|unit| unit.source_range())
                     .collect::<Vec<_>>(),
-                [text::Range::new(0, 1), text::Range::new(1, 2)]
+                [
+                    text::source::Range::new(0, 1),
+                    text::source::Range::new(1, 2)
+                ]
             );
             for (index, original) in ["A", "\u{301}"].into_iter().enumerate() {
                 let origin = fixture.binding.prepared.origin_views().nth(index).unwrap();
-                assert_eq!(origin.source().text(), &text::Text::from(original));
-                assert_eq!(origin.aggregate_range(), text::Range::new(index, index + 1));
+                assert_eq!(origin.source().text(), &text::source::Text::from(original));
+                assert_eq!(
+                    origin.aggregate_range(),
+                    text::source::Range::new(index, index + 1)
+                );
             }
             // BreakAll does not create a cut between a base and its Extend.
             // Check actual mixed prefixes, not a codepoint or source offset.
             let participants = fixture.binding.prepared.participants().collect::<Vec<_>>();
             let at = |range| {
-                participants.iter().position(|participant| matches!(participant, text::PreparedParticipant::Text(unit) if unit.view().source_range() == range)).unwrap()
+                participants.iter().position(|participant| matches!(participant, text::prepared::PreparedParticipant::Text(unit) if unit.view().source_range() == range)).unwrap()
             };
-            let base = at(text::Range::new(0, 1));
-            let mark = at(text::Range::new(1, 2));
+            let base = at(text::source::Range::new(0, 1));
+            let mark = at(text::source::Range::new(1, 2));
             for opportunity in fixture.binding.prepared.opportunity_views() {
                 let end = opportunity.boundary().view().participant_offset();
                 assert_eq!(
@@ -609,7 +622,7 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                 .binding
                 .prepared
                 .opportunity_views()
-                .find(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
                 .unwrap()
                 .handle();
             let mut source_segments = fixture.binding.prepared.source_segments();
@@ -620,22 +633,24 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                     &start,
                     None,
                     &end,
-                    text::ConditionalPurpose::MinContent,
+                    text::conditional::ConditionalPurpose::MinContent,
                     &[],
-                    surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
+                    surgeist_text::conditional::ConditionalLineContext::Unframed {
+                        inline_boxes: None,
+                    },
                 )
                 .unwrap();
             assert!(search.begin(&[]).unwrap().opportunities().is_empty());
             let hidden_side = if before {
-                text::CapturedScopeIncidence::AtBefore
+                text::observation::CapturedScopeIncidence::AtBefore
             } else {
-                text::CapturedScopeIncidence::AtAfter
+                text::observation::CapturedScopeIncidence::AtAfter
             };
             for offer in fixture
                 .binding
                 .prepared
                 .opportunity_views()
-                .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                .filter(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
             {
                 let incidences = fixture
                     .binding
@@ -697,7 +712,10 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                         | WrapEdge::Flex => {
                             let batch = fixture.compute::<S>(edges(before, edge), form).unwrap();
                             let layout = batch.placed_text()[0].layout();
-                            assert_eq!(layout.source().text(), &text::Text::from("A\u{301}BCDEF"));
+                            assert_eq!(
+                                layout.source().text(),
+                                &text::source::Text::from("A\u{301}BCDEF")
+                            );
                             // Actual Ahem cmap supplies canonical A-acute165
                             // at one em: [A+acute,B,C] and [D,E,F] each fill30.
                             assert_eq!(
@@ -706,7 +724,10 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                                     .iter()
                                     .map(|line| line.range())
                                     .collect::<Vec<_>>(),
-                                [text::Range::new(0, 4), text::Range::new(4, 7)]
+                                [
+                                    text::source::Range::new(0, 4),
+                                    text::source::Range::new(4, 7)
+                                ]
                             );
                             let lines = finalized(&batch);
                             assert_eq!(
@@ -729,11 +750,10 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                                     })
                                 })
                                 .collect::<Vec<_>>();
-                            let mut expected = vec![(165, text::Range::new(0, 2), 10.0)];
-                            expected
-                                .extend((2..7).map(|at| {
-                                    (34 + at as u32, text::Range::new(at, at + 1), 10.0)
-                                }));
+                            let mut expected = vec![(165, text::source::Range::new(0, 2), 10.0)];
+                            expected.extend((2..7).map(|at| {
+                                (34 + at as u32, text::source::Range::new(at, at + 1), 10.0)
+                            }));
                             assert_eq!(glyphs, expected);
                         }
                     }
@@ -769,16 +789,16 @@ fn authentic_logical_edge_supports_soft_incidence_and_late_line_requires_source_
             let boundary = prepared
                 .opportunity_views()
                 .find(|offer| {
-                    offer.kind() == text::PreparedBreakKind::Allowed
+                    offer.kind() == text::prepared::PreparedBreakKind::Allowed
                         && offer.boundary().view().source_before().get() == 3
                         && offer.boundary().view().source_after().get() == 3
                 })
                 .unwrap()
                 .boundary();
             let expected = if before {
-                text::CapturedScopeIncidence::AtBefore
+                text::observation::CapturedScopeIncidence::AtBefore
             } else {
-                text::CapturedScopeIncidence::AtAfter
+                text::observation::CapturedScopeIncidence::AtAfter
             };
             assert!(
                 prepared

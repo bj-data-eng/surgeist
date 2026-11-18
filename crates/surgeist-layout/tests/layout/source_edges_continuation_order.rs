@@ -40,59 +40,59 @@ impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
     }
 }
 
-fn processed() -> Arc<t::ProcessedSource> {
-    use t::SourceProcessingEvent as E;
-    let base = t::Style {
-        font: t::Font::new().family("Ahem"),
+fn processed() -> Arc<t::processing::ProcessedSource> {
+    use t::capture::SourceProcessingEvent as E;
+    let base = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        wrap: t::Wrap::None,
-        hyphens: t::Hyphens::None,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        wrap: t::style::Wrap::None,
+        hyphens: t::hyphenation::Hyphens::None,
+        ..t::style::Style::default()
     };
-    let mut source = t::Source::identified("AXB", t::Id::from_u64(658100), 31);
-    source.span(t::Range::new(0, 3), base.clone());
-    let block = || t::SourceProcessingScope::Block {
+    let mut source = t::source::Source::identified("AXB", t::source::Id::from_u64(658100), 31);
+    source.span(t::source::Range::new(0, 3), base.clone());
+    let block = || t::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: t::SourceProcessingTopology::Complete,
+        topology: t::capture::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base.clone(),
-        used_direction: t::ParagraphBaseDirection::LeftToRight,
+        used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
     };
     let origin = |origin| E::Origin {
         origin,
-        affinity: t::Affinity::After,
+        affinity: t::layout::Affinity::After,
     };
     let control = |control| E::Control {
         control,
-        affinity: t::Affinity::After,
+        affinity: t::layout::Affinity::After,
     };
     Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins: (0..3)
-                .map(|i| t::ParagraphOrigin {
+                .map(|i| t::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: t::Range::new(i, i + 1),
-                    aggregate: t::Range::new(i, i + 1),
-                    kind: t::ParagraphOriginKind::Authored,
+                    local: t::source::Range::new(i, i + 1),
+                    aggregate: t::source::Range::new(i, i + 1),
+                    kind: t::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             controls: vec![
-                t::ParagraphControl {
+                t::paragraph::ParagraphControl {
                     at: 0,
-                    kind: t::ParagraphControlKind::InlineBoundaryStart,
+                    kind: t::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
-                t::ParagraphControl {
+                t::paragraph::ParagraphControl {
                     at: 3,
-                    kind: t::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: t::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
             ],
             connections: vec![],
@@ -101,20 +101,23 @@ fn processed() -> Arc<t::ProcessedSource> {
             replacements: vec![],
             scopes: vec![
                 block(),
-                t::SourceProcessingScope::Inline {
+                t::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
                     style: Some(base.clone()),
-                    boundaries: Some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: Some(t::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
                 },
                 block(),
             ],
             paragraphs: (0..3)
-                .map(|_| t::SourceProcessingParagraph {
-                    base_direction: t::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                .map(|_| t::capture::SourceProcessingParagraph {
+                    base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             // This is the published owning continuation profile, reduced to ASCII.
@@ -146,7 +149,7 @@ fn processed() -> Arc<t::ProcessedSource> {
 fn fixture<S: l::LayoutScalar>() -> (
     Tree<S>,
     Vec<l::TextParagraphBinding<u32>>,
-    Arc<t::ProcessedSource>,
+    Arc<t::processing::ProcessedSource>,
 ) {
     let capture = processed();
     let s = capture.captured_scope(1).unwrap();
@@ -168,7 +171,7 @@ fn fixture<S: l::LayoutScalar>() -> (
         .flow_events()
         .unwrap()
         .filter_map(|event| match event {
-            t::CapturedFlowEvent::ParagraphStart(p) => Some(p),
+            t::capture::CapturedFlowEvent::ParagraphStart(p) => Some(p),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -215,27 +218,29 @@ fn fixture<S: l::LayoutScalar>() -> (
         .enumerate()
         .map(|(i, p)| {
             assert!(Arc::ptr_eq(p.processed_source(), &capture));
-            let a = t::AnalyzedSource::from_processed_paragraph(
+            let a = t::analyzed::AnalyzedSource::from_processed_paragraph(
                 p,
-                t::AnalysisTypography::HorizontalComposition,
+                t::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let missing = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())
-                .map(|r| t::WrappingPolicy {
+                .map(|r| t::analyzed::WrappingPolicy {
                     relation: r.handle(),
-                    ancestor_wrap: t::Wrap::None,
+                    ancestor_wrap: t::style::Wrap::None,
                 })
                 .collect();
             let a = a.with_wrapping_policies(missing).unwrap();
-            let prepared = fonts.prepare(&a, t::PreparationOptions::default()).unwrap();
+            let prepared = fonts
+                .prepare(&a, t::prepared::PreparationOptions::default())
+                .unwrap();
             assert_eq!(
                 prepared
                     .opportunity_views()
                     .map(|o| (o.kind(), o.boundary().view().source_before().get()))
                     .collect::<Vec<_>>(),
-                [(t::PreparedBreakKind::ParagraphEnd, i + 1)]
+                [(t::prepared::PreparedBreakKind::ParagraphEnd, i + 1)]
             );
             let (container, nodes, origin_node) = match i {
                 0 => (0, vec![1, 2], 2),
@@ -244,9 +249,9 @@ fn fixture<S: l::LayoutScalar>() -> (
                 _ => unreachable!(),
             };
             let origin = prepared.origin_views().next().unwrap();
-            assert_eq!(origin.source().id(), Some(t::Id::from_u64(658100)));
-            assert_eq!(origin.aggregate_range(), t::Range::new(i, i + 1));
-            assert_eq!(origin.local_range(), t::Range::new(i, i + 1));
+            assert_eq!(origin.source().id(), Some(t::source::Id::from_u64(658100)));
+            assert_eq!(origin.aggregate_range(), t::source::Range::new(i, i + 1));
+            assert_eq!(origin.local_range(), t::source::Range::new(i, i + 1));
             let origin = origin.handle();
             inputs[origin_node as usize] =
                 l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone()));
@@ -295,7 +300,7 @@ fn fixture<S: l::LayoutScalar>() -> (
     )
 }
 
-fn wrapping(reverse: bool, captured: Option<t::CapturedScope>) -> l::WrappingInput<u32> {
+fn wrapping(reverse: bool, captured: Option<t::capture::CapturedScope>) -> l::WrappingInput<u32> {
     let children = if reverse { [4, 3, 2] } else { [2, 3, 4] }
         .into_iter()
         .map(|node| l::GeneratedChildBoxInput {
@@ -389,16 +394,16 @@ fn full<S: l::LayoutScalar>(captured_order: bool) {
             layout.analyzed_source().identity(),
             bindings[i].prepared.analyzed_source().identity()
         );
-        assert_eq!(layout.source().id(), Some(t::Id::from_u64(658100)));
+        assert_eq!(layout.source().id(), Some(t::source::Id::from_u64(658100)));
         assert_eq!(layout.source().revision(), 31);
-        assert_eq!(layout.source().text(), &t::Text::from("AXB"));
+        assert_eq!(layout.source().text(), &t::source::Text::from("AXB"));
         assert_eq!(
             layout
                 .lines()
                 .iter()
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
-            [t::Range::new(i, i + 1)]
+            [t::source::Range::new(i, i + 1)]
         );
         assert_eq!(layout.lines()[0].baseline(), baseline);
         assert_eq!(layout.lines()[0].bounds().size.height, 10.0);
@@ -445,9 +450,9 @@ fn full<S: l::LayoutScalar>(captured_order: bool) {
     assert_eq!(
         sourced,
         [
-            (t::Range::new(0, 1), 35, 10.0),
-            (t::Range::new(1, 2), 58, 10.0),
-            (t::Range::new(2, 3), 36, 10.0)
+            (t::source::Range::new(0, 1), 35, 10.0),
+            (t::source::Range::new(1, 2), 58, 10.0),
+            (t::source::Range::new(2, 3), 36, 10.0)
         ]
     );
 }

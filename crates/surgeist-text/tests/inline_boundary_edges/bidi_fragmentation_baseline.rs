@@ -4,14 +4,14 @@ use super::*;
 
 #[derive(Debug, PartialEq)]
 enum Logical {
-    Text(t::Range, u8),
+    Text(t::source::Range, u8),
     Control(K, usize, u8),
 }
 
-fn captured_override() -> t::PreparedText {
+fn captured_override() -> t::prepared::PreparedText {
     let p = prepare_capture(
-        t::Source::identified("abcABC", t::Id::from_u64(1_646_101), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("abcABC", t::source::Id::from_u64(1_646_101), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 2), (2, 3), (3, 4), (4, 6)],
         &[
             (K::InlineBoundaryStart, 2),
@@ -19,7 +19,7 @@ fn captured_override() -> t::PreparedText {
             (K::InlineBoundaryEnd, 4),
             (
                 K::OptionalBreak {
-                    wrap: t::Wrap::Word,
+                    wrap: t::style::Wrap::Word,
                 },
                 4,
             ),
@@ -47,18 +47,21 @@ fn captured_override() -> t::PreparedText {
     assert_eq!(p.source_segments().len(), 1);
     assert_eq!(
         p.analyzed_source().source().text(),
-        &t::Text::from("abcABC")
+        &t::source::Text::from("abcABC")
     );
-    assert_eq!(p.analyzed_source().direction(), t::Direction::LeftToRight);
+    assert_eq!(
+        p.analyzed_source().direction(),
+        t::style::Direction::LeftToRight
+    );
     assert_eq!(
         p.origin_views()
             .map(|v| v.aggregate_range())
             .collect::<Vec<_>>(),
         [
-            t::Range::new(0, 2),
-            t::Range::new(2, 3),
-            t::Range::new(3, 4),
-            t::Range::new(4, 6),
+            t::source::Range::new(0, 2),
+            t::source::Range::new(2, 3),
+            t::source::Range::new(3, 4),
+            t::source::Range::new(4, 6),
         ]
     );
     assert!(
@@ -71,10 +74,10 @@ fn captured_override() -> t::PreparedText {
     let logical = p
         .participants()
         .map(|part| match part {
-            t::PreparedParticipant::Text(unit) => {
+            t::prepared::PreparedParticipant::Text(unit) => {
                 Logical::Text(unit.view().source_range(), unit.view().level().get())
             }
-            t::PreparedParticipant::Control(control) => Logical::Control(
+            t::prepared::PreparedParticipant::Control(control) => Logical::Control(
                 control.view().kind().clone(),
                 control.view().source_position().get(),
                 control.view().level().get(),
@@ -85,22 +88,22 @@ fn captured_override() -> t::PreparedText {
     assert_eq!(
         logical,
         [
-            Logical::Text(t::Range::new(0, 1), 0),
-            Logical::Text(t::Range::new(1, 2), 0),
+            Logical::Text(t::source::Range::new(0, 1), 0),
+            Logical::Text(t::source::Range::new(1, 2), 0),
             Logical::Control(K::InlineBoundaryStart, 2, 0),
-            Logical::Text(t::Range::new(2, 3), 0),
+            Logical::Text(t::source::Range::new(2, 3), 0),
             Logical::Control(K::RightToLeftOverride, 3, 0),
-            Logical::Text(t::Range::new(3, 4), 1),
+            Logical::Text(t::source::Range::new(3, 4), 1),
             Logical::Control(K::InlineBoundaryEnd, 4, 1),
             Logical::Control(
                 K::OptionalBreak {
-                    wrap: t::Wrap::Word
+                    wrap: t::style::Wrap::Word
                 },
                 4,
                 1
             ),
-            Logical::Text(t::Range::new(4, 5), 1),
-            Logical::Text(t::Range::new(5, 6), 1),
+            Logical::Text(t::source::Range::new(4, 5), 1),
+            Logical::Text(t::source::Range::new(5, 6), 1),
             Logical::Control(K::PopDirectionalFormat, 6, 1),
         ]
     );
@@ -119,7 +122,7 @@ fn captured_override() -> t::PreparedText {
     p
 }
 
-fn endpoint(p: &t::PreparedText, kind: K) -> t::PreparedControl {
+fn endpoint(p: &t::prepared::PreparedText, kind: K) -> t::prepared::PreparedControl {
     let mut controls = p
         .control_views()
         .filter(|v| *v.kind() == kind)
@@ -131,21 +134,21 @@ fn endpoint(p: &t::PreparedText, kind: K) -> t::PreparedControl {
     control
 }
 
-fn bp(narrow: bool, border: f64) -> t::InlineBoxEdgeComponents {
+fn bp(narrow: bool, border: f64) -> t::inline_box::InlineBoxEdgeComponents {
     if narrow {
-        t::InlineBoxEdgeComponents::from_f32(0.0, border as f32, 0.0).unwrap()
+        t::inline_box::InlineBoxEdgeComponents::from_f32(0.0, border as f32, 0.0).unwrap()
     } else {
-        t::InlineBoxEdgeComponents::from_f64(0.0, border, 0.0).unwrap()
+        t::inline_box::InlineBoxEdgeComponents::from_f64(0.0, border, 0.0).unwrap()
     }
 }
 
 fn line(
-    p: &t::PreparedText,
+    p: &t::prepared::PreparedText,
     narrow: bool,
-    start: t::PreparedBoundary,
-    end: t::PreparedOpportunity,
+    start: t::prepared::PreparedBoundary,
+    end: t::prepared::PreparedOpportunity,
     available: f64,
-) -> t::FinalizedLine {
+) -> t::finalized::FinalizedLine {
     let opening = endpoint(p, K::InlineBoundaryStart);
     let closing = endpoint(p, K::InlineBoundaryEnd);
     let owner = opening.captured_control().unwrap().scope();
@@ -153,25 +156,25 @@ fn line(
     assert_eq!(owner.exit_control(), closing.captured_control());
     assert_eq!(closing.captured_control().unwrap().scope(), owner);
     let parent = owner.parent().unwrap();
-    assert_eq!(parent.role(), t::ScopeRole::Domain);
+    assert_eq!(parent.role(), t::capture::ScopeRole::Domain);
     let context = p
         .inline_box_edge_context(
-            t::InlineBoxSource::captured(owner),
-            t::InlineBoxSource::captured(parent),
-            t::LineEdgeSide::Start,
+            t::inline_box::InlineBoxSource::captured(owner),
+            t::inline_box::InlineBoxSource::captured(parent),
+            t::finalized::LineEdgeSide::Start,
         )
         .unwrap();
-    let allocation = |control: &t::PreparedControl| {
+    let allocation = |control: &t::prepared::PreparedControl| {
         let width = if *control == opening {
             3.0
         } else {
             assert_eq!(*control, closing, "only real endpoints request BP geometry");
             5.0
         };
-        t::InlineBoundaryAllocation::box_edge(context.clone(), bp(narrow, width))
+        t::allocation::InlineBoundaryAllocation::box_edge(context.clone(), bp(narrow, width))
     };
     let mut input = request(p, start, end, &[], available);
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     for row in &mut input.controls {
         if row.occurrence == opening || row.occurrence == closing {
             row.boundary = Some(allocation(&row.occurrence));
@@ -183,7 +186,7 @@ fn line(
         let boundary = allocation(&control);
         input
             .boundary_context
-            .push(t::InlineBoundaryContextAllocation {
+            .push(t::allocation::InlineBoundaryContextAllocation {
                 occurrence: control,
                 boundary,
             });
@@ -191,29 +194,29 @@ fn line(
     finalize(p, input)
 }
 
-fn actual_optional_break(p: &t::PreparedText) -> t::PreparedOpportunity {
+fn actual_optional_break(p: &t::prepared::PreparedText) -> t::prepared::PreparedOpportunity {
     let control = endpoint(
         p,
         K::OptionalBreak {
-            wrap: t::Wrap::Word,
+            wrap: t::style::Wrap::Word,
         },
     );
     let mut offers = soft_at(p, 4).into_iter().filter(|offer| {
         let count = offer.view().boundary().view().participant_offset();
         matches!(p.participants().take(count).last(),
-            Some(t::PreparedParticipant::Control(previous)) if previous == control)
+            Some(t::prepared::PreparedParticipant::Control(previous)) if previous == control)
     });
     let offer = offers
         .next()
         .expect("the optional control issues its actual allowed cut");
     assert!(offers.next().is_none());
-    assert_eq!(offer.view().kind(), t::PreparedBreakKind::Allowed);
+    assert_eq!(offer.view().kind(), t::prepared::PreparedBreakKind::Allowed);
     assert_eq!(offer.view().boundary().view().source_before().get(), 4);
     assert_eq!(offer.view().boundary().view().source_after().get(), 4);
     offer
 }
 
-fn packet(line: &t::FinalizedLine) -> Vec<(t::Range, u32, f64)> {
+fn packet(line: &t::finalized::FinalizedLine) -> Vec<(t::source::Range, u32, f64)> {
     let mut glyphs = Vec::new();
     for run in line.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -228,7 +231,7 @@ fn packet(line: &t::FinalizedLine) -> Vec<(t::Range, u32, f64)> {
                     .glyph_outline(glyph.id(), run.face().catalogue_identity())
                     .unwrap()
                     .bounds(),
-                Some(t::Rect::new(0.0, -8.0, 10.0, 10.0))
+                Some(t::geometry::Rect::new(0.0, -8.0, 10.0, 10.0))
             );
             glyphs.push((glyph.range(), glyph.id(), run.origin().x + glyph.pen()));
         }
@@ -237,7 +240,12 @@ fn packet(line: &t::FinalizedLine) -> Vec<(t::Range, u32, f64)> {
     glyphs
 }
 
-fn strip(line: &t::FinalizedLine, p: &t::PreparedText, kind: K, expected: (f64, f64)) {
+fn strip(
+    line: &t::finalized::FinalizedLine,
+    p: &t::prepared::PreparedText,
+    kind: K,
+    expected: (f64, f64),
+) {
     let control = endpoint(p, kind);
     let mut slots = line.control_slots().filter(|s| s.control() == control);
     let slot = slots.next().expect("actual source endpoint executes once");
@@ -250,33 +258,39 @@ fn strip(line: &t::FinalizedLine, p: &t::PreparedText, kind: K, expected: (f64, 
     );
 }
 
-fn place(p: &t::PreparedText, lines: &[t::FinalizedLine]) -> t::Layout {
-    let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
+fn place(
+    p: &t::prepared::PreparedText,
+    lines: &[t::finalized::FinalizedLine],
+) -> t::layout::Layout {
+    let layout = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: p.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
         entries: lines
             .iter()
             .enumerate()
             .map(|(i, line)| {
-                t::PlacementEntry::Formatted(t::LinePlacement {
+                t::placement::PlacementEntry::Formatted(t::placement::LinePlacement {
                     line: line.clone(),
-                    anchor: t::LineAnchor {
+                    anchor: t::placement::LineAnchor {
                         inline_origin: 0.0,
                         baseline: 8.0 + i as f64 * 10.0,
                     },
-                    orientation: t::LineOrientation::Horizontal,
+                    orientation: t::selection::LineOrientation::Horizontal,
                     atomics: vec![],
                 })
             })
             .collect(),
     })
     .unwrap();
-    assert_eq!(layout.source().id(), Some(t::Id::from_u64(1_646_101)));
-    assert_eq!(layout.source().text(), &t::Text::from("abcABC"));
+    assert_eq!(
+        layout.source().id(),
+        Some(t::source::Id::from_u64(1_646_101))
+    );
+    assert_eq!(layout.source().text(), &t::source::Text::from("abcABC"));
     layout
 }
 
-fn placed_packet(layout: &t::Layout) -> Vec<(u32, f64, f64)> {
+fn placed_packet(layout: &t::layout::Layout) -> Vec<(u32, f64, f64)> {
     let mut glyphs = layout
         .run_views()
         .flat_map(|run| {
@@ -308,12 +322,12 @@ fn wide(narrow: bool) {
     assert_eq!(
         packet(&output),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 23.0),
-            (t::Range::new(5, 6), 37, 33.0),
-            (t::Range::new(4, 5), 36, 43.0),
-            (t::Range::new(3, 4), 35, 53.0),
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 23.0),
+            (t::source::Range::new(5, 6), 37, 33.0),
+            (t::source::Range::new(4, 5), 36, 43.0),
+            (t::source::Range::new(3, 4), 35, 53.0),
         ]
     );
     strip(&output, &p, K::InlineBoundaryStart, (20.0, 23.0));
@@ -351,10 +365,10 @@ fn wrapped(narrow: bool) {
     assert_eq!(
         packet(&first),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 23.0),
-            (t::Range::new(3, 4), 35, 33.0),
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 23.0),
+            (t::source::Range::new(3, 4), 35, 33.0),
         ]
     );
     strip(&first, &p, K::InlineBoundaryStart, (20.0, 23.0));
@@ -362,8 +376,8 @@ fn wrapped(narrow: bool) {
     assert_eq!(
         packet(&second),
         [
-            (t::Range::new(5, 6), 37, 0.0),
-            (t::Range::new(4, 5), 36, 10.0)
+            (t::source::Range::new(5, 6), 37, 0.0),
+            (t::source::Range::new(4, 5), 36, 10.0)
         ]
     );
     assert!(

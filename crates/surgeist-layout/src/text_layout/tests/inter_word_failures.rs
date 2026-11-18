@@ -5,9 +5,9 @@ use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
-fn style(word_spacing: f64) -> text::Style {
-    text::Style {
-        white_space: text::WhiteSpace::Preserve,
+fn style(word_spacing: f64) -> text::style::Style {
+    text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
         wrap: Wrap::Word,
         word_spacing,
         ..ahem_style(10.0, 10.0)
@@ -16,8 +16,8 @@ fn style(word_spacing: f64) -> text::Style {
 
 fn captured(
     source: &str,
-    own: text::Style,
-    terminal: text::ParagraphTerminalEdge,
+    own: text::style::Style,
+    terminal: text::paragraph::ParagraphTerminalEdge,
 ) -> PreparedParagraph {
     // The native producer captures this paragraph's terminal fact before
     // preparation. The physical containing block cannot promote it later.
@@ -77,7 +77,7 @@ fn compute<S: LayoutScalar>(
     )
 }
 
-fn line<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::FinalizedLine {
+fn line<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::finalized::FinalizedLine {
     assert_eq!(batch.placed_text().len(), 1);
     assert_eq!(batch.placed_text()[0].layout().lines().len(), 1);
     let line = batch.final_inline_fragments()[0]
@@ -86,11 +86,11 @@ fn line<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::Finali
         .finalized_line();
     assert_eq!(
         line.selected_line().request().context.spacing,
-        text::SpacingPolicy::InterWord
+        text::spacing::SpacingPolicy::InterWord
     );
     assert_eq!(
         line.selected_line().request().context.end,
-        text::LineEnd::Paragraph
+        text::selection::LineEnd::Paragraph
     );
     assert_eq!(
         line.selected_line().spacing_slots().collect::<Vec<_>>(),
@@ -99,7 +99,7 @@ fn line<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::Finali
     line
 }
 
-fn raw(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32)> {
+fn raw(line: &text::finalized::FinalizedLine) -> Vec<(text::source::Range, u32, f32)> {
     line.run_views()
         .flat_map(|run| {
             run.glyphs()
@@ -120,16 +120,16 @@ fn text_error<S: LayoutScalar>(error: &LayoutErrorOf<u32, S>) -> &text::Error {
 }
 
 fn source_piece(
-    row: &text::SpacingSlotFeedback,
+    row: &text::spacing::SpacingSlotFeedback,
     paragraph: &PreparedParagraph,
-    range: text::Range,
+    range: text::source::Range,
 ) {
     assert_eq!(
         row.slot
             .pieces()
             .map(|piece| piece.owner())
             .collect::<Vec<_>>(),
-        [text::SpacingSlotOwner::Source {
+        [text::spacing::SpacingSlotOwner::Source {
             origin: paragraph.origin(1),
             local: range,
             aggregate: range,
@@ -140,12 +140,12 @@ fn source_piece(
 fn deferred_refusal<S: LayoutScalar>() {
     for (terminal, cause) in [
         (
-            text::ParagraphTerminalEdge::Unknown,
-            text::SpacingDeferredCause::MissingTerminalBlockEdge,
+            text::paragraph::ParagraphTerminalEdge::Unknown,
+            text::spacing::SpacingDeferredCause::MissingTerminalBlockEdge,
         ),
         (
-            text::ParagraphTerminalEdge::NonBlockBoundary,
-            text::SpacingDeferredCause::NonBlockParagraphBoundary,
+            text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
+            text::spacing::SpacingDeferredCause::NonBlockParagraphBoundary,
         ),
     ] {
         let paragraph = captured(" ", style(-10.0), terminal);
@@ -153,29 +153,29 @@ fn deferred_refusal<S: LayoutScalar>() {
         let retained = line(&natural);
         assert_eq!(
             retained.selected_line().request().context.alignment,
-            text::Alignment::Start
+            text::options::Alignment::Start
         );
         assert_eq!(retained.feedback().advance, 0.0);
         let rows = retained.spacing_slots().collect::<Vec<_>>();
         assert_eq!(rows.len(), 1);
         let row = &rows[0];
-        source_piece(row, &paragraph, text::Range::new(0, 1));
+        source_piece(row, &paragraph, text::source::Range::new(0, 1));
         assert_eq!(
             row.geometry,
-            text::SpacingSlotGeometry::Independent {
+            text::spacing::SpacingSlotGeometry::Independent {
                 intrinsic_advance: 10.0
             }
         );
         assert_eq!(
             row.stretchability,
-            text::SpacingStretchability::Deferred(cause)
+            text::spacing::SpacingStretchability::Deferred(cause)
         );
         assert!(!row.can_expand());
         assert_eq!(
             (row.authored_word_spacing, row.allocation, row.advance),
             (-10.0, 0.0, 0.0)
         );
-        assert_eq!(raw(&retained), [(text::Range::new(0, 1), 3, 10.0)]);
+        assert_eq!(raw(&retained), [(text::source::Range::new(0, 1), 3, 10.0)]);
 
         // Extra0 is a real admitted Justify operation, even with unavailable
         // terminal response. A positive need must consume the exact cause.
@@ -183,20 +183,20 @@ fn deferred_refusal<S: LayoutScalar>() {
         let exact = line(&exact);
         assert_eq!(
             exact.selected_line().request().context.alignment,
-            text::Alignment::Justify
+            text::options::Alignment::Justify
         );
         assert_eq!(exact.measurements().alignment().advance(), 0.0);
         assert_eq!(exact.spacing_slots().next().unwrap().allocation, 0.0);
         let error = compute::<S>(&paragraph, 15.0, TextAlignLast::Justify).unwrap_err();
         let expected = match cause {
-            text::SpacingDeferredCause::MissingTerminalBlockEdge => {
-                text::ProtocolError::MissingPhaseTwoContext(
-                    text::PhaseTwoContext::TerminalBlockEdge,
+            text::spacing::SpacingDeferredCause::MissingTerminalBlockEdge => {
+                text::prepared::ProtocolError::MissingPhaseTwoContext(
+                    text::prepared::PhaseTwoContext::TerminalBlockEdge,
                 )
             }
-            text::SpacingDeferredCause::NonBlockParagraphBoundary => {
-                text::ProtocolError::UnsupportedContext {
-                    field: text::ProtocolContextField::CssParagraphBoundary,
+            text::spacing::SpacingDeferredCause::NonBlockParagraphBoundary => {
+                text::prepared::ProtocolError::UnsupportedContext {
+                    field: text::prepared::ProtocolContextField::CssParagraphBoundary,
                 }
             }
         };
@@ -205,17 +205,21 @@ fn deferred_refusal<S: LayoutScalar>() {
             "{error:?}"
         );
         assert_eq!(retained.feedback().advance, 0.0);
-        assert_eq!(raw(&retained), [(text::Range::new(0, 1), 3, 10.0)]);
+        assert_eq!(raw(&retained), [(text::source::Range::new(0, 1), 3, 10.0)]);
         let retry = compute::<S>(&paragraph, 15.0, TextAlignLast::Auto).unwrap();
         assert_eq!(line(&retry).feedback().advance, 0.0);
     }
-    let paragraph = captured(" ", style(-10.0), text::ParagraphTerminalEdge::BlockEnd);
+    let paragraph = captured(
+        " ",
+        style(-10.0),
+        text::paragraph::ParagraphTerminalEdge::BlockEnd,
+    );
     let actual = compute::<S>(&paragraph, 15.0, TextAlignLast::Justify).unwrap();
     let actual = line(&actual);
     assert_eq!(actual.measurements().alignment().advance(), 15.0);
     assert_eq!(
         actual.spacing_slots().next().unwrap().stretchability,
-        text::SpacingStretchability::Direct
+        text::spacing::SpacingStretchability::Direct
     );
     assert_eq!(actual.spacing_slots().next().unwrap().allocation, 15.0);
 }
@@ -229,12 +233,12 @@ fn deferred_only_final_justification_preserves_exact_terminal_refusal_and_zero_c
 fn direct_with_deferred<S: LayoutScalar>() {
     for (terminal, cause) in [
         (
-            text::ParagraphTerminalEdge::Unknown,
-            text::SpacingDeferredCause::MissingTerminalBlockEdge,
+            text::paragraph::ParagraphTerminalEdge::Unknown,
+            text::spacing::SpacingDeferredCause::MissingTerminalBlockEdge,
         ),
         (
-            text::ParagraphTerminalEdge::NonBlockBoundary,
-            text::SpacingDeferredCause::NonBlockParagraphBoundary,
+            text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
+            text::spacing::SpacingDeferredCause::NonBlockParagraphBoundary,
         ),
     ] {
         let paragraph = captured(" X ", style(-10.0), terminal);
@@ -252,46 +256,49 @@ fn direct_with_deferred<S: LayoutScalar>() {
         let actual = line(&actual);
         assert_eq!(
             actual.selected_line().request().context.alignment,
-            text::Alignment::Justify
+            text::options::Alignment::Justify
         );
         assert_eq!(actual.measurements().alignment().advance(), 20.0);
         assert_eq!(actual.feedback().advance, 20.0);
         let rows = actual.spacing_slots().collect::<Vec<_>>();
         assert_eq!(rows.len(), 2);
-        for (row, range) in rows
-            .iter()
-            .zip([text::Range::new(0, 1), text::Range::new(2, 3)])
-        {
+        for (row, range) in rows.iter().zip([
+            text::source::Range::new(0, 1),
+            text::source::Range::new(2, 3),
+        ]) {
             source_piece(row, &paragraph, range);
             assert_eq!(
                 row.geometry,
-                text::SpacingSlotGeometry::Independent {
+                text::spacing::SpacingSlotGeometry::Independent {
                     intrinsic_advance: 10.0
                 }
             );
             assert_eq!(row.authored_word_spacing, -10.0);
         }
-        assert_eq!(rows[0].stretchability, text::SpacingStretchability::Direct);
+        assert_eq!(
+            rows[0].stretchability,
+            text::spacing::SpacingStretchability::Direct
+        );
         assert!(rows[0].can_expand());
         assert_eq!((rows[0].allocation, rows[0].advance), (10.0, 10.0));
         assert_eq!(
             rows[1].stretchability,
-            text::SpacingStretchability::Deferred(cause)
+            text::spacing::SpacingStretchability::Deferred(cause)
         );
         assert!(!rows[1].can_expand());
         assert_eq!((rows[1].allocation, rows[1].advance), (0.0, 0.0));
         assert_eq!(
             raw(&actual),
             [
-                (text::Range::new(0, 1), 3, 10.0),
-                (text::Range::new(1, 2), 58, 10.0),
-                (text::Range::new(2, 3), 3, 10.0)
+                (text::source::Range::new(0, 1), 3, 10.0),
+                (text::source::Range::new(1, 2), 58, 10.0),
+                (text::source::Range::new(2, 3), 3, 10.0)
             ]
         );
         assert_eq!(
             actual.edge_units().last().unwrap().disposition(),
-            text::LineEdgeDisposition::UnconsumedTerminal {
-                side: text::LineEdgeSide::End
+            text::finalized::LineEdgeDisposition::UnconsumedTerminal {
+                side: text::finalized::LineEdgeSide::End
             }
         );
         assert_eq!(natural.measurements().alignment().advance(), 10.0);
@@ -385,17 +392,17 @@ fn shared_refusal<S: LayoutScalar>() {
     assert_eq!(
         raw(&retained),
         [
-            (text::Range::new(0, 2), 58, 10.0),
-            (text::Range::new(2, 3), 35, 10.0)
+            (text::source::Range::new(0, 2), 58, 10.0),
+            (text::source::Range::new(2, 3), 35, 10.0)
         ]
     );
     assert_eq!(retained.measurements().alignment().advance(), 20.0);
     let rows = retained.spacing_slots().collect::<Vec<_>>();
     assert_eq!(rows.len(), 1);
-    source_piece(&rows[0], &paragraph, text::Range::new(1, 2));
+    source_piece(&rows[0], &paragraph, text::source::Range::new(1, 2));
     assert_eq!(
         rows[0].geometry,
-        text::SpacingSlotGeometry::SharedProviderGroup
+        text::spacing::SpacingSlotGeometry::SharedProviderGroup
     );
     assert_eq!(rows[0].allocation, 0.0);
     assert!(!rows[0].can_expand());
@@ -403,7 +410,7 @@ fn shared_refusal<S: LayoutScalar>() {
     assert_eq!(line(&exact).measurements().alignment().advance(), 20.0);
     assert_eq!(
         line(&exact).selected_line().request().context.alignment,
-        text::Alignment::Justify
+        text::options::Alignment::Justify
     );
     let error = compute::<S>(&paragraph, 30.0, TextAlignLast::Justify).unwrap_err();
     let error = text_error(&error);
@@ -418,14 +425,17 @@ fn shared_refusal<S: LayoutScalar>() {
     else {
         panic!("shared provider geometry requires its precise refusal: {error:?}")
     };
-    assert_eq!(*stage, text::SpacingStage::SelectedShaping);
-    assert_eq!(*operation, text::SpacingOperation::InterWordAllocation);
+    assert_eq!(*stage, text::spacing::SpacingStage::SelectedShaping);
+    assert_eq!(
+        *operation,
+        text::spacing::SpacingOperation::InterWordAllocation
+    );
     assert_eq!(
         pieces.as_ref(),
-        [text::SpacingPiece::Source {
+        [text::spacing::SpacingPiece::Source {
             origin: 0,
-            local: text::Range::new(1, 2),
-            aggregate: text::Range::new(1, 2)
+            local: text::source::Range::new(1, 2),
+            aggregate: text::source::Range::new(1, 2)
         }]
     );
     assert_eq!(provider_atoms.len(), 1);
@@ -460,21 +470,28 @@ fn direct_subnormal_allocation_and_equal_share_underflow_refuse_instead_of_falli
         // A Soft all-SPACE prefix hangs and falls back before ParagraphEnd.
         // No wrapping isolates the final Direct allocation qualified here.
         own.wrap = Wrap::None;
-        let paragraph = captured(source, own, text::ParagraphTerminalEdge::BlockEnd);
+        let paragraph = captured(
+            source,
+            own,
+            text::paragraph::ParagraphTerminalEdge::BlockEnd,
+        );
         let natural = compute::<f64>(&paragraph, tiny, TextAlignLast::Auto).unwrap();
         let retained = line(&natural);
         assert_eq!(retained.measurements().alignment().advance(), 0.0);
         let rows = retained.spacing_slots().collect::<Vec<_>>();
         assert_eq!(rows.len(), slots);
         for (index, row) in rows.iter().enumerate() {
-            source_piece(row, &paragraph, text::Range::new(index, index + 1));
+            source_piece(row, &paragraph, text::source::Range::new(index, index + 1));
             assert_eq!(
                 row.geometry,
-                text::SpacingSlotGeometry::Independent {
+                text::spacing::SpacingSlotGeometry::Independent {
                     intrinsic_advance: 10.0
                 }
             );
-            assert_eq!(row.stretchability, text::SpacingStretchability::Direct);
+            assert_eq!(
+                row.stretchability,
+                text::spacing::SpacingStretchability::Direct
+            );
             assert!(row.can_expand());
             assert_eq!(
                 (row.authored_word_spacing, row.allocation, row.advance),
@@ -492,8 +509,8 @@ fn direct_subnormal_allocation_and_equal_share_underflow_refuse_instead_of_falli
             assert_eq!(error.code, text::ErrorCode::InvalidTextNumeric);
             assert!(
                 matches!(error.detail(), Some(text::ErrorDetail::InvalidTextNumeric {
-                field: "word spacing half", phase: text::TextNumericPhase::Finalization,
-                category: text::TextNumericError::NonZeroLost, value,
+                field: "word spacing half", phase: text::geometry::TextNumericPhase::Finalization,
+                category: text::geometry::TextNumericError::NonZeroLost, value,
             }) if *value == tiny),
                 "{error:?}"
             );

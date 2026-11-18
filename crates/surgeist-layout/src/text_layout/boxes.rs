@@ -3,8 +3,9 @@
 use super::fit::FitError;
 use crate::inline_wrapping::AvoidClass;
 use surgeist_text::{
-    CapturedScopeIncidence, ControlAllocation, LineBoxStrut, PreparedBoundary,
-    PreparedBoundaryIncidence,
+    allocation::{ControlAllocation, LineBoxStrut},
+    observation::{CapturedScopeIncidence, PreparedBoundaryIncidence},
+    prepared::PreparedBoundary,
 };
 
 /// A single original placement, classified once against this immutable flow's
@@ -21,7 +22,7 @@ pub(crate) enum NativeBoxCut {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BoxFrontier {
     pub boundary: PreparedBoundary,
-    pub segment: surgeist_text::PreparedSourceSegment,
+    pub segment: surgeist_text::prepared::PreparedSourceSegment,
     placement: BoxPlacement,
 }
 
@@ -42,7 +43,7 @@ struct BoundaryPlacement {
 /// The force pin and its numerical receipt remain part of the proof.
 #[derive(Clone, Debug, PartialEq)]
 struct SegmentCompletion {
-    termination: surgeist_text::PreparedOpportunity,
+    termination: surgeist_text::prepared::PreparedOpportunity,
     pin: BoundaryPlacement,
     predecessor: CompletionPredecessor,
     relations: Vec<(usize, CapturedScopeIncidence)>,
@@ -51,13 +52,13 @@ struct SegmentCompletion {
 #[derive(Clone, Debug)]
 enum CompletionPredecessor {
     Finalized {
-        line: surgeist_text::FinalizedLine,
+        line: surgeist_text::finalized::FinalizedLine,
         amounts: Vec<f64>,
         contributions: Vec<BoxContribution>,
     },
     Observed {
-        recipe: surgeist_text::PreparedMeasurementFlow,
-        observations: Vec<surgeist_text::FlowObservation>,
+        recipe: surgeist_text::observation::PreparedMeasurementFlow,
+        observations: Vec<surgeist_text::observation::FlowObservation>,
         contributions: Vec<BoxContribution>,
     },
 }
@@ -103,7 +104,7 @@ impl PartialEq for CompletionPredecessor {
 
 impl BoxFrontier {
     pub fn boundary(
-        segment: surgeist_text::PreparedSourceSegment,
+        segment: surgeist_text::prepared::PreparedSourceSegment,
         boundary: PreparedBoundary,
         incidence: Option<PreparedBoundaryIncidence>,
         native: NativeBoxCut,
@@ -161,7 +162,7 @@ impl BoxFrontier {
     /// use the old force pin when the selected paragraph remainder owns them.
     pub fn scope_relation(
         &self,
-        scope: &surgeist_text::CapturedScope,
+        scope: &surgeist_text::capture::CapturedScope,
     ) -> Result<Option<CapturedScopeIncidence>, FitError> {
         match &self.placement {
             BoxPlacement::Boundary(cut) => cut
@@ -187,7 +188,10 @@ impl BoxFrontier {
         choice: &BoxChoice<'_>,
         relations: Vec<(usize, CapturedScopeIncidence)>,
     ) -> Result<Option<Self>, FitError> {
-        use surgeist_text::{LineEnd, PreparedBreakKind as K, PreparedTermination};
+        use surgeist_text::{
+            prepared::PreparedBreakKind as K,
+            selection::{LineEnd, PreparedTermination},
+        };
         if incoming.segment != choice.source_segment() {
             return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
         }
@@ -266,7 +270,7 @@ impl BoxFrontier {
                     || prior.source_segment() != segment.source_segment()
                     || force.view().kind() != K::Forced
                     || previous.request().context.end
-                        != if prior.role() == surgeist_text::FlowSegmentRole::Target {
+                        != if prior.role() == surgeist_text::observation::FlowSegmentRole::Target {
                             LineEnd::Soft
                         } else {
                             LineEnd::Forced
@@ -314,11 +318,11 @@ impl BoxFrontier {
 }
 
 pub(super) fn horizon_relation(
-    segment: &surgeist_text::PreparedSourceSegment,
-    scope: &surgeist_text::CapturedScope,
+    segment: &surgeist_text::prepared::PreparedSourceSegment,
+    scope: &surgeist_text::capture::CapturedScope,
 ) -> Result<Option<CapturedScopeIncidence>, FitError> {
     use std::cmp::Ordering;
-    use surgeist_text::CapturedScopeIncidence as R;
+    use surgeist_text::observation::CapturedScopeIncidence as R;
     let Some(horizon) = segment.exit_position() else {
         return Ok(None);
     };
@@ -380,20 +384,20 @@ impl<'a> BoxEntry<'a> {
 
 #[derive(Clone, Copy)]
 pub(crate) struct FinalizedBoxReceipt<'a> {
-    pub line: &'a surgeist_text::FinalizedLine,
+    pub line: &'a surgeist_text::finalized::FinalizedLine,
     pub amounts: &'a [f64],
     pub boxes: &'a BoxAssignment,
 }
 
 pub(crate) enum BoxAuthority<'a> {
     Selected {
-        request: &'a surgeist_text::LineSelectionRequest,
+        request: &'a surgeist_text::selection::LineSelectionRequest,
         preceding: Option<FinalizedBoxReceipt<'a>>,
     },
     Observed {
-        recipe: &'a surgeist_text::PreparedMeasurementFlow,
-        segment: &'a surgeist_text::PreparedFlowSegment,
-        observations: &'a [surgeist_text::FlowObservation],
+        recipe: &'a surgeist_text::observation::PreparedMeasurementFlow,
+        segment: &'a surgeist_text::observation::PreparedFlowSegment,
+        observations: &'a [surgeist_text::observation::FlowObservation],
         preceding: Option<&'a BoxAssignment>,
     },
 }
@@ -403,12 +407,12 @@ pub(crate) struct BoxChoice<'a> {
     pub end: &'a PreparedBoundary,
     pub incoming: Option<BoxEntry<'a>>,
     pub controls: &'a [ControlAllocation],
-    pub ending: surgeist_text::LineEnd,
+    pub ending: surgeist_text::selection::LineEnd,
     pub authority: BoxAuthority<'a>,
 }
 
 impl BoxChoice<'_> {
-    pub(crate) fn source_segment(&self) -> surgeist_text::PreparedSourceSegment {
+    pub(crate) fn source_segment(&self) -> surgeist_text::prepared::PreparedSourceSegment {
         match &self.authority {
             BoxAuthority::Selected { request, .. } => request.segment.clone(),
             BoxAuthority::Observed { recipe, .. } => recipe.source_segment(),
@@ -431,7 +435,7 @@ pub(crate) struct BoxTrialUse {
     pub frame: super::fit::CandidateFrame,
     pub disposition: super::fit::LineDisposition,
     pub assignment: BoxAssignment,
-    pub request: surgeist_text::LineSelectionRequest,
+    pub request: surgeist_text::selection::LineSelectionRequest,
     pub amounts: Vec<f64>,
     pub bands: super::fit::LineBands,
     pub encounters: Vec<super::fit::EncounterBasis>,
@@ -441,7 +445,7 @@ pub(crate) struct BoxTrialUse {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BoxRunUse<Node, S: crate::LayoutScalar> {
     pub container: Node,
-    pub prepared: surgeist_text::PreparedText,
+    pub prepared: surgeist_text::prepared::PreparedText,
     pub nodes: Vec<Node>,
     pub input: crate::ComputeInputOf<S>,
     pub available: crate::AxisSizingRequestOf<f64>,

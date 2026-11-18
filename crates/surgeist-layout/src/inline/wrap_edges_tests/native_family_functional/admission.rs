@@ -295,7 +295,7 @@ fn actual_capture_requires_an_owner<S: LayoutScalar>() {
     let text = crate::test_support::inline_endpoint::Fixture::new(
         "A",
         (0, 1),
-        surgeist_text::WhiteSpace::Preserve,
+        surgeist_text::style::WhiteSpace::Preserve,
         false,
         false,
     );
@@ -304,10 +304,10 @@ fn actual_capture_requires_an_owner<S: LayoutScalar>() {
         .captured_control()
         .unwrap()
         .scope();
-    assert_eq!(scope.role(), surgeist_text::ScopeRole::Inline);
+    assert_eq!(scope.role(), surgeist_text::capture::ScopeRole::Inline);
     assert_eq!(
         scope.domain_topology(),
-        surgeist_text::SourceProcessingTopology::Complete
+        surgeist_text::capture::SourceProcessingTopology::Complete
     );
     refusal_preserves(
         &f,

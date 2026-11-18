@@ -2,18 +2,18 @@
 
 /// Finalize one registered Ahem origin through the actual consuming fitter.
 /// Tests may vary their Layout phase geometry, but never invent a Text handle.
-pub(crate) fn fragment() -> surgeist_text::FinalizedFragment {
+pub(crate) fn fragment() -> surgeist_text::finalized::FinalizedFragment {
     let paragraph = super::text::PreparedParagraph::plain(
         1,
-        surgeist_text::Source::new("X"),
+        surgeist_text::source::Source::new("X"),
         super::text::ahem_style(10.0, 10.0),
     );
     fragment_for(&paragraph.prepared)
 }
 
 pub(crate) fn fragment_for(
-    prepared: &surgeist_text::PreparedText,
-) -> surgeist_text::FinalizedFragment {
+    prepared: &surgeist_text::prepared::PreparedText,
+) -> surgeist_text::finalized::FinalizedFragment {
     let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
         crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
             Vec::new(),
@@ -45,8 +45,8 @@ pub(crate) fn fragment_for(
                 crate::AvailableSpaceOf::Indefinite,
                 crate::SizingOperation::MaxContent,
             ),
-            base_direction: surgeist_text::ParagraphBaseDirection::LeftToRight,
-            block_direction: surgeist_text::ParagraphBaseDirection::LeftToRight,
+            base_direction: surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+            block_direction: surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
             alignment: crate::TextAlign::Start,
             last_alignment: crate::TextAlignLast::Auto,
             justification: crate::TextJustification::None,
@@ -55,7 +55,7 @@ pub(crate) fn fragment_for(
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
             hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
             tail: crate::text_layout::fit::TailContext::Unrestricted,
-            orientation: surgeist_text::LineOrientation::Horizontal,
+            orientation: surgeist_text::selection::LineOrientation::Horizontal,
             atomics: &[],
             controls: &[],
             line_strut: None,
@@ -85,7 +85,7 @@ pub(crate) fn fragment_for(
         |_, _| Ok(None),
         crate::text_layout::fit::EncounterCallbacks {
             checkpoint_group: || Ok(()),
-            replay: |_: &surgeist_text::FinalizedLine,
+            replay: |_: &surgeist_text::finalized::FinalizedLine,
                      _: crate::text_layout::fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),
             reset: |_| Ok(()),

@@ -288,7 +288,7 @@ fn zero_atomic<S: LayoutScalar>(direction: Direction) {
     assert_eq!(report.formatted_lines.as_ref().unwrap().len(), 1);
     assert_eq!(
         report.formatted_lines.as_ref().unwrap()[0].ending,
-        surgeist_text::LineEnd::Paragraph
+        surgeist_text::selection::LineEnd::Paragraph
     );
     let mut committed = original_indent;
     committed.commit(false);
@@ -365,10 +365,13 @@ fn zero_forced<S: LayoutScalar>(direction: Direction) {
     assert_eq!(report.formatted_lines.as_ref().unwrap().len(), 1);
     assert_eq!(
         report.formatted_lines.as_ref().unwrap()[0].ending,
-        surgeist_text::LineEnd::Forced
+        surgeist_text::selection::LineEnd::Forced
     );
     assert_eq!(report.lines.len(), 1);
-    assert_eq!(report.lines[0].end, surgeist_text::LineEnd::Forced);
+    assert_eq!(
+        report.lines[0].end,
+        surgeist_text::selection::LineEnd::Forced
+    );
     let mut committed = original_indent;
     committed.commit(true);
     assert_eq!(report.indent_state, committed);
@@ -575,10 +578,13 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
     assert_eq!(report.formatted_lines.as_ref().unwrap().len(), 1);
     assert_eq!(
         report.formatted_lines.as_ref().unwrap()[0].ending,
-        surgeist_text::LineEnd::Forced
+        surgeist_text::selection::LineEnd::Forced
     );
     assert_eq!(report.lines.len(), 1);
-    assert_eq!(report.lines[0].end, surgeist_text::LineEnd::Forced);
+    assert_eq!(
+        report.lines[0].end,
+        surgeist_text::selection::LineEnd::Forced
+    );
     let observed = &report.formatted_lines.as_ref().unwrap()[0];
     assert_eq!(observed.source_end, 2);
     assert_eq!(observed.descriptor_end, 2);
@@ -635,13 +641,13 @@ fn scoped_metric_witness<S: LayoutScalar>(
                 wrap_inside: crate::WrapInside::Auto,
                 edges: crate::WrapEdges::AUTO,
                 metric_contribution: Some(crate::InlineBoxMetricContribution::Strut(
-                    surgeist_text::LineBoxStrut {
+                    surgeist_text::allocation::LineBoxStrut {
                         scope: None,
-                        metrics: surgeist_text::LineStrut {
+                        metrics: surgeist_text::allocation::LineStrut {
                             baseline: declared_baseline,
                             line_extent: 10.0,
                         },
-                        alignment: surgeist_text::LineBoxAlignment::Baseline,
+                        alignment: surgeist_text::allocation::LineBoxAlignment::Baseline,
                     },
                 )),
             }],

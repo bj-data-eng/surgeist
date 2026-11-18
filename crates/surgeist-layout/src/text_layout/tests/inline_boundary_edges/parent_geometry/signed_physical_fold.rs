@@ -7,7 +7,7 @@ const HUGE: f64 = 18_014_398_509_481_984.0; // 2^54, exactly representable.
 const AFTER_NEGATIVE_EDGE_AND_A: f64 = -18_014_398_509_481_974.0; // -2^54 + 10
 const AFTER_POSITIVE_EDGE_AND_A: f64 = 18_014_398_509_481_992.0; // round(2^54 + 10)
 
-fn purpose_advances(line: &text::FinalizedLine) -> [f64; 4] {
+fn purpose_advances(line: &text::finalized::FinalizedLine) -> [f64; 4] {
     let measurements = line.measurements();
     [
         measurements.fit().advance(),
@@ -18,7 +18,7 @@ fn purpose_advances(line: &text::FinalizedLine) -> [f64; 4] {
 }
 
 fn flow_and_strip(
-    line: &text::FinalizedLine,
+    line: &text::finalized::FinalizedLine,
     fixture: &Fixture,
     node: u32,
 ) -> ((f64, f64), (f64, f64)) {
@@ -31,7 +31,9 @@ fn flow_and_strip(
     (slot.flow_interval(), slot.strip_interval())
 }
 
-fn actual_line(opposed_parent: bool) -> (text::FinalizedLine, text::TextSeam) {
+fn actual_line(
+    opposed_parent: bool,
+) -> (text::finalized::FinalizedLine, text::finalized::TextSeam) {
     // B is LTR; actual captured C is nested inside actual captured P.
     // P's host-resolved used basis can oppose B without changing Source levels.
     // Reuse the already owning opposing-parent capture and Native adapter.
@@ -68,12 +70,12 @@ fn actual_line(opposed_parent: bool) -> (text::FinalizedLine, text::TextSeam) {
     );
     let child_context = prepared
         .inline_box_edge_context(
-            text::InlineBoxSource::captured(owner),
-            text::InlineBoxSource::captured(parent),
+            text::inline_box::InlineBoxSource::captured(owner),
+            text::inline_box::InlineBoxSource::captured(parent),
             if opposed_parent {
-                text::LineEdgeSide::End
+                text::finalized::LineEdgeSide::End
             } else {
-                text::LineEdgeSide::Start
+                text::finalized::LineEdgeSide::Start
             },
         )
         .unwrap();
@@ -101,9 +103,9 @@ fn actual_line(opposed_parent: bool) -> (text::FinalizedLine, text::TextSeam) {
         } else {
             admitted_context
         };
-        row.boundary = Some(text::InlineBoundaryAllocation::box_edge(
+        row.boundary = Some(text::allocation::InlineBoundaryAllocation::box_edge(
             context,
-            text::InlineBoxEdgeComponents::from_f64(margin, 0.0, 0.0).unwrap(),
+            text::inline_box::InlineBoxEdgeComponents::from_f64(margin, 0.0, 0.0).unwrap(),
         ));
     }
     let selected = prepared.select(recipe).unwrap();
@@ -121,20 +123,20 @@ fn actual_line(opposed_parent: bool) -> (text::FinalizedLine, text::TextSeam) {
                 .iter()
                 .find(|frame| frame.scope == captured)
                 .expect("same source/metrics retain the admitted frame demand");
-            text::ScopeAllocation {
+            text::scope_alignment::ScopeAllocation {
                 scope,
                 displacement: actual.displacement,
             }
         })
         .collect::<Vec<_>>();
     let scopes = if scope_rows.is_empty() {
-        text::ScopeAllocations::None
+        text::scope_alignment::ScopeAllocations::None
     } else {
-        text::ScopeAllocations::Complete(scope_rows)
+        text::scope_alignment::ScopeAllocations::Complete(scope_rows)
     };
     let line = selected
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
             scopes,
         })
         .unwrap();
@@ -144,7 +146,7 @@ fn actual_line(opposed_parent: bool) -> (text::FinalizedLine, text::TextSeam) {
         line.run_views()
             .flat_map(|run| run.glyphs().map(|glyph| glyph.range()).collect::<Vec<_>>())
             .collect::<Vec<_>>(),
-        [text::Range::new(0, 1)]
+        [text::source::Range::new(0, 1)]
     );
     // A is not whitespace/punctuation, spacing is unchanged, and there is no
     // conditional hanging. These actual observations justify equal raw-purpose
@@ -202,13 +204,14 @@ fn actual_line(opposed_parent: bool) -> (text::FinalizedLine, text::TextSeam) {
     // The model deliberately keeps prefix_at in ORIGINAL-LOGICAL order.
     // Complete logical sequence: Pstart0, Cstart H, A10, Cend -H, Pend0.
     // (H + 10) rounds to H+8; subtracting H gives the independent receipt8.
-    let seam =
-        text::TextSeam::AfterParticipant(text::PreparedParticipant::Control(control(&fixture, 21)));
+    let seam = text::finalized::TextSeam::AfterParticipant(
+        text::prepared::PreparedParticipant::Control(control(&fixture, 21)),
+    );
     assert_eq!(line.prefix_at(&seam).unwrap().advance(), 8.0);
     let admission = line.measurements().margin_edge_fit();
     assert_eq!(
         admission.authority(),
-        text::MarginEdgeFitAuthority::CssComposed
+        text::finalized::MarginEdgeFitAuthority::CssComposed
     );
     assert_eq!(admission.native_occupied_bounds(), None);
     assert_eq!(admission.advance(), expected_physical);
@@ -250,7 +253,9 @@ fn same_direction_raw_flow_and_logical_prefix_both_retain_rounded_eight() {
 #[test]
 fn replay_keeps_physical_flow_separate_from_the_frozen_logical_prefix() {
     let (line, seam) = actual_line(true);
-    let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(replay.prefix_at(&seam).unwrap().advance(), 8.0);
     assert_eq!(glyphs(&replay), glyphs(&line));
     assert_eq!(replay.measurements().margin_edge_fit().advance(), 10.0);

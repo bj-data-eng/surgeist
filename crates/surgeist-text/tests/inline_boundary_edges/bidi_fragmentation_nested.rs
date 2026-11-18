@@ -2,10 +2,10 @@
 //! wrapping adjacency does not turn the original source parent into their NCA.
 use super::*;
 
-fn nested_capture() -> t::PreparedText {
+fn nested_capture() -> t::prepared::PreparedText {
     let p = prepare_capture(
-        t::Source::identified("abcABC", t::Id::from_u64(1_646_101), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("abcABC", t::source::Id::from_u64(1_646_101), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 2), (2, 3), (3, 4), (4, 6)],
         &[
             (K::InlineBoundaryStart, 2),
@@ -15,7 +15,7 @@ fn nested_capture() -> t::PreparedText {
             (K::InlineBoundaryEnd, 4),
             (
                 K::OptionalBreak {
-                    wrap: t::Wrap::Word,
+                    wrap: t::style::Wrap::Word,
                 },
                 4,
             ),
@@ -54,25 +54,28 @@ fn nested_capture() -> t::PreparedText {
             .map(|u| (u.source_range(), u.level().get()))
             .collect::<Vec<_>>(),
         [
-            (t::Range::new(0, 1), 0),
-            (t::Range::new(1, 2), 0),
-            (t::Range::new(2, 3), 0),
-            (t::Range::new(3, 4), 1),
-            (t::Range::new(4, 5), 1),
-            (t::Range::new(5, 6), 1),
+            (t::source::Range::new(0, 1), 0),
+            (t::source::Range::new(1, 2), 0),
+            (t::source::Range::new(2, 3), 0),
+            (t::source::Range::new(3, 4), 1),
+            (t::source::Range::new(4, 5), 1),
+            (t::source::Range::new(5, 6), 1),
         ]
     );
     p
 }
 
-type Contexts = Vec<(t::PreparedControl, t::InlineBoxEdgeContext)>;
+type Contexts = Vec<(
+    t::prepared::PreparedControl,
+    t::inline_box::InlineBoxEdgeContext,
+)>;
 
 fn declarations(
-    p: &t::PreparedText,
+    p: &t::prepared::PreparedText,
 ) -> (
-    t::InlineBoxSource,
-    t::InlineBoxSource,
-    t::InlineBoxSource,
+    t::inline_box::InlineBoxSource,
+    t::inline_box::InlineBoxSource,
+    t::inline_box::InlineBoxSource,
     Contexts,
 ) {
     let mut outer = p
@@ -86,7 +89,7 @@ fn declarations(
                     .parent()
                     .unwrap()
                     .role()
-                    == t::ScopeRole::Domain
+                    == t::capture::ScopeRole::Domain
         })
         .map(|v| v.handle());
     let ps = outer.next().expect("the outer Inline start");
@@ -105,7 +108,7 @@ fn declarations(
     let c_scope = cs.captured_control().unwrap().scope();
     assert_eq!(c_scope.parent(), Some(p_scope.clone()));
     assert_ne!(p_scope, c_scope);
-    let ending = |scope: &t::CapturedScope| {
+    let ending = |scope: &t::capture::CapturedScope| {
         let mut rows = p
             .control_views()
             .filter(|v| {
@@ -141,16 +144,24 @@ fn declarations(
         ),
         (4, 4)
     );
-    let p_owner = t::InlineBoxSource::captured(p_scope.clone());
-    let c_owner = t::InlineBoxSource::captured(c_scope);
-    let root = t::InlineBoxSource::captured(domain);
+    let p_owner = t::inline_box::InlineBoxSource::captured(p_scope.clone());
+    let c_owner = t::inline_box::InlineBoxSource::captured(c_scope);
+    let root = t::inline_box::InlineBoxSource::captured(domain);
     // Both actual parent used directions remain inherited LTR. RLO changes
     // source text levels, not these explicitly supplied physical parent sides.
     let p_context = p
-        .inline_box_edge_context(p_owner.clone(), root.clone(), t::LineEdgeSide::Start)
+        .inline_box_edge_context(
+            p_owner.clone(),
+            root.clone(),
+            t::finalized::LineEdgeSide::Start,
+        )
         .unwrap();
     let c_context = p
-        .inline_box_edge_context(c_owner.clone(), p_owner.clone(), t::LineEdgeSide::Start)
+        .inline_box_edge_context(
+            c_owner.clone(),
+            p_owner.clone(),
+            t::finalized::LineEdgeSide::Start,
+        )
         .unwrap();
     (
         p_owner,
@@ -166,24 +177,24 @@ fn declarations(
 }
 
 fn nested_line(
-    p: &t::PreparedText,
-    family: &t::PreparedInlineBoxFamily,
+    p: &t::prepared::PreparedText,
+    family: &t::inline_box::PreparedInlineBoxFamily,
     contexts: &Contexts,
-    start: t::PreparedBoundary,
-    end: t::PreparedOpportunity,
+    start: t::prepared::PreparedBoundary,
+    end: t::prepared::PreparedOpportunity,
     available: f64,
-) -> t::FinalizedLine {
-    let zero = t::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap();
-    let boundary = |control: &t::PreparedControl| {
+) -> t::finalized::FinalizedLine {
+    let zero = t::inline_box::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap();
+    let boundary = |control: &t::prepared::PreparedControl| {
         let context = &contexts
             .iter()
             .find(|(c, _)| c == control)
             .expect("actual nominated endpoint")
             .1;
-        t::InlineBoundaryAllocation::box_edge(context.clone(), zero)
+        t::allocation::InlineBoundaryAllocation::box_edge(context.clone(), zero)
     };
     let mut input = request(p, start, end, &[], available);
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     input.inline_boxes = Some(family.clone());
     for row in &mut input.controls {
         if contexts.iter().any(|(c, _)| c == &row.occurrence) {
@@ -199,7 +210,7 @@ fn nested_line(
         let edge = boundary(&control);
         input
             .boundary_context
-            .push(t::InlineBoundaryContextAllocation {
+            .push(t::allocation::InlineBoundaryContextAllocation {
                 occurrence: control,
                 boundary: edge,
             });
@@ -212,9 +223,9 @@ fn nested_line(
         .map(|v| (v.owner(), v.fragment()))
         .collect::<Vec<_>>();
     let output = selected
-        .finalize(t::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: t::ScopeAllocations::None,
+        .finalize(t::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: t::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     let after = output
@@ -228,13 +239,13 @@ fn nested_line(
 }
 
 fn corresponding(
-    line: &t::FinalizedLine,
-    p_owner: &t::InlineBoxSource,
-    c_owner: &t::InlineBoxSource,
-    root: &t::InlineBoxSource,
-    c: &t::PreparedUnit,
-    a: &t::PreparedUnit,
-) -> [t::InlineBoxFragment; 4] {
+    line: &t::finalized::FinalizedLine,
+    p_owner: &t::inline_box::InlineBoxSource,
+    c_owner: &t::inline_box::InlineBoxSource,
+    root: &t::inline_box::InlineBoxSource,
+    c: &t::prepared::PreparedUnit,
+    a: &t::prepared::PreparedUnit,
+) -> [t::inline_box::InlineBoxFragment; 4] {
     let p = owned(line, p_owner);
     let child = owned(line, c_owner);
     assert_eq!(
@@ -281,8 +292,8 @@ fn nested_split_fragments_have_corresponding_parents_and_a_domain_nca_after_wrap
     let p = nested_capture();
     let (p_owner, c_owner, root, contexts) = declarations(&p);
     let family = p.inline_box_family(Vec::new(), None).unwrap();
-    let c = unit(&p, t::Range::new(2, 3));
-    let a = unit(&p, t::Range::new(3, 4));
+    let c = unit(&p, t::source::Range::new(2, 3));
+    let a = unit(&p, t::source::Range::new(3, 4));
     let wide = nested_line(
         &p,
         &family,
@@ -295,12 +306,12 @@ fn nested_split_fragments_have_corresponding_parents_and_a_domain_nca_after_wrap
     assert_eq!(
         packet(&wide),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 20.0),
-            (t::Range::new(5, 6), 37, 30.0),
-            (t::Range::new(4, 5), 36, 40.0),
-            (t::Range::new(3, 4), 35, 50.0)
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 20.0),
+            (t::source::Range::new(5, 6), 37, 30.0),
+            (t::source::Range::new(4, 5), 36, 40.0),
+            (t::source::Range::new(3, 4), 35, 50.0)
         ]
     );
     let ids = corresponding(&wide, &p_owner, &c_owner, &root, &c, &a);
@@ -329,17 +340,17 @@ fn nested_split_fragments_have_corresponding_parents_and_a_domain_nca_after_wrap
     assert_eq!(
         packet(&first),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 20.0),
-            (t::Range::new(3, 4), 35, 30.0)
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 20.0),
+            (t::source::Range::new(3, 4), 35, 30.0)
         ]
     );
     assert_eq!(
         packet(&second),
         [
-            (t::Range::new(5, 6), 37, 0.0),
-            (t::Range::new(4, 5), 36, 10.0)
+            (t::source::Range::new(5, 6), 37, 0.0),
+            (t::source::Range::new(4, 5), 36, 10.0)
         ]
     );
     assert_eq!(

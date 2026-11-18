@@ -1,3 +1,5 @@
+//! Layout cache identity and statistics.
+
 use std::hash::{Hash, Hasher};
 
 use crate::{

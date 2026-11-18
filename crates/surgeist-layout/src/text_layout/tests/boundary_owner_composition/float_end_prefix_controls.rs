@@ -8,8 +8,16 @@ fn shared_end_is_charged_once<S: LayoutScalar>() {
     let mut binding = capture(
         ["A", "\u{301}B"],
         [
-            style(text::WordBreak::Normal, text::LineBreak::Anywhere, false),
-            style(text::WordBreak::KeepAll, text::LineBreak::Anywhere, false),
+            style(
+                text::style::WordBreak::Normal,
+                text::style::LineBreak::Anywhere,
+                false,
+            ),
+            style(
+                text::style::WordBreak::KeepAll,
+                text::style::LineBreak::Anywhere,
+                false,
+            ),
         ],
         &font,
         false,
@@ -24,7 +32,10 @@ fn shared_end_is_charged_once<S: LayoutScalar>() {
             .analyzed_source()
             .graphemes()
             .collect::<Vec<_>>(),
-        [text::Range::new(0, 2), text::Range::new(2, 3)]
+        [
+            text::source::Range::new(0, 2),
+            text::source::Range::new(2, 3)
+        ]
     );
     let first = binding
         .origins
@@ -40,10 +51,10 @@ fn shared_end_is_charged_once<S: LayoutScalar>() {
         .unwrap()
         .origin
         .clone();
-    assert_eq!(first.view().source().text(), &text::Text::from("A"));
+    assert_eq!(first.view().source().text(), &text::source::Text::from("A"));
     assert_eq!(
         following.view().source().text(),
-        &text::Text::from("\u{301}B")
+        &text::source::Text::from("\u{301}B")
     );
     let endpoint = |node| {
         binding
@@ -98,8 +109,8 @@ fn shared_end_is_charged_once<S: LayoutScalar>() {
         );
     for row in &binding.controls {
         let kind = match row.occurrence.view().kind() {
-            text::ParagraphControlKind::InlineBoundaryStart => InlineBoundaryKind::Start,
-            text::ParagraphControlKind::InlineBoundaryEnd => InlineBoundaryKind::End,
+            text::paragraph::ParagraphControlKind::InlineBoundaryStart => InlineBoundaryKind::Start,
+            text::paragraph::ParagraphControlKind::InlineBoundaryEnd => InlineBoundaryKind::End,
             _ => unreachable!("the maintained capture issues only paired boundaries"),
         };
         tree = tree.input(
@@ -182,11 +193,13 @@ fn shared_end_is_charged_once<S: LayoutScalar>() {
         AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
     ));
     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
-    let source_seam = text::TextSeam::Origin {
+    let source_seam = text::finalized::TextSeam::Origin {
         origin: first.clone(),
-        local: text::SourcePosition::try_new(first.view().source().text(), 1).unwrap(),
+        local: text::source::SourcePosition::try_new(first.view().source().text(), 1).unwrap(),
     };
-    let end_seam = text::TextSeam::BeforeParticipant(text::PreparedParticipant::Control(end));
+    let end_seam = text::finalized::TextSeam::BeforeParticipant(
+        text::prepared::PreparedParticipant::Control(end),
+    );
     let line = batch
         .final_inline_fragments()
         .iter()
@@ -205,7 +218,7 @@ fn shared_end_is_charged_once<S: LayoutScalar>() {
     let shared = prefix.interior_unit().unwrap();
     let end_shared = end_prefix.interior_unit().unwrap();
     assert_eq!(shared.presentation_range(), end_shared.presentation_range());
-    assert_eq!(shared.source_range(), text::Range::new(0, 2));
+    assert_eq!(shared.source_range(), text::source::Range::new(0, 2));
     assert_eq!(shared.advance().unwrap(), 13.0);
     // The maintained mark font supplies A10 and acute0. This exact original
     // seam counts the entire shared group, including physical End101's3px.
@@ -232,8 +245,8 @@ fn shared_end_is_charged_once<S: LayoutScalar>() {
             .map(|line| (line.bounds().origin.y, line.range()))
             .collect::<Vec<_>>(),
         [
-            (22.0, text::Range::new(0, 2)),
-            (32.0, text::Range::new(2, 3))
+            (22.0, text::source::Range::new(0, 2)),
+            (32.0, text::source::Range::new(2, 3))
         ]
     );
 }

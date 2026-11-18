@@ -8,9 +8,12 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ContextualSourceInput, ProcessedSource, SourceProcessingConnection, SourceProcessingError,
-        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-        process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            ContextualSourceInput, SourceProcessingConnection, SourceProcessingError,
+            SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+            process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection,

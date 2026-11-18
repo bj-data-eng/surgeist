@@ -1007,7 +1007,7 @@ fn unsupported_inline_box_refuses_complete_native_result<S: LayoutScalar>() {
     let mut inline = block::<S>(Some(10.0), Some(10.0));
     inline.display = Display::InlineBlock;
     inline.atomic_inline_participation = Some(AtomicInlineParticipation::new(
-        surgeist_text::BidiLevel::try_new(0).unwrap(),
+        surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
         InlineBreakOpportunity::Prohibited,
     ));
     let tree = Tree::<S>::new(vec![block(None, None), inline], vec![vec![1], vec![]]);

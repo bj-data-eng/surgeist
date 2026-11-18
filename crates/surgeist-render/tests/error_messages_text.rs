@@ -22,23 +22,23 @@ use surgeist_text as text;
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 const ROOM: usize = 8 << 20;
 
-fn layout() -> text::Layout {
+fn layout() -> text::layout::Layout {
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 20.0,
-        line_height: text::LineHeight::Absolute(20.0),
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(20.0),
+        ..text::style::Style::default()
     };
-    let mut source = text::Source::new("AX");
+    let mut source = text::source::Source::new("AX");
     // The second run is a separate span, so each glyph is its own item of the layout.
     source.span(
-        text::Range::new(1, 2),
-        text::Style {
-            brush: text::Brush::color(1.0, 0.0, 0.0, 1.0),
+        text::source::Range::new(1, 2),
+        text::style::Style {
+            brush: text::style::Brush::color(1.0, 0.0, 0.0, 1.0),
             ..style.clone()
         },
     );
@@ -46,9 +46,9 @@ fn layout() -> text::Layout {
         .layout(
             source,
             style,
-            text::Options {
+            text::options::Options {
                 quantize: false,
-                ..text::Options::default()
+                ..text::options::Options::default()
             },
         )
         .unwrap()

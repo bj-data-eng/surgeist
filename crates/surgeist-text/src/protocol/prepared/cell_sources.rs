@@ -29,7 +29,7 @@ pub(crate) fn visit_original_part(
             .visit_view_origin(piece.origin, || account::work(ledger, 1))?
             .ok_or_else(|| {
                 crate::processing::contextual::invalid(
-                    crate::processing::SourceProcessingError::OriginCorrespondence,
+                    crate::processing::contextual::SourceProcessingError::OriginCorrespondence,
                 )
             })?
             .get();

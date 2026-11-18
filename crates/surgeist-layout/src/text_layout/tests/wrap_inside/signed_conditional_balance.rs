@@ -92,7 +92,7 @@ fn actual_font_premises() {
     }
 }
 
-fn packet(line: &text::FinalizedLine) -> Vec<(u32, f32, f64)> {
+fn packet(line: &text::finalized::FinalizedLine) -> Vec<(u32, f32, f64)> {
     line.run_views()
         .flat_map(|run| {
             assert_eq!(run.face().bytes(), AHEM);
@@ -112,12 +112,15 @@ fn packet(line: &text::FinalizedLine) -> Vec<(u32, f32, f64)> {
         .collect()
 }
 
-fn fit(line: &text::FinalizedLine, advance: f64, width: f64) {
+fn fit(line: &text::finalized::FinalizedLine, advance: f64, width: f64) {
     let selected = line.selected_line();
     let request = selected.request();
     assert_eq!(request.context.available_inline, Some(width));
     let fit = line.measurements().margin_edge_fit();
-    assert_eq!(fit.authority(), text::MarginEdgeFitAuthority::CssComposed);
+    assert_eq!(
+        fit.authority(),
+        text::finalized::MarginEdgeFitAuthority::CssComposed
+    );
     assert_eq!(fit.advance(), advance);
     assert_eq!(fit.required_inline_size(), advance);
     assert_eq!(line.feedback().advance, advance);
@@ -125,18 +128,18 @@ fn fit(line: &text::FinalizedLine, advance: f64, width: f64) {
 
 fn issued_both_sides<S: LayoutScalar>() {
     actual_font_premises();
-    let style = text::Style {
-        wrap: text::Wrap::Word,
-        white_space: text::WhiteSpace::Collapse,
-        hyphens: text::Hyphens::Manual,
+    let style = text::style::Style {
+        wrap: text::style::Wrap::Word,
+        white_space: text::style::WhiteSpace::Collapse,
+        hyphens: text::hyphenation::Hyphens::Manual,
         locale: Some("und-Latn".into()),
-        hyphenate_character: text::HyphenateCharacter::Auto,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
         native_hyphenation_convention: Some(
-            text::NativeHyphenationConvention::language_script(
+            text::hyphenation::NativeHyphenationConvention::language_script(
                 "und-Latn",
                 "Latn",
                 "A".into(),
-                text::HyphenationPlacement::BothSides,
+                text::hyphenation::HyphenationPlacement::BothSides,
             )
             .unwrap(),
         ),
@@ -177,7 +180,7 @@ fn issued_both_sides<S: LayoutScalar>() {
     assert_eq!(cuts(&batch), [3, 6]);
     assert_eq!(
         batch.placed_text()[0].layout().source().text(),
-        &text::Text::from("AB\u{ad}CDE")
+        &text::source::Text::from("AB\u{ad}CDE")
     );
     let rows = finalized(&batch);
     assert_eq!(rows.len(), 2);
@@ -187,20 +190,21 @@ fn issued_both_sides<S: LayoutScalar>() {
         .alternative
         .as_ref()
         .expect("actual issued SHY alternative");
-    let text::PreparedTermination::Ordinary(offer) = &selected.request().termination else {
+    let text::selection::PreparedTermination::Ordinary(offer) = &selected.request().termination
+    else {
         panic!("the manual alternative belongs to its actual issued ordinary offer")
     };
     assert_eq!(alternative.view().opportunity(), Some(offer.clone()));
     assert_eq!(alternative.view().boundary(), selected.request().end);
-    let text::PreparedAlternativeDefinition::Source { origin, source } =
+    let text::prepared::PreparedAlternativeDefinition::Source { origin, source } =
         alternative.view().definition()
     else {
         panic!("authored SHY must retain its actual source definition")
     };
-    assert_eq!(source, text::Range::new(2, 3));
+    assert_eq!(source, text::source::Range::new(2, 3));
     assert_eq!(
         origin.view().source().id(),
-        Some(text::Id::from_u64(650_000))
+        Some(text::source::Id::from_u64(650_000))
     );
     assert_eq!(origin.view().source().revision(), 31);
     let outgoing = rows[0]
@@ -273,10 +277,10 @@ fn balanced_signed_end<S: LayoutScalar>() {
     actual_font_premises();
     let fixture = captured(
         "AAA BB C",
-        text::Style {
-            wrap: text::Wrap::Word,
-            white_space: text::WhiteSpace::Collapse,
-            hyphens: text::Hyphens::None,
+        text::style::Style {
+            wrap: text::style::Wrap::Word,
+            white_space: text::style::WhiteSpace::Collapse,
+            hyphens: text::hyphenation::Hyphens::None,
             ..ahem_style(10.0, 10.0)
         },
         std::slice::from_ref(&(0..8)),
@@ -311,7 +315,7 @@ fn balanced_signed_end<S: LayoutScalar>() {
         assert!(row.selected_line().request().incoming.is_none());
         assert!(matches!(
             &row.selected_line().request().termination,
-            text::PreparedTermination::Ordinary(_)
+            text::selection::PreparedTermination::Ordinary(_)
         ));
     }
     assert_eq!(
@@ -347,7 +351,7 @@ fn balanced_signed_end<S: LayoutScalar>() {
     );
     assert_eq!(
         balanced.placed_text()[0].layout().source().text(),
-        &text::Text::from("AAA BB C")
+        &text::source::Text::from("AAA BB C")
     );
     assert_eq!(auto_rows[0].feedback().advance, 60.0);
     assert_eq!(native_rows[1].feedback().advance, 40.0);

@@ -1,7 +1,10 @@
 //! Native normalized alignment and explicit real-U0020 expansion.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use surgeist_text::{SpacingSlotDisposition, SpacingSlotOwner, WhiteSpace};
+use surgeist_text::{
+    spacing::{SpacingSlotDisposition, SpacingSlotOwner},
+    style::WhiteSpace,
+};
 
 #[path = "line_policy/whitespace_justification.rs"]
 mod whitespace_justification;
@@ -87,7 +90,7 @@ fn xs<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<(usize, f6
 
 fn lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> Vec<surgeist_text::FinalizedLine> {
+) -> Vec<surgeist_text::finalized::FinalizedLine> {
     let mut result = Vec::new();
     for entry in batch.final_inline_fragments() {
         let line = entry.fragment().finalized_fragment().finalized_line();
@@ -231,9 +234,9 @@ fn assert_retained_and_discarded<S: LayoutScalar>() {
         );
         assert_eq!(slot.advance, 20.0);
         let range = if trailing {
-            surgeist_text::Range::new(1, 2)
+            surgeist_text::source::Range::new(1, 2)
         } else {
-            surgeist_text::Range::new(0, 1)
+            surgeist_text::source::Range::new(0, 1)
         };
         let unit = paragraph
             .prepared
@@ -243,7 +246,7 @@ fn assert_retained_and_discarded<S: LayoutScalar>() {
             .handle();
         assert_eq!(
             slot.slot.participants().cloned().collect::<Vec<_>>(),
-            [surgeist_text::PreparedParticipant::Text(unit)]
+            [surgeist_text::prepared::PreparedParticipant::Text(unit)]
         );
         assert_eq!(
             slot.slot
@@ -344,10 +347,10 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
         style,
         ParagraphBaseDirection::LeftToRight,
         vec![
-            surgeist_text::ParagraphReplacement::resolved_native_logical_before(
-                surgeist_text::ParagraphReplacementDefinition::Source {
+            surgeist_text::paragraph::ParagraphReplacement::resolved_native_logical_before(
+                surgeist_text::paragraph::ParagraphReplacementDefinition::Source {
                     origin: 0,
-                    source: surgeist_text::Range::new(2, 3),
+                    source: surgeist_text::source::Range::new(2, 3),
                 },
                 3,
                 vec![" X ".into()],
@@ -383,8 +386,8 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
     assert_eq!(slots.len(), 2);
     assert_eq!(alternative.view().insertion_anchor().get(), 3);
     for (row, local) in slots.iter().zip([
-        surgeist_text::Range::new(0, 1),
-        surgeist_text::Range::new(2, 3),
+        surgeist_text::source::Range::new(0, 1),
+        surgeist_text::source::Range::new(2, 3),
     ]) {
         assert_eq!(
             row.slot
@@ -397,7 +400,7 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
             }]
         );
         assert_eq!(row.slot.participants().count(), 0);
-        let surgeist_text::SpacingSlotTarget::Separator(unit) = row.slot.target() else {
+        let surgeist_text::spacing::SpacingSlotTarget::Separator(unit) = row.slot.target() else {
             panic!("the inserted Spaces target is a complete separator")
         };
         assert_eq!(unit.pieces().len(), 1);
@@ -432,7 +435,7 @@ fn assert_float_amounts<S: LayoutScalar>() {
             ParagraphPart::text(1, Source::new("X "), style.clone()),
             ParagraphPart::Atomic {
                 node: 2,
-                size: surgeist_text::Size::new(10.0, 10.0),
+                size: surgeist_text::geometry::Size::new(10.0, 10.0),
             },
             ParagraphPart::Control {
                 node: 3,
@@ -679,7 +682,7 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
     );
     assert_eq!(
         first.selected_line().request().context.end,
-        surgeist_text::LineEnd::Soft
+        surgeist_text::selection::LineEnd::Soft
     );
     assert_eq!(
         batch.placed_text()[0].layout().source().text().code_units(),
@@ -698,30 +701,31 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
         .prepared
         .opportunity_views()
         .find(|view| {
-            view.boundary() == end && view.kind() == surgeist_text::PreparedBreakKind::Allowed
+            view.boundary() == end
+                && view.kind() == surgeist_text::prepared::PreparedBreakKind::Allowed
         })
         .unwrap()
         .handle();
     let mut proposed = first.selected_line().request().clone();
     proposed.end = end;
-    proposed.termination = surgeist_text::PreparedTermination::Ordinary(termination);
+    proposed.termination = surgeist_text::selection::PreparedTermination::Ordinary(termination);
     proposed.participants = paragraph.prepared.participants().take(6).collect();
     let selected = paragraph.prepared.select(proposed).unwrap();
     let natural = selected
-        .finalize(surgeist_text::LineAllocations {
-            spacing: surgeist_text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: surgeist_text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 23.28125);
     let extra = 30.65125 - natural.feedback().advance;
     let expanded = selected
-        .finalize(surgeist_text::LineAllocations {
-            spacing: surgeist_text::SpacingAllocations::Complete(
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: surgeist_text::spacing::SpacingAllocations::Complete(
                 selected
                     .spacing_slots()
                     .enumerate()
-                    .map(|(index, slot)| surgeist_text::SpacingAllocation {
+                    .map(|(index, slot)| surgeist_text::spacing::SpacingAllocation {
                         slot,
                         amount: match index {
                             0 => extra / 2.0,
@@ -731,14 +735,14 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
                     })
                     .collect(),
             ),
-            scopes: surgeist_text::ScopeAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(expanded.feedback().advance, 30.651250000000005);
     assert!(expanded.feedback().advance > 30.65125);
     assert_eq!(
         batch.placed_text()[0].layout().lines()[0].range(),
-        surgeist_text::Range::new(0, 6),
+        surgeist_text::source::Range::new(0, 6),
         "all three natural words fit the band before supported expansion"
     );
     assert_eq!(xs(&batch).iter().filter(|(line, _)| *line == 0).count(), 3);

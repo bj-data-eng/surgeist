@@ -2,24 +2,24 @@
 //! Scope membership is independent of physical placement and source hulls.
 use super::*;
 
-fn base() -> t::Style {
-    t::Style {
-        word_break: t::WordBreak::BreakAll,
-        ..style(t::WhiteSpace::Preserve)
+fn base() -> t::style::Style {
+    t::style::Style {
+        word_break: t::style::WordBreak::BreakAll,
+        ..style(t::style::WhiteSpace::Preserve)
     }
 }
-fn block(base: t::Style) -> t::SourceProcessingScope {
-    t::SourceProcessingScope::Block {
+fn block(base: t::style::Style) -> t::capture::SourceProcessingScope {
+    t::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: t::SourceProcessingTopology::Complete,
+        topology: t::capture::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base,
-        used_direction: t::ParagraphBaseDirection::LeftToRight,
+        used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
     }
 }
-fn inline(p: &t::PreparedText) -> Vec<t::CapturedScope> {
+fn inline(p: &t::prepared::PreparedText) -> Vec<t::capture::CapturedScope> {
     p.captured_owner()
         .unwrap()
         .members()
@@ -29,7 +29,7 @@ fn inline(p: &t::PreparedText) -> Vec<t::CapturedScope> {
                 .map(|i| i.scope())
                 .collect::<Vec<_>>()
         })
-        .filter(|s| s.role() == t::ScopeRole::Inline)
+        .filter(|s| s.role() == t::capture::ScopeRole::Inline)
         .fold(Vec::new(), |mut scopes, scope| {
             if !scopes.contains(&scope) {
                 scopes.push(scope);
@@ -37,7 +37,7 @@ fn inline(p: &t::PreparedText) -> Vec<t::CapturedScope> {
             scopes
         })
 }
-fn single_source_segment(p: &t::PreparedText) -> t::PreparedSourceSegment {
+fn single_source_segment(p: &t::prepared::PreparedText) -> t::prepared::PreparedSourceSegment {
     let mut segments = p.source_segments();
     assert_eq!(
         segments.len(),
@@ -46,52 +46,69 @@ fn single_source_segment(p: &t::PreparedText) -> t::PreparedSourceSegment {
     );
     segments.next().unwrap()
 }
-fn local(p: &t::PreparedText, c: &t::CapturedControl) -> t::PreparedControl {
+fn local(
+    p: &t::prepared::PreparedText,
+    c: &t::capture::CapturedControl,
+) -> t::prepared::PreparedControl {
     p.control_views()
         .find(|v| v.handle().captured_control().as_ref() == Some(c))
         .unwrap()
         .handle()
 }
-fn end(p: &t::PreparedText) -> t::PreparedOpportunity {
+fn end(p: &t::prepared::PreparedText) -> t::prepared::PreparedOpportunity {
     p.opportunity_views()
-        .find(|o| o.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|o| o.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle()
 }
-fn cut(p: &t::PreparedText, at: usize) -> t::PreparedOpportunity {
+fn cut(p: &t::prepared::PreparedText, at: usize) -> t::prepared::PreparedOpportunity {
     soft_at(p, at).into_iter().next().unwrap()
 }
-fn unit_consumed(p: &t::PreparedText, b: &t::PreparedBoundary, unit: &t::PreparedUnit) -> bool {
+fn unit_consumed(
+    p: &t::prepared::PreparedText,
+    b: &t::prepared::PreparedBoundary,
+    unit: &t::prepared::PreparedUnit,
+) -> bool {
     p.participants()
         .take(b.view().participant_offset())
-        .any(|part| part == t::PreparedParticipant::Text(unit.clone()))
+        .any(|part| part == t::prepared::PreparedParticipant::Text(unit.clone()))
 }
 
-fn prefix(p: &t::PreparedText, b: &t::PreparedBoundary, c: &t::PreparedControl) -> bool {
+fn prefix(
+    p: &t::prepared::PreparedText,
+    b: &t::prepared::PreparedBoundary,
+    c: &t::prepared::PreparedControl,
+) -> bool {
     // This is the public participant inventory's declared prefix, including a
     // real control represented by generated text rather than a control slot.
     p.participants()
         .take(b.view().participant_offset())
         .any(|part| match part {
-            t::PreparedParticipant::Control(actual) => actual == *c,
-            t::PreparedParticipant::Text(unit) => unit.view().controls().any(|actual| actual == *c),
+            t::prepared::PreparedParticipant::Control(actual) => actual == *c,
+            t::prepared::PreparedParticipant::Text(unit) => {
+                unit.view().controls().any(|actual| actual == *c)
+            }
             _ => false,
         })
 }
-fn reason(error: &t::Error) -> &t::ProtocolError {
+fn reason(error: &t::Error) -> &t::prepared::ProtocolError {
     match error.detail() {
         Some(t::ErrorDetail::InvalidTextProtocol { reason }) => reason,
         _ => panic!("{error:?}"),
     }
 }
-fn scope_error(error: &t::Error, expected: t::WrappingScopeQueryError) {
+fn scope_error(error: &t::Error, expected: t::observation::WrappingScopeQueryError) {
     assert!(
-        matches!(reason(error),t::ProtocolError::WrappingScopeQuery {reason} if *reason==expected),
+        matches!(reason(error),t::prepared::ProtocolError::WrappingScopeQuery {reason} if *reason==expected),
         "{error:?}"
     );
 }
-fn input(value: &str, base: t::Style, ranges: &[(usize, usize)]) -> t::ContextualSourceInput {
-    let source = t::Source::identified(value, t::Id::from_u64(75072), 11);
+fn input(
+    value: &str,
+    base: t::style::Style,
+    ranges: &[(usize, usize)],
+) -> t::capture::ContextualSourceInput {
+    let source = t::source::Source::identified(value, t::source::Id::from_u64(75072), 11);
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     for i in 0..ranges.len() {
         if i > 0 {
@@ -100,50 +117,53 @@ fn input(value: &str, base: t::Style, ranges: &[(usize, usize)]) -> t::Contextua
         events.push(origin(i));
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
-    t::ContextualSourceInput {
+    t::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: t::SourceProcessingEnvelope::Complete,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: t::capture::SourceProcessingEnvelope::Complete,
         origins: ranges
             .iter()
-            .map(|&(a, b)| t::ParagraphOrigin {
+            .map(|&(a, b)| t::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: t::Range::new(a, b),
-                aggregate: t::Range::new(a, b),
-                kind: t::ParagraphOriginKind::Authored,
+                local: t::source::Range::new(a, b),
+                aggregate: t::source::Range::new(a, b),
+                kind: t::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
         connections: (1..ranges.len())
-            .map(|i| t::SourceProcessingConnection {
+            .map(|i| t::capture::SourceProcessingConnection {
                 before_origin: i - 1,
                 after_origin: i,
-                kind: t::ParagraphConnectionKind::Continuous,
+                kind: t::paragraph::ParagraphConnectionKind::Continuous,
             })
             .collect(),
         boundary_policies: (0..ranges.len().saturating_sub(1))
-            .map(|i| t::ParagraphBoundaryPolicy {
-                definition: t::ParagraphBoundaryDefinition::Connection(i),
-                preceding_wrap: t::Wrap::Word,
-                following_wrap: t::Wrap::Word,
-                ancestor_wrap: t::Wrap::Word,
+            .map(|i| t::paragraph::ParagraphBoundaryPolicy {
+                definition: t::paragraph::ParagraphBoundaryDefinition::Connection(i),
+                preceding_wrap: t::style::Wrap::Word,
+                following_wrap: t::style::Wrap::Word,
+                ancestor_wrap: t::style::Wrap::Word,
             })
             .collect(),
         scopes: vec![block(base)],
-        paragraphs: vec![t::SourceProcessingParagraph {
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: t::ParagraphStrut::DefaultFont,
+        paragraphs: vec![t::capture::SourceProcessingParagraph {
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
         }],
         controls: vec![],
         replacements: vec![],
         events,
     }
 }
-fn prepare_input(value: t::ContextualSourceInput, font: &[u8]) -> Vec<t::PreparedText> {
-    let processed = Arc::new(t::process_contextual_source(value).unwrap());
+fn prepare_input(
+    value: t::capture::ContextualSourceInput,
+    font: &[u8],
+) -> Vec<t::prepared::PreparedText> {
+    let processed = Arc::new(t::capture::process_contextual_source(value).unwrap());
     let mut system = t::System::default();
     system
         .register_fonts(font.to_vec(), crate::common::FONT_LIMITS)
@@ -151,23 +171,23 @@ fn prepare_input(value: t::ContextualSourceInput, font: &[u8]) -> Vec<t::Prepare
     processed
         .paragraphs()
         .map(|paragraph| {
-            let a = t::AnalyzedSource::from_processed_paragraph(
+            let a = t::analyzed::AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                t::AnalysisTypography::HorizontalComposition,
+                t::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let policies = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())
-                .map(|r| t::WrappingPolicy {
+                .map(|r| t::analyzed::WrappingPolicy {
                     relation: r.handle(),
-                    ancestor_wrap: t::Wrap::Word,
+                    ancestor_wrap: t::style::Wrap::Word,
                 })
                 .collect();
             system
                 .prepare(
                     &a.with_wrapping_policies(policies).unwrap(),
-                    t::PreparationOptions::default(),
+                    t::prepared::PreparationOptions::default(),
                 )
                 .unwrap()
         })
@@ -177,7 +197,7 @@ fn prepare_input(value: t::ContextualSourceInput, font: &[u8]) -> Vec<t::Prepare
 #[test]
 fn ordinary_cuts_distinguish_nested_sibling_and_absolute_prefix_membership() {
     let p = prepare_capture(
-        t::Source::new("ABCDE"),
+        t::source::Source::new("ABCDE"),
         block(base()),
         &[(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)],
         &[
@@ -217,7 +237,10 @@ fn ordinary_cuts_distinguish_nested_sibling_and_absolute_prefix_membership() {
     let scopes = inline(&p);
     let inner = scopes
         .iter()
-        .find(|s| s.parent().is_some_and(|p| p.role() == t::ScopeRole::Inline))
+        .find(|s| {
+            s.parent()
+                .is_some_and(|p| p.role() == t::capture::ScopeRole::Inline)
+        })
         .unwrap()
         .clone();
     let outer = inner.parent().unwrap();
@@ -309,18 +332,18 @@ fn ordinary_cuts_distinguish_nested_sibling_and_absolute_prefix_membership() {
 
 #[test]
 fn every_control_kind_uses_real_prefix_incidence_including_materialized_wbr() {
-    let wbr_style = style(t::WhiteSpace::Preserve);
+    let wbr_style = style(t::style::WhiteSpace::Preserve);
     let kinds = vec![
         K::ForcedBreak,
         K::OptionalBreak {
-            wrap: t::Wrap::Word,
+            wrap: t::style::Wrap::Word,
         },
         K::Wbr {
             style: Box::new(wbr_style.clone()),
         },
         K::Wbr {
-            style: Box::new(t::Style {
-                word_space_transform: t::WordSpaceTransform::Space,
+            style: Box::new(t::style::Style {
+                word_space_transform: t::style::WordSpaceTransform::Space,
                 ..wbr_style.clone()
             }),
         },
@@ -339,7 +362,7 @@ fn every_control_kind_uses_real_prefix_incidence_including_materialized_wbr() {
     ];
     for kind in kinds {
         let p = prepare_capture(
-            t::Source::new("AB"),
+            t::source::Source::new("AB"),
             block(base()),
             &[(0, 1), (1, 2)],
             &[
@@ -387,7 +410,7 @@ fn every_control_kind_uses_real_prefix_incidence_including_materialized_wbr() {
 fn deleted_positive_space_keeps_distinct_logical_cuts_at_one_processed_position() {
     let p = capture(
         "X  Y",
-        t::WhiteSpace::Collapse,
+        t::style::WhiteSpace::Collapse,
         &[(0, 2), (2, 3), (3, 4)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 3)],
         &[(0, 1)],
@@ -407,7 +430,7 @@ fn deleted_positive_space_keeps_distinct_logical_cuts_at_one_processed_position(
     let close = local(&p, &scope.exit_control().unwrap());
     let deleted = p
         .unit_views()
-        .find(|u| u.source_range() == t::Range::new(2, 3))
+        .find(|u| u.source_range() == t::source::Range::new(2, 3))
         .unwrap();
     assert!(deleted.processed_range().is_empty());
     let early = cut(&p, 2).view().boundary();
@@ -431,13 +454,13 @@ fn deleted_positive_space_keeps_distinct_logical_cuts_at_one_processed_position(
 #[test]
 fn removed_and_empty_origins_do_not_leave_a_closed_zero_output_scope_active() {
     for (value, ranges, mode) in [
-        (" X", vec![(0, 1), (1, 2)], t::WhiteSpace::Discard),
-        ("X", vec![(0, 0), (0, 1)], t::WhiteSpace::Preserve),
+        (" X", vec![(0, 1), (1, 2)], t::style::WhiteSpace::Discard),
+        ("X", vec![(0, 0), (0, 1)], t::style::WhiteSpace::Preserve),
     ] {
         let at = ranges[0].1;
         let p = prepare_capture(
-            t::Source::new(value),
-            block(t::Style {
+            t::source::Source::new(value),
+            block(t::style::Style {
                 white_space: mode,
                 ..base()
             }),
@@ -447,7 +470,7 @@ fn removed_and_empty_origins_do_not_leave_a_closed_zero_output_scope_active() {
                 (K::InlineBoundaryEnd, at),
                 (
                     K::OptionalBreak {
-                        wrap: t::Wrap::Word,
+                        wrap: t::style::Wrap::Word,
                     },
                     at,
                 ),
@@ -483,14 +506,14 @@ fn removed_and_empty_origins_do_not_leave_a_closed_zero_output_scope_active() {
             !p.boundary_inside_captured_scope(&single_source_segment(&p), &boundary, &scope)
                 .unwrap()
         );
-        if mode == t::WhiteSpace::Discard {
+        if mode == t::style::WhiteSpace::Discard {
             assert_eq!(
                 p.analyzed_source().processed_source().processed_text(),
-                &t::Text::from("X")
+                &t::source::Text::from("X")
             );
             assert!(
                 p.unit_views()
-                    .find(|u| u.source_range() == t::Range::new(0, 1))
+                    .find(|u| u.source_range() == t::source::Range::new(0, 1))
                     .unwrap()
                     .processed_range()
                     .is_empty()
@@ -498,7 +521,10 @@ fn removed_and_empty_origins_do_not_leave_a_closed_zero_output_scope_active() {
         } else {
             assert!(p.origin_views().any(|o| o.local_range().is_empty()));
         }
-        assert_eq!(p.analyzed_source().source().text(), &t::Text::from(value));
+        assert_eq!(
+            p.analyzed_source().source().text(),
+            &t::source::Text::from(value)
+        );
     }
 }
 
@@ -508,40 +534,40 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
     for paired in [false, true] {
         let mut value = input("A\u{301}B", base(), &[(0, 1), (1, 3)]);
         value.scopes.extend([
-            t::SourceProcessingScope::Inline {
+            t::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),
                 style: Some(base()),
                 boundaries: paired
-                    .then_some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    .then_some(t::capture::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
             },
-            t::SourceProcessingScope::Inline {
+            t::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),
                 style: Some(base()),
                 boundaries: paired
-                    .then_some(t::SourceProcessingScopeBoundaries { start: 2, end: 3 }),
+                    .then_some(t::capture::SourceProcessingScopeBoundaries { start: 2, end: 3 }),
             },
         ]);
         if paired {
             value.controls = vec![
-                t::ParagraphControl {
+                t::paragraph::ParagraphControl {
                     at: 0,
                     kind: K::InlineBoundaryStart,
                 },
-                t::ParagraphControl {
+                t::paragraph::ParagraphControl {
                     at: 1,
                     kind: K::InlineBoundaryEnd,
                 },
-                t::ParagraphControl {
+                t::paragraph::ParagraphControl {
                     at: 1,
                     kind: K::InlineBoundaryStart,
                 },
-                t::ParagraphControl {
+                t::paragraph::ParagraphControl {
                     at: 3,
                     kind: K::InlineBoundaryEnd,
                 },
@@ -571,18 +597,18 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
         let p = prepare_input(value, &font).pop().unwrap();
         assert_eq!(
             p.analyzed_source().graphemes().collect::<Vec<_>>(),
-            [t::Range::new(0, 2), t::Range::new(2, 3)]
+            [t::source::Range::new(0, 2), t::source::Range::new(2, 3)]
         );
         let mut scopes = inline(&p);
         scopes.sort_by(|a, b| a.enter_position().partial_cmp(&b.enter_position()).unwrap());
         let acute = p
             .unit_views()
-            .find(|u| u.source_range() == t::Range::new(1, 2))
+            .find(|u| u.source_range() == t::source::Range::new(1, 2))
             .unwrap()
             .handle();
         let b = p
             .unit_views()
-            .find(|u| u.source_range() == t::Range::new(2, 3))
+            .find(|u| u.source_range() == t::source::Range::new(2, 3))
             .unwrap()
             .handle();
         // A snapped incoming marker can retain an earlier original anchor;
@@ -590,7 +616,7 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
         let boundary = p
             .opportunity_views()
             .find(|o| {
-                o.kind() == t::PreparedBreakKind::Allowed
+                o.kind() == t::prepared::PreparedBreakKind::Allowed
                     && unit_consumed(&p, &o.boundary(), &acute)
                     && !unit_consumed(&p, &o.boundary(), &b)
             })
@@ -642,9 +668,9 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
 #[test]
 fn discarded_prefix_translates_exact_markers_without_turning_them_into_snapping() {
     let p = prepare_capture(
-        t::Source::new(" A"),
-        block(t::Style {
-            white_space: t::WhiteSpace::Discard,
+        t::source::Source::new(" A"),
+        block(t::style::Style {
+            white_space: t::style::WhiteSpace::Discard,
             ..base()
         }),
         &[(0, 1), (1, 2)],
@@ -663,11 +689,11 @@ fn discarded_prefix_translates_exact_markers_without_turning_them_into_snapping(
     );
     assert_eq!(
         p.analyzed_source().processed_source().processed_text(),
-        &t::Text::from("A")
+        &t::source::Text::from("A")
     );
     let a = p
         .unit_views()
-        .find(|u| u.source_range() == t::Range::new(1, 2))
+        .find(|u| u.source_range() == t::source::Range::new(1, 2))
         .unwrap();
     assert_eq!(a.processed_range().start().get(), 0);
     let scope = inline(&p).pop().unwrap();
@@ -682,14 +708,14 @@ fn discarded_prefix_translates_exact_markers_without_turning_them_into_snapping(
 
 #[test]
 fn executed_case_transform_preserves_original_scope_and_source_custody() {
-    let transformed = t::Style {
-        text_transform: t::TextTransform::Set(
-            t::TextTransformSet::none().with_case(t::CaseTransform::Uppercase),
+    let transformed = t::style::Style {
+        text_transform: t::style::TextTransform::Set(
+            t::style::TextTransformSet::none().with_case(t::style::CaseTransform::Uppercase),
         ),
         ..base()
     };
     let p = prepare_capture(
-        t::Source::identified("aB", t::Id::from_u64(75073), 4),
+        t::source::Source::identified("aB", t::source::Id::from_u64(75073), 4),
         block(transformed),
         &[(0, 1), (1, 2)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 1)],
@@ -719,21 +745,24 @@ fn executed_case_transform_preserves_original_scope_and_source_custody() {
             .collect::<Vec<_>>(),
         [35, 36]
     );
-    assert_eq!(p.analyzed_source().source().text(), &t::Text::from("aB"));
+    assert_eq!(
+        p.analyzed_source().source().text(),
+        &t::source::Text::from("aB")
+    );
     assert_eq!(
         p.analyzed_source().source().id(),
-        Some(t::Id::from_u64(75073))
+        Some(t::source::Id::from_u64(75073))
     );
 }
 
 #[test]
 fn control_owned_generated_space_does_not_create_a_scope_at_its_source_anchor() {
-    let owner = t::Style {
-        word_space_transform: t::WordSpaceTransform::Space,
+    let owner = t::style::Style {
+        word_space_transform: t::style::WordSpaceTransform::Space,
         ..base()
     };
     let p = prepare_capture(
-        t::Source::new("AB"),
+        t::source::Source::new("AB"),
         block(owner.clone()),
         &[(0, 1), (1, 2)],
         &[
@@ -773,7 +802,7 @@ fn control_owned_generated_space_does_not_create_a_scope_at_its_source_anchor() 
     assert!(emitted.view().origins().next().is_none());
     let b = p
         .unit_views()
-        .find(|u| u.source_range() == t::Range::new(1, 2))
+        .find(|u| u.source_range() == t::source::Range::new(1, 2))
         .unwrap()
         .handle();
     // This is an issued mixed boundary, not a claim of soft-wrap permission.
@@ -790,29 +819,29 @@ fn control_owned_generated_space_does_not_create_a_scope_at_its_source_anchor() 
     let line = finish(&p, p.boundary_views().next().unwrap().handle(), end(&p));
     let generated = line
         .mapping_views()
-        .find(|m| m.kind() == t::PresentationMappingKind::GeneratedSeparator)
+        .find(|m| m.kind() == t::finalized::PresentationMappingKind::GeneratedSeparator)
         .unwrap();
     assert_eq!(generated.separator_control(), Some(wbr));
     assert!(generated.source_range().is_empty());
-    assert_eq!(generated.source_range(), t::Range::new(1, 1));
+    assert_eq!(generated.source_range(), t::source::Range::new(1, 1));
 }
 
 #[test]
 fn computed_before_indication_keeps_the_actual_original_scope_exit() {
-    let owner = t::Style {
-        word_break: t::WordBreak::Normal,
+    let owner = t::style::Style {
+        word_break: t::style::WordBreak::Normal,
         locale: Some("en-US".into()),
-        hyphens: t::Hyphens::Manual,
-        hyphenate_character: t::HyphenateCharacter::String(t::Text::from("X")),
-        hyphenate_limit_chars: t::HyphenateLimitChars {
-            total: t::HyphenationMinimum::Count(0),
-            before: t::HyphenationMinimum::Count(0),
-            after: t::HyphenationMinimum::Count(0),
+        hyphens: t::hyphenation::Hyphens::Manual,
+        hyphenate_character: t::hyphenation::HyphenateCharacter::String(t::source::Text::from("X")),
+        hyphenate_limit_chars: t::hyphenation::HyphenateLimitChars {
+            total: t::hyphenation::HyphenationMinimum::Count(0),
+            before: t::hyphenation::HyphenationMinimum::Count(0),
+            after: t::hyphenation::HyphenationMinimum::Count(0),
         },
         ..base()
     };
     let p = prepare_capture(
-        t::Source::new("AB\u{ad}CDE"),
+        t::source::Source::new("AB\u{ad}CDE"),
         block(owner),
         &[(0, 3), (3, 6)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 3)],
@@ -832,7 +861,7 @@ fn computed_before_indication_keeps_the_actual_original_scope_exit() {
     let close = local(&p, &scope.exit_control().unwrap());
     let alternative = p
         .alternative_views()
-        .find(|a| a.source_range() == Some(t::Range::new(2, 3)))
+        .find(|a| a.source_range() == Some(t::source::Range::new(2, 3)))
         .unwrap()
         .handle();
     let offer = p
@@ -843,27 +872,30 @@ fn computed_before_indication_keeps_the_actual_original_scope_exit() {
     let whole = finish(&p, p.boundary_views().next().unwrap().handle(), end(&p));
     let mut r = whole.selected_line().request().clone();
     r.end = offer.view().boundary();
-    r.termination = t::PreparedTermination::Ordinary(offer);
+    r.termination = t::selection::PreparedTermination::Ordinary(offer);
     r.participants.truncate(r.end.view().participant_offset());
     r.controls.retain(|c| {
         r.participants
-            .contains(&t::PreparedParticipant::Control(c.occurrence.clone()))
+            .contains(&t::prepared::PreparedParticipant::Control(
+                c.occurrence.clone(),
+            ))
     });
     r.alternative = Some(alternative.clone());
-    r.context.end = t::LineEnd::Soft;
+    r.context.end = t::selection::LineEnd::Soft;
     r.boundary_context.clear();
     while let Some(occurrence) = p.boundary_context_demand(&r).unwrap() {
-        r.boundary_context.push(t::InlineBoundaryContextAllocation {
-            occurrence,
-            boundary: t::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
-        });
+        r.boundary_context
+            .push(t::allocation::InlineBoundaryContextAllocation {
+                occurrence,
+                boundary: t::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
+            });
     }
     let line = p
         .select(r)
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     let selected = line.selected_line();
@@ -877,7 +909,7 @@ fn computed_before_indication_keeps_the_actual_original_scope_exit() {
         line.mapping_views()
             .any(|m| m.alternative() == Some(alternative.clone()))
     );
-    assert_eq!(alternative.view().text(), &t::Text::from("X"));
+    assert_eq!(alternative.view().text(), &t::source::Text::from("X"));
 }
 
 #[test]
@@ -887,7 +919,7 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
     value.boundary_policies.clear();
     value.scopes = vec![
         block(base()),
-        t::SourceProcessingScope::Inline {
+        t::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
@@ -896,7 +928,7 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
             boundaries: None,
         },
         block(base()),
-        t::SourceProcessingScope::Inline {
+        t::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
@@ -906,9 +938,9 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
         },
     ];
     value.paragraphs = vec![
-        t::SourceProcessingParagraph {
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: t::ParagraphStrut::DefaultFont
+        t::capture::SourceProcessingParagraph {
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont
         };
         3
     ];
@@ -977,7 +1009,7 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
                 &child_scope,
             )
             .unwrap_err(),
-        t::WrappingScopeQueryError::WrongDomain,
+        t::observation::WrappingScopeQueryError::WrongDomain,
     );
     scope_error(
         &first
@@ -987,12 +1019,12 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
                 &first.captured_owner().unwrap().domain(),
             )
             .unwrap_err(),
-        t::WrappingScopeQueryError::NonInlineScope,
+        t::observation::WrappingScopeQueryError::NonInlineScope,
     );
 
     let paired = capture(
         "A B",
-        t::WhiteSpace::Preserve,
+        t::style::WhiteSpace::Preserve,
         &[(0, 2), (2, 3)],
         &[(K::InlineBoundaryStart, 0), (K::InlineBoundaryEnd, 2)],
         &[(0, 1)],
@@ -1015,8 +1047,8 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
                 .boundary_consumes_control(&end(first).view().boundary(), &control)
                 .unwrap_err()
         ),
-        t::ProtocolError::ForeignPreparation {
-            kind: t::ProtocolHandleKind::Boundary,
+        t::prepared::ProtocolError::ForeignPreparation {
+            kind: t::prepared::ProtocolHandleKind::Boundary,
             ..
         }
     ));
@@ -1026,15 +1058,15 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
                 .boundary_consumes_control(&end(first).view().boundary(), &control)
                 .unwrap_err()
         ),
-        t::ProtocolError::ForeignPreparation {
-            kind: t::ProtocolHandleKind::Control,
+        t::prepared::ProtocolError::ForeignPreparation {
+            kind: t::prepared::ProtocolHandleKind::Control,
             ..
         }
     ));
     assert!(matches!(
         reason(&first.control_is_boundary_exact(&control).unwrap_err()),
-        t::ProtocolError::ForeignPreparation {
-            kind: t::ProtocolHandleKind::Control,
+        t::prepared::ProtocolError::ForeignPreparation {
+            kind: t::prepared::ProtocolHandleKind::Control,
             ..
         }
     ));
@@ -1048,8 +1080,8 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
                 )
                 .unwrap_err()
         ),
-        t::ProtocolError::ForeignPreparation {
-            kind: t::ProtocolHandleKind::Boundary,
+        t::prepared::ProtocolError::ForeignPreparation {
+            kind: t::prepared::ProtocolHandleKind::Boundary,
             ..
         }
     ));
@@ -1057,13 +1089,13 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
         &paired
             .boundary_inside_captured_scope(&single_source_segment(&paired), &boundary, &outer)
             .unwrap_err(),
-        t::WrappingScopeQueryError::ForeignCapture,
+        t::observation::WrappingScopeQueryError::ForeignCapture,
     );
 
-    let flat = t::AnalyzedSource::new(
-        t::Source::new("AB"),
+    let flat = t::analyzed::AnalyzedSource::new(
+        t::source::Source::new("AB"),
         base(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = t::System::default();
@@ -1071,7 +1103,7 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
         .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
         .unwrap();
     let flat = system
-        .prepare(&flat, t::PreparationOptions::default())
+        .prepare(&flat, t::prepared::PreparationOptions::default())
         .unwrap();
     scope_error(
         &flat
@@ -1081,6 +1113,6 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
                 &scope,
             )
             .unwrap_err(),
-        t::WrappingScopeQueryError::MissingCapture,
+        t::observation::WrappingScopeQueryError::MissingCapture,
     );
 }

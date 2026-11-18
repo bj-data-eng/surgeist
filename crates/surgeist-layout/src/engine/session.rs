@@ -3671,8 +3671,11 @@ mod tests {
 
     fn assert_prepared_fragment_staging<S: LayoutScalar>() {
         use crate::test_support::text::{PreparedParagraph, ahem_style};
-        let paragraph =
-            PreparedParagraph::plain(1, surgeist_text::Source::new("X"), ahem_style(10.0, 10.0));
+        let paragraph = PreparedParagraph::plain(
+            1,
+            surgeist_text::source::Source::new("X"),
+            ahem_style(10.0, 10.0),
+        );
         let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::<S>::new()
             .children(0, [1])
             .children(1, [])
@@ -3829,7 +3832,7 @@ mod grid_overflow_observation_tests {
             let scalar = S::from_f64;
             let text = crate::test_support::text::PreparedParagraph::plain(
                 4,
-                surgeist_text::Source::new("AAAA AAAA"),
+                surgeist_text::source::Source::new("AAAA AAAA"),
                 crate::test_support::text::ahem_style(5.0, 10.0),
             );
             let tree = PublicLayoutTreeOf::new()
@@ -4302,8 +4305,11 @@ mod grid_overflow_observation_tests {
 
     fn assert_rigid_translation_reuses_finalization<S: LayoutScalar>() {
         use crate::test_support::text::{PreparedParagraph, ahem_style};
-        let text =
-            PreparedParagraph::plain(2, surgeist_text::Source::new("X"), ahem_style(10.0, 10.0));
+        let text = PreparedParagraph::plain(
+            2,
+            surgeist_text::source::Source::new("X"),
+            ahem_style(10.0, 10.0),
+        );
         let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::<S>::new()
             .children(0, [1])
             .children(1, [2])
@@ -4367,7 +4373,7 @@ mod grid_overflow_observation_tests {
         );
         super::super::root::compute_root(&mut session, 0, request).unwrap();
         super::super::rounding::round_layout(&mut session, 0).unwrap();
-        let surgeist_text::PlacementEntry::Formatted(initial) =
+        let surgeist_text::placement::PlacementEntry::Formatted(initial) =
             session.text.as_ref().unwrap().pending[0].entries[0].clone()
         else {
             panic!("native translated line remains formatted");
@@ -4385,7 +4391,7 @@ mod grid_overflow_observation_tests {
         session.begin_text_pass(0, frames).unwrap();
         super::super::root::compute_root(&mut session, 0, request).unwrap();
         super::super::rounding::round_layout(&mut session, 0).unwrap();
-        let surgeist_text::PlacementEntry::Formatted(canonical) =
+        let surgeist_text::placement::PlacementEntry::Formatted(canonical) =
             &session.text.as_ref().unwrap().pending[0].entries[0]
         else {
             panic!("native translated line remains formatted");

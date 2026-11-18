@@ -40,7 +40,9 @@ impl layout::LayoutTree for ComputedTree {
     }
 }
 
-fn glyph_rows(placed: &text::Layout) -> Vec<(usize, text::Range, u32, f32, f64, f64)> {
+fn glyph_rows(
+    placed: &text::layout::Layout,
+) -> Vec<(usize, text::source::Range, u32, f32, f64, f64)> {
     placed
         .run_views()
         .flat_map(|run| {
@@ -91,7 +93,7 @@ fn demanded_box_fragment_survives_computed_break_placement_and_retained_paint() 
 fn demanded_family_counts_borrowed_backing_and_respects_capture_limits() {
     assert_computed_scope_before(
         layout::InlineBoxFragmentationDemand::CompleteBodies,
-        Some(text::ScopeAlignmentLimits::new(
+        Some(text::scope_alignment::ScopeAlignmentLimits::new(
             100_000,
             64,
             10_000_000,
@@ -102,68 +104,68 @@ fn demanded_family_counts_borrowed_backing_and_respects_capture_limits() {
 
 fn assert_computed_scope_before(
     demand: layout::InlineBoxFragmentationDemand,
-    limits: Option<text::ScopeAlignmentLimits>,
+    limits: Option<text::scope_alignment::ScopeAlignmentLimits>,
 ) {
-    use text::SourceProcessingEvent as E;
-    let aggregate = text::Source::identified("AA", text::Id::from_u64(650_810), 7);
+    use text::capture::SourceProcessingEvent as E;
+    let aggregate = text::source::Source::identified("AA", text::source::Id::from_u64(650_810), 7);
     let originals = [
-        text::Source::identified("A", text::Id::from_u64(650_811), 11),
-        text::Source::identified("A", text::Id::from_u64(650_812), 13),
+        text::source::Source::identified("A", text::source::Id::from_u64(650_811), 11),
+        text::source::Source::identified("A", text::source::Id::from_u64(650_812), 13),
     ];
-    let base = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let base = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
-        wrap: text::Wrap::None,
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
+        wrap: text::style::Wrap::None,
+        ..text::style::Style::default()
     };
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: limits,
-            computed_line_boundaries: vec![text::ComputedLineBoundaryInput::Scope {
+            computed_line_boundaries: vec![text::capture::ComputedLineBoundaryInput::Scope {
                 scope: 1,
-                side: text::SourceBoxSide::Before,
+                side: text::capture::SourceBoxSide::Before,
             }],
             source: aggregate.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: originals
                 .iter()
                 .enumerate()
-                .map(|(index, source)| text::ParagraphOrigin {
+                .map(|(index, source)| text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: text::Range::new(0, 1),
-                    aggregate: text::Range::new(index, index + 1),
-                    kind: text::ParagraphOriginKind::Authored,
+                    local: text::source::Range::new(0, 1),
+                    aggregate: text::source::Range::new(index, index + 1),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
-            connections: vec![text::SourceProcessingConnection {
+            connections: vec![text::capture::SourceProcessingConnection {
                 before_origin: 0,
                 after_origin: 1,
-                kind: text::ParagraphConnectionKind::Continuous,
+                kind: text::paragraph::ParagraphConnectionKind::Continuous,
             }],
             controls: vec![],
-            boundary_policies: vec![text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(0),
-                preceding_wrap: text::Wrap::None,
-                following_wrap: text::Wrap::None,
-                ancestor_wrap: text::Wrap::None,
+            boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+                definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                preceding_wrap: text::style::Wrap::None,
+                following_wrap: text::style::Wrap::None,
+                ancestor_wrap: text::style::Wrap::None,
             }],
             replacements: vec![],
             scopes: vec![
-                text::SourceProcessingScope::Block {
+                text::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: text::SourceProcessingTopology::Complete,
+                    topology: text::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: base,
-                    used_direction: text::ParagraphBaseDirection::LeftToRight,
+                    used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
@@ -172,22 +174,22 @@ fn assert_computed_scope_before(
                     boundaries: None,
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
                 E::EnterParagraph(0),
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Connection(0),
                 E::EnterScope(1),
                 E::Origin {
                     origin: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(1),
                 E::ExitParagraph(0),
@@ -203,22 +205,22 @@ fn assert_computed_scope_before(
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(
         cause.target(),
-        text::CapturedComputedLineBoundaryTarget::Scope {
+        text::capture::CapturedComputedLineBoundaryTarget::Scope {
             scope,
-            side: text::SourceBoxSide::Before,
+            side: text::capture::SourceBoxSide::Before,
         }
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
-            ancestor_wrap: text::Wrap::None,
+            ancestor_wrap: text::style::Wrap::None,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
@@ -227,7 +229,7 @@ fn assert_computed_scope_before(
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(prepared.control_views().count(), 0);
     if limits.is_some() {
@@ -235,20 +237,20 @@ fn assert_computed_scope_before(
         // admission must count its additional owners without charging borrowed
         // caller stack headers or changing the preparation's retained state.
         let prepared_retention = prepared.scope_alignment_retention().unwrap();
-        let allowance = text::ScopeAlignmentAllowance::new(100_000, 16 << 20);
-        let products = text::ScopeAlignmentProducts::Mixed(&[]);
-        let baseline = text::scope_alignment_census(
-            text::ScopeAlignmentCensusInput::Product(text::ScopeAlignmentProduct::Prepared(
-                &prepared,
-            )),
+        let allowance = text::scope_alignment::ScopeAlignmentAllowance::new(100_000, 16 << 20);
+        let products = text::scope_alignment::ScopeAlignmentProducts::Mixed(&[]);
+        let baseline = text::scope_alignment::scope_alignment_census(
+            text::scope_alignment::ScopeAlignmentCensusInput::Product(
+                text::scope_alignment::ScopeAlignmentProduct::Prepared(&prepared),
+            ),
             products,
             allowance,
         )
         .unwrap()
         .input_retention();
-        let borrowed_census = |native_boxes: &Vec<text::InlineBoxSource>| {
-            text::scope_alignment_census(
-                text::ScopeAlignmentCensusInput::InlineBoxFamily {
+        let borrowed_census = |native_boxes: &Vec<text::inline_box::InlineBoxSource>| {
+            text::scope_alignment::scope_alignment_census(
+                text::scope_alignment::ScopeAlignmentCensusInput::InlineBoxFamily {
                     prepared: &prepared,
                     native_boxes,
                 },
@@ -262,10 +264,10 @@ fn assert_computed_scope_before(
         // empty vector owns no backing; reservation contributes its real
         // backing capacity even before any native declaration is initialized.
         assert_eq!(borrowed_census(&Vec::new()), baseline);
-        let reserved = Vec::<text::InlineBoxSource>::with_capacity(3);
+        let reserved = Vec::<text::inline_box::InlineBoxSource>::with_capacity(3);
         let expected_backing = reserved
             .capacity()
-            .checked_mul(std::mem::size_of::<text::InlineBoxSource>())
+            .checked_mul(std::mem::size_of::<text::inline_box::InlineBoxSource>())
             .unwrap();
         assert_eq!(borrowed_census(&reserved).records(), baseline.records());
         assert_eq!(
@@ -276,38 +278,43 @@ fn assert_computed_scope_before(
                 .unwrap(),
         );
         let refused = prepared
-            .inline_box_family(vec![], Some(text::ScopeAlignmentAllowance::new(0, 0)))
+            .inline_box_family(
+                vec![],
+                Some(text::scope_alignment::ScopeAlignmentAllowance::new(0, 0)),
+            )
             .unwrap_err();
         assert_eq!(refused.code, text::ErrorCode::ScopeAlignmentRefused);
         assert!(matches!(
             refused.detail(),
             Some(text::ErrorDetail::ScopeAlignment {
-                reason: text::ScopeAlignmentError::Limit { required, limit: 0, .. }
+                reason: text::scope_alignment::ScopeAlignmentError::Limit { required, limit: 0, .. }
             }) if *required > 0
         ));
         let family = prepared.inline_box_family(vec![], None).unwrap();
         let retained = family.scope_alignment_retention().unwrap();
         assert!(retained.records() > 0);
         assert!(retained.payload_bytes() > 0);
-        let family_input = text::ScopeAlignmentCensusInput::Product(
-            text::ScopeAlignmentProduct::InlineBoxFamily(&family),
+        let family_input = text::scope_alignment::ScopeAlignmentCensusInput::Product(
+            text::scope_alignment::ScopeAlignmentProduct::InlineBoxFamily(&family),
         );
-        let single = text::scope_alignment_census(family_input, products, allowance).unwrap();
+        let single =
+            text::scope_alignment::scope_alignment_census(family_input, products, allowance)
+                .unwrap();
         let alias = family.clone();
         let related = [
-            text::ScopeAlignmentProduct::InlineBoxFamily(&alias),
-            text::ScopeAlignmentProduct::Prepared(&prepared),
+            text::scope_alignment::ScopeAlignmentProduct::InlineBoxFamily(&alias),
+            text::scope_alignment::ScopeAlignmentProduct::Prepared(&prepared),
         ];
-        let shared = text::scope_alignment_census(
+        let shared = text::scope_alignment::scope_alignment_census(
             family_input,
-            text::ScopeAlignmentProducts::Mixed(&related),
+            text::scope_alignment::ScopeAlignmentProducts::Mixed(&related),
             allowance,
         )
         .unwrap();
         assert_eq!(shared.input_retention(), single.input_retention());
         assert_eq!(
             shared.external_retention(),
-            text::ScopeAlignmentRetention::default()
+            text::scope_alignment::ScopeAlignmentRetention::default()
         );
         let usage = family.scope_alignment_usage().unwrap();
         assert!(usage.payload_bytes() >= retained.payload_bytes());
@@ -326,7 +333,7 @@ fn assert_computed_scope_before(
         assert_eq!(origin.view().source(), original);
         assert_eq!(
             original.id(),
-            Some(text::Id::from_u64(650_811 + index as u64))
+            Some(text::source::Id::from_u64(650_811 + index as u64))
         );
         assert_eq!(original.revision(), [11, 13][index]);
     }
@@ -401,7 +408,8 @@ fn assert_computed_scope_before(
                 fragments.family().scope_alignment_retention().is_some(),
                 limits.is_some()
             );
-            let owner = text::InlineBoxSource::captured(processed.captured_scope(1).unwrap());
+            let owner =
+                text::inline_box::InlineBoxSource::captured(processed.captured_scope(1).unwrap());
             let pieces = fragments
                 .pieces()
                 .filter(|piece| piece.fragment().owner() == owner)
@@ -420,7 +428,10 @@ fn assert_computed_scope_before(
         .map(|piece| (piece.fragment(), piece.line_index()))
         .collect::<Vec<_>>();
     assert_eq!(placed.source(), &aggregate);
-    assert_eq!(placed.source().id(), Some(text::Id::from_u64(650_810)));
+    assert_eq!(
+        placed.source().id(),
+        Some(text::source::Id::from_u64(650_810))
+    );
     assert_eq!(placed.source().revision(), 7);
     // Retained Ahem A: advance1em, ascent0.8em, descent0.2em. An early
     // mandatory cause starts the receiver despite ample width and WrapNone.
@@ -432,20 +443,20 @@ fn assert_computed_scope_before(
             .collect::<Vec<_>>(),
         [
             (
-                text::Range::new(0, 1),
+                text::source::Range::new(0, 1),
                 8.0,
-                text::Rect::new(0.0, 0.0, 40.0, 10.0)
+                text::geometry::Rect::new(0.0, 0.0, 40.0, 10.0)
             ),
             (
-                text::Range::new(1, 2),
+                text::source::Range::new(1, 2),
                 18.0,
-                text::Rect::new(0.0, 10.0, 40.0, 10.0)
+                text::geometry::Rect::new(0.0, 10.0, 40.0, 10.0)
             ),
         ]
     );
     let expected_glyphs = [
-        (0, text::Range::new(0, 1), 35, 10.0, 0.0, 8.0),
-        (1, text::Range::new(1, 2), 35, 10.0, 0.0, 18.0),
+        (0, text::source::Range::new(0, 1), 35, 10.0, 0.0, 8.0),
+        (1, text::source::Range::new(1, 2), 35, 10.0, 0.0, 18.0),
     ];
     assert_eq!(glyph_rows(placed), expected_glyphs);
     let finalized = batch
@@ -462,13 +473,21 @@ fn assert_computed_scope_before(
             .iter()
             .map(|line| line.selected_line().request().context.end)
             .collect::<Vec<_>>(),
-        [text::LineEnd::Forced, text::LineEnd::Paragraph]
+        [
+            text::selection::LineEnd::Forced,
+            text::selection::LineEnd::Paragraph
+        ]
     );
     let selected_line = finalized[0].selected_line();
-    let text::PreparedTermination::Ordinary(offer) = &selected_line.request().termination else {
+    let text::selection::PreparedTermination::Ordinary(offer) =
+        &selected_line.request().termination
+    else {
         panic!("real issued forced offer")
     };
-    assert_eq!(offer.view().kind(), text::PreparedBreakKind::Forced);
+    assert_eq!(
+        offer.view().kind(),
+        text::prepared::PreparedBreakKind::Forced
+    );
     assert_eq!(
         offer
             .view()
@@ -482,13 +501,15 @@ fn assert_computed_scope_before(
     let endpoint = |offset, affinity| {
         placed
             .positions()
-            .find(|position| position.source_cursor() == text::Cursor::new(offset, affinity))
+            .find(|position| {
+                position.source_cursor() == text::layout::Cursor::new(offset, affinity)
+            })
             .unwrap()
     };
     let selected = placed
         .position_selection(
-            &endpoint(0, text::Affinity::After),
-            &endpoint(2, text::Affinity::Before),
+            &endpoint(0, text::layout::Affinity::After),
+            &endpoint(2, text::layout::Affinity::Before),
         )
         .unwrap();
     assert_eq!(selected.source_text().code_units(), [65, 65]);
@@ -497,13 +518,16 @@ fn assert_computed_scope_before(
     for (index, piece) in selected.source_pieces().iter().enumerate() {
         assert_eq!(piece.origin(), &origins[index]);
         assert_eq!(piece.origin().view().source(), &originals[index]);
-        assert_eq!(piece.local_range(), text::Range::new(0, 1));
-        assert_eq!(piece.aggregate_range(), text::Range::new(index, index + 1));
+        assert_eq!(piece.local_range(), text::source::Range::new(0, 1));
+        assert_eq!(
+            piece.aggregate_range(),
+            text::source::Range::new(index, index + 1)
+        );
         assert_eq!(piece.code_units(), [65]);
     }
-    let cursor = text::Cursor::new(2, text::Affinity::Before);
+    let cursor = text::layout::Cursor::new(2, text::layout::Affinity::Before);
     let caret = placed.cursor(cursor).unwrap().rect();
-    assert_eq!(caret.origin, text::Point::new(10.0, 10.0));
+    assert_eq!(caret.origin, text::geometry::Point::new(10.0, 10.0));
     assert_eq!(caret.size.height, 10.0);
     drop(system);
     let paint = render::text_layout::prepare_text_layout(
@@ -538,7 +562,7 @@ fn assert_computed_scope_before(
     assert_eq!(paint.layout().source(), &aggregate);
     #[cfg(feature = "text-accessibility")]
     {
-        let mut accessibility = text::Accessibility::new(10);
+        let mut accessibility = text::accessibility::Accessibility::new(10);
         let parent = 1000_u64.into();
         let update = paint
             .layout()
@@ -546,7 +570,7 @@ fn assert_computed_scope_before(
                 &mut accessibility,
                 parent,
                 parent,
-                text::Point::new(100.0, 200.0),
+                text::geometry::Point::new(100.0, 200.0),
             )
             .unwrap();
         let position = paint

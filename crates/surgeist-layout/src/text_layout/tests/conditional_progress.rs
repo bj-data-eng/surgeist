@@ -223,27 +223,27 @@ fn native_forced_equality_excludes_the_float_while_the_next_line_replays_it() {
 fn registered(
     bytes: Vec<u8>,
     source: &str,
-    style: surgeist_text::Style,
+    style: surgeist_text::style::Style,
     direction: ParagraphBaseDirection,
 ) -> TextParagraphBinding<u32> {
     let ancestor_wrap = style.wrap;
     let source = Source::new(source);
     let length = source.text().len();
-    let analyzed = surgeist_text::AnalyzedSource::from_paragraph(
-        surgeist_text::ParagraphInput {
-            terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+    let analyzed = surgeist_text::analyzed::AnalyzedSource::from_paragraph(
+        surgeist_text::paragraph::ParagraphInput {
+            terminal_edge: surgeist_text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: style,
             base_direction: direction,
-            segment_breaks: surgeist_text::DocumentSegmentBreaks::LineFeedDefault,
-            paragraph_strut: surgeist_text::ParagraphStrut::DefaultFont,
-            origins: vec![surgeist_text::ParagraphOrigin {
+            segment_breaks: surgeist_text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            paragraph_strut: surgeist_text::paragraph::ParagraphStrut::DefaultFont,
+            origins: vec![surgeist_text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: Range::new(0, length),
                 aggregate: Range::new(0, length),
-                kind: surgeist_text::ParagraphOriginKind::Authored,
+                kind: surgeist_text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -251,7 +251,7 @@ fn registered(
             replacements: vec![],
             anchor_order: vec![],
         },
-        surgeist_text::AnalysisTypography::HorizontalComposition,
+        surgeist_text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, ancestor_wrap);
@@ -260,7 +260,10 @@ fn registered(
         .register_fonts(bytes, surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, surgeist_text::PreparationOptions::default())
+        .prepare(
+            &analyzed,
+            surgeist_text::prepared::PreparationOptions::default(),
+        )
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     TextParagraphBinding {
@@ -454,8 +457,9 @@ fn reshaped<S: LayoutScalar>() {
         crate::test_support::text_fragment::fragment_for(&binding.prepared).finalized_line();
     qualify_whole(&whole, &bytes, 12.5, 20.0, &[(Range::new(0, 2), 58, 20.0)]);
     let origin = binding.origins[0].origin.clone();
-    let seam = surgeist_text::TextSeam::Origin {
-        local: surgeist_text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
+    let seam = surgeist_text::finalized::TextSeam::Origin {
+        local: surgeist_text::source::SourcePosition::try_new(origin.view().source().text(), 1)
+            .unwrap(),
         origin,
     };
     assert!(whole.prefix_at(&seam).unwrap().interior_unit().is_some());
@@ -564,11 +568,14 @@ fn native_conditional_arabic_continuations_retain_the_original_base_joining_cont
 
 fn phantom_frontier<S: LayoutScalar>() {
     let mut style = ahem_style(10.0, 10.0);
-    style.white_space = surgeist_text::WhiteSpace::Collapse;
+    style.white_space = surgeist_text::style::WhiteSpace::Collapse;
     style.overflow_wrap = OverflowWrap::Anywhere;
     let paragraph = PreparedParagraph::plain(1, Source::new(" XXXX"), style);
     let first = paragraph.prepared.opportunity_views().next().unwrap();
-    assert_eq!(first.kind(), surgeist_text::PreparedBreakKind::Allowed);
+    assert_eq!(
+        first.kind(),
+        surgeist_text::prepared::PreparedBreakKind::Allowed
+    );
     assert_eq!(first.boundary().view().source_before().get(), 1);
     let tree = PublicLayoutTreeOf::<S>::new()
         .children(0, [1])
@@ -618,12 +625,12 @@ fn phantom_frontier<S: LayoutScalar>() {
         [
             (
                 Range::new(0, 3),
-                surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0),
+                surgeist_text::geometry::Rect::new(0.0, 0.0, 20.0, 10.0),
                 8.0
             ),
             (
                 Range::new(3, 5),
-                surgeist_text::Rect::new(0.0, 10.0, 20.0, 10.0),
+                surgeist_text::geometry::Rect::new(0.0, 10.0, 20.0, 10.0),
                 18.0
             ),
         ]
@@ -663,7 +670,7 @@ fn native_discarded_leading_space_does_not_hide_the_next_formatted_conditional_f
 
 fn rejected_candidate<S: LayoutScalar>() {
     let mut style = ahem_style(10.0, 10.0);
-    style.word_break = surgeist_text::WordBreak::BreakAll;
+    style.word_break = surgeist_text::style::WordBreak::BreakAll;
     let bytes = super::super::canonical::fonts::triple_ligature_ahem();
     let binding = registered(
         bytes.clone(),
@@ -691,7 +698,7 @@ fn rejected_candidate<S: LayoutScalar>() {
     );
     assert_eq!(
         batch.placed_text()[0].layout().lines()[0].bounds(),
-        surgeist_text::Rect::new(8.0, 0.0, 15.0, 10.0)
+        surgeist_text::geometry::Rect::new(8.0, 0.0, 15.0, 10.0)
     );
     let float = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(float.location, Point::ZERO);
@@ -716,10 +723,10 @@ fn native_later_ordinary_fit_restores_its_own_float_receipt_after_a_rejected_lon
 fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) {
     let mut style = ahem_style(10.0, 10.0);
     style.overflow_wrap = overflow;
-    let analyzed = surgeist_text::AnalyzedSource::new(
+    let analyzed = surgeist_text::analyzed::AnalyzedSource::new(
         Source::new("AAAA"),
         style,
-        surgeist_text::AnalysisTypography::HorizontalComposition,
+        surgeist_text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = surgeist_text::System::default();
@@ -727,7 +734,10 @@ fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) 
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, surgeist_text::PreparationOptions::default())
+        .prepare(
+            &analyzed,
+            surgeist_text::prepared::PreparationOptions::default(),
+        )
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let binding = TextParagraphBinding {

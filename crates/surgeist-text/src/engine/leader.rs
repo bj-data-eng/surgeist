@@ -8,10 +8,12 @@ use crate::{
     layout::Affinity,
     options::Alignment,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, ProcessedSource, ScopeAlignmentLimits,
-        ScopeFontReference, SourceProcessingEnvelope, SourceProcessingEvent,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
-        SourceWritingAxis, WhiteSpaceTrim,
+        DocumentSegmentBreaks, ProcessedSource,
+        contextual::{
+            ContextualSourceInput, ScopeAlignmentLimits, ScopeFontReference,
+            SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim,
+        },
     },
     protocol::{
         FinalizedLine, FormattedLineContext, LineAlignmentInsets, LineAllocations,

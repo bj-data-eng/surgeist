@@ -3,7 +3,7 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 
 fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
-    let mut input = empty_input(false, text::ParagraphStrut::DefaultFont);
+    let mut input = empty_input(false, text::paragraph::ParagraphStrut::DefaultFont);
     input.computed_line_boundaries.clear();
     assert!(input.source.text().is_empty());
     assert!(input.origins.is_empty());
@@ -12,22 +12,22 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let root_scope = input
         .scopes
         .iter()
-        .position(|scope| matches!(scope, text::SourceProcessingScope::Block { .. }))
+        .position(|scope| matches!(scope, text::capture::SourceProcessingScope::Block { .. }))
         .unwrap();
     let first_parent = input
         .scopes
         .iter()
-        .position(|scope| matches!(scope, text::SourceProcessingScope::Inline { .. }))
+        .position(|scope| matches!(scope, text::capture::SourceProcessingScope::Inline { .. }))
         .unwrap();
     assert_eq!(input.scopes.len(), 2);
     assert!(matches!(
         &input.scopes[first_parent],
-        text::SourceProcessingScope::Inline {
+        text::capture::SourceProcessingScope::Inline {
             boundaries: None,
             ..
         }
     ));
-    let inline = || text::SourceProcessingScope::Inline {
+    let inline = || text::capture::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
@@ -134,7 +134,7 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let scopes = member
         .scope_intersections()
         .map(|intersection| intersection.scope())
-        .filter(|scope| scope.role() == text::ScopeRole::Inline)
+        .filter(|scope| scope.role() == text::capture::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 6);
     let mut parents = scopes
@@ -159,8 +159,8 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
             .collect::<Vec<_>>();
         assert_eq!(children.len(), 1);
         let child = children[0].clone();
-        assert_eq!(parent.role(), text::ScopeRole::Inline);
-        assert_eq!(child.role(), text::ScopeRole::Inline);
+        assert_eq!(parent.role(), text::capture::ScopeRole::Inline);
+        assert_eq!(child.role(), text::capture::ScopeRole::Inline);
         assert_eq!(parent.parent(), Some(domain.clone()));
         assert_eq!(child.parent(), Some(parent.clone()));
         for scope in [parent, &child] {
@@ -172,7 +172,7 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let (p, c) = &pairs[0];
     let (q, d) = &pairs[1];
     let (r, e) = &pairs[2];
-    let actual = |scope: &text::CapturedScope| {
+    let actual = |scope: &text::capture::CapturedScope| {
         crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope.clone()))
     };
     let mut orders = vec![complete_order(
@@ -259,8 +259,8 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     );
     assert!(prior.placed_text().is_empty());
     assert_eq!(prior.native_inline_box_families().count(), 0);
-    let group =
-        |left: &text::CapturedScope, right: &text::CapturedScope| crate::InlineGapGroupInput {
+    let group = |left: &text::capture::CapturedScope, right: &text::capture::CapturedScope| {
+        crate::InlineGapGroupInput {
             anchor: crate::InlineGapAnchor::Formatter {
                 node: 0,
                 edge: crate::InlineFormatterEdge::Start,
@@ -269,7 +269,8 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
                 crate::InlineBoxRef::Scope(left.clone()),
                 crate::InlineBoxRef::Scope(right.clone()),
             ],
-        };
+        }
+    };
     // Direct group owners are all distinct. The cycle exists only after
     // original ancestry expands P/Q/R to their real descendant leaves C/D/E.
     let named = [p, q, d, r, e, c];

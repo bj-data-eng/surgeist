@@ -17,6 +17,10 @@ use crate::{
 pub(crate) mod captured;
 mod combined;
 mod domain;
+pub use crate::transform::TextCombineError;
+pub use crate::wrapping::{
+    AnalyzedWrappingRelation, AnalyzedWrappingRelationView, WrappingNeighbor, WrappingPolicy,
+};
 pub use captured::CapturedAnalysisOwner;
 pub use combined::{AnalyzedCombinedCell, AnalyzedCombinedSourcePiece};
 pub use domain::AnalyzedDomain;

@@ -79,11 +79,11 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
     assert_eq!(origins[1].source().text().code_units(), &[88]);
     assert_eq!(
         origins[0].aggregate_range(),
-        surgeist_text::Range::new(0, 2)
+        surgeist_text::source::Range::new(0, 2)
     );
     assert_eq!(
         origins[1].aggregate_range(),
-        surgeist_text::Range::new(2, 3)
+        surgeist_text::source::Range::new(2, 3)
     );
     // The registered real source already issues its mandatory LF boundary.
     // The float is not a Text atomic or a fabricated source-less break.
@@ -92,7 +92,7 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
     let forced: Vec<_> = paragraph
         .prepared
         .opportunity_views()
-        .filter(|view| view.kind() == surgeist_text::PreparedBreakKind::Forced)
+        .filter(|view| view.kind() == surgeist_text::prepared::PreparedBreakKind::Forced)
         .collect();
     assert_eq!(forced.len(), 1);
     assert_eq!(forced[0].boundary().view().source_after().get(), 2);
@@ -136,8 +136,8 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
     assert_eq!(placed.source().text().code_units(), &[65, 10, 88]);
     let lines = placed.lines();
     assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 2));
-    assert_eq!(lines[1].range(), surgeist_text::Range::new(2, 3));
+    assert_eq!(lines[0].range(), surgeist_text::source::Range::new(0, 2));
+    assert_eq!(lines[1].range(), surgeist_text::source::Range::new(2, 3));
     // Independent Ahem10 metrics: ascent8, descent2, absolute line-height10.
     // A nonterminal preserved LF yields two lines, without a terminal empty.
     assert_eq!(lines[0].baseline(), 8.0);
@@ -161,7 +161,7 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
         );
         assert!(matches!(
             fragment.view().owner(),
-            surgeist_text::FinalizedFragmentOwner::Origin(origin)
+            surgeist_text::finalized::FinalizedFragmentOwner::Origin(origin)
                 if origin == paragraph.origin(1) || origin == paragraph.origin(2)
         ));
     }
@@ -197,7 +197,7 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
         vec![ParagraphPart::text(1, Source::new("A\n"), style.clone())],
         style.clone(),
         ParagraphBaseDirection::LeftToRight,
-        surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+        surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
     );
     let second = PreparedParagraph::plain(2, Source::new("X"), style);
     assert_ne!(first.prepared, second.prepared);
@@ -232,13 +232,16 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
     assert_eq!(first_layout.lines().len(), 1);
     assert_eq!(
         first_layout.lines()[0].range(),
-        surgeist_text::Range::new(0, 2)
+        surgeist_text::source::Range::new(0, 2)
     );
     assert_eq!(first_layout.lines()[0].baseline(), 8.0);
     let completions = first_layout.nonformatted_lines().collect::<Vec<_>>();
     assert_eq!(completions.len(), 1);
     let completion = completions[0];
-    assert_eq!(completion.origin, surgeist_text::Point::new(0.0, 10.0));
+    assert_eq!(
+        completion.origin,
+        surgeist_text::geometry::Point::new(0.0, 10.0)
+    );
     assert!(completion.atomics.is_empty());
     let receipt = completion.line.finalized_line();
     assert_eq!(receipt.prepared_text(), first.prepared);
@@ -246,16 +249,19 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
     assert_eq!(receipt.feedback().line_height, 10.0);
     let selected = receipt.selected_line();
     let terminal = selected.request();
-    assert_eq!(terminal.context.end, surgeist_text::LineEnd::Paragraph);
+    assert_eq!(
+        terminal.context.end,
+        surgeist_text::selection::LineEnd::Paragraph
+    );
     assert_eq!(terminal.start.view().source_before().get(), 2);
     assert_eq!(terminal.end.view().source_before().get(), 2);
     assert!(matches!(&terminal.termination,
-        surgeist_text::PreparedTermination::Ordinary(offer)
-            if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+        surgeist_text::selection::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == surgeist_text::prepared::PreparedBreakKind::ParagraphEnd));
     assert_eq!(second_layout.lines().len(), 1);
     assert_eq!(
         second_layout.lines()[0].range(),
-        surgeist_text::Range::new(0, 1)
+        surgeist_text::source::Range::new(0, 1)
     );
     assert_eq!(second_layout.lines()[0].baseline(), 18.0);
     assert_eq!(root_height(&batch), S::from_f64(20.0));

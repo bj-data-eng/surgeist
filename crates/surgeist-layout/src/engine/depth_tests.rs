@@ -446,7 +446,7 @@ fn atomic_inline_block_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<
     let atomic = || NodeInputOf {
         display: Display::InlineBlock,
         atomic_inline_participation: Some(crate::AtomicInlineParticipation::new(
-            surgeist_text::BidiLevel::try_new(0).unwrap(),
+            surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
             crate::InlineBreakOpportunity::Allowed,
         )),
         inline_baseline_context: crate::InlineBaselineContext::Physical,
@@ -756,8 +756,11 @@ fn assert_captured_detached_float_chain<S: LayoutScalar>(depth: u32) {
     let mut paragraphs = Vec::new();
     for node in 0..=depth {
         let text = depth + 1 + node;
-        let paragraph =
-            PreparedParagraph::plain(text, surgeist_text::Source::new("X"), ahem_style(5.0, 5.0));
+        let paragraph = PreparedParagraph::plain(
+            text,
+            surgeist_text::source::Source::new("X"),
+            ahem_style(5.0, 5.0),
+        );
         let mut binding = paragraph.binding(node);
         let children = if node < depth {
             binding.nodes = vec![text, node + 1];

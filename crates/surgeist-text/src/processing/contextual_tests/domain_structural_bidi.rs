@@ -8,10 +8,13 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        CapturedDomainDefinition, ContextualSourceInput, ProcessedSource,
-        SourceProcessingConnection, SourceProcessingEvent, SourceProcessingJointFlow,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
-        process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            CapturedDomainDefinition, ContextualSourceInput, SourceProcessingConnection,
+            SourceProcessingEvent, SourceProcessingJointFlow, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+            process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection,

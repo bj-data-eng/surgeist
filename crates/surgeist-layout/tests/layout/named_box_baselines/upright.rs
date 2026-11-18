@@ -12,7 +12,7 @@ const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
-const STRUT: t::LineStrut = t::LineStrut {
+const STRUT: t::allocation::LineStrut = t::allocation::LineStrut {
     baseline: 8.0,
     line_extent: 10.0,
 };
@@ -148,33 +148,33 @@ fn qualify_font(bytes: &[u8]) {
 }
 
 fn select_line(
-    prepared: &t::PreparedText,
-    start: t::PreparedBoundary,
-    offer: t::PreparedOpportunity,
+    prepared: &t::prepared::PreparedText,
+    start: t::prepared::PreparedBoundary,
+    offer: t::prepared::PreparedOpportunity,
     available: Option<f64>,
-) -> t::FinalizedLine {
+) -> t::finalized::FinalizedLine {
     select_line_in_direction(prepared, start, offer, available, l::Direction::Ltr)
 }
 
 fn select_line_in_direction(
-    prepared: &t::PreparedText,
-    start: t::PreparedBoundary,
-    offer: t::PreparedOpportunity,
+    prepared: &t::prepared::PreparedText,
+    start: t::prepared::PreparedBoundary,
+    offer: t::prepared::PreparedOpportunity,
     available: Option<f64>,
     direction: l::Direction,
-) -> t::FinalizedLine {
+) -> t::finalized::FinalizedLine {
     let from = start.view().participant_offset();
     let end = offer.view().boundary();
     let to = end.view().participant_offset();
-    let terminal = offer.view().kind() == t::PreparedBreakKind::ParagraphEnd;
+    let terminal = offer.view().kind() == t::prepared::PreparedBreakKind::ParagraphEnd;
     prepared
-        .select(t::LineSelectionRequest {
+        .select(t::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start,
             end,
             participants: prepared.participants().skip(from).take(to - from).collect(),
-            termination: t::PreparedTermination::Ordinary(offer),
+            termination: t::selection::PreparedTermination::Ordinary(offer),
             alternative: None,
             incoming: None,
             atomics: vec![],
@@ -182,44 +182,44 @@ fn select_line_in_direction(
             boundary_context: vec![],
             line_strut: Some(STRUT),
             line_box_struts: vec![],
-            context: t::LineContext {
-                alignment_insets: t::LineAlignmentInsets::ZERO,
-                formatted_line: t::FormattedLineContext::default(),
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
+            context: t::selection::LineContext {
+                alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: t::selection::FormattedLineContext::default(),
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: if direction == l::Direction::Ltr {
-                    t::LineBoxDirection::LeftToRight
+                    t::selection::LineBoxDirection::LeftToRight
                 } else {
-                    t::LineBoxDirection::RightToLeft
+                    t::selection::LineBoxDirection::RightToLeft
                 },
-                orientation: t::LineOrientation::Vertical,
+                orientation: t::selection::LineOrientation::Vertical,
                 start: if from == 0 {
-                    t::LineStart::Paragraph
+                    t::selection::LineStart::Paragraph
                 } else {
-                    t::LineStart::Continuation
+                    t::selection::LineStart::Continuation
                 },
                 end: if terminal {
-                    t::LineEnd::Paragraph
+                    t::selection::LineEnd::Paragraph
                 } else {
-                    t::LineEnd::Soft
+                    t::selection::LineEnd::Soft
                 },
                 available_inline: available,
                 indent: 0.0,
-                alignment: t::Alignment::Start,
-                tabs: t::TabContext::NoTabs,
-                spacing: t::SpacingPolicy::None,
+                alignment: t::options::Alignment::Start,
+                tabs: t::tabs::TabContext::NoTabs,
+                spacing: t::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
 
 struct Fixture {
-    prepared: t::PreparedText,
-    source: t::Source,
+    prepared: t::prepared::PreparedText,
+    source: t::source::Source,
     bytes: Vec<u8>,
 }
 
@@ -249,12 +249,12 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
     let cross = instance
         .upright_metrics(
             catalogue,
-            t::FontBaselineScript::from_iso15924(*b"Hani").unwrap(),
+            t::font::FontBaselineScript::from_iso15924(*b"Hani").unwrap(),
         )
         .unwrap();
     assert_eq!(
         cross.reference(),
-        t::UprightMetricReference::NominalVerticalPenX
+        t::font::UprightMetricReference::NominalVerticalPenX
     );
     assert_eq!(
         (
@@ -264,58 +264,59 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
         ),
         (0.0, 2.0, -2.0)
     );
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 4.0,
-        line_height: t::LineHeight::Absolute(4.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(4.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     };
-    let source = t::Source::identified("\u{4e00}\u{4e00}", t::Id::from_u64(1_550_001), 1);
-    use t::SourceProcessingEvent as E;
+    let source =
+        t::source::Source::identified("\u{4e00}\u{4e00}", t::source::Id::from_u64(1_550_001), 1);
+    use t::capture::SourceProcessingEvent as E;
     let capture = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
-            origins: vec![t::ParagraphOrigin {
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![t::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: t::Range::new(0, 2),
-                aggregate: t::Range::new(0, 2),
-                kind: t::ParagraphOriginKind::Authored,
+                local: t::source::Range::new(0, 2),
+                aggregate: t::source::Range::new(0, 2),
+                kind: t::paragraph::ParagraphOriginKind::Authored,
             }],
             controls: vec![],
             connections: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
                 used_direction: if direction == l::Direction::Ltr {
-                    t::ParagraphBaseDirection::LeftToRight
+                    t::paragraph::ParagraphBaseDirection::LeftToRight
                 } else {
-                    t::ParagraphBaseDirection::RightToLeft
+                    t::paragraph::ParagraphBaseDirection::RightToLeft
                 },
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
                 E::EnterParagraph(0),
                 E::Origin {
                     origin: 0,
-                    affinity: t::Affinity::After,
+                    affinity: t::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::ExitScope(0),
@@ -323,10 +324,10 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
         })
         .unwrap(),
     );
-    let typography = t::AnalysisTypography::Upright {
-        computed_direction: t::ParagraphBaseDirection::RightToLeft,
+    let typography = t::analyzed::AnalysisTypography::Upright {
+        computed_direction: t::paragraph::ParagraphBaseDirection::RightToLeft,
     };
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         capture.paragraphs().next().unwrap(),
         typography,
     )
@@ -334,32 +335,36 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| t::WrappingPolicy {
+        .map(|r| t::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(wrapping).unwrap();
     assert_eq!(analyzed.typography(), typography);
-    assert_eq!(analyzed.direction(), t::Direction::LeftToRight);
+    assert_eq!(analyzed.direction(), t::style::Direction::LeftToRight);
     assert_eq!(analyzed.source(), &source);
     assert_eq!(
         analyzed.graphemes().collect::<Vec<_>>(),
-        [t::Range::new(0, 1), t::Range::new(1, 2)]
+        [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
     );
     let prepared = system
         .prepare(
             &analyzed,
-            t::PreparationOptions::default().with_orientation(t::LineOrientation::Vertical),
+            t::prepared::PreparationOptions::default()
+                .with_orientation(t::selection::LineOrientation::Vertical),
         )
         .unwrap();
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
-    assert_eq!(prepared.orientation(), t::LineOrientation::Vertical);
+    assert_eq!(
+        prepared.orientation(),
+        t::selection::LineOrientation::Vertical
+    );
     assert_eq!(prepared.origin_views().count(), 1);
     let first = prepared.boundary_views().next().unwrap().handle();
     let terminal = prepared
         .opportunity_views()
-        .find(|o| o.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|o| o.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let whole = if direction == l::Direction::Ltr {
@@ -378,7 +383,7 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
     let glyphs = whole
         .run_views()
         .flat_map(|run| {
-            assert_eq!(run.glyph_basis(), t::GlyphBasis::Unrotated);
+            assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Unrotated);
             assert_eq!(run.face().bytes(), bytes);
             run.glyphs()
                 .map(|g| (g.range(), g.id(), g.x(), g.y(), g.advance(), g.pen()))
@@ -388,14 +393,14 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
     assert_eq!(
         glyphs,
         [
-            (t::Range::new(0, 1), 274, -2.0, 3.2, 4.0, 0.0),
-            (t::Range::new(1, 2), 274, -2.0, 3.2, 4.0, 4.0)
+            (t::source::Range::new(0, 1), 274, -2.0, 3.2, 4.0, 0.0),
+            (t::source::Range::new(1, 2), 274, -2.0, 3.2, 4.0, 4.0)
         ]
     );
     let soft = prepared
         .opportunity_views()
         .find(|o| {
-            o.kind() == t::PreparedBreakKind::Allowed
+            o.kind() == t::prepared::PreparedBreakKind::Allowed
                 && o.boundary().view().source_before().get() == 1
         })
         .unwrap()
@@ -423,7 +428,7 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
         // Font-owned source bounds are4 high at local v6..10, not allocation10.
         assert_eq!(
             fragments[0].bounds(),
-            Some(t::Rect::new(0.0, 6.0, 4.0, 4.0))
+            Some(t::geometry::Rect::new(0.0, 6.0, 4.0, 4.0))
         );
     }
     drop(system);
@@ -511,21 +516,24 @@ fn geometry<S: l::LayoutScalar>(
         text.analyzed_source().identity(),
         fixture.prepared.analyzed_source().identity()
     );
-    assert_eq!(text.orientation(), t::LineOrientation::Vertical);
+    assert_eq!(text.orientation(), t::selection::LineOrientation::Vertical);
     assert_eq!(text.lines().len(), 2);
     for (index, line) in text.lines().iter().enumerate() {
         let c = centers[index];
-        assert_eq!(line.range(), t::Range::new(index, index + 1));
-        assert_eq!(line.orientation(), t::LineOrientation::Vertical);
+        assert_eq!(line.range(), t::source::Range::new(index, index + 1));
+        assert_eq!(line.orientation(), t::selection::LineOrientation::Vertical);
         assert_eq!(line.baseline(), c);
-        assert_eq!(line.bounds(), t::Rect::new(c - 2.0, 0.0, 10.0, 4.0));
+        assert_eq!(
+            line.bounds(),
+            t::geometry::Rect::new(c - 2.0, 0.0, 10.0, 4.0)
+        );
     }
     let runs = text.run_views().collect::<Vec<_>>();
     assert_eq!(runs.len(), 2);
     for (index, run) in runs.iter().enumerate() {
-        assert_eq!(run.origin(), t::Point::new(centers[index], 0.0));
-        assert_eq!(run.range(), t::Range::new(index, index + 1));
-        assert_eq!(run.glyph_basis(), t::GlyphBasis::Unrotated);
+        assert_eq!(run.origin(), t::geometry::Point::new(centers[index], 0.0));
+        assert_eq!(run.range(), t::source::Range::new(index, index + 1));
+        assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Unrotated);
         assert_eq!(run.face().bytes(), fixture.bytes);
         assert_eq!(run.face().index(), 0);
         assert_eq!(
@@ -576,11 +584,11 @@ fn geometry<S: l::LayoutScalar>(
         assert_eq!(receipt.view().origin(), Some(origin.clone()));
         assert_eq!(
             receipt.view().aggregate_range(),
-            Some(t::Range::new(index, index + 1))
+            Some(t::source::Range::new(index, index + 1))
         );
         assert_eq!(
             receipt.view().local_range(),
-            Some(t::Range::new(index, index + 1))
+            Some(t::source::Range::new(index, index + 1))
         );
         let line = receipt.finalized_line();
         assert_eq!(line.prepared_text(), fixture.prepared);

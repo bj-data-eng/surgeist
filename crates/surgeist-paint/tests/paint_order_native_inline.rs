@@ -71,19 +71,22 @@ fn host() -> Host {
 }
 
 fn paragraph(host: &mut Host, container: usize, parts: &[&str]) -> l::TextParagraphBinding<usize> {
-    use t::SourceProcessingEvent as E;
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+    use t::capture::SourceProcessingEvent as E;
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Collapse,
-        wrap: t::Wrap::Word,
-        hyphens: t::Hyphens::None,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Collapse,
+        wrap: t::style::Wrap::Word,
+        hyphens: t::hyphenation::Hyphens::None,
+        ..t::style::Style::default()
     };
     let raw = parts.concat();
-    let mut source = t::Source::new(raw.clone());
-    source.span(t::Range::new(0, raw.encode_utf16().count()), style.clone());
+    let mut source = t::source::Source::new(raw.clone());
+    source.span(
+        t::source::Range::new(0, raw.encode_utf16().count()),
+        style.clone(),
+    );
     let mut origins = Vec::new();
     let mut connections = Vec::new();
     let mut boundary_policies = Vec::new();
@@ -92,39 +95,39 @@ fn paragraph(host: &mut Host, container: usize, parts: &[&str]) -> l::TextParagr
     for (index, part) in parts.iter().enumerate() {
         if index > 0 {
             let connection = connections.len();
-            connections.push(t::SourceProcessingConnection {
+            connections.push(t::capture::SourceProcessingConnection {
                 before_origin: index - 1,
                 after_origin: index,
-                kind: t::ParagraphConnectionKind::Continuous,
+                kind: t::paragraph::ParagraphConnectionKind::Continuous,
             });
-            boundary_policies.push(t::ParagraphBoundaryPolicy {
-                definition: t::ParagraphBoundaryDefinition::Connection(connection),
+            boundary_policies.push(t::paragraph::ParagraphBoundaryPolicy {
+                definition: t::paragraph::ParagraphBoundaryDefinition::Connection(connection),
                 preceding_wrap: style.wrap,
                 following_wrap: style.wrap,
                 ancestor_wrap: style.wrap,
             });
             events.push(E::Connection(connection));
         }
-        let range = t::Range::new(at, at + part.encode_utf16().count());
-        origins.push(t::ParagraphOrigin {
+        let range = t::source::Range::new(at, at + part.encode_utf16().count());
+        origins.push(t::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: range,
             aggregate: range,
-            kind: t::ParagraphOriginKind::Authored,
+            kind: t::paragraph::ParagraphOriginKind::Authored,
         });
         events.push(E::Origin {
             origin: index,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         });
         at = range.end;
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             source,
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             origins,
@@ -133,32 +136,32 @@ fn paragraph(host: &mut Host, container: usize, parts: &[&str]) -> l::TextParagr
             boundary_policies,
             replacements: Vec::new(),
             computed_line_boundaries: Vec::new(),
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style.clone(),
-                used_direction: t::ParagraphBaseDirection::LeftToRight,
+                used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+    let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| t::WrappingPolicy {
+        .map(|row| t::analyzed::WrappingPolicy {
             relation: row.handle(),
             ancestor_wrap: style.wrap,
         })
@@ -170,7 +173,7 @@ fn paragraph(host: &mut Host, container: usize, parts: &[&str]) -> l::TextParagr
     let prepared = system
         .prepare(
             &analyzed.with_wrapping_policies(wrapping).unwrap(),
-            t::PreparationOptions::default(),
+            t::prepared::PreparationOptions::default(),
         )
         .unwrap();
     let mut nodes = Vec::new();
@@ -239,7 +242,7 @@ fn source_index(batch: &l::CompletedLayoutBatch<usize>, node: usize) -> l::Sourc
 struct NativeLine<'a> {
     binding: &'a l::TextParagraphBinding<usize>,
     placed: &'a l::PlacedTextOutput<usize>,
-    line: t::FinalizedLine,
+    line: t::finalized::FinalizedLine,
     local_index: usize,
 }
 
@@ -376,7 +379,7 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
             .unwrap();
         assert_eq!(
             row.fragment().finalized_fragment().view().owner(),
-            t::FinalizedFragmentOwner::Origin(origin.origin.clone())
+            t::finalized::FinalizedFragmentOwner::Origin(origin.origin.clone())
         );
         assert_eq!(
             row.fragment().finalized_fragment().finalized_line(),
@@ -456,7 +459,7 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
             .finalized_fragment()
             .view()
             .aggregate_range(),
-        Some(t::Range::new(1, 1))
+        Some(t::source::Range::new(1, 1))
     );
     let request = paint_order::PaintRequest::new(
         &boxes,

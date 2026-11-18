@@ -14,21 +14,24 @@ fn c(mode: l::WritingMode) -> f64 {
 fn length<S: l::LayoutScalar>(value: f64) -> l::LengthOf<S> {
     l::LengthOf::value(l::LengthPercentageOf::px(n(value)).unwrap())
 }
-fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::FinalizedLine {
+fn standalone(
+    parent: &Captured,
+    kind: Option<t::source::InlineBoxKind>,
+) -> t::finalized::FinalizedLine {
     let p = &parent.prepared;
     let end = p
         .opportunity_views()
-        .find(|row| row.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|row| row.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
-    let rtl = p.analyzed_source().direction() == t::Direction::RightToLeft;
+    let rtl = p.analyzed_source().direction() == t::style::Direction::RightToLeft;
     let line = p
-        .select(t::LineSelectionRequest {
+        .select(t::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
-            termination: t::PreparedTermination::Ordinary(end),
+            termination: t::selection::PreparedTermination::Ordinary(end),
             participants: p.participants().collect(),
             alternative: None,
             incoming: None,
@@ -39,29 +42,29 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: t::LineContext {
-                alignment_insets: t::LineAlignmentInsets::ZERO,
-                formatted_line: t::FormattedLineContext::default(),
+            context: t::selection::LineContext {
+                alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: t::selection::FormattedLineContext::default(),
                 base_direction: if rtl {
-                    t::ParagraphBaseDirection::RightToLeft
+                    t::paragraph::ParagraphBaseDirection::RightToLeft
                 } else {
-                    t::ParagraphBaseDirection::LeftToRight
+                    t::paragraph::ParagraphBaseDirection::LeftToRight
                 },
-                line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::SidewaysClockwise,
-                start: t::LineStart::Paragraph,
-                end: t::LineEnd::Paragraph,
+                line_box_direction: t::selection::LineBoxDirection::LeftToRight,
+                orientation: t::selection::LineOrientation::SidewaysClockwise,
+                start: t::selection::LineStart::Paragraph,
+                end: t::selection::LineEnd::Paragraph,
                 available_inline: Some(40.0),
                 indent: 0.0,
-                alignment: t::Alignment::Start,
-                tabs: t::TabContext::NoTabs,
-                spacing: t::SpacingPolicy::None,
+                alignment: t::options::Alignment::Start,
+                tabs: t::tabs::TabContext::NoTabs,
+                spacing: t::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     let text_advance = if parent.source.text().is_empty() {
@@ -70,7 +73,7 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
         20.0
     };
     let advance = text_advance
-        + if kind == Some(t::InlineBoxKind::InFlow) {
+        + if kind == Some(t::source::InlineBoxKind::InFlow) {
             14.0
         } else {
             0.0
@@ -83,7 +86,7 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
     assert_eq!(line.prepared_text(), parent.prepared);
     assert!(
         line.run_views()
-            .all(|run| run.glyph_basis() == t::GlyphBasis::Clockwise)
+            .all(|run| run.glyph_basis() == t::geometry::GlyphBasis::Clockwise)
     );
     line
 }
@@ -123,7 +126,7 @@ fn paragraph_scene<S: l::LayoutScalar>(
 fn atomic_scene<S: l::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
-    kind: t::InlineBoxKind,
+    kind: t::source::InlineBoxKind,
     mode: l::WritingMode,
     direction: l::Direction,
     height: f64,
@@ -136,16 +139,16 @@ fn atomic_scene<S: l::LayoutScalar>(
 fn directions<S: l::LayoutScalar>() {
     let bytes = rtl_font();
     for body in [
-        t::ParagraphBaseDirection::LeftToRight,
-        t::ParagraphBaseDirection::RightToLeft,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::RightToLeft,
     ] {
-        let rtl = body == t::ParagraphBaseDirection::RightToLeft;
+        let rtl = body == t::paragraph::ParagraphBaseDirection::RightToLeft;
         let parent = capture(
             &bytes,
             if rtl { "\u{5d0}\u{5d1}" } else { "AB" },
             None,
             body,
-            t::LineOrientation::SidewaysClockwise,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         let whole = standalone(&parent, None);
@@ -184,7 +187,7 @@ fn directions<S: l::LayoutScalar>() {
                 let glyphs = text
                     .run_views()
                     .flat_map(|run| {
-                        assert_eq!(run.glyph_basis(), t::GlyphBasis::Clockwise);
+                        assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Clockwise);
                         run.glyphs()
                             .map(|g| (g.id(), run.origin().x, run.origin().y + g.pen()))
                             .collect::<Vec<_>>()
@@ -200,12 +203,12 @@ fn directions<S: l::LayoutScalar>() {
                 );
                 unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
                 let start = text
-                    .cursor(t::Cursor::new(0, t::Affinity::After))
+                    .cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
                     .unwrap()
                     .rect();
                 assert_eq!(
                     start,
-                    t::Rect::new(bs[0] - 2.0, if rtl { 10.0 } else { 0.0 }, 10.0, 1.0)
+                    t::geometry::Rect::new(bs[0] - 2.0, if rtl { 10.0 } else { 0.0 }, 10.0, 1.0)
                 );
                 let mut receipts = std::collections::BTreeMap::new();
                 for row in batch.unrounded_inline_fragments() {
@@ -214,15 +217,15 @@ fn directions<S: l::LayoutScalar>() {
                         let line = fragment.finalized_fragment().finalized_line();
                         assert_eq!(
                             line.selected_line().request().context.orientation,
-                            t::LineOrientation::SidewaysClockwise
+                            t::selection::LineOrientation::SidewaysClockwise
                         );
                         assert_eq!(line.selected_line().request().context.base_direction, body);
                         assert_eq!(
                             line.selected_line().request().context.line_box_direction,
                             if direction == l::Direction::Ltr {
-                                t::LineBoxDirection::LeftToRight
+                                t::selection::LineBoxDirection::LeftToRight
                             } else {
-                                t::LineBoxDirection::RightToLeft
+                                t::selection::LineBoxDirection::RightToLeft
                             }
                         );
                         receipts
@@ -242,13 +245,13 @@ fn logical_alignment<S: l::LayoutScalar>() {
         let (source, body, containing) = if rtl {
             (
                 "\u{5d0}\u{5d1}",
-                t::ParagraphBaseDirection::RightToLeft,
+                t::paragraph::ParagraphBaseDirection::RightToLeft,
                 l::Direction::Ltr,
             )
         } else {
             (
                 "AB",
-                t::ParagraphBaseDirection::LeftToRight,
+                t::paragraph::ParagraphBaseDirection::LeftToRight,
                 l::Direction::Rtl,
             )
         };
@@ -257,7 +260,7 @@ fn logical_alignment<S: l::LayoutScalar>() {
             source,
             None,
             body,
-            t::LineOrientation::SidewaysClockwise,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         for mode in MODES {
@@ -295,9 +298,9 @@ fn logical_alignment<S: l::LayoutScalar>() {
                         assert_eq!(
                             context.line_box_direction,
                             if line_rtl {
-                                t::LineBoxDirection::RightToLeft
+                                t::selection::LineBoxDirection::RightToLeft
                             } else {
-                                t::LineBoxDirection::LeftToRight
+                                t::selection::LineBoxDirection::LeftToRight
                             }
                         );
                         let actual: Vec<_> = placed(&batch, 0)
@@ -339,8 +342,8 @@ fn atomics<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
@@ -376,19 +379,22 @@ fn atomics<S: l::LayoutScalar>() {
             0.0,
         ),
     ];
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         for (rtl, direction, alignment, text_align, cross_offset) in rows {
             let body = if rtl {
-                t::ParagraphBaseDirection::RightToLeft
+                t::paragraph::ParagraphBaseDirection::RightToLeft
             } else {
-                t::ParagraphBaseDirection::LeftToRight
+                t::paragraph::ParagraphBaseDirection::LeftToRight
             };
             let parent = capture(
                 &bytes,
                 if rtl { "\u{5d0}\u{5d1}" } else { "AB" },
-                Some((kind, t::Id::from_u64(2))),
+                Some((kind, t::source::Id::from_u64(2))),
                 body,
-                t::LineOrientation::SidewaysClockwise,
+                t::selection::LineOrientation::SidewaysClockwise,
                 10.0,
             );
             standalone(&parent, Some(kind));
@@ -401,7 +407,7 @@ fn atomics<S: l::LayoutScalar>() {
                 });
                 host.change(2, |input| input.vertical_align = alignment);
                 let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
-                let advance = if kind == t::InlineBoxKind::InFlow {
+                let advance = if kind == t::source::InlineBoxKind::InFlow {
                     34.0
                 } else {
                     20.0
@@ -411,7 +417,7 @@ fn atomics<S: l::LayoutScalar>() {
                     l::TextAlign::Start if direction == l::Direction::Rtl => 40.0 - advance,
                     _ => 0.0,
                 };
-                let x = if kind == t::InlineBoxKind::OutOfFlow {
+                let x = if kind == t::source::InlineBoxKind::OutOfFlow {
                     if mode == l::WritingMode::VerticalRl {
                         34.0
                     } else {
@@ -424,17 +430,19 @@ fn atomics<S: l::LayoutScalar>() {
                 // Under containing RTL that is the bottom edge, so the actual
                 // physical child starts one child-height before its static slot.
                 let box_y = shift + 10.0
-                    - if kind == t::InlineBoxKind::OutOfFlow && direction == l::Direction::Rtl {
+                    - if kind == t::source::InlineBoxKind::OutOfFlow
+                        && direction == l::Direction::Rtl
+                    {
                         14.0
                     } else {
                         0.0
                     };
-                let border = t::Rect::new(x, box_y, 6.0, 14.0);
+                let border = t::geometry::Rect::new(x, box_y, 6.0, 14.0);
                 let text = placed(&batch, 0);
                 assert_eq!(text.inline_boxes()[0].rect(), border);
                 assert_eq!(
-                    text.hit(t::Point::new(x + 1.0, box_y + 2.0)),
-                    t::Hit::InlineBox(t::Id::from_u64(2))
+                    text.hit(t::geometry::Point::new(x + 1.0, box_y + 2.0)),
+                    t::layout::Hit::InlineBox(t::source::Id::from_u64(2))
                 );
                 let line = receipt(&batch, 1);
                 assert_eq!(
@@ -448,11 +456,11 @@ fn atomics<S: l::LayoutScalar>() {
                 let expected = explicit(
                     &parent,
                     line,
-                    t::LineAnchor {
+                    t::placement::LineAnchor {
                         inline_origin: 0.0,
                         baseline: c(mode),
                     },
-                    t::AtomicPlacement {
+                    t::placement::AtomicPlacement {
                         occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                         border,
                         content: border,
@@ -467,10 +475,10 @@ fn atomics<S: l::LayoutScalar>() {
                 assert!(
                     placed(&batch, 2)
                         .run_views()
-                        .all(|run| run.glyph_basis() == t::GlyphBasis::Unrotated)
+                        .all(|run| run.glyph_basis() == t::geometry::GlyphBasis::Unrotated)
                 );
                 let ids = if rtl { [36, 35] } else { [35, 36] };
-                let second = if kind == t::InlineBoxKind::InFlow {
+                let second = if kind == t::source::InlineBoxKind::InFlow {
                     24.0
                 } else {
                     10.0
@@ -478,7 +486,7 @@ fn atomics<S: l::LayoutScalar>() {
                 assert_eq!(
                     text.run_views()
                         .flat_map(|run| {
-                            assert_eq!(run.glyph_basis(), t::GlyphBasis::Clockwise);
+                            assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Clockwise);
                             run.glyphs()
                                 .map(|g| (g.id(), run.origin().y + g.pen()))
                                 .collect::<Vec<_>>()
@@ -496,8 +504,8 @@ fn constraints<S: l::LayoutScalar>() {
         AHEM,
         "AB",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::SidewaysClockwise,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::SidewaysClockwise,
         10.0,
     );
     standalone(&parent, None);
@@ -567,22 +575,28 @@ fn completion<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "",
-            Some((kind, t::Id::from_u64(1))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(1))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         let line = standalone(&parent, Some(kind));
-        assert_eq!(line.has_in_flow_content(), kind == t::InlineBoxKind::InFlow);
+        assert_eq!(
+            line.has_in_flow_content(),
+            kind == t::source::InlineBoxKind::InFlow
+        );
         for mode in MODES {
             let mut input = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
             input.size = l::Size::new(px(40.0), px(40.0));
@@ -610,7 +624,7 @@ fn completion<S: l::LayoutScalar>() {
             };
             let batch = run(&host, vec![outer, inner], &[], available(40.0, 40.0)).unwrap();
             let text = placed(&batch, 0);
-            let x = if kind == t::InlineBoxKind::InFlow {
+            let x = if kind == t::source::InlineBoxKind::InFlow {
                 c(mode)
             } else if mode == l::WritingMode::VerticalRl {
                 34.0
@@ -621,11 +635,11 @@ fn completion<S: l::LayoutScalar>() {
                 node(crate::layout::observation::phase(&batch, false), 1).location,
                 l::Point::new(n(x), n(0.0))
             );
-            if kind == t::InlineBoxKind::InFlow {
+            if kind == t::source::InlineBoxKind::InFlow {
                 assert_eq!(text.lines().len(), 1);
                 assert_eq!(
                     text.inline_boxes()[0].rect(),
-                    t::Rect::new(x, 0.0, 6.0, 14.0)
+                    t::geometry::Rect::new(x, 0.0, 6.0, 14.0)
                 );
                 unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
             } else {
@@ -634,7 +648,7 @@ fn completion<S: l::LayoutScalar>() {
                 let actual = text.nonformatted_lines().next().unwrap();
                 assert_eq!(
                     actual.origin,
-                    t::Point::new(
+                    t::geometry::Point::new(
                         if mode == l::WritingMode::VerticalRl {
                             40.0
                         } else {
@@ -643,7 +657,10 @@ fn completion<S: l::LayoutScalar>() {
                         0.0
                     )
                 );
-                assert_eq!(actual.atomics[0].border, t::Rect::new(x, 0.0, 6.0, 14.0));
+                assert_eq!(
+                    actual.atomics[0].border,
+                    t::geometry::Rect::new(x, 0.0, 6.0, 14.0)
+                );
                 assert_eq!(actual.atomics[0].baseline, x);
                 absent(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
             }
@@ -654,7 +671,7 @@ fn completion<S: l::LayoutScalar>() {
 fn wrapped<S: l::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
-    kind: t::InlineBoxKind,
+    kind: t::source::InlineBoxKind,
     mode: l::WritingMode,
 ) -> (Host<S>, Vec<l::TextParagraphBinding<u32>>) {
     let mut input = root(
@@ -677,18 +694,21 @@ fn replay<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(3))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(3))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         standalone(&parent, Some(kind));
@@ -702,7 +722,7 @@ fn replay<S: l::LayoutScalar>() {
             let (baseline, x) = if mode == l::WritingMode::VerticalRl {
                 (
                     39.0,
-                    if kind == t::InlineBoxKind::InFlow {
+                    if kind == t::source::InlineBoxKind::InFlow {
                         39.0
                     } else {
                         41.0
@@ -711,22 +731,22 @@ fn replay<S: l::LayoutScalar>() {
             } else {
                 (
                     9.0,
-                    if kind == t::InlineBoxKind::InFlow {
+                    if kind == t::source::InlineBoxKind::InFlow {
                         9.0
                     } else {
                         7.0
                     },
                 )
             };
-            let border = t::Rect::new(x, 20.0, 6.0, 14.0);
+            let border = t::geometry::Rect::new(x, 20.0, 6.0, 14.0);
             let expected = explicit(
                 &parent,
                 receipt(&old, 2),
-                t::LineAnchor {
+                t::placement::LineAnchor {
                     inline_origin: 10.0,
                     baseline,
                 },
-                t::AtomicPlacement {
+                t::placement::AtomicPlacement {
                     occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                     border,
                     content: border,
@@ -774,11 +794,11 @@ fn replay<S: l::LayoutScalar>() {
             assert_eq!(placed(&changed, 1).key(), placed(&fresh, 1).key());
             assert_eq!(
                 placed(&changed, 1).inline_boxes()[0].rect(),
-                t::Rect::new(x, 20.0, 6.0, 18.0)
+                t::geometry::Rect::new(x, 20.0, 6.0, 18.0)
             );
             assert_eq!(
                 receipt(&changed, 2).feedback().advance,
-                if kind == t::InlineBoxKind::InFlow {
+                if kind == t::source::InlineBoxKind::InFlow {
                     38.0
                 } else {
                     20.0
@@ -792,21 +812,21 @@ fn replay<S: l::LayoutScalar>() {
 
 fn forced_line(
     parent: &Captured,
-    start: t::PreparedBoundary,
-    offer: t::PreparedOpportunity,
-) -> t::FinalizedLine {
+    start: t::prepared::PreparedBoundary,
+    offer: t::prepared::PreparedOpportunity,
+) -> t::finalized::FinalizedLine {
     let from = start.view().participant_offset();
     let end = offer.view().boundary();
     let to = end.view().participant_offset();
-    let terminal = offer.view().kind() == t::PreparedBreakKind::ParagraphEnd;
+    let terminal = offer.view().kind() == t::prepared::PreparedBreakKind::ParagraphEnd;
     parent
         .prepared
-        .select(t::LineSelectionRequest {
+        .select(t::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: parent.prepared.source_segments().next().unwrap(),
             start,
             end,
-            termination: t::PreparedTermination::Ordinary(offer),
+            termination: t::selection::PreparedTermination::Ordinary(offer),
             participants: parent
                 .prepared
                 .participants()
@@ -820,33 +840,33 @@ fn forced_line(
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: t::LineContext {
-                alignment_insets: t::LineAlignmentInsets::ZERO,
-                formatted_line: t::FormattedLineContext::default(),
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::SidewaysClockwise,
+            context: t::selection::LineContext {
+                alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: t::selection::FormattedLineContext::default(),
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: t::selection::LineBoxDirection::LeftToRight,
+                orientation: t::selection::LineOrientation::SidewaysClockwise,
                 start: if from == 0 {
-                    t::LineStart::Paragraph
+                    t::selection::LineStart::Paragraph
                 } else {
-                    t::LineStart::Continuation
+                    t::selection::LineStart::Continuation
                 },
                 end: if terminal {
-                    t::LineEnd::Paragraph
+                    t::selection::LineEnd::Paragraph
                 } else {
-                    t::LineEnd::Forced
+                    t::selection::LineEnd::Forced
                 },
                 available_inline: Some(40.0),
                 indent: 0.0,
-                alignment: t::Alignment::Start,
-                tabs: t::TabContext::NoTabs,
-                spacing: t::SpacingPolicy::None,
+                alignment: t::options::Alignment::Start,
+                tabs: t::tabs::TabContext::NoTabs,
+                spacing: t::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -855,14 +875,14 @@ fn forced<S: l::LayoutScalar>() {
         AHEM,
         "A\nB",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::SidewaysClockwise,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::SidewaysClockwise,
         10.0,
     );
     let p = &parent.prepared;
     let offer = p
         .opportunity_views()
-        .find(|row| row.kind() == t::PreparedBreakKind::Forced)
+        .find(|row| row.kind() == t::prepared::PreparedBreakKind::Forced)
         .unwrap()
         .handle();
     let first = forced_line(
@@ -872,7 +892,7 @@ fn forced<S: l::LayoutScalar>() {
     );
     let terminal = p
         .opportunity_views()
-        .find(|row| row.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|row| row.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let second = forced_line(&parent, offer.view().boundary(), terminal);
@@ -886,19 +906,19 @@ fn forced<S: l::LayoutScalar>() {
             (10.0, 8.0, 10.0)
         );
     }
-    let reference = t::Layout::from_finalized_lines(t::PlacementRequest {
+    let reference = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: p.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
         entries: [(first, 100.0), (second, 90.0)]
             .into_iter()
             .map(|(line, baseline)| {
-                t::PlacementEntry::Formatted(t::LinePlacement {
+                t::placement::PlacementEntry::Formatted(t::placement::LinePlacement {
                     line,
-                    anchor: t::LineAnchor {
+                    anchor: t::placement::LineAnchor {
                         inline_origin: 0.0,
                         baseline,
                     },
-                    orientation: t::LineOrientation::SidewaysClockwise,
+                    orientation: t::selection::LineOrientation::SidewaysClockwise,
                     atomics: vec![],
                 })
             })
@@ -916,7 +936,7 @@ fn forced<S: l::LayoutScalar>() {
                 .iter()
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
-            [t::Range::new(0, 2), t::Range::new(2, 3)]
+            [t::source::Range::new(0, 2), t::source::Range::new(2, 3)]
         );
         assert_eq!(
             text.lines()
@@ -931,7 +951,7 @@ fn forced<S: l::LayoutScalar>() {
         );
         assert!(
             text.run_views()
-                .all(|run| run.glyph_basis() == t::GlyphBasis::Clockwise)
+                .all(|run| run.glyph_basis() == t::geometry::GlyphBasis::Clockwise)
         );
         unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
     }
@@ -1056,10 +1076,10 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
 fn shape_scene<S: l::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
-    kind: t::InlineBoxKind,
+    kind: t::source::InlineBoxKind,
     mode: l::WritingMode,
 ) -> (ShapeHost<S>, Vec<l::TextParagraphBinding<u32>>) {
-    let capacity = if kind == t::InlineBoxKind::InFlow {
+    let capacity = if kind == t::source::InlineBoxKind::InFlow {
         24.0
     } else {
         10.0
@@ -1103,7 +1123,7 @@ fn same_text<S: l::LayoutScalar>(
         let actual = placed(b, row.container());
         assert_eq!(row.layout().source(), actual.source());
         assert_eq!(row.layout().key(), actual.key());
-        let positions = |text: &t::Layout| {
+        let positions = |text: &t::layout::Layout| {
             text.positions()
                 .map(|p| {
                     (
@@ -1121,18 +1141,21 @@ fn late_refusal<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(3))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(3))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         standalone(&parent, Some(kind));
@@ -1143,8 +1166,11 @@ fn late_refusal<S: l::LayoutScalar>() {
             assert_eq!(text.lines().len(), 2);
             assert_eq!(text.inline_boxes().len(), 1);
             assert_eq!(text.inline_boxes()[0].kind(), kind);
-            assert_eq!(text.inline_boxes()[0].rect().size, t::Size::new(6.0, 14.0));
-            if kind == t::InlineBoxKind::InFlow {
+            assert_eq!(
+                text.inline_boxes()[0].rect().size,
+                t::geometry::Size::new(6.0, 14.0)
+            );
+            if kind == t::source::InlineBoxKind::InFlow {
                 assert_eq!(text.inline_boxes()[0].line(), 0);
                 assert_eq!(receipt(&old, 2).feedback().advance, 24.0);
             }
@@ -1343,8 +1369,8 @@ fn guards<S: l::LayoutScalar>() {
         AHEM,
         "AB",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::SidewaysClockwise,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::SidewaysClockwise,
         10.0,
     );
     standalone(&cw, None);
@@ -1366,8 +1392,8 @@ fn guards<S: l::LayoutScalar>() {
         AHEM,
         "AB",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         10.0,
     );
     for (parent, mode, unsupported) in [
@@ -1383,12 +1409,12 @@ fn guards<S: l::LayoutScalar>() {
             panic!("expected actual orientation diagnostic: {error:?}")
         };
         let reason = if unsupported {
-            t::ProtocolError::UnsupportedContext {
-                field: t::ProtocolContextField::Orientation,
+            t::prepared::ProtocolError::UnsupportedContext {
+                field: t::prepared::ProtocolContextField::Orientation,
             }
         } else {
-            t::ProtocolError::MismatchedContext {
-                field: t::ProtocolContextField::Orientation,
+            t::prepared::ProtocolError::MismatchedContext {
+                field: t::prepared::ProtocolContextField::Orientation,
             }
         };
         assert_eq!(

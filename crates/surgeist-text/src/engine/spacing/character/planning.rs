@@ -574,9 +574,11 @@ fn conditional(
 }
 
 fn work_overflow() -> crate::Error {
-    crate::engine::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
-    })
+    crate::engine::scope_alignment::refusal(
+        crate::processing::contextual::ScopeAlignmentError::Overflow {
+            kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
+        },
+    )
 }
 
 fn object(unit: &Unit) -> bool {

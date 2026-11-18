@@ -116,8 +116,13 @@ fn premises(bytes: &[u8]) {
 
 fn compose(
     source: &str,
-    direction: text::ParagraphBaseDirection,
-) -> (text::Layout, text::FinalizedLine, text::System, Vec<u8>) {
+    direction: text::paragraph::ParagraphBaseDirection,
+) -> (
+    text::layout::Layout,
+    text::finalized::FinalizedLine,
+    text::System,
+    Vec<u8>,
+) {
     let bytes = font();
     premises(&bytes);
     let mut system = system(bytes.clone());
@@ -128,24 +133,24 @@ fn compose(
     let central = instance
         .baseline(
             system.font_catalogue_identity(),
-            text::FontBaselineScript::from_iso15924(*b"Grek").unwrap(),
-            text::FontBaselineAxis::HorizontalY,
-            text::FontBaseline::Central,
+            text::font::FontBaselineScript::from_iso15924(*b"Grek").unwrap(),
+            text::font::FontBaselineAxis::HorizontalY,
+            text::font::FontBaseline::Central,
         )
         .unwrap();
-    let text::FontBaselineOutcome::Available(central) = central.outcome() else {
+    let text::font::FontBaselineOutcome::Available(central) = central.outcome() else {
         panic!("the missing-BASE HorizontalY synthesis is available")
     };
     assert_eq!(central.coordinate(), 3.0);
     let cross = instance
         .upright_metrics(
             system.font_catalogue_identity(),
-            text::FontBaselineScript::from_iso15924(*b"Hani").unwrap(),
+            text::font::FontBaselineScript::from_iso15924(*b"Hani").unwrap(),
         )
         .unwrap();
     assert_eq!(
         cross.reference(),
-        text::UprightMetricReference::NominalVerticalPenX
+        text::font::UprightMetricReference::NominalVerticalPenX
     );
     assert_eq!(
         (
@@ -164,42 +169,45 @@ fn compose(
             (12.0, 5.0, y)
         );
     }
-    let source = text::Source::identified(source, text::Id::from_u64(1570060), 3);
-    let analyzed = text::AnalyzedSource::new(
+    let source = text::source::Source::identified(source, text::source::Id::from_u64(1570060), 3);
+    let analyzed = text::analyzed::AnalyzedSource::new(
         source.clone(),
-        text::Style {
+        text::style::Style {
             size: 10.0,
-            line_height: text::LineHeight::Absolute(10.0),
+            line_height: text::style::LineHeight::Absolute(10.0),
             ..style()
         },
-        text::AnalysisTypography::Mixed,
+        text::analyzed::AnalysisTypography::Mixed,
     )
     .unwrap();
     assert_eq!(
         analyzed.direction(),
         match direction {
-            text::ParagraphBaseDirection::LeftToRight => text::Direction::LeftToRight,
-            text::ParagraphBaseDirection::RightToLeft => text::Direction::RightToLeft,
+            text::paragraph::ParagraphBaseDirection::LeftToRight =>
+                text::style::Direction::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::RightToLeft =>
+                text::style::Direction::RightToLeft,
         }
     );
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(text::LineOrientation::Vertical),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::Vertical),
         )
         .unwrap();
     let end = prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(end),
+            termination: text::selection::PreparedTermination::Ordinary(end),
             participants: prepared.participants().collect(),
             alternative: None,
             incoming: None,
@@ -208,46 +216,48 @@ fn compose(
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
-                    text::ParagraphBaseDirection::LeftToRight => {
-                        text::LineBoxDirection::LeftToRight
+                    text::paragraph::ParagraphBaseDirection::LeftToRight => {
+                        text::selection::LineBoxDirection::LeftToRight
                     }
-                    text::ParagraphBaseDirection::RightToLeft => {
-                        text::LineBoxDirection::RightToLeft
+                    text::paragraph::ParagraphBaseDirection::RightToLeft => {
+                        text::selection::LineBoxDirection::RightToLeft
                     }
                 },
-                orientation: text::LineOrientation::Vertical,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                orientation: text::selection::LineOrientation::Vertical,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line: line.clone(),
-            anchor: text::LineAnchor {
-                inline_origin: 20.0,
-                baseline: 100.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line: line.clone(),
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 20.0,
+                    baseline: 100.0,
+                },
+                orientation: text::selection::LineOrientation::Vertical,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Vertical,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
     assert_eq!(layout.source(), &source);
@@ -255,7 +265,16 @@ fn compose(
     (layout, line, system, bytes)
 }
 
-fn packets(line: &text::FinalizedLine) -> Vec<(text::Range, text::GlyphBasis, u32, f32, f32, f32)> {
+fn packets(
+    line: &text::finalized::FinalizedLine,
+) -> Vec<(
+    text::source::Range,
+    text::geometry::GlyphBasis,
+    u32,
+    f32,
+    f32,
+    f32,
+)> {
     line.run_views()
         .flat_map(|run| {
             run.glyphs()
@@ -290,20 +309,22 @@ fn ink(run: &PreparedGlyphRun, transform: Transform) -> kurbo::Rect {
 
 #[test]
 fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_transform_once() {
-    let (layout, line, system, bytes) =
-        compose("ΧΧ一一Χ", text::ParagraphBaseDirection::LeftToRight);
+    let (layout, line, system, bytes) = compose(
+        "ΧΧ一一Χ",
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
+    );
     let before = system.stats();
-    let r = text::GlyphBasis::Clockwise;
-    let u = text::GlyphBasis::Unrotated;
+    let r = text::geometry::GlyphBasis::Clockwise;
+    let u = text::geometry::GlyphBasis::Unrotated;
     assert_eq!(line.feedback().advance, 54.0);
     assert_eq!(
         packets(&line),
         [
-            (text::Range::new(0, 1), r, 274, 0.0, 0.0, 10.0),
-            (text::Range::new(1, 2), r, 274, 0.0, 0.0, 10.0),
-            (text::Range::new(2, 3), u, 274, -5.0, 7.0, 12.0),
-            (text::Range::new(3, 4), u, 274, -5.0, 7.0, 12.0),
-            (text::Range::new(4, 5), r, 274, 0.0, 0.0, 10.0),
+            (text::source::Range::new(0, 1), r, 274, 0.0, 0.0, 10.0),
+            (text::source::Range::new(1, 2), r, 274, 0.0, 0.0, 10.0),
+            (text::source::Range::new(2, 3), u, 274, -5.0, 7.0, 12.0),
+            (text::source::Range::new(3, 4), u, 274, -5.0, 7.0, 12.0),
+            (text::source::Range::new(4, 5), r, 274, 0.0, 0.0, 10.0),
         ]
     );
     let runs = layout.run_views().collect::<Vec<_>>();
@@ -312,13 +333,28 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
             .map(|run| (run.range(), run.glyph_basis(), run.origin()))
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(0, 2), r, text::Point::new(97.0, 20.0)),
-            (text::Range::new(2, 4), u, text::Point::new(100.0, 40.0)),
-            (text::Range::new(4, 5), r, text::Point::new(97.0, 64.0)),
+            (
+                text::source::Range::new(0, 2),
+                r,
+                text::geometry::Point::new(97.0, 20.0)
+            ),
+            (
+                text::source::Range::new(2, 4),
+                u,
+                text::geometry::Point::new(100.0, 40.0)
+            ),
+            (
+                text::source::Range::new(4, 5),
+                r,
+                text::geometry::Point::new(97.0, 64.0)
+            ),
         ]
     );
     for run in &runs {
-        assert_eq!(run.orientation(), text::LineOrientation::Vertical);
+        assert_eq!(
+            run.orientation(),
+            text::selection::LineOrientation::Vertical
+        );
         assert_eq!(run.face().bytes(), bytes);
         assert_eq!(run.font_size(), 10.0);
     }
@@ -443,8 +479,10 @@ fn mixed_odd_upright_punctuation_and_hebrew_rotate_only_r_outlines_and_reverse_s
     // UTR50 gives the two ideographic punctuation marks Tu; Hebrew is R.
     // Both ON punctuation units resolve level1 between actual Hebrew R units.
     // BTT therefore emits source2 then1, and L2 places source3,2,1,0 once.
-    let (layout, line, system, bytes) =
-        compose("א、。ב", text::ParagraphBaseDirection::RightToLeft);
+    let (layout, line, system, bytes) = compose(
+        "א、。ב",
+        text::paragraph::ParagraphBaseDirection::RightToLeft,
+    );
     let before = system.stats();
     assert_eq!(
         line.prepared_text()
@@ -453,16 +491,16 @@ fn mixed_odd_upright_punctuation_and_hebrew_rotate_only_r_outlines_and_reverse_s
             .collect::<Vec<_>>(),
         [1; 4]
     );
-    let r = text::GlyphBasis::Clockwise;
-    let u = text::GlyphBasis::Unrotated;
+    let r = text::geometry::GlyphBasis::Clockwise;
+    let u = text::geometry::GlyphBasis::Unrotated;
     assert_eq!(line.feedback().advance, 44.0);
     assert_eq!(
         packets(&line),
         [
-            (text::Range::new(3, 4), r, 277, 0.0, 0.0, 10.0),
-            (text::Range::new(2, 3), u, 277, -5.0, 9.0, 12.0),
-            (text::Range::new(1, 2), u, 274, -5.0, 7.0, 12.0),
-            (text::Range::new(0, 1), r, 274, 0.0, 0.0, 10.0),
+            (text::source::Range::new(3, 4), r, 277, 0.0, 0.0, 10.0),
+            (text::source::Range::new(2, 3), u, 277, -5.0, 9.0, 12.0),
+            (text::source::Range::new(1, 2), u, 274, -5.0, 7.0, 12.0),
+            (text::source::Range::new(0, 1), r, 274, 0.0, 0.0, 10.0),
         ]
     );
     let source_runs = layout.run_views().collect::<Vec<_>>();
@@ -472,9 +510,21 @@ fn mixed_odd_upright_punctuation_and_hebrew_rotate_only_r_outlines_and_reverse_s
             .map(|run| (run.range(), run.glyph_basis(), run.origin()))
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(3, 4), r, text::Point::new(97.0, 20.0)),
-            (text::Range::new(1, 3), u, text::Point::new(100.0, 30.0)),
-            (text::Range::new(0, 1), r, text::Point::new(97.0, 54.0)),
+            (
+                text::source::Range::new(3, 4),
+                r,
+                text::geometry::Point::new(97.0, 20.0)
+            ),
+            (
+                text::source::Range::new(1, 3),
+                u,
+                text::geometry::Point::new(100.0, 30.0)
+            ),
+            (
+                text::source::Range::new(0, 1),
+                r,
+                text::geometry::Point::new(97.0, 54.0)
+            ),
         ]
     );
     let scene = prepare_text_layout(
@@ -518,6 +568,9 @@ fn mixed_odd_upright_punctuation_and_hebrew_rotate_only_r_outlines_and_reverse_s
         layout.source().text().code_units(),
         [0x5d0, 0x3001, 0x3002, 0x5d1]
     );
-    assert_eq!(layout.source().id(), Some(text::Id::from_u64(1570060)));
+    assert_eq!(
+        layout.source().id(),
+        Some(text::source::Id::from_u64(1570060))
+    );
     assert_eq!(layout.source().revision(), 3);
 }

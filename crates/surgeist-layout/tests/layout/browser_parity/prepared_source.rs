@@ -10,10 +10,10 @@ use super::{Error, layout, pinned_font};
 #[derive(Clone, Debug)]
 pub(super) struct Capture {
     raw: Value,
-    pub prepared: text::PreparedText,
-    pub origins: Vec<(usize, text::PreparedOrigin)>,
-    pub atomics: Vec<(usize, text::PreparedAtomic)>,
-    pub controls: Vec<(usize, text::PreparedControl)>,
+    pub prepared: text::prepared::PreparedText,
+    pub origins: Vec<(usize, text::prepared::PreparedOrigin)>,
+    pub atomics: Vec<(usize, text::prepared::PreparedAtomic)>,
+    pub controls: Vec<(usize, text::prepared::PreparedControl)>,
     children: usize,
 }
 impl PartialEq for Capture {
@@ -65,14 +65,14 @@ fn extent(value: &Value) -> Result<f64, Error> {
         Ok(value)
     }
 }
-fn wrap(value: &Value) -> Result<text::Wrap, Error> {
+fn wrap(value: &Value) -> Result<text::style::Wrap, Error> {
     match string(value)? {
-        "word" => Ok(text::Wrap::Word),
-        "none" => Ok(text::Wrap::None),
+        "word" => Ok(text::style::Wrap::Word),
+        "none" => Ok(text::style::Wrap::None),
         _ => Err(fail("unsupported wrapping profile")),
     }
 }
-fn style(value: &Value) -> Result<text::Style, Error> {
+fn style(value: &Value) -> Result<text::style::Style, Error> {
     let value = object(
         value,
         &[
@@ -107,26 +107,26 @@ fn style(value: &Value) -> Result<text::Style, Error> {
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(text::Style {
-        font: text::Font::new().family("Ahem"),
-        brush: text::Brush::color(color[0], color[1], color[2], color[3]),
+    Ok(text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
+        brush: text::style::Brush::color(color[0], color[1], color[2], color[3]),
         size: canonical,
         locale: if value["locale"].is_null() {
             None
         } else {
             Some(string(&value["locale"])?.to_owned())
         },
-        line_height: text::LineHeight::Absolute(extent(&value["lineHeight"])?),
+        line_height: text::style::LineHeight::Absolute(extent(&value["lineHeight"])?),
         white_space: match string(&value["whitespace"])? {
-            "collapse" => text::WhiteSpace::Collapse,
-            "preserve" => text::WhiteSpace::Preserve,
-            "preserve-spaces" => text::WhiteSpace::PreserveSpaces,
+            "collapse" => text::style::WhiteSpace::Collapse,
+            "preserve" => text::style::WhiteSpace::Preserve,
+            "preserve-spaces" => text::style::WhiteSpace::PreserveSpaces,
             _ => return Err(fail("unsupported whitespace profile")),
         },
         wrap: wrap(&value["wrap"])?,
         letter_spacing: number(&value["letterSpacing"])?,
         word_spacing: number(&value["wordSpacing"])?,
-        ..text::Style::default()
+        ..text::style::Style::default()
     })
 }
 
@@ -142,7 +142,7 @@ impl Capture {
     pub(super) fn parse_with_atomic_measure(
         raw: &str,
         children: usize,
-        mut measure: impl FnMut(usize, &str, &str) -> Result<text::Size, Error>,
+        mut measure: impl FnMut(usize, &str, &str) -> Result<text::geometry::Size, Error>,
     ) -> Result<Self, Error> {
         // serde_json's Value parser alone permits duplicate keys, so use its
         // streaming visitor before admitting the independently owned schema.
@@ -238,11 +238,11 @@ impl Capture {
             _ => return Err(fail("unsupported writing mode")),
         };
         let direction = match string(&value["direction"])? {
-            "ltr" => text::ParagraphBaseDirection::LeftToRight,
-            "rtl" => text::ParagraphBaseDirection::RightToLeft,
+            "ltr" => text::paragraph::ParagraphBaseDirection::LeftToRight,
+            "rtl" => text::paragraph::ParagraphBaseDirection::RightToLeft,
             _ => return Err(fail("unresolved base direction")),
         };
-        let mut source = text::Source::new("");
+        let mut source = text::source::Source::new("");
         let mut origins = Vec::new();
         let mut origin_children = Vec::new();
         let mut origin_wraps = Vec::new();
@@ -264,14 +264,14 @@ impl Capture {
                     "original source lacks pinned nominal font coverage or supported glyph-free semantics",
                 ));
             }
-            let original = text::Source::new(text::Text::from_code_units(units));
+            let original = text::source::Source::new(text::source::Text::from_code_units(units));
             let aggregate = source.push(original.text().clone());
             if aggregate.start != index(&row["start"])? || aggregate.end != index(&row["end"])? {
                 return Err(fail("original range does not match exact UTF16 units"));
             }
             let resolved = style(&row["style"])?;
             if vertical
-                && (resolved.white_space != text::WhiteSpace::Collapse
+                && (resolved.white_space != text::style::WhiteSpace::Collapse
                     || original
                         .text()
                         .code_units()
@@ -285,12 +285,12 @@ impl Capture {
             origin_wraps.push(resolved.wrap);
             source.span(aggregate, resolved.clone());
             origin_children.push(child);
-            origins.push(text::ParagraphOrigin {
+            origins.push(text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: original,
-                local: text::Range::new(0, aggregate.len()),
+                local: text::source::Range::new(0, aggregate.len()),
                 aggregate,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             });
         }
         let mut connections = Vec::new();
@@ -315,17 +315,17 @@ impl Capture {
                 return Err(fail("connection is not between actual consecutive origins"));
             }
             let kind = match string(&row["kind"])? {
-                "continuous" => text::ParagraphConnectionKind::Continuous,
-                "barrier" => text::ParagraphConnectionKind::Disconnected,
+                "continuous" => text::paragraph::ParagraphConnectionKind::Continuous,
+                "barrier" => text::paragraph::ParagraphConnectionKind::Disconnected,
                 _ => return Err(fail("invalid connection role")),
             };
-            connections.push(text::ParagraphConnection {
+            connections.push(text::paragraph::ParagraphConnection {
                 at: origins[index_ + 1].aggregate.start,
                 kind,
             });
-            if kind == text::ParagraphConnectionKind::Continuous {
-                policies.push(text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(index_),
+            if kind == text::paragraph::ParagraphConnectionKind::Continuous {
+                policies.push(text::paragraph::ParagraphBoundaryPolicy {
+                    definition: text::paragraph::ParagraphBoundaryDefinition::Connection(index_),
                     preceding_wrap: wrap(&row["precedingWrap"])?,
                     following_wrap: wrap(&row["followingWrap"])?,
                     ancestor_wrap: wrap(&row["ancestorWrap"])?,
@@ -365,11 +365,11 @@ impl Capture {
                 return Err(fail("atomic child is missing or repeated"));
             }
             let kind = match string(&row["kind"])? {
-                "in-flow" => text::InlineBoxKind::InFlow,
-                "out-of-flow" => text::InlineBoxKind::OutOfFlow,
+                "in-flow" => text::source::InlineBoxKind::InFlow,
+                "out-of-flow" => text::source::InlineBoxKind::OutOfFlow,
                 _ => return Err(fail("invalid atomic role")),
             };
-            if vertical && kind != text::InlineBoxKind::InFlow {
+            if vertical && kind != text::source::InlineBoxKind::InFlow {
                 return Err(fail(
                     "vertical source supports only actual in-flow opaque atomics",
                 ));
@@ -379,28 +379,28 @@ impl Capture {
                 return Err(fail("atomic anchor exceeds original source"));
             }
             let size = if authored {
-                if vertical || kind != text::InlineBoxKind::InFlow {
+                if vertical || kind != text::source::InlineBoxKind::InFlow {
                     return Err(fail("authored size requires an in-flow horizontal atomic"));
                 }
                 let sizing = object(&row["authoredSize"], &["width", "height"])?;
                 measure(child, string(&sizing["width"])?, string(&sizing["height"])?)?
             } else {
-                text::Size::new(extent(&row["width"])?, extent(&row["height"])?)
+                text::geometry::Size::new(extent(&row["width"])?, extent(&row["height"])?)
             };
-            source.inline_box(text::InlineBox::new(
-                text::Id::from_u64(
+            source.inline_box(text::source::InlineBox::new(
+                text::source::Id::from_u64(
                     u64::try_from(child).map_err(|_| fail("child identity out of range"))?,
                 ),
                 kind,
                 at,
                 size,
             ));
-            if kind == text::InlineBoxKind::InFlow {
+            if kind == text::source::InlineBoxKind::InFlow {
                 for definition in [
-                    text::ParagraphBoundaryDefinition::AtomicBefore(occurrence),
-                    text::ParagraphBoundaryDefinition::AtomicAfter(occurrence),
+                    text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(occurrence),
+                    text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(occurrence),
                 ] {
-                    policies.push(text::ParagraphBoundaryPolicy {
+                    policies.push(text::paragraph::ParagraphBoundaryPolicy {
                         definition,
                         preceding_wrap: wrap(&row["precedingWrap"])?,
                         following_wrap: wrap(&row["followingWrap"])?,
@@ -417,17 +417,19 @@ impl Capture {
                 return Err(fail("control child is missing or repeated"));
             }
             let kind = match string(&row["kind"])? {
-                "forced-break" => text::ParagraphControlKind::ForcedBreak,
-                "inline-boundary-start" => text::ParagraphControlKind::InlineBoundaryStart,
-                "inline-boundary-end" => text::ParagraphControlKind::InlineBoundaryEnd,
+                "forced-break" => text::paragraph::ParagraphControlKind::ForcedBreak,
+                "inline-boundary-start" => {
+                    text::paragraph::ParagraphControlKind::InlineBoundaryStart
+                }
+                "inline-boundary-end" => text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 _ => return Err(fail("invalid actual control role")),
             };
-            if vertical && !matches!(&kind, text::ParagraphControlKind::ForcedBreak) {
+            if vertical && !matches!(&kind, text::paragraph::ParagraphControlKind::ForcedBreak) {
                 return Err(fail(
                     "vertical source does not admit independent boundary controls",
                 ));
             }
-            controls.push(text::ParagraphControl {
+            controls.push(text::paragraph::ParagraphControl {
                 at: index(&row["at"])?,
                 kind,
             });
@@ -448,8 +450,8 @@ impl Capture {
             let row = object(row, &["kind", "index", "affinity"])?;
             let ordinal = index(&row["index"])?;
             let affinity = match string(&row["affinity"])? {
-                "before" => text::Affinity::Before,
-                "after" => text::Affinity::After,
+                "before" => text::layout::Affinity::Before,
+                "after" => text::layout::Affinity::After,
                 _ => return Err(fail("invalid captured affinity")),
             };
             let (role, child, at, end, item) = match string(&row["kind"])? {
@@ -467,7 +469,7 @@ impl Capture {
                         origin
                             .aggregate
                             .is_empty()
-                            .then_some(text::ParagraphAnchorItem::EmptyOrigin(ordinal)),
+                            .then_some(text::paragraph::ParagraphAnchorItem::EmptyOrigin(ordinal)),
                     )
                 }
                 "atomic" => {
@@ -480,7 +482,7 @@ impl Capture {
                         atomic_children[ordinal],
                         box_.index(),
                         box_.index(),
-                        Some(text::ParagraphAnchorItem::Atomic(ordinal)),
+                        Some(text::paragraph::ParagraphAnchorItem::Atomic(ordinal)),
                     )
                 }
                 "control" => {
@@ -492,7 +494,7 @@ impl Capture {
                         control_children[ordinal],
                         control.at,
                         control.at,
-                        Some(text::ParagraphAnchorItem::Control(ordinal)),
+                        Some(text::paragraph::ParagraphAnchorItem::Control(ordinal)),
                     )
                 }
                 _ => return Err(fail("invalid occurrence role")),
@@ -510,22 +512,22 @@ impl Capture {
                 ordered_control_children.push(child);
             }
             if let Some(item) = item {
-                anchors.push(text::ParagraphAnchor { item, affinity });
+                anchors.push(text::paragraph::ParagraphAnchor { item, affinity });
             }
         }
         if seen.len() != children || cursor != source.text().len() {
             return Err(fail("incomplete original sequence"));
         }
         let base = style(&value["baseStyle"])?;
-        let analyzed = text::AnalyzedSource::from_paragraph(
-            text::ParagraphInput {
-                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+        let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+            text::paragraph::ParagraphInput {
+                terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source,
                 base_style: base,
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: direction,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 origins,
                 connections,
                 controls,
@@ -534,9 +536,9 @@ impl Capture {
                 anchor_order: anchors,
             },
             if vertical {
-                text::AnalysisTypography::Mixed
+                text::analyzed::AnalysisTypography::Mixed
             } else {
-                text::AnalysisTypography::HorizontalComposition
+                text::analyzed::AnalysisTypography::HorizontalComposition
             },
         )
         .map_err(|error| fail(error.to_string()))?;
@@ -548,9 +550,9 @@ impl Capture {
             .filter(|relation| relation.ancestor_wrap().is_none())
             .filter_map(|relation| match (relation.before(), relation.after()) {
                 (
-                    text::WrappingNeighbor::Text { origin: before, .. },
-                    text::WrappingNeighbor::Text { origin: after, .. },
-                ) if before == after => Some(text::WrappingPolicy {
+                    text::analyzed::WrappingNeighbor::Text { origin: before, .. },
+                    text::analyzed::WrappingNeighbor::Text { origin: after, .. },
+                ) if before == after => Some(text::analyzed::WrappingPolicy {
                     relation: relation.handle(),
                     ancestor_wrap: origin_wraps[before],
                 }),
@@ -567,10 +569,10 @@ impl Capture {
         let prepared = system
             .prepare(
                 &analyzed,
-                text::PreparationOptions::default().with_orientation(if vertical {
-                    text::LineOrientation::Vertical
+                text::prepared::PreparationOptions::default().with_orientation(if vertical {
+                    text::selection::LineOrientation::Vertical
                 } else {
-                    text::LineOrientation::Horizontal
+                    text::selection::LineOrientation::Horizontal
                 }),
             )
             .map_err(|error| fail(error.to_string()))?;
@@ -580,7 +582,7 @@ impl Capture {
                 if instance.face().admitted_face().resource().source().bytes() != font_bytes
                     || instance.face().index() != 0
                     || instance.axis_count() != 0
-                    || instance.synthesis() != text::FontSynthesis::default()
+                    || instance.synthesis() != text::font::FontSynthesis::default()
                 {
                     return Err(fail(
                         "actual Text matching escaped the exact pinned face/instance",
@@ -624,11 +626,11 @@ impl Capture {
                 "captured paragraph mode/direction differs from its actual XML container",
             ));
         }
-        let vertical = self.prepared.orientation() == text::LineOrientation::Vertical;
+        let vertical = self.prepared.orientation() == text::selection::LineOrientation::Vertical;
         let has_break = self.controls.iter().any(|(_, control)| {
             matches!(
                 control.view().kind(),
-                text::ParagraphControlKind::ForcedBreak
+                text::paragraph::ParagraphControlKind::ForcedBreak
             )
         });
         if vertical
@@ -663,7 +665,7 @@ impl Capture {
         for (child, control) in &self.controls {
             if !matches!(
                 control.view().kind(),
-                text::ParagraphControlKind::ForcedBreak
+                text::paragraph::ParagraphControlKind::ForcedBreak
             ) {
                 continue;
             }
@@ -1035,7 +1037,9 @@ mod tests {
                 "the nonvisual selection retains the actual explicit event order"
             );
             for fragment in line.fragments() {
-                let text::FinalizedFragmentOwner::Control(control) = fragment.view().owner() else {
+                let text::finalized::FinalizedFragmentOwner::Control(control) =
+                    fragment.view().owner()
+                else {
                     panic!("control must remain Control-owned")
                 };
                 let binding = tree.paragraphs[0]
@@ -1098,7 +1102,7 @@ mod tests {
                 capture
                     .prepared
                     .opportunity_views()
-                    .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                    .filter(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
                     .count(),
                 expected
             );
@@ -1136,7 +1140,7 @@ mod tests {
             !capture
                 .prepared
                 .opportunity_views()
-                .any(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                .any(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
         );
         assert!(
             capture
@@ -1146,10 +1150,10 @@ mod tests {
                 .any(|relation| matches!(
                     (relation.before(), relation.after()),
                     (
-                        text::WrappingNeighbor::Text { origin: 0, .. },
-                        text::WrappingNeighbor::Text { origin: 1, .. }
+                        text::analyzed::WrappingNeighbor::Text { origin: 0, .. },
+                        text::analyzed::WrappingNeighbor::Text { origin: 1, .. }
                     )
-                ) && relation.ancestor_wrap() == Some(text::Wrap::None))
+                ) && relation.ancestor_wrap() == Some(text::style::Wrap::None))
         );
     }
 
@@ -1284,16 +1288,16 @@ mod tests {
             );
             assert_eq!(
                 capture.prepared.analyzed_source().paragraph_strut(),
-                text::ParagraphStrut::DefaultFont
+                text::paragraph::ParagraphStrut::DefaultFont
             );
             assert_eq!(capture.prepared.origin_views().len(), 0);
             assert_eq!(capture.prepared.unit_views().len(), 0);
             assert_eq!(
                 capture.prepared.orientation(),
                 if vertical {
-                    text::LineOrientation::Vertical
+                    text::selection::LineOrientation::Vertical
                 } else {
-                    text::LineOrientation::Horizontal
+                    text::selection::LineOrientation::Horizontal
                 }
             );
             let atomics = capture.prepared.atomic_views().collect::<Vec<_>>();
@@ -1304,7 +1308,7 @@ mod tests {
             assert_eq!(controls.len(), 1);
             assert!(matches!(
                 controls[0].kind(),
-                text::ParagraphControlKind::ForcedBreak
+                text::paragraph::ParagraphControlKind::ForcedBreak
             ));
 
             let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
@@ -1380,9 +1384,9 @@ mod tests {
             assert_eq!(boxes.len(), 2);
             for (atomic, node, id, line) in [(boxes[0], 1, 0, 0), (boxes[1], 3, 2, 1)] {
                 assert_eq!(atomic.id().as_u64(), id);
-                assert_eq!(atomic.kind(), text::InlineBoxKind::InFlow);
+                assert_eq!(atomic.kind(), text::source::InlineBoxKind::InFlow);
                 assert_eq!(atomic.line(), line);
-                assert_eq!(atomic.rect().size, text::Size::new(10.0, 10.0));
+                assert_eq!(atomic.rect().size, text::geometry::Size::new(10.0, 10.0));
                 let native = batch
                     .node_layout(node)
                     .unwrap()
@@ -1424,7 +1428,10 @@ mod tests {
                 // The pinned Ahem has no upright metric tables. Text's native
                 // upright em is centered independently of the 30/40px struts.
                 assert_eq!((metrics.ascent(), metrics.descent()), (10.0, 10.0));
-                assert_eq!(metrics.basis(), text::BreakFontMetricBasis::UprightCentral);
+                assert_eq!(
+                    metrics.basis(),
+                    text::placement::BreakFontMetricBasis::UprightCentral
+                );
             }
             assert_eq!(line.feedback().advance, 10.0);
             // No glyph run, caller strut, or BR metrics can donate this extent.
@@ -1639,16 +1646,19 @@ mod tests {
                 );
                 assert_eq!(
                     prepared.analyzed_source().typography(),
-                    text::AnalysisTypography::Mixed
+                    text::analyzed::AnalysisTypography::Mixed
                 );
-                assert_eq!(prepared.orientation(), text::LineOrientation::Vertical);
+                assert_eq!(
+                    prepared.orientation(),
+                    text::selection::LineOrientation::Vertical
+                );
                 // Preparation retains deleted-source custody units as well as
                 // whitespace clusters. Visibility is qualified after placement.
                 let origins = prepared.origin_views().collect::<Vec<_>>();
                 assert_eq!(origins[0].source().text().code_units(), &[10, 32, 32]);
-                assert_eq!(origins[0].local_range(), text::Range::new(0, 3));
+                assert_eq!(origins[0].local_range(), text::source::Range::new(0, 3));
                 assert_eq!(origins[1].source().text().code_units(), &[10]);
-                assert_eq!(origins[1].local_range(), text::Range::new(0, 1));
+                assert_eq!(origins[1].local_range(), text::source::Range::new(0, 1));
                 let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
                 let binding = &tree.paragraphs[0];
                 assert_eq!((binding.origins[0].node, binding.origins[1].node), (1, 5));
@@ -1736,8 +1746,8 @@ mod tests {
                 let boxes = placed.inline_boxes();
                 assert_eq!((boxes[0].id().as_u64(), boxes[0].line()), (1, 0));
                 assert_eq!((boxes[1].id().as_u64(), boxes[1].line()), (3, 1));
-                assert_eq!(boxes[0].rect().size, text::Size::new(30.0, 30.0));
-                assert_eq!(boxes[1].rect().size, text::Size::new(30.0, 16.0));
+                assert_eq!(boxes[0].rect().size, text::geometry::Size::new(30.0, 30.0));
+                assert_eq!(boxes[1].rect().size, text::geometry::Size::new(30.0, 16.0));
                 assert_eq!(line.feedback().advance, 30.0);
                 assert!(
                     line.selected_line()

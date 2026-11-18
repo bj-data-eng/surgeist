@@ -2,9 +2,9 @@
 use super::*;
 
 struct DonorFixture {
-    prepared: t::PreparedText,
-    content: t::CapturedScope,
-    empty: Option<t::CapturedScope>,
+    prepared: t::prepared::PreparedText,
+    content: t::capture::CapturedScope,
+    empty: Option<t::capture::CapturedScope>,
 }
 
 fn donor_fixture(with_empty: bool) -> DonorFixture {
@@ -44,8 +44,8 @@ fn donor_fixture(with_empty: bool) -> DonorFixture {
         control(opening + 4),
     ]);
     let p = prepare_capture(
-        t::Source::identified("aAb", t::Id::from_u64(1_646_402), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("aAb", t::source::Id::from_u64(1_646_402), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 1), (1, 2), (2, 3)],
         &controls,
         &pairs,
@@ -57,7 +57,7 @@ fn donor_fixture(with_empty: bool) -> DonorFixture {
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     let content = issued[opening].captured_control().unwrap().scope();
-    assert_eq!(content.role(), t::ScopeRole::Inline);
+    assert_eq!(content.role(), t::capture::ScopeRole::Inline);
     assert_eq!(content.entry_control(), issued[opening].captured_control());
     assert_eq!(
         content.exit_control(),
@@ -72,7 +72,7 @@ fn donor_fixture(with_empty: bool) -> DonorFixture {
         let left = issued[start].captured_control().unwrap();
         let right = issued[start + 1].captured_control().unwrap();
         let scope = left.scope();
-        assert_eq!(scope.role(), t::ScopeRole::Inline);
+        assert_eq!(scope.role(), t::capture::ScopeRole::Inline);
         assert_eq!(scope.parent(), Some(domain.clone()));
         assert_eq!(scope.entry_control(), Some(left.clone()));
         assert_eq!(scope.exit_control(), Some(right.clone()));
@@ -94,9 +94,9 @@ fn donor_fixture(with_empty: bool) -> DonorFixture {
             .map(|v| v.aggregate_range())
             .collect::<Vec<_>>(),
         [
-            t::Range::new(0, 1),
-            t::Range::new(1, 2),
-            t::Range::new(2, 3)
+            t::source::Range::new(0, 1),
+            t::source::Range::new(1, 2),
+            t::source::Range::new(2, 3)
         ]
     );
     assert!(content.enter_position() < actual_origins[0].capture_position().unwrap());
@@ -142,25 +142,25 @@ fn donor_fixture(with_empty: bool) -> DonorFixture {
     }
 }
 
-fn donor_local_line(p: &t::PreparedText) -> t::FinalizedLine {
+fn donor_local_line(p: &t::prepared::PreparedText) -> t::finalized::FinalizedLine {
     let segment = p.source_segments().next().unwrap();
     assert_eq!(p.source_segments().len(), 1);
     let mut input = request(p, segment.start(), paragraph_end(p), &[], 100.0);
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     for row in &mut input.controls {
         match row.occurrence.view().kind() {
             K::InlineBoundaryStart | K::InlineBoundaryEnd => {
                 let owner = row.occurrence.captured_control().unwrap().scope();
                 let context = p
                     .inline_box_edge_context(
-                        t::InlineBoxSource::captured(owner.clone()),
-                        t::InlineBoxSource::captured(owner.parent().unwrap()),
-                        t::LineEdgeSide::Start,
+                        t::inline_box::InlineBoxSource::captured(owner.clone()),
+                        t::inline_box::InlineBoxSource::captured(owner.parent().unwrap()),
+                        t::finalized::LineEdgeSide::Start,
                     )
                     .unwrap();
-                row.boundary = Some(t::InlineBoundaryAllocation::box_edge(
+                row.boundary = Some(t::allocation::InlineBoundaryAllocation::box_edge(
                     context,
-                    t::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap(),
+                    t::inline_box::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap(),
                 ));
             }
             _ => assert!(row.boundary.is_none()),
@@ -170,11 +170,15 @@ fn donor_local_line(p: &t::PreparedText) -> t::FinalizedLine {
     finalize(p, input)
 }
 
-fn nonempty_text_members(piece: &t::FinalizedInlineBoxPiece) -> Vec<t::PreparedUnit> {
+fn nonempty_text_members(
+    piece: &t::inline_box::FinalizedInlineBoxPiece,
+) -> Vec<t::prepared::PreparedUnit> {
     piece
         .members()
         .filter_map(|member| match member.participant() {
-            Some(t::PreparedParticipant::Text(unit)) if !unit.view().source_range().is_empty() => {
+            Some(t::prepared::PreparedParticipant::Text(unit))
+                if !unit.view().source_range().is_empty() =>
+            {
                 assert_eq!(member.unit_source_range(), unit.view().source_range());
                 assert_eq!(member.presentation_range().len(), 1);
                 Some(unit.clone())
@@ -190,11 +194,14 @@ fn empty_inline_uses_following_level_and_splits_only_interposed_global_members()
     for with_empty in [false, true] {
         let f = donor_fixture(with_empty);
         let p = &f.prepared;
-        assert_eq!(p.analyzed_source().source().text(), &t::Text::from("aAb"));
+        assert_eq!(
+            p.analyzed_source().source().text(),
+            &t::source::Text::from("aAb")
+        );
         assert!(p.analyzed_source().combined_cells().next().is_none());
-        let a = unit(p, t::Range::new(0, 1));
-        let upper_a = unit(p, t::Range::new(1, 2));
-        let b = unit(p, t::Range::new(2, 3));
+        let a = unit(p, t::source::Range::new(0, 1));
+        let upper_a = unit(p, t::source::Range::new(1, 2));
+        let b = unit(p, t::source::Range::new(2, 3));
         // Real X4/PDF context: a1, A0, b1. Formatting controls remain actual
         // Control participants; no placeholder/ORC or fabricated scalar donor.
         assert_eq!(
@@ -208,10 +215,11 @@ fn empty_inline_uses_following_level_and_splits_only_interposed_global_members()
         assert_eq!(
             p.participants()
                 .filter_map(|part| match part {
-                    t::PreparedParticipant::Text(unit)
+                    t::prepared::PreparedParticipant::Text(unit)
                         if !unit.view().source_range().is_empty() =>
                         Some(unit),
-                    t::PreparedParticipant::Atomic(_) | t::PreparedParticipant::Cell(_) =>
+                    t::prepared::PreparedParticipant::Atomic(_)
+                    | t::prepared::PreparedParticipant::Cell(_) =>
                         panic!("no invented atomic or Cell"),
                     _ => None,
                 })
@@ -220,14 +228,14 @@ fn empty_inline_uses_following_level_and_splits_only_interposed_global_members()
         );
         let local = donor_local_line(p);
         let expected = [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 35, 10.0),
-            (t::Range::new(2, 3), 68, 20.0),
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 35, 10.0),
+            (t::source::Range::new(2, 3), 68, 20.0),
         ];
         assert_eq!(packet(&local), expected);
         assert_eq!(local.feedback().advance, 30.0);
         let family = p.inline_box_family(vec![], None).unwrap();
-        let owner = t::InlineBoxSource::captured(f.content.clone());
+        let owner = t::inline_box::InlineBoxSource::captured(f.content.clone());
         let output = reselect(p, &family, &owner, &local);
         assert_eq!(packet(&output), expected);
         assert_eq!(output.feedback().advance, 30.0);
@@ -249,7 +257,7 @@ fn empty_inline_uses_following_level_and_splits_only_interposed_global_members()
             assert_eq!(nonempty_text_members(left), std::slice::from_ref(&a));
             assert_eq!(nonempty_text_members(right), [upper_a.clone(), b.clone()]);
             assert_ne!(left.fragment(), right.fragment());
-            let root = t::InlineBoxSource::captured(f.content.parent().unwrap());
+            let root = t::inline_box::InlineBoxSource::captured(f.content.parent().unwrap());
             let nca = left
                 .fragment()
                 .nearest_common_ancestor(&right.fragment())
@@ -257,7 +265,7 @@ fn empty_inline_uses_following_level_and_splits_only_interposed_global_members()
             assert_eq!(nca.owner(), root);
             assert_eq!(left.fragment().parent(), Some(nca.clone()));
             assert_eq!(right.fragment().parent(), Some(nca.clone()));
-            let empty_owner = t::InlineBoxSource::captured(empty);
+            let empty_owner = t::inline_box::InlineBoxSource::captured(empty);
             let empty_pieces = owned(&output, &empty_owner);
             assert_eq!(empty_pieces.len(), 1);
             assert_eq!(empty_pieces[0].fragment().parent(), Some(nca));

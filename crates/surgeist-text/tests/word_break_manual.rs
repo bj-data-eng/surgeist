@@ -14,35 +14,35 @@ use icu_properties::{
 use surgeist_text as t;
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
-const DIRECTIONS: [t::ParagraphBaseDirection; 2] = [
-    t::ParagraphBaseDirection::LeftToRight,
-    t::ParagraphBaseDirection::RightToLeft,
+const DIRECTIONS: [t::paragraph::ParagraphBaseDirection; 2] = [
+    t::paragraph::ParagraphBaseDirection::LeftToRight,
+    t::paragraph::ParagraphBaseDirection::RightToLeft,
 ];
-const STRICTNESSES: [t::LineBreak; 4] = [
-    t::LineBreak::Auto,
-    t::LineBreak::Loose,
-    t::LineBreak::Normal,
-    t::LineBreak::Strict,
+const STRICTNESSES: [t::style::LineBreak; 4] = [
+    t::style::LineBreak::Auto,
+    t::style::LineBreak::Loose,
+    t::style::LineBreak::Normal,
+    t::style::LineBreak::Strict,
 ];
 
-fn style(word: t::WordBreak, locale: &str) -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style(word: t::style::WordBreak, locale: &str) -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
         word_break: word,
         locale: Some(locale.into()),
-        overflow_wrap: t::OverflowWrap::Normal,
-        hyphens: t::Hyphens::None,
-        hyphenate_character: t::HyphenateCharacter::String(t::Text::from("X")),
-        hyphenate_limit_chars: t::HyphenateLimitChars {
-            total: t::HyphenationMinimum::Count(0),
-            before: t::HyphenationMinimum::Count(0),
-            after: t::HyphenationMinimum::Count(0),
+        overflow_wrap: t::style::OverflowWrap::Normal,
+        hyphens: t::hyphenation::Hyphens::None,
+        hyphenate_character: t::hyphenation::HyphenateCharacter::String(t::source::Text::from("X")),
+        hyphenate_limit_chars: t::hyphenation::HyphenateLimitChars {
+            total: t::hyphenation::HyphenationMinimum::Count(0),
+            before: t::hyphenation::HyphenationMinimum::Count(0),
+            after: t::hyphenation::HyphenationMinimum::Count(0),
         },
-        ..t::Style::default()
+        ..t::style::Style::default()
     }
 }
 
@@ -54,22 +54,26 @@ fn system() -> t::System {
     system
 }
 
-fn input(value: &str, base: t::Style, direction: t::ParagraphBaseDirection) -> t::ParagraphInput {
-    let source = t::Source::identified(value, t::Id::from_u64(65501), 31);
+fn input(
+    value: &str,
+    base: t::style::Style,
+    direction: t::paragraph::ParagraphBaseDirection,
+) -> t::paragraph::ParagraphInput {
+    let source = t::source::Source::identified(value, t::source::Id::from_u64(65501), 31);
     let end = source.text().len();
-    t::ParagraphInput {
+    t::paragraph::ParagraphInput {
         source: source.clone(),
         base_style: base,
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: direction,
-        paragraph_strut: t::ParagraphStrut::DefaultFont,
-        terminal_edge: t::ParagraphTerminalEdge::BlockEnd,
+        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: t::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![t::ParagraphOrigin {
+        origins: vec![t::paragraph::ParagraphOrigin {
             source,
-            local: t::Range::new(0, end),
-            aggregate: t::Range::new(0, end),
-            kind: t::ParagraphOriginKind::Authored,
+            local: t::source::Range::new(0, end),
+            aggregate: t::source::Range::new(0, end),
+            kind: t::paragraph::ParagraphOriginKind::Authored,
             text_node: None,
         }],
         connections: vec![],
@@ -80,33 +84,35 @@ fn input(value: &str, base: t::Style, direction: t::ParagraphBaseDirection) -> t
     }
 }
 
-fn prepare(request: t::ParagraphInput) -> t::PreparedText {
+fn prepare(request: t::paragraph::ParagraphInput) -> t::prepared::PreparedText {
     let ancestor = request.base_style.wrap;
     let source = request.source.clone();
     let base = request.base_style.clone();
-    let analyzed =
-        t::AnalyzedSource::from_paragraph(request, t::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = t::analyzed::AnalyzedSource::from_paragraph(
+        request,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| t::WrappingPolicy {
+        .map(|relation| t::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap: ancestor,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let p = system()
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(p.analyzed_source().source(), &source);
     assert_eq!(p.analyzed_source().style(), &base);
     p
 }
 
-fn cuts(p: &t::PreparedText) -> Vec<usize> {
+fn cuts(p: &t::prepared::PreparedText) -> Vec<usize> {
     p.opportunity_views()
-        .filter(|offer| offer.kind() == t::PreparedBreakKind::Allowed)
+        .filter(|offer| offer.kind() == t::prepared::PreparedBreakKind::Allowed)
         .map(|offer| {
             let boundary = offer.boundary();
             assert_eq!(
@@ -133,9 +139,9 @@ fn manual_disables_thai_lao_lexical_fallback_across_ordinary_strictnesses() {
     for direction in DIRECTIONS {
         for (value, locale) in [("กก", "th"), ("ກກ", "lo")] {
             for word in [
-                t::WordBreak::Normal,
-                t::WordBreak::KeepAll,
-                t::WordBreak::Manual,
+                t::style::WordBreak::Normal,
+                t::style::WordBreak::KeepAll,
+                t::style::WordBreak::Manual,
             ] {
                 for line_break in STRICTNESSES {
                     let mut base = style(word, locale);
@@ -143,11 +149,11 @@ fn manual_disables_thai_lao_lexical_fallback_across_ordinary_strictnesses() {
                     let p = prepare(input(value, base, direction));
                     assert_eq!(
                         p.analyzed_source().graphemes().collect::<Vec<_>>(),
-                        [t::Range::new(0, 1), t::Range::new(1, 2)]
+                        [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
                     );
                     assert_eq!(
                         cuts(&p),
-                        if word == t::WordBreak::Manual {
+                        if word == t::style::WordBreak::Manual {
                             vec![]
                         } else {
                             vec![1]
@@ -172,13 +178,13 @@ fn manual_sa_as_al_does_not_keep_a_provider_run_end_before_latin_letters() {
     );
     for direction in DIRECTIONS {
         for line_break in STRICTNESSES {
-            let mut base = style(t::WordBreak::Manual, "th");
+            let mut base = style(t::style::WordBreak::Manual, "th");
             base.line_break = line_break;
             let p = prepare(input("กกAA", base, direction));
             assert_eq!(
                 p.analyzed_source().graphemes().collect::<Vec<_>>(),
                 (0..4)
-                    .map(|at| t::Range::new(at, at + 1))
+                    .map(|at| t::source::Range::new(at, at + 1))
                     .collect::<Vec<_>>()
             );
             assert_eq!(
@@ -187,7 +193,11 @@ fn manual_sa_as_al_does_not_keep_a_provider_run_end_before_latin_letters() {
                 "Manual treats the two SA units as AL; four adjacent alphabetic units have no ordinary interior cut: {line_break:?} {direction:?}"
             );
         }
-        let normal = prepare(input("กกAA", style(t::WordBreak::Normal, "th"), direction));
+        let normal = prepare(input(
+            "กกAA",
+            style(t::style::WordBreak::Normal, "th"),
+            direction,
+        ));
         assert!(
             cuts(&normal).contains(&1),
             "Normal retains the required no-model Thai fallback"
@@ -201,43 +211,47 @@ fn following_manual_owner_and_real_nca_keep_whole_thai_tone_units() {
         for following_manual in [false, true] {
             for origins in [false, true] {
                 let before = if following_manual {
-                    t::WordBreak::Normal
+                    t::style::WordBreak::Normal
                 } else {
-                    t::WordBreak::Manual
+                    t::style::WordBreak::Manual
                 };
                 let after = if following_manual {
-                    t::WordBreak::Manual
+                    t::style::WordBreak::Manual
                 } else {
-                    t::WordBreak::Normal
+                    t::style::WordBreak::Normal
                 };
                 let mut request = input("ก่ก", style(before, "th"), direction);
-                request.source.span(t::Range::new(1, 3), style(after, "th"));
+                request
+                    .source
+                    .span(t::source::Range::new(1, 3), style(after, "th"));
                 if origins {
-                    request.origins = [t::Range::new(0, 2), t::Range::new(2, 3)]
+                    request.origins = [t::source::Range::new(0, 2), t::source::Range::new(2, 3)]
                         .into_iter()
-                        .map(|range| t::ParagraphOrigin {
+                        .map(|range| t::paragraph::ParagraphOrigin {
                             source: request.source.clone(),
                             local: range,
                             aggregate: range,
-                            kind: t::ParagraphOriginKind::Authored,
+                            kind: t::paragraph::ParagraphOriginKind::Authored,
                             text_node: None,
                         })
                         .collect();
-                    request.connections.push(t::ParagraphConnection {
+                    request.connections.push(t::paragraph::ParagraphConnection {
                         at: 2,
-                        kind: t::ParagraphConnectionKind::Continuous,
+                        kind: t::paragraph::ParagraphConnectionKind::Continuous,
                     });
-                    request.boundary_policies.push(t::ParagraphBoundaryPolicy {
-                        definition: t::ParagraphBoundaryDefinition::Connection(0),
-                        preceding_wrap: t::Wrap::Word,
-                        following_wrap: t::Wrap::Word,
-                        ancestor_wrap: t::Wrap::Word,
-                    });
+                    request
+                        .boundary_policies
+                        .push(t::paragraph::ParagraphBoundaryPolicy {
+                            definition: t::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                            preceding_wrap: t::style::Wrap::Word,
+                            following_wrap: t::style::Wrap::Word,
+                            ancestor_wrap: t::style::Wrap::Word,
+                        });
                 }
                 let p = prepare(request);
                 assert_eq!(
                     p.analyzed_source().graphemes().collect::<Vec<_>>(),
-                    [t::Range::new(0, 2), t::Range::new(2, 3)]
+                    [t::source::Range::new(0, 2), t::source::Range::new(2, 3)]
                 );
                 assert_eq!(
                     cuts(&p),
@@ -246,12 +260,12 @@ fn following_manual_owner_and_real_nca_keep_whole_thai_tone_units() {
                 );
             }
         }
-        let mut block = style(t::WordBreak::Manual, "th");
-        block.wrap = t::Wrap::None;
+        let mut block = style(t::style::WordBreak::Manual, "th");
+        block.wrap = t::style::Wrap::None;
         let mut request = input("กก", block, direction);
-        let mut anywhere = style(t::WordBreak::Manual, "th");
-        anywhere.line_break = t::LineBreak::Anywhere;
-        request.source.span(t::Range::new(0, 2), anywhere);
+        let mut anywhere = style(t::style::WordBreak::Manual, "th");
+        anywhere.line_break = t::style::LineBreak::Anywhere;
+        request.source.span(t::source::Range::new(0, 2), anywhere);
         assert_eq!(
             cuts(&prepare(request)),
             [],
@@ -263,29 +277,29 @@ fn following_manual_owner_and_real_nca_keep_whole_thai_tone_units() {
 #[test]
 fn manual_preserves_authentic_wbr_zwsp_and_forced_owners() {
     for direction in DIRECTIONS {
-        for ancestor in [t::Wrap::Word, t::Wrap::None] {
-            for control_wrap in [t::Wrap::Word, t::Wrap::None] {
-                let mut block = style(t::WordBreak::Manual, "th");
+        for ancestor in [t::style::Wrap::Word, t::style::Wrap::None] {
+            for control_wrap in [t::style::Wrap::Word, t::style::Wrap::None] {
+                let mut block = style(t::style::WordBreak::Manual, "th");
                 block.wrap = ancestor;
-                let mut owner = style(t::WordBreak::Manual, "th");
+                let mut owner = style(t::style::WordBreak::Manual, "th");
                 owner.wrap = control_wrap;
                 let mut request = input("กก", block, direction);
-                request.controls.push(t::ParagraphControl {
+                request.controls.push(t::paragraph::ParagraphControl {
                     at: 1,
-                    kind: t::ParagraphControlKind::Wbr {
+                    kind: t::paragraph::ParagraphControlKind::Wbr {
                         style: Box::new(owner),
                     },
                 });
-                request.anchor_order.push(t::ParagraphAnchor {
-                    item: t::ParagraphAnchorItem::Control(0),
-                    affinity: t::Affinity::After,
+                request.anchor_order.push(t::paragraph::ParagraphAnchor {
+                    item: t::paragraph::ParagraphAnchorItem::Control(0),
+                    affinity: t::layout::Affinity::After,
                 });
                 let p = prepare(request);
                 let issued = p.control_views().next().unwrap().handle();
                 assert!(
-                    matches!(issued.view().kind(), t::ParagraphControlKind::Wbr { style } if style.word_break == t::WordBreak::Manual && style.wrap == control_wrap)
+                    matches!(issued.view().kind(), t::paragraph::ParagraphControlKind::Wbr { style } if style.word_break == t::style::WordBreak::Manual && style.wrap == control_wrap)
                 );
-                let index=p.participants().position(|part|matches!(part,t::PreparedParticipant::Control(ref actual) if *actual==issued)).unwrap();
+                let index=p.participants().position(|part|matches!(part,t::prepared::PreparedParticipant::Control(ref actual) if *actual==issued)).unwrap();
                 let actual = p
                     .boundary_views()
                     .find(|boundary| boundary.participant_offset() == index + 1)
@@ -293,9 +307,12 @@ fn manual_preserves_authentic_wbr_zwsp_and_forced_owners() {
                     .handle();
                 let offers = p
                     .opportunity_views()
-                    .filter(|offer| offer.kind() == t::PreparedBreakKind::Allowed)
+                    .filter(|offer| offer.kind() == t::prepared::PreparedBreakKind::Allowed)
                     .collect::<Vec<_>>();
-                assert_eq!(offers.len(), usize::from(control_wrap == t::Wrap::Word));
+                assert_eq!(
+                    offers.len(),
+                    usize::from(control_wrap == t::style::Wrap::Word)
+                );
                 for offer in offers {
                     assert_eq!(offer.boundary(), actual);
                     assert_eq!(offer.alternatives().count(), 0);
@@ -303,12 +320,12 @@ fn manual_preserves_authentic_wbr_zwsp_and_forced_owners() {
                 assert_eq!(actual.view().source_after().get(), 1);
                 assert_eq!(p.virtual_separators().count(), 0);
             }
-            let mut base = style(t::WordBreak::Manual, "th");
+            let mut base = style(t::style::WordBreak::Manual, "th");
             base.wrap = ancestor;
             let p = prepare(input("ก\u{200b}ก", base.clone(), direction));
             assert_eq!(
                 cuts(&p),
-                if ancestor == t::Wrap::Word {
+                if ancestor == t::style::Wrap::Word {
                     vec![2]
                 } else {
                     vec![]
@@ -319,7 +336,7 @@ fn manual_preserves_authentic_wbr_zwsp_and_forced_owners() {
             assert_eq!(cuts(&p), []);
             assert_eq!(
                 p.opportunity_views()
-                    .filter(|offer| offer.kind() == t::PreparedBreakKind::Forced)
+                    .filter(|offer| offer.kind() == t::prepared::PreparedBreakKind::Forced)
                     .map(|offer| offer.boundary().view().source_after().get())
                     .collect::<Vec<_>>(),
                 [2]
@@ -332,13 +349,13 @@ fn manual_preserves_authentic_wbr_zwsp_and_forced_owners() {
 fn manual_retains_independent_anywhere_and_required_cjk_opportunities() {
     for direction in DIRECTIONS {
         for (value, locale, line_break, expected) in [
-            ("กก", "th", t::LineBreak::Anywhere, vec![1]),
-            ("ก่ก", "th", t::LineBreak::Anywhere, vec![2]),
-            ("漢漢", "ja", t::LineBreak::Auto, vec![1]),
-            ("漢ぁ", "ja", t::LineBreak::Loose, vec![1]),
-            ("漢ぁ", "ja", t::LineBreak::Strict, vec![]),
+            ("กก", "th", t::style::LineBreak::Anywhere, vec![1]),
+            ("ก่ก", "th", t::style::LineBreak::Anywhere, vec![2]),
+            ("漢漢", "ja", t::style::LineBreak::Auto, vec![1]),
+            ("漢ぁ", "ja", t::style::LineBreak::Loose, vec![1]),
+            ("漢ぁ", "ja", t::style::LineBreak::Strict, vec![]),
         ] {
-            let mut base = style(t::WordBreak::Manual, locale);
+            let mut base = style(t::style::WordBreak::Manual, locale);
             base.line_break = line_break;
             assert_eq!(
                 cuts(&prepare(input(value, base, direction))),
@@ -353,20 +370,22 @@ fn manual_retains_independent_anywhere_and_required_cjk_opportunities() {
 fn manual_retains_declared_overflow_conditional_eligibility_and_readback() {
     for direction in DIRECTIONS {
         for overflow in [
-            t::OverflowWrap::Normal,
-            t::OverflowWrap::Anywhere,
-            t::OverflowWrap::BreakWord,
+            t::style::OverflowWrap::Normal,
+            t::style::OverflowWrap::Anywhere,
+            t::style::OverflowWrap::BreakWord,
         ] {
-            let mut base = style(t::WordBreak::Manual, "en-US");
+            let mut base = style(t::style::WordBreak::Manual, "en-US");
             base.overflow_wrap = overflow;
             assert_eq!(
-                t::ValidatedStyle::try_from(base.clone())
+                t::style::ValidatedStyle::try_from(base.clone())
                     .unwrap()
                     .authored(),
                 &base
             );
             let mut request = input("AAAA", base.clone(), direction);
-            request.source.span(t::Range::new(0, 4), base.clone());
+            request
+                .source
+                .span(t::source::Range::new(0, 4), base.clone());
             let p = prepare(request);
             assert_eq!(p.analyzed_source().style(), &base);
             assert_eq!(p.analyzed_source().source().spans()[0].style(), &base);
@@ -374,17 +393,17 @@ fn manual_retains_declared_overflow_conditional_eligibility_and_readback() {
                 p.opportunity_views()
                     .map(|offer| offer.kind())
                     .collect::<Vec<_>>(),
-                [t::PreparedBreakKind::ParagraphEnd]
+                [t::prepared::PreparedBreakKind::ParagraphEnd]
             );
             let start = p.boundary_views().next().unwrap().handle();
             let ceiling = p.opportunity_views().next().unwrap().handle();
             for purpose in [
-                t::ConditionalPurpose::Overflow,
-                t::ConditionalPurpose::MinContent,
+                t::conditional::ConditionalPurpose::Overflow,
+                t::conditional::ConditionalPurpose::MinContent,
             ] {
-                let admitted = overflow == t::OverflowWrap::Anywhere
-                    || (overflow == t::OverflowWrap::BreakWord
-                        && purpose == t::ConditionalPurpose::Overflow);
+                let admitted = overflow == t::style::OverflowWrap::Anywhere
+                    || (overflow == t::style::OverflowWrap::BreakWord
+                        && purpose == t::conditional::ConditionalPurpose::Overflow);
                 // The only ordinary endpoint is the ceiling; no earlier variant
                 // needs a disposition. Enumeration asserts eligibility, not fit.
                 let actual = p
@@ -397,7 +416,9 @@ fn manual_retains_declared_overflow_conditional_eligibility_and_readback() {
                         &ceiling,
                         purpose,
                         &[],
-                        surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
+                        surgeist_text::conditional::ConditionalLineContext::Unframed {
+                            inline_boxes: None,
+                        },
                     )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
@@ -418,27 +439,30 @@ fn manual_retains_declared_overflow_conditional_eligibility_and_readback() {
 #[test]
 fn manual_keeps_normal_owned_source_shy_and_qualified_automatic_hyphenation() {
     for direction in DIRECTIONS {
-        for word in [t::WordBreak::Normal, t::WordBreak::Manual] {
+        for word in [t::style::WordBreak::Normal, t::style::WordBreak::Manual] {
             let mut base = style(word, "en-US");
-            base.hyphens = t::Hyphens::Manual;
+            base.hyphens = t::hyphenation::Hyphens::Manual;
             let p = prepare(input("a\u{ad}b", base, direction));
             let alternatives = p.alternative_views().collect::<Vec<_>>();
             assert_eq!(alternatives.len(), 1);
-            assert_eq!(alternatives[0].source_range(), Some(t::Range::new(1, 2)));
-            assert_eq!(alternatives[0].text(), &t::Text::from("X"));
+            assert_eq!(
+                alternatives[0].source_range(),
+                Some(t::source::Range::new(1, 2))
+            );
+            assert_eq!(alternatives[0].text(), &t::source::Text::from("X"));
             assert_eq!(
                 alternatives[0].hyphenation_cut().view().style().word_break,
                 word
             );
             let mut base = style(word, "en-US");
-            base.hyphens = t::Hyphens::Auto;
+            base.hyphens = t::hyphenation::Hyphens::Auto;
             let p = prepare(input("associate", base, direction));
             assert_eq!(p.word_views().next().unwrap().query(), Some("associate"));
             assert_eq!(
                 p.alternative_views()
                     .filter(|alternative| matches!(
                         alternative.definition(),
-                        t::PreparedAlternativeDefinition::Automatic { .. }
+                        t::prepared::PreparedAlternativeDefinition::Automatic { .. }
                     ))
                     .map(|alternative| alternative.insertion_anchor().get())
                     .collect::<Vec<_>>(),
@@ -465,14 +489,18 @@ fn manual_preserves_balinese_orthographic_rules_and_whole_conjuncts() {
     );
     assert_eq!(CodePointMapData::<Gcb>::new().get32(0x1b44), Gcb::Extend);
     for direction in DIRECTIONS {
-        for word in [t::WordBreak::Normal, t::WordBreak::Manual] {
+        for word in [t::style::WordBreak::Normal, t::style::WordBreak::Manual] {
             for (value, expected, graphemes) in [
                 (
                     "\u{1b05}\u{1b05}",
                     vec![1],
-                    vec![t::Range::new(0, 1), t::Range::new(1, 2)],
+                    vec![t::source::Range::new(0, 1), t::source::Range::new(1, 2)],
                 ),
-                ("\u{1b05}\u{1b44}", vec![], vec![t::Range::new(0, 2)]),
+                (
+                    "\u{1b05}\u{1b44}",
+                    vec![],
+                    vec![t::source::Range::new(0, 2)],
+                ),
             ] {
                 let p = prepare(input(value, style(word, "ban"), direction));
                 assert_eq!(
@@ -492,7 +520,7 @@ fn manual_preserves_balinese_orthographic_rules_and_whole_conjuncts() {
             ));
             assert_eq!(
                 p.analyzed_source().graphemes().collect::<Vec<_>>(),
-                [t::Range::new(0, 1), t::Range::new(1, 4)],
+                [t::source::Range::new(0, 1), t::source::Range::new(1, 4)],
                 "retained Unicode17 GB9/GB9c sample"
             );
             assert!(
@@ -506,19 +534,19 @@ fn manual_preserves_balinese_orthographic_rules_and_whole_conjuncts() {
 #[test]
 fn declared_manual_and_overflow_values_have_real_separate_cache_entries() {
     let mut system = system();
-    let source = t::Source::identified("AA", t::Id::from_u64(65502), 37);
+    let source = t::source::Source::identified("AA", t::source::Id::from_u64(65502), 37);
     let mut previous = Vec::new();
-    for word in [t::WordBreak::Normal, t::WordBreak::Manual] {
+    for word in [t::style::WordBreak::Normal, t::style::WordBreak::Manual] {
         for overflow in [
-            t::OverflowWrap::Normal,
-            t::OverflowWrap::Anywhere,
-            t::OverflowWrap::BreakWord,
+            t::style::OverflowWrap::Normal,
+            t::style::OverflowWrap::Anywhere,
+            t::style::OverflowWrap::BreakWord,
         ] {
             let mut base = style(word, "en-US");
             base.overflow_wrap = overflow;
-            let options = t::Options {
+            let options = t::options::Options {
                 quantize: false,
-                ..t::Options::default()
+                ..t::options::Options::default()
             };
             let before = system.stats();
             let layout = system
@@ -532,7 +560,7 @@ fn declared_manual_and_overflow_values_have_real_separate_cache_entries() {
                     .iter()
                     .map(|line| line.range())
                     .collect::<Vec<_>>(),
-                [t::Range::new(0, 2)]
+                [t::source::Range::new(0, 2)]
             );
             assert_eq!(layout.metrics().full_width(), 20.0);
             assert_eq!(system.stats().layout_misses(), before.layout_misses() + 1);

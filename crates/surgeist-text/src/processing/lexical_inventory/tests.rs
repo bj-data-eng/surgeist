@@ -9,10 +9,13 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, ProcessedSource,
-        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
-        process_contextual_source, process_source_whitespace,
+        DocumentSegmentBreaks, PlaintextItem, ProcessedSource,
+        contextual::{
+            ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+            SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+            SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        },
+        process_source_whitespace,
     },
     protocol::{
         ParagraphBaseDirection,

@@ -50,7 +50,9 @@ fn compute<S: LayoutScalar>(
     .unwrap()
 }
 
-fn finalized<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::FinalizedLine {
+fn finalized<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> text::finalized::FinalizedLine {
     assert_eq!(batch.placed_text().len(), 1);
     assert_eq!(batch.placed_text()[0].layout().lines().len(), 1);
     batch.final_inline_fragments()[0]
@@ -61,10 +63,13 @@ fn finalized<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::F
 
 fn glyphs<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> Vec<(text::Range, u32, f32, f64)> {
+) -> Vec<(text::source::Range, u32, f32, f64)> {
     let mut result = Vec::new();
     for run in batch.placed_text()[0].layout().glyph_runs() {
-        assert_eq!(run.orientation(), text::LineOrientation::Horizontal);
+        assert_eq!(
+            run.orientation(),
+            text::selection::LineOrientation::Horizontal
+        );
         assert_eq!(run.font_size(), 10.0);
         for glyph in run.glyphs() {
             assert_eq!((glyph.x(), glyph.y()), (0.0, 0.0));
@@ -81,8 +86,8 @@ fn glyphs<S: LayoutScalar>(
 }
 
 fn lane<S: LayoutScalar>() {
-    let own = text::Style {
-        white_space: text::WhiteSpace::Preserve,
+    let own = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
         wrap: Wrap::None,
         word_spacing: 4.0,
         ..ahem_style(10.0, 10.0)
@@ -108,12 +113,15 @@ fn lane<S: LayoutScalar>() {
     let line = finalized(&actual);
     let selected = line.selected_line();
     let context = &selected.request().context;
-    assert_eq!(context.spacing, text::SpacingPolicy::InterWord);
-    assert_eq!(context.alignment, text::Alignment::Justify);
-    assert_eq!(context.end, text::LineEnd::Paragraph);
+    assert_eq!(context.spacing, text::spacing::SpacingPolicy::InterWord);
+    assert_eq!(context.alignment, text::options::Alignment::Justify);
+    assert_eq!(context.end, text::selection::LineEnd::Paragraph);
     assert_eq!(context.available_inline, Some(70.0));
     assert_eq!(context.indent, 0.0);
-    assert_eq!(context.alignment_insets, text::LineAlignmentInsets::ZERO);
+    assert_eq!(
+        context.alignment_insets,
+        text::allocation::LineAlignmentInsets::ZERO
+    );
     assert_eq!(line.prepared_text(), paragraph.prepared);
     assert!(line.run_views().all(|run| run.face().bytes() == AHEM));
     // Capacity70 minus natural58 is12; two equal-priority Direct owners get6.
@@ -124,18 +132,21 @@ fn lane<S: LayoutScalar>() {
         selected.spacing_slots().collect::<Vec<_>>(),
         rows.iter().map(|row| row.slot.clone()).collect::<Vec<_>>()
     );
-    for (row, range) in rows
-        .iter()
-        .zip([text::Range::new(1, 2), text::Range::new(3, 4)])
-    {
+    for (row, range) in rows.iter().zip([
+        text::source::Range::new(1, 2),
+        text::source::Range::new(3, 4),
+    ]) {
         assert_eq!(row.slot.selected_line(), selected);
         assert_eq!(
             row.geometry,
-            text::SpacingSlotGeometry::Independent {
+            text::spacing::SpacingSlotGeometry::Independent {
                 intrinsic_advance: 10.0
             }
         );
-        assert_eq!(row.stretchability, text::SpacingStretchability::Direct);
+        assert_eq!(
+            row.stretchability,
+            text::spacing::SpacingStretchability::Direct
+        );
         assert!(row.can_expand());
         assert_eq!(
             (row.authored_word_spacing, row.allocation, row.advance),
@@ -146,7 +157,7 @@ fn lane<S: LayoutScalar>() {
                 .pieces()
                 .map(|piece| piece.owner())
                 .collect::<Vec<_>>(),
-            [text::SpacingSlotOwner::Source {
+            [text::spacing::SpacingSlotOwner::Source {
                 origin: paragraph.origin(1),
                 local: range,
                 aggregate: range,
@@ -160,7 +171,7 @@ fn lane<S: LayoutScalar>() {
             .handle();
         assert_eq!(
             row.slot.participants().cloned().collect::<Vec<_>>(),
-            [text::PreparedParticipant::Text(unit)]
+            [text::prepared::PreparedParticipant::Text(unit)]
         );
     }
     assert_eq!(line.measurements().alignment().advance(), 70.0);
@@ -168,20 +179,23 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(
         glyphs(&actual),
         [
-            (text::Range::new(0, 1), 35, 10.0, 0.0),
-            (text::Range::new(1, 2), 3, 10.0, 15.0),
-            (text::Range::new(2, 3), 36, 10.0, 30.0),
-            (text::Range::new(3, 4), 3, 10.0, 45.0),
-            (text::Range::new(4, 5), 37, 10.0, 60.0),
+            (text::source::Range::new(0, 1), 35, 10.0, 0.0),
+            (text::source::Range::new(1, 2), 3, 10.0, 15.0),
+            (text::source::Range::new(2, 3), 36, 10.0, 30.0),
+            (text::source::Range::new(3, 4), 3, 10.0, 45.0),
+            (text::source::Range::new(4, 5), 37, 10.0, 60.0),
         ]
     );
     // Logical cell starts differ from the two half-adjusted SPACE paint pens.
     let layout = actual.placed_text()[0].layout();
-    assert_eq!(layout.source().text(), &text::Text::from("A B C"));
+    assert_eq!(layout.source().text(), &text::source::Text::from("A B C"));
     for (at, x) in [0.0, 10.0, 30.0, 40.0, 60.0, 70.0].into_iter().enumerate() {
         assert_eq!(
             layout
-                .cursor(text::Cursor::new(at, text::Affinity::Before))
+                .cursor(text::layout::Cursor::new(
+                    at,
+                    text::layout::Affinity::Before
+                ))
                 .unwrap()
                 .rect()
                 .origin

@@ -4,7 +4,7 @@ use crate::engine::AnalyzedCore;
 use crate::protocol::paragraph::FlowOriginKey;
 use crate::transform::{combined::CombinedOutput, relation::OriginalPiece};
 use crate::{
-    processing::{CapturedEventPosition, CapturedParagraph, CapturedScope},
+    processing::contextual::{CapturedEventPosition, CapturedParagraph, CapturedScope},
     protocol::{
         ParagraphBaseDirection,
         paragraph::{CompleteTextNodeContribution, ParagraphOriginKind},

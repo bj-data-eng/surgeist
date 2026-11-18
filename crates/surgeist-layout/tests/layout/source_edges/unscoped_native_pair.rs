@@ -1,8 +1,10 @@
 //! Real native endpoint controls retain their independent paired-box authority.
 use super::*;
 
-fn unscoped_native_pair_input(direction: layout::Direction) -> text::ContextualSourceInput {
-    use text::SourceProcessingEvent as E;
+fn unscoped_native_pair_input(
+    direction: layout::Direction,
+) -> text::capture::ContextualSourceInput {
+    use text::capture::SourceProcessingEvent as E;
     let mut raw = paired_source(direction);
     raw.scopes.truncate(1); // The Block domain remains; no InlineScope.
     raw.events
@@ -27,13 +29,15 @@ fn actual_early_native_pair_without_inline_scope<S: layout::LayoutScalar>() {
         // semantic Endpoint request the adapter is required to supply.
         let mut direct = raw.clone();
         direct.computed_line_boundaries =
-            vec![text::ComputedLineBoundaryInput::Endpoint { control: 0 }];
-        let direct = text::process_contextual_source(direct)
+            vec![text::capture::ComputedLineBoundaryInput::Endpoint { control: 0 }];
+        let direct = text::capture::process_contextual_source(direct)
             .expect("real endpoint input does not require a canonical InlineScope");
         assert!(direct.captured_scope(1).is_none());
         assert_eq!(
             direct.captured_computed_line_boundary(0).unwrap().target(),
-            text::CapturedComputedLineBoundaryTarget::Endpoint(direct.captured_control(0).unwrap())
+            text::capture::CapturedComputedLineBoundaryTarget::Endpoint(
+                direct.captured_control(0).unwrap()
+            )
         );
 
         // The host implements only Traverse + WrapEdgeSource. It has real
@@ -45,14 +49,14 @@ fn actual_early_native_pair_without_inline_scope<S: layout::LayoutScalar>() {
                 )
                 .into_parts();
         assert!(processed.captured_scope(1).is_none());
-        assert_eq!(processed.source().text(), &text::Text::from("AB"));
+        assert_eq!(processed.source().text(), &text::source::Text::from("AB"));
         assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
         assert_eq!(
             processed
                 .captured_computed_line_boundary(0)
                 .unwrap()
                 .target(),
-            text::CapturedComputedLineBoundaryTarget::Endpoint(
+            text::capture::CapturedComputedLineBoundaryTarget::Endpoint(
                 processed.captured_control(0).unwrap()
             )
         );
@@ -66,8 +70,8 @@ fn actual_early_native_pair_without_inline_scope<S: layout::LayoutScalar>() {
                 .map(|offer| (offer.kind(), offer.boundary().view().source_before().get()))
                 .collect::<Vec<_>>(),
             [
-                (text::PreparedBreakKind::Forced, 1),
-                (text::PreparedBreakKind::ParagraphEnd, 2),
+                (text::prepared::PreparedBreakKind::Forced, 1),
+                (text::prepared::PreparedBreakKind::ParagraphEnd, 2),
             ]
         );
     }

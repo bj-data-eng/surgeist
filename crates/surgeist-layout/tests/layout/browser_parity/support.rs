@@ -786,8 +786,8 @@ pub struct Node {
     // Historical measured tuples remain schema data only, never production Text.
     inline_text: Option<MeasuredInlineText>,
     prepared_occurrence: Option<usize>,
-    prepared_origin: Option<surgeist_text::PreparedOrigin>,
-    prepared_control: Option<surgeist_text::PreparedControl>,
+    prepared_origin: Option<surgeist_text::prepared::PreparedOrigin>,
+    prepared_control: Option<surgeist_text::prepared::PreparedControl>,
     prepared: Option<prepared_source::Capture>,
     atomic_inline_participation: Option<layout::AtomicInlineParticipation>,
     shape_bands: Option<Vec<FixtureShapeBand>>,
@@ -808,8 +808,8 @@ struct MeasuredSegment {
     id: u64,
     extent: Scalar,
     metrics: layout::InlineMetrics,
-    level: surgeist_text::BidiLevel,
-    edge: surgeist_text::InlineWhitespaceEdge,
+    level: surgeist_text::supplied_line::BidiLevel,
+    edge: surgeist_text::supplied_line::InlineWhitespaceEdge,
     following: MeasuredBreak,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1496,7 +1496,7 @@ fn parse_atomic_paragraph_metrics(
                     && child.style.get("display") == Some("inline-block")
                     && child.atomic_inline_participation.is_some_and(|atomic| {
                         Some(atomic.bidi_level())
-                            == surgeist_text::BidiLevel::try_new(*bidi_level).ok()
+                            == surgeist_text::supplied_line::BidiLevel::try_new(*bidi_level).ok()
                             && atomic.following_break()
                                 == layout::InlineBreakOpportunity::Prohibited
                     })
@@ -1598,7 +1598,7 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
 }
 
 fn validate_native_control_topology(node: &Node) -> Result<(), Error> {
-    use surgeist_text::ParagraphControlKind;
+    use surgeist_text::paragraph::ParagraphControlKind;
     let mut depth = 0_usize;
     for child in &node.children {
         let Some(control) = &child.prepared_control else {
@@ -1855,10 +1855,14 @@ fn parse_inline_segment(xml: roxmltree::Node<'_, '_>) -> Result<MeasuredSegment,
     })?;
     let bidi_level = parse_bidi_level(xml, "segment")?;
     let whitespace_edge = match required_attr(xml, "whitespace-edge")? {
-        "preserve" => surgeist_text::InlineWhitespaceEdge::Preserve,
-        "discard-at-line-start" => surgeist_text::InlineWhitespaceEdge::DiscardAtLineStart,
-        "discard-at-line-end" => surgeist_text::InlineWhitespaceEdge::DiscardAtLineEnd,
-        "discard-at-both" => surgeist_text::InlineWhitespaceEdge::DiscardAtBoth,
+        "preserve" => surgeist_text::supplied_line::InlineWhitespaceEdge::Preserve,
+        "discard-at-line-start" => {
+            surgeist_text::supplied_line::InlineWhitespaceEdge::DiscardAtLineStart
+        }
+        "discard-at-line-end" => {
+            surgeist_text::supplied_line::InlineWhitespaceEdge::DiscardAtLineEnd
+        }
+        "discard-at-both" => surgeist_text::supplied_line::InlineWhitespaceEdge::DiscardAtBoth,
         raw => {
             return Err(Error::new(format!(
                 "invalid `whitespace-edge` on `<segment>`: `{raw}`"
@@ -1867,7 +1871,7 @@ fn parse_inline_segment(xml: roxmltree::Node<'_, '_>) -> Result<MeasuredSegment,
     };
     let following_break = parse_inline_break(xml, "segment")?;
     if matches!(following_break, MeasuredBreak::Replacement(_))
-        && whitespace_edge != surgeist_text::InlineWhitespaceEdge::Preserve
+        && whitespace_edge != surgeist_text::supplied_line::InlineWhitespaceEdge::Preserve
     {
         return Err(Error::new(
             "invalid segment replacement: replacement requires preserved whitespace",
@@ -1945,10 +1949,10 @@ fn parse_inline_break(xml: roxmltree::Node<'_, '_>, tag: &str) -> Result<Measure
 fn parse_bidi_level(
     xml: roxmltree::Node<'_, '_>,
     tag: &str,
-) -> Result<surgeist_text::BidiLevel, Error> {
+) -> Result<surgeist_text::supplied_line::BidiLevel, Error> {
     let raw = required_attr(xml, "bidi-level")?;
     let level = parse_ascii_integer::<u8>(raw)
-        .and_then(|level| surgeist_text::BidiLevel::try_new(level).ok())
+        .and_then(|level| surgeist_text::supplied_line::BidiLevel::try_new(level).ok())
         .ok_or_else(|| Error::new(format!("invalid `bidi-level` on `<{tag}>`: `{raw}`")))?;
     Ok(level)
 }
@@ -2937,7 +2941,7 @@ impl TestTree {
                 )
             } else if matches!(
                 control.view().kind(),
-                surgeist_text::ParagraphControlKind::ForcedBreak
+                surgeist_text::paragraph::ParagraphControlKind::ForcedBreak
             ) {
                 layout::LayoutInput::text_control(layout::TextControlParticipation::new(
                     control.clone(),
@@ -3015,16 +3019,16 @@ impl TestTree {
             layout_input = layout::LayoutInput::line_break(control.with_metrics(metrics));
         }
         if let Some(capture) = &node.prepared
-            && capture.prepared.orientation() == surgeist_text::LineOrientation::Vertical
+            && capture.prepared.orientation() == surgeist_text::selection::LineOrientation::Vertical
         {
             // The closed CSS profile qualifies Mixed vertical typography and
             // its default dominant baseline. Use Text's resolved name; raw
             // Physical alignment would select a different atomic fallback.
             if !matches!(
                 capture.prepared.analyzed_source().typography(),
-                surgeist_text::AnalysisTypography::Mixed
+                surgeist_text::analyzed::AnalysisTypography::Mixed
             ) || capture.prepared.baseline_reference()
-                != Some(surgeist_text::FontBaseline::Central)
+                != Some(surgeist_text::font::FontBaseline::Central)
             {
                 return Err(Error::new(
                     "prepared vertical container lacks resolved Mixed central-baseline authority",
@@ -4338,8 +4342,8 @@ fn unobserved_inline_boundary(input: &layout::LayoutInput) -> bool {
         layout::LayoutInput::InlineBoundary(_) => true,
         layout::LayoutInput::TextControl(control) => matches!(
             control.occurrence().view().kind(),
-            surgeist_text::ParagraphControlKind::InlineBoundaryStart
-                | surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+            surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart
+                | surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryEnd
         ),
         _ => false,
     }
@@ -4361,7 +4365,7 @@ fn consume_unobserved_boundary(
     {
         let actual_control = |entry: &layout::InlineFragmentOutputEntry<usize>| {
             matches!(entry.fragment().finalized_fragment().view().owner(),
-                surgeist_text::FinalizedFragmentOwner::Control(owner)
+                surgeist_text::finalized::FinalizedFragmentOwner::Control(owner)
                     if owner == control.occurrence)
         };
         if unrounded.is_empty()
@@ -4589,9 +4593,9 @@ fn compare_range_rectangle_expectations(
 /// One browser Range rectangle assembled from source intersections.
 /// These are allocation/range rectangles, not glyph ink bounds.
 struct NativeRangeRectangle {
-    origin: surgeist_text::PreparedOrigin,
-    line: surgeist_text::FinalizedLine,
-    source: surgeist_text::Range,
+    origin: surgeist_text::prepared::PreparedOrigin,
+    line: surgeist_text::finalized::FinalizedLine,
+    source: surgeist_text::source::Range,
     pieces: Vec<RangePieceKey>,
     source_segment_id: u64,
     line_index: usize,
@@ -4599,15 +4603,15 @@ struct NativeRangeRectangle {
 }
 
 struct NativeRangeOrigin<'a> {
-    origin: surgeist_text::PreparedOrigin,
+    origin: surgeist_text::prepared::PreparedOrigin,
     entries: Vec<&'a layout::InlineFragmentOutputEntry<usize>>,
 }
 
 fn prepared_range_piece_key(
     path: &str,
-    origin: &surgeist_text::PreparedOrigin,
+    origin: &surgeist_text::prepared::PreparedOrigin,
     entries: &[&layout::InlineFragmentOutputEntry<usize>],
-    unit: surgeist_text::SourceRangeUnit<'_>,
+    unit: surgeist_text::range_fragments::SourceRangeUnit<'_>,
     ordinal: usize,
 ) -> Result<RangePieceKey, Error> {
     let changed = || {
@@ -4643,7 +4647,7 @@ fn prepared_range_piece_key(
     let mut pieces = unit.pieces();
     if !matches!(
         pieces.next(),
-        Some(surgeist_text::SourceRangeGeometry::Line(_))
+        Some(surgeist_text::range_fragments::SourceRangeGeometry::Line(_))
     ) || pieces.next().is_some()
     {
         return Err(changed());
@@ -4659,7 +4663,7 @@ fn prepared_range_piece_key(
 fn native_range_rectangles(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
-    placed: &surgeist_text::Layout,
+    placed: &surgeist_text::layout::Layout,
     row_pieces: Option<&[&[RangePieceKey]]>,
 ) -> Result<Vec<NativeRangeRectangle>, Error> {
     let mut groups = Vec::<NativeRangeOrigin<'_>>::new();
@@ -4672,7 +4676,9 @@ fn native_range_rectangles(
             )));
         }
         seen.push(issued);
-        let surgeist_text::FinalizedFragmentOwner::Origin(origin) = issued.view().owner() else {
+        let surgeist_text::finalized::FinalizedFragmentOwner::Origin(origin) =
+            issued.view().owner()
+        else {
             return Err(Error::new(
                 "Range rectangle requires an actual source-owned fragment",
             ));
@@ -4749,7 +4755,7 @@ fn native_range_rectangles(
                 .transpose()?;
             let key = bound.map(|(key, _)| key);
             let source = if let Some(key) = key {
-                surgeist_text::Range::new(key.aggregate[0], key.aggregate[1])
+                surgeist_text::source::Range::new(key.aggregate[0], key.aggregate[1])
             } else {
                 let mut intersections = unit.selected_intersections();
                 let Some(first) = intersections.next() else {
@@ -4758,7 +4764,10 @@ fn native_range_rectangles(
                 };
                 intersections.fold(first.aggregate_range(), |range, next| {
                     let next = next.aggregate_range();
-                    surgeist_text::Range::new(range.start.min(next.start), range.end.max(next.end))
+                    surgeist_text::source::Range::new(
+                        range.start.min(next.start),
+                        range.end.max(next.end),
+                    )
                 })
             };
             for piece in unit.pieces() {
@@ -4863,7 +4872,7 @@ fn range_rectangle_values(rect: layout::ScrollRect, edge: PhysicalStartEdge) -> 
 fn compare_range_rectangle_expectations_with_translation(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
-    placed: &surgeist_text::Layout,
+    placed: &surgeist_text::layout::Layout,
     expected: &[InlineRangeRectangleExpectation],
     translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
 ) -> Result<(), Error> {
@@ -4877,7 +4886,7 @@ struct RangeRectanglePair {
     source_segment_id: u64,
     line_index: usize,
     physical_start_edge: PhysicalStartEdge,
-    native_source: surgeist_text::Range,
+    native_source: surgeist_text::source::Range,
     native_pieces: Vec<RangePieceKey>,
     native_start: Scalar,
     browser_start: Scalar,
@@ -4888,7 +4897,7 @@ struct RangeRectanglePair {
 fn visit_range_rectangle_pairs(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
-    placed: &surgeist_text::Layout,
+    placed: &surgeist_text::layout::Layout,
     expected: &[InlineRangeRectangleExpectation],
     row_pieces: Option<&[&[RangePieceKey]]>,
     mut translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
@@ -5134,7 +5143,7 @@ fn project_prepared_browser_br_font_band(
         ));
     };
     if fragment.finalized_fragment().view().owner()
-        != surgeist_text::FinalizedFragmentOwner::Control(control.occurrence().clone())
+        != surgeist_text::finalized::FinalizedFragmentOwner::Control(control.occurrence().clone())
     {
         return Err(Error::new(
             "BR font-band fragment has a foreign control occurrence",
@@ -5164,7 +5173,7 @@ fn project_prepared_browser_br_font_band(
         || instance.face().index() != 0
         || instance.font_size() != 20.0
         || instance.axis_count() != 0
-        || instance.synthesis() != surgeist_text::FontSynthesis::default()
+        || instance.synthesis() != surgeist_text::font::FontSynthesis::default()
     {
         return Ok(None);
     }
@@ -5173,7 +5182,7 @@ fn project_prepared_browser_br_font_band(
     let (x, y, right, bottom) = match (vertical, metrics.basis()) {
         (
             false,
-            surgeist_text::BreakFontMetricBasis::Horizontal {
+            surgeist_text::placement::BreakFontMetricBasis::Horizontal {
                 font_origin_offset: 0.0,
             },
         ) => {
@@ -5186,7 +5195,7 @@ fn project_prepared_browser_br_font_band(
                 baseline + metrics.descent(),
             )
         }
-        (true, surgeist_text::BreakFontMetricBasis::UprightCentral) => {
+        (true, surgeist_text::placement::BreakFontMetricBasis::UprightCentral) => {
             let ordinary = instance
                 .metrics(instance.face().catalogue_identity())
                 .map_err(|error| {
@@ -5273,7 +5282,7 @@ fn semantic_br_flow(tree: &TestTree, node: usize) -> Option<layout::FlowAxes> {
     if !native.is_br_source
         || !matches!(
             input.occurrence().view().kind(),
-            surgeist_text::ParagraphControlKind::ForcedBreak
+            surgeist_text::paragraph::ParagraphControlKind::ForcedBreak
         )
         || !tree.paragraphs.iter().any(|paragraph| {
             paragraph.container == parent
@@ -7852,13 +7861,14 @@ mod tests {
         for row in &line.selected_line().request().controls {
             assert_eq!(
                 row.boundary,
-                Some(surgeist_text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
+                Some(surgeist_text::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
             );
             let strut = row.strut.unwrap();
             assert_eq!((strut.baseline, strut.line_extent), (0.0, 0.0));
         }
         for fragment in line.fragments() {
-            let surgeist_text::FinalizedFragmentOwner::Control(control) = fragment.view().owner()
+            let surgeist_text::finalized::FinalizedFragmentOwner::Control(control) =
+                fragment.view().owner()
             else {
                 panic!("the nonvisual control keeps its actual owner")
             };
@@ -7992,8 +8002,8 @@ mod tests {
                 .map(|(_, control)| control.view().kind().clone())
                 .collect::<Vec<_>>(),
             vec![
-                surgeist_text::ParagraphControlKind::InlineBoundaryStart,
-                surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+                surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart,
+                surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryEnd
             ]
         );
         for (node, control) in controls {
@@ -8005,7 +8015,7 @@ mod tests {
                 batch.unrounded_inline_fragments().iter().any(|entry| {
                     entry.owner() == &layout::InlineFragmentOwner::Node(node)
                         && matches!(entry.fragment().finalized_fragment().view().owner(),
-                    surgeist_text::FinalizedFragmentOwner::Control(actual) if actual == *control)
+                    surgeist_text::finalized::FinalizedFragmentOwner::Control(actual) if actual == *control)
                 }),
                 "a transparent semantic control must retain its actual finalized owner"
             );
@@ -8031,10 +8041,13 @@ mod tests {
         };
         let origin = bound_origin.origin.clone();
         assert_eq!(origin.view().source().text().code_units(), [0x0058]);
-        assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 1));
+        assert_eq!(
+            origin.view().local_range(),
+            surgeist_text::source::Range::new(0, 1)
+        );
         assert_eq!(
             origin.view().aggregate_range(),
-            surgeist_text::Range::new(0, 1)
+            surgeist_text::source::Range::new(0, 1)
         );
 
         let placed = batch
@@ -8090,7 +8103,7 @@ mod tests {
             run.glyphs()
                 .map(|glyph| (glyph.range(), glyph.id(), glyph.advance(), glyph.pen()))
                 .collect::<Vec<_>>(),
-            [(surgeist_text::Range::new(0, 1), 58, 10.0, 0.0)]
+            [(surgeist_text::source::Range::new(0, 1), 58, 10.0, 0.0)]
         );
         let strut = fragment.rect().expect("source-fragment strut control");
         assert_eq!(strut.size().height, 10.5);
@@ -8102,17 +8115,18 @@ mod tests {
         // public query is an ADDITIONAL consistency/custody control, never the
         // source of these expected numbers and never a substitute Source string.
         let query = placed
-            .source_range_fragments(&origin, surgeist_text::Range::new(0, 1))
+            .source_range_fragments(&origin, surgeist_text::source::Range::new(0, 1))
             .expect("canonical query over the very same real placed result");
         assert_eq!(query.origin(), &origin);
-        assert_eq!(query.local_range(), surgeist_text::Range::new(0, 1));
+        assert_eq!(query.local_range(), surgeist_text::source::Range::new(0, 1));
         let units = query.units().collect::<Vec<_>>();
         let [unit] = units.as_slice() else {
             panic!("one real original X EGC")
         };
         assert_eq!(unit.finalized_line(), finalized);
         let pieces = unit.pieces().collect::<Vec<_>>();
-        let [surgeist_text::SourceRangeGeometry::Line(piece)] = pieces.as_slice() else {
+        let [surgeist_text::range_fragments::SourceRangeGeometry::Line(piece)] = pieces.as_slice()
+        else {
             panic!("actual ordinary font-metric Range contribution")
         };
         assert_eq!(
@@ -8123,7 +8137,7 @@ mod tests {
         assert_eq!(piece.baseline(), baseline);
         assert_eq!(
             piece.rect(),
-            surgeist_text::Rect::new(0.0, baseline - 8.0, 10.0, 10.0)
+            surgeist_text::geometry::Rect::new(0.0, baseline - 8.0, 10.0, 10.0)
         );
 
         // Existing-callable consumer under correction. Its current fragment-based
@@ -8141,7 +8155,7 @@ mod tests {
         };
         assert_eq!(observation.origin, origin);
         assert_eq!(observation.line, finalized);
-        assert_eq!(observation.source, surgeist_text::Range::new(0, 1));
+        assert_eq!(observation.source, surgeist_text::source::Range::new(0, 1));
         assert_eq!(observation.line_index, 0);
         assert_eq!(
             observation.rect.size().height,
@@ -8335,7 +8349,7 @@ mod tests {
                     .finalized_fragment()
                     .view()
                     .aggregate_range()
-                    == Some(surgeist_text::Range::new(0, 1))
+                    == Some(surgeist_text::source::Range::new(0, 1))
             })
             .unwrap();
         let third = actual
@@ -8346,7 +8360,7 @@ mod tests {
                     .finalized_fragment()
                     .view()
                     .aggregate_range()
-                    == Some(surgeist_text::Range::new(2, 3))
+                    == Some(surgeist_text::source::Range::new(2, 3))
             })
             .unwrap();
         // Real nonadjacent source cells cannot be replaced by their48px hull.
@@ -8497,7 +8511,10 @@ mod tests {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
-        assert_eq!(glyphs, vec![(3, 16.0, surgeist_text::Range::new(0, 1))]);
+        assert_eq!(
+            glyphs,
+            vec![(3, 16.0, surgeist_text::source::Range::new(0, 1))]
+        );
         assert_eq!(actual[0].fragment().rect().unwrap().size().width, 0.0);
         let rectangles = native_range_rectangles(
             "preserved-zero-space",
@@ -8507,7 +8524,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rectangles.len(), 1);
-        assert_eq!(rectangles[0].source, surgeist_text::Range::new(0, 1));
+        assert_eq!(
+            rectangles[0].source,
+            surgeist_text::source::Range::new(0, 1)
+        );
         assert_eq!(rectangles[0].rect.size().width, 0.0);
     }
 
@@ -8615,7 +8635,7 @@ mod tests {
             let prepared = origin.prepared_text();
             let pdi = prepared
                 .unit_views()
-                .find(|unit| unit.source_range() == surgeist_text::Range::new(4, 5))
+                .find(|unit| unit.source_range() == surgeist_text::source::Range::new(4, 5))
                 .unwrap();
             assert_eq!(
                 pdi.level().get(),
@@ -8628,7 +8648,7 @@ mod tests {
                 .find(|entry| {
                     let view = entry.fragment().finalized_fragment().view();
                     view.origin().as_ref() == Some(origin)
-                        && view.aggregate_range() == Some(surgeist_text::Range::new(4, 5))
+                        && view.aggregate_range() == Some(surgeist_text::source::Range::new(4, 5))
                 })
                 .unwrap();
             let issued = entry.fragment().finalized_fragment();
@@ -8661,7 +8681,10 @@ mod tests {
                 .positions()
                 .find(|position| {
                     position.source_cursor()
-                        == surgeist_text::Cursor::new(4, surgeist_text::Affinity::After)
+                        == surgeist_text::layout::Cursor::new(
+                            4,
+                            surgeist_text::layout::Affinity::After,
+                        )
                 })
                 .unwrap();
             assert_eq!(
@@ -8716,9 +8739,9 @@ mod tests {
             assert_eq!(
                 glyphs,
                 vec![
-                    (surgeist_text::Range::new(0, 1), 58, 24.0, 16.0),
-                    (surgeist_text::Range::new(2, 3), 58, 40.0, 16.0),
-                    (surgeist_text::Range::new(3, 4), 58, 56.0, 16.0)
+                    (surgeist_text::source::Range::new(0, 1), 58, 24.0, 16.0),
+                    (surgeist_text::source::Range::new(2, 3), 58, 40.0, 16.0),
+                    (surgeist_text::source::Range::new(3, 4), 58, 56.0, 16.0)
                 ]
             );
             let browser = golden.expectations.children[1]
@@ -10586,13 +10609,13 @@ mod tests {
             paints,
             vec![
                 (
-                    surgeist_text::Range::new(0, 1),
+                    surgeist_text::source::Range::new(0, 1),
                     0.0,
                     10.125,
                     vec![(58, 0.0, 0.0, 0.0, 10.0)]
                 ),
                 (
-                    surgeist_text::Range::new(1, 2),
+                    surgeist_text::source::Range::new(1, 2),
                     10.125,
                     5.0,
                     vec![(58, 0.0, 0.0, 0.0, 5.0)]
@@ -13108,7 +13131,7 @@ mod tests {
         assert_eq!(segments[1].level.get(), 1);
         assert_eq!(
             segments[1].edge,
-            surgeist_text::InlineWhitespaceEdge::DiscardAtLineStart
+            surgeist_text::supplied_line::InlineWhitespaceEdge::DiscardAtLineStart
         );
         assert_eq!(segments[2].following, MeasuredBreak::Mandatory);
         assert_eq!(
@@ -13410,7 +13433,7 @@ mod tests {
     fn assert_native_cached_source_geometry(
         cold: &layout::CompletedLayoutBatch<usize>,
         warm: &layout::CompletedLayoutBatch<usize>,
-        origin: &surgeist_text::PreparedOrigin,
+        origin: &surgeist_text::prepared::PreparedOrigin,
     ) {
         assert_eq!(
             cold.unrounded_inline_fragments().len(),
@@ -13481,7 +13504,7 @@ mod tests {
                     assert_eq!(issued.view().origin(), Some(origin.clone()));
                     assert_eq!(issued.finalized_line(), line);
                     assert_eq!(line.prepared_text(), origin.prepared_text());
-                    let range = surgeist_text::Range::new(index, index + 1);
+                    let range = surgeist_text::source::Range::new(index, index + 1);
                     assert_eq!(issued.view().local_range(), Some(range));
                     assert_eq!(issued.view().aggregate_range(), Some(range));
                     coverage.push(range);
@@ -13504,11 +13527,14 @@ mod tests {
                 assert_eq!(
                     coverage,
                     [
-                        surgeist_text::Range::new(0, 1),
-                        surgeist_text::Range::new(1, 2),
+                        surgeist_text::source::Range::new(0, 1),
+                        surgeist_text::source::Range::new(1, 2),
                     ]
                 );
-                assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 2));
+                assert_eq!(
+                    origin.view().local_range(),
+                    surgeist_text::source::Range::new(0, 2)
+                );
                 assert_eq!(line.feedback().advance, 10.25);
                 assert_eq!(
                     line.run_views()
@@ -13523,8 +13549,8 @@ mod tests {
                         })
                         .collect::<Vec<_>>(),
                     [
-                        (surgeist_text::Range::new(0, 1), 58, 10.0, 0.0),
-                        (surgeist_text::Range::new(1, 2), 58, 10.0, 0.25),
+                        (surgeist_text::source::Range::new(0, 1), 58, 10.0, 0.0),
+                        (surgeist_text::source::Range::new(1, 2), 58, 10.0, 0.25),
                     ]
                 );
             }
@@ -13564,11 +13590,11 @@ mod tests {
                     assert_eq!(fragment.origin(), Some(origin.clone()));
                     assert_eq!(
                         fragment.local_range(),
-                        Some(surgeist_text::Range::new(0, 0))
+                        Some(surgeist_text::source::Range::new(0, 0))
                     );
                     assert_eq!(
                         fragment.aggregate_range(),
-                        Some(surgeist_text::Range::new(0, 0))
+                        Some(surgeist_text::source::Range::new(0, 0))
                     );
                     (
                         fragment.owner(),

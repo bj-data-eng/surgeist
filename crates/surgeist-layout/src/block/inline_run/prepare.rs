@@ -13,7 +13,7 @@ pub(in crate::block) struct PreparedInlineRun<'input, Node, S: LayoutScalar> {
     pub(super) atomic_children: Vec<RetainedAtomicChild<'input, Node, S>>,
     pub(super) control_children: Vec<InlineRunControl<Node, S>>,
     pub(super) text_run: Option<crate::text_layout::AdmittedRun<'input, Node>>,
-    pub(super) text_orientation: Option<surgeist_text::LineOrientation>,
+    pub(super) text_orientation: Option<surgeist_text::selection::LineOrientation>,
     pub(super) text_atomics: Vec<crate::text_layout::run::Atomic<Node, S>>,
     pub(super) float_events: float_text::FloatEvents<Node, S>,
     pub(super) absolute_children: Vec<Node>,

@@ -39,13 +39,14 @@ fn paragraph<S: l::LayoutScalar>(host: &mut Host<S>, parts: &[Part<'_>], height:
         host,
         0,
         parts,
-        t::Style {
-            line_height: t::LineHeight::Absolute(height),
-            word_break: t::WordBreak::BreakAll,
+        t::style::Style {
+            line_height: t::style::LineHeight::Absolute(height),
+            word_break: t::style::WordBreak::BreakAll,
             ..style()
         },
-        t::ParagraphBaseDirection::LeftToRight,
-        t::PreparationOptions::default().with_orientation(t::LineOrientation::SidewaysClockwise),
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::prepared::PreparationOptions::default()
+            .with_orientation(t::selection::LineOrientation::SidewaysClockwise),
     )
 }
 
@@ -120,7 +121,7 @@ fn qualify<S: l::LayoutScalar>(host: &Host<S>, paragraph: &Paragraph, float: u32
     assert_eq!(paragraph.prepared.atomic_views().count(), 0);
     assert_eq!(
         paragraph.prepared.orientation(),
-        t::LineOrientation::SidewaysClockwise
+        t::selection::LineOrientation::SidewaysClockwise
     );
     assert_eq!(
         paragraph
@@ -157,7 +158,10 @@ fn assert_rows<S: l::LayoutScalar>(
     let root = node_output(batch, 0);
     assert_eq!(root.location, l::Point::ZERO);
     let layout = placed(batch, paragraph);
-    assert_eq!(layout.orientation(), t::LineOrientation::SidewaysClockwise);
+    assert_eq!(
+        layout.orientation(),
+        t::selection::LineOrientation::SidewaysClockwise
+    );
     let rows = receipts(batch, paragraph);
     assert_eq!(rows.len(), capacity.len());
     assert_eq!(layout.lines().len(), capacity.len());
@@ -165,18 +169,24 @@ fn assert_rows<S: l::LayoutScalar>(
         assert_eq!(row.prepared_text(), paragraph.prepared);
         let selected = row.selected_line();
         let context = &selected.request().context;
-        assert_eq!(context.orientation, t::LineOrientation::SidewaysClockwise);
+        assert_eq!(
+            context.orientation,
+            t::selection::LineOrientation::SidewaysClockwise
+        );
         assert_eq!(context.available_inline, Some(available));
         assert_eq!(
             context.base_direction,
-            t::ParagraphBaseDirection::LeftToRight
+            t::paragraph::ParagraphBaseDirection::LeftToRight
         );
-        assert_eq!(context.line_box_direction, t::LineBoxDirection::LeftToRight);
+        assert_eq!(
+            context.line_box_direction,
+            t::selection::LineBoxDirection::LeftToRight
+        );
         assert_eq!(row.feedback().advance, 10.0);
         let expected_end = if i + 1 == rows.len() {
-            t::LineEnd::Paragraph
+            t::selection::LineEnd::Paragraph
         } else {
-            t::LineEnd::Soft
+            t::selection::LineEnd::Soft
         };
         assert_eq!(context.end, expected_end);
         assert_eq!(
@@ -473,11 +483,11 @@ fn clear<S: l::LayoutScalar>() {
         assert_eq!(lines.len(), 2);
         assert_eq!(
             lines[0].selected_line().request().context.end,
-            t::LineEnd::Forced
+            t::selection::LineEnd::Forced
         );
         assert_eq!(
             lines[1].selected_line().request().context.end,
-            t::LineEnd::Paragraph
+            t::selection::LineEnd::Paragraph
         );
         assert_eq!(
             lines[0].selected_line().request().controls[0].occurrence,
@@ -536,7 +546,7 @@ fn fractional_minimum<S: l::LayoutScalar>() {
         );
         assert_eq!(
             rows[0].selected_line().request().context.end,
-            t::LineEnd::Paragraph
+            t::selection::LineEnd::Paragraph
         );
         assert_eq!(
             rows[0]
@@ -556,7 +566,7 @@ fn fractional_minimum<S: l::LayoutScalar>() {
             layout.lines()[0].baseline(),
             if constrained { 21.0 } else { 32.0 }
         );
-        assert_eq!(layout.lines()[0].range(), t::Range::new(0, 1));
+        assert_eq!(layout.lines()[0].range(), t::source::Range::new(0, 1));
         assert_eq!(layout.run_views().next().unwrap().face().bytes(), AHEM);
         if constrained {
             assert_eq!(

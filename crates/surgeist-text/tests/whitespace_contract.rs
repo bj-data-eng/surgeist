@@ -7,14 +7,14 @@ use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 
-fn style(wrap: text::Wrap) -> text::Style {
-    text::Style {
-        font: text::Font::new().family("Ahem"),
+fn style(wrap: text::style::Wrap) -> text::style::Style {
+    text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
         wrap,
-        ..text::Style::default()
+        ..text::style::Style::default()
     }
 }
 
@@ -26,74 +26,78 @@ fn system(bytes: &[u8]) -> text::System {
     system
 }
 
-fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::Wrap) -> Vec<usize> {
-    let local = |wrap| text::Style {
-        white_space: text::WhiteSpace::Collapse,
+fn collapsed_space_cuts(
+    first: text::style::Wrap,
+    second: text::style::Wrap,
+    ancestor: text::style::Wrap,
+) -> Vec<usize> {
+    let local = |wrap| text::style::Style {
+        white_space: text::style::WhiteSpace::Collapse,
         ..style(wrap)
     };
-    let mut source = text::Source::new("A  B");
-    source.span(text::Range::new(0, 2), local(first));
-    source.span(text::Range::new(2, 4), local(second));
-    let origin = |start, end| text::ParagraphOrigin {
+    let mut source = text::source::Source::new("A  B");
+    source.span(text::source::Range::new(0, 2), local(first));
+    source.span(text::source::Range::new(2, 4), local(second));
+    let origin = |start, end| text::paragraph::ParagraphOrigin {
         text_node: None,
         source: source.clone(),
-        local: text::Range::new(start, end),
-        aggregate: text::Range::new(start, end),
-        kind: text::ParagraphOriginKind::Authored,
+        local: text::source::Range::new(start, end),
+        aggregate: text::source::Range::new(start, end),
+        kind: text::paragraph::ParagraphOriginKind::Authored,
     };
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: vec![origin(0, 2), origin(2, 4)],
-            connections: vec![text::SourceProcessingConnection {
+            connections: vec![text::capture::SourceProcessingConnection {
                 before_origin: 0,
                 after_origin: 1,
-                kind: text::ParagraphConnectionKind::Continuous,
+                kind: text::paragraph::ParagraphConnectionKind::Continuous,
             }],
             controls: vec![],
             replacements: vec![],
-            boundary_policies: vec![text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(0),
+            boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+                definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
                 preceding_wrap: first,
                 following_wrap: second,
                 ancestor_wrap: ancestor,
             }],
             scopes: vec![
-                text::SourceProcessingScope::Block {
+                text::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: text::SourceProcessingTopology::Unknown,
-                    trim: text::WhiteSpaceTrim::default(),
+                    topology: text::capture::SourceProcessingTopology::Unknown,
+                    trim: text::capture::WhiteSpaceTrim::default(),
                     base_style: local(ancestor),
-                    used_direction: text::ParagraphBaseDirection::LeftToRight,
+                    used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
-                    trim: text::WhiteSpaceTrim::default(),
+                    trim: text::capture::WhiteSpaceTrim::default(),
                     style: Some(local(first)),
                     boundaries: None,
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
-                    trim: text::WhiteSpaceTrim::default(),
+                    trim: text::capture::WhiteSpaceTrim::default(),
                     style: Some(local(second)),
                     boundaries: None,
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
@@ -101,14 +105,14 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
                 E::EnterScope(1),
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(1),
                 E::Connection(0),
                 E::EnterScope(2),
                 E::Origin {
                     origin: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitScope(2),
                 E::ExitParagraph(0),
@@ -122,15 +126,18 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
     let paragraph = processed.paragraphs().next().unwrap();
     assert_eq!(
         paragraph.source_pieces().collect::<Vec<_>>(),
-        [text::Range::new(0, 2), text::Range::new(2, 4)]
+        [
+            text::source::Range::new(0, 2),
+            text::source::Range::new(2, 4)
+        ]
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         paragraph,
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system(AHEM)
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(
         prepared.analyzed_source().source().text().code_units(),
@@ -144,15 +151,15 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
             .map(|unit| (unit.source_range(), unit.advance()))
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(0, 1), 10.0),
-            (text::Range::new(1, 2), 10.0),
-            (text::Range::new(2, 3), 0.0),
-            (text::Range::new(3, 4), 10.0),
+            (text::source::Range::new(0, 1), 10.0),
+            (text::source::Range::new(1, 2), 10.0),
+            (text::source::Range::new(2, 3), 0.0),
+            (text::source::Range::new(3, 4), 10.0),
         ]
     );
     prepared
         .opportunity_views()
-        .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+        .filter(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
         .map(|offer| {
             let boundary = offer.boundary();
             assert_eq!(
@@ -164,8 +171,11 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
         .collect()
 }
 
-fn both_ancestors(first: text::Wrap, second: text::Wrap) -> Vec<(text::Wrap, Vec<usize>)> {
-    [text::Wrap::Word, text::Wrap::None]
+fn both_ancestors(
+    first: text::style::Wrap,
+    second: text::style::Wrap,
+) -> Vec<(text::style::Wrap, Vec<usize>)> {
+    [text::style::Wrap::Word, text::style::Wrap::None]
         .into_iter()
         .map(|ancestor| (ancestor, collapsed_space_cuts(first, second, ancestor)))
         .collect()
@@ -176,8 +186,11 @@ fn collapsed_following_space_keeps_its_own_word_wrap_permission() {
     // Disappearing-character ownership is local to the second inline:
     // its cut3 is permitted even when the surviving first SPACE cannot wrap.
     assert_eq!(
-        both_ancestors(text::Wrap::None, text::Wrap::Word),
-        [(text::Wrap::Word, vec![3]), (text::Wrap::None, vec![3])]
+        both_ancestors(text::style::Wrap::None, text::style::Wrap::Word),
+        [
+            (text::style::Wrap::Word, vec![3]),
+            (text::style::Wrap::None, vec![3])
+        ]
     );
 }
 
@@ -186,18 +199,21 @@ fn collapsed_following_nowrap_space_cannot_borrow_the_surviving_spaces_permissio
     // Only the first SPACE's own cut2 may wrap. Its permission cannot donate
     // cut3 to the collapsed second SPACE in a different nowrap inline.
     assert_eq!(
-        both_ancestors(text::Wrap::Word, text::Wrap::None),
-        [(text::Wrap::Word, vec![2]), (text::Wrap::None, vec![2])]
+        both_ancestors(text::style::Wrap::Word, text::style::Wrap::None),
+        [
+            (text::style::Wrap::Word, vec![2]),
+            (text::style::Wrap::None, vec![2])
+        ]
     );
 }
 
 #[test]
 fn homogeneous_word_spaces_keep_both_original_cuts_under_either_nca_mode() {
     assert_eq!(
-        both_ancestors(text::Wrap::Word, text::Wrap::Word),
+        both_ancestors(text::style::Wrap::Word, text::style::Wrap::Word),
         [
-            (text::Wrap::Word, vec![2, 3]),
-            (text::Wrap::None, vec![2, 3])
+            (text::style::Wrap::Word, vec![2, 3]),
+            (text::style::Wrap::None, vec![2, 3])
         ]
     );
 }
@@ -205,8 +221,11 @@ fn homogeneous_word_spaces_keep_both_original_cuts_under_either_nca_mode() {
 #[test]
 fn homogeneous_nowrap_spaces_offer_neither_original_cut_under_either_nca_mode() {
     assert_eq!(
-        both_ancestors(text::Wrap::None, text::Wrap::None),
-        [(text::Wrap::Word, vec![]), (text::Wrap::None, vec![])]
+        both_ancestors(text::style::Wrap::None, text::style::Wrap::None),
+        [
+            (text::style::Wrap::Word, vec![]),
+            (text::style::Wrap::None, vec![])
+        ]
     );
 }
 
@@ -306,30 +325,30 @@ fn remap(entries: &[(u32, u32)]) -> Vec<u8> {
 }
 
 struct Rendered {
-    ink: text::LineOutlineInk,
-    glyphs: Vec<(u32, f32, text::Range)>,
+    ink: text::finalized::LineOutlineInk,
+    glyphs: Vec<(u32, f32, text::source::Range)>,
     registered_faces: bool,
     end_caret_x: f64,
 }
 
 fn rendered(bytes: &[u8], value: &str) -> Rendered {
-    let source = text::Source::new(value);
+    let source = text::source::Source::new(value);
     let end = source.text().len();
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
-            base_style: style(text::Wrap::Word),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            base_style: style(text::style::Wrap::Word),
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, end),
-                aggregate: text::Range::new(0, end),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, end),
+                aggregate: text::source::Range::new(0, end),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -337,51 +356,51 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system(bytes)
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let termination = prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(termination),
+            termination: text::selection::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
             line_box_struts: Vec::new(),
             line_strut: None,
-            context: text::LineContext {
-                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-                formatted_line: surgeist_text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::Horizontal,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: surgeist_text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::Horizontal,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(100.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::Spaces,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::Spaces,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     let registered_faces = line.run_views().all(|run| run.face().bytes() == bytes);
@@ -394,24 +413,29 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
         })
         .collect();
     let ink = line.outline_ink().unwrap();
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 0.0,
-                baseline: 8.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: 8.0,
+                },
+                orientation: text::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
     let units: Vec<_> = value.encode_utf16().collect();
     assert_eq!(layout.source().text().code_units(), units);
     let end_caret_x = layout
-        .cursor(text::Cursor::new(end, text::Affinity::Before))
+        .cursor(text::layout::Cursor::new(
+            end,
+            text::layout::Affinity::Before,
+        ))
         .unwrap()
         .rect()
         .origin
@@ -420,11 +444,16 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
     let positions: Vec<_> = layout.positions().collect();
     let before = positions
         .iter()
-        .find(|position| position.source_cursor() == text::Cursor::new(0, text::Affinity::After))
+        .find(|position| {
+            position.source_cursor() == text::layout::Cursor::new(0, text::layout::Affinity::After)
+        })
         .unwrap();
     let after = positions
         .iter()
-        .find(|position| position.source_cursor() == text::Cursor::new(end, text::Affinity::Before))
+        .find(|position| {
+            position.source_cursor()
+                == text::layout::Cursor::new(end, text::layout::Affinity::Before)
+        })
         .unwrap();
     let selection = layout.position_selection(before, after).unwrap();
     assert_eq!(selection.source_text().code_units(), units);
@@ -437,9 +466,9 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
     }
 }
 
-fn positive_ink(ink: text::LineOutlineInk) {
+fn positive_ink(ink: text::finalized::LineOutlineInk) {
     assert!(
-        matches!(ink, text::LineOutlineInk::Bounds(bounds)
+        matches!(ink, text::finalized::LineOutlineInk::Bounds(bounds)
         if bounds.size.width > 0.0 && bounds.size.height > 0.0),
         "actual finalized outline must have positive ink: {ink:?}"
     );
@@ -457,7 +486,7 @@ fn qualified_font(control: Option<u32>, visible_space: bool) -> Vec<u8> {
     let x = rendered(&bytes, "X");
     positive_ink(x.ink);
     assert!(x.registered_faces);
-    assert_eq!(x.glyphs, [(58, 10.0, text::Range::new(0, 1))]);
+    assert_eq!(x.glyphs, [(58, 10.0, text::source::Range::new(0, 1))]);
     assert_eq!(x.end_caret_x, 10.0);
     let space = rendered(&bytes, " ");
     assert!(space.registered_faces);
@@ -466,14 +495,14 @@ fn qualified_font(control: Option<u32>, visible_space: bool) -> Vec<u8> {
         [(
             if visible_space { 58 } else { 3 },
             10.0,
-            text::Range::new(0, 1)
+            text::source::Range::new(0, 1)
         )]
     );
     assert_eq!(space.end_caret_x, 10.0);
     if visible_space {
         positive_ink(space.ink);
     } else {
-        assert_eq!(space.ink, text::LineOutlineInk::Empty);
+        assert_eq!(space.ink, text::finalized::LineOutlineInk::Empty);
     }
     bytes
 }
@@ -515,7 +544,7 @@ fn unsupported_default_ignorable_with_blank_space_is_zero_advance_and_empty_ink(
     let bytes = qualified_font(None, false);
     let ignored = rendered(&bytes, "\u{2065}");
     zero_advance_and_caret(&ignored);
-    assert_eq!(ignored.ink, text::LineOutlineInk::Empty);
+    assert_eq!(ignored.ink, text::finalized::LineOutlineInk::Empty);
 }
 
 #[test]
@@ -525,7 +554,7 @@ fn unsupported_default_ignorable_with_visible_space_is_still_empty_ink() {
     // Zero advance, end caret and exact original/selection/plaintext custody
     // are qualified independently before the actual outline visibility check.
     zero_advance_and_caret(&ignored);
-    assert_eq!(ignored.ink, text::LineOutlineInk::Empty);
+    assert_eq!(ignored.ink, text::finalized::LineOutlineInk::Empty);
 }
 
 mod common;

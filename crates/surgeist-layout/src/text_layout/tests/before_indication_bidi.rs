@@ -5,9 +5,9 @@ use surgeist_text as text;
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn paragraph(control: bool, indication: &str) -> PreparedParagraph {
-    let style = text::Style {
-        hyphens: text::Hyphens::Manual,
-        hyphenate_character: text::HyphenateCharacter::String(indication.into()),
+    let style = text::style::Style {
+        hyphens: text::hyphenation::Hyphens::Manual,
+        hyphenate_character: text::hyphenation::HyphenateCharacter::String(indication.into()),
         ..ahem_style(10.0, 10.0)
     };
     if control {
@@ -16,14 +16,14 @@ fn paragraph(control: bool, indication: &str) -> PreparedParagraph {
                 ParagraphPart::text(10, Source::new("\u{202e}AB\u{202c}_"), style.clone()),
                 ParagraphPart::Control {
                     node: 20,
-                    kind: text::ParagraphControlKind::DiscretionaryBreak {
+                    kind: text::paragraph::ParagraphControlKind::DiscretionaryBreak {
                         style: Box::new(style.clone()),
                     },
                 },
                 ParagraphPart::text(11, Source::new("CDE"), style.clone()),
             ],
             style,
-            text::ParagraphBaseDirection::LeftToRight,
+            text::paragraph::ParagraphBaseDirection::LeftToRight,
         )
     } else {
         PreparedParagraph::plain(10, Source::new("\u{202e}AB\u{202c}_\u{ad}CDE"), style)
@@ -51,14 +51,14 @@ fn qualify(p: &PreparedParagraph, control: bool, indication: &str) {
     assert_eq!(
         cuts[0].provenance(),
         if control {
-            text::HyphenationProvenance::Control
+            text::hyphenation::HyphenationProvenance::Control
         } else {
-            text::HyphenationProvenance::Source
+            text::hyphenation::HyphenationProvenance::Source
         }
     );
     assert_eq!(
         cuts[0].counts(),
-        Some(text::HyphenationCounts {
+        Some(text::hyphenation::HyphenationCounts {
             total: 5,
             before: 2,
             after: 3
@@ -66,7 +66,7 @@ fn qualify(p: &PreparedParagraph, control: bool, indication: &str) {
     );
     assert_eq!(
         cuts[0].opportunity().unwrap().view().kind(),
-        text::PreparedBreakKind::Discretionary
+        text::prepared::PreparedBreakKind::Discretionary
     );
     let alternatives = prepared.alternative_views().collect::<Vec<_>>();
     assert_eq!(alternatives.len(), 1);
@@ -81,17 +81,20 @@ fn qualify(p: &PreparedParagraph, control: bool, indication: &str) {
     if control {
         assert!(matches!(
             alternatives[0].definition(),
-            text::PreparedAlternativeDefinition::Control { .. }
+            text::prepared::PreparedAlternativeDefinition::Control { .. }
         ));
         assert_eq!(prepared.control_views().next().unwrap().level().get(), 0);
     } else {
-        assert_eq!(alternatives[0].source_range(), Some(text::Range::new(5, 6)));
+        assert_eq!(
+            alternatives[0].source_range(),
+            Some(text::source::Range::new(5, 6))
+        );
     }
     // Original UBA: RLO makes AB level1; PDF returns to embedding0. The
     // neutral underscore's original neighbors are R and L, so N2 resolves it to L0.
     let underscore = prepared
         .unit_views()
-        .find(|unit| unit.source_range() == text::Range::new(4, 5))
+        .find(|unit| unit.source_range() == text::source::Range::new(4, 5))
         .unwrap();
     assert_eq!(underscore.level().get(), 0);
 }
@@ -156,7 +159,9 @@ fn compute<S: LayoutScalar>(p: &PreparedParagraph, width: f64) -> CompletedLayou
     result
 }
 
-fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
+fn lines<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<text::finalized::FinalizedLine> {
     let mut out = vec![None; batch.placed_text()[0].layout().lines().len()];
     for row in batch.final_inline_fragments() {
         let fragment = row.fragment();
@@ -169,7 +174,7 @@ fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::F
     out.into_iter().map(|line| line.unwrap()).collect()
 }
 
-fn glyphs(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32, f64)> {
+fn glyphs(line: &text::finalized::FinalizedLine) -> Vec<(text::source::Range, u32, f32, f64)> {
     let mut out = Vec::new();
     for run in line.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -203,20 +208,25 @@ fn check<S: LayoutScalar>(control: bool) {
     let first_end = if control { 5 } else { 6 };
     let end = if control { 8 } else { 9 };
     let prefix = vec![
-        (text::Range::new(1, 2), 35, 10.0, 10.0),
-        (text::Range::new(2, 3), 36, 10.0, 0.0),
-        (text::Range::new(4, 5), 65, 10.0, 20.0),
+        (text::source::Range::new(1, 2), 35, 10.0, 10.0),
+        (text::source::Range::new(2, 3), 36, 10.0, 0.0),
+        (text::source::Range::new(4, 5), 65, 10.0, 20.0),
     ];
     let tail = vec![
-        (text::Range::new(first_end, first_end + 1), 37, 10.0, 0.0),
         (
-            text::Range::new(first_end + 1, first_end + 2),
+            text::source::Range::new(first_end, first_end + 1),
+            37,
+            10.0,
+            0.0,
+        ),
+        (
+            text::source::Range::new(first_end + 1, first_end + 2),
             38,
             10.0,
             10.0,
         ),
         (
-            text::Range::new(first_end + 2, first_end + 3),
+            text::source::Range::new(first_end + 2, first_end + 3),
             39,
             10.0,
             20.0,
@@ -260,8 +270,8 @@ fn check<S: LayoutScalar>(control: bool) {
             assert_eq!(
                 actual.placed_text()[0].layout().lines()[i].range(),
                 [
-                    text::Range::new(0, first_end),
-                    text::Range::new(first_end, end)
+                    text::source::Range::new(0, first_end),
+                    text::source::Range::new(first_end, end)
                 ][i]
             );
         }

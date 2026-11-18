@@ -39,7 +39,11 @@ fn mixed_font() -> Vec<u8> {
     bytes
 }
 
-fn capture(raw: &str, id: u64, boxes: &[(u64, t::InlineBoxKind, t::Size)]) -> Fixture {
+fn capture(
+    raw: &str,
+    id: u64,
+    boxes: &[(u64, t::source::InlineBoxKind, t::geometry::Size)],
+) -> Fixture {
     let bytes = mixed_font();
     let mut system = t::System::default();
     system
@@ -57,126 +61,132 @@ fn capture(raw: &str, id: u64, boxes: &[(u64, t::InlineBoxKind, t::Size)]) -> Fi
     let horizontal = instance
         .baseline(
             system.font_catalogue_identity(),
-            t::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-            t::FontBaselineAxis::HorizontalY,
-            t::FontBaseline::Central,
+            t::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+            t::font::FontBaselineAxis::HorizontalY,
+            t::font::FontBaseline::Central,
         )
         .unwrap();
-    let t::FontBaselineOutcome::Available(horizontal) = horizontal.outcome() else {
+    let t::font::FontBaselineOutcome::Available(horizontal) = horizontal.outcome() else {
         panic!("the real horizontal A/D midpoint supplies Central")
     };
     near(horizontal.coordinate(), 1.2);
     assert_eq!(
         horizontal.provenance(),
-        t::FontBaselineProvenance::InstanceMetricsCssMidpoint
+        t::font::FontBaselineProvenance::InstanceMetricsCssMidpoint
     );
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 4.0,
-        line_height: t::LineHeight::Absolute(4.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(4.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     };
-    let mut source = t::Source::identified(raw, t::Id::from_u64(id), 1);
+    let mut source = t::source::Source::identified(raw, t::source::Id::from_u64(id), 1);
     for &(id, kind, size) in boxes {
-        source.inline_box(t::InlineBox::new(t::Id::from_u64(id), kind, 1, size));
+        source.inline_box(t::source::InlineBox::new(
+            t::source::Id::from_u64(id),
+            kind,
+            1,
+            size,
+        ));
     }
     let len = raw.encode_utf16().count();
     let ranges = if boxes.is_empty() {
-        vec![t::Range::new(0, len)]
+        vec![t::source::Range::new(0, len)]
     } else {
         assert_eq!(len, 2);
-        vec![t::Range::new(0, 1), t::Range::new(1, 2)]
+        vec![t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
     };
     let connections = if boxes.is_empty() {
         vec![]
     } else {
-        vec![t::ParagraphConnection {
+        vec![t::paragraph::ParagraphConnection {
             at: 1,
-            kind: t::ParagraphConnectionKind::Continuous,
+            kind: t::paragraph::ParagraphConnectionKind::Continuous,
         }]
     };
     let mut policies = if boxes.is_empty() {
         vec![]
     } else {
-        vec![t::ParagraphBoundaryDefinition::Connection(0)]
+        vec![t::paragraph::ParagraphBoundaryDefinition::Connection(0)]
     };
     for (index, (_, kind, _)) in boxes.iter().enumerate() {
-        if *kind == t::InlineBoxKind::InFlow {
+        if *kind == t::source::InlineBoxKind::InFlow {
             policies.extend([
-                t::ParagraphBoundaryDefinition::AtomicBefore(index),
-                t::ParagraphBoundaryDefinition::AtomicAfter(index),
+                t::paragraph::ParagraphBoundaryDefinition::AtomicBefore(index),
+                t::paragraph::ParagraphBoundaryDefinition::AtomicAfter(index),
             ]);
         }
     }
-    let analysis = t::AnalyzedSource::from_paragraph(
-        t::ParagraphInput {
+    let analysis = t::analyzed::AnalyzedSource::from_paragraph(
+        t::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            terminal_edge: t::ParagraphTerminalEdge::BlockEnd,
-            paragraph_strut: t::ParagraphStrut::DefaultFont,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            terminal_edge: t::paragraph::ParagraphTerminalEdge::BlockEnd,
+            paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             tab_reference: None,
             origins: ranges
                 .into_iter()
-                .map(|range| t::ParagraphOrigin {
+                .map(|range| t::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: range,
                     aggregate: range,
-                    kind: t::ParagraphOriginKind::Authored,
+                    kind: t::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             connections,
             controls: vec![],
             boundary_policies: policies
                 .into_iter()
-                .map(|definition| t::ParagraphBoundaryPolicy {
+                .map(|definition| t::paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: t::Wrap::Word,
-                    following_wrap: t::Wrap::Word,
-                    ancestor_wrap: t::Wrap::Word,
+                    preceding_wrap: t::style::Wrap::Word,
+                    following_wrap: t::style::Wrap::Word,
+                    ancestor_wrap: t::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
             anchor_order: (0..boxes.len())
-                .map(|index| t::ParagraphAnchor {
-                    item: t::ParagraphAnchorItem::Atomic(index),
-                    affinity: t::Affinity::Before,
+                .map(|index| t::paragraph::ParagraphAnchor {
+                    item: t::paragraph::ParagraphAnchorItem::Atomic(index),
+                    affinity: t::layout::Affinity::Before,
                 })
                 .collect(),
         },
-        t::AnalysisTypography::Mixed,
+        t::analyzed::AnalysisTypography::Mixed,
     )
     .unwrap();
     let missing = analysis
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| t::WrappingPolicy {
+        .map(|row| t::analyzed::WrappingPolicy {
             relation: row.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analysis = analysis.with_wrapping_policies(missing).unwrap();
     let prepared = system
         .prepare(
             &analysis,
-            t::PreparationOptions::default().with_orientation(t::LineOrientation::Vertical),
+            t::prepared::PreparationOptions::default()
+                .with_orientation(t::selection::LineOrientation::Vertical),
         )
         .unwrap();
     assert_eq!(
         prepared.analyzed_source().typography(),
-        t::AnalysisTypography::Mixed
+        t::analyzed::AnalysisTypography::Mixed
     );
     assert_eq!(
         prepared.analyzed_source().direction(),
-        t::Direction::LeftToRight
+        t::style::Direction::LeftToRight
     );
     assert_eq!(
         prepared.baseline_reference(),
-        Some(t::FontBaseline::Central)
+        Some(t::font::FontBaseline::Central)
     );
     Fixture {
         prepared,
@@ -189,7 +199,7 @@ fn binding(
     f: &Fixture,
     container: u32,
     nodes: &[u32],
-    strut: Option<t::LineStrut>,
+    strut: Option<t::allocation::LineStrut>,
 ) -> l::TextParagraphBinding<u32> {
     l::TextParagraphBinding {
         inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
@@ -267,7 +277,7 @@ fn central_facts<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>, first: f64, 
 fn placed<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     container: u32,
-) -> &t::Layout {
+) -> &t::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -276,9 +286,9 @@ fn placed<S: l::LayoutScalar>(
         .layout()
 }
 
-fn packets(text: &t::Layout, fixture: &Fixture, centers: &[f64], inline: &[f64]) {
+fn packets(text: &t::layout::Layout, fixture: &Fixture, centers: &[f64], inline: &[f64]) {
     assert_eq!(text.source(), &fixture.source);
-    assert_eq!(text.orientation(), t::LineOrientation::Vertical);
+    assert_eq!(text.orientation(), t::selection::LineOrientation::Vertical);
     assert_eq!(
         text.analyzed_source().identity(),
         fixture.prepared.analyzed_source().identity()
@@ -294,14 +304,14 @@ fn packets(text: &t::Layout, fixture: &Fixture, centers: &[f64], inline: &[f64])
         for glyph in run.glyphs() {
             let index = run.range().start;
             let upright = index % 2 == 1;
-            assert_eq!(run.range(), t::Range::new(index, index + 1));
+            assert_eq!(run.range(), t::source::Range::new(index, index + 1));
             assert_eq!(glyph.id(), 274);
             assert_eq!(
                 run.glyph_basis(),
                 if upright {
-                    t::GlyphBasis::Unrotated
+                    t::geometry::GlyphBasis::Unrotated
                 } else {
-                    t::GlyphBasis::Clockwise
+                    t::geometry::GlyphBasis::Clockwise
                 }
             );
             assert_eq!(
@@ -324,11 +334,13 @@ fn packets(text: &t::Layout, fixture: &Fixture, centers: &[f64], inline: &[f64])
     assert_eq!(seen, (0..inline.len()).collect::<Vec<_>>());
     let start = text
         .positions()
-        .find(|p| p.source_cursor() == t::Cursor::new(0, t::Affinity::After))
+        .find(|p| p.source_cursor() == t::layout::Cursor::new(0, t::layout::Affinity::After))
         .unwrap();
     let end = text
         .positions()
-        .find(|p| p.source_cursor() == t::Cursor::new(inline.len(), t::Affinity::Before))
+        .find(|p| {
+            p.source_cursor() == t::layout::Cursor::new(inline.len(), t::layout::Affinity::Before)
+        })
         .unwrap();
     let selection = text.position_selection(&start, &end).unwrap();
     assert_eq!(selection.source_text(), fixture.source.text());
@@ -410,11 +422,14 @@ fn columns<S: l::LayoutScalar>() {
                     .iter()
                     .map(|line| line.range())
                     .collect::<Vec<_>>(),
-                [t::Range::new(0, 2), t::Range::new(2, 4)]
+                [t::source::Range::new(0, 2), t::source::Range::new(2, 4)]
             );
             for (line, c) in text.lines().iter().zip(centers) {
                 assert_eq!(line.baseline(), c);
-                assert_eq!(line.bounds(), t::Rect::new(c - 2.0, 0.0, 10.0, 6.0));
+                assert_eq!(
+                    line.bounds(),
+                    t::geometry::Rect::new(c - 2.0, 0.0, 10.0, 6.0)
+                );
             }
             packets(text, &fixture, &centers, &[0.0, 2.0, 0.0, 2.0]);
             let mut ranges = Vec::new();
@@ -446,10 +461,10 @@ fn columns<S: l::LayoutScalar>() {
             assert_eq!(
                 ranges,
                 [
-                    t::Range::new(0, 1),
-                    t::Range::new(1, 2),
-                    t::Range::new(2, 3),
-                    t::Range::new(3, 4)
+                    t::source::Range::new(0, 1),
+                    t::source::Range::new(1, 2),
+                    t::source::Range::new(2, 3),
+                    t::source::Range::new(3, 4)
                 ]
             );
         }
@@ -507,8 +522,16 @@ fn scene<S: l::LayoutScalar>(mode: l::WritingMode) -> Scene<S> {
         "A一",
         1_570_200,
         &[
-            (2, t::InlineBoxKind::InFlow, t::Size::new(6.0, 8.0)),
-            (3, t::InlineBoxKind::OutOfFlow, t::Size::new(5.0, 7.0)),
+            (
+                2,
+                t::source::InlineBoxKind::InFlow,
+                t::geometry::Size::new(6.0, 8.0),
+            ),
+            (
+                3,
+                t::source::InlineBoxKind::OutOfFlow,
+                t::geometry::Size::new(5.0, 7.0),
+            ),
         ],
     );
     let child = capture("A一", 1_570_201, &[]);
@@ -629,14 +652,14 @@ fn atomics<S: l::LayoutScalar>() {
                 .collect::<Vec<_>>(),
             [
                 (
-                    t::Id::from_u64(2),
-                    t::InlineBoxKind::InFlow,
-                    t::Rect::new(c - 2.0, 2.0, 6.0, 8.0)
+                    t::source::Id::from_u64(2),
+                    t::source::InlineBoxKind::InFlow,
+                    t::geometry::Rect::new(c - 2.0, 2.0, 6.0, 8.0)
                 ),
                 (
-                    t::Id::from_u64(3),
-                    t::InlineBoxKind::OutOfFlow,
-                    t::Rect::new(out_x, 10.0, 5.0, 7.0)
+                    t::source::Id::from_u64(3),
+                    t::source::InlineBoxKind::OutOfFlow,
+                    t::geometry::Rect::new(out_x, 10.0, 5.0, 7.0)
                 ),
             ]
         );
@@ -721,7 +744,7 @@ fn publication<S: l::LayoutScalar>() {
         assert_eq!(
             foreign.detail(),
             Some(&t::ErrorDetail::InvalidTextProtocol {
-                reason: t::ProtocolError::ForeignPlacement
+                reason: t::prepared::ProtocolError::ForeignPlacement
             })
         );
         assert_eq!(

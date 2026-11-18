@@ -197,125 +197,130 @@ fn premises_with_advance(bytes: &[u8], glyph_advance: u16) {
 
 fn capture(
     input: &str,
-    cell_range: text::Range,
+    cell_range: text::source::Range,
     letter_spacing: f64,
-) -> Arc<text::ProcessedSource> {
-    let parent = text::Style {
+) -> Arc<text::processing::ProcessedSource> {
+    let parent = text::style::Style {
         size: 10.0,
-        line_height: text::LineHeight::Absolute(12.0),
-        white_space: text::WhiteSpace::Preserve,
-        text_combine_upright: text::TextCombineUpright::None,
-        text_transform: text::TextTransform::none(),
+        line_height: text::style::LineHeight::Absolute(12.0),
+        white_space: text::style::WhiteSpace::Preserve,
+        text_combine_upright: text::style::TextCombineUpright::None,
+        text_transform: text::style::TextTransform::none(),
         letter_spacing: 0.0,
-        wrap: text::Wrap::Word,
+        wrap: text::style::Wrap::Word,
         ..style()
     };
-    let body = text::Style {
-        line_height: text::LineHeight::Absolute(10.0),
-        text_combine_upright: text::TextCombineUpright::All,
+    let body = text::style::Style {
+        line_height: text::style::LineHeight::Absolute(10.0),
+        text_combine_upright: text::style::TextCombineUpright::All,
         letter_spacing,
         ..parent.clone()
     };
-    let reference = text::ScopeFontReference {
-        script: text::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-        axis: text::FontBaselineAxis::VerticalX,
-        baseline: text::FontBaseline::Central,
+    let reference = text::scope_alignment::ScopeFontReference {
+        script: text::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+        axis: text::font::FontBaselineAxis::VerticalX,
+        baseline: text::font::FontBaseline::Central,
     };
     let len = input.encode_utf16().count();
     assert!(cell_range.start < cell_range.end && cell_range.end <= len);
     let ranges = [
-        text::Range::new(0, cell_range.start),
+        text::source::Range::new(0, cell_range.start),
         cell_range,
-        text::Range::new(cell_range.end, len),
+        text::source::Range::new(cell_range.end, len),
     ]
     .into_iter()
     .filter(|range| range.start < range.end)
     .collect::<Vec<_>>();
-    let mut source = text::Source::identified(input, text::Id::from_u64(784_915), 1);
+    let mut source =
+        text::source::Source::identified(input, text::source::Id::from_u64(784_915), 1);
     let mut events = vec![
-        text::SourceProcessingEvent::EnterScope(0),
-        text::SourceProcessingEvent::EnterParagraph(0),
+        text::capture::SourceProcessingEvent::EnterScope(0),
+        text::capture::SourceProcessingEvent::EnterParagraph(0),
     ];
     for (index, &range) in ranges.iter().enumerate() {
         let inside = range == cell_range;
         source.span(range, if inside { body.clone() } else { parent.clone() });
         if index != 0 {
-            events.push(text::SourceProcessingEvent::Connection(index - 1));
+            events.push(text::capture::SourceProcessingEvent::Connection(index - 1));
         }
         if inside {
-            events.push(text::SourceProcessingEvent::EnterScope(1));
+            events.push(text::capture::SourceProcessingEvent::EnterScope(1));
         }
-        events.push(text::SourceProcessingEvent::Origin {
+        events.push(text::capture::SourceProcessingEvent::Origin {
             origin: index,
-            affinity: text::Affinity::After,
+            affinity: text::layout::Affinity::After,
         });
         if inside {
-            events.push(text::SourceProcessingEvent::ExitScope(1));
+            events.push(text::capture::SourceProcessingEvent::ExitScope(1));
         }
     }
     events.extend([
-        text::SourceProcessingEvent::ExitParagraph(0),
-        text::SourceProcessingEvent::ExitScope(0),
+        text::capture::SourceProcessingEvent::ExitParagraph(0),
+        text::capture::SourceProcessingEvent::ExitScope(0),
     ]);
     Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: ranges
                 .iter()
-                .map(|&range| text::ParagraphOrigin {
+                .map(|&range| text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: range,
                     aggregate: range,
-                    kind: text::ParagraphOriginKind::Authored,
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             connections: (0..ranges.len() - 1)
-                .map(|index| text::SourceProcessingConnection {
+                .map(|index| text::capture::SourceProcessingConnection {
                     before_origin: index,
                     after_origin: index + 1,
-                    kind: text::ParagraphConnectionKind::Continuous,
+                    kind: text::paragraph::ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
             controls: vec![],
             boundary_policies: (0..ranges.len() - 1)
-                .map(|index| text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(index),
-                    preceding_wrap: text::Wrap::Word,
-                    following_wrap: text::Wrap::Word,
-                    ancestor_wrap: text::Wrap::Word,
+                .map(|index| text::paragraph::ParagraphBoundaryPolicy {
+                    definition: text::paragraph::ParagraphBoundaryDefinition::Connection(index),
+                    preceding_wrap: text::style::Wrap::Word,
+                    following_wrap: text::style::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
             computed_line_boundaries: vec![],
             joint_flows: vec![],
-            scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
+            scope_alignment_limits: Some(text::scope_alignment::ScopeAlignmentLimits::new(
                 4096, 4096, 1_000_000, 16_777_216,
             )),
             scopes: vec![
-                text::SourceProcessingScope::Block {
-                    topology: text::SourceProcessingTopology::Complete,
+                text::capture::SourceProcessingScope::Block {
+                    topology: text::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: parent,
-                    used_direction: text::ParagraphBaseDirection::LeftToRight,
-                    writing_axis: Some(text::SourceWritingAxis::Vertical),
-                    horizontal_inner_direction: Some(text::ParagraphBaseDirection::LeftToRight),
+                    used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    writing_axis: Some(text::capture::SourceWritingAxis::Vertical),
+                    horizontal_inner_direction: Some(
+                        text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    ),
                     font_reference: Some(reference),
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     trim: Default::default(),
                     style: Some(body),
                     boundaries: None,
                     alignment_boundary: None,
                     font_reference: Some(reference),
-                    horizontal_inner_direction: Some(text::ParagraphBaseDirection::LeftToRight),
+                    horizontal_inner_direction: Some(
+                        text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    ),
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::AllocatedContributions,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::AllocatedContributions,
             }],
             events,
         })
@@ -327,11 +332,11 @@ fn capture(
 fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
     let bytes = font();
     premises(&bytes);
-    let processed = capture("A", text::Range::new(0, 1), 0.0);
-    assert_eq!(processed.source().text(), &text::Text::from("A"));
-    let domain = text::AnalyzedDomain::from_processed_paragraph(
+    let processed = capture("A", text::source::Range::new(0, 1), 0.0);
+    assert_eq!(processed.source().text(), &text::source::Text::from("A"));
+    let domain = text::analyzed::AnalyzedDomain::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::Mixed,
+        text::analyzed::AnalysisTypography::Mixed,
     )
     .unwrap();
     assert!(Arc::ptr_eq(domain.processed_source(), &processed));
@@ -349,7 +354,7 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
     assert_eq!(cell.presentation_code_points().collect::<Vec<_>>(), [0x41]);
     let piece = cell.source_pieces().next().unwrap();
     assert_eq!(piece.source(), processed.source());
-    assert_eq!(piece.aggregate(), text::Range::new(0, 1));
+    assert_eq!(piece.aggregate(), text::source::Range::new(0, 1));
     assert_eq!(
         piece.origin_position(),
         processed.captured_origin(0).unwrap()
@@ -359,20 +364,21 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
     let prepared = system
         .prepare(
             analyzed,
-            text::PreparationOptions::default().with_orientation(text::LineOrientation::Vertical),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::Vertical),
         )
         .unwrap();
     let mut segments = prepared.source_segments();
     let segment = segments.next().unwrap();
     assert!(segments.next().is_none());
     let selected = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
             participants: prepared.participants().collect(),
-            termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+            termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
             alternative: None,
             incoming: None,
             atomics: vec![],
@@ -380,43 +386,45 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::Vertical,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::Vertical,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap();
     let line = selected
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert!(line.has_in_flow_content());
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(line.measurements().fit().advance(), 10.0);
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared: prepared.clone(),
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 20.0,
-                baseline: 100.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 20.0,
+                    baseline: 100.0,
+                },
+                orientation: text::selection::LineOrientation::Vertical,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Vertical,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
     assert_eq!(layout.source(), processed.source());
@@ -426,7 +434,7 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
     // hence x95..105/y20..30. Horizontal hhea8/-2 puts its glyph origin at95,28.
     assert_eq!(
         layout.lines()[0].bounds(),
-        text::Rect::new(95.0, 20.0, 10.0, 10.0)
+        text::geometry::Rect::new(95.0, 20.0, 10.0, 10.0)
     );
     let runs = layout
         .run_views()
@@ -434,14 +442,20 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
         .collect::<Vec<_>>();
     assert_eq!(runs.len(), 1);
     let run = &runs[0];
-    assert_eq!(run.orientation(), text::LineOrientation::Vertical);
-    assert_eq!(run.glyph_basis(), text::GlyphBasis::Unrotated);
+    assert_eq!(
+        run.orientation(),
+        text::selection::LineOrientation::Vertical
+    );
+    assert_eq!(run.glyph_basis(), text::geometry::GlyphBasis::Unrotated);
     assert_eq!(run.face().bytes(), bytes.as_slice());
-    assert_eq!(run.range(), text::Range::new(0, 1));
-    assert_eq!(run.glyph_frame().origin(), text::Point::new(95.0, 28.0));
+    assert_eq!(run.range(), text::source::Range::new(0, 1));
+    assert_eq!(
+        run.glyph_frame().origin(),
+        text::geometry::Point::new(95.0, 28.0)
+    );
     assert_eq!(
         run.glyph_frame().pen_direction(),
-        text::Point::new(1.0, 0.0)
+        text::geometry::Point::new(1.0, 0.0)
     );
     // This qualifies the real provider invocation before testing Render: one
     // source scalar expands through ccmp into two glyphs, with retained raw pens.
@@ -498,11 +512,11 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
     // The real GSUB contains normal ccmp only, so no width variant is available.
     // Two actual advances800 at size10/UPEM1000 give W16. Native compression
     // retains those normal glyphs and uses E/W=10/16=5/8, with no Y scaling.
-    let processed = capture("A", text::Range::new(0, 1), 0.0);
-    assert_eq!(processed.source().text(), &text::Text::from("A"));
-    let domain = text::AnalyzedDomain::from_processed_paragraph(
+    let processed = capture("A", text::source::Range::new(0, 1), 0.0);
+    assert_eq!(processed.source().text(), &text::source::Text::from("A"));
+    let domain = text::analyzed::AnalyzedDomain::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::Mixed,
+        text::analyzed::AnalysisTypography::Mixed,
     )
     .unwrap();
     assert!(Arc::ptr_eq(domain.processed_source(), &processed));
@@ -519,8 +533,8 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
     let piece = pieces.next().unwrap();
     assert!(pieces.next().is_none());
     assert_eq!(piece.source(), processed.source());
-    assert_eq!(piece.local(), text::Range::new(0, 1));
-    assert_eq!(piece.aggregate(), text::Range::new(0, 1));
+    assert_eq!(piece.local(), text::source::Range::new(0, 1));
+    assert_eq!(piece.aggregate(), text::source::Range::new(0, 1));
     assert_eq!(
         piece.origin_position(),
         processed.captured_origin(0).unwrap()
@@ -531,7 +545,8 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
     let prepared = system
         .prepare(
             analyzed,
-            text::PreparationOptions::default().with_orientation(text::LineOrientation::Vertical),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::Vertical),
         )
         .unwrap();
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
@@ -539,13 +554,13 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
     let segment = segments.next().unwrap();
     assert!(segments.next().is_none());
     let selected = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
             participants: prepared.participants().collect(),
-            termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+            termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
             alternative: None,
             incoming: None,
             atomics: vec![],
@@ -553,43 +568,45 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::Vertical,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::Vertical,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap();
     let line = selected
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert!(line.has_in_flow_content());
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(line.measurements().fit().advance(), 10.0);
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared: prepared.clone(),
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 20.0,
-                baseline: 100.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 20.0,
+                    baseline: 100.0,
+                },
+                orientation: text::selection::LineOrientation::Vertical,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Vertical,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
     assert_eq!(layout.source(), processed.source());
@@ -597,7 +614,7 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
     assert_eq!(layout.lines().len(), 1);
     assert_eq!(
         layout.lines()[0].bounds(),
-        text::Rect::new(95.0, 20.0, 10.0, 10.0)
+        text::geometry::Rect::new(95.0, 20.0, 10.0, 10.0)
     );
     let runs = layout
         .run_views()
@@ -606,14 +623,17 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
     assert_eq!(runs.len(), 1);
     let run = &runs[0];
     assert!(run.face().is_same_face(&resource.face()));
-    assert_eq!(run.range(), text::Range::new(0, 1));
-    assert_eq!(run.orientation(), text::LineOrientation::Vertical);
-    assert_eq!(run.glyph_basis(), text::GlyphBasis::Unrotated);
+    assert_eq!(run.range(), text::source::Range::new(0, 1));
+    assert_eq!(
+        run.orientation(),
+        text::selection::LineOrientation::Vertical
+    );
+    assert_eq!(run.glyph_basis(), text::geometry::GlyphBasis::Unrotated);
     let frame = run.glyph_frame();
-    assert_eq!(frame.origin(), text::Point::new(95.0, 28.0));
-    assert_eq!(frame.pen_direction(), text::Point::new(1.0, 0.0));
-    assert_eq!(frame.outline_x(), text::Point::new(0.625, 0.0));
-    assert_eq!(frame.outline_y(), text::Point::new(0.0, 1.0));
+    assert_eq!(frame.origin(), text::geometry::Point::new(95.0, 28.0));
+    assert_eq!(frame.pen_direction(), text::geometry::Point::new(1.0, 0.0));
+    assert_eq!(frame.outline_x(), text::geometry::Point::new(0.625, 0.0));
+    assert_eq!(frame.outline_y(), text::geometry::Point::new(0.0, 1.0));
     assert_eq!(
         run.glyphs()
             .map(|glyph| (
@@ -691,9 +711,9 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
     );
     // Only A expands through ccmp. C retains its original1000 design advance;
     // the two inner glyphs retain800 each, requiring10/16 horizontal compression.
-    let processed = capture("CAC", text::Range::new(1, 2), 2.0);
-    assert_eq!(processed.source().text(), &text::Text::from("CAC"));
-    assert_eq!(processed.processed_text(), &text::Text::from("CAC"));
+    let processed = capture("CAC", text::source::Range::new(1, 2), 2.0);
+    assert_eq!(processed.source().text(), &text::source::Text::from("CAC"));
+    assert_eq!(processed.processed_text(), &text::source::Text::from("CAC"));
     assert_eq!(
         processed
             .source()
@@ -706,14 +726,26 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
             ))
             .collect::<Vec<_>>(),
         [
-            (text::Range::new(0, 1), text::TextCombineUpright::None, 0.0),
-            (text::Range::new(1, 2), text::TextCombineUpright::All, 2.0),
-            (text::Range::new(2, 3), text::TextCombineUpright::None, 0.0),
+            (
+                text::source::Range::new(0, 1),
+                text::style::TextCombineUpright::None,
+                0.0
+            ),
+            (
+                text::source::Range::new(1, 2),
+                text::style::TextCombineUpright::All,
+                2.0
+            ),
+            (
+                text::source::Range::new(2, 3),
+                text::style::TextCombineUpright::None,
+                0.0
+            ),
         ]
     );
-    let domain = text::AnalyzedDomain::from_processed_paragraph(
+    let domain = text::analyzed::AnalyzedDomain::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::Mixed,
+        text::analyzed::AnalysisTypography::Mixed,
     )
     .unwrap();
     assert!(Arc::ptr_eq(domain.processed_source(), &processed));
@@ -722,9 +754,9 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
-            ancestor_wrap: text::Wrap::Word,
+            ancestor_wrap: text::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
@@ -738,8 +770,8 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
     let piece = pieces.next().unwrap();
     assert!(pieces.next().is_none());
     assert_eq!(piece.source(), processed.source());
-    assert_eq!(piece.local(), text::Range::new(1, 2));
-    assert_eq!(piece.aggregate(), text::Range::new(1, 2));
+    assert_eq!(piece.local(), text::source::Range::new(1, 2));
+    assert_eq!(piece.aggregate(), text::source::Range::new(1, 2));
     assert_eq!(
         piece.origin_position(),
         processed.captured_origin(1).unwrap()
@@ -749,20 +781,21 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(text::LineOrientation::Vertical),
+            text::prepared::PreparationOptions::default()
+                .with_orientation(text::selection::LineOrientation::Vertical),
         )
         .unwrap();
     let mut segments = prepared.source_segments();
     let segment = segments.next().unwrap();
     assert!(segments.next().is_none());
     let selected = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
             participants: prepared.participants().collect(),
-            termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+            termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
             alternative: None,
             incoming: None,
             atomics: vec![],
@@ -770,26 +803,26 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::Vertical,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::Vertical,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap();
     let line = selected
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     // Text3 half tracking: C10 + gap1 + square10 + gap1 + C10 =32.
@@ -803,7 +836,7 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
         assert!(cells.next().is_none());
         assert_eq!(
             cell.square(),
-            text::Rect::new(11.0, cell.reference() - 5.0, 10.0, 10.0)
+            text::geometry::Rect::new(11.0, cell.reference() - 5.0, 10.0, 10.0)
         );
         assert_eq!(cell.scope_displacement().get(), 0.0);
         assert_eq!(
@@ -813,20 +846,22 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
         let mut runs = line.run_views().filter(|run| run.cell().is_some());
         let run = runs.next().unwrap();
         assert!(runs.next().is_none());
-        assert_eq!(run.range(), text::Range::new(1, 2));
+        assert_eq!(run.range(), text::source::Range::new(1, 2));
     }
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared: prepared.clone(),
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 20.0,
-                baseline: 100.0,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 20.0,
+                    baseline: 100.0,
+                },
+                orientation: text::selection::LineOrientation::Vertical,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Vertical,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
     assert_eq!(layout.source(), processed.source());
@@ -836,31 +871,34 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
     // one unit beyond the square, while horizontal hhea8/-2 gives origin95,39.
     assert_eq!(
         layout
-            .cursor(text::Cursor::new(1, text::Affinity::After))
+            .cursor(text::layout::Cursor::new(1, text::layout::Affinity::After))
             .unwrap()
             .rect(),
-        text::Rect::new(95.0, 31.0, 10.0, 1.0)
+        text::geometry::Rect::new(95.0, 31.0, 10.0, 1.0)
     );
     assert_eq!(
         layout
-            .cursor(text::Cursor::new(2, text::Affinity::Before))
+            .cursor(text::layout::Cursor::new(2, text::layout::Affinity::Before))
             .unwrap()
             .rect(),
-        text::Rect::new(95.0, 42.0, 10.0, 1.0)
+        text::geometry::Rect::new(95.0, 42.0, 10.0, 1.0)
     );
     let mut cell_runs = layout
         .run_views()
-        .filter(|run| run.range() == text::Range::new(1, 2));
+        .filter(|run| run.range() == text::source::Range::new(1, 2));
     let run = cell_runs.next().unwrap();
     assert!(cell_runs.next().is_none());
     assert_eq!(run.face().bytes(), bytes.as_slice());
-    assert_eq!(run.glyph_basis(), text::GlyphBasis::Unrotated);
-    assert_eq!(run.orientation(), text::LineOrientation::Vertical);
+    assert_eq!(run.glyph_basis(), text::geometry::GlyphBasis::Unrotated);
+    assert_eq!(
+        run.orientation(),
+        text::selection::LineOrientation::Vertical
+    );
     let frame = run.glyph_frame();
-    assert_eq!(frame.origin(), text::Point::new(95.0, 39.0));
-    assert_eq!(frame.outline_x(), text::Point::new(0.625, 0.0));
-    assert_eq!(frame.outline_y(), text::Point::new(0.0, 1.0));
-    assert_eq!(frame.pen_direction(), text::Point::new(1.0, 0.0));
+    assert_eq!(frame.origin(), text::geometry::Point::new(95.0, 39.0));
+    assert_eq!(frame.outline_x(), text::geometry::Point::new(0.625, 0.0));
+    assert_eq!(frame.outline_y(), text::geometry::Point::new(0.0, 1.0));
+    assert_eq!(frame.pen_direction(), text::geometry::Point::new(1.0, 0.0));
     assert_eq!(
         run.glyphs()
             .map(|glyph| (
@@ -875,7 +913,7 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
     );
     let mut following = layout
         .run_views()
-        .filter(|run| run.range() == text::Range::new(2, 3));
+        .filter(|run| run.range() == text::source::Range::new(2, 3));
     let following = following.next().unwrap();
     let mut glyphs = following.glyphs();
     let glyph = glyphs.next().unwrap();

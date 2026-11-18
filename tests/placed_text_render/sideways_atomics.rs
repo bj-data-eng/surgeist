@@ -46,50 +46,53 @@ impl layout::LayoutTree for AtomicTree {
     }
 }
 
-fn style() -> text::Style {
-    text::Style {
-        font: text::Font::new().family("Ahem"),
+fn style() -> text::style::Style {
+    text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
+        ..text::style::Style::default()
     }
 }
 
 fn prepare(
     system: &mut text::System,
-    source: &text::Source,
+    source: &text::source::Source,
     atomic: bool,
-    orientation: text::LineOrientation,
-) -> text::PreparedText {
-    use text::SourceProcessingEvent as E;
+    orientation: text::selection::LineOrientation,
+) -> text::prepared::PreparedText {
+    use text::capture::SourceProcessingEvent as E;
     let authored = style();
     let ranges = if atomic {
-        vec![text::Range::new(0, 1), text::Range::new(1, 2)]
+        vec![
+            text::source::Range::new(0, 1),
+            text::source::Range::new(1, 2),
+        ]
     } else {
-        vec![text::Range::new(0, 1)]
+        vec![text::source::Range::new(0, 1)]
     };
-    let capture = text::process_contextual_source(text::ContextualSourceInput {
+    let capture = text::capture::process_contextual_source(text::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: text::SourceProcessingEnvelope::Complete,
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: text::capture::SourceProcessingEnvelope::Complete,
         origins: ranges
             .into_iter()
-            .map(|range| text::ParagraphOrigin {
+            .map(|range| text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: range,
                 aggregate: range,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
         connections: if atomic {
-            vec![text::SourceProcessingConnection {
+            vec![text::capture::SourceProcessingConnection {
                 before_origin: 0,
                 after_origin: 1,
-                kind: text::ParagraphConnectionKind::Continuous,
+                kind: text::paragraph::ParagraphConnectionKind::Continuous,
             }]
         } else {
             vec![]
@@ -97,12 +100,12 @@ fn prepare(
         controls: vec![],
         boundary_policies: if atomic {
             [
-                text::ParagraphBoundaryDefinition::AtomicBefore(0),
-                text::ParagraphBoundaryDefinition::AtomicAfter(0),
-                text::ParagraphBoundaryDefinition::Connection(0),
+                text::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                text::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
+                text::paragraph::ParagraphBoundaryDefinition::Connection(0),
             ]
             .into_iter()
-            .map(|definition| text::ParagraphBoundaryPolicy {
+            .map(|definition| text::paragraph::ParagraphBoundaryPolicy {
                 definition,
                 preceding_wrap: authored.wrap,
                 following_wrap: authored.wrap,
@@ -114,18 +117,18 @@ fn prepare(
         },
         replacements: vec![],
         computed_line_boundaries: vec![],
-        scopes: vec![text::SourceProcessingScope::Block {
+        scopes: vec![text::capture::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: text::SourceProcessingTopology::Complete,
-            used_direction: text::ParagraphBaseDirection::LeftToRight,
-            trim: text::WhiteSpaceTrim::default(),
+            topology: text::capture::SourceProcessingTopology::Complete,
+            used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            trim: text::capture::WhiteSpaceTrim::default(),
             base_style: authored.clone(),
         }],
-        paragraphs: vec![text::SourceProcessingParagraph {
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+        paragraphs: vec![text::capture::SourceProcessingParagraph {
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
         }],
         events: if atomic {
             vec![
@@ -133,16 +136,16 @@ fn prepare(
                 E::EnterParagraph(0),
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Atomic {
                     atomic: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::Connection(0),
                 E::Origin {
                     origin: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::ExitScope(0),
@@ -153,7 +156,7 @@ fn prepare(
                 E::EnterParagraph(0),
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::ExitScope(0),
@@ -162,15 +165,15 @@ fn prepare(
     })
     .unwrap();
     let capture = std::sync::Arc::new(capture);
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         capture.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| text::WrappingPolicy {
+        .map(|row| text::analyzed::WrappingPolicy {
             relation: row.handle(),
             ancestor_wrap: authored.wrap,
         })
@@ -179,7 +182,7 @@ fn prepare(
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(orientation),
+            text::prepared::PreparationOptions::default().with_orientation(orientation),
         )
         .unwrap();
     assert_eq!(
@@ -206,7 +209,7 @@ fn limits() -> render::text_layout::TextLayoutLimits {
     )
 }
 
-fn placed(batch: &layout::CompletedLayoutBatch<usize>, container: usize) -> &text::Layout {
+fn placed(batch: &layout::CompletedLayoutBatch<usize>, container: usize) -> &text::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -215,7 +218,7 @@ fn placed(batch: &layout::CompletedLayoutBatch<usize>, container: usize) -> &tex
         .layout()
 }
 
-fn assert_composition(kind: text::InlineBoxKind) {
+fn assert_composition(kind: text::source::InlineBoxKind) {
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
@@ -224,25 +227,27 @@ fn assert_composition(kind: text::InlineBoxKind) {
     // outline x0..1000/y400..600. At size10 its ink is x0..10/y-6..-4.
     // These licensed fixture facts are also qualified by Render's owning
     // text_layout_adapter/sideways.rs tests; no synthetic font is introduced.
-    let mut source = text::Source::identified("\u{3a7}\u{3a7}", text::Id::from_u64(1556001), 7);
-    source.inline_box(text::InlineBox::new(
-        text::Id::from_u64(2),
+    let mut source =
+        text::source::Source::identified("\u{3a7}\u{3a7}", text::source::Id::from_u64(1556001), 7);
+    source.inline_box(text::source::InlineBox::new(
+        text::source::Id::from_u64(2),
         kind,
         1,
-        text::Size::new(6.0, 14.0),
+        text::geometry::Size::new(6.0, 14.0),
     ));
-    let child_source = text::Source::identified("\u{3a7}", text::Id::from_u64(1556002), 11);
+    let child_source =
+        text::source::Source::identified("\u{3a7}", text::source::Id::from_u64(1556002), 11);
     let parent = prepare(
         &mut system,
         &source,
         true,
-        text::LineOrientation::SidewaysClockwise,
+        text::selection::LineOrientation::SidewaysClockwise,
     );
     let child = prepare(
         &mut system,
         &child_source,
         false,
-        text::LineOrientation::Horizontal,
+        text::selection::LineOrientation::Horizontal,
     );
     let origins = parent
         .origin_views()
@@ -251,7 +256,10 @@ fn assert_composition(kind: text::InlineBoxKind) {
     let atomic = parent.atomic_views().next().unwrap().handle();
     let child_origin = child.origin_views().next().unwrap().handle();
     assert_eq!(atomic.view().original_box().kind(), kind);
-    assert_eq!(atomic.view().original_box().id(), text::Id::from_u64(2));
+    assert_eq!(
+        atomic.view().original_box().id(),
+        text::source::Id::from_u64(2)
+    );
     let tree = AtomicTree {
         inputs: vec![
             layout::LayoutInput::box_input(layout::NodeInput {
@@ -263,12 +271,12 @@ fn assert_composition(kind: text::InlineBoxKind) {
             }),
             layout::LayoutInput::inline_text(layout::TextParticipation::new(origins[0].clone())),
             layout::LayoutInput::box_input(layout::NodeInput {
-                display: if kind == text::InlineBoxKind::InFlow {
+                display: if kind == text::source::InlineBoxKind::InFlow {
                     layout::Display::InlineBlock
                 } else {
                     layout::Display::Block
                 },
-                position: if kind == text::InlineBoxKind::OutOfFlow {
+                position: if kind == text::source::InlineBoxKind::OutOfFlow {
                     layout::Position::Absolute
                 } else {
                     layout::Position::Relative
@@ -338,10 +346,10 @@ fn assert_composition(kind: text::InlineBoxKind) {
     )
     .unwrap();
     let (child_x, following_y, advance) = match kind {
-        text::InlineBoxKind::InFlow => (32.0, 24.0, 34.0),
-        text::InlineBoxKind::OutOfFlow => (34.0, 10.0, 20.0),
+        text::source::InlineBoxKind::InFlow => (32.0, 24.0, 34.0),
+        text::source::InlineBoxKind::OutOfFlow => (34.0, 10.0, 20.0),
     };
-    let child_rect = text::Rect::new(child_x, 10.0, 6.0, 14.0);
+    let child_rect = text::geometry::Rect::new(child_x, 10.0, 6.0, 14.0);
     let view = batch
         .node_layout(2)
         .unwrap()
@@ -358,11 +366,11 @@ fn assert_composition(kind: text::InlineBoxKind) {
     assert_eq!(batch.placed_text().len(), 2);
     assert_eq!(
         parent_layout.orientation(),
-        text::LineOrientation::SidewaysClockwise
+        text::selection::LineOrientation::SidewaysClockwise
     );
     assert_eq!(
         child_layout.orientation(),
-        text::LineOrientation::Horizontal
+        text::selection::LineOrientation::Horizontal
     );
     assert_eq!(parent_layout.source(), &source);
     assert_eq!(child_layout.source(), &child_source);
@@ -375,8 +383,8 @@ fn assert_composition(kind: text::InlineBoxKind) {
     assert_eq!(positioned[0].kind(), kind);
     assert_eq!(positioned[0].rect(), child_rect);
     assert_eq!(
-        parent_layout.hit(text::Point::new(child_x + 1.0, 15.0)),
-        text::Hit::InlineBox(text::Id::from_u64(2))
+        parent_layout.hit(text::geometry::Point::new(child_x + 1.0, 15.0)),
+        text::layout::Hit::InlineBox(text::source::Id::from_u64(2))
     );
     let line = batch
         .final_inline_fragments()
@@ -396,7 +404,7 @@ fn assert_composition(kind: text::InlineBoxKind) {
                 run.face().catalogue_identity(),
                 parent.font_catalogue_identity()
             );
-            assert_eq!(run.glyph_basis(), text::GlyphBasis::Clockwise);
+            assert_eq!(run.glyph_basis(), text::geometry::GlyphBasis::Clockwise);
             assert_eq!(run.origin().x, 32.0);
             run.glyphs()
                 .map(|glyph| {
@@ -414,8 +422,14 @@ fn assert_composition(kind: text::InlineBoxKind) {
         child_runs[0].face().catalogue_identity(),
         child.font_catalogue_identity()
     );
-    assert_eq!(child_runs[0].glyph_basis(), text::GlyphBasis::Unrotated);
-    assert_eq!(child_runs[0].origin(), text::Point::new(child_x, 18.0));
+    assert_eq!(
+        child_runs[0].glyph_basis(),
+        text::geometry::GlyphBasis::Unrotated
+    );
+    assert_eq!(
+        child_runs[0].origin(),
+        text::geometry::Point::new(child_x, 18.0)
+    );
     assert_eq!(
         child_runs[0]
             .glyphs()
@@ -427,14 +441,14 @@ fn assert_composition(kind: text::InlineBoxKind) {
         (
             parent_layout,
             &origins[0],
-            text::Range::new(0, 1),
-            text::Rect::new(30.0, 0.0, 10.0, 10.0),
+            text::source::Range::new(0, 1),
+            text::geometry::Rect::new(30.0, 0.0, 10.0, 10.0),
         ),
         (
             parent_layout,
             &origins[1],
-            text::Range::new(1, 2),
-            text::Rect::new(30.0, following_y, 10.0, 10.0),
+            text::source::Range::new(1, 2),
+            text::geometry::Rect::new(30.0, following_y, 10.0, 10.0),
         ),
     ] {
         let fragments = layout.source_range_fragments(origin, range).unwrap();
@@ -448,17 +462,17 @@ fn assert_composition(kind: text::InlineBoxKind) {
     }
     assert_eq!(
         parent_layout
-            .cursor(text::Cursor::new(0, text::Affinity::After))
+            .cursor(text::layout::Cursor::new(0, text::layout::Affinity::After))
             .unwrap()
             .rect(),
-        text::Rect::new(30.0, 0.0, 10.0, 1.0)
+        text::geometry::Rect::new(30.0, 0.0, 10.0, 1.0)
     );
     assert_eq!(
         child_layout
-            .cursor(text::Cursor::new(0, text::Affinity::After))
+            .cursor(text::layout::Cursor::new(0, text::layout::Affinity::After))
             .unwrap()
             .rect(),
-        text::Rect::new(child_x, 10.0, 1.0, 10.0)
+        text::geometry::Rect::new(child_x, 10.0, 1.0, 10.0)
     );
     let before_render = system.stats();
     for outer in [
@@ -485,12 +499,12 @@ fn assert_composition(kind: text::InlineBoxKind) {
 
 #[test]
 fn sideways_in_flow_child_keeps_horizontal_content_through_layout_and_render() {
-    assert_composition(text::InlineBoxKind::InFlow);
+    assert_composition(text::source::InlineBoxKind::InFlow);
 }
 
 #[test]
 fn sideways_out_of_flow_child_keeps_horizontal_content_through_layout_and_render() {
-    assert_composition(text::InlineBoxKind::OutOfFlow);
+    assert_composition(text::source::InlineBoxKind::OutOfFlow);
 }
 
 #[test]

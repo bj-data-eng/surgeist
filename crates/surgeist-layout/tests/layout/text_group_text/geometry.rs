@@ -18,7 +18,7 @@ fn pair_geometry<S: l::LayoutScalar>(
             .iter()
             .map(|line| line.range())
             .collect::<Vec<_>>(),
-        [t::Range::new(0, 6), t::Range::new(6, 10)]
+        [t::source::Range::new(0, 6), t::source::Range::new(6, 10)]
     );
     assert_eq!(layout.nonformatted_lines().count(), 0);
     assert_eq!(
@@ -33,9 +33,9 @@ fn pair_geometry<S: l::LayoutScalar>(
     for (index, (line, natural)) in lines.iter().zip([60.0, 40.0]).enumerate() {
         assert_eq!(
             line.selected_line()
-                .finalize(surgeist_text::LineAllocations {
-                    spacing: t::SpacingAllocations::None,
-                    scopes: surgeist_text::ScopeAllocations::None
+                .finalize(surgeist_text::scope_alignment::LineAllocations {
+                    spacing: t::spacing::SpacingAllocations::None,
+                    scopes: surgeist_text::scope_alignment::ScopeAllocations::None
                 })
                 .unwrap()
                 .measurements()
@@ -57,34 +57,34 @@ fn pair_geometry<S: l::LayoutScalar>(
         assert_eq!(
             request.context.line_box_direction,
             if direction == l::Direction::Ltr {
-                t::LineBoxDirection::LeftToRight
+                t::selection::LineBoxDirection::LeftToRight
             } else {
-                t::LineBoxDirection::RightToLeft
+                t::selection::LineBoxDirection::RightToLeft
             }
         );
         assert_eq!(
             request.context.end,
             if index == 0 {
-                t::LineEnd::Forced
+                t::selection::LineEnd::Forced
             } else {
-                t::LineEnd::Paragraph
+                t::selection::LineEnd::Paragraph
             }
         );
-        let t::PreparedTermination::Ordinary(offer) = &request.termination else {
+        let t::selection::PreparedTermination::Ordinary(offer) = &request.termination else {
             panic!("grouping retains native mandatory opportunities")
         };
         assert_eq!(
             offer.view().kind(),
             if index == 0 {
-                t::PreparedBreakKind::Forced
+                t::prepared::PreparedBreakKind::Forced
             } else {
-                t::PreparedBreakKind::ParagraphEnd
+                t::prepared::PreparedBreakKind::ParagraphEnd
             }
         );
         assert_eq!(offer.view().boundary(), request.end);
         assert_eq!(
             layout.lines()[index].bounds().size,
-            t::Size::new(100.0, 10.0)
+            t::geometry::Size::new(100.0, 10.0)
         );
         assert_eq!(layout.lines()[index].baseline(), 8.0 + 10.0 * index as f64);
         assert!(request.alternative.is_none());
@@ -99,7 +99,7 @@ fn pair_geometry<S: l::LayoutScalar>(
     // The source-leading A's caret/selection must move with its actual glyph.
     assert_eq!(
         layout
-            .cursor(t::Cursor::new(0, t::Affinity::After))
+            .cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
             .unwrap()
             .rect()
             .origin
@@ -107,9 +107,9 @@ fn pair_geometry<S: l::LayoutScalar>(
         expected[0]
     );
     let selection = layout
-        .selection(t::Selection::new(
-            t::Cursor::new(0, t::Affinity::After),
-            t::Cursor::new(1, t::Affinity::Before),
+        .selection(t::layout::Selection::new(
+            t::layout::Cursor::new(0, t::layout::Affinity::After),
+            t::layout::Cursor::new(1, t::layout::Affinity::Before),
         ))
         .unwrap();
     assert_eq!(selection.rects().len(), 1);
@@ -192,7 +192,7 @@ fn justify<S: l::LayoutScalar>(direction: l::Direction) {
     {
         let selected = line.selected_line();
         let request = selected.request();
-        assert_eq!(request.context.alignment, t::Alignment::Justify);
+        assert_eq!(request.context.alignment, t::options::Alignment::Justify);
         assert_eq!(request.context.available_inline, Some(100.0));
         assert_eq!(
             (
@@ -202,9 +202,9 @@ fn justify<S: l::LayoutScalar>(direction: l::Direction) {
             (20.0, 20.0)
         );
         let before_expansion = selected
-            .finalize(surgeist_text::LineAllocations {
-                spacing: t::SpacingAllocations::None,
-                scopes: surgeist_text::ScopeAllocations::None,
+            .finalize(surgeist_text::scope_alignment::LineAllocations {
+                spacing: t::spacing::SpacingAllocations::None,
+                scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -217,20 +217,20 @@ fn justify<S: l::LayoutScalar>(direction: l::Direction) {
         assert_eq!(
             line.selected_line().request().context.end,
             if index == 0 {
-                t::LineEnd::Forced
+                t::selection::LineEnd::Forced
             } else {
-                t::LineEnd::Paragraph
+                t::selection::LineEnd::Paragraph
             }
         );
         assert_eq!(
             layout.lines()[index].bounds().size,
-            t::Size::new(100.0, 10.0)
+            t::geometry::Size::new(100.0, 10.0)
         );
     }
     let gap = layout
-        .selection(t::Selection::new(
-            t::Cursor::new(7, t::Affinity::After),
-            t::Cursor::new(8, t::Affinity::Before),
+        .selection(t::layout::Selection::new(
+            t::layout::Cursor::new(7, t::layout::Affinity::After),
+            t::layout::Cursor::new(8, t::layout::Affinity::Before),
         ))
         .unwrap();
     assert_eq!(gap.rects().len(), 1);
@@ -238,7 +238,7 @@ fn justify<S: l::LayoutScalar>(direction: l::Direction) {
     assert_eq!(gap.rects()[0].rect().size.width, 30.0);
     assert_eq!(
         layout
-            .cursor(t::Cursor::new(0, t::Affinity::After))
+            .cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
             .unwrap()
             .rect()
             .origin
@@ -257,14 +257,14 @@ fn centered_real_space_justification_expands_zero_and_twenty_inside_the_common_s
 fn natural_frames<S: l::LayoutScalar>() {
     let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
     let mut tabs = style();
-    tabs.white_space = t::WhiteSpace::Preserve;
-    tabs.tab_size = t::TabSize::length(40.0).unwrap();
+    tabs.white_space = t::style::WhiteSpace::Preserve;
+    tabs.tab_size = t::tabs::TabSize::length(40.0).unwrap();
     let paragraph = Paragraph::new(
         &mut host,
         0,
         &[Part::Text("A\tB"), Part::Forced, Part::Text("CCCCCC")],
         tabs,
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         true,
     );
     let batch = compute(&host, &[&paragraph], &[]);
@@ -274,9 +274,9 @@ fn natural_frames<S: l::LayoutScalar>() {
             .iter()
             .map(|line| line
                 .selected_line()
-                .finalize(surgeist_text::LineAllocations {
-                    spacing: t::SpacingAllocations::None,
-                    scopes: surgeist_text::ScopeAllocations::None
+                .finalize(surgeist_text::scope_alignment::LineAllocations {
+                    spacing: t::spacing::SpacingAllocations::None,
+                    scopes: surgeist_text::scope_alignment::ScopeAllocations::None
                 })
                 .unwrap()
                 .measurements()
@@ -288,7 +288,7 @@ fn natural_frames<S: l::LayoutScalar>() {
     for line in &lines {
         assert_eq!(
             line.selected_line().request().context.tabs,
-            t::TabContext::CssStops { origin: Some(0.0) }
+            t::tabs::TabContext::CssStops { origin: Some(0.0) }
         );
         assert_eq!(
             line.selected_line().request().context.available_inline,
@@ -312,14 +312,17 @@ fn natural_frames<S: l::LayoutScalar>() {
 
     let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
     let mut hanging = style();
-    hanging.hanging_punctuation =
-        t::HangingPunctuation::new(false, Some(t::HangingPunctuationEnd::ForceEnd), false);
+    hanging.hanging_punctuation = t::style::HangingPunctuation::new(
+        false,
+        Some(t::style::HangingPunctuationEnd::ForceEnd),
+        false,
+    );
     let paragraph = Paragraph::new(
         &mut host,
         0,
         &[Part::Text("AAAAA."), Part::Forced, Part::Text("BB")],
         hanging,
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let batch = compute(&host, &[&paragraph], &[]);
@@ -329,9 +332,9 @@ fn natural_frames<S: l::LayoutScalar>() {
             .iter()
             .map(|line| line
                 .selected_line()
-                .finalize(surgeist_text::LineAllocations {
-                    spacing: t::SpacingAllocations::None,
-                    scopes: surgeist_text::ScopeAllocations::None
+                .finalize(surgeist_text::scope_alignment::LineAllocations {
+                    spacing: t::spacing::SpacingAllocations::None,
+                    scopes: surgeist_text::scope_alignment::ScopeAllocations::None
                 })
                 .unwrap()
                 .measurements()
@@ -387,7 +390,7 @@ fn empty_receivers<S: l::LayoutScalar>(extra_force: bool) {
         0,
         &parts,
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let batch = compute(&host, &[&paragraph], &[]);
@@ -401,10 +404,13 @@ fn empty_receivers<S: l::LayoutScalar>(extra_force: bool) {
     assert_eq!(glyph_extents(layout)[0], (20.0, 80.0));
     let completion = layout.nonformatted_lines().next().unwrap();
     let terminal = completion.line.finalized_line().selected_line();
-    assert_eq!(terminal.request().context.end, t::LineEnd::Paragraph);
+    assert_eq!(
+        terminal.request().context.end,
+        t::selection::LineEnd::Paragraph
+    );
     assert_eq!(
         terminal.request().context.alignment_insets,
-        t::LineAlignmentInsets::ZERO
+        t::allocation::LineAlignmentInsets::ZERO
     );
     assert_eq!(
         completion.line.finalized_line().feedback().line_height,
@@ -418,7 +424,7 @@ fn empty_receivers<S: l::LayoutScalar>(extra_force: bool) {
     for (index, line) in lines.iter().enumerate() {
         assert_eq!(
             line.selected_line().request().context.end,
-            t::LineEnd::Forced
+            t::selection::LineEnd::Forced
         );
         assert_eq!(
             line.selected_line().request().controls[0].occurrence,
@@ -464,7 +470,7 @@ fn mixed<S: l::LayoutScalar>() {
             Part::Text("B BB"),
         ],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let atomic = paragraph.binding.atomics[0].node;
@@ -473,7 +479,7 @@ fn mixed<S: l::LayoutScalar>() {
         atomic,
         &[Part::Text("CCCCCCCCC")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let batch = compute(&host, &[&paragraph, &interior], &[]);
@@ -483,9 +489,9 @@ fn mixed<S: l::LayoutScalar>() {
             .iter()
             .map(|line| line
                 .selected_line()
-                .finalize(surgeist_text::LineAllocations {
-                    spacing: t::SpacingAllocations::None,
-                    scopes: surgeist_text::ScopeAllocations::None
+                .finalize(surgeist_text::scope_alignment::LineAllocations {
+                    spacing: t::spacing::SpacingAllocations::None,
+                    scopes: surgeist_text::scope_alignment::ScopeAllocations::None
                 })
                 .unwrap()
                 .measurements()
@@ -526,7 +532,7 @@ fn mixed<S: l::LayoutScalar>() {
     let slot = lines[0].atomic_slots().next().unwrap();
     assert_eq!(slot.origin.x, 42.0);
     assert_eq!(slot.occurrence, paragraph.binding.atomics[0].occurrence);
-    let t::AtomicLineAllocation::InFlow { flow, .. } = slot.allocation else {
+    let t::allocation::AtomicLineAllocation::InFlow { flow, .. } = slot.allocation else {
         panic!("the real inline-block exterior retains its actual allocation");
     };
     assert_eq!(flow.advance, 14.0);
@@ -561,7 +567,7 @@ fn real_float_bands<S: l::LayoutScalar>() {
         0,
         &[Part::Text("AAAAA"), Part::Forced, Part::Text("BBBBBB")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let batch = compute(&host, &[&paragraph], &[]);
@@ -578,9 +584,9 @@ fn real_float_bands<S: l::LayoutScalar>() {
             .iter()
             .map(|line| line
                 .selected_line()
-                .finalize(surgeist_text::LineAllocations {
-                    spacing: t::SpacingAllocations::None,
-                    scopes: surgeist_text::ScopeAllocations::None
+                .finalize(surgeist_text::scope_alignment::LineAllocations {
+                    spacing: t::spacing::SpacingAllocations::None,
+                    scopes: surgeist_text::scope_alignment::ScopeAllocations::None
                 })
                 .unwrap()
                 .measurements()
@@ -648,7 +654,7 @@ fn signed_indent_and_overflow<S: l::LayoutScalar>() {
         0,
         &[Part::Text("AAAAAAAAAAAA"), Part::Forced, Part::Text("BBBB")],
         style(),
-        t::ParagraphBaseDirection::LeftToRight,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
         false,
     );
     let batch = compute(&host, &[&paragraph], &[]);
@@ -659,7 +665,7 @@ fn signed_indent_and_overflow<S: l::LayoutScalar>() {
     for line in receipts(&batch, &paragraph) {
         assert_eq!(
             line.selected_line().request().context.alignment_insets,
-            t::LineAlignmentInsets::ZERO
+            t::allocation::LineAlignmentInsets::ZERO
         );
     }
 }

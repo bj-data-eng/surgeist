@@ -43,7 +43,7 @@ impl Document {
     }
 
     /// The placed lines as trimmed source text and physical bounds.
-    fn lay_out<S: LayoutScalar>(&self) -> Vec<(String, surgeist_text::Rect)> {
+    fn lay_out<S: LayoutScalar>(&self) -> Vec<(String, surgeist_text::geometry::Rect)> {
         self.lay_out_reporting::<S>(None)
     }
 
@@ -51,7 +51,7 @@ impl Document {
     fn lay_out_reporting<S: LayoutScalar>(
         &self,
         host: Option<&TestHost>,
-    ) -> Vec<(String, surgeist_text::Rect)> {
+    ) -> Vec<(String, surgeist_text::geometry::Rect)> {
         let mut style = ahem_style(self.size, 10.0);
         style.letter_spacing = self.letter_spacing;
         style.word_spacing = self.word_spacing;
@@ -141,11 +141,11 @@ impl Document {
     }
 }
 
-fn texts(lines: &[(String, surgeist_text::Rect)]) -> Vec<&str> {
+fn texts(lines: &[(String, surgeist_text::geometry::Rect)]) -> Vec<&str> {
     lines.iter().map(|(text, _)| text.as_str()).collect()
 }
 
-fn words_on_widest_line(lines: &[(String, surgeist_text::Rect)]) -> usize {
+fn words_on_widest_line(lines: &[(String, surgeist_text::geometry::Rect)]) -> usize {
     lines
         .iter()
         .map(|(text, _)| text.split(' ').count())
@@ -330,7 +330,10 @@ fn assert_trailing_space_hangs<S: LayoutScalar>() {
     // at the end of a line, so the hanging space does not make the first line overflow.
     let lines = Document::new("XXXXXXXXXX XX ", 100.0).lay_out::<S>();
     assert_eq!(texts(&lines), ["XXXXXXXXXX", "XX"]);
-    assert_eq!(lines[0].1, surgeist_text::Rect::new(0.0, 0.0, 100.0, 10.0));
+    assert_eq!(
+        lines[0].1,
+        surgeist_text::geometry::Rect::new(0.0, 0.0, 100.0, 10.0)
+    );
 }
 
 #[test]
@@ -363,9 +366,18 @@ fn assert_lines_move_below_float_where_the_band_widens<S: LayoutScalar>() {
     document.float = Some((80.0, 20.0));
     let lines = document.lay_out::<S>();
     assert_eq!(texts(&lines), ["XX", "XXXX", "XXXXXXXX"]);
-    assert_eq!(lines[0].1, surgeist_text::Rect::new(80.0, 0.0, 20.0, 10.0));
-    assert_eq!(lines[1].1, surgeist_text::Rect::new(0.0, 20.0, 100.0, 10.0));
-    assert_eq!(lines[2].1, surgeist_text::Rect::new(0.0, 30.0, 100.0, 10.0));
+    assert_eq!(
+        lines[0].1,
+        surgeist_text::geometry::Rect::new(80.0, 0.0, 20.0, 10.0)
+    );
+    assert_eq!(
+        lines[1].1,
+        surgeist_text::geometry::Rect::new(0.0, 20.0, 100.0, 10.0)
+    );
+    assert_eq!(
+        lines[2].1,
+        surgeist_text::geometry::Rect::new(0.0, 30.0, 100.0, 10.0)
+    );
 }
 
 #[test]

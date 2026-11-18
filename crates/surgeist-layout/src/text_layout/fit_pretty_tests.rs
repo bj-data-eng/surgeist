@@ -15,25 +15,25 @@ fn reset() {
 fn after_paragraph(source: &str) -> PreparedParagraph {
     PreparedParagraph::plain(
         1,
-        text::Source::new(source),
-        text::Style {
-            wrap: text::Wrap::Word,
-            white_space: text::WhiteSpace::PreserveBreaks,
-            hyphens: text::Hyphens::Manual,
+        text::source::Source::new(source),
+        text::style::Style {
+            wrap: text::style::Wrap::Word,
+            white_space: text::style::WhiteSpace::PreserveBreaks,
+            hyphens: text::hyphenation::Hyphens::Manual,
             locale: Some("und-Latn".into()),
-            hyphenate_character: text::HyphenateCharacter::Auto,
+            hyphenate_character: text::hyphenation::HyphenateCharacter::Auto,
             native_hyphenation_convention: Some(
-                text::NativeHyphenationConvention::language_script(
+                text::hyphenation::NativeHyphenationConvention::language_script(
                     "und-Latn",
                     "Latn",
                     "(".into(),
-                    text::HyphenationPlacement::LogicalAfter,
+                    text::hyphenation::HyphenationPlacement::LogicalAfter,
                 )
                 .unwrap(),
             ),
             // A real After '(' consumes First=false on a receiving line. It does
             // not hang, so all declared Ahem advances below remain unchanged.
-            hanging_punctuation: text::HangingPunctuation::new(true, None, false),
+            hanging_punctuation: text::style::HangingPunctuation::new(true, None, false),
             ..ahem_style(10.0, 10.0)
         },
     )

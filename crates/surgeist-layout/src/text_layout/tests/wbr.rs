@@ -6,20 +6,20 @@ fn paragraph(shared_mark: bool, expanded: bool) -> PreparedParagraph {
     let mut base = ahem_style(10.0, 10.0);
     base.wrap = Wrap::None;
     let wbr = |replacement| ParagraphControlKind::Wbr {
-        style: Box::new(surgeist_text::Style {
+        style: Box::new(surgeist_text::style::Style {
             word_space_transform: replacement,
             ..base.clone()
         }),
     };
     let first = if expanded {
-        surgeist_text::WordSpaceTransform::Space
+        surgeist_text::style::WordSpaceTransform::Space
     } else {
-        surgeist_text::WordSpaceTransform::None
+        surgeist_text::style::WordSpaceTransform::None
     };
     let second = if expanded {
-        surgeist_text::WordSpaceTransform::IdeographicSpace
+        surgeist_text::style::WordSpaceTransform::IdeographicSpace
     } else {
-        surgeist_text::WordSpaceTransform::None
+        surgeist_text::style::WordSpaceTransform::None
     };
     let parts = if shared_mark {
         vec![
@@ -129,10 +129,10 @@ fn generated_inventory<S: LayoutScalar>() {
             assert_eq!(participants.len(), 2);
             assert!(participants.iter().all(|participant| matches!(
                 participant,
-                surgeist_text::PreparedParticipant::Text(_)
+                surgeist_text::prepared::PreparedParticipant::Text(_)
             )));
             for (participant, row) in participants.iter().zip(&binding.controls) {
-                let surgeist_text::PreparedParticipant::Text(unit) = participant else {
+                let surgeist_text::prepared::PreparedParticipant::Text(unit) = participant else {
                     unreachable!()
                 };
                 assert_eq!(unit.view().origins().count(), 0);

@@ -3,7 +3,7 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 
 fn retained_content_follows_actual_visual_corners<S: LayoutScalar>() {
-    let nominal = surgeist_text::Size::new(10.0, 10.0);
+    let nominal = surgeist_text::geometry::Size::new(10.0, 10.0);
     let paragraph = fractional_atomic_paragraph(nominal, false);
     for left in [0.0, 0.32] {
         let tree = PublicLayoutTreeOf::<S>::new()
@@ -91,7 +91,8 @@ fn retained_content_follows_actual_visual_corners<S: LayoutScalar>() {
             slot.occurrence,
             paragraph.prepared.atomic_views().next().unwrap().handle()
         );
-        let surgeist_text::AtomicLineAllocation::InFlow { box_geometry, .. } = slot.allocation
+        let surgeist_text::allocation::AtomicLineAllocation::InFlow { box_geometry, .. } =
+            slot.allocation
         else {
             panic!("actual captured atomic remains in flow");
         };
@@ -105,7 +106,7 @@ fn retained_content_follows_actual_visual_corners<S: LayoutScalar>() {
         assert_eq!(slot.origin.y + box_geometry.content.origin.y, 0.0);
         assert_eq!(
             box_geometry.content.size,
-            surgeist_text::Size::new(expected_width, 10.0)
+            surgeist_text::geometry::Size::new(expected_width, 10.0)
         );
         let content = node.scroll_geometry.unwrap().content_box();
         assert_eq!(

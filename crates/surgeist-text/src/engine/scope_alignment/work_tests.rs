@@ -13,11 +13,14 @@ use crate::{
     id::Id,
     layout::Affinity,
     processing::{
-        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentBoundary,
-        ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference,
-        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent,
-        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
-        process_contextual_source,
+        DocumentSegmentBreaks,
+        contextual::{
+            CapturedScope, ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError,
+            ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference,
+            SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent,
+            SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+            WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         ParagraphBaseDirection, PreparationOptions, PreparedText,

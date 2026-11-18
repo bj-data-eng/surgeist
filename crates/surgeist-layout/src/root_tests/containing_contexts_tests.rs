@@ -2543,12 +2543,12 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
         };
         let first = crate::test_support::text::PreparedParagraph::plain(
             3,
-            surgeist_text::Source::new("X"),
+            surgeist_text::source::Source::new("X"),
             crate::test_support::text::ahem_style(10.0, 10.0),
         );
         let second = crate::test_support::text::PreparedParagraph::plain(
             4,
-            surgeist_text::Source::new("XX"),
+            surgeist_text::source::Source::new("XX"),
             crate::test_support::text::ahem_style(5.0, 10.0),
         );
         let tree = public_layout_tree(

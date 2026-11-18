@@ -3,11 +3,12 @@
 use super::*;
 
 fn context_only<S: LayoutScalar>() {
-    let limits = text::ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216);
-    let reference = text::ScopeFontReference {
-        script: text::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
-        axis: text::FontBaselineAxis::HorizontalY,
-        baseline: text::FontBaseline::Alphabetic,
+    let limits =
+        text::scope_alignment::ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216);
+    let reference = text::scope_alignment::ScopeFontReference {
+        script: text::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+        axis: text::font::FontBaselineAxis::HorizontalY,
+        baseline: text::font::FontBaseline::Alphabetic,
     };
     for direction in [Direction::Ltr, Direction::Rtl] {
         let fixture = EmptyBox::new_with_context(direction, Some(limits), Some(reference));
@@ -34,18 +35,18 @@ fn context_only<S: LayoutScalar>() {
             0
         );
 
-        let supplied = text::LineBoxStrut {
+        let supplied = text::allocation::LineBoxStrut {
             scope: None,
-            metrics: text::LineStrut {
+            metrics: text::allocation::LineStrut {
                 baseline: 16.0,
                 line_extent: 20.0,
             },
-            alignment: text::LineBoxAlignment::Baseline,
+            alignment: text::allocation::LineBoxAlignment::Baseline,
         };
         // The authentic WrappingScopeInput::Captured box supplies this owner.
         // A canonical request keeps that source fact without treating it as an
         // authored alignment classification or demanding its absent font facts.
-        let canonical = text::LineBoxStrut {
+        let canonical = text::allocation::LineBoxStrut {
             scope: Some(fixture.scope.clone()),
             ..supplied.clone()
         };

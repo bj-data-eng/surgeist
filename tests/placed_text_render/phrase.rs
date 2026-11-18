@@ -109,133 +109,134 @@ fn capture(
     inline: bool,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
-    text::PreparedScope,
-    text::PreparedVirtualSeparator,
+    text::prepared::PreparedScope,
+    text::prepared::PreparedVirtualSeparator,
 ) {
-    let authored = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let authored = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
+        line_height: text::style::LineHeight::Absolute(10.0),
         locale: Some("ja".into()),
-        word_space_transform: text::WordSpaceTransform::SpaceAutoPhrase,
-        ..text::Style::default()
+        word_space_transform: text::style::WordSpaceTransform::SpaceAutoPhrase,
+        ..text::style::Style::default()
     };
     // No authored row uses the owner's font size. It must be retained from the
     // actual governing scope, not donated by the neighboring original row.
-    let owner = text::Style {
+    let owner = text::style::Style {
         size: 20.0,
-        line_height: text::LineHeight::Absolute(20.0),
-        word_space_transform: text::WordSpaceTransform::Space,
+        line_height: text::style::LineHeight::Absolute(20.0),
+        word_space_transform: text::style::WordSpaceTransform::Space,
         ..authored.clone()
     };
-    let mut source = text::Source::identified(JAPANESE, text::Id::from_u64(6310), 1);
-    let range = text::Range::new(0, source.text().len());
+    let mut source =
+        text::source::Source::identified(JAPANESE, text::source::Id::from_u64(6310), 1);
+    let range = text::source::Range::new(0, source.text().len());
     source.span(range, authored.clone());
     let controls = if inline {
         vec![
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 0,
-                kind: text::ParagraphControlKind::InlineBoundaryStart,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: range.end,
-                kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
             },
         ]
     } else {
         vec![]
     };
-    let mut scopes = vec![text::SourceProcessingScope::Block {
+    let mut scopes = vec![text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        trim: text::WhiteSpaceTrim::default(),
+        trim: text::capture::WhiteSpaceTrim::default(),
         base_style: owner.clone(),
-        used_direction: text::ParagraphBaseDirection::LeftToRight,
-        topology: text::SourceProcessingTopology::Complete,
+        used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+        topology: text::capture::SourceProcessingTopology::Complete,
     }];
     let mut events = vec![
-        text::SourceProcessingEvent::EnterScope(0),
-        text::SourceProcessingEvent::EnterParagraph(0),
+        text::capture::SourceProcessingEvent::EnterScope(0),
+        text::capture::SourceProcessingEvent::EnterParagraph(0),
     ];
     if inline {
-        scopes.push(text::SourceProcessingScope::Inline {
+        scopes.push(text::capture::SourceProcessingScope::Inline {
             horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
-            trim: text::WhiteSpaceTrim::default(),
+            trim: text::capture::WhiteSpaceTrim::default(),
             style: Some(owner),
-            boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+            boundaries: Some(text::capture::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
         });
         events.extend([
-            text::SourceProcessingEvent::EnterScope(1),
-            text::SourceProcessingEvent::Control {
+            text::capture::SourceProcessingEvent::EnterScope(1),
+            text::capture::SourceProcessingEvent::Control {
                 control: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
         ]);
     }
-    events.push(text::SourceProcessingEvent::Origin {
+    events.push(text::capture::SourceProcessingEvent::Origin {
         origin: 0,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     });
     if inline {
         events.extend([
-            text::SourceProcessingEvent::Control {
+            text::capture::SourceProcessingEvent::Control {
                 control: 1,
-                affinity: text::Affinity::Before,
+                affinity: text::layout::Affinity::Before,
             },
-            text::SourceProcessingEvent::ExitScope(1),
+            text::capture::SourceProcessingEvent::ExitScope(1),
         ]);
     }
     events.extend([
-        text::SourceProcessingEvent::ExitParagraph(0),
-        text::SourceProcessingEvent::ExitScope(0),
+        text::capture::SourceProcessingEvent::ExitParagraph(0),
+        text::capture::SourceProcessingEvent::ExitScope(0),
     ]);
     let processed = std::sync::Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: range,
                 aggregate: range,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls,
             boundary_policies: vec![],
             replacements: vec![],
             scopes,
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| text::WrappingPolicy {
+        .map(|row| text::analyzed::WrappingPolicy {
             relation: row.handle(),
             ancestor_wrap: authored.wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let scope = prepared.scopes().next().unwrap();
     let virtual_separator = prepared.virtual_separators().next().unwrap();
@@ -380,11 +381,11 @@ fn phrase_separator_retains_actual_scope_font_pair_and_source_free_selection() {
         let fragment = scoped[0].fragment().finalized_fragment();
         assert_eq!(
             fragment.view().owner(),
-            text::FinalizedFragmentOwner::VirtualSeparator(occurrence.clone())
+            text::finalized::FinalizedFragmentOwner::VirtualSeparator(occurrence.clone())
         );
         assert_eq!(
             fragment.view().bounds(),
-            Some(text::Rect::new(30.0, 0.0, 10.0, 20.0))
+            Some(text::geometry::Rect::new(30.0, 0.0, 10.0, 20.0))
         );
         let mapping_line = fragment.finalized_line();
         let mappings = mapping_line
@@ -393,7 +394,7 @@ fn phrase_separator_retains_actual_scope_font_pair_and_source_free_selection() {
             .collect::<Vec<_>>();
         assert_eq!(mappings.len(), 1);
         assert_eq!(mappings[0].separator_virtual(), Some(occurrence));
-        assert_eq!(mappings[0].source_range(), text::Range::new(3, 3));
+        assert_eq!(mappings[0].source_range(), text::source::Range::new(3, 3));
         let at = |x| {
             placed
                 .positions()
@@ -433,7 +434,7 @@ fn phrase_geometry_does_not_create_an_accessible_space_character() {
             .unwrap();
         let (batch, _, _) = capture(&mut system, inline);
         let placed = batch.placed_text()[0].layout();
-        let mut state = text::Accessibility::new(60);
+        let mut state = text::accessibility::Accessibility::new(60);
         let parent = 1000_u64.into();
         let source_update = placed
             .analyzed_source()
@@ -453,7 +454,12 @@ fn phrase_geometry_does_not_create_an_accessible_space_character() {
         );
         drop(system);
         let update = placed
-            .accessibility_update(&mut state, parent, parent, text::Point::new(100.0, 200.0))
+            .accessibility_update(
+                &mut state,
+                parent,
+                parent,
+                text::geometry::Point::new(100.0, 200.0),
+            )
             .unwrap();
         let values: String = update
             .nodes

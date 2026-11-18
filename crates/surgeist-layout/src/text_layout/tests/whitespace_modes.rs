@@ -3,7 +3,7 @@
 //! preserved/collapsed characters and actual legal after-separator cuts.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use surgeist_text::{Range, TabSize, WhiteSpace};
+use surgeist_text::{source::Range, style::WhiteSpace, tabs::TabSize};
 
 fn paragraph(text: &str, mode: WhiteSpace, wrap: Wrap, rtl: bool, tabs: bool) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
@@ -92,7 +92,7 @@ fn batch<S: LayoutScalar>(
 
 fn selected<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> Vec<surgeist_text::FinalizedLine> {
+) -> Vec<surgeist_text::finalized::FinalizedLine> {
     let placed = batch.placed_text()[0].layout();
     let mut lines = vec![None; placed.lines().len()];
     for entry in batch.final_inline_fragments() {
@@ -113,23 +113,26 @@ fn selected<S: LayoutScalar>(
     lines.into_iter().map(Option::unwrap).collect()
 }
 
-pub(super) fn assert_copy(layout: &surgeist_text::Layout, length: usize, expected: &str) {
+pub(super) fn assert_copy(layout: &surgeist_text::layout::Layout, length: usize, expected: &str) {
     let endpoint = |offset, affinity| {
         layout
             .positions()
             .find(|position| {
-                position.source_cursor() == surgeist_text::Cursor::new(offset, affinity)
+                position.source_cursor() == surgeist_text::layout::Cursor::new(offset, affinity)
             })
             .unwrap()
     };
     let selection = layout
         .position_selection(
-            &endpoint(0, surgeist_text::Affinity::After),
-            &endpoint(length, surgeist_text::Affinity::Before),
+            &endpoint(0, surgeist_text::layout::Affinity::After),
+            &endpoint(length, surgeist_text::layout::Affinity::Before),
         )
         .unwrap();
     assert_eq!(selection.source_text(), layout.source().text());
-    assert_eq!(selection.plaintext(), &surgeist_text::Text::from(expected));
+    assert_eq!(
+        selection.plaintext(),
+        &surgeist_text::source::Text::from(expected)
+    );
 }
 
 fn intrinsic<S: LayoutScalar>(
@@ -235,8 +238,8 @@ fn intrinsic<S: LayoutScalar>(
                     next_transition: None,
                 })
             },
-            clear: |_, _: &surgeist_text::LineSelectionRequest| Ok(None),
-            replay: |_: &surgeist_text::FinalizedLine, _| Ok(Vec::new()),
+            clear: |_, _: &surgeist_text::selection::LineSelectionRequest| Ok(None),
+            replay: |_: &surgeist_text::finalized::FinalizedLine, _| Ok(Vec::new()),
             accept: || Ok(()),
         },
     )
@@ -505,7 +508,7 @@ fn tab_contributions<S: LayoutScalar>() {
                     .request()
                     .context
                     .tabs,
-                surgeist_text::TabContext::IntrinsicCssStops
+                surgeist_text::tabs::TabContext::IntrinsicCssStops
             );
             assert_eq!(
                 max.paragraph.entries[0]

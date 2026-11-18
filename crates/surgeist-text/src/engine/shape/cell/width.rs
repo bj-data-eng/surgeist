@@ -270,9 +270,11 @@ impl Observation<'_> {
     }
 }
 fn work_overflow() -> Error {
-    scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
-    })
+    scope_alignment::refusal(
+        crate::processing::contextual::ScopeAlignmentError::Overflow {
+            kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
+        },
+    )
 }
 
 pub(super) fn choose(

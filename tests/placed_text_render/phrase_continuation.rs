@@ -42,97 +42,103 @@ impl layout::LayoutTree for ContinuationTree {
 
 fn capture() -> (
     layout::CompletedLayoutBatch<usize>,
-    Vec<text::PreparedText>,
+    Vec<text::prepared::PreparedText>,
     Vec<u8>,
 ) {
-    let authored = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let authored = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
+        line_height: text::style::LineHeight::Absolute(10.0),
         locale: Some("ja".into()),
-        word_space_transform: text::WordSpaceTransform::SpaceAutoPhrase,
-        ..text::Style::default()
+        word_space_transform: text::style::WordSpaceTransform::SpaceAutoPhrase,
+        ..text::style::Style::default()
     };
     // The generated blank uses the owner's 20px font. In phrase_ahem,
     // SPACE is half an em: its advance is 10px, while originals remain 10px.
-    let owner = text::Style {
+    let owner = text::style::Style {
         size: 20.0,
-        line_height: text::LineHeight::Absolute(20.0),
-        word_space_transform: text::WordSpaceTransform::Space,
+        line_height: text::style::LineHeight::Absolute(20.0),
+        word_space_transform: text::style::WordSpaceTransform::Space,
         ..authored.clone()
     };
-    let base = text::Style {
-        word_space_transform: text::WordSpaceTransform::None,
+    let base = text::style::Style {
+        word_space_transform: text::style::WordSpaceTransform::None,
         ..authored.clone()
     };
-    let mut source =
-        text::Source::identified(format!("{JAPANESE}{JAPANESE}"), text::Id::from_u64(6311), 1);
+    let mut source = text::source::Source::identified(
+        format!("{JAPANESE}{JAPANESE}"),
+        text::source::Id::from_u64(6311),
+        1,
+    );
     let n = JAPANESE.encode_utf16().count();
     let end = 2 * n;
-    source.span(text::Range::new(0, end), authored.clone());
-    let origin = |start, end| text::ParagraphOrigin {
+    source.span(text::source::Range::new(0, end), authored.clone());
+    let origin = |start, end| text::paragraph::ParagraphOrigin {
         text_node: None,
         source: source.clone(),
-        local: text::Range::new(start, end),
-        aggregate: text::Range::new(start, end),
-        kind: text::ParagraphOriginKind::Authored,
+        local: text::source::Range::new(start, end),
+        aggregate: text::source::Range::new(start, end),
+        kind: text::paragraph::ParagraphOriginKind::Authored,
     };
-    let block = || text::SourceProcessingScope::Block {
+    let block = || text::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: text::SourceProcessingTopology::Complete,
-        trim: text::WhiteSpaceTrim::default(),
+        topology: text::capture::SourceProcessingTopology::Complete,
+        trim: text::capture::WhiteSpaceTrim::default(),
         base_style: base.clone(),
-        used_direction: text::ParagraphBaseDirection::LeftToRight,
+        used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
     };
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let control = |control| E::Control {
         control,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let occurrence = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: vec![origin(0, n), origin(n, end)],
             connections: vec![],
             controls: vec![
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: 0,
-                    kind: text::ParagraphControlKind::InlineBoundaryStart,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
                 },
-                text::ParagraphControl {
+                text::paragraph::ParagraphControl {
                     at: end,
-                    kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                    kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                 },
             ],
             boundary_policies: vec![],
             replacements: vec![],
             scopes: vec![
                 block(),
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
-                    trim: text::WhiteSpaceTrim::default(),
+                    trim: text::capture::WhiteSpaceTrim::default(),
                     style: Some(owner),
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
                 },
                 block(),
             ],
             paragraphs: (0..3)
-                .map(|_| text::SourceProcessingParagraph {
-                    base_direction: text::ParagraphBaseDirection::LeftToRight,
-                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                .map(|_| text::capture::SourceProcessingParagraph {
+                    base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
             // Neither paragraph-local preparation owns a counterfeit endpoint.
@@ -166,22 +172,22 @@ fn capture() -> (
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
                 paragraph,
-                text::AnalysisTypography::HorizontalComposition,
+                text::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())
-                .map(|row| text::WrappingPolicy {
+                .map(|row| text::analyzed::WrappingPolicy {
                     relation: row.handle(),
                     ancestor_wrap: authored.wrap,
                 })
                 .collect();
             let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
             system
-                .prepare(&analyzed, text::PreparationOptions::default())
+                .prepare(&analyzed, text::prepared::PreparationOptions::default())
                 .unwrap()
         })
         .collect();
@@ -230,7 +236,7 @@ fn capture() -> (
     assert_eq!(child.domain().parent(), Some(canonical));
     assert_eq!(
         child.domain().domain_definition(),
-        Some(text::CapturedDomainDefinition::Block)
+        Some(text::capture::CapturedDomainDefinition::Block)
     );
     assert_eq!(prepared[1].origin_views().count(), 0);
     assert_eq!(prepared[1].control_views().count(), 0);
@@ -379,7 +385,8 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         let fragment = entry.fragment();
         let finalized = fragment.finalized_fragment();
         let view = finalized.view();
-        let text::FinalizedFragmentOwner::VirtualSeparator(occurrence) = view.owner() else {
+        let text::finalized::FinalizedFragmentOwner::VirtualSeparator(occurrence) = view.owner()
+        else {
             panic!("generated fragment retains its real virtual occurrence")
         };
         let at = occurrence.view().source_position().get();
@@ -408,7 +415,10 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         // Each parent line allocates 20px; the empty block adds zero.
         assert_eq!(rect.origin(), layout::Point::new(30.0, y));
         assert_eq!(rect.size(), layout::Size::new(10.0, 20.0));
-        assert_eq!(view.bounds(), Some(text::Rect::new(30.0, 0.0, 10.0, 20.0)));
+        assert_eq!(
+            view.bounds(),
+            Some(text::geometry::Rect::new(30.0, 0.0, 10.0, 20.0))
+        );
         let line = finalized.finalized_line();
         let mappings: Vec<_> = line
             .mapping_views()
@@ -416,7 +426,7 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
             .collect();
         assert_eq!(mappings.len(), 1);
         assert_eq!(mappings[0].separator_virtual(), Some(occurrence));
-        assert_eq!(mappings[0].source_range(), text::Range::new(at, at));
+        assert_eq!(mappings[0].source_range(), text::source::Range::new(at, at));
         positions.push(at);
     }
     positions.sort_unstable();
@@ -431,7 +441,7 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         assert_eq!(placed.lines()[0].baseline(), top + 16.0);
         assert_eq!(
             placed.source().text(),
-            &text::Text::from(format!("{JAPANESE}{JAPANESE}"))
+            &text::source::Text::from(format!("{JAPANESE}{JAPANESE}"))
         );
         for run in placed.run_views() {
             assert_eq!(run.face().bytes(), bytes);
@@ -450,8 +460,8 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         assert!(blank.source_pieces().is_empty());
         // Eight actual original cells plus the one generated10px blank =90px.
         let whole = placed.position_selection(&at(0.0), &at(90.0)).unwrap();
-        assert_eq!(whole.source_text(), &text::Text::from(JAPANESE));
-        assert_eq!(whole.plaintext(), &text::Text::from(JAPANESE));
+        assert_eq!(whole.source_text(), &text::source::Text::from(JAPANESE));
+        assert_eq!(whole.plaintext(), &text::source::Text::from(JAPANESE));
         copied.extend_from_slice(whole.source_text().code_units());
         // System has already been dropped by capture; Render consumes retained
         // exact finalized lines and font bytes without asking Text to rewrap.
@@ -483,7 +493,7 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
 fn continued_phrase_and_empty_domain_add_no_accessible_space_or_character() {
     let (batch, prepared, _) = capture();
     let parent = 1000_u64.into();
-    let mut empty_state = text::Accessibility::new(60);
+    let mut empty_state = text::accessibility::Accessibility::new(60);
     let empty = prepared[1]
         .analyzed_source()
         .accessibility_update(&mut empty_state, parent, parent)
@@ -507,7 +517,7 @@ fn continued_phrase_and_empty_domain_add_no_accessible_space_or_character() {
     let mut copied = String::new();
     for entry in batch.placed_text() {
         let placed = entry.layout();
-        let mut state = text::Accessibility::new(100);
+        let mut state = text::accessibility::Accessibility::new(100);
         let source = placed
             .analyzed_source()
             .accessibility_update(&mut state, parent, parent)
@@ -522,7 +532,12 @@ fn continued_phrase_and_empty_domain_add_no_accessible_space_or_character() {
         );
         assert!(source.nodes.iter().all(|(_, node)| node.bounds().is_none()));
         let update = placed
-            .accessibility_update(&mut state, parent, parent, text::Point::new(100.0, 200.0))
+            .accessibility_update(
+                &mut state,
+                parent,
+                parent,
+                text::geometry::Point::new(100.0, 200.0),
+            )
             .unwrap();
         let values = update
             .nodes

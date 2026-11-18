@@ -10,7 +10,8 @@ fn tree<S: LayoutScalar>(
     fixture: &Fixture,
     start: InlineBoundaryEdgeOf<S>,
 ) -> Fri06C02StatefulTextTree<S> {
-    let mut tree = Fri06C02StatefulTextTree::new(text::Source::new("AB"), ahem_style(10.0, 10.0));
+    let mut tree =
+        Fri06C02StatefulTextTree::new(text::source::Source::new("AB"), ahem_style(10.0, 10.0));
     tree.text = fixture.binding.clone();
     tree.inputs.clear();
     tree.children.clear();
@@ -68,12 +69,14 @@ fn tree<S: LayoutScalar>(
     tree
 }
 
-fn first(batch: &CompletedLayoutBatchOf<u32, impl LayoutScalar>) -> text::FinalizedLine {
+fn first(batch: &CompletedLayoutBatchOf<u32, impl LayoutScalar>) -> text::finalized::FinalizedLine {
     batch
         .unrounded_inline_fragments()
         .iter()
         .map(|entry| entry.fragment().finalized_fragment().finalized_line())
-        .find(|line| line.selected_line().request().context.start == text::LineStart::Paragraph)
+        .find(|line| {
+            line.selected_line().request().context.start == text::selection::LineStart::Paragraph
+        })
         .unwrap()
 }
 
@@ -235,8 +238,9 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         assert!(matches!(
             error.detail(),
             Some(text::ErrorDetail::InvalidTextNumeric {
-                phase: text::TextNumericPhase::Finalization,
-                category: text::TextNumericError::NonFinite | text::TextNumericError::NonZeroLost,
+                phase: text::geometry::TextNumericPhase::Finalization,
+                category: text::geometry::TextNumericError::NonFinite
+                    | text::geometry::TextNumericError::NonZeroLost,
                 ..
             })
         ));

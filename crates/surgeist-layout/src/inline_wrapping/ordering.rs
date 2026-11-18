@@ -8,7 +8,7 @@ use crate::{
     Direction, LayoutInputViewOf, LayoutTree, Position, engine::validation::ValidationGraph,
 };
 use std::{ops::Range, sync::Arc};
-use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
+use surgeist_text::supplied_line::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 
 fn proof_ancestor(
     parents: &[Option<usize>],
@@ -1179,7 +1179,7 @@ impl NativeOrderingData {
         admission: super::family::Admission,
     ) -> Result<()> {
         use super::family::{NativeFamilyData, NativeFamilyRow};
-        use surgeist_text::{
+        use surgeist_text::inline_box::{
             InlineBoxComponentParticipation as P, SuppliedInlineBoxComponentRow,
             SuppliedInlineBoxComponents, SuppliedInlineBoxComponentsInput,
         };

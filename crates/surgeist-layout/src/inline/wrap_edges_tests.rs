@@ -288,7 +288,7 @@ fn simple<S: LayoutScalar>(
 fn check_simple<S: LayoutScalar>(
     f: &Fixture<S>,
     expected: &[&[usize]],
-    ends: &[surgeist_text::LineEnd],
+    ends: &[surgeist_text::selection::LineEnd],
 ) {
     let report = layout_mixed_inline_run(f.numeric()).unwrap();
     assert_eq!(
@@ -324,7 +324,7 @@ fn check_simple<S: LayoutScalar>(
     }
 }
 fn simple_matrix<S: LayoutScalar>() {
-    use surgeist_text::LineEnd::{Paragraph, Soft};
+    use surgeist_text::selection::LineEnd::{Paragraph, Soft};
     for direction in [Direction::Ltr, Direction::Rtl] {
         for edge in [
             WrapEdge::Auto,
@@ -406,7 +406,7 @@ fn actual_numeric_edge_avoidance_preserves_legal_fit_and_signed_border_geometry(
 }
 
 fn force_matrix<S: LayoutScalar>() {
-    use surgeist_text::LineEnd::{Forced, Paragraph};
+    use surgeist_text::selection::LineEnd::{Forced, Paragraph};
     for direction in [Direction::Ltr, Direction::Rtl] {
         for before in [false, true] {
             let mut edges = [WrapEdges::AUTO; 3];
@@ -452,7 +452,7 @@ fn matching_line_force_beats_avoid_and_no_soft_permissions_and_splits_intrinsics
 }
 
 fn empty_edges<S: LayoutScalar>() {
-    use surgeist_text::LineEnd::{Forced, Paragraph};
+    use surgeist_text::selection::LineEnd::{Forced, Paragraph};
     for direction in [Direction::Ltr, Direction::Rtl] {
         let mut edges = [WrapEdges::AUTO; 3];
         edges[0].before = WrapEdge::Line;
@@ -632,7 +632,7 @@ fn nested<S: LayoutScalar>(
     f
 }
 fn propagation<S: LayoutScalar>() {
-    use surgeist_text::LineEnd::{Forced, Paragraph};
+    use surgeist_text::selection::LineEnd::{Forced, Paragraph};
     for direction in [Direction::Ltr, Direction::Rtl] {
         for (empty, oof) in [(false, false), (true, false), (false, true)] {
             let f = nested::<S>(direction, false, empty, oof);
@@ -1404,13 +1404,13 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                 .unwrap();
                 let mut expected_endings = Vec::new();
                 if edges.before == WrapEdge::Line {
-                    expected_endings.push((surgeist_text::LineEnd::Forced, 0, 0));
+                    expected_endings.push((surgeist_text::selection::LineEnd::Forced, 0, 0));
                 }
                 expected_endings.push((
                     if edges.after == WrapEdge::Line {
-                        surgeist_text::LineEnd::Forced
+                        surgeist_text::selection::LineEnd::Forced
                     } else {
-                        surgeist_text::LineEnd::Paragraph
+                        surgeist_text::selection::LineEnd::Paragraph
                     },
                     1,
                     1,

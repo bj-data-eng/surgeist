@@ -12,8 +12,11 @@ use crate::inline_wrapping::{
     CanonicalScopeProof, WrapInside, WrappingScopeError, WrappingScopeInput, WrappingScopeProof,
 };
 use surgeist_text::{
-    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent as Event,
-    CapturedParagraph, CapturedScope, PreparedScope, PreparedText, ScopeRole,
+    capture::{
+        CapturedControl, CapturedDomainDefinition, CapturedEventPosition,
+        CapturedFlowEvent as Event, CapturedParagraph, CapturedScope, ScopeRole,
+    },
+    prepared::{PreparedScope, PreparedText},
 };
 
 type ResultOf<Tree, T> = crate::LayoutResultOf<
@@ -47,10 +50,11 @@ pub(crate) fn classify<Node>(paragraph: &TextParagraphBinding<Node>) -> Result<P
         let mut forced = paragraph
             .prepared
             .opportunity_views()
-            .filter(|offer| offer.kind() == surgeist_text::PreparedBreakKind::Forced)
+            .filter(|offer| offer.kind() == surgeist_text::prepared::PreparedBreakKind::Forced)
             .map(|offer| offer.computed_line_boundary());
         let all_computed = paragraph.prepared.participants().all(|participant| {
-            let surgeist_text::PreparedParticipant::ComputedLineBoundary(boundary) = participant
+            let surgeist_text::prepared::PreparedParticipant::ComputedLineBoundary(boundary) =
+                participant
             else {
                 return false;
             };
@@ -99,13 +103,13 @@ pub(crate) struct NativeRun {
     pub(crate) paragraph: usize,
     pub(crate) nodes: std::ops::Range<usize>,
     pub(crate) children: std::ops::Range<usize>,
-    pub(crate) segment: surgeist_text::PreparedSourceSegment,
+    pub(crate) segment: surgeist_text::prepared::PreparedSourceSegment,
 }
 
 #[derive(Clone)]
 pub(crate) struct NativeRunSlot {
     pub(crate) gap: usize,
-    pub(crate) segment: surgeist_text::PreparedSourceSegment,
+    pub(crate) segment: surgeist_text::prepared::PreparedSourceSegment,
 }
 
 /// A checked native gap is a coordinate, never a paragraph identity. Actual
@@ -123,7 +127,7 @@ pub(crate) struct SemanticParagraphSlot<Node> {
 
 #[derive(Clone, Debug, PartialEq)]
 struct ComputedIncidence {
-    boundary: surgeist_text::PreparedComputedLineBoundary,
+    boundary: surgeist_text::prepared::PreparedComputedLineBoundary,
     cut: ComputedNativeCut,
 }
 
@@ -276,7 +280,7 @@ impl<Node> ScopeAssociations<Node> {
     pub(crate) fn admit_inline_box_comparison<S: crate::LayoutScalar>(
         &self,
         other: &Self,
-        limits: surgeist_text::ScopeAlignmentLimits,
+        limits: surgeist_text::scope_alignment::ScopeAlignmentLimits,
         resources: &super::scope_alignment::ScopeAlignmentResources<S>,
     ) -> surgeist_text::Result<()> {
         self.inline_boxes
@@ -406,7 +410,7 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
         &self,
     ) -> impl Iterator<
         Item = (
-            &surgeist_text::PreparedComputedLineBoundary,
+            &surgeist_text::prepared::PreparedComputedLineBoundary,
             ComputedNativeCut,
         ),
     > {
@@ -415,7 +419,7 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
 
     pub(crate) fn computed_cut(
         &self,
-        boundary: &surgeist_text::PreparedComputedLineBoundary,
+        boundary: &surgeist_text::prepared::PreparedComputedLineBoundary,
     ) -> Option<ComputedNativeCut> {
         self.computed
             .iter()
@@ -514,7 +518,7 @@ struct Atomic<Node> {
     member: CapturedParagraph,
     node: Node,
     paragraph: usize,
-    kind: surgeist_text::InlineBoxKind,
+    kind: surgeist_text::source::InlineBoxKind,
 }
 struct Origin<Node> {
     position: CapturedEventPosition,
@@ -594,7 +598,7 @@ struct Proof<'a, Tree: crate::LayoutTree> {
     native: Vec<NativeRegion<Tree::Node>>,
     // Constructor demand only; actual Source/native body proof still follows.
     inline_box_bodies: bool,
-    computed: Vec<(usize, surgeist_text::PreparedComputedLineBoundary)>,
+    computed: Vec<(usize, surgeist_text::prepared::PreparedComputedLineBoundary)>,
     activation: Option<&'a mut super::scope_alignment::AdmissionWork>,
     activation_storage: ActivationStorage,
 }
@@ -732,7 +736,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
             activation_error::<Tree>(
                 graph.nodes[0],
                 super::scope_alignment::overflow(
-                    surgeist_text::ScopeAlignmentLimitKind::StructuralWork,
+                    surgeist_text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
                 ),
             )
         })?;
@@ -962,7 +966,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     activation_error::<Tree>(
                         self.graph.nodes[0],
                         super::scope_alignment::overflow(
-                            surgeist_text::ScopeAlignmentLimitKind::StructuralWork,
+                            surgeist_text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork,
                         ),
                     )
                 })?)
@@ -1001,9 +1005,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 .prepared
                 .participants()
                 .filter_map(|part| match part {
-                    surgeist_text::PreparedParticipant::ComputedLineBoundary(boundary) => {
-                        Some(boundary)
-                    }
+                    surgeist_text::prepared::PreparedParticipant::ComputedLineBoundary(
+                        boundary,
+                    ) => Some(boundary),
                     _ => None,
                 })
                 .collect::<Vec<_>>();
@@ -1034,8 +1038,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                         return Err(self.computed_error(index));
                     }
                     match cause.target() {
-                        surgeist_text::CapturedComputedLineBoundaryTarget::Scope {
-                            scope, ..
+                        surgeist_text::capture::CapturedComputedLineBoundaryTarget::Scope {
+                            scope,
+                            ..
                         } => {
                             if scope.role() != ScopeRole::Inline
                                 || scope.domain() != captured.domain()
@@ -1052,7 +1057,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                             }
                             add_region(&mut self.result.regions, scope);
                         }
-                        surgeist_text::CapturedComputedLineBoundaryTarget::Endpoint(control) => {
+                        surgeist_text::capture::CapturedComputedLineBoundaryTarget::Endpoint(
+                            control,
+                        ) => {
                             if !self
                                 .controls
                                 .iter()
@@ -1061,14 +1068,14 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                                 return Err(self.computed_error(index));
                             }
                         }
-                        surgeist_text::CapturedComputedLineBoundaryTarget::Atomic {
+                        surgeist_text::capture::CapturedComputedLineBoundaryTarget::Atomic {
                             position,
                             ..
                         } => {
                             if !self.atomics.iter().any(|row| {
                                 row.paragraph == index
                                     && row.position == position
-                                    && row.kind == surgeist_text::InlineBoxKind::InFlow
+                                    && row.kind == surgeist_text::source::InlineBoxKind::InFlow
                             }) {
                                 return Err(self.computed_error(index));
                             }
@@ -1232,23 +1239,23 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             // groups with coincident bounds remain distinct issued capabilities.
             for cause in view.causes() {
                 let target = match cause.target() {
-                    surgeist_text::CapturedComputedLineBoundaryTarget::Scope { scope, side } => {
+                    surgeist_text::capture::CapturedComputedLineBoundaryTarget::Scope { scope, side } => {
                         self.result
                             .inline
                             .iter()
                             .find(|row| row.scope == scope)
                             .map(|row| {
                                 (
-                                    if side == surgeist_text::SourceBoxSide::After {
+                                    if side == surgeist_text::capture::SourceBoxSide::After {
                                         row.end
                                     } else {
                                         row.start
                                     },
-                                    side == surgeist_text::SourceBoxSide::After,
+                                    side == surgeist_text::capture::SourceBoxSide::After,
                                 )
                             })
                     }
-                    surgeist_text::CapturedComputedLineBoundaryTarget::Endpoint(control) => self
+                    surgeist_text::capture::CapturedComputedLineBoundaryTarget::Endpoint(control) => self
                         .controls
                         .iter()
                         .find(|row| row.captured == control)
@@ -1257,18 +1264,18 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                                 row.node,
                                 matches!(
                                     control.kind(),
-                                    surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+                                    surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryEnd
                                 ),
                             )
                         }),
-                    surgeist_text::CapturedComputedLineBoundaryTarget::Atomic {
+                    surgeist_text::capture::CapturedComputedLineBoundaryTarget::Atomic {
                         position,
                         side,
                     } => self
                         .atomics
                         .iter()
                         .find(|row| row.position == position)
-                        .map(|row| (row.node, side == surgeist_text::SourceBoxSide::After)),
+                        .map(|row| (row.node, side == surgeist_text::capture::SourceBoxSide::After)),
                 };
                 if let Some((node, after)) = target {
                     let exact = self.computed_node_gap(*index, node, after)?;
@@ -1391,7 +1398,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 let complete = self.controls.iter().any(|row| {
                     (row.node == *start || row.node == *end)
                         && row.captured.paragraph().domain().domain_topology()
-                            == surgeist_text::SourceProcessingTopology::Complete
+                            == surgeist_text::capture::SourceProcessingTopology::Complete
                 });
                 let source = self
                     .controls
@@ -2175,9 +2182,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     scope.domain_definition(),
                     Some(CapturedDomainDefinition::AtomicBlock { .. })
                 ) {
-                    surgeist_text::InlineBoxKind::InFlow
+                    surgeist_text::source::InlineBoxKind::InFlow
                 } else {
-                    surgeist_text::InlineBoxKind::OutOfFlow
+                    surgeist_text::source::InlineBoxKind::OutOfFlow
                 };
                 if row.node != domain.container || row.kind != expected {
                     return Err(binding_error(domain.container, E::ScopeAssociation));
@@ -2904,7 +2911,8 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     segment,
                 });
             }
-            if binding.prepared.terminal_edge() == surgeist_text::ParagraphTerminalEdge::BlockEnd
+            if binding.prepared.terminal_edge()
+                == surgeist_text::paragraph::ParagraphTerminalEdge::BlockEnd
                 && horizon.is_some_and(|end| {
                     children[end..].iter().any(|&node| {
                         self.tree

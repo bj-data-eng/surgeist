@@ -1,7 +1,7 @@
 //! Immutable operation limits over mixed, multi-receipt placements.
 use super::*;
 use crate::{
-    processing::{ScopeAlignmentError, ScopeAlignmentLimitKind},
+    processing::contextual::{ScopeAlignmentError, ScopeAlignmentLimitKind},
     range_fragments::SourceRangeGeometry,
 };
 

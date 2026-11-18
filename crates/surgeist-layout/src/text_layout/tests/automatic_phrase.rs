@@ -33,68 +33,81 @@ fn fixture_in_direction(
 ) -> Fixture {
     let mut source_style = ahem_style(10.0, 20.0);
     source_style.locale = Some("ja".into());
-    source_style.word_space_transform = text::WordSpaceTransform::SpaceAutoPhrase;
+    source_style.word_space_transform = text::style::WordSpaceTransform::SpaceAutoPhrase;
     let mut owner_style = source_style.clone();
     owner_style.size = owner_size;
     let mut base = source_style.clone();
-    base.word_space_transform = text::WordSpaceTransform::None;
+    base.word_space_transform = text::style::WordSpaceTransform::None;
     let mut source = Source::new(PHRASE);
-    let whole = text::Range::new(0, source.text().len());
+    let whole = text::source::Range::new(0, source.text().len());
     source.span(whole, source_style);
-    let control = |kind, at| text::ParagraphControl { kind, at };
-    let inline = |style, start, end| text::SourceProcessingScope::Inline {
+    let control = |kind, at| text::paragraph::ParagraphControl { kind, at };
+    let inline = |style, start, end| text::capture::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
-        trim: text::WhiteSpaceTrim::default(),
+        trim: text::capture::WhiteSpaceTrim::default(),
         style: Some(style),
-        boundaries: complete.then_some(text::SourceProcessingScopeBoundaries { start, end }),
+        boundaries: complete
+            .then_some(text::capture::SourceProcessingScopeBoundaries { start, end }),
     };
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let event_control = |control| E::Control {
         control,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: whole,
                 aggregate: whole,
-                kind: text::ParagraphOriginKind::Authored,
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![
-                control(text::ParagraphControlKind::InlineBoundaryStart, 0),
-                control(text::ParagraphControlKind::InlineBoundaryStart, 0),
-                control(text::ParagraphControlKind::InlineBoundaryEnd, whole.end),
-                control(text::ParagraphControlKind::InlineBoundaryEnd, whole.end),
+                control(
+                    text::paragraph::ParagraphControlKind::InlineBoundaryStart,
+                    0,
+                ),
+                control(
+                    text::paragraph::ParagraphControlKind::InlineBoundaryStart,
+                    0,
+                ),
+                control(
+                    text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
+                    whole.end,
+                ),
+                control(
+                    text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
+                    whole.end,
+                ),
             ],
             boundary_policies: vec![],
             replacements: vec![],
             scopes: vec![
-                text::SourceProcessingScope::Block {
+                text::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: text::SourceProcessingTopology::Complete,
-                    trim: text::WhiteSpaceTrim::default(),
+                    topology: text::capture::SourceProcessingTopology::Complete,
+                    trim: text::capture::WhiteSpaceTrim::default(),
                     base_style: base.clone(),
                     used_direction: direction,
                 },
                 inline(base, 0, 3),
                 inline(owner_style, 1, 2),
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
                 base_direction: direction,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
@@ -105,7 +118,7 @@ fn fixture_in_direction(
                 event_control(1),
                 E::Origin {
                     origin: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 },
                 event_control(2),
                 E::ExitScope(2),
@@ -117,18 +130,19 @@ fn fixture_in_direction(
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     // The published upstream sentence has exactly three internal phrase cuts.
     assert_eq!(
@@ -683,7 +697,9 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         assert_eq!(owner, &f.scope);
         let fragment = entry.fragment();
         let view = fragment.finalized_fragment().view();
-        let text::FinalizedFragmentOwner::VirtualSeparator(virtual_separator) = view.owner() else {
+        let text::finalized::FinalizedFragmentOwner::VirtualSeparator(virtual_separator) =
+            view.owner()
+        else {
             panic!("scope output retains its exact virtual contributor")
         };
         assert_eq!(virtual_separator.view().scope(), owner.scope);

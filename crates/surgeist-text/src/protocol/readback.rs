@@ -20,8 +20,11 @@ use crate::{
     font::{EffectiveFontInstance, FontFace},
     geometry::{Point, Rect},
     processing::{
-        CapturedControl, CapturedEventPosition, CapturedParagraph, CapturedScope,
-        ProcessedPosition, ProcessedRange, ScopeRole, SourceProcessingEvent,
+        ProcessedPosition, ProcessedRange,
+        contextual::{
+            CapturedControl, CapturedEventPosition, CapturedParagraph, CapturedScope, ScopeRole,
+            SourceProcessingEvent,
+        },
     },
     range::{Range, SourcePosition},
     source::{InlineBox, Source},
@@ -2010,7 +2013,8 @@ impl PreparedComputedLineBoundaryView<'_> {
     /// Computed causes at this one effective mandatory incidence.
     pub fn causes(
         &self,
-    ) -> impl ExactSizeIterator<Item = crate::processing::CapturedComputedLineBoundary> + '_ {
+    ) -> impl ExactSizeIterator<Item = crate::processing::contextual::CapturedComputedLineBoundary> + '_
+    {
         let analyzed = &self.prepared.analyzed;
         let topology = analyzed
             .paragraph
@@ -2020,10 +2024,12 @@ impl PreparedComputedLineBoundaryView<'_> {
         analyzed.paragraph.computed_boundaries[self.data().occurrence]
             .causes
             .iter()
-            .map(|&index| crate::processing::CapturedComputedLineBoundary {
-                capture: Arc::clone(&topology.capture),
-                index,
-            })
+            .map(
+                |&index| crate::processing::contextual::CapturedComputedLineBoundary {
+                    capture: Arc::clone(&topology.capture),
+                    index,
+                },
+            )
     }
     #[must_use]
     pub fn source_position(&self) -> SourcePosition {

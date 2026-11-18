@@ -10,8 +10,8 @@ use crate::*;
 use std::cell::Cell;
 use surgeist_text as text;
 
-const LIMITS: text::ScopeAlignmentLimits =
-    text::ScopeAlignmentLimits::new(100_000, 100, 1_000_000, 16 << 20);
+const LIMITS: text::scope_alignment::ScopeAlignmentLimits =
+    text::scope_alignment::ScopeAlignmentLimits::new(100_000, 100, 1_000_000, 16 << 20);
 
 thread_local! {
     static MEASUREMENTS: Cell<usize> = const { Cell::new(0) };
@@ -36,8 +36,8 @@ fn with_scene(
         &LayoutFlowInput<'_, PublicLayoutTreeOf<f64>>,
         &Arc<crate::engine::FloatChildPacket<u32, f64>>,
         ComputeInputOf<f64>,
-        &[text::ControlAllocation],
-        &text::FinalizedLine,
+        &[text::allocation::ControlAllocation],
+        &text::finalized::FinalizedLine,
     ),
 ) {
     let fixture = Fixture::with_scope_limits("X", LIMITS);
@@ -155,7 +155,7 @@ fn with_scene(
             line.selected_line().request().controls.iter().any(|row| {
                 matches!(
                     row.occurrence.view().kind(),
-                    text::ParagraphControlKind::InlineBoundaryEnd
+                    text::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 )
             })
         })
@@ -203,13 +203,13 @@ fn with_scene(
                 .unwrap();
             assert!(boundary.box_context().is_some());
             assert_eq!(boundary.advance(), if row.node == 21 { 3.0 } else { 0.0 });
-            text::ControlAllocation {
+            text::allocation::ControlAllocation {
                 occurrence: row.occurrence.clone(),
                 boundary: Some(boundary),
-                strut: Some(text::ControlStrut {
+                strut: Some(text::allocation::ControlStrut {
                     baseline: 8.0,
                     line_extent: 10.0,
-                    alignment: text::LineBoxAlignment::Baseline,
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 }),
             }
         })
@@ -259,7 +259,7 @@ fn event(
 fn bind(
     draft: FloatEvents<u32, f64>,
     capture: &LayoutFlowInput<'_, PublicLayoutTreeOf<f64>>,
-    controls: &[text::ControlAllocation],
+    controls: &[text::allocation::ControlAllocation],
     funding: &EntryFunding<f64>,
 ) -> Result<BoundEvents<u32, f64>, FitError> {
     let [row] = capture.associations.runs() else {
@@ -290,8 +290,8 @@ fn structural_limit(error: FitError) {
     };
     assert!(
         matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
-        reason: text::ScopeAlignmentError::Limit {
-            kind: text::ScopeAlignmentLimitKind::StructuralWork, required, limit,
+        reason: text::scope_alignment::ScopeAlignmentError::Limit {
+            kind: text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork, required, limit,
         },
     }) if required > limit && *limit == LIMITS.structural_work())
     );
@@ -317,8 +317,8 @@ fn remaining_records(resources: &ScopeAlignmentResources<f64>) -> usize {
         if let Err(error) = resources.materialize(LIMITS, 0, 1) {
             assert!(
                 matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
-                reason: text::ScopeAlignmentError::Limit {
-                    kind: text::ScopeAlignmentLimitKind::Records, required, limit,
+                reason: text::scope_alignment::ScopeAlignmentError::Limit {
+                    kind: text::scope_alignment::ScopeAlignmentLimitKind::Records, required, limit,
                 },
             }) if required > limit && *limit == LIMITS.records())
             );

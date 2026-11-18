@@ -24,7 +24,7 @@ use crate::{
         FontBaseline, FontBaselineOutcome, FontData, FontSynthesis, UprightMetricProvenance,
         UprightMetricReference,
     },
-    processing::{
+    processing::contextual::{
         CapturedScope, ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentUsage,
         ScopeFontReference, SourceProcessingEvent,
     },
@@ -41,7 +41,7 @@ pub(crate) fn refusal(reason: ScopeAlignmentError) -> crate::Error {
 pub(crate) fn operation_limits(
     prepared: &PreparedData,
     allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
-) -> Result<Option<crate::processing::ScopeAlignmentLimits>> {
+) -> Result<Option<crate::processing::contextual::ScopeAlignmentLimits>> {
     let Some(topology) = prepared.analyzed.paragraph.scope_topology.as_ref() else {
         return if allowance.is_some() {
             Err(refusal(ScopeAlignmentError::MissingCapture))
@@ -65,12 +65,12 @@ pub(crate) fn operation_limits(
     };
     for (kind, required, limit) in [
         (
-            crate::processing::ScopeAlignmentLimitKind::Records,
+            crate::processing::contextual::ScopeAlignmentLimitKind::Records,
             allowance.records(),
             limits.records(),
         ),
         (
-            crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
             allowance.payload_bytes(),
             limits.payload_bytes(),
         ),
@@ -83,12 +83,14 @@ pub(crate) fn operation_limits(
             }));
         }
     }
-    Ok(Some(crate::processing::ScopeAlignmentLimits::new(
-        allowance.records(),
-        limits.font_queries(),
-        limits.structural_work(),
-        allowance.payload_bytes(),
-    )))
+    Ok(Some(
+        crate::processing::contextual::ScopeAlignmentLimits::new(
+            allowance.records(),
+            limits.font_queries(),
+            limits.structural_work(),
+            allowance.payload_bytes(),
+        ),
+    ))
 }
 pub(crate) const fn baseline_index(name: FontBaseline) -> usize {
     match name {
@@ -1719,18 +1721,18 @@ pub(crate) fn select(
     for row in &owners {
         budget.work(1)?;
         scratch = checked_sum(
-            crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
             scratch,
             capacity_bytes(row)?,
         )?;
     }
     scratch = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
         scratch,
         capacity_bytes(&active)?,
     )?;
     scratch = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
         scratch,
         capacity_bytes(&breaks)?,
     )?;
@@ -1752,7 +1754,7 @@ pub(crate) fn select(
 }
 
 fn checked_sum(
-    kind: crate::processing::ScopeAlignmentLimitKind,
+    kind: crate::processing::contextual::ScopeAlignmentLimitKind,
     left: usize,
     right: usize,
 ) -> Result<usize> {
@@ -1765,7 +1767,7 @@ fn capacity_bytes<T>(values: &Vec<T>) -> Result<usize> {
         .checked_mul(std::mem::size_of::<T>())
         .ok_or_else(|| {
             refusal(ScopeAlignmentError::Overflow {
-                kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+                kind: crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
             })
         })
 }
@@ -1789,24 +1791,24 @@ pub(crate) fn spacing_input_retention(
     }
 }
 fn input_budget(
-    limits: crate::processing::ScopeAlignmentLimits,
+    limits: crate::processing::contextual::ScopeAlignmentLimits,
     base: crate::protocol::ScopeAlignmentRetention,
     scope: crate::protocol::ScopeAlignmentRetention,
     spacing: crate::protocol::ScopeAlignmentRetention,
 ) -> Result<ScopeAlignmentBudget> {
     let records = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::Records,
+        crate::processing::contextual::ScopeAlignmentLimitKind::Records,
         checked_sum(
-            crate::processing::ScopeAlignmentLimitKind::Records,
+            crate::processing::contextual::ScopeAlignmentLimitKind::Records,
             base.records(),
             scope.records(),
         )?,
         spacing.records(),
     )?;
     let bytes = checked_sum(
-        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
         checked_sum(
-            crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
             base.payload_bytes(),
             scope.payload_bytes(),
         )?,
@@ -2005,7 +2007,7 @@ pub(crate) fn finish_frames(
         .checked_sub(retention.payload_bytes())
         .ok_or_else(|| {
             refusal(ScopeAlignmentError::Overflow {
-                kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+                kind: crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
             })
         })?;
     budget.release_bytes(extra)?;

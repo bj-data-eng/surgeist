@@ -16,49 +16,53 @@ use icu_properties::{
 use surgeist_text as t;
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
-const DIRECTIONS: [t::ParagraphBaseDirection; 2] = [
-    t::ParagraphBaseDirection::LeftToRight,
-    t::ParagraphBaseDirection::RightToLeft,
+const DIRECTIONS: [t::paragraph::ParagraphBaseDirection; 2] = [
+    t::paragraph::ParagraphBaseDirection::LeftToRight,
+    t::paragraph::ParagraphBaseDirection::RightToLeft,
 ];
-const STRICTNESSES: [t::LineBreak; 4] = [
-    t::LineBreak::Auto,
-    t::LineBreak::Loose,
-    t::LineBreak::Normal,
-    t::LineBreak::Strict,
+const STRICTNESSES: [t::style::LineBreak; 4] = [
+    t::style::LineBreak::Auto,
+    t::style::LineBreak::Loose,
+    t::style::LineBreak::Normal,
+    t::style::LineBreak::Strict,
 ];
 
-fn style(locale: Option<&str>) -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style(locale: Option<&str>) -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Preserve,
-        word_break: t::WordBreak::Normal,
-        line_break: t::LineBreak::Auto,
-        overflow_wrap: t::OverflowWrap::Normal,
-        wrap: t::Wrap::Word,
-        hyphens: t::Hyphens::None,
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        word_break: t::style::WordBreak::Normal,
+        line_break: t::style::LineBreak::Auto,
+        overflow_wrap: t::style::OverflowWrap::Normal,
+        wrap: t::style::Wrap::Word,
+        hyphens: t::hyphenation::Hyphens::None,
         locale: locale.map(str::to_owned),
-        ..t::Style::default()
+        ..t::style::Style::default()
     }
 }
 
-fn input(value: &str, base: t::Style, direction: t::ParagraphBaseDirection) -> t::ParagraphInput {
-    let source = t::Source::identified(value, t::Id::from_u64(65401), 19);
+fn input(
+    value: &str,
+    base: t::style::Style,
+    direction: t::paragraph::ParagraphBaseDirection,
+) -> t::paragraph::ParagraphInput {
+    let source = t::source::Source::identified(value, t::source::Id::from_u64(65401), 19);
     let end = source.text().len();
-    t::ParagraphInput {
+    t::paragraph::ParagraphInput {
         source: source.clone(),
         base_style: base,
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: direction,
-        paragraph_strut: t::ParagraphStrut::DefaultFont,
-        terminal_edge: t::ParagraphTerminalEdge::BlockEnd,
+        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: t::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![t::ParagraphOrigin {
+        origins: vec![t::paragraph::ParagraphOrigin {
             source,
-            local: t::Range::new(0, end),
-            aggregate: t::Range::new(0, end),
-            kind: t::ParagraphOriginKind::Authored,
+            local: t::source::Range::new(0, end),
+            aggregate: t::source::Range::new(0, end),
+            kind: t::paragraph::ParagraphOriginKind::Authored,
             text_node: None,
         }],
         connections: vec![],
@@ -69,18 +73,20 @@ fn input(value: &str, base: t::Style, direction: t::ParagraphBaseDirection) -> t
     }
 }
 
-fn prepare(request: t::ParagraphInput) -> t::PreparedText {
+fn prepare(request: t::paragraph::ParagraphInput) -> t::prepared::PreparedText {
     // Each fixture explicitly describes one real containing block with this Wrap.
     let ancestor = request.base_style.wrap;
     let source = request.source.clone();
     let base = request.base_style.clone();
-    let analyzed =
-        t::AnalyzedSource::from_paragraph(request, t::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = t::analyzed::AnalyzedSource::from_paragraph(
+        request,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| t::WrappingPolicy {
+        .map(|relation| t::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap: ancestor,
         })
@@ -91,7 +97,7 @@ fn prepare(request: t::ParagraphInput) -> t::PreparedText {
         .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(prepared.analyzed_source().source(), &source);
     assert_eq!(prepared.analyzed_source().style(), &base);
@@ -102,14 +108,14 @@ fn prepare(request: t::ParagraphInput) -> t::PreparedText {
     prepared
 }
 
-fn allowed(p: &t::PreparedText) -> Vec<t::PreparedOpportunity> {
+fn allowed(p: &t::prepared::PreparedText) -> Vec<t::prepared::PreparedOpportunity> {
     p.opportunity_views()
-        .filter(|offer| offer.kind() == t::PreparedBreakKind::Allowed)
+        .filter(|offer| offer.kind() == t::prepared::PreparedBreakKind::Allowed)
         .map(|offer| offer.handle())
         .collect()
 }
 
-fn cuts(p: &t::PreparedText) -> Vec<usize> {
+fn cuts(p: &t::prepared::PreparedText) -> Vec<usize> {
     allowed(p)
         .iter()
         .map(|offer| {
@@ -124,26 +130,31 @@ fn cuts(p: &t::PreparedText) -> Vec<usize> {
         .collect()
 }
 
-fn connect(request: &mut t::ParagraphInput, kind: t::ParagraphConnectionKind) {
-    request.origins = [t::Range::new(0, 1), t::Range::new(1, 2)]
+fn connect(
+    request: &mut t::paragraph::ParagraphInput,
+    kind: t::paragraph::ParagraphConnectionKind,
+) {
+    request.origins = [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
         .into_iter()
-        .map(|range| t::ParagraphOrigin {
+        .map(|range| t::paragraph::ParagraphOrigin {
             source: request.source.clone(),
             local: range,
             aggregate: range,
-            kind: t::ParagraphOriginKind::Authored,
+            kind: t::paragraph::ParagraphOriginKind::Authored,
             text_node: None,
         })
         .collect();
     request
         .connections
-        .push(t::ParagraphConnection { at: 1, kind });
-    request.boundary_policies.push(t::ParagraphBoundaryPolicy {
-        definition: t::ParagraphBoundaryDefinition::Connection(0),
-        preceding_wrap: t::Wrap::Word,
-        following_wrap: t::Wrap::Word,
-        ancestor_wrap: request.base_style.wrap,
-    });
+        .push(t::paragraph::ParagraphConnection { at: 1, kind });
+    request
+        .boundary_policies
+        .push(t::paragraph::ParagraphBoundaryPolicy {
+            definition: t::paragraph::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: t::style::Wrap::Word,
+            following_wrap: t::style::Wrap::Word,
+            ancestor_wrap: request.base_style.wrap,
+        });
 }
 
 #[test]
@@ -170,13 +181,13 @@ fn thai_lao_fixtures_are_sa_letter_units_with_independently_qualified_graphemes(
         let p = prepare(input(value, style(Some(locale)), DIRECTIONS[0]));
         assert_eq!(
             p.analyzed_source().graphemes().collect::<Vec<_>>(),
-            [t::Range::new(0, 1), t::Range::new(1, 2)]
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
         );
         assert_eq!(
             p.unit_views()
                 .map(|unit| unit.source_range())
                 .collect::<Vec<_>>(),
-            [t::Range::new(0, 1), t::Range::new(1, 2)]
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
         );
     }
 }
@@ -192,7 +203,7 @@ fn missing_thai_lexical_capability_normal_publishes_ordinary_letter_pair_cut() {
         );
         assert_eq!(
             p.analyzed_source().graphemes().collect::<Vec<_>>(),
-            [t::Range::new(0, 1), t::Range::new(1, 2)]
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
         );
         let participants = p.participants().collect::<Vec<_>>();
         for offer in allowed(&p) {
@@ -200,11 +211,11 @@ fn missing_thai_lexical_capability_normal_publishes_ordinary_letter_pair_cut() {
             let offset = boundary.view().participant_offset();
             assert!(matches!(
                 participants[offset - 1],
-                t::PreparedParticipant::Text(_)
+                t::prepared::PreparedParticipant::Text(_)
             ));
             assert!(matches!(
                 participants[offset],
-                t::PreparedParticipant::Text(_)
+                t::prepared::PreparedParticipant::Text(_)
             ));
             assert_eq!(boundary.view().source_before().get(), 1);
             assert_eq!(boundary.view().source_after().get(), 1);
@@ -220,9 +231,11 @@ fn missing_thai_lexical_capability_normal_publishes_ordinary_letter_pair_cut() {
                     &start,
                     None,
                     &ceiling,
-                    t::ConditionalPurpose::Overflow,
+                    t::conditional::ConditionalPurpose::Overflow,
                     &[],
-                    surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
+                    surgeist_text::conditional::ConditionalLineContext::Unframed {
+                        inline_boxes: None
+                    },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -245,10 +258,10 @@ fn qualified_thai_lao_fallback_retains_modes_strictness_and_declared_locale() {
         for value in ["กก", "ກກ"] {
             for locale in [Some("th"), Some("lo"), None, Some("und"), Some("en")] {
                 for word in [
-                    t::WordBreak::Normal,
-                    t::WordBreak::KeepAll,
-                    t::WordBreak::BreakWord,
-                    t::WordBreak::BreakAll,
+                    t::style::WordBreak::Normal,
+                    t::style::WordBreak::KeepAll,
+                    t::style::WordBreak::BreakWord,
+                    t::style::WordBreak::BreakAll,
                 ] {
                     for strictness in STRICTNESSES {
                         let mut base = style(locale);
@@ -275,10 +288,10 @@ fn thai_tone_mark_stays_in_its_whole_letter_unit_before_fallback() {
     let mut missing = Vec::new();
     for direction in DIRECTIONS {
         for word in [
-            t::WordBreak::Normal,
-            t::WordBreak::KeepAll,
-            t::WordBreak::BreakWord,
-            t::WordBreak::BreakAll,
+            t::style::WordBreak::Normal,
+            t::style::WordBreak::KeepAll,
+            t::style::WordBreak::BreakWord,
+            t::style::WordBreak::BreakAll,
         ] {
             for strictness in STRICTNESSES {
                 let mut base = style(Some("th"));
@@ -287,7 +300,7 @@ fn thai_tone_mark_stays_in_its_whole_letter_unit_before_fallback() {
                 let p = prepare(input("ก่ก", base, direction));
                 assert_eq!(
                     p.analyzed_source().graphemes().collect::<Vec<_>>(),
-                    [t::Range::new(0, 2), t::Range::new(2, 3)]
+                    [t::source::Range::new(0, 2), t::source::Range::new(2, 3)]
                 );
                 assert!(
                     !cuts(&p).contains(&1),
@@ -340,10 +353,13 @@ fn continuous_source_and_paint_style_seams_preserve_required_fallback() {
         for origins in [false, true] {
             let mut request = input("กก", style(Some("th")), direction);
             let mut following = style(Some("und"));
-            following.brush = t::Brush::color(1.0, 0.0, 0.0, 1.0);
-            request.source.span(t::Range::new(1, 2), following);
+            following.brush = t::style::Brush::color(1.0, 0.0, 0.0, 1.0);
+            request.source.span(t::source::Range::new(1, 2), following);
             if origins {
-                connect(&mut request, t::ParagraphConnectionKind::Continuous);
+                connect(
+                    &mut request,
+                    t::paragraph::ParagraphConnectionKind::Continuous,
+                );
             }
             let p = prepare(request);
             if cuts(&p) != [1] {
@@ -354,7 +370,7 @@ fn continuous_source_and_paint_style_seams_preserve_required_fallback() {
                     p.origin_views()
                         .map(|origin| origin.aggregate_range())
                         .collect::<Vec<_>>(),
-                    [t::Range::new(0, 1), t::Range::new(1, 2)]
+                    [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
                 );
             }
         }
@@ -369,32 +385,39 @@ fn continuous_source_and_paint_style_seams_preserve_required_fallback() {
 fn fallback_cannot_cross_nowrap_disconnected_or_real_hard_boundaries() {
     for direction in DIRECTIONS {
         let mut base = style(Some("th"));
-        base.wrap = t::Wrap::None;
+        base.wrap = t::style::Wrap::None;
         let mut request = input("กก", base, direction);
-        request.source.span(t::Range::new(0, 2), style(Some("th")));
+        request
+            .source
+            .span(t::source::Range::new(0, 2), style(Some("th")));
         assert_eq!(
             cuts(&prepare(request)),
             [],
             "the real nearest common ancestor forbids soft wrapping"
         );
         let mut request = input("กก", style(Some("th")), direction);
-        connect(&mut request, t::ParagraphConnectionKind::Disconnected);
+        connect(
+            &mut request,
+            t::paragraph::ParagraphConnectionKind::Disconnected,
+        );
         assert_eq!(
             cuts(&prepare(request)),
             [],
             "two disconnected letter units do not form a fallback pair"
         );
-        for (value, delimiter, at) in [("ก\nก", None, 2), ("ก\r\nก", Some(t::Range::new(1, 3)), 3)]
-        {
+        for (value, delimiter, at) in [
+            ("ก\nก", None, 2),
+            ("ก\r\nก", Some(t::source::Range::new(1, 3)), 3),
+        ] {
             let mut request = input(value, style(Some("th")), direction);
             if let Some(range) = delimiter {
-                request.segment_breaks = t::DocumentSegmentBreaks::Defined(vec![range]);
+                request.segment_breaks = t::processing::DocumentSegmentBreaks::Defined(vec![range]);
             }
             let p = prepare(request);
             assert_eq!(cuts(&p), []);
             assert_eq!(
                 p.opportunity_views()
-                    .filter(|offer| offer.kind() == t::PreparedBreakKind::Forced)
+                    .filter(|offer| offer.kind() == t::prepared::PreparedBreakKind::Forced)
                     .map(|offer| offer.boundary().view().source_after().get())
                     .collect::<Vec<_>>(),
                 [at]
@@ -407,19 +430,19 @@ fn fallback_cannot_cross_nowrap_disconnected_or_real_hard_boundaries() {
 fn explicit_wbr_zwsp_and_in_flow_atomic_offers_keep_their_authentic_owners() {
     for direction in DIRECTIONS {
         let mut request = input("กก", style(Some("th")), direction);
-        request.controls.push(t::ParagraphControl {
+        request.controls.push(t::paragraph::ParagraphControl {
             at: 1,
-            kind: t::ParagraphControlKind::Wbr {
+            kind: t::paragraph::ParagraphControlKind::Wbr {
                 style: Box::new(style(Some("th"))),
             },
         });
-        request.anchor_order.push(t::ParagraphAnchor {
-            item: t::ParagraphAnchorItem::Control(0),
-            affinity: t::Affinity::After,
+        request.anchor_order.push(t::paragraph::ParagraphAnchor {
+            item: t::paragraph::ParagraphAnchorItem::Control(0),
+            affinity: t::layout::Affinity::After,
         });
         let p = prepare(request);
         let control = p.control_views().next().unwrap().handle();
-        let offset = p.participants().position(|part| matches!(part, t::PreparedParticipant::Control(ref actual) if *actual == control)).unwrap();
+        let offset = p.participants().position(|part| matches!(part, t::prepared::PreparedParticipant::Control(ref actual) if *actual == control)).unwrap();
         let after = p
             .boundary_views()
             .find(|boundary| boundary.participant_offset() == offset + 1)
@@ -435,35 +458,39 @@ fn explicit_wbr_zwsp_and_in_flow_atomic_offers_keep_their_authentic_owners() {
             cuts(&prepare(input("ก\u{200b}ก", style(Some("th")), direction))),
             [2]
         );
-        for ancestor in [t::Wrap::Word, t::Wrap::None] {
+        for ancestor in [t::style::Wrap::Word, t::style::Wrap::None] {
             let mut block = style(Some("th"));
             block.wrap = ancestor;
             let mut request = input("กก", block, direction);
-            request.source.span(t::Range::new(0, 2), style(Some("th")));
-            request.source.inline_box(t::InlineBox::new(
-                t::Id::from_u64(65402),
-                t::InlineBoxKind::InFlow,
+            request
+                .source
+                .span(t::source::Range::new(0, 2), style(Some("th")));
+            request.source.inline_box(t::source::InlineBox::new(
+                t::source::Id::from_u64(65402),
+                t::source::InlineBoxKind::InFlow,
                 1,
-                t::Size::new(10.0, 10.0),
+                t::geometry::Size::new(10.0, 10.0),
             ));
-            request.anchor_order.push(t::ParagraphAnchor {
-                item: t::ParagraphAnchorItem::Atomic(0),
-                affinity: t::Affinity::After,
+            request.anchor_order.push(t::paragraph::ParagraphAnchor {
+                item: t::paragraph::ParagraphAnchorItem::Atomic(0),
+                affinity: t::layout::Affinity::After,
             });
             for definition in [
-                t::ParagraphBoundaryDefinition::AtomicBefore(0),
-                t::ParagraphBoundaryDefinition::AtomicAfter(0),
+                t::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                t::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
             ] {
-                request.boundary_policies.push(t::ParagraphBoundaryPolicy {
-                    definition,
-                    preceding_wrap: t::Wrap::Word,
-                    following_wrap: t::Wrap::Word,
-                    ancestor_wrap: ancestor,
-                });
+                request
+                    .boundary_policies
+                    .push(t::paragraph::ParagraphBoundaryPolicy {
+                        definition,
+                        preceding_wrap: t::style::Wrap::Word,
+                        following_wrap: t::style::Wrap::Word,
+                        ancestor_wrap: ancestor,
+                    });
             }
             let p = prepare(request);
             let atomic = p.atomic_views().next().unwrap().handle();
-            let index = p.participants().position(|part| matches!(part, t::PreparedParticipant::Atomic(ref actual) if *actual == atomic)).unwrap();
+            let index = p.participants().position(|part| matches!(part, t::prepared::PreparedParticipant::Atomic(ref actual) if *actual == atomic)).unwrap();
             let issued = allowed(&p)
                 .iter()
                 .map(|offer| offer.view().boundary())
@@ -476,7 +503,7 @@ fn explicit_wbr_zwsp_and_in_flow_atomic_offers_keep_their_authentic_owners() {
                     .handle();
                 assert_eq!(
                     issued.contains(&actual),
-                    ancestor == t::Wrap::Word,
+                    ancestor == t::style::Wrap::Word,
                     "only atomic compatibility plus its real NCA gate supplies this exact cut"
                 );
             }
@@ -489,19 +516,19 @@ fn transparent_out_of_flow_occurrence_does_not_terminate_fallback_context() {
     let mut missing = Vec::new();
     for direction in DIRECTIONS {
         let mut request = input("กก", style(Some("th")), direction);
-        request.source.inline_box(t::InlineBox::new(
-            t::Id::from_u64(65403),
-            t::InlineBoxKind::OutOfFlow,
+        request.source.inline_box(t::source::InlineBox::new(
+            t::source::Id::from_u64(65403),
+            t::source::InlineBoxKind::OutOfFlow,
             1,
-            t::Size::new(10.0, 10.0),
+            t::geometry::Size::new(10.0, 10.0),
         ));
-        request.anchor_order.push(t::ParagraphAnchor {
-            item: t::ParagraphAnchorItem::Atomic(0),
-            affinity: t::Affinity::After,
+        request.anchor_order.push(t::paragraph::ParagraphAnchor {
+            item: t::paragraph::ParagraphAnchorItem::Atomic(0),
+            affinity: t::layout::Affinity::After,
         });
         let p = prepare(request);
         let atomic = p.atomic_views().next().unwrap().handle();
-        let index = p.participants().position(|part| matches!(part, t::PreparedParticipant::Atomic(ref actual) if *actual == atomic)).unwrap();
+        let index = p.participants().position(|part| matches!(part, t::prepared::PreparedParticipant::Atomic(ref actual) if *actual == atomic)).unwrap();
         let offers = allowed(&p);
         if offers.is_empty() {
             missing.push(direction);
@@ -536,17 +563,17 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
         let start = p.boundary_views().next().unwrap().handle();
         let end = p
             .opportunity_views()
-            .find(|offer| offer.kind() == t::PreparedBreakKind::ParagraphEnd)
+            .find(|offer| offer.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
             .unwrap()
             .handle();
         let line = p
-            .select(t::LineSelectionRequest {
+            .select(t::selection::LineSelectionRequest {
                 inline_boxes: None,
                 segment: p.source_segments().next().unwrap(),
                 start,
                 end: end.view().boundary(),
                 participants: p.participants().collect(),
-                termination: t::PreparedTermination::Ordinary(end),
+                termination: t::selection::PreparedTermination::Ordinary(end),
                 alternative: None,
                 incoming: None,
                 atomics: vec![],
@@ -554,56 +581,61 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
                 boundary_context: vec![],
                 line_box_struts: Vec::new(),
                 line_strut: None,
-                context: t::LineContext {
-                    alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-                    formatted_line: surgeist_text::FormattedLineContext::default(),
+                context: t::selection::LineContext {
+                    alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+                    formatted_line: surgeist_text::selection::FormattedLineContext::default(),
                     base_direction: direction,
                     line_box_direction: match direction {
-                        surgeist_text::ParagraphBaseDirection::LeftToRight => {
-                            surgeist_text::LineBoxDirection::LeftToRight
+                        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight => {
+                            surgeist_text::selection::LineBoxDirection::LeftToRight
                         }
-                        surgeist_text::ParagraphBaseDirection::RightToLeft => {
-                            surgeist_text::LineBoxDirection::RightToLeft
+                        surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft => {
+                            surgeist_text::selection::LineBoxDirection::RightToLeft
                         }
                     },
-                    orientation: t::LineOrientation::Horizontal,
-                    start: t::LineStart::Paragraph,
-                    end: t::LineEnd::Paragraph,
+                    orientation: t::selection::LineOrientation::Horizontal,
+                    start: t::selection::LineStart::Paragraph,
+                    end: t::selection::LineEnd::Paragraph,
                     available_inline: None,
                     indent: 0.0,
-                    alignment: t::Alignment::Start,
-                    tabs: t::TabContext::NoTabs,
-                    spacing: t::SpacingPolicy::None,
+                    alignment: t::options::Alignment::Start,
+                    tabs: t::tabs::TabContext::NoTabs,
+                    spacing: t::spacing::SpacingPolicy::None,
                 },
             })
             .unwrap()
-            .finalize(surgeist_text::LineAllocations {
-                spacing: t::SpacingAllocations::None,
-                scopes: surgeist_text::ScopeAllocations::None,
+            .finalize(surgeist_text::scope_alignment::LineAllocations {
+                spacing: t::spacing::SpacingAllocations::None,
+                scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
             })
             .unwrap();
-        let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
+        let layout = t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
             prepared: p,
-            coverage: t::PlacementCoverage::WholeParagraph,
-            entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-                line,
-                anchor: t::LineAnchor {
-                    inline_origin: 0.0,
-                    baseline: 0.0,
+            coverage: t::placement::PlacementCoverage::WholeParagraph,
+            entries: vec![t::placement::PlacementEntry::Formatted(
+                t::placement::LinePlacement {
+                    line,
+                    anchor: t::placement::LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: 0.0,
+                    },
+                    orientation: t::selection::LineOrientation::Horizontal,
+                    atomics: vec![],
                 },
-                orientation: t::LineOrientation::Horizontal,
-                atomics: vec![],
-            })],
+            )],
         })
         .unwrap();
         assert_eq!(
             layout.source().text().code_units(),
             &[0x0e01, 0x0e01, 0x0e01]
         );
-        for affinity in [t::Affinity::Before, t::Affinity::After] {
+        for affinity in [t::layout::Affinity::Before, t::layout::Affinity::After] {
             assert_eq!(
                 layout
-                    .move_cursor(t::Cursor::new(0, affinity), t::Movement::NextWord)
+                    .move_cursor(
+                        t::layout::Cursor::new(0, affinity),
+                        t::layout::Movement::NextWord
+                    )
                     .unwrap()
                     .index(),
                 3,
@@ -611,7 +643,10 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
             );
             assert_eq!(
                 layout
-                    .move_cursor(t::Cursor::new(3, affinity), t::Movement::PreviousWord)
+                    .move_cursor(
+                        t::layout::Cursor::new(3, affinity),
+                        t::layout::Movement::PreviousWord
+                    )
                     .unwrap()
                     .index(),
                 0,
@@ -648,23 +683,23 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
         .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
         .unwrap();
     for (value, locale, word) in [
-        ("กก", "th", t::WordBreak::Normal),
-        ("ກກ", "lo", t::WordBreak::Normal),
-        ("กก", "th", t::WordBreak::KeepAll),
-        ("ກກ", "lo", t::WordBreak::KeepAll),
+        ("กก", "th", t::style::WordBreak::Normal),
+        ("ກກ", "lo", t::style::WordBreak::Normal),
+        ("กก", "th", t::style::WordBreak::KeepAll),
+        ("ກກ", "lo", t::style::WordBreak::KeepAll),
     ] {
-        let source = t::Source::identified(value, t::Id::from_u64(65404), 23);
+        let source = t::source::Source::identified(value, t::source::Id::from_u64(65404), 23);
         let mut base = style(Some(locale));
         base.word_break = word;
-        assert_eq!(base.overflow_wrap, t::OverflowWrap::Normal);
+        assert_eq!(base.overflow_wrap, t::style::OverflowWrap::Normal);
         let layout = system
             .layout(
                 source.clone(),
                 base,
-                t::Options {
+                t::options::Options {
                     width: Some(10.0),
                     quantize: false,
-                    ..t::Options::default()
+                    ..t::options::Options::default()
                 },
             )
             .unwrap();
@@ -675,7 +710,7 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
                 .iter()
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
-            [t::Range::new(0, 1), t::Range::new(1, 2)],
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)],
             "ordinary missing-lexical fallback is consumed under OverflowNormal: {locale} {word:?}"
         );
         let mut glyphs = Vec::new();
@@ -689,13 +724,16 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
         assert_eq!(
             glyphs,
             [
-                (t::Range::new(0, 1), 0, 10.0),
-                (t::Range::new(1, 2), 0, 10.0)
+                (t::source::Range::new(0, 1), 0, 10.0),
+                (t::source::Range::new(1, 2), 0, 10.0)
             ]
         );
         assert_eq!(
             layout
-                .move_cursor(t::Cursor::new(0, t::Affinity::After), t::Movement::NextWord)
+                .move_cursor(
+                    t::layout::Cursor::new(0, t::layout::Affinity::After),
+                    t::layout::Movement::NextWord
+                )
                 .unwrap()
                 .index(),
             2,
@@ -706,10 +744,11 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
     // ordinary fallback. The enclosing paragraph remains OverflowWrap::Normal;
     // only the last Thai unit independently authorizes raw emergency cuts.
     // The middle Thai+ZWJ TCU has no ordinary cut at its protected trailing edge.
-    let mut source = t::Source::identified("กก\u{200d}ก", t::Id::from_u64(65405), 29);
+    let mut source =
+        t::source::Source::identified("กก\u{200d}ก", t::source::Id::from_u64(65405), 29);
     let mut emergency_tail = style(Some("th"));
-    emergency_tail.overflow_wrap = t::OverflowWrap::Anywhere;
-    source.span(t::Range::new(3, 4), emergency_tail);
+    emergency_tail.overflow_wrap = t::style::OverflowWrap::Anywhere;
+    source.span(t::source::Range::new(3, 4), emergency_tail);
     let mut native = input("กก\u{200d}ก", style(Some("th")), DIRECTIONS[0]);
     native.source = source.clone();
     native.origins[0].source = source.clone();
@@ -717,9 +756,9 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
     assert_eq!(
         qualified.analyzed_source().graphemes().collect::<Vec<_>>(),
         [
-            t::Range::new(0, 1),
-            t::Range::new(1, 3),
-            t::Range::new(3, 4)
+            t::source::Range::new(0, 1),
+            t::source::Range::new(1, 3),
+            t::source::Range::new(3, 4)
         ]
     );
     assert_eq!(
@@ -727,14 +766,14 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
         [1],
         "the complete Thai+ZWJ TCU leaves only the lexical fallback as ordinary permission"
     );
-    let raw_analysis = t::AnalyzedSource::new(
+    let raw_analysis = t::analyzed::AnalyzedSource::new(
         source.clone(),
         style(Some("th")),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let raw = system
-        .prepare(&raw_analysis, t::PreparationOptions::default())
+        .prepare(&raw_analysis, t::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(
         cuts(&raw),
@@ -745,10 +784,10 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
         .layout(
             source.clone(),
             style(Some("th")),
-            t::Options {
+            t::options::Options {
                 width: Some(20.0),
                 quantize: false,
-                ..t::Options::default()
+                ..t::options::Options::default()
             },
         )
         .unwrap();
@@ -759,7 +798,7 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
             .iter()
             .map(|line| line.range())
             .collect::<Vec<_>>(),
-        [t::Range::new(0, 1), t::Range::new(1, 4)],
+        [t::source::Range::new(0, 1), t::source::Range::new(1, 4)],
         "ordinary fallback at1 outranks the later fitting raw emergency cut at3"
     );
     let mut positive_advances = Vec::new();
@@ -795,9 +834,9 @@ fn uniform_sa_run_end_cannot_offer_a_break_immediately_before_word_joiner() {
         assert_eq!(
             p.analyzed_source().graphemes().collect::<Vec<_>>(),
             [
-                t::Range::new(0, 1),
-                t::Range::new(1, 2),
-                t::Range::new(2, 3)
+                t::source::Range::new(0, 1),
+                t::source::Range::new(1, 2),
+                t::source::Range::new(2, 3)
             ]
         );
         for offer in allowed(&p) {
@@ -806,9 +845,12 @@ fn uniform_sa_run_end_cannot_offer_a_break_immediately_before_word_joiner() {
             let participants = p.participants().collect::<Vec<_>>();
             assert!(matches!(
                 participants[at - 1],
-                t::PreparedParticipant::Text(_)
+                t::prepared::PreparedParticipant::Text(_)
             ));
-            assert!(matches!(participants[at], t::PreparedParticipant::Text(_)));
+            assert!(matches!(
+                participants[at],
+                t::prepared::PreparedParticipant::Text(_)
+            ));
         }
         observed.push((direction, cuts(&p)));
     }
@@ -827,8 +869,8 @@ fn before_wj_prohibition_does_not_depend_on_a_latin_style_or_overflow_seam() {
             let mut request = input("กก\u{2060}AA", style(Some("th")), direction);
             if latin_span {
                 let mut tail = style(Some("en"));
-                tail.overflow_wrap = t::OverflowWrap::Anywhere;
-                request.source.span(t::Range::new(3, 5), tail);
+                tail.overflow_wrap = t::style::OverflowWrap::Anywhere;
+                request.source.span(t::source::Range::new(3, 5), tail);
             }
             let p = prepare(request);
             if cuts(&p) != [1] {
@@ -852,9 +894,9 @@ fn normal_keep_all_and_break_all_preserve_wj_adjacency_across_strictnesses() {
                 Class::WordJoiner
             );
             for word in [
-                t::WordBreak::Normal,
-                t::WordBreak::KeepAll,
-                t::WordBreak::BreakAll,
+                t::style::WordBreak::Normal,
+                t::style::WordBreak::KeepAll,
+                t::style::WordBreak::BreakAll,
             ] {
                 for strictness in STRICTNESSES {
                     for trailing in ["", "ก"] {
@@ -867,7 +909,7 @@ fn normal_keep_all_and_break_all_preserve_wj_adjacency_across_strictnesses() {
                         assert_eq!(
                             p.analyzed_source().graphemes().collect::<Vec<_>>(),
                             (0..end)
-                                .map(|at| t::Range::new(at, at + 1))
+                                .map(|at| t::source::Range::new(at, at + 1))
                                 .collect::<Vec<_>>()
                         );
                         if cuts(&p) != [1] {
@@ -922,13 +964,13 @@ fn deliberate_line_break_anywhere_overrides_wj_only_at_whole_typographic_units()
         for (value, expected) in [("กก\u{2060}ก", vec![1, 2, 3]), ("ก่\u{2060}ก", vec![2, 3])]
         {
             for word in [
-                t::WordBreak::Normal,
-                t::WordBreak::KeepAll,
-                t::WordBreak::BreakAll,
+                t::style::WordBreak::Normal,
+                t::style::WordBreak::KeepAll,
+                t::style::WordBreak::BreakAll,
             ] {
                 let mut base = style(Some("th"));
                 base.word_break = word;
-                base.line_break = t::LineBreak::Anywhere;
+                base.line_break = t::style::LineBreak::Anywhere;
                 let p = prepare(input(value, base, direction));
                 assert_eq!(
                     cuts(&p),
@@ -967,7 +1009,7 @@ fn sa_run_end_cannot_offer_a_break_before_a_whole_glue_unit() {
                 assert_eq!(
                     p.analyzed_source().graphemes().collect::<Vec<_>>(),
                     (0..end)
-                        .map(|at| t::Range::new(at, at + 1))
+                        .map(|at| t::source::Range::new(at, at + 1))
                         .collect::<Vec<_>>(),
                     "GL is a whole unit, not an interior combining-mark seam"
                 );
@@ -1012,10 +1054,10 @@ fn lb12a_space_break_after_and_hyphen_exceptions_keep_before_gl_permission() {
                 assert_eq!(
                     p.analyzed_source().graphemes().collect::<Vec<_>>(),
                     [
-                        t::Range::new(0, 1),
-                        t::Range::new(1, 2),
-                        t::Range::new(2, 3),
-                        t::Range::new(3, 4)
+                        t::source::Range::new(0, 1),
+                        t::source::Range::new(1, 2),
+                        t::source::Range::new(2, 3),
+                        t::source::Range::new(3, 4)
                     ]
                 );
                 assert!(
@@ -1053,10 +1095,10 @@ fn sa_run_end_preserves_hard_precedence_and_does_not_break_before_sp_or_zwsp() {
             assert_eq!(
                 p.analyzed_source().graphemes().collect::<Vec<_>>(),
                 [
-                    t::Range::new(0, 1),
-                    t::Range::new(1, 2),
-                    t::Range::new(2, 3),
-                    t::Range::new(3, 4)
+                    t::source::Range::new(0, 1),
+                    t::source::Range::new(1, 2),
+                    t::source::Range::new(2, 3),
+                    t::source::Range::new(3, 4)
                 ]
             );
             if cuts(&p) != [1, 3] {
@@ -1076,7 +1118,7 @@ fn sa_run_end_preserves_hard_precedence_and_does_not_break_before_sp_or_zwsp() {
         );
         assert_eq!(
             hard.opportunity_views()
-                .filter(|offer| offer.kind() == t::PreparedBreakKind::Forced)
+                .filter(|offer| offer.kind() == t::prepared::PreparedBreakKind::Forced)
                 .map(|offer| offer.boundary().view().source_after().get())
                 .collect::<Vec<_>>(),
             [3]
@@ -1096,10 +1138,10 @@ fn ordinary_sa_context_has_fallback_without_a_fabricated_latin_run_end() {
     let mut violations = Vec::new();
     for direction in DIRECTIONS {
         for (value, locale, word) in [
-            ("กกAA", "th", t::WordBreak::Normal),
-            ("กกAA", "th", t::WordBreak::KeepAll),
-            ("กกAA", "th", t::WordBreak::BreakWord),
-            ("ກກAA", "lo", t::WordBreak::Normal),
+            ("กกAA", "th", t::style::WordBreak::Normal),
+            ("กกAA", "th", t::style::WordBreak::KeepAll),
+            ("กกAA", "th", t::style::WordBreak::BreakWord),
+            ("ກກAA", "lo", t::style::WordBreak::Normal),
         ] {
             let mut base = style(Some(locale));
             base.word_break = word;
@@ -1107,13 +1149,13 @@ fn ordinary_sa_context_has_fallback_without_a_fabricated_latin_run_end() {
             assert_eq!(
                 p.analyzed_source().graphemes().collect::<Vec<_>>(),
                 (0..4)
-                    .map(|at| t::Range::new(at, at + 1))
+                    .map(|at| t::source::Range::new(at, at + 1))
                     .collect::<Vec<_>>()
             );
             assert_eq!(p.analyzed_source().style().word_break, word);
             assert_eq!(
                 p.analyzed_source().style().overflow_wrap,
-                t::OverflowWrap::Normal
+                t::style::OverflowWrap::Normal
             );
             if cuts(&p) != [1] {
                 violations.push((direction, value, word, cuts(&p)));
@@ -1121,7 +1163,7 @@ fn ordinary_sa_context_has_fallback_without_a_fabricated_latin_run_end() {
         }
         for (value, locale) in [("กกAA", "th"), ("ກກAA", "lo")] {
             let mut manual = style(Some(locale));
-            manual.word_break = t::WordBreak::Manual;
+            manual.word_break = t::style::WordBreak::Manual;
             assert_eq!(
                 cuts(&prepare(input(value, manual, direction))),
                 [],
@@ -1169,7 +1211,7 @@ fn ordinary_sa_resolution_retains_full_letter_number_and_punctuation_context() {
                 .scan(0, |at, ch| {
                     let start = *at;
                     *at += ch.len_utf16();
-                    Some(t::Range::new(start, *at))
+                    Some(t::source::Range::new(start, *at))
                 })
                 .collect::<Vec<_>>();
             let p = prepare(input(value, style(Some("th")), direction));
@@ -1221,15 +1263,15 @@ fn ordinary_sa_marks_inherit_glue_before_a_loose_cjk_opportunity() {
         assert_eq!(CodePointMapData::<Class>::new().get32(cp), class);
         assert_eq!(CodePointMapData::<Gcb>::new().get32(cp), gcb);
         for direction in DIRECTIONS {
-            for word in [t::WordBreak::Normal, t::WordBreak::Manual] {
+            for word in [t::style::WordBreak::Normal, t::style::WordBreak::Manual] {
                 let mut base = style(Some("ja"));
                 base.word_break = word;
-                base.line_break = t::LineBreak::Loose;
+                base.line_break = t::style::LineBreak::Loose;
                 let value = format!("\u{a0}{mark}\u{301c}");
                 let p = prepare(input(&value, base, direction));
                 assert_eq!(
                     p.analyzed_source().graphemes().collect::<Vec<_>>(),
-                    [t::Range::new(0, 2), t::Range::new(2, 3)]
+                    [t::source::Range::new(0, 2), t::source::Range::new(2, 3)]
                 );
                 if !cuts(&p).is_empty() {
                     violations.push((mark, direction, word, cuts(&p)));
@@ -1247,12 +1289,12 @@ fn ordinary_sa_marks_inherit_glue_before_a_loose_cjk_opportunity() {
 fn resolved_sa_context_preserves_required_loose_and_deliberate_anywhere_owners() {
     for direction in DIRECTIONS {
         for (word, expected) in [
-            (t::WordBreak::Normal, vec![1, 2]),
-            (t::WordBreak::Manual, vec![2]),
+            (t::style::WordBreak::Normal, vec![1, 2]),
+            (t::style::WordBreak::Manual, vec![2]),
         ] {
             let mut base = style(Some("ja"));
             base.word_break = word;
-            base.line_break = t::LineBreak::Loose;
+            base.line_break = t::style::LineBreak::Loose;
             assert_eq!(
                 cuts(&prepare(input("กก\u{301c}", base, direction))),
                 expected,
@@ -1260,7 +1302,7 @@ fn resolved_sa_context_preserves_required_loose_and_deliberate_anywhere_owners()
             );
         }
         let mut base = style(Some("th"));
-        base.line_break = t::LineBreak::Anywhere;
+        base.line_break = t::style::LineBreak::Anywhere;
         assert_eq!(
             cuts(&prepare(input("กกAA", base, direction))),
             [1, 2, 3],

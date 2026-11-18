@@ -18,7 +18,7 @@ fn named_receiver_chain_with_wrap_style<S: LayoutScalar>(
     let atomic = |alignment, following_break| NodeInputOf {
         display: Display::InlineBlock,
         atomic_inline_participation: Some(AtomicInlineParticipation::new(
-            surgeist_text::BidiLevel::try_new(0).unwrap(),
+            surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
             following_break,
         )),
         inline_baseline_context: named,

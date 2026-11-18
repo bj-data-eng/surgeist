@@ -1,10 +1,10 @@
 //! Empty box identity and source custody across wrapping.
 use super::*;
 
-fn with_empty_sibling() -> t::PreparedText {
+fn with_empty_sibling() -> t::prepared::PreparedText {
     prepare_capture(
-        t::Source::identified("abcABC", t::Id::from_u64(1_646_101), 1),
-        block(style(t::WhiteSpace::Preserve), false, false),
+        t::source::Source::identified("abcABC", t::source::Id::from_u64(1_646_101), 1),
+        block(style(t::style::WhiteSpace::Preserve), false, false),
         &[(0, 2), (2, 3), (3, 4), (4, 6)],
         &[
             (K::InlineBoundaryStart, 2),
@@ -14,7 +14,7 @@ fn with_empty_sibling() -> t::PreparedText {
             (K::InlineBoundaryEnd, 4),
             (
                 K::OptionalBreak {
-                    wrap: t::Wrap::Word,
+                    wrap: t::style::Wrap::Word,
                 },
                 4,
             ),
@@ -46,28 +46,28 @@ fn with_empty_sibling() -> t::PreparedText {
 }
 
 fn zero_line(
-    p: &t::PreparedText,
-    start: t::PreparedBoundary,
-    end: t::PreparedOpportunity,
+    p: &t::prepared::PreparedText,
+    start: t::prepared::PreparedBoundary,
+    end: t::prepared::PreparedOpportunity,
     width: f64,
-    family: Option<&t::PreparedInlineBoxFamily>,
-) -> t::FinalizedLine {
+    family: Option<&t::inline_box::PreparedInlineBoxFamily>,
+) -> t::finalized::FinalizedLine {
     let mut input = request(p, start, end, &[], width);
-    input.context.spacing = t::SpacingPolicy::None;
+    input.context.spacing = t::spacing::SpacingPolicy::None;
     input.inline_boxes = family.cloned();
-    let zero_boundary = |control: &t::PreparedControl| {
+    let zero_boundary = |control: &t::prepared::PreparedControl| {
         let scope = control.captured_control().unwrap().scope();
         let parent = scope.parent().unwrap();
         let context = p
             .inline_box_edge_context(
-                t::InlineBoxSource::captured(scope),
-                t::InlineBoxSource::captured(parent),
-                t::LineEdgeSide::Start,
+                t::inline_box::InlineBoxSource::captured(scope),
+                t::inline_box::InlineBoxSource::captured(parent),
+                t::finalized::LineEdgeSide::Start,
             )
             .unwrap();
-        t::InlineBoundaryAllocation::box_edge(
+        t::allocation::InlineBoundaryAllocation::box_edge(
             context,
-            t::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap(),
+            t::inline_box::InlineBoxEdgeComponents::from_f64(0.0, 0.0, 0.0).unwrap(),
         )
     };
     for row in &mut input.controls {
@@ -82,7 +82,7 @@ fn zero_line(
         let boundary = zero_boundary(&control);
         input
             .boundary_context
-            .push(t::InlineBoundaryContextAllocation {
+            .push(t::allocation::InlineBoundaryContextAllocation {
                 occurrence: control,
                 boundary,
             });
@@ -91,9 +91,9 @@ fn zero_line(
 }
 
 fn one_owned_piece(
-    line: &t::FinalizedLine,
-    owner: &t::InlineBoxSource,
-) -> t::FinalizedInlineBoxPiece {
+    line: &t::finalized::FinalizedLine,
+    owner: &t::inline_box::InlineBoxSource,
+) -> t::inline_box::FinalizedInlineBoxPiece {
     let mut pieces = line
         .inline_box_pieces()
         .unwrap()
@@ -110,7 +110,7 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
     let p = with_empty_sibling();
     assert_eq!(
         p.analyzed_source().source().text(),
-        &t::Text::from("abcABC")
+        &t::source::Text::from("abcABC")
     );
     assert_eq!(p.source_segments().len(), 1);
     assert_eq!(
@@ -118,10 +118,10 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
             .map(|v| v.aggregate_range())
             .collect::<Vec<_>>(),
         [
-            t::Range::new(0, 2),
-            t::Range::new(2, 3),
-            t::Range::new(3, 4),
-            t::Range::new(4, 6),
+            t::source::Range::new(0, 2),
+            t::source::Range::new(2, 3),
+            t::source::Range::new(3, 4),
+            t::source::Range::new(4, 6),
         ]
     );
     let controls = p.control_views().map(|v| v.handle()).collect::<Vec<_>>();
@@ -129,7 +129,7 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
     let empty_start = controls[3].captured_control().unwrap();
     let empty_end = controls[4].captured_control().unwrap();
     let empty = empty_start.scope();
-    assert_eq!(empty.role(), t::ScopeRole::Inline);
+    assert_eq!(empty.role(), t::capture::ScopeRole::Inline);
     assert_eq!(empty.entry_control(), Some(empty_start.clone()));
     assert_eq!(empty.exit_control(), Some(empty_end.clone()));
     assert_eq!(empty_end.scope(), empty);
@@ -137,7 +137,7 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
     let domain = empty.parent().unwrap();
     assert_eq!(occupied.parent(), Some(domain.clone()));
     assert_ne!(empty, occupied);
-    assert_eq!(domain.role(), t::ScopeRole::Domain);
+    assert_eq!(domain.role(), t::capture::ScopeRole::Domain);
     assert_eq!(empty_start.source_position().get(), 4);
     assert_eq!(empty_end.source_position().get(), 4);
 
@@ -162,19 +162,19 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
     assert_eq!(
         optional.view().kind(),
         &K::OptionalBreak {
-            wrap: t::Wrap::Word
+            wrap: t::style::Wrap::Word
         }
     );
     let mut cuts = soft_at(&p, 4).into_iter().filter(|offer| {
         let count = offer.view().boundary().view().participant_offset();
         matches!(p.participants().take(count).last(),
-            Some(t::PreparedParticipant::Control(previous)) if previous == optional)
+            Some(t::prepared::PreparedParticipant::Control(previous)) if previous == optional)
     });
     let cut = cuts
         .next()
         .expect("actual allowed cut after this source OptionalBreak");
     assert!(cuts.next().is_none());
-    assert_eq!(cut.view().kind(), t::PreparedBreakKind::Allowed);
+    assert_eq!(cut.view().kind(), t::prepared::PreparedBreakKind::Allowed);
     let continuation = cut.view().boundary();
     let segment = p.source_segments().next().unwrap();
 
@@ -183,7 +183,7 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
     let authentic_zero_units = p
         .unit_views()
         .filter(|unit| {
-            unit.source_range() == t::Range::new(4, 4) && unit.processed_range().is_empty()
+            unit.source_range() == t::source::Range::new(4, 4) && unit.processed_range().is_empty()
         })
         .map(|unit| unit.handle())
         .collect::<Vec<_>>();
@@ -193,12 +193,12 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
     assert!(local.inline_box_pieces().is_none());
     assert_eq!(local.feedback().advance, 60.0);
     let expected_wide = [
-        (t::Range::new(0, 1), 67, 0.0),
-        (t::Range::new(1, 2), 68, 10.0),
-        (t::Range::new(2, 3), 69, 20.0),
-        (t::Range::new(5, 6), 37, 30.0),
-        (t::Range::new(4, 5), 36, 40.0),
-        (t::Range::new(3, 4), 35, 50.0),
+        (t::source::Range::new(0, 1), 67, 0.0),
+        (t::source::Range::new(1, 2), 68, 10.0),
+        (t::source::Range::new(2, 3), 69, 20.0),
+        (t::source::Range::new(5, 6), 37, 30.0),
+        (t::source::Range::new(4, 5), 36, 40.0),
+        (t::source::Range::new(3, 4), 35, 50.0),
     ];
     assert_eq!(packet(&local), expected_wide);
 
@@ -215,22 +215,22 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
     assert_eq!(
         packet(&first),
         [
-            (t::Range::new(0, 1), 67, 0.0),
-            (t::Range::new(1, 2), 68, 10.0),
-            (t::Range::new(2, 3), 69, 20.0),
-            (t::Range::new(3, 4), 35, 30.0),
+            (t::source::Range::new(0, 1), 67, 0.0),
+            (t::source::Range::new(1, 2), 68, 10.0),
+            (t::source::Range::new(2, 3), 69, 20.0),
+            (t::source::Range::new(3, 4), 35, 30.0),
         ]
     );
     assert_eq!(
         packet(&second),
         [
-            (t::Range::new(5, 6), 37, 0.0),
-            (t::Range::new(4, 5), 36, 10.0),
+            (t::source::Range::new(5, 6), 37, 0.0),
+            (t::source::Range::new(4, 5), 36, 10.0),
         ]
     );
 
-    let empty_owner = t::InlineBoxSource::captured(empty);
-    let root_owner = t::InlineBoxSource::captured(domain);
+    let empty_owner = t::inline_box::InlineBoxSource::captured(empty);
+    let root_owner = t::inline_box::InlineBoxSource::captured(domain);
     let wide_piece = one_owned_piece(&wide, &empty_owner);
     let first_piece = one_owned_piece(&first, &empty_owner);
     assert_eq!(
@@ -257,17 +257,17 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
         assert_eq!(piece.end_control(), Some(controls[4].clone()));
         assert!(
             piece.members().all(|member| match member.participant() {
-                Some(t::PreparedParticipant::Text(unit)) => {
+                Some(t::prepared::PreparedParticipant::Text(unit)) => {
                     // An already-issued zero marker is an incidence, not
                     // borrowed neighboring text or a newly manufactured scalar.
                     assert!(authentic_zero_units.contains(unit));
-                    assert_eq!(unit.view().source_range(), t::Range::new(4, 4));
+                    assert_eq!(unit.view().source_range(), t::source::Range::new(4, 4));
                     assert_eq!(unit.view().processed_range().len(), 0);
-                    assert_eq!(member.unit_source_range(), t::Range::new(4, 4));
+                    assert_eq!(member.unit_source_range(), t::source::Range::new(4, 4));
                     assert_eq!(member.presentation_range().len(), 0);
                     true
                 }
-                Some(t::PreparedParticipant::Atomic(_)) => false,
+                Some(t::prepared::PreparedParticipant::Atomic(_)) => false,
                 _ => true,
             }),
             "identity cannot borrow nonempty text or invent atomic content"

@@ -1,6 +1,6 @@
 use super::{Ancestry, AvoidClass, PreferenceFrontier, WrappingScopeError};
 use std::sync::Arc;
-use surgeist_text::CapturedScope;
+use surgeist_text::capture::CapturedScope;
 
 /// Noninherited wrapping behavior at one actual box edge.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -25,7 +25,7 @@ pub enum InlineBoxMetricContribution {
     /// box proof. When constructing a Text request, Layout issues the captured
     /// source owner from that proof and validates any explicit assertion;
     /// it does not infer an allocated frame or a font from this field.
-    Strut(surgeist_text::LineBoxStrut),
+    Strut(surgeist_text::allocation::LineBoxStrut),
 }
 
 /// Original normalized declarations, independent of effective propagation.

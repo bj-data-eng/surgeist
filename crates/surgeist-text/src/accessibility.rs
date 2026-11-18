@@ -1,3 +1,5 @@
+//! Optional AccessKit projection of a layout (feature `text-accessibility`).
+
 // Copyright 2025 the Parley Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Metadata and line-link projection adapted from Parley 0.9.0 layout/accessibility.rs.

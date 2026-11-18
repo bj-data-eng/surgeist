@@ -13,118 +13,125 @@ const X: f64 = 100.25;
 const Y: f64 = -20.5;
 const SHIFTS: [f64; 4] = [0.0, 3.0, 2.0, 0.0];
 
-fn reference(script: [u8; 4]) -> text::ScopeFontReference {
-    text::ScopeFontReference {
-        script: text::FontBaselineScript::from_iso15924(script).unwrap(),
-        axis: text::FontBaselineAxis::HorizontalY,
-        baseline: text::FontBaseline::Alphabetic,
+fn reference(script: [u8; 4]) -> text::scope_alignment::ScopeFontReference {
+    text::scope_alignment::ScopeFontReference {
+        script: text::font::FontBaselineScript::from_iso15924(script).unwrap(),
+        axis: text::font::FontBaselineAxis::HorizontalY,
+        baseline: text::font::FontBaseline::Alphabetic,
     }
 }
-fn authored(effects: bool) -> text::Style {
-    text::Style {
+fn authored(effects: bool) -> text::style::Style {
+    text::style::Style {
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
         underline: if effects {
-            text::Decoration::solid()
-                .with_offset(text::DecorationOffset::try_absolute(-2.0).unwrap())
-                .with_thickness(text::DecorationThickness::try_absolute(1.0).unwrap())
+            text::style::Decoration::solid()
+                .with_offset(text::style::DecorationOffset::try_absolute(-2.0).unwrap())
+                .with_thickness(text::style::DecorationThickness::try_absolute(1.0).unwrap())
         } else {
-            text::Decoration::none()
+            text::style::Decoration::none()
         },
         ..style()
     }
 }
-fn captured(effects: bool) -> Arc<text::ProcessedSource> {
-    use text::SourceProcessingEvent as E;
-    let mut source =
-        text::Source::identified("A\u{3a7}\u{3a7}B", text::Id::from_u64(1_578_711), 31);
+fn captured(effects: bool) -> Arc<text::processing::ProcessedSource> {
+    use text::capture::SourceProcessingEvent as E;
+    let mut source = text::source::Source::identified(
+        "A\u{3a7}\u{3a7}B",
+        text::source::Id::from_u64(1_578_711),
+        31,
+    );
     // Distinct real outside paint brushes make their independent scene packets
     // observable; the two black chi packets require different executed frames.
     source.span(
-        text::Range::new(0, 1),
-        text::Style {
-            brush: text::Brush::color(1.0, 0.0, 0.0, 1.0),
+        text::source::Range::new(0, 1),
+        text::style::Style {
+            brush: text::style::Brush::color(1.0, 0.0, 0.0, 1.0),
             ..authored(effects)
         },
     );
     source.span(
-        text::Range::new(3, 4),
-        text::Style {
-            brush: text::Brush::color(0.0, 0.0, 1.0, 1.0),
+        text::source::Range::new(3, 4),
+        text::style::Style {
+            brush: text::style::Brush::color(0.0, 0.0, 1.0, 1.0),
             ..authored(effects)
         },
     );
     let origin = |origin| E::Origin {
         origin,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
-            scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
+            scope_alignment_limits: Some(text::scope_alignment::ScopeAlignmentLimits::new(
                 4096, 4096, 1_000_000, 16_777_216,
             )),
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             computed_line_boundaries: vec![],
             origins: (0..4)
-                .map(|i| text::ParagraphOrigin {
+                .map(|i| text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
-                    local: text::Range::new(i, i + 1),
-                    aggregate: text::Range::new(i, i + 1),
-                    kind: text::ParagraphOriginKind::Authored,
+                    local: text::source::Range::new(i, i + 1),
+                    aggregate: text::source::Range::new(i, i + 1),
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             connections: (0..3)
-                .map(|i| text::SourceProcessingConnection {
+                .map(|i| text::capture::SourceProcessingConnection {
                     before_origin: i,
                     after_origin: i + 1,
-                    kind: text::ParagraphConnectionKind::Continuous,
+                    kind: text::paragraph::ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
             boundary_policies: (0..3)
-                .map(|i| text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(i),
-                    preceding_wrap: text::Wrap::Word,
-                    following_wrap: text::Wrap::Word,
-                    ancestor_wrap: text::Wrap::Word,
+                .map(|i| text::paragraph::ParagraphBoundaryPolicy {
+                    definition: text::paragraph::ParagraphBoundaryDefinition::Connection(i),
+                    preceding_wrap: text::style::Wrap::Word,
+                    following_wrap: text::style::Wrap::Word,
+                    ancestor_wrap: text::style::Wrap::Word,
                 })
                 .collect(),
             controls: vec![],
             replacements: vec![],
             scopes: vec![
-                text::SourceProcessingScope::Block {
+                text::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
-                    topology: text::SourceProcessingTopology::Complete,
+                    topology: text::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: authored(effects),
-                    used_direction: text::ParagraphBaseDirection::LeftToRight,
+                    used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
                     font_reference: Some(reference(*b"Latn")),
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: Some(authored(effects)),
                     boundaries: None,
-                    alignment_boundary: Some(text::ScopeAlignmentBoundary::NonInitial),
+                    alignment_boundary: Some(
+                        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
+                    ),
                     font_reference: Some(reference(*b"Grek")),
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: Some(authored(effects)),
                     boundaries: None,
-                    alignment_boundary: Some(text::ScopeAlignmentBoundary::NonInitial),
+                    alignment_boundary: Some(
+                        text::scope_alignment::ScopeAlignmentBoundary::NonInitial,
+                    ),
                     font_reference: Some(reference(*b"Grek")),
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events: vec![
                 E::EnterScope(0),
@@ -148,7 +155,7 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
     )
 }
 
-fn native(orientation: text::LineOrientation, effects: bool) -> text::Layout {
+fn native(orientation: text::selection::LineOrientation, effects: bool) -> text::layout::Layout {
     let face = skrifa::FontRef::new(AHEM).unwrap();
     assert_eq!(face.head().unwrap().units_per_em(), 1000);
     let gm = face.glyph_metrics(Size::unscaled(), LocationRef::default());
@@ -166,17 +173,17 @@ fn native(orientation: text::LineOrientation, effects: bool) -> text::Layout {
     let outer = processed.captured_scope(1).unwrap();
     let inner = processed.captured_scope(2).unwrap();
     assert_eq!(inner.parent(), Some(outer.clone()));
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| text::WrappingPolicy {
+        .map(|r| text::analyzed::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: text::Wrap::Word,
+            ancestor_wrap: text::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
@@ -184,21 +191,21 @@ fn native(orientation: text::LineOrientation, effects: bool) -> text::Layout {
     let prepared = fonts
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(orientation),
+            text::prepared::PreparationOptions::default().with_orientation(orientation),
         )
         .unwrap();
     let terminal = prepared
         .opportunity_views()
-        .find(|o| o.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|o| o.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let selected = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: terminal.view().boundary(),
-            termination: text::PreparedTermination::Ordinary(terminal),
+            termination: text::selection::PreparedTermination::Ordinary(terminal),
             participants: prepared.participants().collect(),
             alternative: None,
             incoming: None,
@@ -207,19 +214,19 @@ fn native(orientation: text::LineOrientation, effects: bool) -> text::Layout {
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
                 orientation,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: text::Alignment::Left,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Left,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap();
@@ -236,17 +243,17 @@ fn native(orientation: text::LineOrientation, effects: bool) -> text::Layout {
                 scope.metrics().effective_instance().unwrap().face().bytes(),
                 AHEM
             );
-            text::ScopeAllocation {
+            text::scope_alignment::ScopeAllocation {
                 scope,
-                displacement: text::BaselineShift::try_new(displacement).unwrap(),
+                displacement: text::source::BaselineShift::try_new(displacement).unwrap(),
             }
         })
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
     let line = selected
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::Complete(scopes),
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::Complete(scopes),
         })
         .unwrap();
     assert_eq!(
@@ -260,37 +267,39 @@ fn native(orientation: text::LineOrientation, effects: bool) -> text::Layout {
     // The real preparation and all selected scope resources remain usable after
     // dropping the System; the Scene adapter has no font-query owner to borrow.
     drop(fonts);
-    text::Layout::from_finalized_lines(text::PlacementRequest {
+    text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared,
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            orientation,
-            atomics: vec![],
-            anchor: if orientation == text::LineOrientation::Horizontal {
-                text::LineAnchor {
-                    inline_origin: X,
-                    baseline: Y,
-                }
-            } else {
-                text::LineAnchor {
-                    inline_origin: Y,
-                    baseline: X,
-                }
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                orientation,
+                atomics: vec![],
+                anchor: if orientation == text::selection::LineOrientation::Horizontal {
+                    text::placement::LineAnchor {
+                        inline_origin: X,
+                        baseline: Y,
+                    }
+                } else {
+                    text::placement::LineAnchor {
+                        inline_origin: Y,
+                        baseline: X,
+                    }
+                },
             },
-        })],
+        )],
     })
     .unwrap()
 }
 
-fn origin(orientation: text::LineOrientation, i: usize) -> (f64, f64) {
+fn origin(orientation: text::selection::LineOrientation, i: usize) -> (f64, f64) {
     let u = i as f64 * 10.0;
     let shift = SHIFTS[i];
     match orientation {
-        text::LineOrientation::Horizontal => (X + u, Y - shift),
-        text::LineOrientation::SidewaysClockwise => (X + shift, Y + u),
-        text::LineOrientation::SidewaysCounterclockwise => (X - shift, Y - u),
-        text::LineOrientation::Vertical => unreachable!(),
+        text::selection::LineOrientation::Horizontal => (X + u, Y - shift),
+        text::selection::LineOrientation::SidewaysClockwise => (X + shift, Y + u),
+        text::selection::LineOrientation::SidewaysCounterclockwise => (X - shift, Y - u),
+        text::selection::LineOrientation::Vertical => unreachable!(),
     }
 }
 fn physical_ink(run: &PreparedGlyphRun, transform: Transform) -> kurbo::Rect {
@@ -302,9 +311,9 @@ fn physical_ink(run: &PreparedGlyphRun, transform: Transform) -> kurbo::Rect {
 #[test]
 fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_h_cw_and_ccw() {
     for orientation in [
-        text::LineOrientation::Horizontal,
-        text::LineOrientation::SidewaysClockwise,
-        text::LineOrientation::SidewaysCounterclockwise,
+        text::selection::LineOrientation::Horizontal,
+        text::selection::LineOrientation::SidewaysClockwise,
+        text::selection::LineOrientation::SidewaysCounterclockwise,
     ] {
         let input = native(orientation, true);
         assert_eq!(input.source().text().code_units(), [65, 0x3a7, 0x3a7, 66]);
@@ -335,16 +344,16 @@ fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_
             for (i, (run, transform)) in actual.into_iter().enumerate() {
                 let (gx, gy) = origin(orientation, i);
                 let basis = match orientation {
-                    text::LineOrientation::Horizontal => {
+                    text::selection::LineOrientation::Horizontal => {
                         [sx, 0.0, 0.0, sy, sx * gx + tx, sy * gy + ty]
                     }
-                    text::LineOrientation::SidewaysClockwise => {
+                    text::selection::LineOrientation::SidewaysClockwise => {
                         [0.0, sy, -sx, 0.0, sx * gx + tx, sy * gy + ty]
                     }
-                    text::LineOrientation::SidewaysCounterclockwise => {
+                    text::selection::LineOrientation::SidewaysCounterclockwise => {
                         [0.0, -sy, sx, 0.0, sx * gx + tx, sy * gy + ty]
                     }
-                    text::LineOrientation::Vertical => unreachable!(),
+                    text::selection::LineOrientation::Vertical => unreachable!(),
                 };
                 assert_eq!(transform.as_array(), basis);
                 assert_eq!(run.font().bytes(), AHEM);
@@ -367,14 +376,16 @@ fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_
                 // Independent corner geometry from pinned glyf bounds, never
                 // advance/line box substituted for the narrow chi's ink.
                 let (left, upper, right, lower) = match orientation {
-                    text::LineOrientation::Horizontal => (gx, gy + top, gx + 10.0, gy + bottom),
-                    text::LineOrientation::SidewaysClockwise => {
+                    text::selection::LineOrientation::Horizontal => {
+                        (gx, gy + top, gx + 10.0, gy + bottom)
+                    }
+                    text::selection::LineOrientation::SidewaysClockwise => {
                         (gx - bottom, gy, gx - top, gy + 10.0)
                     }
-                    text::LineOrientation::SidewaysCounterclockwise => {
+                    text::selection::LineOrientation::SidewaysCounterclockwise => {
                         (gx + top, gy - 10.0, gx + bottom, gy)
                     }
-                    text::LineOrientation::Vertical => unreachable!(),
+                    text::selection::LineOrientation::Vertical => unreachable!(),
                 };
                 assert_eq!(
                     physical_ink(run, transform),
@@ -421,16 +432,16 @@ fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_
             for (i, shape) in decorations.into_iter().enumerate() {
                 let (gx, gy) = origin(orientation, i);
                 let rect = match orientation {
-                    text::LineOrientation::Horizontal => {
+                    text::selection::LineOrientation::Horizontal => {
                         Rect::try_new(gx, gy + 2.0, 10.0, 1.0).unwrap()
                     }
-                    text::LineOrientation::SidewaysClockwise => {
+                    text::selection::LineOrientation::SidewaysClockwise => {
                         Rect::try_new(gx - 3.0, gy, 1.0, 10.0).unwrap()
                     }
-                    text::LineOrientation::SidewaysCounterclockwise => {
+                    text::selection::LineOrientation::SidewaysCounterclockwise => {
                         Rect::try_new(gx + 2.0, gy - 10.0, 1.0, 10.0).unwrap()
                     }
-                    text::LineOrientation::Vertical => unreachable!(),
+                    text::selection::LineOrientation::Vertical => unreachable!(),
                 };
                 assert_eq!(*shape, crate::shape::Shape::rect(rect));
             }
@@ -442,7 +453,10 @@ fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_
 fn scoped_scene_numeric_and_budget_failures_publish_no_prefix_and_keep_prior_preparation() {
     // Decoration bounds are qualified during preflight, before glyph ink.
     // Author this input without effects to reach glyph placement.
-    let input = native(text::LineOrientation::SidewaysCounterclockwise, false);
+    let input = native(
+        text::selection::LineOrientation::SidewaysCounterclockwise,
+        false,
+    );
     assert_eq!(input.decoration_views().count(), 0);
     let accepted = prepare_text_layout(
         &input,

@@ -185,23 +185,23 @@ fn block<S: l::LayoutScalar>(
         ..l::NodeInputOf::default()
     }
 }
-fn base(direction: l::Direction) -> t::ParagraphBaseDirection {
+fn base(direction: l::Direction) -> t::paragraph::ParagraphBaseDirection {
     if direction == l::Direction::Ltr {
-        t::ParagraphBaseDirection::LeftToRight
+        t::paragraph::ParagraphBaseDirection::LeftToRight
     } else {
-        t::ParagraphBaseDirection::RightToLeft
+        t::paragraph::ParagraphBaseDirection::RightToLeft
     }
 }
-fn style() -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style() -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Collapse,
-        wrap: t::Wrap::Word,
-        word_break: t::WordBreak::Normal,
-        hyphens: t::Hyphens::None,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Collapse,
+        wrap: t::style::Wrap::Word,
+        word_break: t::style::WordBreak::Normal,
+        hyphens: t::hyphenation::Hyphens::None,
+        ..t::style::Style::default()
     }
 }
 #[derive(Clone, Copy)]
@@ -214,8 +214,8 @@ enum Part<'a> {
 }
 
 struct Paragraph {
-    capture: Arc<t::ProcessedSource>,
-    prepared: t::PreparedText,
+    capture: Arc<t::processing::ProcessedSource>,
+    prepared: t::prepared::PreparedText,
     binding: l::TextParagraphBinding<u32>,
 }
 impl Paragraph {
@@ -234,14 +234,15 @@ impl Paragraph {
         host: &mut Host<S>,
         container: u32,
         parts: &[Part<'_>],
-        style: t::Style,
-        body: t::ParagraphBaseDirection,
+        style: t::style::Style,
+        body: t::paragraph::ParagraphBaseDirection,
         css_tabs: bool,
     ) -> Self {
         let options = if css_tabs {
-            t::PreparationOptions::try_new(1.0, t::TabPreparation::CssStops).unwrap()
+            t::prepared::PreparationOptions::try_new(1.0, t::tabs::TabPreparation::CssStops)
+                .unwrap()
         } else {
-            t::PreparationOptions::default()
+            t::prepared::PreparationOptions::default()
         };
         Self::with_preparation(host, container, parts, style, body, options)
     }
@@ -249,11 +250,11 @@ impl Paragraph {
         host: &mut Host<S>,
         container: u32,
         parts: &[Part<'_>],
-        style: t::Style,
-        body: t::ParagraphBaseDirection,
-        options: t::PreparationOptions,
+        style: t::style::Style,
+        body: t::paragraph::ParagraphBaseDirection,
+        options: t::prepared::PreparationOptions,
     ) -> Self {
-        use t::SourceProcessingEvent as E;
+        use t::capture::SourceProcessingEvent as E;
         let direction = host.inputs[container as usize].as_box().unwrap().direction;
         let writing_mode = host.inputs[container as usize]
             .as_box()
@@ -269,8 +270,11 @@ impl Paragraph {
                 }
             })
             .collect::<String>();
-        let mut source = t::Source::new(raw.clone());
-        source.span(t::Range::new(0, raw.encode_utf16().count()), style.clone());
+        let mut source = t::source::Source::new(raw.clone());
+        source.span(
+            t::source::Range::new(0, raw.encode_utf16().count()),
+            style.clone(),
+        );
         let mut origins = Vec::new();
         let mut controls = Vec::new();
         let mut connections = Vec::new();
@@ -289,33 +293,35 @@ impl Paragraph {
             let node = u32::try_from(host.inputs.len() + nodes.len()).unwrap();
             let input = match *part {
                 Part::Text(value) => {
-                    let range = t::Range::new(at, at + value.encode_utf16().count());
+                    let range = t::source::Range::new(at, at + value.encode_utf16().count());
                     let origin = origins.len();
                     if let Some(previous) = previous_origin {
                         let connection = connections.len();
-                        connections.push(t::SourceProcessingConnection {
+                        connections.push(t::capture::SourceProcessingConnection {
                             before_origin: previous,
                             after_origin: origin,
-                            kind: t::ParagraphConnectionKind::Continuous,
+                            kind: t::paragraph::ParagraphConnectionKind::Continuous,
                         });
-                        policies.push(t::ParagraphBoundaryPolicy {
-                            definition: t::ParagraphBoundaryDefinition::Connection(connection),
+                        policies.push(t::paragraph::ParagraphBoundaryPolicy {
+                            definition: t::paragraph::ParagraphBoundaryDefinition::Connection(
+                                connection,
+                            ),
                             preceding_wrap: style.wrap,
                             following_wrap: style.wrap,
                             ancestor_wrap: style.wrap,
                         });
                         events.push(E::Connection(connection));
                     }
-                    origins.push(t::ParagraphOrigin {
+                    origins.push(t::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: source.clone(),
                         local: range,
                         aggregate: range,
-                        kind: t::ParagraphOriginKind::Authored,
+                        kind: t::paragraph::ParagraphOriginKind::Authored,
                     });
                     events.push(E::Origin {
                         origin,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     });
                     at = range.end;
                     previous_origin = Some(origin);
@@ -324,13 +330,13 @@ impl Paragraph {
                 }
                 Part::Forced | Part::Start(_) | Part::End(_) => {
                     let kind = match part {
-                        Part::Forced => t::ParagraphControlKind::ForcedBreak,
-                        Part::Start(_) => t::ParagraphControlKind::InlineBoundaryStart,
-                        Part::End(_) => t::ParagraphControlKind::InlineBoundaryEnd,
+                        Part::Forced => t::paragraph::ParagraphControlKind::ForcedBreak,
+                        Part::Start(_) => t::paragraph::ParagraphControlKind::InlineBoundaryStart,
+                        Part::End(_) => t::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                         _ => unreachable!(),
                     };
                     let control = controls.len();
-                    controls.push(t::ParagraphControl { at, kind });
+                    controls.push(t::paragraph::ParagraphControl { at, kind });
                     if matches!(part, Part::Start(_)) {
                         events.push(E::EnterScope(1));
                         boundary_start = Some(control);
@@ -338,9 +344,9 @@ impl Paragraph {
                     events.push(E::Control {
                         control,
                         affinity: if matches!(part, Part::End(_)) {
-                            t::Affinity::Before
+                            t::layout::Affinity::Before
                         } else {
-                            t::Affinity::After
+                            t::layout::Affinity::After
                         },
                     });
                     let metrics = l::InlineMetricsOf::try_new(
@@ -382,7 +388,7 @@ impl Paragraph {
                     };
                     control_nodes.push(node);
                     if matches!(part, Part::End(_)) {
-                        boundary_pair = Some(t::SourceProcessingScopeBoundaries {
+                        boundary_pair = Some(t::capture::SourceProcessingScopeBoundaries {
                             start: boundary_start.take().unwrap(),
                             end: control,
                         });
@@ -406,22 +412,22 @@ impl Paragraph {
                     let atomic = atomic_nodes.len();
                     // This ID is the real authored fixture box's host identity;
                     // every prepared/captured capability is issued by Text below.
-                    source.inline_box(t::InlineBox::new(
-                        t::Id::from_u64(u64::from(node)),
-                        t::InlineBoxKind::InFlow,
+                    source.inline_box(t::source::InlineBox::new(
+                        t::source::Id::from_u64(u64::from(node)),
+                        t::source::InlineBoxKind::InFlow,
                         at,
-                        t::Size::new(width, 10.0),
+                        t::geometry::Size::new(width, 10.0),
                     ));
                     events.push(E::Atomic {
                         atomic,
-                        affinity: t::Affinity::After,
+                        affinity: t::layout::Affinity::After,
                     });
                     atomic_nodes.push(node);
                     for definition in [
-                        t::ParagraphBoundaryDefinition::AtomicBefore(atomic),
-                        t::ParagraphBoundaryDefinition::AtomicAfter(atomic),
+                        t::paragraph::ParagraphBoundaryDefinition::AtomicBefore(atomic),
+                        t::paragraph::ParagraphBoundaryDefinition::AtomicAfter(atomic),
                     ] {
-                        policies.push(t::ParagraphBoundaryPolicy {
+                        policies.push(t::paragraph::ParagraphBoundaryPolicy {
                             definition,
                             preceding_wrap: style.wrap,
                             following_wrap: style.wrap,
@@ -435,17 +441,17 @@ impl Paragraph {
             inputs.push(input);
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
-        let mut scopes = vec![t::SourceProcessingScope::Block {
+        let mut scopes = vec![t::capture::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: t::SourceProcessingTopology::Complete,
+            topology: t::capture::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style.clone(),
             used_direction: base(direction),
         }];
         if let Some(boundaries) = boundary_pair {
-            scopes.push(t::SourceProcessingScope::Inline {
+            scopes.push(t::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
@@ -455,12 +461,12 @@ impl Paragraph {
             });
         }
         let capture = Arc::new(
-            t::process_contextual_source(t::ContextualSourceInput {
+            t::capture::process_contextual_source(t::capture::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source,
-                segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: t::SourceProcessingEnvelope::Complete,
+                segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: t::capture::SourceProcessingEnvelope::Complete,
                 origins,
                 controls,
                 connections,
@@ -468,23 +474,23 @@ impl Paragraph {
                 replacements: vec![],
                 computed_line_boundaries: vec![],
                 scopes,
-                paragraphs: vec![t::SourceProcessingParagraph {
+                paragraphs: vec![t::capture::SourceProcessingParagraph {
                     base_direction: body,
-                    paragraph_strut: t::ParagraphStrut::DefaultFont,
+                    paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
                 }],
                 events,
             })
             .unwrap(),
         );
-        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        let analyzed = t::analyzed::AnalyzedSource::from_processed_paragraph(
             capture.paragraphs().next().unwrap(),
-            t::AnalysisTypography::HorizontalComposition,
+            t::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let wrapping = analyzed
             .wrapping_relations()
             .filter(|row| row.ancestor_wrap().is_none())
-            .map(|row| t::WrappingPolicy {
+            .map(|row| t::analyzed::WrappingPolicy {
                 relation: row.handle(),
                 ancestor_wrap: style.wrap,
             })
@@ -599,7 +605,7 @@ fn compute<S: l::LayoutScalar>(
 fn placed<'a, S: l::LayoutScalar>(
     batch: &'a l::CompletedLayoutBatchOf<u32, S>,
     paragraph: &Paragraph,
-) -> &'a t::Layout {
+) -> &'a t::layout::Layout {
     let entry = batch
         .placed_text()
         .iter()
@@ -616,7 +622,7 @@ fn placed<'a, S: l::LayoutScalar>(
 fn receipts<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     paragraph: &Paragraph,
-) -> Vec<t::FinalizedLine> {
+) -> Vec<t::finalized::FinalizedLine> {
     let layout = placed(batch, paragraph);
     let mut lines = vec![None; layout.lines().len()];
     for row in batch.final_inline_fragments() {
@@ -637,7 +643,7 @@ fn receipts<S: l::LayoutScalar>(
         .map(|line| line.expect("every tested formatted line has an origin, including EmptyOrigin"))
         .collect()
 }
-fn glyph_extents(layout: &t::Layout) -> Vec<(f64, f64)> {
+fn glyph_extents(layout: &t::layout::Layout) -> Vec<(f64, f64)> {
     let mut extents = vec![(f64::INFINITY, f64::NEG_INFINITY); layout.lines().len()];
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), AHEM);

@@ -129,23 +129,23 @@ pub(super) struct AcceptedFloatPlacement<S: LayoutScalar> {
     pub(super) intrinsic_inline_demand: Option<S>,
     pub(super) prefix: f64,
     pub(super) observation: AcceptedFloatPrefix,
-    pub(super) line: surgeist_text::FinalizedLine,
+    pub(super) line: surgeist_text::finalized::FinalizedLine,
 }
 
 /// Distinct authentic receipts: a represented original seam, or the
 /// empty ParagraphEnd after an already consumed terminal mandatory boundary.
 #[derive(Clone, Debug)]
 pub(super) enum AcceptedFloatPrefix {
-    Seam(surgeist_text::TextSeam),
+    Seam(surgeist_text::finalized::TextSeam),
     EmptyParagraphEnd {
-        boundary: surgeist_text::PreparedBoundary,
-        original: surgeist_text::TextSeam,
+        boundary: surgeist_text::prepared::PreparedBoundary,
+        original: surgeist_text::finalized::TextSeam,
     },
 }
 impl AcceptedFloatPrefix {
     pub(super) fn observe(
         &self,
-        line: &surgeist_text::FinalizedLine,
+        line: &surgeist_text::finalized::FinalizedLine,
     ) -> Result<(f64, bool), crate::text_layout::fit::FitError> {
         use crate::text_layout::fit::FitError;
         match self {
@@ -157,23 +157,35 @@ impl AcceptedFloatPrefix {
                 let selected = line.selected_line();
                 let request = selected.request();
                 let owner = match original {
-                    surgeist_text::TextSeam::Origin { origin, .. } => origin.prepared_text(),
-                    surgeist_text::TextSeam::BeforeParticipant(participant)
-                    | surgeist_text::TextSeam::AfterParticipant(participant) => match participant {
-                        surgeist_text::PreparedParticipant::Text(p) => p.prepared_text(),
-                        surgeist_text::PreparedParticipant::Cell(p) => p.prepared_text(),
-                        surgeist_text::PreparedParticipant::Atomic(p) => p.prepared_text(),
-                        surgeist_text::PreparedParticipant::Control(p) => p.prepared_text(),
-                        surgeist_text::PreparedParticipant::ComputedLineBoundary(p) => {
-                            p.prepared_text()
+                    surgeist_text::finalized::TextSeam::Origin { origin, .. } => {
+                        origin.prepared_text()
+                    }
+                    surgeist_text::finalized::TextSeam::BeforeParticipant(participant)
+                    | surgeist_text::finalized::TextSeam::AfterParticipant(participant) => {
+                        match participant {
+                            surgeist_text::prepared::PreparedParticipant::Text(p) => {
+                                p.prepared_text()
+                            }
+                            surgeist_text::prepared::PreparedParticipant::Cell(p) => {
+                                p.prepared_text()
+                            }
+                            surgeist_text::prepared::PreparedParticipant::Atomic(p) => {
+                                p.prepared_text()
+                            }
+                            surgeist_text::prepared::PreparedParticipant::Control(p) => {
+                                p.prepared_text()
+                            }
+                            surgeist_text::prepared::PreparedParticipant::ComputedLineBoundary(
+                                p,
+                            ) => p.prepared_text(),
                         }
-                    },
+                    }
                 };
                 if owner != line.prepared_text()
                     || request.start != *boundary
                     || request.end != *boundary
                     || !request.participants.is_empty()
-                    || request.context.end != surgeist_text::LineEnd::Paragraph
+                    || request.context.end != surgeist_text::selection::LineEnd::Paragraph
                 {
                     return Err(FitError::InvalidGeometry);
                 }
@@ -421,8 +433,8 @@ impl<S: LayoutScalar, Node> InheritedFloatExclusions<S, Node> {
     {
         let admitted = self.ledger.len().checked_add(additional).ok_or_else(|| {
             crate::text_layout::scope_alignment::refusal(
-                surgeist_text::ScopeAlignmentError::Overflow {
-                    kind: surgeist_text::ScopeAlignmentLimitKind::Records,
+                surgeist_text::scope_alignment::ScopeAlignmentError::Overflow {
+                    kind: surgeist_text::scope_alignment::ScopeAlignmentLimitKind::Records,
                 },
             )
         })?;
@@ -435,8 +447,8 @@ impl<S: LayoutScalar, Node> InheritedFloatExclusions<S, Node> {
             let mut ledger = Vec::new();
             ledger.try_reserve_exact(admitted).map_err(|_| {
                 crate::text_layout::scope_alignment::refusal(
-                    surgeist_text::ScopeAlignmentError::Allocation {
-                        kind: surgeist_text::ScopeAlignmentLimitKind::PayloadBytes,
+                    surgeist_text::scope_alignment::ScopeAlignmentError::Allocation {
+                        kind: surgeist_text::scope_alignment::ScopeAlignmentLimitKind::PayloadBytes,
                     },
                 )
             })?;

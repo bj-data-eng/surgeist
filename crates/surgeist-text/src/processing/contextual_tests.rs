@@ -12,12 +12,14 @@ use crate::{
     layout::{Affinity, Cursor, Layout, Movement, Selection},
     options::Alignment,
     processing::{
-        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem,
-        ProcessedParagraph, ProcessedSource, ScopeAlignmentLimits, ScopeFontReference,
-        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingError,
-        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingScopeBoundaries, SourceProcessingTopology, SourceWritingAxis,
-        WhiteSpaceTrim, process_contextual_source,
+        DocumentSegmentBreaks, PlaintextItem, ProcessedSource,
+        contextual::{
+            CapturedScope, ContextualSourceInput, ProcessedParagraph, ScopeAlignmentLimits,
+            ScopeFontReference, SourceProcessingConnection, SourceProcessingEnvelope,
+            SourceProcessingError, SourceProcessingEvent, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingScopeBoundaries, SourceProcessingTopology,
+            SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,

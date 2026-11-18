@@ -53,13 +53,13 @@ fn auto_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
                 layout.analyzed_source().identity(),
                 fixture.prepared.analyzed_source().identity()
             );
-            assert_eq!(layout.metrics().size(), t::Size::new(0.0, 20.0));
+            assert_eq!(layout.metrics().size(), t::geometry::Size::new(0.0, 20.0));
             assert_eq!(layout.metrics().first_baseline(), Some(16.0));
             assert_eq!(layout.metrics().last_baseline(), Some(16.0));
             let lines = layout.lines();
             assert_eq!(lines.len(), 1);
-            assert_eq!(lines[0].range(), t::Range::new(0, 0));
-            assert_eq!(lines[0].bounds().size, t::Size::new(0.0, 20.0));
+            assert_eq!(lines[0].range(), t::source::Range::new(0, 0));
+            assert_eq!(lines[0].bounds().size, t::geometry::Size::new(0.0, 20.0));
             assert_eq!(lines[0].baseline(), 16.0);
             assert_eq!(
                 layout
@@ -81,10 +81,10 @@ fn auto_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
                 .opportunity_views()
                 .map(|offer| offer.handle())
                 .collect::<Vec<_>>();
-            assert_eq!(request.context.end, t::LineEnd::Paragraph);
+            assert_eq!(request.context.end, t::selection::LineEnd::Paragraph);
             assert_eq!(
                 request.termination,
-                t::PreparedTermination::Ordinary(offers[1].clone())
+                t::selection::PreparedTermination::Ordinary(offers[1].clone())
             );
             assert_eq!(request.start, offers[0].view().boundary());
             assert_eq!(request.end, offers[1].view().boundary());

@@ -4,7 +4,7 @@
 
 use super::*;
 
-fn control(fixture: &Fixture, node: u32) -> text::PreparedControl {
+fn control(fixture: &Fixture, node: u32) -> text::prepared::PreparedControl {
     fixture
         .binding
         .controls
@@ -85,8 +85,8 @@ fn native_tree<S: LayoutScalar>(
     }
     for row in &fixture.binding.controls {
         let kind = match row.occurrence.view().kind() {
-            text::ParagraphControlKind::InlineBoundaryStart => InlineBoundaryKind::Start,
-            text::ParagraphControlKind::InlineBoundaryEnd => InlineBoundaryKind::End,
+            text::paragraph::ParagraphControlKind::InlineBoundaryStart => InlineBoundaryKind::Start,
+            text::paragraph::ParagraphControlKind::InlineBoundaryEnd => InlineBoundaryKind::End,
             other => panic!("this capture has only four endpoints: {other:?}"),
         };
         let amount = if !box_edges {
@@ -205,8 +205,14 @@ fn source_premises(fixture: &Fixture, value: &str, rtl: bool, captured_child: bo
         origin.view().source().text().code_units(),
         value.encode_utf16().collect::<Vec<_>>()
     );
-    assert_eq!(origin.view().local_range(), text::Range::new(0, end));
-    assert_eq!(origin.view().aggregate_range(), text::Range::new(0, end));
+    assert_eq!(
+        origin.view().local_range(),
+        text::source::Range::new(0, end)
+    );
+    assert_eq!(
+        origin.view().aggregate_range(),
+        text::source::Range::new(0, end)
+    );
     let [ps, cs, ce, pe] =
         [20, 22, 23, 21].map(|node| control(fixture, node).captured_control().unwrap());
     assert!(ps.event_position() < cs.event_position());
@@ -215,8 +221,8 @@ fn source_premises(fixture: &Fixture, value: &str, rtl: bool, captured_child: bo
     assert!(ce.event_position() < pe.event_position());
     let p = ps.scope();
     let b = p.parent().unwrap();
-    assert_eq!(b.role(), text::ScopeRole::Domain);
-    assert_eq!(p.role(), text::ScopeRole::Inline);
+    assert_eq!(b.role(), text::capture::ScopeRole::Domain);
+    assert_eq!(p.role(), text::capture::ScopeRole::Inline);
     assert_eq!(p.domain(), b);
     assert_eq!(pe.scope(), p);
     assert_eq!(p.entry_control(), Some(ps.clone()));
@@ -231,13 +237,13 @@ fn source_premises(fixture: &Fixture, value: &str, rtl: bool, captured_child: bo
         assert_eq!(c.parent(), Some(p.clone()));
         assert_eq!(c.entry_control(), Some(cs.clone()));
         assert_eq!(c.exit_control(), Some(ce.clone()));
-        assert_eq!(issued, text::InlineBoxSource::captured(c));
+        assert_eq!(issued, text::inline_box::InlineBoxSource::captured(c));
     } else {
         assert_eq!(cs.scope(), p);
         assert_eq!(ce.scope(), p);
         assert_ne!(p.entry_control(), Some(cs));
         assert_ne!(p.exit_control(), Some(ce));
-        assert_ne!(issued, text::InlineBoxSource::captured(p));
+        assert_ne!(issued, text::inline_box::InlineBoxSource::captured(p));
     }
     // Authored ASCII A/B is strong L. B LTR resolves it to0;
     // B RTL resolves it to2. No direction override, forged UBA level or extra
@@ -261,7 +267,7 @@ fn source_premises(fixture: &Fixture, value: &str, rtl: bool, captured_child: bo
     }
 }
 
-fn glyphs(line: &text::FinalizedLine) -> Vec<(u32, f64, f64)> {
+fn glyphs(line: &text::finalized::FinalizedLine) -> Vec<(u32, f64, f64)> {
     qualify(line);
     line.run_views()
         .flat_map(|run| {
@@ -311,7 +317,7 @@ fn assert_strip<S: LayoutScalar>(
     assert_eq!(fragments.len(), 1);
     assert!(matches!(
         fragments[0].fragment().finalized_fragment().view().owner(),
-        text::FinalizedFragmentOwner::Control(_)
+        text::finalized::FinalizedFragmentOwner::Control(_)
     ));
     let rect = fragments[0].fragment().rect().unwrap();
     assert_eq!(
@@ -374,7 +380,9 @@ fn nested<S: LayoutScalar>(rtl: bool, captured_child: bool) {
             .collect::<Vec<_>>(),
         source_levels
     );
-    let replay = line.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = line
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(
         replay.selected_line().request(),
         line.selected_line().request()
@@ -382,7 +390,7 @@ fn nested<S: LayoutScalar>(rtl: bool, captured_child: bool) {
     assert_eq!(glyphs(&replay), glyphs(line));
     for node in [20, 22, 23, 21] {
         let occurrence = control(&fixture, node);
-        let bounds = |line: &text::FinalizedLine| {
+        let bounds = |line: &text::finalized::FinalizedLine| {
             line.control_slots()
                 .find(|slot| slot.control() == occurrence)
                 .unwrap()
@@ -430,8 +438,8 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
     assert_strip(&batch, &fixture, 21, 32.0, 36.0, true);
     let cs = control(&fixture, 22);
     assert_eq!(
-        full.prefix_at(&text::TextSeam::AfterParticipant(
-            text::PreparedParticipant::Control(cs),
+        full.prefix_at(&text::finalized::TextSeam::AfterParticipant(
+            text::prepared::PreparedParticipant::Control(cs),
         ))
         .unwrap()
         .advance(),
@@ -439,9 +447,9 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
         "logical Ps1+Cs2 despite Cs being physically at30"
     );
     let origin = fixture.binding.origins[0].origin.clone();
-    let seam = text::TextSeam::Origin {
+    let seam = text::finalized::TextSeam::Origin {
         origin: origin.clone(),
-        local: text::SourcePosition::try_new(origin.view().source().text(), 2).unwrap(),
+        local: text::source::SourcePosition::try_new(origin.view().source().text(), 2).unwrap(),
     };
     assert_eq!(
         full.prefix_at(&seam).unwrap().advance(),
@@ -453,7 +461,7 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
     let end = prepared
         .opportunity_views()
         .find(|offer| {
-            offer.kind() == text::PreparedBreakKind::Allowed
+            offer.kind() == text::prepared::PreparedBreakKind::Allowed
                 && offer.boundary().view().source_before().get() == 2
                 && offer.boundary().view().source_after().get() == 2
         })
@@ -461,13 +469,13 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
         .handle();
     let mut recipe = full.selected_line().request().clone();
     recipe.end = end.view().boundary();
-    recipe.termination = text::PreparedTermination::Ordinary(end);
-    recipe.context.end = text::LineEnd::Soft;
+    recipe.termination = text::selection::PreparedTermination::Ordinary(end);
+    recipe.context.end = text::selection::LineEnd::Soft;
     let count = recipe.end.view().participant_offset();
     recipe.participants = prepared.participants().take(count).collect();
     recipe.controls.retain(|row| {
         recipe.participants.iter().any(|participant|
-        matches!(participant,text::PreparedParticipant::Control(c) if c == &row.occurrence))
+        matches!(participant,text::prepared::PreparedParticipant::Control(c) if c == &row.occurrence))
     });
     recipe.boundary_context.clear();
     assert_eq!(recipe.controls.len(), 2);
@@ -499,7 +507,7 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
             .unwrap();
         recipe
             .boundary_context
-            .push(text::InlineBoundaryContextAllocation {
+            .push(text::allocation::InlineBoundaryContextAllocation {
                 occurrence: needed,
                 boundary: allocation,
             });
@@ -507,9 +515,9 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
     let partial = prepared
         .select(recipe)
         .unwrap()
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     // NEW execution: Ps1,A10 ->TAB at11 executes9 to20, then selected Cs2.
@@ -519,7 +527,9 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
     assert_eq!(glyphs(&partial), [(35, 1.0, 10.0)]);
     assert_eq!(partial.control_slots().count(), 2);
     assert_eq!(full.prefix_at(&seam).unwrap().advance(), 19.0);
-    let replay = full.with_spacing(text::SpacingAllocations::None).unwrap();
+    let replay = full
+        .with_spacing(text::spacing::SpacingAllocations::None)
+        .unwrap();
     assert_eq!(replay.prefix_at(&seam).unwrap().advance(), 19.0);
     assert_eq!(glyphs(&replay), glyphs(&full));
     assert_eq!(baseline.feedback().advance, 30.0);

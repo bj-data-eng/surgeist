@@ -8,9 +8,9 @@ use surgeist_text as text;
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn paragraph() -> PreparedParagraph {
-    let style = text::Style {
-        white_space: text::WhiteSpace::Preserve,
-        wrap: text::Wrap::Word,
+    let style = text::style::Style {
+        white_space: text::style::WhiteSpace::Preserve,
+        wrap: text::style::Wrap::Word,
         letter_spacing: 0.0,
         word_spacing: 0.0,
         ..ahem_style(10.0, 10.0)
@@ -19,12 +19,12 @@ fn paragraph() -> PreparedParagraph {
         vec![
             ParagraphPart::text(
                 1,
-                Source::identified("A", text::Id::from_u64(72_001), 1),
+                Source::identified("A", text::source::Id::from_u64(72_001), 1),
                 style.clone(),
             ),
             ParagraphPart::Atomic {
                 node: 2,
-                size: text::Size::new(10.0, 10.0),
+                size: text::geometry::Size::new(10.0, 10.0),
             },
         ],
         style,
@@ -37,17 +37,29 @@ fn actual_source_premises(paragraph: &PreparedParagraph) {
     let origin = paragraph.origin(1);
     assert_eq!(
         origin.view().source().id(),
-        Some(text::Id::from_u64(72_001))
+        Some(text::source::Id::from_u64(72_001))
     );
-    assert_eq!(origin.view().source().text(), &text::Text::from("A"));
-    assert_eq!(origin.view().local_range(), text::Range::new(0, 1));
-    assert_eq!(origin.view().aggregate_range(), text::Range::new(0, 1));
+    assert_eq!(
+        origin.view().source().text(),
+        &text::source::Text::from("A")
+    );
+    assert_eq!(origin.view().local_range(), text::source::Range::new(0, 1));
+    assert_eq!(
+        origin.view().aggregate_range(),
+        text::source::Range::new(0, 1)
+    );
     let views = prepared.atomic_views().collect::<Vec<_>>();
     let [atomic] = views.as_slice() else {
         panic!("one issued in-flow atomic");
     };
-    assert_eq!(atomic.original_box().kind(), text::InlineBoxKind::InFlow);
-    assert_eq!(atomic.original_box().size(), text::Size::new(10.0, 10.0));
+    assert_eq!(
+        atomic.original_box().kind(),
+        text::source::InlineBoxKind::InFlow
+    );
+    assert_eq!(
+        atomic.original_box().size(),
+        text::geometry::Size::new(10.0, 10.0)
+    );
     assert_eq!(atomic.source_position().get(), 1);
     let binding = paragraph.binding(0);
     assert_eq!(binding.atomics.len(), 1);
@@ -55,13 +67,13 @@ fn actual_source_premises(paragraph: &PreparedParagraph) {
     assert_eq!(binding.atomics[0].occurrence, atomic.handle());
     let participants = prepared.participants().collect::<Vec<_>>();
     let [
-        text::PreparedParticipant::Text(unit),
-        text::PreparedParticipant::Atomic(actual),
+        text::prepared::PreparedParticipant::Text(unit),
+        text::prepared::PreparedParticipant::Atomic(actual),
     ] = participants.as_slice()
     else {
         panic!("actual source Text unit followed by its issued atomic");
     };
-    assert_eq!(unit.view().source_range(), text::Range::new(0, 1));
+    assert_eq!(unit.view().source_range(), text::source::Range::new(0, 1));
     assert_eq!(*actual, atomic.handle());
     // Do not infer the break from equal source offset1: ParagraphEnd AFTER the
     // box has that SAME offset. Observe the actual mixed participant cut1.
@@ -72,7 +84,7 @@ fn actual_source_premises(paragraph: &PreparedParagraph) {
     let [offer] = before.as_slice() else {
         panic!("one real before-atomic opportunity");
     };
-    assert_eq!(offer.kind(), text::PreparedBreakKind::Allowed);
+    assert_eq!(offer.kind(), text::prepared::PreparedBreakKind::Allowed);
     assert_eq!(offer.boundary().view().source_before().get(), 1);
     assert_eq!(offer.boundary().view().source_after().get(), 1);
 }
@@ -173,7 +185,9 @@ fn compute<S: LayoutScalar>(
     .unwrap()
 }
 
-fn whole_line<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::FinalizedLine {
+fn whole_line<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> text::finalized::FinalizedLine {
     batch
         .final_inline_fragments()
         .iter()
@@ -196,7 +210,7 @@ fn one_line<S: LayoutScalar>(
         placed.analyzed_source().identity(),
         paragraph.prepared.analyzed_source().identity()
     );
-    assert_eq!(placed.source().text(), &text::Text::from("A"));
+    assert_eq!(placed.source().text(), &text::source::Text::from("A"));
     assert_eq!(
         placed.lines().len(),
         1,
@@ -257,7 +271,7 @@ fn one_line<S: LayoutScalar>(
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    assert_eq!(glyphs, [(text::Range::new(0, 1), 35, 0.0, 10.0)]);
+    assert_eq!(glyphs, [(text::source::Range::new(0, 1), 35, 0.0, 10.0)]);
     let slots = line.atomic_slots().collect::<Vec<_>>();
     let [slot] = slots.as_slice() else {
         panic!("same line has its actual atomic slot");
@@ -266,7 +280,7 @@ fn one_line<S: LayoutScalar>(
         slot.occurrence,
         paragraph.prepared.atomic_views().next().unwrap().handle()
     );
-    let text::AtomicLineAllocation::InFlow {
+    let text::allocation::AtomicLineAllocation::InFlow {
         flow, box_geometry, ..
     } = slot.allocation
     else {
@@ -278,22 +292,28 @@ fn one_line<S: LayoutScalar>(
     assert_eq!(slot.origin.x, 10.0);
     assert_eq!(slot.origin.x + box_geometry.border.origin.x, 10.0);
     assert_eq!(slot.origin.y + box_geometry.border.origin.y, 0.0);
-    assert_eq!(box_geometry.border.size, text::Size::new(10.0, 10.0));
+    assert_eq!(
+        box_geometry.border.size,
+        text::geometry::Size::new(10.0, 10.0)
+    );
     assert_eq!(placed.inline_boxes().len(), 1);
     assert_eq!(
         placed.inline_boxes()[0].rect(),
-        text::Rect::new(10.0, 0.0, 10.0, 10.0)
+        text::geometry::Rect::new(10.0, 0.0, 10.0, 10.0)
     );
     // Font-metric source geometry is a separate query from the line/cluster
     // band. Baseline10 minus Ahem ascent8 gives top2, with font height8+2.
     let range = placed
-        .source_range_fragments(&paragraph.origin(1), text::Range::new(0, 1))
+        .source_range_fragments(&paragraph.origin(1), text::source::Range::new(0, 1))
         .unwrap();
     let font_rects = range
         .units()
         .flat_map(|unit| unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>())
         .collect::<Vec<_>>();
-    assert_eq!(font_rects, [text::Rect::new(0.0, 2.0, 10.0, 10.0)]);
+    assert_eq!(
+        font_rects,
+        [text::geometry::Rect::new(0.0, 2.0, 10.0, 10.0)]
+    );
     for entries in [
         readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
         readback::continuous_custody(batch, Phase::Final).as_slice(),
@@ -368,7 +388,7 @@ fn direct_native_allocation_keeps_occupied10_when_its_unrelated_flow_is6() {
     let p = PreparedParagraph::new(
         vec![ParagraphPart::Atomic {
             node: 2,
-            size: text::Size::new(10.0, 10.0),
+            size: text::geometry::Size::new(10.0, 10.0),
         }],
         ahem_style(10.0, 10.0),
         ParagraphBaseDirection::LeftToRight,
@@ -377,24 +397,24 @@ fn direct_native_allocation_keeps_occupied10_when_its_unrelated_flow_is6() {
     let atomic = prepared.atomic_views().next().unwrap().handle();
     assert_eq!(
         atomic.view().original_box().size(),
-        text::Size::new(10.0, 10.0)
+        text::geometry::Size::new(10.0, 10.0)
     );
     let segment = prepared.source_segments().next().unwrap();
     let line = prepared
-        .select(text::LineSelectionRequest {
+        .select(text::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
             participants: prepared.participants().collect(),
-            termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+            termination: text::selection::PreparedTermination::Ordinary(segment.end_opportunity()),
             alternative: None,
             incoming: None,
-            atomics: vec![text::AtomicAllocation {
+            atomics: vec![text::allocation::AtomicAllocation {
                 occurrence: atomic,
-                allocation: text::AtomicLineAllocation::InFlow {
-                    fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
-                    flow: text::AtomicFlowAllocation {
+                allocation: text::allocation::AtomicLineAllocation::InFlow {
+                    fit: surgeist_text::allocation::AtomicFitAllocation::NativeOccupied,
+                    flow: text::allocation::AtomicFlowAllocation {
                         normal_border_inline_size: 10.0,
                         advance: 6.0,
                         before_baseline: 8.0,
@@ -402,37 +422,37 @@ fn direct_native_allocation_keeps_occupied10_when_its_unrelated_flow_is6() {
                         occupied_start: 0.0,
                         occupied_end: 10.0,
                     },
-                    box_geometry: text::AtomicBoxAllocation {
-                        border: text::Rect::new(0.0, -8.0, 10.0, 10.0),
-                        content: text::Rect::new(0.0, -8.0, 10.0, 10.0),
+                    box_geometry: text::allocation::AtomicBoxAllocation {
+                        border: text::geometry::Rect::new(0.0, -8.0, 10.0, 10.0),
+                        content: text::geometry::Rect::new(0.0, -8.0, 10.0, 10.0),
                         baseline: 0.0,
                     },
-                    alignment: text::LineBoxAlignment::Baseline,
+                    alignment: text::allocation::LineBoxAlignment::Baseline,
                 },
             }],
             controls: vec![],
             boundary_context: vec![],
             line_strut: None,
             line_box_struts: vec![],
-            context: text::LineContext {
-                alignment_insets: text::LineAlignmentInsets::ZERO,
-                formatted_line: text::FormattedLineContext::default(),
+            context: text::selection::LineContext {
+                alignment_insets: text::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: text::selection::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                line_box_direction: text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::Horizontal,
-                start: text::LineStart::Paragraph,
-                end: text::LineEnd::Paragraph,
+                line_box_direction: text::selection::LineBoxDirection::LeftToRight,
+                orientation: text::selection::LineOrientation::Horizontal,
+                start: text::selection::LineStart::Paragraph,
+                end: text::selection::LineEnd::Paragraph,
                 available_inline: Some(6.0),
                 indent: 0.0,
-                alignment: text::Alignment::Start,
-                tabs: text::TabContext::NoTabs,
-                spacing: text::SpacingPolicy::None,
+                alignment: text::options::Alignment::Start,
+                tabs: text::tabs::TabContext::NoTabs,
+                spacing: text::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: text::ScopeAllocations::None,
+        .finalize(text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.measurements().fit().advance(), 6.0);

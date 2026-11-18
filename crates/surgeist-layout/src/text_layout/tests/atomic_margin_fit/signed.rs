@@ -22,7 +22,7 @@ fn assert_complete<S: LayoutScalar>(paragraph: &PreparedParagraph, expected: Exp
         placed.analyzed_source().identity(),
         paragraph.prepared.analyzed_source().identity()
     );
-    assert_eq!(placed.source().text(), &text::Text::from("A"));
+    assert_eq!(placed.source().text(), &text::source::Text::from("A"));
     assert_eq!(
         placed.lines().len(),
         1,
@@ -80,7 +80,7 @@ fn assert_complete<S: LayoutScalar>(paragraph: &PreparedParagraph, expected: Exp
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    assert_eq!(glyphs, [(text::Range::new(0, 1), 35, 0.0, 10.0)]);
+    assert_eq!(glyphs, [(text::source::Range::new(0, 1), 35, 0.0, 10.0)]);
     let slots = line.atomic_slots().collect::<Vec<_>>();
     let [slot] = slots.as_slice() else {
         panic!("same actual selected line owns its atomic");
@@ -89,7 +89,7 @@ fn assert_complete<S: LayoutScalar>(paragraph: &PreparedParagraph, expected: Exp
         slot.occurrence,
         paragraph.prepared.atomic_views().next().unwrap().handle()
     );
-    let text::AtomicLineAllocation::InFlow {
+    let text::allocation::AtomicLineAllocation::InFlow {
         flow, box_geometry, ..
     } = slot.allocation
     else {
@@ -107,23 +107,26 @@ fn assert_complete<S: LayoutScalar>(paragraph: &PreparedParagraph, expected: Exp
         expected.border_x
     );
     assert_eq!(slot.origin.y + box_geometry.border.origin.y, 0.0);
-    assert_eq!(box_geometry.border.size, text::Size::new(10.0, 10.0));
+    assert_eq!(
+        box_geometry.border.size,
+        text::geometry::Size::new(10.0, 10.0)
+    );
     assert_eq!(placed.inline_boxes().len(), 1);
     assert_eq!(
         placed.inline_boxes()[0].rect(),
-        text::Rect::new(expected.border_x, 0.0, 10.0, 10.0)
+        text::geometry::Rect::new(expected.border_x, 0.0, 10.0, 10.0)
     );
     // This is ORIGINAL-local font metric geometry, not Cluster's actual full
     // line band. Real baseline10 and Ahem8/+2 give2..12 even when flow retracts.
     let range = placed
-        .source_range_fragments(&paragraph.origin(1), text::Range::new(0, 1))
+        .source_range_fragments(&paragraph.origin(1), text::source::Range::new(0, 1))
         .unwrap();
     assert_eq!(
         range
             .units()
             .flat_map(|unit| unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>())
             .collect::<Vec<_>>(),
-        [text::Rect::new(0.0, 2.0, 10.0, 10.0)]
+        [text::geometry::Rect::new(0.0, 2.0, 10.0, 10.0)]
     );
     for entries in [
         readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
@@ -168,7 +171,7 @@ fn assert_real_split<S: LayoutScalar>(paragraph: &PreparedParagraph, width: f64,
         2,
         "real Allowed before-atomic cut is not one unbreakable fallback group"
     );
-    let mut lines: Vec<Option<text::FinalizedLine>> = vec![None, None];
+    let mut lines: Vec<Option<text::finalized::FinalizedLine>> = vec![None, None];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
         let index = fragment.line_index();
@@ -190,18 +193,25 @@ fn assert_real_split<S: LayoutScalar>(paragraph: &PreparedParagraph, width: f64,
     let [atomic] = boxes.as_slice() else {
         panic!("one actual placed atomic");
     };
-    assert_eq!(atomic.kind(), text::InlineBoxKind::InFlow);
+    assert_eq!(atomic.kind(), text::source::InlineBoxKind::InFlow);
     assert_eq!(atomic.line(), 1);
-    assert_eq!(atomic.rect(), text::Rect::new(0.0, 10.0, 10.0, 10.0));
+    assert_eq!(
+        atomic.rect(),
+        text::geometry::Rect::new(0.0, 10.0, 10.0, 10.0)
+    );
     let output = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(output.location, Point::new(S::ZERO, S::from_f64(10.0)));
     assert_eq!(output.size, Size::new(S::from_f64(10.0), S::from_f64(10.0)));
     assert_eq!(output.margin.right, S::from_f64(end));
     let selected = first.selected_line();
-    let text::PreparedTermination::Ordinary(offer) = &selected.request().termination else {
+    let text::selection::PreparedTermination::Ordinary(offer) = &selected.request().termination
+    else {
         panic!("actual ordinary atomic-edge cut");
     };
-    assert_eq!(offer.view().kind(), text::PreparedBreakKind::Allowed);
+    assert_eq!(
+        offer.view().kind(),
+        text::prepared::PreparedBreakKind::Allowed
+    );
     assert_eq!(offer.view().boundary().view().participant_offset(), 1);
 }
 

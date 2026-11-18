@@ -238,15 +238,15 @@ fn relative_ancestor_keeps_normal_atomic_line<S: LayoutScalar>() {
     let text_style = ahem_style(10.0, 10.0);
     let paragraph = PreparedParagraph::new(
         vec![
-            ParagraphPart::text(1, text::Source::new("X"), text_style.clone()),
+            ParagraphPart::text(1, text::source::Source::new("X"), text_style.clone()),
             ParagraphPart::Atomic {
                 node: 2,
-                size: text::Size::new(10.0, 10.4),
+                size: text::geometry::Size::new(10.0, 10.4),
             },
-            ParagraphPart::text(3, text::Source::new("X"), text_style.clone()),
+            ParagraphPart::text(3, text::source::Source::new("X"), text_style.clone()),
         ],
         text_style,
-        text::ParagraphBaseDirection::LeftToRight,
+        text::paragraph::ParagraphBaseDirection::LeftToRight,
     );
     let binding = paragraph.binding(4);
     assert_eq!(binding.nodes, vec![1, 2, 3]);

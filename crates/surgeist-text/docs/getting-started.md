@@ -39,7 +39,7 @@ crate directory.
 
 ```rust
 use surgeist_font::{DecodeLimits, FontResource};
-use surgeist_text::{Font, Options, Style, System};
+use surgeist_text::{options::Options, style::{Font, Style}, System};
 
 let limits = DecodeLimits::new(1 << 20, 1 << 20, 1 << 20, 64, 4, 1 << 20, 3 << 20);
 let file = std::fs::File::open("tests/fixtures/fonts/ahem/Ahem.ttf")?;

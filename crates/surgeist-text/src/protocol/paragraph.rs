@@ -483,7 +483,7 @@ impl OriginMap {
     pub(crate) fn captured(orders: Vec<usize>, count: usize) -> Result<Self> {
         if orders.len() != count || orders.windows(2).any(|pair| pair[0] >= pair[1]) {
             return Err(crate::processing::contextual::invalid(
-                crate::processing::SourceProcessingError::OriginCorrespondence,
+                crate::processing::contextual::SourceProcessingError::OriginCorrespondence,
             ));
         }
         Ok(Self {
@@ -666,7 +666,7 @@ impl ParagraphContent {
             Ok(())
         } else {
             Err(crate::processing::contextual::invalid(
-                crate::processing::SourceProcessingError::OutsideParagraph,
+                crate::processing::contextual::SourceProcessingError::OutsideParagraph,
             ))
         }
     }

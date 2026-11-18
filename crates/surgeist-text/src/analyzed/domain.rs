@@ -2,7 +2,10 @@
 use crate::{
     Result,
     analyzed::{AnalysisTypography, AnalyzedSource},
-    processing::{CapturedScope, ProcessedParagraph, ProcessedSource},
+    processing::{
+        ProcessedSource,
+        contextual::{CapturedScope, ProcessedParagraph},
+    },
 };
 use std::sync::Arc;
 

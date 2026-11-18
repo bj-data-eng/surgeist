@@ -226,7 +226,7 @@ fn fri06_mr02_inline_linear_empty_strut_and_forced_clear_preserve_metrics_both_s
 
 #[test]
 fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_both_scalars() {
-    use surgeist_text::{SuppliedInlineParticipant, SuppliedLine};
+    use surgeist_text::supplied_line::{SuppliedInlineParticipant, SuppliedLine};
     let slots = [
         SuppliedInlineParticipant::Text {
             level: BidiLevel::try_new(0).unwrap(),
@@ -320,14 +320,17 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
             layout_tree::PublicLayoutTreeOf,
             text::{PreparedParagraph, ahem_style},
         };
-        let source = surgeist_text::Source::new("  X  ");
-        let style = surgeist_text::Style {
-            white_space: surgeist_text::WhiteSpace::Collapse,
+        let source = surgeist_text::source::Source::new("  X  ");
+        let style = surgeist_text::style::Style {
+            white_space: surgeist_text::style::WhiteSpace::Collapse,
             ..ahem_style(10.0, 10.0)
         };
         let paragraph = PreparedParagraph::plain(1, source.clone(), style);
         let origin = paragraph.origin(1);
-        assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 5));
+        assert_eq!(
+            origin.view().local_range(),
+            surgeist_text::source::Range::new(0, 5)
+        );
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1])
             .style(
@@ -416,7 +419,7 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
             .flat_map(|run| run.glyphs().iter().copied())
             .collect();
         assert_eq!(glyphs.len(), 1);
-        assert_eq!(glyphs[0].range(), surgeist_text::Range::new(2, 3));
+        assert_eq!(glyphs[0].range(), surgeist_text::source::Range::new(2, 3));
         assert_eq!(glyphs[0].advance(), 10.0);
         let source_fragment = batch
             .final_inline_fragments()
@@ -2374,15 +2377,15 @@ fn assert_mandatory_atomic_queries_are_confined_to_each_actual_line<S: LayoutSca
         // Text remains the actual edge owner. A separately supplied line of
         // discardable text slots retains each logical slot while suppressing ink.
         let text = vec![
-            surgeist_text::SuppliedInlineParticipant::Text {
+            surgeist_text::supplied_line::SuppliedInlineParticipant::Text {
                 level: BidiLevel::try_new(1).unwrap(),
                 edge: InlineWhitespaceEdge::DiscardAtBoth
             };
             count
         ];
-        let edges = surgeist_text::SuppliedLine::new(&text).edges();
+        let edges = surgeist_text::supplied_line::SuppliedLine::new(&text).edges();
         assert_eq!(
-            surgeist_text::SuppliedLine::new(&text).leading_discard_len(),
+            surgeist_text::supplied_line::SuppliedLine::new(&text).leading_discard_len(),
             count
         );
         assert!((0..count).all(|index| edges.is_discarded(index) == Some(true)));
@@ -2563,7 +2566,7 @@ fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() 
                 .iter()
                 .map(|line| (line.end, line.content, line.hyphenated))
                 .collect::<Vec<_>>(),
-            [(surgeist_text::LineEnd::Forced, false, false)]
+            [(surgeist_text::selection::LineEnd::Forced, false, false)]
         );
         // The real empty Forced remains in the tail; its nonformatted
         // Paragraph receiver is absent. The following zero atomics stay real.
@@ -2587,8 +2590,8 @@ fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() 
                 .map(|line| (line.end, line.content, line.hyphenated))
                 .collect::<Vec<_>>(),
             [
-                (surgeist_text::LineEnd::Forced, true, false),
-                (surgeist_text::LineEnd::Paragraph, true, false)
+                (surgeist_text::selection::LineEnd::Forced, true, false),
+                (surgeist_text::selection::LineEnd::Paragraph, true, false)
             ]
         );
         assert_eq!(report.atomics.len(), 2);

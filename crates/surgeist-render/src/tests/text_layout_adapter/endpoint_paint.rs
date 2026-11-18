@@ -32,98 +32,105 @@ fn qualify_ahem() {
     assert_eq!(bounds, [0, -200, 1000, 800]);
 }
 
-fn captured_pair(system: &mut text::System, nested: bool) -> text::PreparedText {
-    use text::SourceProcessingEvent as E;
-    let source = text::Source::identified(text::Text::from("AA"), text::Id::from_u64(640725), 1);
-    let base = text::Style {
+fn captured_pair(system: &mut text::System, nested: bool) -> text::prepared::PreparedText {
+    use text::capture::SourceProcessingEvent as E;
+    let source = text::source::Source::identified(
+        text::source::Text::from("AA"),
+        text::source::Id::from_u64(640725),
+        1,
+    );
+    let base = text::style::Style {
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
-        wrap: text::Wrap::Word,
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
+        wrap: text::style::Wrap::Word,
         ..style()
     };
-    let mut input = text::ContextualSourceInput {
+    let mut input = text::capture::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: text::SourceProcessingEnvelope::Complete,
+        segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: text::capture::SourceProcessingEnvelope::Complete,
         origins: [(0, 1), (1, 2)]
             .into_iter()
-            .map(|(start, end)| text::ParagraphOrigin {
+            .map(|(start, end)| text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: text::Range::new(start, end),
-                aggregate: text::Range::new(start, end),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(start, end),
+                aggregate: text::source::Range::new(start, end),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
-        connections: vec![text::SourceProcessingConnection {
+        connections: vec![text::capture::SourceProcessingConnection {
             before_origin: 0,
             after_origin: 1,
-            kind: text::ParagraphConnectionKind::Continuous,
+            kind: text::paragraph::ParagraphConnectionKind::Continuous,
         }],
         controls: vec![
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 1,
-                kind: text::ParagraphControlKind::InlineBoundaryStart,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 2,
-                kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
             },
         ],
-        boundary_policies: vec![text::ParagraphBoundaryPolicy {
-            definition: text::ParagraphBoundaryDefinition::Connection(0),
-            preceding_wrap: text::Wrap::Word,
-            following_wrap: text::Wrap::Word,
-            ancestor_wrap: text::Wrap::Word,
+        boundary_policies: vec![text::paragraph::ParagraphBoundaryPolicy {
+            definition: text::paragraph::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: text::style::Wrap::Word,
+            following_wrap: text::style::Wrap::Word,
+            ancestor_wrap: text::style::Wrap::Word,
         }],
         replacements: vec![],
         scopes: vec![
-            text::SourceProcessingScope::Block {
+            text::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: text::SourceProcessingTopology::Complete,
-                trim: text::WhiteSpaceTrim::default(),
+                topology: text::capture::SourceProcessingTopology::Complete,
+                trim: text::capture::WhiteSpaceTrim::default(),
                 base_style: base.clone(),
-                used_direction: text::ParagraphBaseDirection::LeftToRight,
+                used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             },
-            text::SourceProcessingScope::Inline {
+            text::capture::SourceProcessingScope::Inline {
                 horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
-                trim: text::WhiteSpaceTrim::default(),
+                trim: text::capture::WhiteSpaceTrim::default(),
                 style: Some(base),
-                boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                    start: 0,
+                    end: 1,
+                }),
             },
         ],
-        paragraphs: vec![text::SourceProcessingParagraph {
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+        paragraphs: vec![text::capture::SourceProcessingParagraph {
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
         }],
         events: vec![
             E::EnterScope(0),
             E::EnterParagraph(0),
             E::Origin {
                 origin: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Connection(0),
             E::EnterScope(1),
             E::Control {
                 control: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Origin {
                 origin: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Control {
                 control: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(1),
             E::ExitParagraph(0),
@@ -133,25 +140,25 @@ fn captured_pair(system: &mut text::System, nested: bool) -> text::PreparedText 
     if nested {
         parent_geometry_paint::nest_pair_input(&mut input);
     }
-    let processed = Arc::new(text::process_contextual_source(input).unwrap());
+    let processed = Arc::new(text::capture::process_contextual_source(input).unwrap());
     assert_eq!(processed.source(), &source);
-    assert_eq!(processed.processed_text(), &text::Text::from("AA"));
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    assert_eq!(processed.processed_text(), &text::source::Text::from("AA"));
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
-            ancestor_wrap: text::Wrap::Word,
+            ancestor_wrap: text::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(prepared.control_views().count(), if nested { 4 } else { 2 });
     assert!(
@@ -164,45 +171,47 @@ fn captured_pair(system: &mut text::System, nested: bool) -> text::PreparedText 
 }
 
 fn endpoint_width(
-    control: &text::PreparedControl,
+    control: &text::prepared::PreparedControl,
     opening: f64,
-) -> Option<text::InlineBoundaryAllocation> {
+) -> Option<text::allocation::InlineBoundaryAllocation> {
     match control.view().kind() {
-        text::ParagraphControlKind::InlineBoundaryStart => {
-            Some(text::InlineBoundaryAllocation::contribution(opening).unwrap())
+        text::paragraph::ParagraphControlKind::InlineBoundaryStart => {
+            Some(text::allocation::InlineBoundaryAllocation::contribution(opening).unwrap())
         }
-        text::ParagraphControlKind::InlineBoundaryEnd => {
-            Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
+        text::paragraph::ParagraphControlKind::InlineBoundaryEnd => {
+            Some(text::allocation::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
         }
         _ => None,
     }
 }
 
-fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
+fn placed_pair(prepared: &text::prepared::PreparedText, opening: f64) -> text::layout::Layout {
     let end = prepared
         .opportunity_views()
-        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .find(|offer| offer.kind() == text::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let participants = prepared.participants().collect::<Vec<_>>();
     let controls = participants
         .iter()
         .filter_map(|part| match part {
-            text::PreparedParticipant::Control(occurrence) => Some(text::ControlAllocation {
-                occurrence: occurrence.clone(),
-                strut: None,
-                boundary: endpoint_width(occurrence, opening),
-            }),
+            text::prepared::PreparedParticipant::Control(occurrence) => {
+                Some(text::allocation::ControlAllocation {
+                    occurrence: occurrence.clone(),
+                    strut: None,
+                    boundary: endpoint_width(occurrence, opening),
+                })
+            }
             _ => None,
         })
         .collect();
-    let mut request = text::LineSelectionRequest {
+    let mut request = text::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: prepared.source_segments().next().unwrap(),
         line_box_struts: Vec::new(),
         start: prepared.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
-        termination: text::PreparedTermination::Ordinary(end),
+        termination: text::selection::PreparedTermination::Ordinary(end),
         participants,
         alternative: None,
         incoming: None,
@@ -210,19 +219,19 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
         controls,
         boundary_context: vec![],
         line_strut: None,
-        context: text::LineContext {
-            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
-            formatted_line: text::FormattedLineContext::default(),
-            orientation: text::LineOrientation::Horizontal,
-            start: text::LineStart::Paragraph,
-            end: text::LineEnd::Paragraph,
+        context: text::selection::LineContext {
+            alignment_insets: surgeist_text::allocation::LineAlignmentInsets::ZERO,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            line_box_direction: surgeist_text::selection::LineBoxDirection::LeftToRight,
+            formatted_line: text::selection::FormattedLineContext::default(),
+            orientation: text::selection::LineOrientation::Horizontal,
+            start: text::selection::LineStart::Paragraph,
+            end: text::selection::LineEnd::Paragraph,
             available_inline: Some(32.0),
             indent: 0.0,
-            alignment: text::Alignment::Start,
-            tabs: text::TabContext::NoTabs,
-            spacing: text::SpacingPolicy::None,
+            alignment: text::options::Alignment::Start,
+            tabs: text::tabs::TabContext::NoTabs,
+            spacing: text::spacing::SpacingPolicy::None,
         },
     };
     while let Some(occurrence) = prepared.boundary_context_demand(&request).unwrap() {
@@ -230,7 +239,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
             .expect("only actual endpoint geometry is demanded");
         request
             .boundary_context
-            .push(text::InlineBoundaryContextAllocation {
+            .push(text::allocation::InlineBoundaryContextAllocation {
                 occurrence,
                 boundary,
             });
@@ -242,9 +251,9 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: text::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: text::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 20.0 + opening);
@@ -252,33 +261,39 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
     assert_eq!(slots.len(), 2);
     assert_eq!(slots[0].strip_interval(), (10.0, 10.0 + opening));
     assert_eq!(slots[1].strip_interval(), (20.0 + opening, 20.0 + opening));
-    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+    let layout = text::layout::Layout::from_finalized_lines(text::placement::PlacementRequest {
         prepared: prepared.clone(),
-        coverage: text::PlacementCoverage::WholeParagraph,
-        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
-            line,
-            anchor: text::LineAnchor {
-                inline_origin: 0.0,
-                baseline: BASELINE,
+        coverage: text::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![text::placement::PlacementEntry::Formatted(
+            text::placement::LinePlacement {
+                line,
+                anchor: text::placement::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: BASELINE,
+                },
+                orientation: text::selection::LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: text::LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
-    assert_eq!(layout.source().text(), &text::Text::from("AA"));
+    assert_eq!(layout.source().text(), &text::source::Text::from("AA"));
     assert_eq!(layout.metrics().full_width(), 20.0 + opening);
     let before = layout
         .positions()
-        .find(|position| position.source_cursor() == text::Cursor::new(0, text::Affinity::After))
+        .find(|position| {
+            position.source_cursor() == text::layout::Cursor::new(0, text::layout::Affinity::After)
+        })
         .unwrap();
     let after = layout
         .positions()
-        .find(|position| position.source_cursor() == text::Cursor::new(2, text::Affinity::Before))
+        .find(|position| {
+            position.source_cursor() == text::layout::Cursor::new(2, text::layout::Affinity::Before)
+        })
         .unwrap();
     let selection = layout.position_selection(&before, &after).unwrap();
-    assert_eq!(selection.source_text(), &text::Text::from("AA"));
-    assert_eq!(selection.plaintext(), &text::Text::from("AA"));
+    assert_eq!(selection.source_text(), &text::source::Text::from("AA"));
+    assert_eq!(selection.plaintext(), &text::source::Text::from("AA"));
     let mut glyphs = Vec::new();
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -298,7 +313,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
                     .glyph_outline(glyph.id(), run.face().catalogue_identity())
                     .unwrap()
                     .bounds(),
-                Some(text::Rect::new(0.0, -8.0, 10.0, 10.0))
+                Some(text::geometry::Rect::new(0.0, -8.0, 10.0, 10.0))
             );
             glyphs.push((
                 glyph.id(),

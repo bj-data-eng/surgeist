@@ -4970,17 +4970,17 @@ fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool, supp
         let paragraph = PreparedParagraph::with_strut_at_boundary(
             vec![ParagraphPart::text(
                 5,
-                surgeist_text::Source::new(if visible { "X" } else { "" }),
+                surgeist_text::source::Source::new(if visible { "X" } else { "" }),
                 style.clone(),
             )],
             style,
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
-            surgeist_text::ParagraphStrut::DefaultFont,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphStrut::DefaultFont,
             Vec::new(),
             if inside_empty {
-                surgeist_text::ParagraphTerminalEdge::BlockEnd
+                surgeist_text::paragraph::ParagraphTerminalEdge::BlockEnd
             } else {
-                surgeist_text::ParagraphTerminalEdge::NonBlockBoundary
+                surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary
             },
         );
         let tree = PublicBlockTree::default()
@@ -5027,7 +5027,7 @@ fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool, supp
             .with_layout_input(5, paragraph.text_input(5));
         let mut binding = paragraph.binding(if inside_empty { 3 } else { 2 });
         if supplied_strut {
-            binding.line_strut = Some(surgeist_text::LineStrut {
+            binding.line_strut = Some(surgeist_text::allocation::LineStrut {
                 baseline: 3.0,
                 line_extent: 4.0,
             });
@@ -5120,27 +5120,27 @@ fn assert_empty_origin_with_participating_text_control<S: LayoutScalar>() {
         let participant = match kind {
             0 => ParagraphPart::Control {
                 node: 3,
-                kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
             },
             1 => ParagraphPart::Atomic {
                 node: 3,
-                size: surgeist_text::Size::new(0.0, 0.0),
+                size: surgeist_text::geometry::Size::new(0.0, 0.0),
             },
             _ => ParagraphPart::Control {
                 node: 3,
-                kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+                kind: surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             },
         };
         let paragraph = PreparedParagraph::with_strut_at_boundary(
             vec![
-                ParagraphPart::text(2, surgeist_text::Source::new(""), style.clone()),
+                ParagraphPart::text(2, surgeist_text::source::Source::new(""), style.clone()),
                 participant,
             ],
             style,
-            surgeist_text::ParagraphBaseDirection::LeftToRight,
-            surgeist_text::ParagraphStrut::DefaultFont,
+            surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::paragraph::ParagraphStrut::DefaultFont,
             Vec::new(),
-            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+            surgeist_text::paragraph::ParagraphTerminalEdge::NonBlockBoundary,
         );
         let ordinary = NodeInputOf {
             display: Display::Block,
@@ -5315,7 +5315,7 @@ fn assert_processed_whitespace_preserves_block_adjacency<S: LayoutScalar>(
         let fixture = crate::test_support::inline_endpoint::Fixture::new(
             value,
             (0, 1),
-            surgeist_text::WhiteSpace::Collapse,
+            surgeist_text::style::WhiteSpace::Collapse,
             false,
             false,
         );
@@ -5423,7 +5423,7 @@ fn assert_processed_whitespace_preserves_block_adjacency<S: LayoutScalar>(
         };
         assert_eq!(
             placed.layout().source().text(),
-            &surgeist_text::Text::from(value)
+            &surgeist_text::source::Text::from(value)
         );
         assert_eq!(placed.layout().lines().len(), usize::from(visible));
         if !visible {
@@ -5551,7 +5551,7 @@ fn assert_entry_displacement_under_line_selection<S: LayoutScalar>() {
             let fixture = crate::test_support::inline_endpoint::Fixture::new(
                 "A B C D",
                 (0, 7),
-                surgeist_text::WhiteSpace::Collapse,
+                surgeist_text::style::WhiteSpace::Collapse,
                 false,
                 false,
             );
@@ -5707,13 +5707,13 @@ fn assert_zero_height_forced_line_consumes_entry<S: LayoutScalar>() {
     let paragraph = PreparedParagraph::with_strut_at_boundary(
         vec![ParagraphPart::Control {
             node: 20,
-            kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+            kind: surgeist_text::paragraph::ParagraphControlKind::ForcedBreak,
         }],
         style,
-        surgeist_text::ParagraphBaseDirection::LeftToRight,
-        surgeist_text::ParagraphStrut::AllocatedContributions,
+        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::paragraph::ParagraphStrut::AllocatedContributions,
         Vec::new(),
-        surgeist_text::ParagraphTerminalEdge::BlockEnd,
+        surgeist_text::paragraph::ParagraphTerminalEdge::BlockEnd,
     );
     let ordinary = NodeInputOf {
         display: Display::Block,
@@ -5757,7 +5757,7 @@ fn assert_zero_height_forced_line_consumes_entry<S: LayoutScalar>() {
             ),
         );
     let mut binding = paragraph.binding(0);
-    binding.line_strut = Some(surgeist_text::LineStrut {
+    binding.line_strut = Some(surgeist_text::allocation::LineStrut {
         baseline: 0.0,
         line_extent: 0.0,
     });
@@ -5794,7 +5794,7 @@ fn assert_nonformatted_capture_retains_float_entry<S: LayoutScalar>() {
         let fixture = crate::test_support::inline_endpoint::Fixture::new(
             value,
             (0, value.len()),
-            surgeist_text::WhiteSpace::Collapse,
+            surgeist_text::style::WhiteSpace::Collapse,
             false,
             false,
         );
@@ -5845,7 +5845,10 @@ fn assert_nonformatted_capture_retains_float_entry<S: LayoutScalar>() {
             panic!("one actual processed capture");
         };
         let layout = placed.layout();
-        assert_eq!(layout.source().text(), &surgeist_text::Text::from(value));
+        assert_eq!(
+            layout.source().text(),
+            &surgeist_text::source::Text::from(value)
+        );
         if visible {
             assert_eq!(
                 layout
@@ -6159,7 +6162,7 @@ fn assert_ordinary_float_outside_processed_window<S: LayoutScalar>() {
         let fixture = crate::test_support::inline_endpoint::Fixture::new(
             "A B C D",
             (0, 7),
-            surgeist_text::WhiteSpace::Collapse,
+            surgeist_text::style::WhiteSpace::Collapse,
             false,
             false,
         );
@@ -6195,7 +6198,7 @@ fn assert_ordinary_float_outside_processed_window<S: LayoutScalar>() {
         };
         assert_eq!(
             placed.layout().source().text(),
-            &surgeist_text::Text::from("A B C D")
+            &surgeist_text::source::Text::from("A B C D")
         );
         assert_eq!(placed.layout().lines().len(), 2);
         let float = public_final_output(&batch, 2);

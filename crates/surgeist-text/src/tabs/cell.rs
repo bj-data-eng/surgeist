@@ -8,7 +8,7 @@ pub(crate) struct CellTabMetric {
     pub(crate) font: Option<crate::engine::layout::data::PreparedRun>,
 }
 pub(crate) struct CellTabReference {
-    pub(crate) scope: crate::processing::CapturedScope,
+    pub(crate) scope: crate::processing::contextual::CapturedScope,
     pub(crate) direction: crate::protocol::ParagraphBaseDirection,
     pub(crate) space: Option<CellTabMetric>,
     pub(crate) ch: Option<CellTabMetric>,

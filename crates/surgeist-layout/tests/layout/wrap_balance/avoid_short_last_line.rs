@@ -7,22 +7,34 @@ fn direction_and_hard_groups<S: l::LayoutScalar>() {
 pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         for forced in [false, true] {
-            let mut fixture = Fixture::<S>::new(direction, t::Wrap::Word, forced);
+            let mut fixture = Fixture::<S>::new(direction, t::style::Wrap::Word, forced);
             let ordinary = fixture.compute();
             let mut expected = vec![];
             if forced {
                 expected.extend([
-                    (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
-                    (t::Range::new(7, 8), 10.0, t::LineEnd::Forced),
+                    (
+                        t::source::Range::new(0, 7),
+                        60.0,
+                        t::selection::LineEnd::Soft,
+                    ),
+                    (
+                        t::source::Range::new(7, 8),
+                        10.0,
+                        t::selection::LineEnd::Forced,
+                    ),
                 ]);
             }
             let start = if forced { 8 } else { 0 };
             expected.extend([
-                (t::Range::new(start, start + 4), 30.0, t::LineEnd::Soft),
                 (
-                    t::Range::new(start + 4, start + 8),
+                    t::source::Range::new(start, start + 4),
+                    30.0,
+                    t::selection::LineEnd::Soft,
+                ),
+                (
+                    t::source::Range::new(start + 4, start + 8),
                     40.0,
-                    t::LineEnd::Paragraph,
+                    t::selection::LineEnd::Paragraph,
                 ),
             ]);
             let before = fixture
@@ -48,24 +60,52 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
             );
             let ordinary_expected = if forced {
                 vec![
-                    (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
-                    (t::Range::new(7, 8), 10.0, t::LineEnd::Forced),
-                    (t::Range::new(8, 15), 60.0, t::LineEnd::Soft),
-                    (t::Range::new(15, 16), 10.0, t::LineEnd::Paragraph),
+                    (
+                        t::source::Range::new(0, 7),
+                        60.0,
+                        t::selection::LineEnd::Soft,
+                    ),
+                    (
+                        t::source::Range::new(7, 8),
+                        10.0,
+                        t::selection::LineEnd::Forced,
+                    ),
+                    (
+                        t::source::Range::new(8, 15),
+                        60.0,
+                        t::selection::LineEnd::Soft,
+                    ),
+                    (
+                        t::source::Range::new(15, 16),
+                        10.0,
+                        t::selection::LineEnd::Paragraph,
+                    ),
                 ]
             } else {
                 vec![
-                    (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
-                    (t::Range::new(7, 8), 10.0, t::LineEnd::Paragraph),
+                    (
+                        t::source::Range::new(0, 7),
+                        60.0,
+                        t::selection::LineEnd::Soft,
+                    ),
+                    (
+                        t::source::Range::new(7, 8),
+                        10.0,
+                        t::selection::LineEnd::Paragraph,
+                    ),
                 ]
             };
             fixture.assert_lines(&ordinary, &ordinary_expected, direction);
         }
-        let mut nowrap = Fixture::<S>::new(direction, t::Wrap::None, false);
+        let mut nowrap = Fixture::<S>::new(direction, t::style::Wrap::None, false);
         let auto = nowrap.compute();
         set_normalized_wrap_style(&mut nowrap, style);
         let selected = compute_changed_wrap_style(&nowrap);
-        let expected = [(t::Range::new(0, 8), 80.0, t::LineEnd::Paragraph)];
+        let expected = [(
+            t::source::Range::new(0, 8),
+            80.0,
+            t::selection::LineEnd::Paragraph,
+        )];
         nowrap.assert_lines(&auto, &expected, direction);
         nowrap.assert_lines(&selected, &expected, direction);
     }

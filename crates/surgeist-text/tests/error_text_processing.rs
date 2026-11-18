@@ -10,10 +10,15 @@
 //! returns each from `source()` without repeating its text.
 
 use surgeist_text::{
-    ComputedLineBoundaryError, DocumentSegmentBreakError, ProcessingCapacityError, Range,
-    ScopeAlignmentError, ScopeAlignmentLimitKind, SourceContinuityOperation,
-    SourceProcessingConnectionError, SourceProcessingError, SourceProcessingJointFlowError,
-    SourceRangeFragmentError, TextCombineError, TextTransformError,
+    analyzed::TextCombineError,
+    capture::{
+        ComputedLineBoundaryError, SourceContinuityOperation, SourceProcessingConnectionError,
+        SourceProcessingError, SourceProcessingJointFlowError,
+    },
+    processing::{DocumentSegmentBreakError, ProcessingCapacityError, TextTransformError},
+    range_fragments::SourceRangeFragmentError,
+    scope_alignment::{ScopeAlignmentError, ScopeAlignmentLimitKind},
+    source::Range,
 };
 
 mod error_support;

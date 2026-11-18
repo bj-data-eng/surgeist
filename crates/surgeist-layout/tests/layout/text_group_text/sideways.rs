@@ -1,7 +1,7 @@
 //! Native Layout consumes actual CW preparation, not horizontal geometry proxies.
 use super::*;
 
-fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
+fn qualify_preparation(paragraph: &Paragraph, orientation: t::selection::LineOrientation) {
     let p = &paragraph.prepared;
     assert_eq!(p.orientation(), orientation);
     assert_eq!(
@@ -14,8 +14,8 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
             .map(|u| (u.source_range(), u.level().get(), u.advance()))
             .collect::<Vec<_>>(),
         [
-            (t::Range::new(0, 1), 0, 10.0),
-            (t::Range::new(1, 2), 0, 10.0),
+            (t::source::Range::new(0, 1), 0, 10.0),
+            (t::source::Range::new(1, 2), 0, 10.0),
         ]
     );
     assert_eq!(p.control_views().count(), 0);
@@ -31,16 +31,16 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
     // for the actual narrower selections that Layout must subsequently issue.
     let end = p
         .opportunity_views()
-        .find(|o| o.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|o| o.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
     let line = p
-        .select(t::LineSelectionRequest {
+        .select(t::selection::LineSelectionRequest {
             inline_boxes: None,
             segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
-            termination: t::PreparedTermination::Ordinary(end),
+            termination: t::selection::PreparedTermination::Ordinary(end),
             alternative: None,
             incoming: None,
             participants: p.participants().collect(),
@@ -49,25 +49,25 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
             boundary_context: vec![],
             line_box_struts: vec![],
             line_strut: None,
-            context: t::LineContext {
-                alignment_insets: t::LineAlignmentInsets::ZERO,
-                formatted_line: t::FormattedLineContext::default(),
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: t::LineBoxDirection::LeftToRight,
+            context: t::selection::LineContext {
+                alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+                formatted_line: t::selection::FormattedLineContext::default(),
+                base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: t::selection::LineBoxDirection::LeftToRight,
                 orientation,
-                start: t::LineStart::Paragraph,
-                end: t::LineEnd::Paragraph,
+                start: t::selection::LineStart::Paragraph,
+                end: t::selection::LineEnd::Paragraph,
                 available_inline: None,
                 indent: 0.0,
-                alignment: t::Alignment::Left,
-                tabs: t::TabContext::NoTabs,
-                spacing: t::SpacingPolicy::None,
+                alignment: t::options::Alignment::Left,
+                tabs: t::tabs::TabContext::NoTabs,
+                spacing: t::spacing::SpacingPolicy::None,
             },
         })
         .unwrap()
-        .finalize(surgeist_text::LineAllocations {
-            spacing: t::SpacingAllocations::None,
-            scopes: surgeist_text::ScopeAllocations::None,
+        .finalize(surgeist_text::scope_alignment::LineAllocations {
+            spacing: t::spacing::SpacingAllocations::None,
+            scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -94,18 +94,21 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
     assert_eq!(
         glyphs,
         [
-            (35, 0.0, 0.0, 0.0, 10.0, t::Range::new(0, 1)),
-            (36, 10.0, 0.0, 0.0, 10.0, t::Range::new(1, 2))
+            (35, 0.0, 0.0, 0.0, 10.0, t::source::Range::new(0, 1)),
+            (36, 10.0, 0.0, 0.0, 10.0, t::source::Range::new(1, 2))
         ]
     );
 }
 
 fn finite<S: l::LayoutScalar>() {
     for (writing_mode, orientation) in [
-        (l::WritingMode::HorizontalTb, t::LineOrientation::Horizontal),
+        (
+            l::WritingMode::HorizontalTb,
+            t::selection::LineOrientation::Horizontal,
+        ),
         (
             l::WritingMode::SidewaysRl,
-            t::LineOrientation::SidewaysClockwise,
+            t::selection::LineOrientation::SidewaysClockwise,
         ),
     ] {
         let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::None);
@@ -122,12 +125,12 @@ fn finite<S: l::LayoutScalar>() {
             &mut host,
             0,
             &[Part::Text("AB")],
-            t::Style {
-                word_break: t::WordBreak::BreakAll,
+            t::style::Style {
+                word_break: t::style::WordBreak::BreakAll,
                 ..style()
             },
-            t::ParagraphBaseDirection::LeftToRight,
-            t::PreparationOptions::default().with_orientation(orientation),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::prepared::PreparationOptions::default().with_orientation(orientation),
         );
         qualify_preparation(&paragraph, orientation);
         let flow = l::LayoutFlowInput::try_new(
@@ -174,7 +177,7 @@ fn finite<S: l::LayoutScalar>() {
         );
         assert_eq!(layout.nonformatted_lines().count(), 0);
         let rows = receipts(&batch, &paragraph);
-        assert_eq!(layout.metrics().size(), t::Size::new(20.0, 10.0));
+        assert_eq!(layout.metrics().size(), t::geometry::Size::new(20.0, 10.0));
         assert_eq!(layout.metrics().full_width(), 20.0);
         let advances = rows
             .iter()
@@ -189,11 +192,13 @@ fn finite<S: l::LayoutScalar>() {
             );
             assert_eq!(
                 line.selected_line().request().context.available_inline,
-                Some(if orientation == t::LineOrientation::Horizontal {
-                    40.0
-                } else {
-                    15.0
-                })
+                Some(
+                    if orientation == t::selection::LineOrientation::Horizontal {
+                        40.0
+                    } else {
+                        15.0
+                    }
+                )
             );
             assert_eq!(line.feedback().line_height, 10.0);
             assert_eq!(
@@ -203,7 +208,7 @@ fn finite<S: l::LayoutScalar>() {
                     .view()
                     .source_after()
                     .get(),
-                if orientation == t::LineOrientation::Horizontal {
+                if orientation == t::selection::LineOrientation::Horizontal {
                     2
                 } else {
                     i + 1
@@ -212,9 +217,9 @@ fn finite<S: l::LayoutScalar>() {
             assert_eq!(
                 line.selected_line().request().context.end,
                 if i + 1 == rows.len() {
-                    t::LineEnd::Paragraph
+                    t::selection::LineEnd::Paragraph
                 } else {
-                    t::LineEnd::Soft
+                    t::selection::LineEnd::Soft
                 }
             );
             for run in line.run_views() {
@@ -225,27 +230,30 @@ fn finite<S: l::LayoutScalar>() {
         assert_eq!(
             glyphs,
             [
-                (35, 10.0, t::Range::new(0, 1)),
-                (36, 10.0, t::Range::new(1, 2))
+                (35, 10.0, t::source::Range::new(0, 1)),
+                (36, 10.0, t::source::Range::new(1, 2))
             ]
         );
-        if orientation == t::LineOrientation::Horizontal {
+        if orientation == t::selection::LineOrientation::Horizontal {
             assert_eq!(advances, [20.0]);
             assert_eq!(
                 layout.lines()[0].bounds(),
-                t::Rect::new(0.0, 0.0, 40.0, 10.0)
+                t::geometry::Rect::new(0.0, 0.0, 40.0, 10.0)
             );
-            assert_eq!(layout.bounds(), t::Rect::new(0.0, 0.0, 40.0, 10.0));
+            assert_eq!(
+                layout.bounds(),
+                t::geometry::Rect::new(0.0, 0.0, 40.0, 10.0)
+            );
             assert_eq!(
                 layout.run_views().next().unwrap().origin(),
-                t::Point::new(0.0, 8.0)
+                t::geometry::Point::new(0.0, 8.0)
             );
             assert_eq!(
                 layout
-                    .cursor(t::Cursor::new(0, t::Affinity::After))
+                    .cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
                     .unwrap()
                     .rect(),
-                t::Rect::new(0.0, 0.0, 1.0, 10.0)
+                t::geometry::Rect::new(0.0, 0.0, 1.0, 10.0)
             );
         } else {
             assert_eq!(advances, [10.0, 10.0]);
@@ -257,49 +265,55 @@ fn finite<S: l::LayoutScalar>() {
                     .collect::<Vec<_>>(),
                 [
                     (
-                        t::Range::new(0, 1),
+                        t::source::Range::new(0, 1),
                         32.0,
-                        t::Rect::new(30.0, 0.0, 10.0, 15.0)
+                        t::geometry::Rect::new(30.0, 0.0, 10.0, 15.0)
                     ),
                     (
-                        t::Range::new(1, 2),
+                        t::source::Range::new(1, 2),
                         22.0,
-                        t::Rect::new(20.0, 0.0, 10.0, 15.0)
+                        t::geometry::Rect::new(20.0, 0.0, 10.0, 15.0)
                     ),
                 ]
             );
-            assert_eq!(layout.bounds(), t::Rect::new(20.0, 0.0, 20.0, 15.0));
+            assert_eq!(
+                layout.bounds(),
+                t::geometry::Rect::new(20.0, 0.0, 20.0, 15.0)
+            );
             assert_eq!(
                 layout
                     .run_views()
                     .map(|run| run.origin())
                     .collect::<Vec<_>>(),
-                [t::Point::new(32.0, 0.0), t::Point::new(22.0, 0.0)]
+                [
+                    t::geometry::Point::new(32.0, 0.0),
+                    t::geometry::Point::new(22.0, 0.0)
+                ]
             );
             assert_eq!(
                 layout
-                    .cursor(t::Cursor::new(0, t::Affinity::After))
+                    .cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
                     .unwrap()
                     .rect(),
-                t::Rect::new(30.0, 0.0, 10.0, 1.0)
+                t::geometry::Rect::new(30.0, 0.0, 10.0, 1.0)
             );
             assert_eq!(
                 layout
-                    .cursor(t::Cursor::new(1, t::Affinity::After))
+                    .cursor(t::layout::Cursor::new(1, t::layout::Affinity::After))
                     .unwrap()
                     .rect(),
-                t::Rect::new(20.0, 0.0, 10.0, 1.0)
+                t::geometry::Rect::new(20.0, 0.0, 10.0, 1.0)
             );
             let selection = layout
-                .selection(t::Selection::new(
-                    t::Cursor::new(0, t::Affinity::After),
-                    t::Cursor::new(1, t::Affinity::Before),
+                .selection(t::layout::Selection::new(
+                    t::layout::Cursor::new(0, t::layout::Affinity::After),
+                    t::layout::Cursor::new(1, t::layout::Affinity::Before),
                 ))
                 .unwrap();
             assert_eq!(selection.rects().len(), 1);
             assert_eq!(
                 selection.rects()[0].rect(),
-                t::Rect::new(30.0, 0.0, 10.0, 10.0)
+                t::geometry::Rect::new(30.0, 0.0, 10.0, 10.0)
             );
         }
     }

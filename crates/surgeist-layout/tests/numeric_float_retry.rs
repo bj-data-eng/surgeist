@@ -31,7 +31,7 @@ impl Tree {
                 l::NodeInput {
                     display: l::Display::InlineBlock,
                     atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
-                        surgeist_text::BidiLevel::try_new(0).unwrap(),
+                        surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
                         l::InlineBreakOpportunity::Prohibited,
                     )),
                     size: l::Size::new(px(28.0), px(10.0)),

@@ -2,7 +2,7 @@
 use super::super::{Host, absent, atomic, n, node, px, request, root};
 use std::{convert::Infallible, slice};
 use surgeist_layout as l;
-use surgeist_text::BidiLevel;
+use surgeist_text::supplied_line::BidiLevel;
 
 struct TriangleHost<S: l::LayoutScalar> {
     inner: Host<S>,

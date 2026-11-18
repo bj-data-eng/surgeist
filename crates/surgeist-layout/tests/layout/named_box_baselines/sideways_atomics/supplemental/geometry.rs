@@ -6,23 +6,29 @@ fn completion<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "",
-            Some((kind, t::Id::from_u64(1))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(1))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         let line = selected(&parent, kind);
         assert_eq!(line.atomic_slots().count(), 1);
-        assert_eq!(line.has_in_flow_content(), kind == t::InlineBoxKind::InFlow);
+        assert_eq!(
+            line.has_in_flow_content(),
+            kind == t::source::InlineBoxKind::InFlow
+        );
         let mut input = root(
             l::WritingMode::SidewaysRl,
             l::Direction::Ltr,
@@ -53,7 +59,7 @@ fn completion<S: l::LayoutScalar>() {
         };
         let batch = run(&host, vec![outer, inner], &[], available(40.0, 40.0)).unwrap();
         let text = placed(&batch, 0);
-        let x = if kind == t::InlineBoxKind::InFlow {
+        let x = if kind == t::source::InlineBoxKind::InFlow {
             32.0
         } else {
             34.0
@@ -62,7 +68,7 @@ fn completion<S: l::LayoutScalar>() {
             node(crate::layout::observation::phase(&batch, false), 1).location,
             l::Point::new(n(x), n(0.0))
         );
-        if kind == t::InlineBoxKind::InFlow {
+        if kind == t::source::InlineBoxKind::InFlow {
             assert_eq!(
                 (
                     line.feedback().advance,
@@ -74,31 +80,32 @@ fn completion<S: l::LayoutScalar>() {
             assert_eq!(text.lines().len(), 1);
             assert_eq!(
                 text.inline_boxes()[0].rect(),
-                t::Rect::new(32.0, 0.0, 6.0, 14.0)
+                t::geometry::Rect::new(32.0, 0.0, 6.0, 14.0)
             );
             unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
         } else {
             // Keep the actual consumed receipt. Its tab context is part of
             // finalization identity even when this source contains no TAB.
             let completion = text.nonformatted_lines().next().unwrap().line.clone();
-            let reference = t::Layout::from_finalized_lines(t::PlacementRequest {
-                prepared: parent.prepared.clone(),
-                coverage: t::PlacementCoverage::WholeParagraph,
-                entries: vec![t::PlacementEntry::NonFormatted(
-                    t::NonFormattedLinePlacement {
-                        line: completion,
-                        origin: t::Point::new(40.0, 0.0),
-                        orientation: t::LineOrientation::SidewaysClockwise,
-                        atomics: vec![t::AtomicPlacement {
-                            occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
-                            border: t::Rect::new(34.0, 0.0, 6.0, 14.0),
-                            content: t::Rect::new(34.0, 0.0, 6.0, 14.0),
-                            baseline: 34.0,
-                        }],
-                    },
-                )],
-            })
-            .unwrap();
+            let reference =
+                t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
+                    prepared: parent.prepared.clone(),
+                    coverage: t::placement::PlacementCoverage::WholeParagraph,
+                    entries: vec![t::placement::PlacementEntry::NonFormatted(
+                        t::placement::NonFormattedLinePlacement {
+                            line: completion,
+                            origin: t::geometry::Point::new(40.0, 0.0),
+                            orientation: t::selection::LineOrientation::SidewaysClockwise,
+                            atomics: vec![t::placement::AtomicPlacement {
+                                occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
+                                border: t::geometry::Rect::new(34.0, 0.0, 6.0, 14.0),
+                                content: t::geometry::Rect::new(34.0, 0.0, 6.0, 14.0),
+                                baseline: 34.0,
+                            }],
+                        },
+                    )],
+                })
+                .unwrap();
             assert_eq!(text.key(), reference.key());
             assert!(text.lines().is_empty());
             assert_eq!(text.positions().count(), 0);
@@ -118,22 +125,25 @@ fn constraints<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(2))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(2))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
-        let finite = if kind == t::InlineBoxKind::InFlow {
+        let finite = if kind == t::source::InlineBoxKind::InFlow {
             [(23.0, 3), (24.0, 2)]
         } else {
             [(10.0, 2), (20.0, 1)]
@@ -144,11 +154,11 @@ fn constraints<S: l::LayoutScalar>() {
             assert_eq!(placed(&batch, 0).lines().len(), columns);
             assert_eq!(
                 placed(&batch, 0).inline_boxes()[0].rect().size,
-                t::Size::new(6.0, 14.0)
+                t::geometry::Size::new(6.0, 14.0)
             );
             unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
         }
-        let (min_width, min_height, max_height) = if kind == t::InlineBoxKind::InFlow {
+        let (min_width, min_height, max_height) = if kind == t::source::InlineBoxKind::InFlow {
             (30.0, 14.0, 34.0)
         } else {
             (20.0, 10.0, 20.0)
@@ -185,7 +195,7 @@ fn constraints<S: l::LayoutScalar>() {
             );
             assert_eq!(
                 placed(&batch, 0).inline_boxes()[0].rect().size,
-                t::Size::new(6.0, 14.0)
+                t::geometry::Size::new(6.0, 14.0)
             );
         }
     }
@@ -196,18 +206,21 @@ fn physical_boxes<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(2))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(2))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -231,7 +244,7 @@ fn physical_boxes<S: l::LayoutScalar>() {
                 l::ComputedOverflow::try_new(l::Overflow::Auto, l::Overflow::Auto).unwrap();
         });
         let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
-        let x = if kind == t::InlineBoxKind::InFlow {
+        let x = if kind == t::source::InlineBoxKind::InFlow {
             31.0
         } else {
             32.0
@@ -246,12 +259,12 @@ fn physical_boxes<S: l::LayoutScalar>() {
         );
         assert_eq!(geometry.content_box().size(), l::Size::new(n(3.0), n(9.0)));
         assert_eq!(geometry.physical_range().x().maximum(), n(2.0));
-        let border = t::Rect::new(x, 8.0, 6.0, 14.0);
-        let content = t::Rect::new(x + 2.0, 11.0, 3.0, 9.0);
+        let border = t::geometry::Rect::new(x, 8.0, 6.0, 14.0);
+        let content = t::geometry::Rect::new(x + 2.0, 11.0, 3.0, 9.0);
         let line = receipt(&batch, 1);
         assert_eq!(
             line.feedback().advance,
-            if kind == t::InlineBoxKind::InFlow {
+            if kind == t::source::InlineBoxKind::InFlow {
                 35.0
             } else {
                 20.0
@@ -260,11 +273,11 @@ fn physical_boxes<S: l::LayoutScalar>() {
         let expected = explicit(
             &parent,
             line,
-            t::LineAnchor {
+            t::placement::LineAnchor {
                 inline_origin: 0.0,
                 baseline: 32.0,
             },
-            t::AtomicPlacement {
+            t::placement::AtomicPlacement {
                 occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                 border,
                 content,
@@ -276,7 +289,7 @@ fn physical_boxes<S: l::LayoutScalar>() {
         assert!(
             placed(&batch, 2)
                 .run_views()
-                .all(|run| run.glyph_basis() == t::GlyphBasis::Unrotated)
+                .all(|run| run.glyph_basis() == t::geometry::GlyphBasis::Unrotated)
         );
 
         let (mut host, bindings) = scene::<S>(&parent, &child, kind, l::Direction::Ltr, 40.0);
@@ -285,18 +298,18 @@ fn physical_boxes<S: l::LayoutScalar>() {
             input.inset.top = margin(3.0);
         });
         let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
-        let (x, y) = if kind == t::InlineBoxKind::InFlow {
+        let (x, y) = if kind == t::source::InlineBoxKind::InFlow {
             (34.0, 13.0)
         } else {
             (2.0, 3.0)
         };
         assert_eq!(
             placed(&batch, 0).inline_boxes()[0].rect(),
-            t::Rect::new(x, y, 6.0, 14.0)
+            t::geometry::Rect::new(x, y, 6.0, 14.0)
         );
         assert_eq!(
             receipt(&batch, 1).feedback().advance,
-            if kind == t::InlineBoxKind::InFlow {
+            if kind == t::source::InlineBoxKind::InFlow {
                 34.0
             } else {
                 20.0
@@ -308,7 +321,7 @@ fn physical_boxes<S: l::LayoutScalar>() {
 fn wrapped<S: l::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
-    kind: t::InlineBoxKind,
+    kind: t::source::InlineBoxKind,
 ) -> (Host<S>, Vec<l::TextParagraphBinding<u32>>) {
     let mut input = root(
         l::WritingMode::HorizontalTb,
@@ -334,18 +347,21 @@ fn replay<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(3))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(3))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -355,20 +371,20 @@ fn replay<S: l::LayoutScalar>() {
             node(crate::layout::observation::phase(&cold, false), 1).location,
             l::Point::new(n(7.25), n(9.5))
         );
-        let x = if kind == t::InlineBoxKind::InFlow {
+        let x = if kind == t::source::InlineBoxKind::InFlow {
             39.0
         } else {
             41.0
         };
-        let border = t::Rect::new(x, 20.0, 6.0, 14.0);
+        let border = t::geometry::Rect::new(x, 20.0, 6.0, 14.0);
         let expected = explicit(
             &parent,
             receipt(&cold, 2),
-            t::LineAnchor {
+            t::placement::LineAnchor {
                 inline_origin: 10.0,
                 baseline: 39.0,
             },
-            t::AtomicPlacement {
+            t::placement::AtomicPlacement {
                 occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                 border,
                 content: border,
@@ -416,12 +432,12 @@ fn replay<S: l::LayoutScalar>() {
         assert_eq!(placed(&changed, 1).key(), placed(&fresh, 1).key());
         assert_eq!(
             placed(&changed, 1).inline_boxes()[0].rect(),
-            t::Rect::new(x, 20.0, 6.0, 18.0)
+            t::geometry::Rect::new(x, 20.0, 6.0, 18.0)
         );
         assert_eq!(placed(&changed, 1).lines().len(), 1);
         assert_eq!(
             receipt(&changed, 2).feedback().advance,
-            if kind == t::InlineBoxKind::InFlow {
+            if kind == t::source::InlineBoxKind::InFlow {
                 38.0
             } else {
                 20.0
@@ -437,45 +453,48 @@ fn mappings<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(2))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(2))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
         let (host, bindings) = scene::<S>(&parent, &child, kind, l::Direction::Ltr, 40.0);
         let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
         let text = placed(&batch, 0);
-        let advance = if kind == t::InlineBoxKind::InFlow {
+        let advance = if kind == t::source::InlineBoxKind::InFlow {
             34.0
         } else {
             20.0
         };
         assert_eq!(
-            text.cursor(t::Cursor::new(0, t::Affinity::After))
+            text.cursor(t::layout::Cursor::new(0, t::layout::Affinity::After))
                 .unwrap()
                 .rect(),
-            t::Rect::new(30.0, 0.0, 10.0, 1.0)
+            t::geometry::Rect::new(30.0, 0.0, 10.0, 1.0)
         );
         assert_eq!(
-            text.cursor(t::Cursor::new(2, t::Affinity::Before))
+            text.cursor(t::layout::Cursor::new(2, t::layout::Affinity::Before))
                 .unwrap()
                 .rect(),
-            t::Rect::new(30.0, advance, 10.0, 1.0)
+            t::geometry::Rect::new(30.0, advance, 10.0, 1.0)
         );
         assert!(
-            matches!(text.hit(t::Point::new(33.0,2.0)),t::Hit::Text(position) if position.source_cursor().index()==0)
+            matches!(text.hit(t::geometry::Point::new(33.0,2.0)),t::layout::Hit::Text(position) if position.source_cursor().index()==0)
         );
-        let second = if kind == t::InlineBoxKind::InFlow {
+        let second = if kind == t::source::InlineBoxKind::InFlow {
             24.0
         } else {
             10.0
@@ -483,8 +502,8 @@ fn mappings<S: l::LayoutScalar>() {
         let mut ranges = Vec::new();
         for row in batch.unrounded_inline_fragments() {
             let (range, y) = match row.owner() {
-                l::InlineFragmentOwner::Node(1) => (t::Range::new(0, 1), 0.0),
-                l::InlineFragmentOwner::Node(3) => (t::Range::new(1, 2), second),
+                l::InlineFragmentOwner::Node(1) => (t::source::Range::new(0, 1), 0.0),
+                l::InlineFragmentOwner::Node(3) => (t::source::Range::new(1, 2), second),
                 _ => continue,
             };
             let fragment = row.fragment();
@@ -503,7 +522,10 @@ fn mappings<S: l::LayoutScalar>() {
             ranges.push(range);
         }
         ranges.sort_by_key(|range| range.start);
-        assert_eq!(ranges, [t::Range::new(0, 1), t::Range::new(1, 2)]);
+        assert_eq!(
+            ranges,
+            [t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
+        );
     }
 }
 

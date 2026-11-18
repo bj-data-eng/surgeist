@@ -10,7 +10,7 @@ use crate::{
     error::{SpacingFailureReason, SpacingOperation, SpacingPiece, SpacingStage},
     id::Id,
     options::Alignment,
-    processing::{DocumentSegmentBreaks, ScopeAlignmentLimits},
+    processing::{DocumentSegmentBreaks, contextual::ScopeAlignmentLimits},
     protocol::{
         FinalizedLine, FormattedLineContext, LineAlignmentInsets, LineAllocations,
         LineBoxDirection, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,

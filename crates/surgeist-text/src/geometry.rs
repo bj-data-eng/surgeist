@@ -1,3 +1,6 @@
+//! Points, sizes, rectangles, glyph frames and numeric-category diagnostics.
+
+pub use crate::error::{NumericRequirement, TextNumericError, TextNumericPhase};
 /// Outline axes of the glyphs in an admitted uniform run.
 ///
 /// Glyph offsets use font x to the right and converted font y downward. The

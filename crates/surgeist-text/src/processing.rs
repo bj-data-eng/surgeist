@@ -1,25 +1,14 @@
+//! Source-local whitespace processing and its plaintext view.
+
 use std::collections::BTreeSet;
 
 pub(crate) mod contextual;
 pub(crate) mod lexical;
 pub(crate) mod lexical_inventory;
-pub use contextual::{
-    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedConnection,
-    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
-    CapturedJointFlow, CapturedParagraph, CapturedScope, CapturedScopeIntersection,
-    ComputedLineBoundaryError, ComputedLineBoundaryInput, ContextualSourceInput,
-    ProcessedParagraph, ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind,
-    ScopeAlignmentLimits, ScopeAlignmentUsage, ScopeFontReference, ScopeRole, SourceBoxSide,
-    SourceContinuityOperation, SourceProcessingConnection, SourceProcessingConnectionError,
-    SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
-    SourceProcessingJointFlow, SourceProcessingJointFlowError, SourceProcessingParagraph,
-    SourceProcessingScope, SourceProcessingScopeBoundaries, SourceProcessingTopology,
-    SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
-};
 
+pub use crate::error::{DocumentSegmentBreakError, ProcessingCapacityError, TextTransformError};
 use crate::{
     Error, ErrorCode, ErrorDetail, Result,
-    error::{DocumentSegmentBreakError, ProcessingCapacityError},
     layout::Affinity,
     range::{Range, SourcePosition},
     source::{InlineBox, InlineBoxKind, Source, Span},
@@ -161,14 +150,13 @@ pub struct ProcessedSource {
 /// do not imply a physical allocator/OOM guarantee or a successful-work quota.
 ///
 /// ```
-/// use surgeist_text::{DocumentSegmentBreaks, PlaintextItem, Source, Style,
-///     WhiteSpace, process_source_whitespace};
+/// use surgeist_text::{processing::{DocumentSegmentBreaks, PlaintextItem, process_source_whitespace}, source::Source, style::{Style, WhiteSpace}};
 /// let processed = process_source_whitespace(
 ///     Source::new(" A\tB\n"),
 ///     Style { white_space: WhiteSpace::Discard, ..Style::default() },
 ///     DocumentSegmentBreaks::LineFeedDefault,
 /// )?;
-/// let plaintext: Vec<u16> = processed.plaintext_items(surgeist_text::Affinity::Before).flat_map(|item| match item {
+/// let plaintext: Vec<u16> = processed.plaintext_items(surgeist_text::layout::Affinity::Before).flat_map(|item| match item {
 ///     PlaintextItem::Text(text) => text.code_units().iter().copied(),
 ///     PlaintextItem::InlineBox(_) => [].iter().copied(),
 /// }).collect();

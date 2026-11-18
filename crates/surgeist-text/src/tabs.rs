@@ -1,6 +1,8 @@
 //! Captured CSS tab values and resource demand.
+
 use crate::{Result, error::TextNumericError, protocol::ParagraphBaseDirection, style::Style};
 pub(crate) mod cell;
+pub use crate::protocol::TabContext;
 
 /// Finite, nonnegative CSS `tab-size`, kept symbolic until preparation.
 #[derive(Clone, Copy, Debug, PartialEq)]

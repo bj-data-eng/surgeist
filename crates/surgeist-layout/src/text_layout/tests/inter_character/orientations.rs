@@ -1,31 +1,31 @@
 //! Real CW and whole-upright preparation consumed by physical Layout placement.
 use super::*;
 
-fn capture(orientation: text::LineOrientation) -> TextParagraphBinding<u32> {
-    let style = own(4.0, Wrap::None, text::OverflowWrap::Normal, false);
+fn capture(orientation: text::selection::LineOrientation) -> TextParagraphBinding<u32> {
+    let style = own(4.0, Wrap::None, text::style::OverflowWrap::Normal, false);
     let source = Source::new("ABC");
-    let typography = if orientation == text::LineOrientation::Vertical {
-        text::AnalysisTypography::Upright {
+    let typography = if orientation == text::selection::LineOrientation::Vertical {
+        text::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::LeftToRight,
         }
     } else {
-        text::AnalysisTypography::HorizontalComposition
+        text::analyzed::AnalysisTypography::HorizontalComposition
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, 3),
-                aggregate: text::Range::new(0, 3),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 3),
+                aggregate: text::source::Range::new(0, 3),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -44,7 +44,7 @@ fn capture(orientation: text::LineOrientation) -> TextParagraphBinding<u32> {
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(orientation),
+            text::prepared::PreparationOptions::default().with_orientation(orientation),
         )
         .unwrap();
     assert_eq!(prepared.orientation(), orientation);
@@ -62,7 +62,7 @@ fn capture(orientation: text::LineOrientation) -> TextParagraphBinding<u32> {
     }
 }
 
-fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingMode) {
+fn allocated<S: LayoutScalar>(orientation: text::selection::LineOrientation, mode: WritingMode) {
     qualify_metrics(AHEM, 1000);
     let binding = capture(orientation);
     let origin = binding.origins[0].origin.clone();
@@ -145,17 +145,20 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
     assert_eq!(selected.request().context.orientation, orientation);
     assert_eq!(
         selected.request().context.spacing,
-        text::SpacingPolicy::InterCharacter
+        text::spacing::SpacingPolicy::InterCharacter
     );
     assert_eq!(selected.request().context.available_inline, Some(42.0));
     amounts(&line, &[2.0, 2.0]);
     assert_eq!(line.measurements().alignment().advance(), 42.0);
     assert_eq!(line.feedback().advance, 42.0);
     for (index, row) in line.spacing_slots().enumerate() {
-        assert_eq!(row.stretchability, text::SpacingStretchability::Direct);
+        assert_eq!(
+            row.stretchability,
+            text::spacing::SpacingStretchability::Direct
+        );
         assert_eq!(row.authored_letter_spacing, 4.0);
         assert_eq!(row.advance, 6.0);
-        let text::SpacingSlotTarget::Boundary {
+        let text::spacing::SpacingSlotTarget::Boundary {
             visual_before,
             visual_after,
         } = row.slot.target()
@@ -163,10 +166,10 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
             panic!("actual character boundary required")
         };
         for (unit, start) in [(visual_before, index), (visual_after, index + 1)] {
-            let range = text::Range::new(start, start + 1);
+            let range = text::source::Range::new(start, start + 1);
             assert_eq!(
                 unit.pieces().next().unwrap().owner(),
-                text::SpacingSlotOwner::Source {
+                text::spacing::SpacingSlotOwner::Source {
                     origin: origin.clone(),
                     local: range,
                     aggregate: range,
@@ -174,7 +177,7 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
             );
         }
     }
-    let upright = orientation == text::LineOrientation::Vertical;
+    let upright = orientation == text::selection::LineOrientation::Vertical;
     let expected_offsets = if upright { (-5.0, 8.0) } else { (0.0, 0.0) };
     let mut facts = Vec::new();
     for run in batch.placed_text()[0].layout().glyph_runs() {
@@ -182,9 +185,9 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
         assert_eq!(
             run.glyph_basis(),
             if upright {
-                text::GlyphBasis::Unrotated
+                text::geometry::GlyphBasis::Unrotated
             } else {
-                text::GlyphBasis::Clockwise
+                text::geometry::GlyphBasis::Clockwise
             }
         );
         for glyph in run.glyphs() {
@@ -197,9 +200,9 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
     assert_eq!(
         facts,
         [
-            (text::Range::new(0, 1), 35, 0.0),
-            (text::Range::new(1, 2), 36, 16.0),
-            (text::Range::new(2, 3), 37, 32.0),
+            (text::source::Range::new(0, 1), 35, 0.0),
+            (text::source::Range::new(1, 2), 36, 16.0),
+            (text::source::Range::new(2, 3), 37, 32.0),
         ]
     );
     // Gap ownership is on the preceding cell; physical inline is y in both
@@ -208,7 +211,10 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
     for (index, y) in [0.0, 16.0, 32.0, 42.0].into_iter().enumerate() {
         assert_eq!(
             layout
-                .cursor(text::Cursor::new(index, text::Affinity::Before))
+                .cursor(text::layout::Cursor::new(
+                    index,
+                    text::layout::Affinity::Before
+                ))
                 .unwrap()
                 .rect()
                 .origin
@@ -223,10 +229,13 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
 fn clockwise_and_upright_character_fill_preserve_raw_packets_and_physical_cell_edges() {
     for (orientation, mode) in [
         (
-            text::LineOrientation::SidewaysClockwise,
+            text::selection::LineOrientation::SidewaysClockwise,
             WritingMode::SidewaysRl,
         ),
-        (text::LineOrientation::Vertical, WritingMode::VerticalRl),
+        (
+            text::selection::LineOrientation::Vertical,
+            WritingMode::VerticalRl,
+        ),
     ] {
         allocated::<f32>(orientation, mode);
         allocated::<f64>(orientation, mode);

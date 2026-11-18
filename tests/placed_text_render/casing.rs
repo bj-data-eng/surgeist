@@ -9,41 +9,41 @@ fn capture(
     request: layout::LayoutRootRequest,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
-    text::PreparedOrigin,
-    text::Source,
+    text::prepared::PreparedOrigin,
+    text::source::Source,
 ) {
-    let source = text::Source::identified("ß", text::Id::from_u64(6303), 13);
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let source = text::source::Source::identified("ß", text::source::Id::from_u64(6303), 13);
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        white_space: text::WhiteSpace::Preserve,
-        word_break: text::WordBreak::BreakAll,
-        text_transform: text::TextTransform::Set(text::TextTransformSet::none().with_case(
-            if uppercase {
-                text::CaseTransform::Uppercase
+        line_height: text::style::LineHeight::Absolute(10.0),
+        white_space: text::style::WhiteSpace::Preserve,
+        word_break: text::style::WordBreak::BreakAll,
+        text_transform: text::style::TextTransform::Set(
+            text::style::TextTransformSet::none().with_case(if uppercase {
+                text::style::CaseTransform::Uppercase
             } else {
-                text::CaseTransform::None
-            },
-        )),
-        ..text::Style::default()
+                text::style::CaseTransform::None
+            }),
+        ),
+        ..text::style::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: text::Range::new(0, 1),
-                aggregate: text::Range::new(0, 1),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 1),
+                aggregate: text::source::Range::new(0, 1),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -51,7 +51,7 @@ fn capture(
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -61,14 +61,14 @@ fn capture(
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
@@ -145,7 +145,7 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.source(), &source);
         assert_eq!(source.text().code_units(), [0xdf]);
-        assert_eq!(source.id(), Some(text::Id::from_u64(6303)));
+        assert_eq!(source.id(), Some(text::source::Id::from_u64(6303)));
         assert_eq!(source.revision(), 13);
         let glyphs = placed
             .run_views()
@@ -166,14 +166,14 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
                 .iter()
                 .flat_map(|run| run.glyphs().iter().map(|glyph| glyph.range()))
                 .collect::<Vec<_>>(),
-            vec![text::Range::new(0, 1); expected_count]
+            vec![text::source::Range::new(0, 1); expected_count]
         );
         let lines = placed.lines();
         assert_eq!(lines.len(), if uppercase { 2 } else { 1 });
         assert!(
             lines
                 .iter()
-                .all(|line| line.range() == text::Range::new(0, 1))
+                .all(|line| line.range() == text::source::Range::new(0, 1))
         );
         let advances = batch
             .final_inline_fragments()
@@ -249,7 +249,8 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
         placed
             .positions()
             .find(|position| {
-                placed.position_geometry(position).unwrap().rect().origin == text::Point::new(x, y)
+                placed.position_geometry(position).unwrap().rect().origin
+                    == text::geometry::Point::new(x, y)
             })
             .expect("actual issued position at the literal Ahem line edge")
     };
@@ -265,8 +266,8 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
         let piece = &selected.source_pieces()[0];
         assert_eq!(piece.origin(), &origin);
         assert_eq!(piece.origin().view().source(), &source);
-        assert_eq!(piece.local_range(), text::Range::new(0, 1));
-        assert_eq!(piece.aggregate_range(), text::Range::new(0, 1));
+        assert_eq!(piece.local_range(), text::source::Range::new(0, 1));
+        assert_eq!(piece.aggregate_range(), text::source::Range::new(0, 1));
         assert_eq!(piece.code_units(), [0xdf]);
         assert_eq!(
             selected
@@ -275,7 +276,7 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
                 .iter()
                 .map(|rect| (rect.line(), rect.rect()))
                 .collect::<Vec<_>>(),
-            [(1, text::Rect::new(0.0, 10.0, 10.0, 10.0))]
+            [(1, text::geometry::Rect::new(0.0, 10.0, 10.0, 10.0))]
         );
     }
     let both = placed.position_selection(&first, &end).unwrap();
@@ -287,7 +288,7 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
     assert!(collapsed.source_pieces().is_empty());
     assert!(collapsed.geometry().rects().is_empty());
     let fragments = placed
-        .source_range_fragments(&origin, text::Range::new(0, 1))
+        .source_range_fragments(&origin, text::source::Range::new(0, 1))
         .unwrap();
     let mut rects = fragments
         .units()
@@ -297,8 +298,8 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
     assert_eq!(
         rects,
         [
-            text::Rect::new(0.0, 0.0, 10.0, 10.0),
-            text::Rect::new(0.0, 10.0, 10.0, 10.0)
+            text::geometry::Rect::new(0.0, 0.0, 10.0, 10.0),
+            text::geometry::Rect::new(0.0, 10.0, 10.0, 10.0)
         ]
     );
     assert_eq!(system.stats().layout_misses(), 0);
@@ -351,9 +352,9 @@ fn casing_expansion_enriches_original_accessibility_with_actual_geometry() {
         let placed = batch.placed_text()[0].layout();
         let analyzed = placed.analyzed_source();
         drop(system);
-        let mut accessibility = text::Accessibility::new(20);
+        let mut accessibility = text::accessibility::Accessibility::new(20);
         let parent = 1000_u64.into();
-        let cursor = text::Cursor::new(0, text::Affinity::After);
+        let cursor = text::layout::Cursor::new(0, text::layout::Affinity::After);
         let source_update = analyzed
             .accessibility_update(&mut accessibility, parent, parent)
             .unwrap();
@@ -376,7 +377,7 @@ fn casing_expansion_enriches_original_accessibility_with_actual_geometry() {
                 &mut accessibility,
                 parent,
                 parent,
-                text::Point::new(100.0, 200.0),
+                text::geometry::Point::new(100.0, 200.0),
             )
             .unwrap();
         let position = placed

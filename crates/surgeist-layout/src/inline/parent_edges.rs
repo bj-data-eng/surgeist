@@ -6,7 +6,7 @@ use crate::inline_wrapping::{
     WrappingScopeError,
 };
 use std::{ops::Range, sync::Arc};
-use surgeist_text::SuppliedLine;
+use surgeist_text::supplied_line::SuppliedLine;
 
 #[derive(Clone, Copy)]
 struct Edge {
@@ -106,10 +106,10 @@ pub(super) fn canonical_flow<S: LayoutScalar>(
     for (unit, &rank) in ranks.iter().enumerate() {
         let descriptor = input.supplied.get(unit).ok_or_else(invalid)?;
         let level = match *descriptor {
-            surgeist_text::SuppliedInlineParticipant::Text { level, .. }
-            | surgeist_text::SuppliedInlineParticipant::Atomic { level }
-            | surgeist_text::SuppliedInlineParticipant::Cell { level }
-            | surgeist_text::SuppliedInlineParticipant::Boundary { level } => level,
+            surgeist_text::supplied_line::SuppliedInlineParticipant::Text { level, .. }
+            | surgeist_text::supplied_line::SuppliedInlineParticipant::Atomic { level }
+            | surgeist_text::supplied_line::SuppliedInlineParticipant::Cell { level }
+            | surgeist_text::supplied_line::SuppliedInlineParticipant::Boundary { level } => level,
         };
         let actual =
             context

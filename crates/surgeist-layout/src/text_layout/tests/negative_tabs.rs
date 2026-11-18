@@ -9,8 +9,8 @@ const AHEM: &[u8] = include_bytes!(concat!(
 
 fn paragraph() -> PreparedParagraph {
     let mut style = ahem_style(20.0, 20.0);
-    style.white_space = surgeist_text::WhiteSpace::Preserve;
-    style.tab_size = surgeist_text::TabSize::spaces(4.0).unwrap();
+    style.white_space = surgeist_text::style::WhiteSpace::Preserve;
+    style.tab_size = surgeist_text::tabs::TabSize::spaces(4.0).unwrap();
     // This is the actual captured block Style, also the body Style. There are
     // no authored SPACE characters, so word-spacing does not alter A/B.
     style.word_spacing = -21.0;
@@ -121,14 +121,17 @@ fn check<S: LayoutScalar>() {
         assert_eq!(finalized.feedback().advance, advance);
         assert_eq!(
             finalized.selected_line().request().context.tabs,
-            surgeist_text::TabContext::CssStops {
+            surgeist_text::tabs::TabContext::CssStops {
                 origin: Some(expected_origin)
             }
         );
         assert_eq!(placed.source().text().code_units(), [65, 9, 66]);
-        assert_eq!(placed.lines()[0].range(), surgeist_text::Range::new(0, 3));
+        assert_eq!(
+            placed.lines()[0].range(),
+            surgeist_text::source::Range::new(0, 3)
+        );
         let tab = placed
-            .source_range_fragments(&p.origin(1), surgeist_text::Range::new(1, 2))
+            .source_range_fragments(&p.origin(1), surgeist_text::source::Range::new(1, 2))
             .unwrap();
         let pieces = tab
             .units()
@@ -139,17 +142,17 @@ fn check<S: LayoutScalar>() {
         assert_eq!(pieces[0].rect().size.width, advance - 40.0);
         assert!(
             placed
-                .cursor(surgeist_text::Cursor::new(
+                .cursor(surgeist_text::layout::Cursor::new(
                     1,
-                    surgeist_text::Affinity::After
+                    surgeist_text::layout::Affinity::After
                 ))
                 .is_ok()
         );
         assert!(
             placed
-                .cursor(surgeist_text::Cursor::new(
+                .cursor(surgeist_text::layout::Cursor::new(
                     2,
-                    surgeist_text::Affinity::Before
+                    surgeist_text::layout::Affinity::Before
                 ))
                 .is_ok()
         );

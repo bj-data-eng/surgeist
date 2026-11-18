@@ -2,7 +2,7 @@
 
 use crate::{
     Error, ErrorCode, ErrorDetail, Result,
-    processing::{SourceContinuityOperation, SourceProcessingError},
+    processing::contextual::{SourceContinuityOperation, SourceProcessingError},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

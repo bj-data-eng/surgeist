@@ -168,14 +168,14 @@ fn prepared_occurrences(
 ) -> crate::test_support::text::PreparedParagraph {
     use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
     let style = ahem_style(10.0, 10.0);
-    let source = surgeist_text::Source::new("X");
+    let source = surgeist_text::source::Source::new("X");
     PreparedParagraph::new(
         nodes
             .into_iter()
             .map(|node| ParagraphPart::text(node, source.clone(), style.clone()))
             .collect(),
         style,
-        surgeist_text::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
     )
 }
 
@@ -187,7 +187,7 @@ fn assert_fri06_c01_inline_model<S: LayoutScalar>() {
     assert_copy::<InlineBreakOpportunity>();
     assert_copy::<AtomicInlineParticipation>();
     assert_owned::<TextParticipation>();
-    assert_owned::<surgeist_text::PreparedOrigin>();
+    assert_owned::<surgeist_text::prepared::PreparedOrigin>();
     assert!(!BidiLevel::try_new(0).unwrap().is_rtl());
     assert!(BidiLevel::try_new(125).unwrap().is_rtl());
     assert_eq!(
@@ -205,10 +205,13 @@ fn assert_fri06_c01_inline_model<S: LayoutScalar>() {
     }
     let prepared = prepared_occurrences([1]);
     let origin = prepared.origin(1);
-    assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 1));
+    assert_eq!(
+        origin.view().local_range(),
+        surgeist_text::source::Range::new(0, 1)
+    );
     assert_eq!(
         origin.view().aggregate_range(),
-        surgeist_text::Range::new(0, 1)
+        surgeist_text::source::Range::new(0, 1)
     );
     let text = TextParticipation::new(origin.clone());
     assert_eq!(text.origin(), &origin);
@@ -251,18 +254,24 @@ fn prepared_empty_origin_is_a_real_zero_glyph_occurrence_in_both_scalar_lanes() 
     fn assert_lane<S: LayoutScalar>() {
         let paragraph = crate::test_support::text::PreparedParagraph::plain(
             1,
-            surgeist_text::Source::new(""),
+            surgeist_text::source::Source::new(""),
             crate::test_support::text::ahem_style(10.0, 10.0),
         );
         let origin = paragraph.origin(1);
-        assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 0));
+        assert_eq!(
+            origin.view().local_range(),
+            surgeist_text::source::Range::new(0, 0)
+        );
         let empty = paragraph
             .prepared
             .unit_views()
             .find(|unit| unit.empty_origin().as_ref() == Some(&origin))
             .unwrap();
         assert_eq!(empty.advance(), 0.0);
-        assert_eq!(empty.source_range(), surgeist_text::Range::new(0, 0));
+        assert_eq!(
+            empty.source_range(),
+            surgeist_text::source::Range::new(0, 0)
+        );
         assert_eq!(
             paragraph
                 .text_input::<S>(1)
@@ -285,9 +294,12 @@ fn prepared_unique_long_input_preserves_original_occurrences_and_actual_advances
         for (index, origin) in origins.iter().enumerate() {
             assert_eq!(
                 origin.aggregate_range(),
-                surgeist_text::Range::new(index, index + 1)
+                surgeist_text::source::Range::new(index, index + 1)
             );
-            assert_eq!(origin.local_range(), surgeist_text::Range::new(0, 1));
+            assert_eq!(
+                origin.local_range(),
+                surgeist_text::source::Range::new(0, 1)
+            );
             assert_eq!(origin.source().text().code_units(), [u16::from(b'X')]);
             if index > 0 {
                 assert_ne!(origin.handle(), origins[index - 1].handle());

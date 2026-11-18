@@ -1,9 +1,14 @@
+//! The committed layout and every way to read it.
+
 use std::{fmt, sync::Arc};
 
 use crate::engine::{
     PlacedLine, editing,
     layout::data::{FinalizedCell, FinalizedRun, FinalizedRunFrame, PlacedLayout, PreparedRun},
 };
+pub use crate::error::{ShapingBoundary, ShapingRefusalReason};
+pub use crate::system::Builder;
+pub use crate::views::{GlyphPlacement, RunView};
 use crate::{
     Result,
     cache::Key,

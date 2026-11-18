@@ -9,8 +9,8 @@ const AHEM: &[u8] = include_bytes!(concat!(
 ));
 
 struct Captured {
-    prepared: t::PreparedText,
-    source: t::Source,
+    prepared: t::prepared::PreparedText,
+    source: t::source::Source,
 }
 
 fn table(bytes: &[u8], tag: [u8; 4]) -> &[u8] {
@@ -46,49 +46,49 @@ fn qualify_font(bytes: &[u8]) {
 fn capture(
     bytes: &[u8],
     raw: &str,
-    atomic: Option<(t::InlineBoxKind, t::Id)>,
-    body: t::ParagraphBaseDirection,
-    orientation: t::LineOrientation,
+    atomic: Option<(t::source::InlineBoxKind, t::source::Id)>,
+    body: t::paragraph::ParagraphBaseDirection,
+    orientation: t::selection::LineOrientation,
     size: f32,
 ) -> Captured {
     qualify_font(bytes);
-    let style = t::Style {
-        font: t::Font::new().family("Ahem"),
+    let style = t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size,
-        line_height: t::LineHeight::Absolute(f64::from(size)),
-        white_space: t::WhiteSpace::Preserve,
-        word_break: t::WordBreak::BreakAll,
-        wrap: t::Wrap::Word,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(f64::from(size)),
+        white_space: t::style::WhiteSpace::Preserve,
+        word_break: t::style::WordBreak::BreakAll,
+        wrap: t::style::Wrap::Word,
+        ..t::style::Style::default()
     };
-    let mut source = t::Source::new(raw);
+    let mut source = t::source::Source::new(raw);
     if let Some((kind, id)) = atomic {
-        source.inline_box(t::InlineBox::new(
+        source.inline_box(t::source::InlineBox::new(
             id,
             kind,
             usize::from(!raw.is_empty()),
-            t::Size::new(6.0, 14.0),
+            t::geometry::Size::new(6.0, 14.0),
         ));
     }
     let ranges = if raw.is_empty() {
         vec![]
     } else if atomic.is_some() {
-        vec![t::Range::new(0, 1), t::Range::new(1, 2)]
+        vec![t::source::Range::new(0, 1), t::source::Range::new(1, 2)]
     } else {
-        vec![t::Range::new(0, raw.encode_utf16().count())]
+        vec![t::source::Range::new(0, raw.encode_utf16().count())]
     };
-    use t::SourceProcessingEvent as E;
+    use t::capture::SourceProcessingEvent as E;
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     if !ranges.is_empty() {
         events.push(E::Origin {
             origin: 0,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         });
     }
     if atomic.is_some() {
         events.push(E::Atomic {
             atomic: 0,
-            affinity: t::Affinity::After,
+            affinity: t::layout::Affinity::After,
         });
     }
     if ranges.len() == 2 {
@@ -96,88 +96,88 @@ fn capture(
             E::Connection(0),
             E::Origin {
                 origin: 1,
-                affinity: t::Affinity::After,
+                affinity: t::layout::Affinity::After,
             },
         ]);
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let mut definitions = if atomic.is_some() {
         vec![
-            t::ParagraphBoundaryDefinition::AtomicBefore(0),
-            t::ParagraphBoundaryDefinition::AtomicAfter(0),
+            t::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+            t::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
         ]
     } else {
         vec![]
     };
     if ranges.len() == 2 {
-        definitions.push(t::ParagraphBoundaryDefinition::Connection(0));
+        definitions.push(t::paragraph::ParagraphBoundaryDefinition::Connection(0));
     }
     let processed = Arc::new(
-        t::process_contextual_source(t::ContextualSourceInput {
+        t::capture::process_contextual_source(t::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: t::SourceProcessingEnvelope::Complete,
+            segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::capture::SourceProcessingEnvelope::Complete,
             origins: ranges
                 .into_iter()
-                .map(|range| t::ParagraphOrigin {
+                .map(|range| t::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: range,
                     aggregate: range,
-                    kind: t::ParagraphOriginKind::Authored,
+                    kind: t::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             controls: vec![],
             connections: if atomic.is_some() && !raw.is_empty() {
-                vec![t::SourceProcessingConnection {
+                vec![t::capture::SourceProcessingConnection {
                     before_origin: 0,
                     after_origin: 1,
-                    kind: t::ParagraphConnectionKind::Continuous,
+                    kind: t::paragraph::ParagraphConnectionKind::Continuous,
                 }]
             } else {
                 vec![]
             },
             boundary_policies: definitions
                 .into_iter()
-                .map(|definition| t::ParagraphBoundaryPolicy {
+                .map(|definition| t::paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: t::Wrap::Word,
-                    following_wrap: t::Wrap::Word,
-                    ancestor_wrap: t::Wrap::Word,
+                    preceding_wrap: t::style::Wrap::Word,
+                    following_wrap: t::style::Wrap::Word,
+                    ancestor_wrap: t::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![t::SourceProcessingScope::Block {
+            scopes: vec![t::capture::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: t::SourceProcessingTopology::Complete,
+                topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
                 used_direction: body,
             }],
-            paragraphs: vec![t::SourceProcessingParagraph {
+            paragraphs: vec![t::capture::SourceProcessingParagraph {
                 base_direction: body,
-                paragraph_strut: t::ParagraphStrut::DefaultFont,
+                paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    let analysis = t::AnalyzedSource::from_processed_paragraph(
+    let analysis = t::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analysis
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
-        .map(|row| t::WrappingPolicy {
+        .map(|row| t::analyzed::WrappingPolicy {
             relation: row.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analysis = analysis.with_wrapping_policies(policies).unwrap();
@@ -192,7 +192,7 @@ fn capture(
     let prepared = system
         .prepare(
             &analysis,
-            t::PreparationOptions::default().with_orientation(orientation),
+            t::prepared::PreparationOptions::default().with_orientation(orientation),
         )
         .expect("the actual Text producer must succeed before any Layout geometry assertion");
     assert_eq!(
@@ -217,17 +217,20 @@ fn capture(
     Captured { prepared, source }
 }
 
-fn allocation(parent: &Captured, kind: t::InlineBoxKind) -> t::AtomicAllocation {
-    t::AtomicAllocation {
+fn allocation(
+    parent: &Captured,
+    kind: t::source::InlineBoxKind,
+) -> t::allocation::AtomicAllocation {
+    t::allocation::AtomicAllocation {
         occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
         allocation: match kind {
-            t::InlineBoxKind::OutOfFlow => t::AtomicLineAllocation::OutOfFlow,
-            t::InlineBoxKind::InFlow => t::AtomicLineAllocation::InFlow {
-                fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
-                alignment: t::LineBoxAlignment::Baseline,
+            t::source::InlineBoxKind::OutOfFlow => t::allocation::AtomicLineAllocation::OutOfFlow,
+            t::source::InlineBoxKind::InFlow => t::allocation::AtomicLineAllocation::InFlow {
+                fit: surgeist_text::allocation::AtomicFitAllocation::NativeOccupied,
+                alignment: t::allocation::LineBoxAlignment::Baseline,
                 // A Horizontal child exports no physical-x baseline. Physical
                 // synthesis uses its left/line-under edge: over6, under0.
-                flow: t::AtomicFlowAllocation {
+                flow: t::allocation::AtomicFlowAllocation {
                     normal_border_inline_size: 14.0,
                     advance: 14.0,
                     before_baseline: 6.0,
@@ -235,9 +238,9 @@ fn allocation(parent: &Captured, kind: t::InlineBoxKind) -> t::AtomicAllocation 
                     occupied_start: 0.0,
                     occupied_end: 14.0,
                 },
-                box_geometry: t::AtomicBoxAllocation {
-                    border: t::Rect::new(0.0, -6.0, 14.0, 6.0),
-                    content: t::Rect::new(0.0, -6.0, 14.0, 6.0),
+                box_geometry: t::allocation::AtomicBoxAllocation {
+                    border: t::geometry::Rect::new(0.0, -6.0, 14.0, 6.0),
+                    content: t::geometry::Rect::new(0.0, -6.0, 14.0, 6.0),
                     baseline: 0.0,
                 },
             },
@@ -245,19 +248,19 @@ fn allocation(parent: &Captured, kind: t::InlineBoxKind) -> t::AtomicAllocation 
     }
 }
 
-fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
+fn selected(parent: &Captured, kind: t::source::InlineBoxKind) -> t::finalized::FinalizedLine {
     let p = &parent.prepared;
     let end = p
         .opportunity_views()
-        .find(|row| row.kind() == t::PreparedBreakKind::ParagraphEnd)
+        .find(|row| row.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
-    p.select(t::LineSelectionRequest {
+    p.select(t::selection::LineSelectionRequest {
         inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
-        termination: t::PreparedTermination::Ordinary(end),
+        termination: t::selection::PreparedTermination::Ordinary(end),
         participants: p.participants().collect(),
         alternative: None,
         incoming: None,
@@ -266,51 +269,53 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
         boundary_context: vec![],
         line_strut: None,
         line_box_struts: vec![],
-        context: t::LineContext {
-            alignment_insets: t::LineAlignmentInsets::ZERO,
-            formatted_line: t::FormattedLineContext::default(),
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            line_box_direction: t::LineBoxDirection::LeftToRight,
-            orientation: t::LineOrientation::SidewaysClockwise,
-            start: t::LineStart::Paragraph,
-            end: t::LineEnd::Paragraph,
+        context: t::selection::LineContext {
+            alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
+            formatted_line: t::selection::FormattedLineContext::default(),
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            line_box_direction: t::selection::LineBoxDirection::LeftToRight,
+            orientation: t::selection::LineOrientation::SidewaysClockwise,
+            start: t::selection::LineStart::Paragraph,
+            end: t::selection::LineEnd::Paragraph,
             available_inline: Some(40.0),
             indent: 0.0,
-            alignment: t::Alignment::Start,
-            tabs: t::TabContext::NoTabs,
-            spacing: t::SpacingPolicy::None,
+            alignment: t::options::Alignment::Start,
+            tabs: t::tabs::TabContext::NoTabs,
+            spacing: t::spacing::SpacingPolicy::None,
         },
     })
     .unwrap()
-    .finalize(surgeist_text::LineAllocations {
-        spacing: t::SpacingAllocations::None,
-        scopes: surgeist_text::ScopeAllocations::None,
+    .finalize(surgeist_text::scope_alignment::LineAllocations {
+        spacing: t::spacing::SpacingAllocations::None,
+        scopes: surgeist_text::scope_alignment::ScopeAllocations::None,
     })
     .unwrap()
 }
 
 fn explicit(
     parent: &Captured,
-    line: t::FinalizedLine,
-    anchor: t::LineAnchor,
-    geometry: t::AtomicPlacement,
-) -> t::Layout {
-    t::Layout::from_finalized_lines(t::PlacementRequest {
+    line: t::finalized::FinalizedLine,
+    anchor: t::placement::LineAnchor,
+    geometry: t::placement::AtomicPlacement,
+) -> t::layout::Layout {
+    t::layout::Layout::from_finalized_lines(t::placement::PlacementRequest {
         prepared: parent.prepared.clone(),
-        coverage: t::PlacementCoverage::WholeParagraph,
-        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
-            line,
-            anchor,
-            orientation: t::LineOrientation::SidewaysClockwise,
-            atomics: vec![geometry],
-        })],
+        coverage: t::placement::PlacementCoverage::WholeParagraph,
+        entries: vec![t::placement::PlacementEntry::Formatted(
+            t::placement::LinePlacement {
+                line,
+                anchor,
+                orientation: t::selection::LineOrientation::SidewaysClockwise,
+                atomics: vec![geometry],
+            },
+        )],
     })
     .unwrap()
 }
 
-fn qualify_parent(parent: &Captured, kind: t::InlineBoxKind) {
+fn qualify_parent(parent: &Captured, kind: t::source::InlineBoxKind) {
     let line = selected(parent, kind);
-    let advance = if kind == t::InlineBoxKind::InFlow {
+    let advance = if kind == t::source::InlineBoxKind::InFlow {
         34.0
     } else {
         20.0
@@ -324,14 +329,14 @@ fn qualify_parent(parent: &Captured, kind: t::InlineBoxKind) {
         (advance, 8.0, 10.0)
     );
     let slot = line.atomic_slots().next().unwrap();
-    assert_eq!(slot.origin, t::Point::new(10.0, 8.0));
+    assert_eq!(slot.origin, t::geometry::Point::new(10.0, 8.0));
     assert_eq!(
         slot.occurrence,
         parent.prepared.atomic_views().next().unwrap().handle()
     );
     let mut glyphs = Vec::new();
     for run in line.run_views() {
-        assert_eq!(run.glyph_basis(), t::GlyphBasis::Clockwise);
+        assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Clockwise);
         let instance = run.effective_instance().unwrap();
         let metrics = instance
             .metrics(parent.prepared.font_catalogue_identity())
@@ -343,20 +348,20 @@ fn qualify_parent(parent: &Captured, kind: t::InlineBoxKind) {
         glyphs.extend(run.glyphs().map(|g| (g.id(), g.x(), g.y(), g.advance())));
     }
     assert_eq!(glyphs, [(35, 0.0, 0.0, 10.0), (36, 0.0, 0.0, 10.0)]);
-    let x = if kind == t::InlineBoxKind::InFlow {
+    let x = if kind == t::source::InlineBoxKind::InFlow {
         100.0
     } else {
         102.0
     };
-    let physical = t::Rect::new(x, 30.0, 6.0, 14.0);
+    let physical = t::geometry::Rect::new(x, 30.0, 6.0, 14.0);
     let text = explicit(
         parent,
         line,
-        t::LineAnchor {
+        t::placement::LineAnchor {
             inline_origin: 20.0,
             baseline: 100.0,
         },
-        t::AtomicPlacement {
+        t::placement::AtomicPlacement {
             occurrence: slot.occurrence,
             border: physical,
             content: physical,
@@ -376,14 +381,14 @@ fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::Si
         ),
     )
 }
-fn child_input<S: l::LayoutScalar>(kind: t::InlineBoxKind) -> l::NodeInputOf<S> {
+fn child_input<S: l::LayoutScalar>(kind: t::source::InlineBoxKind) -> l::NodeInputOf<S> {
     let mut input = root(
         l::WritingMode::HorizontalTb,
         l::Direction::Ltr,
         l::InlineBaselineContext::Physical,
     );
     input.display = l::Display::InlineBlock;
-    input.position = if kind == t::InlineBoxKind::OutOfFlow {
+    input.position = if kind == t::source::InlineBoxKind::OutOfFlow {
         l::Position::Absolute
     } else {
         l::Position::Relative
@@ -409,7 +414,7 @@ fn child_binding(child: &Captured, container: u32, text: u32) -> l::TextParagrap
 fn placed<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     container: u32,
-) -> &t::Layout {
+) -> &t::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -455,7 +460,7 @@ fn unknown<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>) {
     }
 }
 fn qualify_child<S: l::LayoutScalar>(child: &Captured) {
-    let mut host = Host::new(child_input::<S>(t::InlineBoxKind::InFlow));
+    let mut host = Host::new(child_input::<S>(t::source::InlineBoxKind::InFlow));
     host.change(0, |input| input.display = l::Display::Block);
     let binding = child_binding(child, 0, 1);
     host.push(
@@ -464,13 +469,19 @@ fn qualify_child<S: l::LayoutScalar>(child: &Captured) {
     );
     let batch = run(&host, vec![binding], &[], available(6.0, 14.0)).unwrap();
     let text = placed(&batch, 0);
-    assert_eq!(text.orientation(), t::LineOrientation::Horizontal);
+    assert_eq!(
+        text.orientation(),
+        t::selection::LineOrientation::Horizontal
+    );
     assert_eq!(text.lines()[0].baseline(), 4.0);
-    assert_eq!(text.lines()[0].bounds(), t::Rect::new(0.0, 0.0, 6.0, 5.0));
+    assert_eq!(
+        text.lines()[0].bounds(),
+        t::geometry::Rect::new(0.0, 0.0, 6.0, 5.0)
+    );
     assert_eq!(text.source(), &child.source);
     assert!(
         text.run_views()
-            .all(|run| run.glyph_basis() == t::GlyphBasis::Unrotated)
+            .all(|run| run.glyph_basis() == t::geometry::GlyphBasis::Unrotated)
     );
     unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
 }
@@ -479,7 +490,7 @@ fn attach<S: l::LayoutScalar>(
     container: u32,
     parent: &Captured,
     child: &Captured,
-    kind: t::InlineBoxKind,
+    kind: t::source::InlineBoxKind,
 ) -> Vec<l::TextParagraphBinding<u32>> {
     let origins = parent
         .prepared
@@ -506,7 +517,7 @@ fn attach<S: l::LayoutScalar>(
             .unwrap()
             .original_box()
             .id(),
-        t::Id::from_u64(u64::from(atomic))
+        t::source::Id::from_u64(u64::from(atomic))
     );
     let text = host.push(
         Some(atomic),
@@ -538,7 +549,7 @@ fn attach<S: l::LayoutScalar>(
 fn scene<S: l::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
-    kind: t::InlineBoxKind,
+    kind: t::source::InlineBoxKind,
     direction: l::Direction,
     height: f64,
 ) -> (Host<S>, Vec<l::TextParagraphBinding<u32>>) {
@@ -555,7 +566,7 @@ fn scene<S: l::LayoutScalar>(
 fn receipt<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     source: u32,
-) -> t::FinalizedLine {
+) -> t::finalized::FinalizedLine {
     batch
         .unrounded_inline_fragments()
         .iter()
@@ -572,34 +583,37 @@ fn core<S: l::LayoutScalar>() {
         AHEM,
         "A",
         None,
-        t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Horizontal,
+        t::paragraph::ParagraphBaseDirection::LeftToRight,
+        t::selection::LineOrientation::Horizontal,
         5.0,
     );
     qualify_child::<S>(&child);
-    for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
+    for kind in [
+        t::source::InlineBoxKind::InFlow,
+        t::source::InlineBoxKind::OutOfFlow,
+    ] {
         let parent = capture(
             AHEM,
             "AB",
-            Some((kind, t::Id::from_u64(2))),
-            t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::SidewaysClockwise,
+            Some((kind, t::source::Id::from_u64(2))),
+            t::paragraph::ParagraphBaseDirection::LeftToRight,
+            t::selection::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
         let (host, bindings) = scene::<S>(&parent, &child, kind, l::Direction::Ltr, 40.0);
         let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
-        let x = if kind == t::InlineBoxKind::InFlow {
+        let x = if kind == t::source::InlineBoxKind::InFlow {
             32.0
         } else {
             34.0
         };
-        let advance = if kind == t::InlineBoxKind::InFlow {
+        let advance = if kind == t::source::InlineBoxKind::InFlow {
             34.0
         } else {
             20.0
         };
-        let physical = t::Rect::new(x, 10.0, 6.0, 14.0);
+        let physical = t::geometry::Rect::new(x, 10.0, 6.0, 14.0);
         for entries in [
             crate::layout::observation::phase(&batch, false),
             crate::layout::observation::phase(&batch, true),
@@ -611,14 +625,17 @@ fn core<S: l::LayoutScalar>() {
             unknown(node(entries, 0).named_baselines);
         }
         let text = placed(&batch, 0);
-        assert_eq!(text.orientation(), t::LineOrientation::SidewaysClockwise);
+        assert_eq!(
+            text.orientation(),
+            t::selection::LineOrientation::SidewaysClockwise
+        );
         assert_eq!(text.lines().len(), 1);
         assert_eq!(text.lines()[0].baseline(), 32.0);
         assert_eq!(text.inline_boxes()[0].rect(), physical);
         assert_eq!(text.inline_boxes()[0].kind(), kind);
         assert_eq!(
-            text.hit(t::Point::new(x + 1.0, 12.0)),
-            t::Hit::InlineBox(t::Id::from_u64(2))
+            text.hit(t::geometry::Point::new(x + 1.0, 12.0)),
+            t::layout::Hit::InlineBox(t::source::Id::from_u64(2))
         );
         let line = receipt(&batch, 1);
         assert_eq!(
@@ -632,11 +649,11 @@ fn core<S: l::LayoutScalar>() {
         let expected = explicit(
             &parent,
             line,
-            t::LineAnchor {
+            t::placement::LineAnchor {
                 inline_origin: 0.0,
                 baseline: 32.0,
             },
-            t::AtomicPlacement {
+            t::placement::AtomicPlacement {
                 occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                 border: physical,
                 content: physical,
@@ -644,7 +661,7 @@ fn core<S: l::LayoutScalar>() {
             },
         );
         assert_eq!(text.key(), expected.key());
-        let second = if kind == t::InlineBoxKind::InFlow {
+        let second = if kind == t::source::InlineBoxKind::InFlow {
             24.0
         } else {
             10.0
@@ -652,7 +669,7 @@ fn core<S: l::LayoutScalar>() {
         let pens = text
             .run_views()
             .flat_map(|run| {
-                assert_eq!(run.glyph_basis(), t::GlyphBasis::Clockwise);
+                assert_eq!(run.glyph_basis(), t::geometry::GlyphBasis::Clockwise);
                 run.glyphs()
                     .map(|glyph| (glyph.id(), run.origin().x, run.origin().y + glyph.pen()))
                     .collect::<Vec<_>>()
@@ -660,12 +677,15 @@ fn core<S: l::LayoutScalar>() {
             .collect::<Vec<_>>();
         assert_eq!(pens, [(35, 32.0, 0.0), (36, 32.0, second)]);
         let child_text = placed(&batch, 2);
-        assert_eq!(child_text.orientation(), t::LineOrientation::Horizontal);
+        assert_eq!(
+            child_text.orientation(),
+            t::selection::LineOrientation::Horizontal
+        );
         assert_eq!(child_text.lines()[0].baseline(), 14.0);
         assert!(
             child_text
                 .run_views()
-                .all(|run| run.glyph_basis() == t::GlyphBasis::Unrotated)
+                .all(|run| run.glyph_basis() == t::geometry::GlyphBasis::Unrotated)
         );
     }
 }

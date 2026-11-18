@@ -18,14 +18,14 @@ use surgeist_text as t;
 const FLAGS: &str = "\u{1f1fa}\u{1f1f8}\u{1f1e8}\u{1f1e6}";
 const OPENING: &str = "(  A";
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
-const DIRECTIONS: [t::ParagraphBaseDirection; 2] = [
-    t::ParagraphBaseDirection::LeftToRight,
-    t::ParagraphBaseDirection::RightToLeft,
+const DIRECTIONS: [t::paragraph::ParagraphBaseDirection; 2] = [
+    t::paragraph::ParagraphBaseDirection::LeftToRight,
+    t::paragraph::ParagraphBaseDirection::RightToLeft,
 ];
-const MODES: [t::WordBreak; 3] = [
-    t::WordBreak::Normal,
-    t::WordBreak::KeepAll,
-    t::WordBreak::BreakAll,
+const MODES: [t::style::WordBreak; 3] = [
+    t::style::WordBreak::Normal,
+    t::style::WordBreak::KeepAll,
+    t::style::WordBreak::BreakAll,
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -35,51 +35,55 @@ enum Seam {
     Source(usize),
 }
 
-fn style(mode: t::WordBreak) -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style(mode: t::style::WordBreak) -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Preserve,
-        wrap: t::Wrap::Word,
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        wrap: t::style::Wrap::Word,
         word_break: mode,
-        hyphens: t::Hyphens::None,
-        ..t::Style::default()
+        hyphens: t::hyphenation::Hyphens::None,
+        ..t::style::Style::default()
     }
 }
 
 fn prepare(
     value: &str,
-    preceding: t::WordBreak,
-    following: t::WordBreak,
+    preceding: t::style::WordBreak,
+    following: t::style::WordBreak,
     seam: Seam,
-    direction: t::ParagraphBaseDirection,
-) -> t::PreparedText {
+    direction: t::paragraph::ParagraphBaseDirection,
+) -> t::prepared::PreparedText {
     let base = style(preceding);
-    let mut source = t::Source::identified(t::Text::from(value), t::Id::from_u64(65101), 1);
+    let mut source = t::source::Source::identified(
+        t::source::Text::from(value),
+        t::source::Id::from_u64(65101),
+        1,
+    );
     let end = source.text().len();
     let mut suffix = style(following);
     if matches!(seam, Seam::Style(_)) {
         // A paint-only style change can leave word-break unchanged.
-        suffix.brush = t::Brush::color(1.0, 0.0, 0.0, 1.0);
+        suffix.brush = t::style::Brush::color(1.0, 0.0, 0.0, 1.0);
     }
     if let Seam::Style(at) | Seam::Source(at) = seam {
-        source.span(t::Range::new(at, end), suffix.clone());
+        source.span(t::source::Range::new(at, end), suffix.clone());
     }
-    let mut input = t::ParagraphInput {
+    let mut input = t::paragraph::ParagraphInput {
         source: source.clone(),
         base_style: base.clone(),
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: direction,
-        paragraph_strut: t::ParagraphStrut::DefaultFont,
-        terminal_edge: t::ParagraphTerminalEdge::BlockEnd,
+        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: t::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![t::ParagraphOrigin {
+        origins: vec![t::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
-            local: t::Range::new(0, end),
-            aggregate: t::Range::new(0, end),
-            kind: t::ParagraphOriginKind::Authored,
+            local: t::source::Range::new(0, end),
+            aggregate: t::source::Range::new(0, end),
+            kind: t::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -93,44 +97,49 @@ fn prepare(
         for (index, (start, stop, computed)) in
             [(0, at, base), (at, end, suffix)].into_iter().enumerate()
         {
-            let local = t::Range::new(0, stop - start);
-            let mut original = t::Source::identified(
-                t::Text::from(String::from_utf16(&units[start..stop]).unwrap()),
-                t::Id::from_u64(65102 + u64::try_from(index).unwrap()),
+            let local = t::source::Range::new(0, stop - start);
+            let mut original = t::source::Source::identified(
+                t::source::Text::from(String::from_utf16(&units[start..stop]).unwrap()),
+                t::source::Id::from_u64(65102 + u64::try_from(index).unwrap()),
                 1,
             );
             original.span(local, computed);
-            input.origins.push(t::ParagraphOrigin {
+            input.origins.push(t::paragraph::ParagraphOrigin {
                 text_node: Some(
-                    t::CompleteTextNodeContribution::new(original.text().clone(), local).unwrap(),
+                    t::paragraph::CompleteTextNodeContribution::new(original.text().clone(), local)
+                        .unwrap(),
                 ),
                 source: original,
                 local,
-                aggregate: t::Range::new(start, stop),
-                kind: t::ParagraphOriginKind::Authored,
+                aggregate: t::source::Range::new(start, stop),
+                kind: t::paragraph::ParagraphOriginKind::Authored,
             });
         }
-        input.connections.push(t::ParagraphConnection {
+        input.connections.push(t::paragraph::ParagraphConnection {
             at,
-            kind: t::ParagraphConnectionKind::Continuous,
+            kind: t::paragraph::ParagraphConnectionKind::Continuous,
         });
         // Both inline children and their actual enclosing block permit wrapping.
-        input.boundary_policies.push(t::ParagraphBoundaryPolicy {
-            definition: t::ParagraphBoundaryDefinition::Connection(0),
-            preceding_wrap: t::Wrap::Word,
-            following_wrap: t::Wrap::Word,
-            ancestor_wrap: t::Wrap::Word,
-        });
+        input
+            .boundary_policies
+            .push(t::paragraph::ParagraphBoundaryPolicy {
+                definition: t::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                preceding_wrap: t::style::Wrap::Word,
+                following_wrap: t::style::Wrap::Word,
+                ancestor_wrap: t::style::Wrap::Word,
+            });
     }
-    let analyzed =
-        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = t::analyzed::AnalyzedSource::from_paragraph(
+        input,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| t::WrappingPolicy {
+        .map(|relation| t::analyzed::WrappingPolicy {
             relation: relation.handle(),
-            ancestor_wrap: t::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
@@ -139,17 +148,17 @@ fn prepare(
         .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap();
     assert_eq!(prepared.analyzed_source().source(), &source);
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
     prepared
 }
 
-fn ordinary_cuts(prepared: &t::PreparedText) -> Vec<usize> {
+fn ordinary_cuts(prepared: &t::prepared::PreparedText) -> Vec<usize> {
     prepared
         .opportunity_views()
-        .filter(|offer| offer.kind() == t::PreparedBreakKind::Allowed)
+        .filter(|offer| offer.kind() == t::prepared::PreparedBreakKind::Allowed)
         .map(|offer| {
             assert_eq!(offer.alternatives().count(), 0);
             let boundary = offer.boundary();
@@ -162,10 +171,10 @@ fn ordinary_cuts(prepared: &t::PreparedText) -> Vec<usize> {
         .collect()
 }
 
-fn flag_cuts(prepared: &t::PreparedText) -> Vec<usize> {
+fn flag_cuts(prepared: &t::prepared::PreparedText) -> Vec<usize> {
     assert_eq!(
         prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
-        [t::Range::new(0, 4), t::Range::new(4, 8)],
+        [t::source::Range::new(0, 4), t::source::Range::new(4, 8)],
         "GB12/GB13 pair RIs from the logical sequence start"
     );
     let cuts = ordinary_cuts(prepared);
@@ -214,8 +223,8 @@ fn check_mixed_flags(source_seam: bool) {
     let mut mismatches = Vec::new();
     for direction in DIRECTIONS {
         for (preceding, following) in [
-            (t::WordBreak::Normal, t::WordBreak::KeepAll),
-            (t::WordBreak::KeepAll, t::WordBreak::Normal),
+            (t::style::WordBreak::Normal, t::style::WordBreak::KeepAll),
+            (t::style::WordBreak::KeepAll, t::style::WordBreak::Normal),
         ] {
             for at in [2, 4, 6] {
                 let seam = if source_seam {
@@ -280,8 +289,8 @@ fn word_break_changes_preserve_opening_punctuation_context_across_spaces() {
         for seam in [Seam::Style(2), Seam::Source(2)] {
             let prepared = prepare(
                 OPENING,
-                t::WordBreak::Normal,
-                t::WordBreak::KeepAll,
+                t::style::WordBreak::Normal,
+                t::style::WordBreak::KeepAll,
                 seam,
                 direction,
             );

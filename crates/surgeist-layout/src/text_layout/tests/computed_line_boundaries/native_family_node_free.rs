@@ -89,14 +89,14 @@ enum Attachment {
 fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: Attachment) {
     // Author a real undecorated empty Inline, without a computed force. This is
     // a pre-processing input choice, not deletion of an issued participant.
-    let mut input = empty_input(false, text::ParagraphStrut::DefaultFont);
+    let mut input = empty_input(false, text::paragraph::ParagraphStrut::DefaultFont);
     input.computed_line_boundaries.clear();
     assert!(input.source.text().is_empty());
     assert!(input.origins.is_empty());
     assert!(input.controls.is_empty());
     assert!(matches!(
         &input.scopes[1],
-        text::SourceProcessingScope::Inline {
+        text::capture::SourceProcessingScope::Inline {
             boundaries: None,
             ..
         }
@@ -153,7 +153,7 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
         Ok(crate::text_layout::capture::ParagraphClass::AssociationOnly)
     );
     let scope = f.processed.captured_scope(1).unwrap();
-    assert_eq!(scope.role(), text::ScopeRole::Inline);
+    assert_eq!(scope.role(), text::capture::ScopeRole::Inline);
     assert_eq!(scope.parent(), Some(f.processed.captured_scope(0).unwrap()));
     assert!(scope.entry_control().is_none());
     assert!(scope.exit_control().is_none());

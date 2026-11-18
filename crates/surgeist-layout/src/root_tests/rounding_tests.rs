@@ -232,8 +232,9 @@ fn prepared_text_fractional_rounding_preserves_issued_owner_and_selected_alterna
 {
     fn assert_lane<S: LayoutScalar>() {
         use surgeist_text::{
-            FinalizedFragmentOwner, ParagraphReplacement, ParagraphReplacementDefinition, Range,
-            Source, Text,
+            finalized::FinalizedFragmentOwner,
+            paragraph::{ParagraphReplacement, ParagraphReplacementDefinition},
+            source::{Range, Source, Text},
         };
         let style = crate::test_support::text::ahem_style(8.25, 10.0);
         // Ahem X and hyphen have one-em advance. A real SHY replacement makes

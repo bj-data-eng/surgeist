@@ -15,7 +15,7 @@ pub(crate) struct NativeFamilyData {
     pub(crate) proof: Arc<super::edge_plan::GeneratedBoxProofData>,
     pub(crate) root: usize,
     pub(crate) scope_keys: Vec<Option<usize>>,
-    pub(crate) components: surgeist_text::SuppliedInlineBoxComponents,
+    pub(crate) components: surgeist_text::inline_box::SuppliedInlineBoxComponents,
     pub(crate) rows: Vec<NativeFamilyRow>,
     pub(crate) row_for_rank: Vec<usize>,
     pub(crate) empties: Vec<super::ordering::FamilyEmpty>,

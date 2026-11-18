@@ -90,7 +90,7 @@ impl OpportunityWalk {
 struct PrimaryLineChoice {
     choice: Option<EvaluatedCandidate>,
     fitting_none: bool,
-    first_ceiling: Option<surgeist_text::PreparedOpportunity>,
+    first_ceiling: Option<surgeist_text::prepared::PreparedOpportunity>,
     skipped_ordinary: Vec<ConditionalDisposition>,
     zone_basis: ZoneBasis,
 }
@@ -101,7 +101,7 @@ struct ConditionalLineSearch<'a> {
     start_boundary: &'a PreparedBoundary,
     wrapping: Option<&'a WrappingClassifier<'a>>,
     purpose: ConditionalPurpose,
-    ceiling: surgeist_text::PreparedOpportunity,
+    ceiling: surgeist_text::prepared::PreparedOpportunity,
     skipped_ordinary: &'a [ConditionalDisposition],
 }
 
@@ -118,7 +118,7 @@ where
         &FinalizedLine,
         Band,
         f64,
-        &[surgeist_text::LineBoxStrut],
+        &[surgeist_text::allocation::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
     X: FnMut(EncounterReset) -> Result<(), FitError>,
@@ -561,7 +561,7 @@ where
                     terminal,
                     progress: None,
                     ceiling: first_ceiling.as_ref().map(
-                        |opportunity: &surgeist_text::PreparedOpportunity| {
+                        |opportunity: &surgeist_text::prepared::PreparedOpportunity| {
                             opportunity.view().boundary()
                         },
                     ),
@@ -634,10 +634,10 @@ where
             purpose,
             skipped_ordinary,
             frame.as_ref().map_or(
-                surgeist_text::ConditionalLineContext::Unframed {
+                surgeist_text::conditional::ConditionalLineContext::Unframed {
                     inline_boxes: input.inline_boxes,
                 },
-                surgeist_text::ConditionalLineContext::Finalized,
+                surgeist_text::conditional::ConditionalLineContext::Finalized,
             ),
         )?;
         let query = EndpointContext {

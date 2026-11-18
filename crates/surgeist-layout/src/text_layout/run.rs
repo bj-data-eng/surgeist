@@ -20,15 +20,20 @@ use crate::{
     LayoutTextNumericError, Point, ScrollRectOf, Size, TextAlign, TextAlignLast, TextJustification,
 };
 use surgeist_text::{
-    AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
-    AtomicPlacement, FinalizedLine, LineAnchor, LineOrientation, LinePlacement,
-    ParagraphBaseDirection, Rect,
+    allocation::{
+        AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+    },
+    finalized::FinalizedLine,
+    geometry::Rect,
+    paragraph::ParagraphBaseDirection,
+    placement::{AtomicPlacement, LineAnchor, LinePlacement},
+    selection::LineOrientation,
 };
 
 /// Actual per-run incidence projection. Errors remain data until a real soft
 /// choice comparison needs the corresponding requested scope.
 pub(crate) struct WrappingProjection<Node> {
-    segment: surgeist_text::PreparedSourceSegment,
+    segment: surgeist_text::prepared::PreparedSourceSegment,
     scope_alignment_active: bool,
     context: std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
     flow: Node,
@@ -42,12 +47,12 @@ pub(crate) struct WrappingProjection<Node> {
         Result<ScopeIncidence, crate::WrappingScopeError>,
     )>,
     incoming: Option<super::boxes::BoxFrontier>,
-    physical_controls: Vec<(Node, surgeist_text::PreparedControl)>,
+    physical_controls: Vec<(Node, surgeist_text::prepared::PreparedControl)>,
     physical_positions: Vec<PhysicalPosition<Node>>,
-    unlisted: Vec<surgeist_text::CapturedScope>,
-    canonical_pairs: Vec<(surgeist_text::CapturedScope, (Node, Node))>,
+    unlisted: Vec<surgeist_text::capture::CapturedScope>,
+    canonical_pairs: Vec<(surgeist_text::capture::CapturedScope, (Node, Node))>,
     computed_cuts: Vec<(
-        surgeist_text::PreparedComputedLineBoundary,
+        surgeist_text::prepared::PreparedComputedLineBoundary,
         super::capture::ComputedNativeCut,
     )>,
     rows: Vec<(
@@ -65,7 +70,7 @@ enum EdgeIncidence {
     Outside,
     Offset(usize),
     Control {
-        control: surgeist_text::PreparedControl,
+        control: surgeist_text::prepared::PreparedControl,
         after: bool,
     },
 }
@@ -73,7 +78,7 @@ enum EdgeIncidence {
 #[derive(Clone)]
 enum ScopeIncidence {
     Outside,
-    Captured(surgeist_text::CapturedScope),
+    Captured(surgeist_text::capture::CapturedScope),
     Native {
         start: EndpointIncidence,
         end: EndpointIncidence,
@@ -84,15 +89,15 @@ enum ScopeIncidence {
 enum EndpointIncidence {
     BeforeRun,
     AfterRun,
-    Local(surgeist_text::PreparedControl),
+    Local(surgeist_text::prepared::PreparedControl),
     Unavailable,
 }
 
 impl EndpointIncidence {
     fn consumed(
         &self,
-        prepared: &surgeist_text::PreparedText,
-        end: &surgeist_text::PreparedBoundary,
+        prepared: &surgeist_text::prepared::PreparedText,
+        end: &surgeist_text::prepared::PreparedBoundary,
     ) -> Result<bool, FitError> {
         use crate::inline_wrapping::WrappingScopeError;
         match self {
@@ -238,8 +243,8 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             }
         }
         let participants = binding.prepared.participants().collect::<Vec<_>>();
-        let physical_edge = |pair: (Node, Node), side: surgeist_text::SourceBoxSide| {
-            let node = if side == surgeist_text::SourceBoxSide::Before {
+        let physical_edge = |pair: (Node, Node), side: surgeist_text::capture::SourceBoxSide| {
+            let node = if side == surgeist_text::capture::SourceBoxSide::Before {
                 pair.0
             } else {
                 pair.1
@@ -252,7 +257,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                     .find(|c| c.node == node)
                     .map(|c| EdgeIncidence::Control {
                         control: c.occurrence.clone(),
-                        after: side == surgeist_text::SourceBoxSide::After,
+                        after: side == surgeist_text::capture::SourceBoxSide::After,
                     })
                     .ok_or(WrappingScopeError::UnsupportedIncidence),
             })
@@ -261,8 +266,8 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             let incidence=match &edge.box_ {
                 crate::GeneratedBoxRef::Node(node)=> {
                     if let Some(atomic)=binding.atomics.iter().find(|a|a.node==*node) {
-                        participants.iter().position(|p|matches!(p,surgeist_text::PreparedParticipant::Atomic(a)if a==&atomic.occurrence))
-                            .map(|offset|EdgeIncidence::Offset(offset+usize::from(edge.side==surgeist_text::SourceBoxSide::After)))
+                        participants.iter().position(|p|matches!(p,surgeist_text::prepared::PreparedParticipant::Atomic(a)if a==&atomic.occurrence))
+                            .map(|offset|EdgeIncidence::Offset(offset+usize::from(edge.side==surgeist_text::capture::SourceBoxSide::After)))
                             .ok_or(WrappingScopeError::UnsupportedIncidence)
                     } else {native_projection((*node,*node)).and_then(|p|match p.start {
                         ScopeEndpoint::BeforeRun|ScopeEndpoint::AfterRun=>Ok(EdgeIncidence::Outside),
@@ -282,7 +287,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             for member in owner.members() {
                 for intersection in member.scope_intersections() {
                     let scope = intersection.scope();
-                    if scope.role() == surgeist_text::ScopeRole::Inline
+                    if scope.role() == surgeist_text::capture::ScopeRole::Inline
                         && !context
                             .box_rows(binding.container)
                             .any(|(_, row)| row.capture.as_ref() == Some(&scope))
@@ -312,8 +317,9 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             computed_cuts: participants
                 .iter()
                 .filter_map(|participant| {
-                    let surgeist_text::PreparedParticipant::ComputedLineBoundary(boundary) =
-                        participant
+                    let surgeist_text::prepared::PreparedParticipant::ComputedLineBoundary(
+                        boundary,
+                    ) = participant
                     else {
                         return None;
                     };
@@ -352,7 +358,9 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             return Ok(());
         };
         let limits = paragraph.domain().scope_alignment_limits().ok_or_else(|| {
-            super::scope_alignment::refusal(surgeist_text::ScopeAlignmentError::LimitsRequired)
+            super::scope_alignment::refusal(
+                surgeist_text::scope_alignment::ScopeAlignmentError::LimitsRequired,
+            )
         })?;
         let facts = resources.snapshot();
         let mut active = false;
@@ -401,8 +409,8 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
 
     fn classify_boundary(
         &self,
-        prepared: &surgeist_text::PreparedText,
-        end: &surgeist_text::PreparedBoundary,
+        prepared: &surgeist_text::prepared::PreparedText,
+        end: &surgeist_text::prepared::PreparedBoundary,
     ) -> Result<crate::inline_wrapping::AvoidClass, FitError> {
         let mut projected = self.rows.iter();
         let mut class = self.context.classify::<FitError>(self.flow, |row| {
@@ -436,7 +444,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                     if !prepared.control_is_boundary_exact(control)? {
                         return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
                     }
-                    let at=prepared.participants().position(|p|matches!(p,surgeist_text::PreparedParticipant::Control(c)if &c==control)).ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                    let at=prepared.participants().position(|p|matches!(p,surgeist_text::prepared::PreparedParticipant::Control(c)if &c==control)).ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
                     end.view().participant_offset() == at + usize::from(*after)
                 }
             };
@@ -470,7 +478,7 @@ pub(crate) struct Control<Node, S: LayoutScalar> {
     pub node: Node,
     pub source_index: usize,
     pub kind: InlineParticipantLayoutKind,
-    pub allocation: surgeist_text::ControlAllocation,
+    pub allocation: surgeist_text::allocation::ControlAllocation,
     pub endpoint: Option<crate::inline::InlineEndpointOf<S>>,
 }
 
@@ -563,7 +571,7 @@ impl<Node, S: LayoutScalar> Context<Node, S> {
 /// existing context validation and diagnostic phase.
 pub(crate) fn text_orientation(
     mode: crate::WritingMode,
-    prepared: &surgeist_text::PreparedText,
+    prepared: &surgeist_text::prepared::PreparedText,
 ) -> Result<LineOrientation, FitError> {
     match mode {
         crate::WritingMode::HorizontalTb => Ok(LineOrientation::Horizontal),
@@ -572,7 +580,7 @@ pub(crate) fn text_orientation(
             if prepared.orientation() == LineOrientation::SidewaysClockwise
                 && matches!(
                     prepared.analyzed_source().typography(),
-                    surgeist_text::AnalysisTypography::HorizontalComposition
+                    surgeist_text::analyzed::AnalysisTypography::HorizontalComposition
                 ) =>
         {
             Ok(LineOrientation::SidewaysClockwise)
@@ -587,14 +595,14 @@ pub(crate) fn text_orientation(
 /// One authority rule for admission and named output. Physical consumption
 /// never asserts a name, even when the actual preparation uses one.
 pub(crate) fn named_baseline(
-    prepared: &surgeist_text::PreparedText,
+    prepared: &surgeist_text::prepared::PreparedText,
     axes: FlowAxes,
     context: crate::InlineBaselineContext,
 ) -> bool {
     match (context, prepared.baseline_reference()) {
         (
             crate::InlineBaselineContext::Named(crate::BaselineName::Central),
-            Some(surgeist_text::FontBaseline::Central),
+            Some(surgeist_text::font::FontBaseline::Central),
         ) => {
             matches!(
                 axes.writing_mode(),
@@ -602,17 +610,17 @@ pub(crate) fn named_baseline(
             ) && prepared.orientation() == LineOrientation::Vertical
                 && matches!(
                     prepared.analyzed_source().typography(),
-                    surgeist_text::AnalysisTypography::Upright { .. }
-                        | surgeist_text::AnalysisTypography::Mixed
+                    surgeist_text::analyzed::AnalysisTypography::Upright { .. }
+                        | surgeist_text::analyzed::AnalysisTypography::Mixed
                 )
         }
         (
             crate::InlineBaselineContext::Named(crate::BaselineName::Alphabetic),
-            Some(surgeist_text::FontBaseline::Alphabetic),
+            Some(surgeist_text::font::FontBaseline::Alphabetic),
         ) => {
             matches!(
                 prepared.analyzed_source().typography(),
-                surgeist_text::AnalysisTypography::HorizontalComposition
+                surgeist_text::analyzed::AnalysisTypography::HorizontalComposition
             ) && matches!(
                 prepared.orientation(),
                 LineOrientation::Horizontal | LineOrientation::SidewaysClockwise
@@ -757,34 +765,38 @@ impl LineFrame {
     fn aligned_strut(
         self,
         anchor: LineAnchor,
-        feedback: surgeist_text::LineFeedback,
-        metrics: surgeist_text::LineStrut,
-        alignment: surgeist_text::LineBoxAlignment,
+        feedback: surgeist_text::finalized::LineFeedback,
+        metrics: surgeist_text::allocation::LineStrut,
+        alignment: surgeist_text::allocation::LineBoxAlignment,
         scope_displacement: f64,
-    ) -> Result<surgeist_text::LineStrut, FitError> {
+    ) -> Result<surgeist_text::allocation::LineStrut, FitError> {
         let over = if self.vertical_cell() {
             let offset = match alignment {
-                surgeist_text::LineBoxAlignment::Baseline
-                | surgeist_text::LineBoxAlignment::Shift(_) => -metrics.baseline,
-                surgeist_text::LineBoxAlignment::Top => -feedback.baseline,
-                surgeist_text::LineBoxAlignment::Bottom => {
+                surgeist_text::allocation::LineBoxAlignment::Baseline
+                | surgeist_text::allocation::LineBoxAlignment::Shift(_) => -metrics.baseline,
+                surgeist_text::allocation::LineBoxAlignment::Top => -feedback.baseline,
+                surgeist_text::allocation::LineBoxAlignment::Bottom => {
                     -feedback.baseline + feedback.line_height - metrics.line_extent
                 }
             };
             self.cross_offset(anchor.baseline, offset)?
         } else {
             match alignment {
-                surgeist_text::LineBoxAlignment::Baseline
-                | surgeist_text::LineBoxAlignment::Shift(_) => anchor.baseline - metrics.baseline,
-                surgeist_text::LineBoxAlignment::Top => anchor.baseline - feedback.baseline,
-                surgeist_text::LineBoxAlignment::Bottom => {
+                surgeist_text::allocation::LineBoxAlignment::Baseline
+                | surgeist_text::allocation::LineBoxAlignment::Shift(_) => {
+                    anchor.baseline - metrics.baseline
+                }
+                surgeist_text::allocation::LineBoxAlignment::Top => {
+                    anchor.baseline - feedback.baseline
+                }
+                surgeist_text::allocation::LineBoxAlignment::Bottom => {
                     anchor.baseline - feedback.baseline + feedback.line_height - metrics.line_extent
                 }
             }
         };
         // Match the actual baseline first. Apply the allocated displacement in
         // physical coordinates before the existing final edge quantization.
-        let over = if let surgeist_text::LineBoxAlignment::Shift(offset) = alignment {
+        let over = if let surgeist_text::allocation::LineBoxAlignment::Shift(offset) = alignment {
             add(
                 over,
                 if self.vertical_cell() {
@@ -812,9 +824,9 @@ impl LineFrame {
         over: f64,
         baseline: f64,
         extent: f64,
-    ) -> Result<surgeist_text::LineStrut, FitError> {
+    ) -> Result<surgeist_text::allocation::LineStrut, FitError> {
         let snapped_over = round(over)?;
-        Ok(surgeist_text::LineStrut {
+        Ok(surgeist_text::allocation::LineStrut {
             baseline: self
                 .cross_distance(snapped_over, round(self.cross_offset(over, baseline)?)?)?,
             line_extent: self
@@ -979,7 +991,7 @@ impl LineFrame {
         self,
         anchor: LineAnchor,
         baseline: f64,
-        slot: surgeist_text::Point,
+        slot: surgeist_text::geometry::Point,
         rect: Rect,
     ) -> Result<Rect, FitError> {
         if self.vertical_cell() {
@@ -997,7 +1009,7 @@ impl LineFrame {
         self,
         anchor: LineAnchor,
         baseline: f64,
-        slot: surgeist_text::Point,
+        slot: surgeist_text::geometry::Point,
         rect: Rect,
     ) -> Result<Rect, FitError> {
         if self.vertical_cell() {
@@ -1016,7 +1028,7 @@ impl LineFrame {
         self,
         anchor: LineAnchor,
         baseline: f64,
-        slot: surgeist_text::Point,
+        slot: surgeist_text::geometry::Point,
         offset: f64,
     ) -> Result<f64, FitError> {
         if self.vertical_cell() {
@@ -1146,7 +1158,10 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     reusable: &[fit::ReusableLine],
     environment: LineEnvironment<
         impl FnMut(f64, f64) -> Result<Band, FitError>,
-        impl FnMut(f64, &surgeist_text::LineSelectionRequest) -> Result<Option<f64>, FitError>,
+        impl FnMut(
+            f64,
+            &surgeist_text::selection::LineSelectionRequest,
+        ) -> Result<Option<f64>, FitError>,
         impl FnMut(&FinalizedLine, fit::EncounterReplay) -> Result<Vec<fit::EncounterBasis>, FitError>,
         impl FnMut() -> Result<(), FitError>,
         impl FnMut(fit::EncounterReset) -> Result<(), FitError>,
@@ -1230,7 +1245,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         .filter(|row| run.nodes().contains(&row.node))
         .map(|row| {
             if row.occurrence.view().original_box().kind()
-                == surgeist_text::InlineBoxKind::OutOfFlow
+                == surgeist_text::source::InlineBoxKind::OutOfFlow
             {
                 Ok(AtomicAllocation {
                     occurrence: row.occurrence.clone(),
@@ -1253,9 +1268,9 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         .map(|control| control.allocation.clone())
         .collect();
     let direction = match binding.prepared.analyzed_source().direction() {
-        surgeist_text::Direction::RightToLeft => ParagraphBaseDirection::RightToLeft,
-        surgeist_text::Direction::LeftToRight => ParagraphBaseDirection::LeftToRight,
-        surgeist_text::Direction::Auto => {
+        surgeist_text::style::Direction::RightToLeft => ParagraphBaseDirection::RightToLeft,
+        surgeist_text::style::Direction::LeftToRight => ParagraphBaseDirection::LeftToRight,
+        surgeist_text::style::Direction::Auto => {
             unreachable!("analysis lends a resolved original direction")
         }
     };
@@ -1433,7 +1448,13 @@ fn flow<S: LayoutScalar>(
     width: f64,
     height: f64,
     baseline: f64,
-) -> Result<(AtomicFlowAllocation, surgeist_text::AtomicFitAllocation), FitError> {
+) -> Result<
+    (
+        AtomicFlowAllocation,
+        surgeist_text::allocation::AtomicFitAllocation,
+    ),
+    FitError,
+> {
     let (left, right, over, under, inline, cross) = if frame.vertical_cell() {
         (
             item.margin.top,
@@ -1455,7 +1476,7 @@ fn flow<S: LayoutScalar>(
     };
     let left = left.to_f64();
     let right = right.to_f64();
-    let css = surgeist_text::CssMarginBoxFit::try_new(left, inline, right)?;
+    let css = surgeist_text::allocation::CssMarginBoxFit::try_new(left, inline, right)?;
     let advance = css.advance();
     let (occupied_start, occupied_end) = css.occupied_inline_bounds();
     Ok((
@@ -1471,7 +1492,7 @@ fn flow<S: LayoutScalar>(
             occupied_start,
             occupied_end,
         },
-        surgeist_text::AtomicFitAllocation::CssMarginBox(css),
+        surgeist_text::allocation::AtomicFitAllocation::CssMarginBox(css),
     ))
 }
 
@@ -1566,7 +1587,7 @@ fn canonical_atomic_box<Node, S: LayoutScalar>(
     frame: LineFrame,
     atomic: &Atomic<Node, S>,
     anchor: LineAnchor,
-    slot: &surgeist_text::AtomicSlotFeedback,
+    slot: &surgeist_text::finalized::AtomicSlotFeedback,
     line_baseline: f64,
 ) -> Result<CanonicalAtomicBox, FitError> {
     let item = atomic.item;
@@ -1653,7 +1674,7 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
     line: &FinalizedLine,
     band: Band,
     block: f64,
-) -> Result<Vec<surgeist_text::ControlAllocation>, FitError> {
+) -> Result<Vec<surgeist_text::allocation::ControlAllocation>, FitError> {
     let feedback = line.feedback();
     let anchor = finalized_anchor(
         context,
@@ -1687,21 +1708,21 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
                     let metrics = context.line_frame(origin).aligned_strut(
                         anchor,
                         feedback,
-                        surgeist_text::LineStrut {
+                        surgeist_text::allocation::LineStrut {
                             baseline: strut.baseline,
                             line_extent: strut.line_extent,
                         },
                         strut.alignment,
                         scope_displacement,
                     )?;
-                    Ok::<_, FitError>(surgeist_text::ControlStrut {
+                    Ok::<_, FitError>(surgeist_text::allocation::ControlStrut {
                         baseline: metrics.baseline,
                         line_extent: metrics.line_extent,
                         alignment: strut.alignment,
                     })
                 })
                 .transpose()?;
-            Ok(surgeist_text::ControlAllocation {
+            Ok(surgeist_text::allocation::ControlAllocation {
                 occurrence: allocation.occurrence.clone(),
                 strut,
                 boundary: original.allocation.boundary.clone(),
@@ -1711,13 +1732,13 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
 }
 
 fn canonical_box_struts<Node, S: LayoutScalar>(
-    originals: &[surgeist_text::LineBoxStrut],
+    originals: &[surgeist_text::allocation::LineBoxStrut],
     context: &Context<Node, S>,
     origin: Point<f64>,
     line: &FinalizedLine,
     band: Band,
     block: f64,
-) -> Result<Vec<surgeist_text::LineBoxStrut>, FitError> {
+) -> Result<Vec<surgeist_text::allocation::LineBoxStrut>, FitError> {
     if originals.is_empty() {
         return Ok(Vec::new());
     }
@@ -1738,7 +1759,7 @@ fn canonical_box_struts<Node, S: LayoutScalar>(
                 .line_box_strut_scope_displacement(index)
                 .ok_or(FitError::Dependency)?
                 .get();
-            Ok(surgeist_text::LineBoxStrut {
+            Ok(surgeist_text::allocation::LineBoxStrut {
                 scope: strut.scope.clone(),
                 metrics: context.line_frame(origin).aligned_strut(
                     anchor,
@@ -1754,13 +1775,13 @@ fn canonical_box_struts<Node, S: LayoutScalar>(
 }
 
 fn canonical_line_strut<Node, S: LayoutScalar>(
-    original: Option<surgeist_text::LineStrut>,
+    original: Option<surgeist_text::allocation::LineStrut>,
     context: &Context<Node, S>,
     origin: Point<f64>,
     line: &FinalizedLine,
     band: Band,
     block: f64,
-) -> Result<Option<surgeist_text::LineStrut>, FitError> {
+) -> Result<Option<surgeist_text::allocation::LineStrut>, FitError> {
     let Some(strut) = original else {
         return Ok(None);
     };
@@ -1775,7 +1796,7 @@ fn canonical_line_strut<Node, S: LayoutScalar>(
     let frame = context.line_frame(origin);
     let over = frame.cross_offset(anchor.baseline, -strut.baseline)?;
     let canonical_over = round(over)?;
-    Ok(Some(surgeist_text::LineStrut {
+    Ok(Some(surgeist_text::allocation::LineStrut {
         baseline: frame.cross_distance(canonical_over, anchor.baseline)?,
         line_extent: frame.cross_distance(
             canonical_over,
@@ -2028,7 +2049,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         if is_formatted {
             report.indent_state.commit(
                 line.finalized.selected_line().request().context.end
-                    == surgeist_text::LineEnd::Forced,
+                    == surgeist_text::selection::LineEnd::Forced,
             );
         }
         let normal_anchor = finalized_frame_anchor(
@@ -2115,12 +2136,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 ));
                 outflows.push((entry_index, slot.occurrence, actual.node));
             }
-            placements.push(surgeist_text::PlacementEntry::NonFormatted(
-                surgeist_text::NonFormattedLinePlacement {
+            placements.push(surgeist_text::placement::PlacementEntry::NonFormatted(
+                surgeist_text::placement::NonFormattedLinePlacement {
                     line: completion,
                     origin: {
                         let point = frame.anchor_point(used);
-                        surgeist_text::Point::new(point.x, point.y)
+                        surgeist_text::geometry::Point::new(point.x, point.y)
                     },
                     orientation,
                     atomics: Vec::new(),
@@ -2257,7 +2278,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             let physical = frame.point(anchor, feedback.baseline, left, slot.slot().y)?;
             frame.qualify_scope_position::<S>(physical, slot.scope_displacement().get())?;
             if let Some(strut) = control.allocation.strut
-                && let surgeist_text::LineBoxAlignment::Shift(offset) = strut.alignment
+                && let surgeist_text::allocation::LineBoxAlignment::Shift(offset) = strut.alignment
                 && offset.get() != 0.0
             {
                 let (matched, shifted, parent) = if frame.vertical_cell() {
@@ -2272,7 +2293,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .allocation
                 .boundary
                 .as_ref()
-                .and_then(surgeist_text::InlineBoundaryAllocation::box_components)
+                .and_then(surgeist_text::allocation::InlineBoundaryAllocation::box_components)
                 && components.margin() != 0.0
             {
                 let flow = slot.flow_interval();
@@ -2281,14 +2302,14 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                     .allocation
                     .boundary
                     .as_ref()
-                    .and_then(surgeist_text::InlineBoundaryAllocation::box_context)
+                    .and_then(surgeist_text::allocation::InlineBoundaryAllocation::box_context)
                     .expect("component edge has checked context");
                 let left_side = match control.kind {
                     InlineParticipantLayoutKind::InlineBoundaryStart => {
-                        context.start_side() == surgeist_text::LineEdgeSide::Start
+                        context.start_side() == surgeist_text::finalized::LineEdgeSide::Start
                     }
                     InlineParticipantLayoutKind::InlineBoundaryEnd => {
-                        context.start_side() == surgeist_text::LineEdgeSide::End
+                        context.start_side() == surgeist_text::finalized::LineEdgeSide::End
                     }
                     _ => unreachable!("a component edge retains its admitted endpoint role"),
                 };
@@ -2472,12 +2493,14 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 baseline,
             });
         }
-        placements.push(surgeist_text::PlacementEntry::Formatted(LinePlacement {
-            line: line.finalized,
-            anchor,
-            orientation,
-            atomics: atomic_placements,
-        }));
+        placements.push(surgeist_text::placement::PlacementEntry::Formatted(
+            LinePlacement {
+                line: line.finalized,
+                anchor,
+                orientation,
+                atomics: atomic_placements,
+            },
+        ));
     }
     let mut nodes = Vec::new();
     nodes
@@ -2531,10 +2554,10 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
 fn fragment_owner<Node: Copy + Eq>(
     binding: &TextParagraphBinding<Node>,
     associations: &super::capture::ScopeAssociations<Node>,
-    owner: surgeist_text::FinalizedFragmentOwner,
+    owner: surgeist_text::finalized::FinalizedFragmentOwner,
 ) -> crate::InlineFragmentOwner<Node> {
     let node = match owner {
-        surgeist_text::FinalizedFragmentOwner::Origin(origin) => {
+        surgeist_text::finalized::FinalizedFragmentOwner::Origin(origin) => {
             binding
                 .origins
                 .iter()
@@ -2542,7 +2565,7 @@ fn fragment_owner<Node: Copy + Eq>(
                 .expect("capture admitted original occurrence")
                 .node
         }
-        surgeist_text::FinalizedFragmentOwner::Control(control) => {
+        surgeist_text::finalized::FinalizedFragmentOwner::Control(control) => {
             binding
                 .controls
                 .iter()
@@ -2550,9 +2573,11 @@ fn fragment_owner<Node: Copy + Eq>(
                 .expect("capture admitted explicit control")
                 .node
         }
-        surgeist_text::FinalizedFragmentOwner::Alternative(alternative) => {
+        surgeist_text::finalized::FinalizedFragmentOwner::Alternative(alternative) => {
             match alternative.view().definition() {
-                surgeist_text::PreparedAlternativeDefinition::Source { origin, .. } => {
+                surgeist_text::prepared::PreparedAlternativeDefinition::Source {
+                    origin, ..
+                } => {
                     binding
                         .origins
                         .iter()
@@ -2560,7 +2585,7 @@ fn fragment_owner<Node: Copy + Eq>(
                         .expect("capture admitted actual replacement source")
                         .node
                 }
-                surgeist_text::PreparedAlternativeDefinition::Automatic { cut } => {
+                surgeist_text::prepared::PreparedAlternativeDefinition::Automatic { cut } => {
                     let origin = cut
                         .view()
                         .preceding_source_pieces()
@@ -2574,7 +2599,9 @@ fn fragment_owner<Node: Copy + Eq>(
                         .expect("capture admitted automatic cut owner")
                         .node
                 }
-                surgeist_text::PreparedAlternativeDefinition::Control { control, .. } => {
+                surgeist_text::prepared::PreparedAlternativeDefinition::Control {
+                    control, ..
+                } => {
                     binding
                         .controls
                         .iter()
@@ -2584,7 +2611,7 @@ fn fragment_owner<Node: Copy + Eq>(
                 }
             }
         }
-        surgeist_text::FinalizedFragmentOwner::VirtualSeparator(occurrence) => {
+        surgeist_text::finalized::FinalizedFragmentOwner::VirtualSeparator(occurrence) => {
             let scope = occurrence.view().scope();
             return crate::InlineFragmentOwner::Scope(
                 associations
@@ -2600,7 +2627,7 @@ fn raw_box<Node, S: LayoutScalar>(
     frame: LineFrame,
     atomic: &Atomic<Node, S>,
     anchor: LineAnchor,
-    slot: surgeist_text::Point,
+    slot: surgeist_text::geometry::Point,
     line_baseline: f64,
 ) -> Result<(f64, f64), FitError> {
     let border = frame.atomic_rect(
@@ -2614,14 +2641,16 @@ fn raw_box<Node, S: LayoutScalar>(
 
 fn alignment<S: LayoutScalar>(
     value: InlineControlAlignment<S>,
-) -> Result<surgeist_text::LineBoxAlignment, FitError> {
+) -> Result<surgeist_text::allocation::LineBoxAlignment, FitError> {
     Ok(match value {
-        InlineControlAlignment::Baseline => surgeist_text::LineBoxAlignment::Baseline,
-        InlineControlAlignment::Top => surgeist_text::LineBoxAlignment::Top,
-        InlineControlAlignment::Bottom => surgeist_text::LineBoxAlignment::Bottom,
-        InlineControlAlignment::Shift(offset) => surgeist_text::LineBoxAlignment::Shift(
-            surgeist_text::BaselineShift::try_new(offset.get().to_f64())?,
-        ),
+        InlineControlAlignment::Baseline => surgeist_text::allocation::LineBoxAlignment::Baseline,
+        InlineControlAlignment::Top => surgeist_text::allocation::LineBoxAlignment::Top,
+        InlineControlAlignment::Bottom => surgeist_text::allocation::LineBoxAlignment::Bottom,
+        InlineControlAlignment::Shift(offset) => {
+            surgeist_text::allocation::LineBoxAlignment::Shift(
+                surgeist_text::source::BaselineShift::try_new(offset.get().to_f64())?,
+            )
+        }
     })
 }
 
@@ -2730,10 +2759,10 @@ fn round(value: f64) -> Result<f64, FitError> {
 impl<Node: Copy + Eq> WrappingProjection<Node> {
     fn cut(
         &self,
-        boundary: &surgeist_text::PreparedBoundary,
-        incidence: Option<surgeist_text::PreparedBoundaryIncidence>,
+        boundary: &surgeist_text::prepared::PreparedBoundary,
+        incidence: Option<surgeist_text::observation::PreparedBoundaryIncidence>,
     ) -> Result<super::boxes::BoxFrontier, FitError> {
-        use surgeist_text::CapturedScopeIncidence as R;
+        use surgeist_text::observation::CapturedScopeIncidence as R;
         let prepared = boundary.prepared_text();
         let mut relations = Vec::new();
         let mut native_gaps = Vec::new();
@@ -2853,7 +2882,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             .checked_sub(1)
             .and_then(|at| prepared.participants().nth(at))
             .and_then(|participant| {
-                let surgeist_text::PreparedParticipant::ComputedLineBoundary(boundary) =
+                let surgeist_text::prepared::PreparedParticipant::ComputedLineBoundary(boundary) =
                     participant
                 else {
                     return None;
@@ -2887,9 +2916,9 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
     fn closes_segment(
         &self,
         outgoing: &super::boxes::BoxFrontier,
-        segment: &surgeist_text::PreparedSourceSegment,
+        segment: &surgeist_text::prepared::PreparedSourceSegment,
     ) -> Result<bool, FitError> {
-        use surgeist_text::CapturedScopeIncidence as R;
+        use surgeist_text::observation::CapturedScopeIncidence as R;
         let prepared = outgoing.boundary.prepared_text();
         let Some(paragraph) = prepared.captured_owner() else {
             return Ok(true);
@@ -2919,7 +2948,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
 
     fn cuts(
         &self,
-        boundary: &surgeist_text::PreparedBoundary,
+        boundary: &surgeist_text::prepared::PreparedBoundary,
     ) -> Result<Vec<super::boxes::BoxFrontier>, FitError> {
         let prepared = boundary.prepared_text();
         if prepared.captured_owner().is_none() {
@@ -2928,10 +2957,10 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
         let mut incidences = prepared.boundary_incidences(&self.segment, boundary)?;
         let forced = self.segment.opportunity_views().any(|offer| {
             offer.boundary() == *boundary
-                && offer.kind() == surgeist_text::PreparedBreakKind::Forced
+                && offer.kind() == surgeist_text::prepared::PreparedBreakKind::Forced
         });
         if !forced {
-            use surgeist_text::CapturedScopeIncidence as R;
+            use surgeist_text::observation::CapturedScopeIncidence as R;
             // An original pin/content split that prevents a whole exterior
             // placement stays authoritative. Only the freely realizable
             // exterior family needs this generated-subtree completion.
@@ -2993,7 +3022,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
         let controls = choice.controls;
         let ending = choice.ending;
         use crate::InlineBoxMetricContribution as M;
-        use surgeist_text::CapturedScopeIncidence as R;
+        use surgeist_text::observation::CapturedScopeIncidence as R;
         // The receiver's Text progress boundary keeps its own spelling. The
         // original frontier stays with its issuer across administrative runs.
         let source_segment = choice.source_segment();
@@ -3043,7 +3072,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
         let mut choices = Vec::new();
         for incoming in starts {
             let mut ends = boundary_ends.clone();
-            if ending == surgeist_text::LineEnd::Paragraph {
+            if ending == surgeist_text::selection::LineEnd::Paragraph {
                 // Keep an existing exterior incidence and its physical proof
                 // when it already discharges all local boxes.
                 let mut completed = Vec::new();
@@ -3139,9 +3168,9 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                                             .enter_position()
                                             .same_capture(&owner.enter_position())
                                         {
-                                            surgeist_text::ScopeAlignmentError::ForeignCapture
+                                            surgeist_text::scope_alignment::ScopeAlignmentError::ForeignCapture
                                         } else {
-                                            surgeist_text::ScopeAlignmentError::BoundaryMismatch {
+                                            surgeist_text::scope_alignment::ScopeAlignmentError::BoundaryMismatch {
                                                 scope: owner.capture_ordinal(),
                                             }
                                         };
@@ -3152,8 +3181,8 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                                     let scope = strut.scope.as_ref().map_or_else(|| {
                                         start.prepared_text().captured_owner()
                                             .expect("active scope alignment has a captured paragraph").domain().capture_ordinal()
-                                    }, surgeist_text::CapturedScope::capture_ordinal);
-                                    return Err(super::scope_alignment::refusal(surgeist_text::ScopeAlignmentError::UnrepresentedOwnership { scope }).into());
+                                    }, surgeist_text::capture::CapturedScope::capture_ordinal);
+                                    return Err(super::scope_alignment::refusal(surgeist_text::scope_alignment::ScopeAlignmentError::UnrepresentedOwnership { scope }).into());
                                 }
                             }
                             owned.is_empty().then_some(strut)
@@ -3219,7 +3248,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
         &self,
         assignment: &super::boxes::BoxAssignment,
     ) -> Result<crate::inline_wrapping::AvoidClass, FitError> {
-        use surgeist_text::{CapturedScopeIncidence as R, SourceBoxSide};
+        use surgeist_text::{capture::SourceBoxSide, observation::CapturedScopeIncidence as R};
         let cut = &assignment.outgoing;
         let Some(incidence) = cut.incidence() else {
             return self.classify_boundary(&cut.boundary.prepared_text(), &cut.boundary);
@@ -3278,7 +3307,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                         if !issuer.control_is_boundary_exact(control)? {
                             return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
                         }
-                        let at = issuer.participants().position(|participant| matches!(participant, surgeist_text::PreparedParticipant::Control(actual) if actual == *control)).ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                        let at = issuer.participants().position(|participant| matches!(participant, surgeist_text::prepared::PreparedParticipant::Control(actual) if actual == *control)).ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
                         cut.boundary.view().participant_offset() == at + usize::from(*after)
                     }
                 }

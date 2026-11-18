@@ -13,7 +13,7 @@ struct BodyProof {
     advances: Vec<f64>,
     capacities: Vec<f64>,
     sources: Vec<Vec<usize>>,
-    terminal: surgeist_text::LineEnd,
+    terminal: surgeist_text::selection::LineEnd,
     terminal_cursor: (usize, usize, bool),
     fixed: BodyScore,
     candidate: BodyScore,
@@ -394,7 +394,7 @@ fn real_fitter_trials_independently_veto_fixed_terminal_advance_fullness_and_pai
             assert_eq!(trial.fixed, group.guards.unwrap());
             assert_eq!(trial.entry_source, 0);
             assert_eq!(trial.entry_block, 0.0);
-            assert_eq!(trial.terminal, surgeist_text::LineEnd::Paragraph);
+            assert_eq!(trial.terminal, surgeist_text::selection::LineEnd::Paragraph);
             assert_eq!(trial.terminal_cursor, (end, end, false));
             assert_eq!(trial.sources, sources);
             assert_eq!(trial.capacities, candidate_capacities);
@@ -607,7 +607,7 @@ fn pretty_has_no_ten_line_cap_and_preserves_real_forced_phantom_and_optional_dom
             assert_eq!(groups(&forced), [vec![0], vec![1, 2], vec![3]]);
             assert_eq!(
                 forced.lines.last().unwrap().end,
-                surgeist_text::LineEnd::Forced
+                surgeist_text::selection::LineEnd::Forced
             );
             assert_eq!(forced.line_bands.len(), 3);
             let overflow = run(input::<S>(
@@ -801,7 +801,7 @@ fn actual_body_walk_receipts_reject_count_terminal_and_optional_domain_changes()
     assert_eq!(terminal.selected_lines.len(), 3);
     assert_eq!(
         terminal.selected_lines.last().unwrap().ending,
-        surgeist_text::LineEnd::Forced
+        surgeist_text::selection::LineEnd::Forced
     );
     assert!(finish_body_trial(&terminal, entry, reference, outcome).is_none());
     // A real required-progress overflow remains valid ordinary layout, but

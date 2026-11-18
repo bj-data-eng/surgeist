@@ -34,20 +34,20 @@ fn assert_admitted<S: LayoutScalar>(capture: &LayoutFlowInput<'_, PublicLayoutTr
     assert_eq!(admitted.binding.origins[0].node, 10);
     assert_eq!(
         admitted.binding.prepared.analyzed_source().source().text(),
-        &text::Text::from("A B C D")
+        &text::source::Text::from("A B C D")
     );
 }
 
 fn assert_scene<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-    opening: &text::PreparedControl,
+    opening: &text::prepared::PreparedControl,
 ) {
     let px = S::from_f64;
     let [placed] = batch.placed_text() else {
         panic!("one actual processed paragraph");
     };
     let layout = placed.layout();
-    assert_eq!(layout.source().text(), &text::Text::from("A B C D"));
+    assert_eq!(layout.source().text(), &text::source::Text::from("A B C D"));
     let line = batch
         .final_inline_fragments()
         .iter()
@@ -61,8 +61,8 @@ fn assert_scene<S: LayoutScalar>(
         })
         .expect("the actual opening allocation retains its line receipt");
     let prefix = line
-        .prefix_at(&text::TextSeam::AfterParticipant(
-            text::PreparedParticipant::Control(opening.clone()),
+        .prefix_at(&text::finalized::TextSeam::AfterParticipant(
+            text::prepared::PreparedParticipant::Control(opening.clone()),
         ))
         .unwrap();
     assert_eq!(prefix.advance(), 0.0);
@@ -92,13 +92,19 @@ fn assert_scene<S: LayoutScalar>(
 struct Scene<S: LayoutScalar> {
     tree: PublicLayoutTreeOf<S>,
     binding: TextParagraphBinding<u32>,
-    opening: text::PreparedControl,
+    opening: text::prepared::PreparedControl,
     ordinary: NodeInputOf<S>,
 }
 
 fn scene<S: LayoutScalar>() -> Scene<S> {
     let px = S::from_f64;
-    let fixture = Fixture::new("A B C D", (0, 7), text::WhiteSpace::Collapse, false, false);
+    let fixture = Fixture::new(
+        "A B C D",
+        (0, 7),
+        text::style::WhiteSpace::Collapse,
+        false,
+        false,
+    );
     let mut binding = fixture.binding.clone();
     binding.nodes.insert(1, 2);
     assert_eq!(binding.nodes, [20, 2, 10, 21]);

@@ -17,10 +17,13 @@ use crate::{
     layout::{Affinity, Layout},
     options::Alignment,
     processing::{
-        CapturedComputedLineBoundaryTarget, CapturedFlowEvent, ComputedLineBoundaryInput,
-        ProcessedSource, ScopeAlignmentLimits, ScopeFontReference, ScopeRole, SourceBoxSide,
-        SourceProcessingConnection, SourceProcessingEvent, SourceProcessingScope,
-        SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        ProcessedSource,
+        contextual::{
+            CapturedComputedLineBoundaryTarget, CapturedFlowEvent, ComputedLineBoundaryInput,
+            ScopeAlignmentLimits, ScopeFontReference, ScopeRole, SourceBoxSide,
+            SourceProcessingConnection, SourceProcessingEvent, SourceProcessingScope,
+            SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+        },
     },
     protocol::{
         AtomicAllocation, AtomicLineAllocation, AtomicPlacement, FinalizedLine,

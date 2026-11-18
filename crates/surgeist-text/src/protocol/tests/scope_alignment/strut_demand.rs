@@ -8,7 +8,7 @@ use crate::{
     id::Id,
     layout::{Affinity, Layout},
     options::Alignment,
-    processing::{
+    processing::contextual::{
         CapturedScope, ScopeAlignmentBoundary, ScopeAlignmentError, SourceProcessingScope,
         WhiteSpaceTrim, process_contextual_source,
     },
@@ -61,7 +61,7 @@ fn font_premises() {
 }
 
 fn fixture(relation: Relation) -> Fixture {
-    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::contextual::SourceProcessingEvent as E;
     let mut input = super::prepared::two_leaves();
     // Inline.Style supplies a font context; the body is independently authored.
     input.source.span(Range::new(0, 2), style(10.0, 10.0));

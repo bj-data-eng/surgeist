@@ -117,7 +117,7 @@ fn source_indices<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) -> Vec<usize>
 fn assert_numeric_receipts<S: LayoutScalar>(
     permissions: [InlineBreakOpportunity; 3],
     direction: Direction,
-    first_end: surgeist_text::LineEnd,
+    first_end: surgeist_text::selection::LineEnd,
 ) {
     let input = numeric_input::<S>(permissions, direction);
     let supplied = project_inline_participants(&input.meter, &input.participants);
@@ -139,9 +139,10 @@ fn assert_numeric_receipts<S: LayoutScalar>(
     };
     let first = select(InlineSourceCursor::default(), None).unwrap();
     assert!(match first_end {
-        surgeist_text::LineEnd::Soft => first.end == SelectedInlineLineEnd::Soft,
-        surgeist_text::LineEnd::Forced => first.end == SelectedInlineLineEnd::Forced,
-        surgeist_text::LineEnd::Paragraph => unreachable!("the first line has a real successor"),
+        surgeist_text::selection::LineEnd::Soft => first.end == SelectedInlineLineEnd::Soft,
+        surgeist_text::selection::LineEnd::Forced => first.end == SelectedInlineLineEnd::Forced,
+        surgeist_text::selection::LineEnd::Paragraph =>
+            unreachable!("the first line has a real successor"),
     });
     assert_eq!(source_indices(&first.line), [0, 1, 2]);
     assert_eq!(first.next_cursor.source, 3);
@@ -159,7 +160,7 @@ fn assert_numeric_receipts<S: LayoutScalar>(
     let report = layout_mixed_inline_run(input).unwrap();
     assert_eq!(
         report.lines.iter().map(|line| line.end).collect::<Vec<_>>(),
-        [first_end, surgeist_text::LineEnd::Paragraph]
+        [first_end, surgeist_text::selection::LineEnd::Paragraph]
     );
     assert_eq!(report.line_bands.len(), 2);
     assert_eq!(report.inline_extent, S::from_f64(20.0));
@@ -373,7 +374,10 @@ fn assert_layout_placement<S: LayoutScalar>(
     }
 }
 
-fn assert_both_routes(permissions: [InlineBreakOpportunity; 3], first_end: surgeist_text::LineEnd) {
+fn assert_both_routes(
+    permissions: [InlineBreakOpportunity; 3],
+    first_end: surgeist_text::selection::LineEnd,
+) {
     for direction in [Direction::Ltr, Direction::Rtl] {
         assert_numeric_receipts::<f32>(permissions, direction, first_end);
         assert_numeric_receipts::<f64>(permissions, direction, first_end);
@@ -386,7 +390,7 @@ fn assert_both_routes(permissions: [InlineBreakOpportunity; 3], first_end: surge
 fn allowed_auto_keeps_used_flow_distinct_from_placed_signed_margin_borders() {
     assert_both_routes(
         [InlineBreakOpportunity::Allowed; 3],
-        surgeist_text::LineEnd::Soft,
+        surgeist_text::selection::LineEnd::Soft,
     );
 }
 
@@ -398,7 +402,7 @@ fn prohibited_after_first_box_keeps_the_real_second_box_cut() {
             InlineBreakOpportunity::Allowed,
             InlineBreakOpportunity::Allowed,
         ],
-        surgeist_text::LineEnd::Soft,
+        surgeist_text::selection::LineEnd::Soft,
     );
 }
 
@@ -410,6 +414,6 @@ fn mandatory_after_second_box_keeps_forced_then_paragraph_without_an_extra_line(
             InlineBreakOpportunity::Mandatory,
             InlineBreakOpportunity::Allowed,
         ],
-        surgeist_text::LineEnd::Forced,
+        surgeist_text::selection::LineEnd::Forced,
     );
 }

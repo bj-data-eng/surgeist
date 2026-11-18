@@ -1,7 +1,12 @@
+//! Font resources, instances, metrics, baselines and outlines.
+
 use std::fmt;
 
 use skrifa::{Tag, raw::TableProvider};
 
+pub use crate::error::{
+    FontMetricField, FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
+};
 use crate::{Error, ErrorCode, ErrorDetail, Result, error::NumericRequirement};
 use surgeist_font::CataloguePublication;
 

@@ -9,28 +9,28 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
-    let source = text::Source::new("A AA)");
-    let style = text::Style {
-        font: text::Font::new().family("Ahem"),
+    let source = text::source::Source::new("A AA)");
+    let style = text::style::Style {
+        font: text::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: text::LineHeight::Absolute(10.0),
-        hanging_punctuation: text::HangingPunctuation::new(false, None, true),
-        ..text::Style::default()
+        line_height: text::style::LineHeight::Absolute(10.0),
+        hanging_punctuation: text::style::HangingPunctuation::new(false, None, true),
+        ..text::style::Style::default()
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(
-        text::ParagraphInput {
+    let analyzed = text::analyzed::AnalyzedSource::from_paragraph(
+        text::paragraph::ParagraphInput {
             source: source.clone(),
             base_style: style.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
+            origins: vec![text::paragraph::ParagraphOrigin {
                 source: source.clone(),
-                local: text::Range::new(0, 5),
-                aggregate: text::Range::new(0, 5),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, 5),
+                aggregate: text::source::Range::new(0, 5),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
                 text_node: None,
             }],
             connections: vec![],
@@ -39,20 +39,20 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
             replacements: vec![],
             anchor_order: vec![],
         },
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
-        .map(|relation| text::WrappingPolicy {
+        .map(|relation| text::analyzed::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap: style.wrap,
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
@@ -107,7 +107,7 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source(), &source);
     assert_eq!(placed.lines().len(), 1);
-    assert_eq!(placed.lines()[0].range(), text::Range::new(0, 5));
+    assert_eq!(placed.lines()[0].range(), text::source::Range::new(0, 5));
     assert_eq!(placed.lines()[0].bounds().size.width, 40.0);
     let finalized = batch.final_inline_fragments()[0]
         .fragment()
@@ -139,7 +139,7 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
     );
     assert_eq!(
         placed
-            .cursor(text::Cursor::new(5, text::Affinity::After))
+            .cursor(text::layout::Cursor::new(5, text::layout::Affinity::After))
             .unwrap()
             .rect()
             .origin
@@ -147,13 +147,13 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
         50.0
     );
     let closing = placed
-        .source_range_fragments(&origin, text::Range::new(4, 5))
+        .source_range_fragments(&origin, text::source::Range::new(4, 5))
         .unwrap();
     let pieces = closing
         .units()
         .flat_map(|unit| unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>())
         .collect::<Vec<_>>();
-    assert_eq!(pieces, [text::Rect::new(40.0, 0.0, 10.0, 10.0)]);
+    assert_eq!(pieces, [text::geometry::Rect::new(40.0, 0.0, 10.0, 10.0)]);
     drop(system);
     let paint = render::text_layout::prepare_text_layout(
         placed,

@@ -6,7 +6,10 @@ use crate::*;
 use std::sync::Arc;
 use surgeist_text as text;
 use text::{
-    ParagraphBaseDirection, ParagraphControlKind as K, Source, SourceProcessingEvent as E, Wrap,
+    capture::SourceProcessingEvent as E,
+    paragraph::{ParagraphBaseDirection, ParagraphControlKind as K},
+    source::Source,
+    style::Wrap,
 };
 
 const AHEM: &[u8] = include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -16,11 +19,14 @@ pub(crate) struct Fixture {
 }
 
 impl Fixture {
-    pub(crate) fn with_scope_limits(value: &str, limits: text::ScopeAlignmentLimits) -> Self {
+    pub(crate) fn with_scope_limits(
+        value: &str,
+        limits: text::scope_alignment::ScopeAlignmentLimits,
+    ) -> Self {
         let mut input = Self::capture_input(
             value,
             (0, value.encode_utf16().count()),
-            text::WhiteSpace::Collapse,
+            text::style::WhiteSpace::Collapse,
             false,
             false,
             false,
@@ -32,7 +38,7 @@ impl Fixture {
     pub(crate) fn new(
         value: &str,
         scope: (usize, usize),
-        mode: text::WhiteSpace,
+        mode: text::style::WhiteSpace,
         rtl: bool,
         tab: bool,
     ) -> Self {
@@ -42,7 +48,7 @@ impl Fixture {
     pub(crate) fn with_generated_separators(
         value: &str,
         scope: (usize, usize),
-        mode: text::WhiteSpace,
+        mode: text::style::WhiteSpace,
         rtl: bool,
         tab: bool,
         generated: bool,
@@ -54,7 +60,7 @@ impl Fixture {
         Self::capture(
             "AB",
             (1, 2),
-            text::WhiteSpace::Collapse,
+            text::style::WhiteSpace::Collapse,
             false,
             false,
             false,
@@ -65,7 +71,7 @@ impl Fixture {
     fn capture(
         value: &str,
         scope: (usize, usize),
-        mode: text::WhiteSpace,
+        mode: text::style::WhiteSpace,
         rtl: bool,
         tab: bool,
         generated: bool,
@@ -85,27 +91,27 @@ impl Fixture {
         let mut input = Self::capture_input(
             value,
             (0, end),
-            text::WhiteSpace::Preserve,
+            text::style::WhiteSpace::Preserve,
             rtl,
             false,
             false,
         );
         input.controls.extend([
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 0,
                 kind: K::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: end,
                 kind: K::InlineBoundaryEnd,
             },
         ]);
         if captured_child {
             let mut child = input.scopes[1].clone();
-            let text::SourceProcessingScope::Inline { boundaries, .. } = &mut child else {
+            let text::capture::SourceProcessingScope::Inline { boundaries, .. } = &mut child else {
                 unreachable!("the canonical endpoint input owns an Inline")
             };
-            *boundaries = Some(text::SourceProcessingScopeBoundaries { start: 2, end: 3 });
+            *boundaries = Some(text::capture::SourceProcessingScopeBoundaries { start: 2, end: 3 });
             input.scopes.push(child);
         }
         // P's nominations remain 0/1. A nominated C owns scope2;
@@ -117,7 +123,7 @@ impl Fixture {
             E::EnterScope(1),
             E::Control {
                 control: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
         ];
         if captured_child {
@@ -126,15 +132,15 @@ impl Fixture {
         events.extend([
             E::Control {
                 control: 2,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Origin {
                 origin: 0,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::Control {
                 control: 3,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
         ]);
         if captured_child {
@@ -143,7 +149,7 @@ impl Fixture {
         events.extend([
             E::Control {
                 control: 1,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             },
             E::ExitScope(1),
             E::ExitParagraph(0),
@@ -156,14 +162,14 @@ impl Fixture {
     fn capture_input(
         value: &str,
         scope: (usize, usize),
-        mode: text::WhiteSpace,
+        mode: text::style::WhiteSpace,
         rtl: bool,
         generated: bool,
         soft_seam: bool,
-    ) -> text::ContextualSourceInput {
+    ) -> text::capture::ContextualSourceInput {
         let mut style = ahem_style(10.0, 10.0);
         style.white_space = mode;
-        style.tab_size = text::TabSize::length(20.0).unwrap();
+        style.tab_size = text::tabs::TabSize::length(20.0).unwrap();
         if generated {
             style.locale = Some("ja".into());
         }
@@ -176,18 +182,18 @@ impl Fixture {
         let end = source.text().len();
         if generated {
             source.span(
-                text::Range::new(0, end),
-                text::Style {
-                    word_space_transform: text::WordSpaceTransform::SpaceAutoPhrase,
+                text::source::Range::new(0, end),
+                text::style::Style {
+                    word_space_transform: text::style::WordSpaceTransform::SpaceAutoPhrase,
                     ..style.clone()
                 },
             );
         }
-        let owner = text::Style {
+        let owner = text::style::Style {
             word_space_transform: if generated {
-                text::WordSpaceTransform::Space
+                text::style::WordSpaceTransform::Space
             } else {
-                text::WordSpaceTransform::None
+                text::style::WordSpaceTransform::None
             },
             ..style.clone()
         };
@@ -197,7 +203,7 @@ impl Fixture {
         cuts.dedup();
         let ranges = cuts
             .windows(2)
-            .map(|pair| text::Range::new(pair[0], pair[1]))
+            .map(|pair| text::source::Range::new(pair[0], pair[1]))
             .collect::<Vec<_>>();
         let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
         for (index, range) in ranges.iter().enumerate() {
@@ -208,72 +214,74 @@ impl Fixture {
                 if soft_seam {
                     events.push(E::Control {
                         control: 2,
-                        affinity: text::Affinity::After,
+                        affinity: text::layout::Affinity::After,
                     });
                 }
                 events.push(E::EnterScope(1));
                 events.push(E::Control {
                     control: 0,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 });
             }
             events.push(E::Origin {
                 origin: index,
-                affinity: text::Affinity::After,
+                affinity: text::layout::Affinity::After,
             });
             if range.end == scope.1 {
                 events.push(E::Control {
                     control: 1,
-                    affinity: text::Affinity::After,
+                    affinity: text::layout::Affinity::After,
                 });
                 events.push(E::ExitScope(1));
             }
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let mut controls = vec![
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: scope.0,
                 kind: K::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: scope.1,
                 kind: K::InlineBoundaryEnd,
             },
         ];
         if soft_seam {
-            controls.push(text::ParagraphControl {
+            controls.push(text::paragraph::ParagraphControl {
                 at: scope.0,
                 kind: K::OptionalBreak { wrap: Wrap::Word },
             });
         }
-        text::ContextualSourceInput {
+        text::capture::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
             origins: ranges
                 .iter()
-                .map(|range| text::ParagraphOrigin {
+                .map(|range| text::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: *range,
                     aggregate: *range,
-                    kind: text::ParagraphOriginKind::Authored,
+                    kind: text::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             connections: (1..ranges.len())
-                .map(|after_origin| text::SourceProcessingConnection {
+                .map(|after_origin| text::capture::SourceProcessingConnection {
                     before_origin: after_origin - 1,
                     after_origin,
-                    kind: text::ParagraphConnectionKind::Continuous,
+                    kind: text::paragraph::ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
             controls,
             boundary_policies: (0..ranges.len().saturating_sub(1))
-                .map(|connection| text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(connection),
+                .map(|connection| text::paragraph::ParagraphBoundaryPolicy {
+                    definition: text::paragraph::ParagraphBoundaryDefinition::Connection(
+                        connection,
+                    ),
                     preceding_wrap: Wrap::Word,
                     following_wrap: Wrap::Word,
                     ancestor_wrap: Wrap::Word,
@@ -281,33 +289,36 @@ impl Fixture {
                 .collect(),
             replacements: vec![],
             scopes: vec![
-                text::SourceProcessingScope::Block {
+                text::capture::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: text::SourceProcessingTopology::Complete,
+                    topology: text::capture::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style.clone(),
                     used_direction: direction,
                 },
-                text::SourceProcessingScope::Inline {
+                text::capture::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
                     style: Some(owner),
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+                    boundaries: Some(text::capture::SourceProcessingScopeBoundaries {
+                        start: 0,
+                        end: 1,
+                    }),
                 },
             ],
-            paragraphs: vec![text::SourceProcessingParagraph {
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
                 base_direction: direction,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
         }
     }
 
-    fn prepare_input(input: text::ContextualSourceInput, tab: bool) -> Self {
+    fn prepare_input(input: text::capture::ContextualSourceInput, tab: bool) -> Self {
         let control_count = input.controls.len();
         let nodes = input
             .events
@@ -318,10 +329,10 @@ impl Fixture {
                 _ => None,
             })
             .collect();
-        let processed = Arc::new(text::process_contextual_source(input).unwrap());
-        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        let processed = Arc::new(text::capture::process_contextual_source(input).unwrap());
+        let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            text::AnalysisTypography::HorizontalComposition,
+            text::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
@@ -329,12 +340,12 @@ impl Fixture {
         system
             .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
             .unwrap();
-        let options = text::PreparationOptions::try_new(
+        let options = text::prepared::PreparationOptions::try_new(
             1.0,
             if tab {
-                text::TabPreparation::CssStops
+                text::tabs::TabPreparation::CssStops
             } else {
-                text::TabPreparation::FontAdvance
+                text::tabs::TabPreparation::FontAdvance
             },
         )
         .unwrap();

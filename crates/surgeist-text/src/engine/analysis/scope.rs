@@ -383,10 +383,12 @@ mod tests {
         analyzed::AnalyzedSource,
         layout::Affinity,
         processing::{
-            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
-            SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
-            process_contextual_source,
+            DocumentSegmentBreaks,
+            contextual::{
+                ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+                SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+                SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+            },
         },
         protocol::{
             ParagraphBaseDirection,

@@ -11,7 +11,7 @@ Use the [composer](../src/composer.rs) when constructing text incrementally so
 that ranges follow the UTF-16 code units you append:
 
 ```rust
-use surgeist_text::{Options, Style, source};
+use surgeist_text::{composer::source, options::Options, style::Style};
 
 let source = source(|text| {
     text.push("Hello ");
@@ -20,7 +20,7 @@ let source = source(|text| {
     });
 });
 assert_eq!(source.text().code_units(), "Hello world".encode_utf16().collect::<Vec<_>>());
-assert_eq!(source.spans()[0].range(), surgeist_text::Range::new(6, 11));
+assert_eq!(source.spans()[0].range(), surgeist_text::source::Range::new(6, 11));
 
 let layout = system
     .layout(source, base_style.clone(), Options::default())
@@ -65,7 +65,7 @@ and exercised by the inline-box, selection, hit, and movement tests in
 Use the fallible edit path for ranges that can come from callers:
 
 ```rust
-use surgeist_text::{Edit, Options, Source};
+use surgeist_text::{options::Options, source::{Edit, Source}};
 let layout = system
     .layout(Source::new("hello"), base_style.clone(), Options::default())
     .expect("initial layout should build");
@@ -107,7 +107,7 @@ admit it with caller-chosen limits, and name its real family in the style.
 
 ```rust
 use surgeist_font::{DecodeLimits, FontResource};
-use surgeist_text::{Font, Options, Source, Style, System};
+use surgeist_text::{options::Options, source::Source, style::{Font, Style}, System};
 
 let limits = DecodeLimits::new(1 << 20, 1 << 20, 1 << 20, 64, 4, 1 << 20, 3 << 20);
 let file = std::fs::File::open("tests/fixtures/fonts/ahem/Ahem.ttf")?;

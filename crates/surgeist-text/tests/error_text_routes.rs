@@ -38,30 +38,33 @@ fn detail(error: &t::Error) -> &t::ErrorDetail {
 
 #[test]
 fn a_resolved_level_above_126_is_refused_with_its_value() {
-    let error = t::BidiLevel::try_new(127).unwrap_err();
-    assert_eq!(error, t::BidiLevelError::OutOfRange { level: 127 });
+    let error = t::supplied_line::BidiLevel::try_new(127).unwrap_err();
+    assert_eq!(
+        error,
+        t::supplied_line::BidiLevelError::OutOfRange { level: 127 }
+    );
     assert_eq!(
         error.to_string(),
         "bidi level 127 is above the highest resolved level 126"
     );
-    assert!(t::BidiLevel::try_new(126).is_ok());
+    assert!(t::supplied_line::BidiLevel::try_new(126).is_ok());
 }
 
 #[test]
 fn a_visual_order_buffer_of_the_wrong_length_is_refused_with_both_lengths() {
-    let level = t::BidiLevel::try_new(0).unwrap();
+    let level = t::supplied_line::BidiLevel::try_new(0).unwrap();
     let participants = [
-        t::SuppliedInlineParticipant::Atomic { level },
-        t::SuppliedInlineParticipant::Atomic { level },
+        t::supplied_line::SuppliedInlineParticipant::Atomic { level },
+        t::supplied_line::SuppliedInlineParticipant::Atomic { level },
     ];
     let mut order = [0usize; 1];
-    let error = t::SuppliedLine::new(&participants)
+    let error = t::supplied_line::SuppliedLine::new(&participants)
         .reorder_into(&mut order)
         .map(|_| ())
         .unwrap_err();
     assert_eq!(
         error,
-        t::SuppliedLineError::OrderBufferLength {
+        t::supplied_line::SuppliedLineError::OrderBufferLength {
             expected: 2,
             actual: 1
         }
@@ -74,11 +77,13 @@ fn a_visual_order_buffer_of_the_wrong_length_is_refused_with_both_lengths() {
 
 // ---------------------------------------------------------------- document delimiters
 
-fn delimiter_reason(ranges: Vec<t::Range>) -> (usize, t::DocumentSegmentBreakError) {
-    let error = t::process_source_whitespace(
-        t::Source::new("abcde"),
-        t::Style::default(),
-        t::DocumentSegmentBreaks::Defined(ranges),
+fn delimiter_reason(
+    ranges: Vec<t::source::Range>,
+) -> (usize, t::processing::DocumentSegmentBreakError) {
+    let error = t::processing::process_source_whitespace(
+        t::source::Source::new("abcde"),
+        t::style::Style::default(),
+        t::processing::DocumentSegmentBreaks::Defined(ranges),
     )
     .unwrap_err();
     match detail(&error) {
@@ -93,33 +98,33 @@ fn delimiter_reason(ranges: Vec<t::Range>) -> (usize, t::DocumentSegmentBreakErr
 fn each_invalid_delimiter_occurrence_reports_its_own_rule() {
     let cases = [
         (
-            vec![t::Range { start: 3, end: 2 }],
+            vec![t::source::Range { start: 3, end: 2 }],
             0,
-            t::DocumentSegmentBreakError::Reversed,
+            t::processing::DocumentSegmentBreakError::Reversed,
             "the delimiter occurrence ends before it starts",
         ),
         (
-            vec![t::Range::new(2, 2)],
+            vec![t::source::Range::new(2, 2)],
             0,
-            t::DocumentSegmentBreakError::Empty,
+            t::processing::DocumentSegmentBreakError::Empty,
             "the delimiter occurrence covers no source units",
         ),
         (
-            vec![t::Range::new(2, 9)],
+            vec![t::source::Range::new(2, 9)],
             0,
-            t::DocumentSegmentBreakError::OutOfBounds,
+            t::processing::DocumentSegmentBreakError::OutOfBounds,
             "the delimiter occurrence extends beyond the source",
         ),
         (
-            vec![t::Range::new(3, 4), t::Range::new(1, 2)],
+            vec![t::source::Range::new(3, 4), t::source::Range::new(1, 2)],
             1,
-            t::DocumentSegmentBreakError::Unordered,
+            t::processing::DocumentSegmentBreakError::Unordered,
             "the delimiter occurrence starts before the previous occurrence starts",
         ),
         (
-            vec![t::Range::new(1, 3), t::Range::new(2, 4)],
+            vec![t::source::Range::new(1, 3), t::source::Range::new(2, 4)],
             1,
-            t::DocumentSegmentBreakError::Overlap,
+            t::processing::DocumentSegmentBreakError::Overlap,
             "the delimiter occurrence starts inside the previous occurrence",
         ),
     ];
@@ -133,26 +138,30 @@ fn each_invalid_delimiter_occurrence_reports_its_own_rule() {
 
 // ---------------------------------------------------------------- paragraph input
 
-fn origin(source: &t::Source, start: usize, end: usize) -> t::ParagraphOrigin {
-    t::ParagraphOrigin {
+fn origin(source: &t::source::Source, start: usize, end: usize) -> t::paragraph::ParagraphOrigin {
+    t::paragraph::ParagraphOrigin {
         text_node: None,
         source: source.clone(),
-        local: t::Range::new(start, end),
-        aggregate: t::Range::new(start, end),
-        kind: t::ParagraphOriginKind::Authored,
+        local: t::source::Range::new(start, end),
+        aggregate: t::source::Range::new(start, end),
+        kind: t::paragraph::ParagraphOriginKind::Authored,
     }
 }
 
-fn paragraph(value: &str) -> t::ParagraphInput {
-    let source = t::Source::identified(t::Text::from(value), t::Id::from_u64(65401), 1);
+fn paragraph(value: &str) -> t::paragraph::ParagraphInput {
+    let source = t::source::Source::identified(
+        t::source::Text::from(value),
+        t::source::Id::from_u64(65401),
+        1,
+    );
     let end = source.text().len();
-    t::ParagraphInput {
+    t::paragraph::ParagraphInput {
         source: source.clone(),
-        base_style: t::Style::default(),
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: t::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: t::ParagraphStrut::DefaultFont,
-        terminal_edge: t::ParagraphTerminalEdge::BlockEnd,
+        base_style: t::style::Style::default(),
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+        paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: t::paragraph::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![origin(&source, 0, end)],
         connections: vec![],
@@ -163,11 +172,13 @@ fn paragraph(value: &str) -> t::ParagraphInput {
     }
 }
 
-fn protocol_reason(input: t::ParagraphInput) -> t::ProtocolError {
-    let error =
-        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
-            .map(|_| ())
-            .unwrap_err();
+fn protocol_reason(input: t::paragraph::ParagraphInput) -> t::prepared::ProtocolError {
+    let error = t::analyzed::AnalyzedSource::from_paragraph(
+        input,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .map(|_| ())
+    .unwrap_err();
     assert_eq!(error.code, t::ErrorCode::InvalidTextProtocol);
     match detail(&error) {
         t::ErrorDetail::InvalidTextProtocol { reason } => reason.clone(),
@@ -183,26 +194,30 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
         input.origins = vec![origin(&source, 0, 1), origin(&source, 1, 2)];
         input
     };
-    let mut cases: Vec<(t::ParagraphInput, t::ProtocolError, &str)> = Vec::new();
+    let mut cases: Vec<(
+        t::paragraph::ParagraphInput,
+        t::prepared::ProtocolError,
+        &str,
+    )> = Vec::new();
 
     let mut input = paragraph("ab");
-    input.origins[0].local = t::Range::new(2, 1);
+    input.origins[0].local = t::source::Range::new(2, 1);
     cases.push((
         input,
-        t::ProtocolError::InvalidOriginRange {
+        t::prepared::ProtocolError::InvalidOriginRange {
             origin: 0,
-            local: t::Range::new(2, 1),
-            aggregate: t::Range::new(0, 2),
+            local: t::source::Range::new(2, 1),
+            aggregate: t::source::Range::new(0, 2),
         },
         "the range of origin 0 is invalid",
     ));
 
     let mut input = paragraph("ab");
-    input.origins[0].local = t::Range::new(0, 1);
-    input.origins[0].aggregate = t::Range::new(1, 2);
+    input.origins[0].local = t::source::Range::new(0, 1);
+    input.origins[0].aggregate = t::source::Range::new(1, 2);
     cases.push((
         input,
-        t::ProtocolError::IncompleteOriginCoverage {
+        t::prepared::ProtocolError::IncompleteOriginCoverage {
             expected: 0,
             actual: 1,
         },
@@ -210,11 +225,11 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
     ));
 
     let mut input = paragraph("ab");
-    input.origins[0].local = t::Range::new(0, 1);
-    input.origins[0].aggregate = t::Range::new(0, 1);
+    input.origins[0].local = t::source::Range::new(0, 1);
+    input.origins[0].aggregate = t::source::Range::new(0, 1);
     cases.push((
         input,
-        t::ProtocolError::IncompleteOriginCoverage {
+        t::prepared::ProtocolError::IncompleteOriginCoverage {
             expected: 2,
             actual: 1,
         },
@@ -222,10 +237,14 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
     ));
 
     let mut input = paragraph("ab");
-    input.origins[0].source = t::Source::identified(t::Text::from("xb"), t::Id::from_u64(65402), 1);
+    input.origins[0].source = t::source::Source::identified(
+        t::source::Text::from("xb"),
+        t::source::Id::from_u64(65402),
+        1,
+    );
     cases.push((
         input,
-        t::ProtocolError::OriginTextMismatch {
+        t::prepared::ProtocolError::OriginTextMismatch {
             origin: 0,
             local: 0,
             aggregate: 0,
@@ -235,7 +254,7 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
 
     cases.push((
         two_origins(),
-        t::ProtocolError::MissingConnection {
+        t::prepared::ProtocolError::MissingConnection {
             before: 0,
             after: 1,
         },
@@ -243,13 +262,13 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
     ));
 
     let mut input = two_origins();
-    input.connections.push(t::ParagraphConnection {
+    input.connections.push(t::paragraph::ParagraphConnection {
         at: 0,
-        kind: t::ParagraphConnectionKind::Disconnected,
+        kind: t::paragraph::ParagraphConnectionKind::Disconnected,
     });
     cases.push((
         input,
-        t::ProtocolError::InvalidConnection {
+        t::prepared::ProtocolError::InvalidConnection {
             connection: 0,
             at: 0,
         },
@@ -257,42 +276,46 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
     ));
 
     let mut input = paragraph("ab");
-    input.controls.push(t::ParagraphControl {
+    input.controls.push(t::paragraph::ParagraphControl {
         at: 9,
-        kind: t::ParagraphControlKind::ForcedBreak,
+        kind: t::paragraph::ParagraphControlKind::ForcedBreak,
     });
     cases.push((
         input,
-        t::ProtocolError::InvalidControl { control: 0, at: 9 },
+        t::prepared::ProtocolError::InvalidControl { control: 0, at: 9 },
         "control 0 at 9 has an invalid source position",
     ));
 
     let mut input = paragraph("ab");
-    input.boundary_policies.push(t::ParagraphBoundaryPolicy {
-        definition: t::ParagraphBoundaryDefinition::Connection(0),
-        preceding_wrap: t::Wrap::Word,
-        following_wrap: t::Wrap::Word,
-        ancestor_wrap: t::Wrap::Word,
-    });
+    input
+        .boundary_policies
+        .push(t::paragraph::ParagraphBoundaryPolicy {
+            definition: t::paragraph::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: t::style::Wrap::Word,
+            following_wrap: t::style::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
+        });
     cases.push((
         input,
-        t::ProtocolError::InvalidBoundaryPolicy { policy: 0, at: 2 },
+        t::prepared::ProtocolError::InvalidBoundaryPolicy { policy: 0, at: 2 },
         "a boundary policy is invalid or missing (policy 0, location 2)",
     ));
 
-    let definition = t::ParagraphReplacementDefinition::Source {
+    let definition = t::paragraph::ParagraphReplacementDefinition::Source {
         origin: 0,
-        source: t::Range::new(0, 1),
+        source: t::source::Range::new(0, 1),
     };
     let mut input = paragraph("ab");
     input
         .replacements
-        .push(t::ParagraphReplacement::style_driven(definition, 9));
+        .push(t::paragraph::ParagraphReplacement::style_driven(
+            definition, 9,
+        ));
     cases.push((
         input,
-        t::ProtocolError::InvalidReplacement {
+        t::prepared::ProtocolError::InvalidReplacement {
             alternative: 0,
-            source: t::Range::new(0, 1),
+            source: t::source::Range::new(0, 1),
         },
         "replacement 0 does not match its defining soft hyphen or discretionary break, its origin, or its insertion anchor (source range 0..1)",
     ));
@@ -307,49 +330,49 @@ fn an_invalid_paragraph_reports_the_protocol_rule_it_breaks() {
 
 // ---------------------------------------------------------------- contextual source capture
 
-fn block() -> t::SourceProcessingScope {
-    block_styled(t::Style::default())
+fn block() -> t::capture::SourceProcessingScope {
+    block_styled(t::style::Style::default())
 }
 
-fn block_styled(base_style: t::Style) -> t::SourceProcessingScope {
-    t::SourceProcessingScope::Block {
+fn block_styled(base_style: t::style::Style) -> t::capture::SourceProcessingScope {
+    t::capture::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: t::SourceProcessingTopology::Complete,
-        trim: t::WhiteSpaceTrim::default(),
+        topology: t::capture::SourceProcessingTopology::Complete,
+        trim: t::capture::WhiteSpaceTrim::default(),
         base_style,
-        used_direction: t::ParagraphBaseDirection::LeftToRight,
+        used_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
     }
 }
 
 /// One block scope holding one paragraph with one origin that covers "ab".
-fn capture_input() -> t::ContextualSourceInput {
-    use t::SourceProcessingEvent as E;
-    let source = t::Source::new("ab");
-    t::ContextualSourceInput {
+fn capture_input() -> t::capture::ContextualSourceInput {
+    use t::capture::SourceProcessingEvent as E;
+    let source = t::source::Source::new("ab");
+    t::capture::ContextualSourceInput {
         joint_flows: vec![],
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: t::SourceProcessingEnvelope::Complete,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: t::capture::SourceProcessingEnvelope::Complete,
         origins: vec![origin(&source, 0, 2)],
         connections: vec![],
         boundary_policies: vec![],
         replacements: vec![],
         controls: vec![],
         scopes: vec![block()],
-        paragraphs: vec![t::SourceProcessingParagraph {
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: t::ParagraphStrut::DefaultFont,
+        paragraphs: vec![t::capture::SourceProcessingParagraph {
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
         }],
         events: vec![
             E::EnterScope(0),
             E::EnterParagraph(0),
             E::Origin {
                 origin: 0,
-                affinity: t::Affinity::After,
+                affinity: t::layout::Affinity::After,
             },
             E::ExitParagraph(0),
             E::ExitScope(0),
@@ -357,8 +380,10 @@ fn capture_input() -> t::ContextualSourceInput {
     }
 }
 
-fn capture_reason(input: t::ContextualSourceInput) -> t::SourceProcessingError {
-    let error = t::process_contextual_source(input).map(|_| ()).unwrap_err();
+fn capture_reason(input: t::capture::ContextualSourceInput) -> t::capture::SourceProcessingError {
+    let error = t::capture::process_contextual_source(input)
+        .map(|_| ())
+        .unwrap_err();
     match detail(&error) {
         t::ErrorDetail::SourceProcessing { reason } => *reason,
         other => panic!("unexpected detail {other:?}"),
@@ -367,18 +392,22 @@ fn capture_reason(input: t::ContextualSourceInput) -> t::SourceProcessingError {
 
 #[test]
 fn a_valid_capture_is_admitted() {
-    assert!(t::process_contextual_source(capture_input()).is_ok());
+    assert!(t::capture::process_contextual_source(capture_input()).is_ok());
 }
 
 #[test]
 fn an_invalid_capture_reports_the_rule_it_breaks() {
-    let mut cases: Vec<(t::ContextualSourceInput, t::SourceProcessingError, &str)> = Vec::new();
+    let mut cases: Vec<(
+        t::capture::ContextualSourceInput,
+        t::capture::SourceProcessingError,
+        &str,
+    )> = Vec::new();
 
     let mut input = capture_input();
-    input.envelope = t::SourceProcessingEnvelope::IncompleteExterior;
+    input.envelope = t::capture::SourceProcessingEnvelope::IncompleteExterior;
     cases.push((
         input,
-        t::SourceProcessingError::IncompleteExterior,
+        t::capture::SourceProcessingError::IncompleteExterior,
         "the producer did not capture the exterior context that trimming needs",
     ));
 
@@ -386,7 +415,7 @@ fn an_invalid_capture_reports_the_rule_it_breaks() {
     input.events.swap(3, 4);
     cases.push((
         input,
-        t::SourceProcessingError::Nesting,
+        t::capture::SourceProcessingError::Nesting,
         "the captured scopes and paragraphs are not properly nested",
     ));
 
@@ -394,7 +423,7 @@ fn an_invalid_capture_reports_the_rule_it_breaks() {
     input.scopes.clear();
     cases.push((
         input,
-        t::SourceProcessingError::Occurrence,
+        t::capture::SourceProcessingError::Occurrence,
         "a captured occurrence is out of range, repeated, missing or out of position",
     ));
 
@@ -402,28 +431,30 @@ fn an_invalid_capture_reports_the_rule_it_breaks() {
     input.events.remove(2);
     cases.push((
         input,
-        t::SourceProcessingError::OriginalCoverage,
+        t::capture::SourceProcessingError::OriginalCoverage,
         "an origin's range is invalid or the captured occurrences do not cover the original source",
     ));
 
     let mut input = capture_input();
-    input.origins[0].source = t::Source::new("xb");
+    input.origins[0].source = t::source::Source::new("xb");
     cases.push((
         input,
-        t::SourceProcessingError::OriginCorrespondence,
+        t::capture::SourceProcessingError::OriginCorrespondence,
         "the captured origins do not correspond to the original source",
     ));
 
     let mut input = capture_input();
-    input.boundary_policies.push(t::ParagraphBoundaryPolicy {
-        definition: t::ParagraphBoundaryDefinition::Connection(0),
-        preceding_wrap: t::Wrap::Word,
-        following_wrap: t::Wrap::Word,
-        ancestor_wrap: t::Wrap::Word,
-    });
+    input
+        .boundary_policies
+        .push(t::paragraph::ParagraphBoundaryPolicy {
+            definition: t::paragraph::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: t::style::Wrap::Word,
+            following_wrap: t::style::Wrap::Word,
+            ancestor_wrap: t::style::Wrap::Word,
+        });
     cases.push((
         input,
-        t::SourceProcessingError::BoundaryPolicy,
+        t::capture::SourceProcessingError::BoundaryPolicy,
         "a captured boundary policy is duplicated, unused or missing",
     ));
 
@@ -438,14 +469,19 @@ fn an_invalid_capture_reports_the_rule_it_breaks() {
 #[test]
 fn a_refused_joint_flow_wraps_its_reason_without_repeating_it() {
     let mut input = capture_input();
-    input.joint_flows.push(t::SourceProcessingJointFlow {
-        scope: 0,
-        paragraphs: vec![],
-        facts_owner: 0,
-    });
+    input
+        .joint_flows
+        .push(t::capture::SourceProcessingJointFlow {
+            scope: 0,
+            paragraphs: vec![],
+            facts_owner: 0,
+        });
     let found = capture_reason(input);
-    let reason = t::SourceProcessingJointFlowError::EmptyMembers { declaration: 0 };
-    assert_eq!(found, t::SourceProcessingError::JointFlow { reason });
+    let reason = t::capture::SourceProcessingJointFlowError::EmptyMembers { declaration: 0 };
+    assert_eq!(
+        found,
+        t::capture::SourceProcessingError::JointFlow { reason }
+    );
     assert_eq!(
         found.to_string(),
         "a supplied joint-flow declaration is invalid"
@@ -457,11 +493,13 @@ fn a_refused_joint_flow_wraps_its_reason_without_repeating_it() {
     );
 
     let mut input = capture_input();
-    input.joint_flows.push(t::SourceProcessingJointFlow {
-        scope: 7,
-        paragraphs: vec![0],
-        facts_owner: 0,
-    });
+    input
+        .joint_flows
+        .push(t::capture::SourceProcessingJointFlow {
+            scope: 7,
+            paragraphs: vec![0],
+            facts_owner: 0,
+        });
     let found = capture_reason(input);
     assert_eq!(
         found.source().unwrap().to_string(),
@@ -474,26 +512,26 @@ fn a_refused_computed_boundary_wraps_its_reason_without_repeating_it() {
     for (scope, reason, text) in [
         (
             9,
-            t::ComputedLineBoundaryError::TargetBounds,
+            t::capture::ComputedLineBoundaryError::TargetBounds,
             "the computed boundary names a target that does not exist",
         ),
         (
             0,
-            t::ComputedLineBoundaryError::TargetRole,
+            t::capture::ComputedLineBoundaryError::TargetRole,
             "the computed boundary target is not an inline box edge or an in-flow atomic box",
         ),
     ] {
         let mut input = capture_input();
         input
             .computed_line_boundaries
-            .push(t::ComputedLineBoundaryInput::Scope {
+            .push(t::capture::ComputedLineBoundaryInput::Scope {
                 scope,
-                side: t::SourceBoxSide::Before,
+                side: t::capture::SourceBoxSide::Before,
             });
         let found = capture_reason(input);
         assert_eq!(
             found,
-            t::SourceProcessingError::ComputedLineBoundary { request: 0, reason }
+            t::capture::SourceProcessingError::ComputedLineBoundary { request: 0, reason }
         );
         assert_eq!(
             found.to_string(),
@@ -544,7 +582,7 @@ fn corrupted(tag: &[u8; 4], at: usize, bytes: &[u8]) -> Vec<u8> {
     font
 }
 
-fn table_reason(error: &t::Error) -> (t::FontMetricTable, t::FontMetricTableError) {
+fn table_reason(error: &t::Error) -> (t::font::FontMetricTable, t::font::FontMetricTableError) {
     assert_eq!(error.code, t::ErrorCode::InvalidFontMetrics);
     match detail(error) {
         t::ErrorDetail::FontMetricTable { table, reason } => (*table, *reason),
@@ -556,12 +594,12 @@ fn table_reason(error: &t::Error) -> (t::FontMetricTable, t::FontMetricTableErro
 fn a_corrupted_head_table_reports_its_cause() {
     // The magic number is at byte 12 of `head`, the version at 0, units-per-em at 18.
     let (table, reason) = table_reason(&font_error(corrupted(b"head", 12, &[0; 4]), None));
-    assert_eq!(table, t::FontMetricTable::Head);
-    assert_eq!(reason, t::FontMetricTableError::Malformed);
+    assert_eq!(table, t::font::FontMetricTable::Head);
+    assert_eq!(reason, t::font::FontMetricTableError::Malformed);
     assert_eq!(reason.to_string(), "the table is truncated or malformed");
 
     let (_, reason) = table_reason(&font_error(corrupted(b"head", 0, &[0, 2, 0, 0]), None));
-    assert_eq!(reason, t::FontMetricTableError::UnsupportedVersion);
+    assert_eq!(reason, t::font::FontMetricTableError::UnsupportedVersion);
     assert_eq!(reason.to_string(), "the table version is not supported");
 
     let (_, reason) = table_reason(&font_error(
@@ -570,7 +608,7 @@ fn a_corrupted_head_table_reports_its_cause() {
     ));
     assert_eq!(
         reason,
-        t::FontMetricTableError::InvalidUnitsPerEm { value: 8 }
+        t::font::FontMetricTableError::InvalidUnitsPerEm { value: 8 }
     );
     assert_eq!(reason.to_string(), "units-per-em 8 is outside 16 to 16384");
 }
@@ -583,7 +621,7 @@ fn a_metric_with_the_wrong_sign_reports_its_requirement() {
         t::ErrorDetail::InvalidFontMetric { category, .. } => *category,
         other => panic!("unexpected detail {other:?}"),
     };
-    assert_eq!(category, t::FontMetricNumericError::Negative);
+    assert_eq!(category, t::font::FontMetricNumericError::Negative);
     assert_eq!(
         category.to_string(),
         "a metric value that must not be negative is negative"
@@ -594,7 +632,7 @@ fn a_metric_with_the_wrong_sign_reports_its_requirement() {
         t::ErrorDetail::InvalidFontMetric { category, .. } => *category,
         other => panic!("unexpected detail {other:?}"),
     };
-    assert_eq!(category, t::FontMetricNumericError::Positive);
+    assert_eq!(category, t::font::FontMetricNumericError::Positive);
     assert_eq!(
         category.to_string(),
         "a metric value that must not be positive is positive"
@@ -611,7 +649,7 @@ fn an_outline_query_reports_why_the_glyph_has_no_outline() {
         }
         other => panic!("unexpected detail {other:?}"),
     };
-    assert_eq!(reason, t::FontOutlineError::GlyphRange { count: 281 });
+    assert_eq!(reason, t::font::FontOutlineError::GlyphRange { count: 281 });
     assert_eq!(
         reason.to_string(),
         "the requested glyph is outside the face's glyph count of 281"
@@ -623,7 +661,7 @@ fn an_outline_query_reports_why_the_glyph_has_no_outline() {
         t::ErrorDetail::FontOutline { reason, .. } => *reason,
         other => panic!("unexpected detail {other:?}"),
     };
-    assert_eq!(reason, t::FontOutlineError::InvalidFont);
+    assert_eq!(reason, t::font::FontOutlineError::InvalidFont);
     assert_eq!(
         reason.to_string(),
         "the font has a malformed directory, header, outline or variation source"
@@ -637,16 +675,16 @@ fn a_nonfinite_or_negative_boundary_advance_reports_its_category() {
     for (advance, category, text) in [
         (
             f64::NAN,
-            t::TextNumericError::NonFinite,
+            t::geometry::TextNumericError::NonFinite,
             "a geometry value, or the result of converting or combining it, is not finite",
         ),
         (
             -1.0,
-            t::TextNumericError::OutOfRange,
+            t::geometry::TextNumericError::OutOfRange,
             "a geometry value is outside the domain the operation admits",
         ),
     ] {
-        let error = t::InlineBoundaryAllocation::contribution(advance)
+        let error = t::allocation::InlineBoundaryAllocation::contribution(advance)
             .map(|_| ())
             .unwrap_err();
         assert_eq!(error.code, t::ErrorCode::InvalidTextNumeric);
@@ -669,16 +707,16 @@ fn a_nonfinite_or_negative_boundary_advance_reports_its_category() {
 
 #[test]
 fn an_unusable_hyphenation_convention_reports_its_cause() {
-    let error = t::NativeHyphenationConvention::declared_script(
+    let error = t::hyphenation::NativeHyphenationConvention::declared_script(
         "Zzzz",
-        t::Text::from("-"),
-        t::HyphenationPlacement::LogicalBefore,
+        t::source::Text::from("-"),
+        t::hyphenation::HyphenationPlacement::LogicalBefore,
     )
     .map(|_| ())
     .unwrap_err();
     match detail(&error) {
         t::ErrorDetail::Hyphenation { reason } => {
-            assert_eq!(*reason, t::HyphenationError::InvalidConvention);
+            assert_eq!(*reason, t::hyphenation::HyphenationError::InvalidConvention);
             assert_eq!(
                 reason.to_string(),
                 "the native hyphenation convention has an invalid or inconsistent locale or script"
@@ -690,16 +728,20 @@ fn an_unusable_hyphenation_convention_reports_its_cause() {
 
 #[test]
 fn a_native_replacement_without_alternatives_reports_its_cause() {
-    let definition = t::ParagraphReplacementDefinition::Source {
+    let definition = t::paragraph::ParagraphReplacementDefinition::Source {
         origin: 0,
-        source: t::Range::new(0, 1),
+        source: t::source::Range::new(0, 1),
     };
-    let error = t::ParagraphReplacement::resolved_native_logical_before(definition, 1, vec![])
-        .map(|_| ())
-        .unwrap_err();
+    let error =
+        t::paragraph::ParagraphReplacement::resolved_native_logical_before(definition, 1, vec![])
+            .map(|_| ())
+            .unwrap_err();
     match detail(&error) {
         t::ErrorDetail::Hyphenation { reason } => {
-            assert_eq!(*reason, t::HyphenationError::EmptyNativeAlternatives);
+            assert_eq!(
+                *reason,
+                t::hyphenation::HyphenationError::EmptyNativeAlternatives
+            );
             assert_eq!(
                 reason.to_string(),
                 "the native logical-before replacement lists no alternatives"
@@ -711,21 +753,21 @@ fn a_native_replacement_without_alternatives_reports_its_cause() {
 
 // ---------------------------------------------------------------- captured scopes
 
-fn style() -> t::Style {
-    t::Style {
-        font: t::Font::new().family("Ahem"),
+fn style() -> t::style::Style {
+    t::style::Style {
+        font: t::style::Font::new().family("Ahem"),
         size: 10.0,
-        line_height: t::LineHeight::Absolute(10.0),
-        white_space: t::WhiteSpace::Preserve,
-        ..t::Style::default()
+        line_height: t::style::LineHeight::Absolute(10.0),
+        white_space: t::style::WhiteSpace::Preserve,
+        ..t::style::Style::default()
     }
 }
 
-fn uncaptured_preparation() -> t::PreparedText {
-    let analyzed = t::AnalyzedSource::new(
-        t::Source::new("AB"),
+fn uncaptured_preparation() -> t::prepared::PreparedText {
+    let analyzed = t::analyzed::AnalyzedSource::new(
+        t::source::Source::new("AB"),
         style(),
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = t::System::default();
@@ -733,26 +775,26 @@ fn uncaptured_preparation() -> t::PreparedText {
         .register_fonts(AHEM.to_vec(), common::FONT_LIMITS)
         .unwrap();
     system
-        .prepare(&analyzed, t::PreparationOptions::default())
+        .prepare(&analyzed, t::prepared::PreparationOptions::default())
         .unwrap()
 }
 
 #[test]
 fn source_text_combination_without_a_capture_reports_the_missing_capture() {
-    let combining = t::Style {
-        text_combine_upright: t::TextCombineUpright::All,
+    let combining = t::style::Style {
+        text_combine_upright: t::style::TextCombineUpright::All,
         ..style()
     };
-    let error = t::AnalyzedSource::new(
-        t::Source::new("ab"),
+    let error = t::analyzed::AnalyzedSource::new(
+        t::source::Source::new("ab"),
         combining,
-        t::AnalysisTypography::HorizontalComposition,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .map(|_| ())
     .unwrap_err();
     match detail(&error) {
         t::ErrorDetail::TextCombine { reason } => {
-            assert_eq!(*reason, t::TextCombineError::MissingCapture);
+            assert_eq!(*reason, t::analyzed::TextCombineError::MissingCapture);
             assert_eq!(
                 reason.to_string(),
                 "the preparation has no contextual capture for text-combine-upright"
@@ -777,8 +819,8 @@ fn a_scope_query_on_an_uncaptured_preparation_wraps_its_reason() {
     };
     assert_eq!(
         reason,
-        t::ProtocolError::WrappingScopeQuery {
-            reason: t::WrappingScopeQueryError::MissingCapture
+        t::prepared::ProtocolError::WrappingScopeQuery {
+            reason: t::observation::WrappingScopeQueryError::MissingCapture
         }
     );
     assert_eq!(
@@ -794,23 +836,28 @@ fn a_scope_query_on_an_uncaptured_preparation_wraps_its_reason() {
 #[test]
 fn a_scope_alignment_refusal_prints_its_cause_apart_from_the_failure() {
     let prepared = uncaptured_preparation();
-    let allowance = t::ScopeAlignmentAllowance::new(1_000, 100_000);
-    let census = t::scope_alignment_census(
-        t::ScopeAlignmentCensusInput::Product(t::ScopeAlignmentProduct::Prepared(&prepared)),
-        t::ScopeAlignmentProducts::Mixed(&[]),
+    let allowance = t::scope_alignment::ScopeAlignmentAllowance::new(1_000, 100_000);
+    let census = t::scope_alignment::scope_alignment_census(
+        t::scope_alignment::ScopeAlignmentCensusInput::Product(
+            t::scope_alignment::ScopeAlignmentProduct::Prepared(&prepared),
+        ),
+        t::scope_alignment::ScopeAlignmentProducts::Mixed(&[]),
         allowance,
     )
     .unwrap_err();
     let window = prepared
         .semantic_window_with_scope_allowance(
-            &t::SemanticWindowRequest::new(prepared.source_segments().next().unwrap()),
+            &t::observation::SemanticWindowRequest::new(prepared.source_segments().next().unwrap()),
             allowance,
         )
         .unwrap_err();
     for error in [census.error(), window.error()] {
         match detail(error) {
             t::ErrorDetail::ScopeAlignment { reason } => {
-                assert_eq!(*reason, t::ScopeAlignmentError::MissingCapture);
+                assert_eq!(
+                    *reason,
+                    t::scope_alignment::ScopeAlignmentError::MissingCapture
+                );
                 assert_eq!(
                     reason.to_string(),
                     "a contextual capture, parent scope or scope-alignment custody that the operation requires is missing or unavailable"
@@ -824,38 +871,38 @@ fn a_scope_alignment_refusal_prints_its_cause_apart_from_the_failure() {
 // ---------------------------------------------------------------- source connections
 
 fn two_origin_input(
-    connections: Vec<t::SourceProcessingConnection>,
+    connections: Vec<t::capture::SourceProcessingConnection>,
     events: &[Ev],
-) -> t::ContextualSourceInput {
-    use t::SourceProcessingEvent as E;
-    let source = t::Source::new("ab");
+) -> t::capture::ContextualSourceInput {
+    use t::capture::SourceProcessingEvent as E;
+    let source = t::source::Source::new("ab");
     let mut stream = vec![E::EnterScope(0), E::EnterParagraph(0)];
     for event in events {
         stream.push(match *event {
             Ev::Origin(origin) => E::Origin {
                 origin,
-                affinity: t::Affinity::After,
+                affinity: t::layout::Affinity::After,
             },
             Ev::Connection(connection) => E::Connection(connection),
         });
     }
     stream.extend([E::ExitParagraph(0), E::ExitScope(0)]);
-    t::ContextualSourceInput {
+    t::capture::ContextualSourceInput {
         joint_flows: vec![],
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
-        segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: t::SourceProcessingEnvelope::Complete,
+        segment_breaks: t::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: t::capture::SourceProcessingEnvelope::Complete,
         origins: vec![origin(&source, 0, 1), origin(&source, 1, 2)],
         connections,
         boundary_policies: vec![],
         replacements: vec![],
         controls: vec![],
         scopes: vec![block()],
-        paragraphs: vec![t::SourceProcessingParagraph {
-            base_direction: t::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: t::ParagraphStrut::DefaultFont,
+        paragraphs: vec![t::capture::SourceProcessingParagraph {
+            base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: t::paragraph::ParagraphStrut::DefaultFont,
         }],
         events: stream,
     }
@@ -867,11 +914,11 @@ enum Ev {
     Connection(usize),
 }
 
-fn connection(before_origin: usize, after_origin: usize) -> t::SourceProcessingConnection {
-    t::SourceProcessingConnection {
+fn connection(before_origin: usize, after_origin: usize) -> t::capture::SourceProcessingConnection {
+    t::capture::SourceProcessingConnection {
         before_origin,
         after_origin,
-        kind: t::ParagraphConnectionKind::Disconnected,
+        kind: t::paragraph::ParagraphConnectionKind::Disconnected,
     }
 }
 
@@ -879,12 +926,12 @@ fn connection(before_origin: usize, after_origin: usize) -> t::SourceProcessingC
 fn a_refused_source_connection_wraps_its_reason_without_repeating_it() {
     use Ev::{Connection as C, Origin as O};
     let valid = two_origin_input(vec![connection(0, 1)], &[O(0), C(0), O(1)]);
-    assert!(t::process_contextual_source(valid).is_ok());
+    assert!(t::capture::process_contextual_source(valid).is_ok());
 
     let cases = [
         (
             two_origin_input(vec![connection(0, 5)], &[O(0), C(0), O(1)]),
-            t::SourceProcessingConnectionError::Endpoints { connection: 0 },
+            t::capture::SourceProcessingConnectionError::Endpoints { connection: 0 },
             "connection 0 names origins that do not exist or are not adjacent",
         ),
         (
@@ -892,7 +939,7 @@ fn a_refused_source_connection_wraps_its_reason_without_repeating_it() {
                 vec![connection(0, 1), connection(0, 1)],
                 &[O(0), C(0), C(1), O(1)],
             ),
-            t::SourceProcessingConnectionError::Duplicate {
+            t::capture::SourceProcessingConnectionError::Duplicate {
                 connection: 1,
                 first_connection: 0,
             },
@@ -900,13 +947,16 @@ fn a_refused_source_connection_wraps_its_reason_without_repeating_it() {
         ),
         (
             two_origin_input(vec![connection(0, 1)], &[O(0), O(1), C(0)]),
-            t::SourceProcessingConnectionError::Position { connection: 0 },
+            t::capture::SourceProcessingConnectionError::Position { connection: 0 },
             "connection 0 is at an invalid source position",
         ),
     ];
     for (input, reason, text) in cases {
         let found = capture_reason(input);
-        assert_eq!(found, t::SourceProcessingError::SourceConnection { reason });
+        assert_eq!(
+            found,
+            t::capture::SourceProcessingError::SourceConnection { reason }
+        );
         assert_eq!(found.to_string(), "a supplied source connection is invalid");
         let source = found.source().expect("the reason is the source");
         assert_eq!(source.to_string(), text);
@@ -916,7 +966,7 @@ fn a_refused_source_connection_wraps_its_reason_without_repeating_it() {
 
 // ---------------------------------------------------------------- text-node contributions
 
-fn text_transform_reason(error: &t::Error) -> t::TextTransformError {
+fn text_transform_reason(error: &t::Error) -> t::processing::TextTransformError {
     match detail(error) {
         t::ErrorDetail::TextTransform { reason } => *reason,
         other => panic!("unexpected detail {other:?}"),
@@ -925,15 +975,17 @@ fn text_transform_reason(error: &t::Error) -> t::TextTransformError {
 
 #[test]
 fn a_reversed_text_node_range_reports_its_length() {
-    let error =
-        t::CompleteTextNodeContribution::new(t::Text::from("ab"), t::Range { start: 3, end: 2 })
-            .map(|_| ())
-            .unwrap_err();
+    let error = t::paragraph::CompleteTextNodeContribution::new(
+        t::source::Text::from("ab"),
+        t::source::Range { start: 3, end: 2 },
+    )
+    .map(|_| ())
+    .unwrap_err();
     let reason = text_transform_reason(&error);
     assert_eq!(
         reason,
-        t::TextTransformError::InvalidTextNodeRange {
-            range: t::Range { start: 3, end: 2 },
+        t::processing::TextTransformError::InvalidTextNodeRange {
+            range: t::source::Range { start: 3, end: 2 },
             text_len: 2
         }
     );
@@ -945,18 +997,23 @@ fn a_reversed_text_node_range_reports_its_length() {
 
 #[test]
 fn a_text_node_that_differs_from_its_origin_is_refused() {
-    let node =
-        t::CompleteTextNodeContribution::new(t::Text::from("xb"), t::Range::new(0, 2)).unwrap();
+    let node = t::paragraph::CompleteTextNodeContribution::new(
+        t::source::Text::from("xb"),
+        t::source::Range::new(0, 2),
+    )
+    .unwrap();
     let mut input = paragraph("ab");
     input.origins[0].text_node = Some(node);
-    let error =
-        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
-            .map(|_| ())
-            .unwrap_err();
+    let error = t::analyzed::AnalyzedSource::from_paragraph(
+        input,
+        t::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .map(|_| ())
+    .unwrap_err();
     let reason = text_transform_reason(&error);
     assert_eq!(
         reason,
-        t::TextTransformError::TextNodeMismatch { origin: 0 }
+        t::processing::TextTransformError::TextNodeMismatch { origin: 0 }
     );
     assert_eq!(
         reason.to_string(),
@@ -967,15 +1024,17 @@ fn a_text_node_that_differs_from_its_origin_is_refused() {
 #[test]
 fn math_auto_without_a_text_node_is_refused() {
     let mut input = capture_input();
-    input.scopes = vec![block_styled(t::Style {
-        text_transform: t::TextTransform::MathAuto,
-        ..t::Style::default()
+    input.scopes = vec![block_styled(t::style::Style {
+        text_transform: t::style::TextTransform::MathAuto,
+        ..t::style::Style::default()
     })];
-    let error = t::process_contextual_source(input).map(|_| ()).unwrap_err();
+    let error = t::capture::process_contextual_source(input)
+        .map(|_| ())
+        .unwrap_err();
     let reason = text_transform_reason(&error);
     assert_eq!(
         reason,
-        t::TextTransformError::MissingTextNodeContext { origin: 0 }
+        t::processing::TextTransformError::MissingTextNodeContext { origin: 0 }
     );
     assert_eq!(
         reason.to_string(),
@@ -990,15 +1049,15 @@ fn a_continuous_connection_without_a_policy_names_the_missing_policy() {
     let mut input = paragraph("ab");
     let source = input.source.clone();
     input.origins = vec![origin(&source, 0, 1), origin(&source, 1, 2)];
-    input.connections.push(t::ParagraphConnection {
+    input.connections.push(t::paragraph::ParagraphConnection {
         at: 1,
-        kind: t::ParagraphConnectionKind::Continuous,
+        kind: t::paragraph::ParagraphConnectionKind::Continuous,
     });
     // No policy is declared, so the payload names the first policy ordinal that does not exist.
     let found = protocol_reason(input);
     assert_eq!(
         found,
-        t::ProtocolError::InvalidBoundaryPolicy { policy: 0, at: 1 }
+        t::prepared::ProtocolError::InvalidBoundaryPolicy { policy: 0, at: 1 }
     );
     assert_eq!(
         found.to_string(),
@@ -1008,15 +1067,17 @@ fn a_continuous_connection_without_a_policy_names_the_missing_policy() {
 
 #[test]
 fn an_inline_box_forest_without_its_root_is_refused_as_a_fragmentation() {
-    let error = t::SuppliedInlineBoxComponents::try_new(t::SuppliedInlineBoxComponentsInput {
-        root: 0,
-        owners: &[],
-        parents: &[None],
-        rows: &[],
-        memberships: &[],
-        order: &[],
-        bodies: &[],
-    })
+    let error = t::inline_box::SuppliedInlineBoxComponents::try_new(
+        t::inline_box::SuppliedInlineBoxComponentsInput {
+            root: 0,
+            owners: &[],
+            parents: &[None],
+            rows: &[],
+            memberships: &[],
+            order: &[],
+            bodies: &[],
+        },
+    )
     .map(|_| ())
     .unwrap_err();
     let reason = match detail(&error) {
@@ -1025,7 +1086,9 @@ fn an_inline_box_forest_without_its_root_is_refused_as_a_fragmentation() {
     };
     assert_eq!(
         reason,
-        t::ProtocolError::InlineBoxFragmentation(t::InlineBoxFragmentationError::InvalidIncidence)
+        t::prepared::ProtocolError::InlineBoxFragmentation(
+            t::inline_box::InlineBoxFragmentationError::InvalidIncidence
+        )
     );
     assert_eq!(
         reason.to_string(),

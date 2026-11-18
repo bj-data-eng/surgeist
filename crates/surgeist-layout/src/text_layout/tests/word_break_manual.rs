@@ -14,27 +14,27 @@ enum Ending {
     Paragraph,
 }
 
-type LineFact = (text::Range, f64, f64, Ending);
+type LineFact = (text::source::Range, f64, f64, Ending);
 
 fn paragraph(
-    word_break: text::WordBreak,
-    overflow_wrap: text::OverflowWrap,
+    word_break: text::style::WordBreak,
+    overflow_wrap: text::style::OverflowWrap,
     rtl: bool,
 ) -> PreparedParagraph {
-    let style = text::Style {
+    let style = text::style::Style {
         word_break,
         overflow_wrap,
         locale: Some("th".to_owned()),
-        line_break: text::LineBreak::Auto,
-        white_space: text::WhiteSpace::Preserve,
-        hyphens: text::Hyphens::None,
+        line_break: text::style::LineBreak::Auto,
+        white_space: text::style::WhiteSpace::Preserve,
+        hyphens: text::hyphenation::Hyphens::None,
         wrap: Wrap::Word,
         ..ahem_style(10.0, 10.0)
     };
     let paragraph = PreparedParagraph::new(
         vec![ParagraphPart::text(
             1,
-            Source::identified("กก", text::Id::from_u64(65406), 31),
+            Source::identified("กก", text::source::Id::from_u64(65406), 31),
             style.clone(),
         )],
         style,
@@ -131,22 +131,27 @@ fn observe<S: LayoutScalar>(
         .to_f64();
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
-    let source = text::Text::from("กก");
+    let source = text::source::Text::from("กก");
     assert_eq!(placed.source().text(), &source);
     let origin = paragraph.origin(1);
-    assert_eq!(origin.view().source().id(), Some(text::Id::from_u64(65406)));
+    assert_eq!(
+        origin.view().source().id(),
+        Some(text::source::Id::from_u64(65406))
+    );
     assert_eq!(origin.view().source().revision(), 31);
     assert_eq!(origin.view().source().text(), &source);
     let endpoint = |offset, affinity| {
         placed
             .positions()
-            .find(|position| position.source_cursor() == text::Cursor::new(offset, affinity))
+            .find(|position| {
+                position.source_cursor() == text::layout::Cursor::new(offset, affinity)
+            })
             .unwrap()
     };
     let copied = placed
         .position_selection(
-            &endpoint(0, text::Affinity::After),
-            &endpoint(2, text::Affinity::Before),
+            &endpoint(0, text::layout::Affinity::After),
+            &endpoint(2, text::layout::Affinity::Before),
         )
         .unwrap();
     assert_eq!(copied.source_text(), &source);
@@ -202,27 +207,27 @@ fn observe<S: LayoutScalar>(
             assert!(request.incoming.is_none());
             assert!(line.hyphenation_continuation().is_none());
             let ending = match &request.termination {
-                text::PreparedTermination::Conditional(opportunity) => {
-                    assert_eq!(request.context.end, text::LineEnd::Soft);
+                text::selection::PreparedTermination::Conditional(opportunity) => {
+                    assert_eq!(request.context.end, text::selection::LineEnd::Soft);
                     assert_eq!(opportunity.start(), request.start);
                     assert_eq!(opportunity.boundary(), request.end);
                     Ending::Conditional
                 }
-                text::PreparedTermination::Ordinary(opportunity) => {
+                text::selection::PreparedTermination::Ordinary(opportunity) => {
                     match opportunity.view().kind() {
-                        text::PreparedBreakKind::Allowed => {
-                            assert_eq!(request.context.end, text::LineEnd::Soft);
+                        text::prepared::PreparedBreakKind::Allowed => {
+                            assert_eq!(request.context.end, text::selection::LineEnd::Soft);
                             Ending::Ordinary
                         }
-                        text::PreparedBreakKind::ParagraphEnd => {
-                            assert_eq!(request.context.end, text::LineEnd::Paragraph);
+                        text::prepared::PreparedBreakKind::ParagraphEnd => {
+                            assert_eq!(request.context.end, text::selection::LineEnd::Paragraph);
                             Ending::Paragraph
                         }
                         _ => panic!("this source has no forced or hyphenation owner"),
                     }
                 }
-                text::PreparedTermination::Measurement(_)
-                | text::PreparedTermination::PhraseMeasurement(_) => {
+                text::selection::PreparedTermination::Measurement(_)
+                | text::selection::PreparedTermination::PhraseMeasurement(_) => {
                     panic!("measurement-only trials cannot be placed")
                 }
             };
@@ -238,8 +243,8 @@ fn observe<S: LayoutScalar>(
     assert_eq!(
         glyphs,
         [
-            (text::Range::new(0, 1), 0, 10.0),
-            (text::Range::new(1, 2), 0, 10.0),
+            (text::source::Range::new(0, 1), 0, 10.0),
+            (text::source::Range::new(1, 2), 0, 10.0),
         ]
     );
     (width, lines)
@@ -248,13 +253,23 @@ fn observe<S: LayoutScalar>(
 #[test]
 fn manual_preserves_declared_overflow_for_real_finite_and_intrinsic_layout() {
     fn lane<S: LayoutScalar>() {
-        use text::OverflowWrap::{Anywhere, BreakWord, Normal as OverflowNormal};
-        use text::WordBreak::{Manual, Normal};
-        let whole = vec![(text::Range::new(0, 2), 20.0, 20.0, Ending::Paragraph)];
+        use text::style::OverflowWrap::{Anywhere, BreakWord, Normal as OverflowNormal};
+        use text::style::WordBreak::{Manual, Normal};
+        let whole = vec![(
+            text::source::Range::new(0, 2),
+            20.0,
+            20.0,
+            Ending::Paragraph,
+        )];
         let split = |ending| {
             vec![
-                (text::Range::new(0, 1), 10.0, 10.0, ending),
-                (text::Range::new(1, 2), 10.0, 10.0, Ending::Paragraph),
+                (text::source::Range::new(0, 1), 10.0, 10.0, ending),
+                (
+                    text::source::Range::new(1, 2),
+                    10.0,
+                    10.0,
+                    Ending::Paragraph,
+                ),
             ]
         };
         for rtl in [false, true] {
@@ -268,7 +283,7 @@ fn manual_preserves_declared_overflow_for_real_finite_and_intrinsic_layout() {
                 let cuts = p
                     .prepared
                     .opportunity_views()
-                    .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                    .filter(|offer| offer.kind() == text::prepared::PreparedBreakKind::Allowed)
                     .map(|offer| offer.boundary().view().source_after().get())
                     .collect::<Vec<_>>();
                 assert_eq!(cuts, if word == Normal { vec![1] } else { vec![] });

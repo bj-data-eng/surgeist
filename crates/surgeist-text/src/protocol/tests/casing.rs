@@ -164,9 +164,12 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
     use crate::{
         layout::Affinity,
         processing::{
-            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
-            SourceProcessingEnvelope, SourceProcessingEvent as E, SourceProcessingParagraph,
-            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+            DocumentSegmentBreaks,
+            contextual::{
+                ContextualSourceInput, SourceProcessingConnection, SourceProcessingEnvelope,
+                SourceProcessingEvent as E, SourceProcessingParagraph, SourceProcessingScope,
+                SourceProcessingTopology, WhiteSpaceTrim,
+            },
         },
         protocol::paragraph::{
             ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
@@ -204,7 +207,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
             E::ExitScope(0),
         ]);
         let processed = Arc::new(
-            crate::processing::process_contextual_source(ContextualSourceInput {
+            crate::processing::contextual::process_contextual_source(ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],

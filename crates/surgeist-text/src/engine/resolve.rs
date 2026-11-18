@@ -354,9 +354,11 @@ pub(crate) fn resolve_scope(
 }
 
 fn scope_work_overflow() -> Error {
-    super::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
-    })
+    super::scope_alignment::refusal(
+        crate::processing::contextual::ScopeAlignmentError::Overflow {
+            kind: crate::processing::contextual::ScopeAlignmentLimitKind::StructuralWork,
+        },
+    )
 }
 
 fn scope_push<T>(
@@ -379,9 +381,11 @@ fn scope_settings_source(
         return Ok(None);
     }
     budget.work(values.len())?;
-    let kind = crate::processing::ScopeAlignmentLimitKind::PayloadBytes;
+    let kind = crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes;
     let overflow = || {
-        super::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow { kind })
+        super::scope_alignment::refusal(
+            crate::processing::contextual::ScopeAlignmentError::Overflow { kind },
+        )
     };
     let mut len = values
         .len()
@@ -426,9 +430,11 @@ pub(crate) fn drop_scope_style(
     let mut total = 0usize;
     for size in [bytes(&style.font_family)?, bytes(&style.font_variations)?] {
         total = total.checked_add(size).ok_or_else(|| {
-            super::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
-                kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
-            })
+            super::scope_alignment::refusal(
+                crate::processing::contextual::ScopeAlignmentError::Overflow {
+                    kind: crate::processing::contextual::ScopeAlignmentLimitKind::PayloadBytes,
+                },
+            )
         })?;
     }
     drop(style);

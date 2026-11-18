@@ -13,50 +13,50 @@ enum Scene {
 }
 
 fn binding(scene: Scene) -> TextParagraphBinding<u32> {
-    use text::SourceProcessingEvent as E;
+    use text::capture::SourceProcessingEvent as E;
     let nested = !matches!(scene, Scene::ZeroAdvanceContent);
-    let source = text::Source::new(if nested { "" } else { "AB" });
+    let source = text::source::Source::new(if nested { "" } else { "AB" });
     let end = source.text().len();
     let mut style = crate::test_support::text::ahem_style(10.0, 10.0);
-    style.white_space = text::WhiteSpace::Collapse;
+    style.white_space = text::style::WhiteSpace::Collapse;
     if !nested {
         // Real Ahem AB is20px with one internal tracking gap. This produces
         // emitted source content of advance0, not a transformed/deleted origin.
         style.letter_spacing = -20.0;
     }
     let mut controls = vec![
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: 0,
-            kind: text::ParagraphControlKind::InlineBoundaryStart,
+            kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
-        text::ParagraphControl {
+        text::paragraph::ParagraphControl {
             at: end,
-            kind: text::ParagraphControlKind::InlineBoundaryEnd,
+            kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
-    let inline_scope = |start, end| text::SourceProcessingScope::Inline {
+    let inline_scope = |start, end| text::capture::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
         style: Some(style.clone()),
-        boundaries: Some(text::SourceProcessingScopeBoundaries { start, end }),
+        boundaries: Some(text::capture::SourceProcessingScopeBoundaries { start, end }),
     };
     let mut scopes = vec![
-        text::SourceProcessingScope::Block {
+        text::capture::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: text::SourceProcessingTopology::Complete,
+            topology: text::capture::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style.clone(),
-            used_direction: text::ParagraphBaseDirection::LeftToRight,
+            used_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
         },
         inline_scope(0, 1),
     ];
     let control = |control| E::Control {
         control,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     };
     let mut events = vec![
         E::EnterScope(0),
@@ -66,13 +66,13 @@ fn binding(scene: Scene) -> TextParagraphBinding<u32> {
     ];
     if nested {
         controls.extend([
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: 0,
-                kind: text::ParagraphControlKind::InlineBoundaryStart,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryStart,
             },
-            text::ParagraphControl {
+            text::paragraph::ParagraphControl {
                 at: end,
-                kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                kind: text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
             },
         ]);
         scopes.push(inline_scope(2, 3));
@@ -80,7 +80,7 @@ fn binding(scene: Scene) -> TextParagraphBinding<u32> {
     }
     events.push(E::Origin {
         origin: 0,
-        affinity: text::Affinity::After,
+        affinity: text::layout::Affinity::After,
     });
     if nested {
         events.extend([control(3), E::ExitScope(2)]);
@@ -92,25 +92,25 @@ fn binding(scene: Scene) -> TextParagraphBinding<u32> {
         E::ExitScope(0),
     ]);
     let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
+        text::capture::process_contextual_source(text::capture::ContextualSourceInput {
             source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: vec![text::ParagraphOrigin {
+            segment_breaks: text::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::capture::SourceProcessingEnvelope::Complete,
+            origins: vec![text::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: text::Range::new(0, end),
-                aggregate: text::Range::new(0, end),
-                kind: text::ParagraphOriginKind::Authored,
+                local: text::source::Range::new(0, end),
+                aggregate: text::source::Range::new(0, end),
+                kind: text::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: Vec::new(),
             controls,
             boundary_policies: Vec::new(),
             replacements: Vec::new(),
             scopes,
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            paragraphs: vec![text::capture::SourceProcessingParagraph {
+                base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::paragraph::ParagraphStrut::DefaultFont,
             }],
             events,
             joint_flows: Vec::new(),
@@ -119,12 +119,13 @@ fn binding(scene: Scene) -> TextParagraphBinding<u32> {
         })
         .unwrap(),
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+    let analyzed = text::analyzed::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        text::AnalysisTypography::HorizontalComposition,
+        text::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
+    let analyzed =
+        crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
     let mut system = text::System::default();
     system
         .register_fonts(
@@ -133,7 +134,7 @@ fn binding(scene: Scene) -> TextParagraphBinding<u32> {
         )
         .unwrap();
     let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
+        .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let control_count = if nested { 4 } else { 2 };
@@ -202,7 +203,10 @@ fn execute<S: LayoutScalar>(
     }
     let origin = &binding.origins[0].origin;
     if matches!(scene, Scene::ZeroAdvanceContent) {
-        assert_eq!(origin.view().source().text(), &text::Text::from("AB"));
+        assert_eq!(
+            origin.view().source().text(),
+            &text::source::Text::from("AB")
+        );
         assert!(binding.prepared.unit_views().any(|unit| {
             unit.empty_origin().is_none()
                 && !unit.processed_range().is_empty()
@@ -377,7 +381,10 @@ fn emitted_zero_advance_stops<S: LayoutScalar>() {
     let batch = execute::<S>(Scene::ZeroAdvanceContent, (0.0, 0.0), 6.0);
     assert_geometry(&batch, 22.0, 52.0);
     let placed = &batch.placed_text()[0];
-    assert_eq!(placed.layout().source().text(), &text::Text::from("AB"));
+    assert_eq!(
+        placed.layout().source().text(),
+        &text::source::Text::from("AB")
+    );
     assert!(
         placed
             .layout()
@@ -393,7 +400,7 @@ fn emitted_zero_advance_stops<S: LayoutScalar>() {
             line.selected_line().request().controls.iter().any(|row| {
                 matches!(
                     row.occurrence.view().kind(),
-                    text::ParagraphControlKind::InlineBoundaryEnd
+                    text::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 )
             })
         })
@@ -406,15 +413,15 @@ fn emitted_zero_advance_stops<S: LayoutScalar>() {
         .find(|row| {
             matches!(
                 row.occurrence.view().kind(),
-                text::ParagraphControlKind::InlineBoundaryEnd
+                text::paragraph::ParagraphControlKind::InlineBoundaryEnd
             )
         })
         .unwrap()
         .occurrence
         .clone();
     let prefix = actual
-        .prefix_at(&text::TextSeam::BeforeParticipant(
-            text::PreparedParticipant::Control(end),
+        .prefix_at(&text::finalized::TextSeam::BeforeParticipant(
+            text::prepared::PreparedParticipant::Control(end),
         ))
         .unwrap();
     assert_eq!(prefix.advance(), 0.0);
