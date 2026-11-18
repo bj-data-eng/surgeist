@@ -519,11 +519,17 @@ impl CssomBatch {
         index: Option<usize>,
         cancel: &AtomicBool,
     ) -> Result<i32, CssomError> {
-        // Both steps are one operation of a store with a host.
+        // Both steps are one operation of a store with a host. A refused
+        // charge poisons the batch, as it does for a single-step operation;
+        // the steps' own errors poison it as they did before.
         let (owner, host) = (self.staged.owner.key(), self.host.clone());
-        crate::operation_work::charged(owner, host.as_deref(), || {
+        let result = crate::operation_work::charged(owner, host.as_deref(), || {
             self.add_sheet_rule_steps(sheet, selector, block, index, cancel)
-        })
+        });
+        if matches!(result, Err(CssomError::Accounting(_))) {
+            self.abort_staging();
+        }
+        result
     }
     fn add_sheet_rule_steps(
         &mut self,
