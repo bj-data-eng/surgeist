@@ -126,8 +126,10 @@ pub(crate) fn execute_with_cancellation<T>(
     cancel: Option<&AtomicBool>,
     operation: impl FnOnce(&mut CssomBatch) -> Result<CssomStagedOperation<T>, CssomError>,
 ) -> Result<CssomOperationOutcome<T>, CssomError> {
-    let host = store.host.clone();
-    crate::operation_work::charged(host.as_ref(), || execute_once(store, cancel, operation))
+    let (owner, host) = (store.state.owner.key(), store.host.clone());
+    crate::operation_work::charged(owner, host.as_deref(), || {
+        execute_once(store, cancel, operation)
+    })
 }
 
 fn execute_once<T>(

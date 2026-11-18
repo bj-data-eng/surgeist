@@ -124,8 +124,8 @@ impl CssomStore {
         sheet: &CssomSheetId,
         source: &str,
     ) -> Result<CssomReplaceJob, CssomError> {
-        let host = self.host.clone();
-        crate::operation_work::charged(host.as_ref(), || {
+        let (owner, host) = (self.state.owner.key(), self.host.clone());
+        crate::operation_work::charged(owner, host.as_deref(), || {
             self.begin_replacement(guard, sheet, source)
         })
     }
@@ -266,8 +266,10 @@ impl CssomStore {
         guard: CssomEditGuard,
         work: CssomReplaceWork,
     ) -> Result<CssomReplaceCompletion, CssomError> {
-        let host = self.host.clone();
-        crate::operation_work::charged(host.as_ref(), || self.finish_replacement(guard, work))
+        let (owner, host) = (self.state.owner.key(), self.host.clone());
+        crate::operation_work::charged(owner, host.as_deref(), || {
+            self.finish_replacement(guard, work)
+        })
     }
     fn finish_replacement(
         &mut self,
@@ -341,8 +343,8 @@ impl CssomStore {
         &mut self,
         token: &CssomReplaceToken,
     ) -> Result<CssomReplaceCompletion, CssomError> {
-        let host = self.host.clone();
-        crate::operation_work::charged(host.as_ref(), || {
+        let (owner, host) = (self.state.owner.key(), self.host.clone());
+        crate::operation_work::charged(owner, host.as_deref(), || {
             self.end_replacement(token, CssomReplaceOutcome::Cancelled)
         })
     }

@@ -11,6 +11,11 @@ impl CssomOwnerId {
     pub(crate) fn new() -> Self {
         Self(Arc::new(()))
     }
+    /// A key equal for two identities exactly when they are equal, while
+    /// either lives.
+    pub(crate) fn key(&self) -> usize {
+        Arc::as_ptr(&self.0).addr()
+    }
 }
 impl PartialEq for CssomOwnerId {
     fn eq(&self, other: &Self) -> bool {

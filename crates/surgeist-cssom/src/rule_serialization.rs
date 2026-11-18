@@ -421,7 +421,7 @@ impl CssomBatch {
         if self.poisoned {
             return Err(CssomError::BatchAborted);
         }
-        crate::operation_work::charged(self.host.as_ref(), || {
+        crate::operation_work::charged(self.staged.owner.key(), self.host.as_deref(), || {
             self.base.rule(id)?;
             self.staged.format_rule_text(id, limits)
         })

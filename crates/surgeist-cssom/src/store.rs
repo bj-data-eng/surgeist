@@ -35,7 +35,7 @@ pub struct CssomStore {
     pub(crate) next_effect: u64,
     pub(crate) updating: Option<CssomBlockId>,
     /// The host the store's operations charge, if any.
-    pub(crate) host: Option<CssHostScope>,
+    pub(crate) host: Option<Arc<CssHostScope>>,
 }
 impl CssomStore {
     pub fn new(limits: CssomLimits, context: CssomContext) -> Result<Self, CssomError> {
@@ -67,12 +67,12 @@ impl CssomStore {
         context: CssomContext,
         host: CssHostScope,
     ) -> Result<Self, CssomError> {
-        Self::build(limits, context, Some(host))
+        Self::build(limits, context, Some(Arc::new(host)))
     }
     fn build(
         limits: CssomLimits,
         context: CssomContext,
-        host: Option<CssHostScope>,
+        host: Option<Arc<CssHostScope>>,
     ) -> Result<Self, CssomError> {
         if limits.max_identity == 0 {
             return Err(CssomError::IdentityExhausted);
@@ -101,7 +101,9 @@ impl CssomStore {
             media: crate::shared_table::SharedTable::new(),
             maps: crate::shared_table::SharedTable::new(),
         };
-        crate::operation_work::charged(host.as_ref(), || state.check_limits(&limits))?;
+        crate::operation_work::charged(state.owner.key(), host.as_deref(), || {
+            state.check_limits(&limits)
+        })?;
         Ok(Self {
             state: Arc::new(state),
             limits,
@@ -308,7 +310,7 @@ pub struct CssomBatch {
     pub(crate) pending_preparations: Arc<AtomicUsize>,
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
     /// The host of the store that made the batch, if any.
-    pub(crate) host: Option<CssHostScope>,
+    pub(crate) host: Option<Arc<CssHostScope>>,
 }
 impl CssomBatch {
     pub(crate) fn created_block_id(
@@ -343,8 +345,8 @@ impl CssomBatch {
         if self.poisoned {
             return Err(CssomError::BatchAborted.into());
         }
-        let host = self.host.clone();
-        let result = crate::operation_work::charged(host.as_ref(), || {
+        let (owner, host) = (self.staged.owner.key(), self.host.clone());
+        let result = crate::operation_work::charged(owner, host.as_deref(), || {
             operation(self).and_then(|value| {
                 self.staged
                     .check_limits_with_displaced_media(

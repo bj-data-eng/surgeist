@@ -514,3 +514,35 @@ fn finishing_and_cancelling_a_replacement_are_charged_once_each() {
     assert_eq!((after.0 - before.0, after.1 - before.1), (1, 1));
     assert_eq!(store.pending_sheet_replacement(&sheet).unwrap(), None);
 }
+
+#[test]
+fn an_operation_of_another_store_inside_one_charges_only_its_own_host() {
+    use super::{census, charged as operation};
+    let (outer_ledger, outer) = open_host();
+    let (inner_ledger, inner) = open_host();
+    let result: Result<(), CssomError> = operation(1, Some(&outer), || {
+        census(1, 10, 100);
+        // Another store without a host: its work is charged to no one.
+        operation(2, None, || {
+            census(2, 20, 200);
+            Ok::<(), CssomError>(())
+        })?;
+        // Another store with a host: its work is charged to its own host.
+        operation(3, Some(&inner), || {
+            census(3, 30, 300);
+            // Its own nested operation adds to its record.
+            operation(3, Some(&inner), || {
+                census(4, 40, 400);
+                Ok::<(), CssomError>(())
+            })
+        })?;
+        // Back in the outer store, whose record was set aside.
+        operation(1, Some(&outer), || {
+            census(5, 50, 500);
+            Ok::<(), CssomError>(())
+        })
+    });
+    result.unwrap();
+    assert_eq!(charged(&outer_ledger), [2, 6, 60, 600, 0]);
+    assert_eq!(charged(&inner_ledger), [2, 7, 70, 700, 0]);
+}

@@ -162,10 +162,11 @@ impl CssomStore {
     ) -> Result<CssomPreparedCommit<'_>, CssomError> {
         // This function boundary disposes unused batch/scratch before lending
         // disjoint publication fields. Only fully ready output crosses it.
-        let host = self.host.clone();
-        let ready = crate::operation_work::charged_before_publication(host.as_ref(), || {
-            prepare_data(self, batch)
-        })?;
+        let (owner, host) = (self.state.owner.key(), self.host.clone());
+        let ready =
+            crate::operation_work::charged_before_publication(owner, host.as_deref(), || {
+                prepare_data(self, batch)
+            })?;
         let Self {
             state,
             history,
