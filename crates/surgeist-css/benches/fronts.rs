@@ -15,7 +15,10 @@
 //! reaches prints `-`. The parse, serialization, normalization and colour cases
 //! "with a host" run the accounted front, and the retention case "with a host"
 //! runs the walk through `charge_walk`, against a host operation with no caps;
-//! their volume is what one call charges to that operation. Run with
+//! their volume is what one call charges to that operation. The cases named
+//! "profile ..." run one representative call of each front through a host at
+//! each profile mode: off, summary, timed summary, and timed detail keeping its
+//! first 4096 events (later events are counted and dropped). Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts`.
 
 use std::hint::black_box;
@@ -40,7 +43,7 @@ use surgeist_css::serialization::{
 use surgeist_css::source::{CssSourceRetention, CssUtf16InputLimits};
 use surgeist_css::values::background::CssBackgroundBox;
 use surgeist_css::{CssParseReport, CssParser};
-use surgeist_ledger::{Limits, Operation, ProfileMode};
+use surgeist_ledger::{EventFilter, Limits, Operation, ProfileMode};
 
 const ROUNDS: usize = 11;
 /// The time one case should take in one round, in nanoseconds.
@@ -1155,6 +1158,129 @@ fn retention_cases(cases: &mut Vec<Case>) {
     ));
 }
 
+/// One representative call of each front through a host at each profile mode.
+fn profile_cases(cases: &mut Vec<Case>) {
+    let modes = [
+        ("off", ProfileMode::Off),
+        ("summary", ProfileMode::Summary { timing: false }),
+        ("timed summary", ProfileMode::Summary { timing: true }),
+        (
+            "timed detail",
+            ProfileMode::Detailed {
+                timing: true,
+                event_limit: 4096,
+                filter: EventFilter::All,
+            },
+        ),
+    ];
+    let large: &'static str = Box::leak(synthetic_sheet(1 << 20).into_boxed_str());
+    let medium: &'static str = Box::leak(synthetic_sheet(256 * 1024).into_boxed_str());
+    let sheet: &'static CssSheet = Box::leak(Box::new(parse_sheet(medium).into_parts().0));
+    let normalizable: &'static CssSheet = Box::leak(Box::new(
+        parse_sheet(&normalizable_sheet(256 * 1024)).into_parts().0,
+    ));
+    let facts: &'static CssColorFacts<'static> = Box::leak(Box::new(CssColorFacts::new(
+        CssColorFactIdentity::new(1, 1),
+        CssColorPropertyFacts::InitialProperties,
+        CssColorSchemeFact::Light,
+        &[],
+        &[],
+        &[],
+        CssDeviceColorFact::Unknown,
+    )));
+    let wide = CssSerializationLimits::new(usize::MAX, usize::MAX, usize::MAX);
+    for (label, mode) in modes {
+        let (_, host) = bench_host(mode);
+        let host: &'static CssHostScope = Box::leak(Box::new(host));
+        cases.push(Case::new(
+            format!("profile {label}: parse_sheet with a host, 1 MiB synthetic sheet"),
+            Some(large.len()),
+            Vec::new(),
+            move || {
+                let report = CssParser::default()
+                    .accounted(host)
+                    .parse_sheet(black_box(large))
+                    .expect("a host without caps admits the charge");
+                report.syntax().rules().len()
+            },
+        ));
+        cases.push(Case::new(
+            format!(
+                "profile {label}: parse_block_contents with a host, one declaration (color: red)"
+            ),
+            Some("color: red".len()),
+            Vec::new(),
+            move || {
+                let report = CssParser::default()
+                    .accounted(host)
+                    .parse_block_contents(black_box("color: red"))
+                    .expect("a host without caps admits the charge");
+                report.syntax().len()
+            },
+        ));
+        cases.push(Case::new(
+            format!(
+                "profile {label}: CssSheet::serialize_cssom with a host, 256 KiB synthetic sheet"
+            ),
+            Some(medium.len()),
+            Vec::new(),
+            move || {
+                sheet
+                    .accounted(host)
+                    .serialize_cssom(black_box(wide))
+                    .expect("a host without caps admits the charge")
+                    .expect("the wide limits admit the sheet")
+                    .len()
+            },
+        ));
+        cases.push(Case::new(
+            format!("profile {label}: CssSheet::normalize with a host, 256 KiB normalizable sheet"),
+            None,
+            Vec::new(),
+            move || {
+                let normalized = normalizable
+                    .accounted(host)
+                    .normalize(black_box(CssNormalizationLimits::default()))
+                    .expect("a host without caps admits the charge")
+                    .expect("the default limits admit the sheet");
+                black_box(&normalized);
+                1
+            },
+        ));
+        cases.push(Case::new(
+            format!("profile {label}: parse_used_color with a host, ordinary: red"),
+            Some(3),
+            Vec::new(),
+            move || {
+                let result = CssColorInput::Utf8(b"red")
+                    .accounted(host)
+                    .parse_used_color(
+                        CssColorGrammarRequest::WholeColor,
+                        facts,
+                        facts.identity(),
+                        black_box(CssColorOrdinaryLimits::default()),
+                    )
+                    .expect("a host without caps admits the charge")
+                    .expect("within limits");
+                usize::from(matches!(result.outcome(), CssColorOrdinaryOutcome::Used(_)))
+            },
+        ));
+        cases.push(Case::new(
+            format!("profile {label}: CssSourceRetention::visit with a host, parsed 256 KiB synthetic sheet"),
+            Some(medium.len()),
+            Vec::new(),
+            move || {
+                let mut retention = CssSourceRetention::new(usize::MAX, usize::MAX, 256);
+                retention
+                    .charge_walk(host, |retention| retention.visit(black_box(sheet)))
+                    .expect("a host without caps admits the charge")
+                    .expect("within limits");
+                retention.steps()
+            },
+        ));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
@@ -1178,6 +1304,7 @@ fn main() {
     normalize_cases(&mut cases);
     colour_cases(&mut cases);
     retention_cases(&mut cases);
+    profile_cases(&mut cases);
 
     // Calibrate outside the rounds: the first call warms, the next three set the
     // number of calls per round, and the result of every call is checked

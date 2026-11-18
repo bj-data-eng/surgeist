@@ -23,7 +23,9 @@
 //! Each case also runs on a store built with a host scope of a ledger
 //! operation without caps ("with a host"), whose charged column gives what
 //! one call charges to the `cssom` scope: census runs, objects, entries and
-//! source walk steps.
+//! source walk steps. The edit at 1 000 rules also runs through a host at each
+//! profile mode ("profile ..."): summary, timed summary, and timed detail
+//! keeping its first 4096 events.
 //!
 //! The 100 000-rule creation holds about 1.7 GB while it runs, and the two edit
 //! cases keep their own stores of that size alive for the whole run.
@@ -124,10 +126,16 @@ fn new_store() -> CssomStore {
 
 /// A host operation without caps, and the CSS scopes below its root.
 fn bench_host() -> (CssLedger, CssHostScope) {
+    profiled_host(surgeist_ledger::ProfileMode::Off)
+}
+
+/// A host operation without caps at profile `mode`.
+fn profiled_host(mode: surgeist_ledger::ProfileMode) -> (CssLedger, CssHostScope) {
     let caps: CssLimits = surgeist_ledger::Limits::unlimited();
-    let operation = surgeist_ledger::Operation::new("bench", caps, 1 + CssFront::ALL.len())
-        .expect("the bench operation")
-        .share();
+    let operation =
+        surgeist_ledger::Operation::with_profile("bench", caps, 1 + CssFront::ALL.len(), mode)
+            .expect("the bench operation")
+            .share();
     let host =
         CssHostScope::open(operation.clone(), operation.root()).expect("the CSS scopes are opened");
     (operation, host)
@@ -371,6 +379,49 @@ fn main() {
             case.charged = case.charge();
             cases.push(case);
         }
+    }
+
+    // One edit at 1 000 rules through a host at each profile mode.
+    let profiles = [
+        (
+            "summary",
+            surgeist_ledger::ProfileMode::Summary { timing: false },
+        ),
+        (
+            "timed summary",
+            surgeist_ledger::ProfileMode::Summary { timing: true },
+        ),
+        (
+            "timed detail",
+            surgeist_ledger::ProfileMode::Detailed {
+                timing: true,
+                event_limit: 4096,
+                filter: surgeist_ledger::EventFilter::All,
+            },
+        ),
+    ];
+    let size = SIZES[1];
+    let text = sheet_text(size.rules);
+    for (label, mode) in profiles {
+        let host = profiled_host(mode);
+        let mut store = store_for(Some(&host.1));
+        let sheet = create(&mut store, &text);
+        let mut case = Case {
+            name: format!(
+                "set_disabled + commit with a host, profile {label}, {} rules",
+                size.rules
+            ),
+            size,
+            text: String::new(),
+            store: Some((store, sheet)),
+            disabled: false,
+            census: "-".to_owned(),
+            kind: Kind::Edit,
+            host: Some(host),
+            charged: String::new(),
+        };
+        case.charged = case.charge();
+        cases.push(case);
     }
 
     let maximum_rounds = SIZES.iter().map(|size| size.rounds).max().unwrap_or(0);
