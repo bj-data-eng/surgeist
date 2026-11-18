@@ -26,6 +26,8 @@ enum Content {
     GroupedText,
     /// Two fixed Blocks that are native inline-box formatters.
     Formatter,
+    /// A Block of text aligned to its baseline, which each level lays out while sizing its rows.
+    BaselineText,
 }
 
 /// Where the content sits.
@@ -86,7 +88,10 @@ fn px<S: LayoutScalar>(width: f64, height: f64) -> Size<PreferredSizeOf<S>> {
 // the second. For text, `depth + 3` is the text child of the first Block.
 fn lay_out<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String {
     let text_node = depth + 3;
-    let has_text = matches!(content, Content::Text | Content::GroupedText);
+    let has_text = matches!(
+        content,
+        Content::Text | Content::GroupedText | Content::BaselineText
+    );
     let paragraph = has_text.then(|| {
         PreparedParagraph::plain(
             text_node,
@@ -123,7 +128,9 @@ fn lay_out<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> String 
             .children(node - 1, [node]);
     }
     let group = match content {
-        Content::Plain | Content::Text | Content::Formatter => TextGroupAlign::None,
+        Content::Plain | Content::Text | Content::Formatter | Content::BaselineText => {
+            TextGroupAlign::None
+        }
         Content::Group | Content::GroupedText => TextGroupAlign::Center,
     };
     tree = tree
@@ -188,9 +195,14 @@ type Document<S> = (
 );
 
 fn levels_document<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> Document<S> {
-    let has_text = matches!(content, Content::Text | Content::GroupedText);
+    let has_text = matches!(
+        content,
+        Content::Text | Content::GroupedText | Content::BaselineText
+    );
     let group = match content {
-        Content::Plain | Content::Text | Content::Formatter => TextGroupAlign::None,
+        Content::Plain | Content::Text | Content::Formatter | Content::BaselineText => {
+            TextGroupAlign::None
+        }
         Content::Group | Content::GroupedText => TextGroupAlign::Center,
     };
     let mut tree = PublicLayoutTreeOf::<S>::new().children(0, [1]).style(
@@ -240,6 +252,8 @@ fn levels_document<S: LayoutScalar>(depth: u32, content: Content, width: f64) ->
                     },
                     grid_column: GridPlacement::try_line(1).unwrap(),
                     grid_row: GridPlacement::try_line(2).unwrap(),
+                    align_self: matches!(content, Content::BaselineText)
+                        .then_some(crate::AlignItems::Baseline),
                     ..NodeInputOf::default()
                 },
             );
@@ -652,6 +666,128 @@ fn subgrid_wrappers_lay_out_the_same_with_reuse_on_a_warm_host_cache() {
                     assert!(reused.2 > 0, "the warm layout consults the host cache");
                 }
             }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+// The family-order document with the first formatter a float inside a Block of the subgrid. The
+// float lays out in a probe whose completed family the Block accepts, so the family completes
+// through the float acceptance rather than the formatter's own computation.
+fn lay_out_float_formatter_beside_subgrid<S: LayoutScalar>() -> String {
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(0, [1, 4])
+        .children(1, [2])
+        .children(2, [3])
+        .children(3, [])
+        .children(4, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Grid,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(100.0)),
+                    PreferredSizeOf::AUTO,
+                ),
+                grid_template_columns: auto_tracks(),
+                grid_template_rows: vec![TrackComponentOf::AUTO],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: GridPlacement::try_line(1).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                grid_template_columns: subgrid_tracks(),
+                grid_template_rows: subgrid_tracks(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Block,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(60.0)),
+                    PreferredSizeOf::AUTO,
+                ),
+                grid_column: GridPlacement::try_line(1).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                display: Display::Block,
+                float: Float::Left,
+                size: px(30.0, 20.0),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            4,
+            NodeInputOf {
+                display: Display::Block,
+                size: px(40.0, 20.0),
+                grid_column: GridPlacement::try_line(2).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                ..NodeInputOf::default()
+            },
+        );
+    complete_flow(&tree, Vec::new(), native_formatters(&[3, 4]), 100.0)
+}
+
+#[test]
+fn native_formatter_families_of_floats_publish_in_the_same_order_with_reuse() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(|| {
+            for (reused, repeated) in [
+                (
+                    lay_out_float_formatter_beside_subgrid::<f32>(),
+                    with_subgrid_reuse_disabled(lay_out_float_formatter_beside_subgrid::<f32>),
+                ),
+                (
+                    lay_out_float_formatter_beside_subgrid::<f64>(),
+                    with_subgrid_reuse_disabled(lay_out_float_formatter_beside_subgrid::<f64>),
+                ),
+            ] {
+                assert!(
+                    !reused.starts_with("refused"),
+                    "the document lays out: {reused:.300}"
+                );
+                assert!(
+                    reused == repeated,
+                    "reuse changed the order of the float families: reused {reused:.600} repeated {repeated:.600}"
+                );
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+// A level that sizes its own rows from a baseline-aligned Block of text lays that Block out to
+// place its text while its preparation runs. Text placement is written last by whichever
+// computation of its container ran last, so such a preparation is not reused where other
+// computations of the container may have run since. Preparations that place no text stay
+// reused, so the work differs; the layout does not.
+#[test]
+fn subgrid_wrappers_placing_text_while_preparing_lay_out_the_same_without_reuse() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(|| {
+            assert_same_without_reuse::<f64>(
+                "own rows, baseline text",
+                Shape::OwnRows,
+                2,
+                Content::BaselineText,
+                140.0,
+            );
         })
         .unwrap()
         .join()

@@ -2311,6 +2311,13 @@ where
         {
             return None;
         }
+        #[cfg(test)]
+        if let Some(effects) = &captured {
+            crate::grid::subgrid_work::observe_many(
+                crate::grid::subgrid_work::Observation::EffectsCaptured,
+                effects.len(),
+            );
+        }
         captured
     }
 
@@ -2321,6 +2328,11 @@ where
         let allocation = |node| {
             crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
         };
+        #[cfg(test)]
+        crate::grid::subgrid_work::observe_many(
+            crate::grid::subgrid_work::Observation::EffectsReplayed,
+            effects.len(),
+        );
         for effect in effects.iter() {
             match effect {
                 StagedEffect::Store {

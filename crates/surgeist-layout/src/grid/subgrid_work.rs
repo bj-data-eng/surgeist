@@ -14,15 +14,21 @@ pub(crate) struct SubgridWork {
     pub(crate) minimum_probes: usize,
     /// Post-placement baseline refresh recomputations.
     pub(crate) baseline_refreshes: usize,
+    /// Staged writes copied into the effect list of a completed capture.
+    pub(crate) effects_captured: usize,
+    /// Staged writes a reuse staged again.
+    pub(crate) effects_replayed: usize,
 }
 
 /// One kind of counted work.
 #[derive(Clone, Copy)]
-pub(super) enum Observation {
+pub(crate) enum Observation {
     WrapperPreparation,
     ContextualGrid,
     MinimumProbe,
     BaselineRefresh,
+    EffectsCaptured,
+    EffectsReplayed,
 }
 
 thread_local! {
@@ -54,11 +60,17 @@ thread_local! {
             contextual_grids: 0,
             minimum_probes: 0,
             baseline_refreshes: 0,
+            effects_captured: 0,
+            effects_replayed: 0,
         })
     };
 }
 
-pub(super) fn observe(observation: Observation) {
+pub(crate) fn observe(observation: Observation) {
+    observe_many(observation, 1);
+}
+
+pub(crate) fn observe_many(observation: Observation, amount: usize) {
     SUBGRID_WORK.with(|cell| {
         let mut work = cell.get();
         let count = match observation {
@@ -66,8 +78,10 @@ pub(super) fn observe(observation: Observation) {
             Observation::ContextualGrid => &mut work.contextual_grids,
             Observation::MinimumProbe => &mut work.minimum_probes,
             Observation::BaselineRefresh => &mut work.baseline_refreshes,
+            Observation::EffectsCaptured => &mut work.effects_captured,
+            Observation::EffectsReplayed => &mut work.effects_replayed,
         };
-        *count += 1;
+        *count += amount;
         cell.set(work);
     });
 }

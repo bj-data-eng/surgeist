@@ -588,9 +588,16 @@ fn one_axis_subgrid_chain_work_grows_linearly_with_depth() {
 // track of each axis and `depth + 2` is 40x50 in the second. The automatic
 // tracks take their sizes from those leaves through every subgrid level.
 fn intrinsic_subgrid_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    intrinsic_subgrid_chain_from(0, depth)
+}
+
+// The same chain with its root numbered `first`, so that the chain can sit
+// below another node.
+fn intrinsic_subgrid_chain_from<S: LayoutScalar>(first: u32, depth: u32) -> PublicLayoutTreeOf<S> {
     let auto_tracks = || vec![TrackComponentOf::AUTO, TrackComponentOf::AUTO];
+    let last = first + depth;
     let mut tree = PublicLayoutTreeOf::new().style(
-        0,
+        first,
         NodeInputOf {
             display: Display::Grid,
             size: px_size(70.0, 70.0),
@@ -599,7 +606,7 @@ fn intrinsic_subgrid_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S>
             ..NodeInputOf::default()
         },
     );
-    for node in 1..=depth {
+    for node in first + 1..=last {
         tree = tree
             .style(
                 node,
@@ -614,7 +621,7 @@ fn intrinsic_subgrid_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S>
             )
             .children(node - 1, [node]);
     }
-    for (leaf, line, width, height) in [(depth + 1, 1, 30.0, 20.0), (depth + 2, 2, 40.0, 50.0)] {
+    for (leaf, line, width, height) in [(last + 1, 1, 30.0, 20.0), (last + 2, 2, 40.0, 50.0)] {
         tree = tree.style(
             leaf,
             NodeInputOf {
@@ -625,7 +632,7 @@ fn intrinsic_subgrid_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S>
             },
         );
     }
-    tree.children(depth, [depth + 1, depth + 2])
+    tree.children(last, [last + 1, last + 2])
 }
 
 // CSS Grid Level 2, section 9: the items of a subgrid take part in the track
@@ -663,4 +670,87 @@ fn intrinsic_subgrid_chain_work_grows_linearly_with_depth() {
         "intrinsic chain",
         &subgrid_work_by_depth(intrinsic_subgrid_chain::<f64>),
     );
+}
+
+// Block fragmentation stages block bodies, scope receipts and margin groups that
+// the staged effects do not cover, so a fragmented layout reuses no subgrid
+// computation and lays out as it does with every computation repeated. Only
+// Block boxes fragment, so the chain sits inside a Block that size containment
+// makes atomic, below a Block root.
+#[test]
+fn fragmented_subgrid_chain_reuses_nothing_and_lays_out_the_same() {
+    let nodes = 7;
+    let tree = intrinsic_subgrid_chain_from::<f64>(2, nodes - 5)
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Block,
+                size: px_size(70.0, 70.0),
+                size_containment: crate::SizeContainment::BothAxes,
+                ..NodeInputOf::default()
+            },
+        )
+        .children(0, [1])
+        .children(1, [2]);
+    let layout = || {
+        take_subgrid_work();
+        let batch = super::scoped_flex::scoped_layout(&tree, nodes);
+        (format!("{batch:?}"), take_subgrid_work())
+    };
+    let (reused, reused_work) = layout();
+    let (repeated, repeated_work) = crate::grid::subgrid_work::with_subgrid_reuse_disabled(layout);
+    assert!(
+        reused == repeated,
+        "the fragmented layout is the same with reuse"
+    );
+    assert!(
+        reused_work.wrapper_preparations > 0,
+        "the fragmented layout prepares subgrid wrappers: {reused_work:?}"
+    );
+    assert_eq!(
+        reused_work.wrapper_preparations, repeated_work.wrapper_preparations,
+        "a fragmented session reuses no wrapper preparation"
+    );
+}
+
+/// The staged writes replayed by chains of `depths`. Each reuse replays the
+/// writes of its subtree, as few as give the same result, so doubling the depth
+/// at most quadruples them. A log that kept every repeat of a subtree would
+/// multiply them by a power of two for each level.
+fn effects_replayed_by_depth<S: LayoutScalar>(
+    chain: impl Fn(u32) -> PublicLayoutTreeOf<S> + Send + 'static,
+    depths: [u32; 2],
+) -> [usize; 2] {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(move || depths.map(|depth| subgrid_work_of(&chain(depth)).effects_replayed))
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
+#[test]
+fn subgrid_chain_effects_replayed_grow_at_most_quadratically_with_depth() {
+    for [shallow, deep] in [
+        effects_replayed_by_depth(
+            |depth| subgrid_grid_chain::<f64>(depth, Span::Whole),
+            [8, 16],
+        ),
+        effects_replayed_by_depth(intrinsic_subgrid_chain::<f64>, [8, 16]),
+        effects_replayed_by_depth(subgrid_lanes_chain::<f64>, [8, 16]),
+    ]
+    .map(|replayed| [replayed[0], replayed[1]])
+    {
+        assert!(
+            deep <= 6 * shallow + 64,
+            "{deep} writes replayed at depth 16 against {shallow} at depth 8"
+        );
+    }
 }
