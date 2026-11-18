@@ -537,7 +537,8 @@ reports one, otherwise the smallest value of the public limit at which the call
 still succeeds, found outside the timed region. A dimension that no public limit
 reaches prints `-`. The parse, serialization, normalization and colour cases named "with a host" call the accounted front
 against a host operation without caps, on the input of the plain case of the same
-name; their volume is what one call charges.
+name, and the retention case "with a host" runs the same walk through
+`CssSourceRetention::charge_walk`; their volume is what one call charges.
 
 ```sh
 cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts

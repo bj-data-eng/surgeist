@@ -12,9 +12,10 @@
 //! smallest value of that limit at which the call still succeeds, found once
 //! outside the timed region by doubling and bisection, the way the
 //! characterization adapter finds charged work. A dimension that no public limit
-//! reaches prints `-`. The parse, serialization, normalization and colour cases "with a host" run the
-//! accounted front against a host operation with no caps; their volume is what
-//! one call charges to that operation. Run with
+//! reaches prints `-`. The parse, serialization, normalization and colour cases
+//! "with a host" run the accounted front, and the retention case "with a host"
+//! runs the walk through `charge_walk`, against a host operation with no caps;
+//! their volume is what one call charges to that operation. Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts`.
 
 use std::hint::black_box;
@@ -1130,6 +1131,24 @@ fn retention_cases(cases: &mut Vec<Case>) {
             let mut retention = CssSourceRetention::new(bytes, usize::MAX, 256);
             retention
                 .visit(black_box(report.syntax()))
+                .expect("within limits");
+            retention.steps()
+        },
+    ));
+
+    // The same walk through a host handle.
+    let (_, host) = bench_host(ProfileMode::Off);
+    cases.push(Case::new(
+        "CssSourceRetention::visit with a host, parsed 256 KiB synthetic sheet",
+        Some(source.len()),
+        vec![("steps", Some(steps)), ("retained bytes", Some(bytes))],
+        move || {
+            let mut retention = CssSourceRetention::new(bytes, usize::MAX, 256);
+            retention
+                .charge_walk(&host, |retention| {
+                    retention.visit(black_box(report.syntax()))
+                })
+                .expect("a host without caps admits the charge")
                 .expect("within limits");
             retention.steps()
         },
