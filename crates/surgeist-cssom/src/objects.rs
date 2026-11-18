@@ -464,7 +464,11 @@ macro_rules! rule_interface {
                 store: &CssomStore,
                 limits: &CssomRuleFormatLimits,
             ) -> Result<String, CssomError> {
-                store.snapshot().rule_css_text(self.id(), limits)
+                crate::operation_work::charged(
+                    store.state.owner.key(),
+                    store.host.as_deref(),
+                    || store.snapshot().rule_css_text(self.id(), limits),
+                )
             }
             pub fn parent_rule(&self, store: &CssomStore) -> Result<Option<CssRule>, CssomError> {
                 rule_parent(&store.snapshot(), self.id())

@@ -519,6 +519,20 @@ impl CssomBatch {
         index: Option<usize>,
         cancel: &AtomicBool,
     ) -> Result<i32, CssomError> {
+        // Both steps are one operation of a store with a host.
+        let (owner, host) = (self.staged.owner.key(), self.host.clone());
+        crate::operation_work::charged(owner, host.as_deref(), || {
+            self.add_sheet_rule_steps(sheet, selector, block, index, cancel)
+        })
+    }
+    fn add_sheet_rule_steps(
+        &mut self,
+        sheet: &CssomSheetId,
+        selector: Option<&str>,
+        block: Option<&str>,
+        index: Option<usize>,
+        cancel: &AtomicBool,
+    ) -> Result<i32, CssomError> {
         // Product handle validation precedes reading the list default. Source
         // Security/NotAllowed and syntax guards belong to insert_sheet_rule.
         let (source, index) = self.apply(|this| -> Result<_, CssomError> {
