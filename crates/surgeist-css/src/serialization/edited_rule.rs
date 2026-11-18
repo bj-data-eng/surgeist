@@ -175,10 +175,22 @@ impl<'a> CssRuleGraphInput<'a> {
         ancestor: crate::rule::CssStyleAncestor,
         limits: CssRuleSerializationLimits,
     ) -> Result<String, CssRuleSerializationError> {
+        self.serialize_cssom_counted(namespaces, ancestor, limits).0
+    }
+
+    /// [`Self::serialize_cssom`] with the work its writer admitted, on every path.
+    pub(crate) fn serialize_cssom_counted(
+        self,
+        namespaces: &crate::selector::CssNamespaceContext,
+        ancestor: crate::rule::CssStyleAncestor,
+        limits: CssRuleSerializationLimits,
+    ) -> (
+        Result<String, CssRuleSerializationError>,
+        crate::serialization::specified_serialization::SerializationWork,
+    ) {
         let mut writer = SpecifiedRuleWriter::new(limits.values);
         writer.max_graph_depth = Some(limits.max_depth);
-        writer.append_rule_graph_input(self, namespaces, ancestor)?;
-        Ok(writer.css)
+        writer.run(|writer| writer.append_rule_graph_input(self, namespaces, ancestor))
     }
 
     /// Serializes this graph as canonical specified CSS, in one native traversal.
@@ -197,10 +209,20 @@ impl<'a> CssRuleGraphInput<'a> {
         self,
         limits: CssRuleSerializationLimits,
     ) -> Result<String, CssRuleSerializationError> {
+        self.serialize_specified_counted(limits).0
+    }
+
+    /// [`Self::serialize_specified`] with the work its writer admitted, on every path.
+    pub(crate) fn serialize_specified_counted(
+        self,
+        limits: CssRuleSerializationLimits,
+    ) -> (
+        Result<String, CssRuleSerializationError>,
+        crate::serialization::specified_serialization::SerializationWork,
+    ) {
         let mut writer = SpecifiedRuleWriter::new(limits.values);
         writer.max_graph_depth = Some(limits.max_depth);
-        writer.append_rule_graph_input_specified(self)?;
-        Ok(writer.css)
+        writer.run(|writer| writer.append_rule_graph_input_specified(self))
     }
 }
 

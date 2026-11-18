@@ -288,7 +288,28 @@ pub(crate) struct SpecifiedSerializationContext {
     semantic_traversal: bool,
 }
 
+/// What one serialization admitted against its limits: the input nodes,
+/// projection nodes and CSS bytes its context counted. A refused charge
+/// leaves its counter unchanged, so after a refusal these are the work
+/// admitted before it. Shortest-form comparisons run in contexts of their own
+/// and are not part of it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct SerializationWork {
+    pub(crate) input_nodes: usize,
+    pub(crate) projection_nodes: usize,
+    pub(crate) css_bytes: usize,
+}
+
 impl SpecifiedSerializationContext {
+    /// The work this context has admitted so far.
+    pub(crate) const fn work(&self) -> SerializationWork {
+        SerializationWork {
+            input_nodes: self.input_nodes,
+            projection_nodes: self.projection_nodes,
+            css_bytes: self.css_bytes,
+        }
+    }
+
     pub(crate) const fn new(limits: CssSerializationLimits) -> Self {
         Self {
             limits,

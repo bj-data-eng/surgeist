@@ -3,7 +3,9 @@
 use crate::serialization::serialization_escaping::EscapedKind;
 
 use crate::rule::{CssNamespaceRule, CssRule, CssSheet};
-use crate::serialization::specified_serialization::SpecifiedSerializationContext;
+use crate::serialization::specified_serialization::{
+    SerializationWork, SpecifiedSerializationContext,
+};
 use crate::serialization::{CssSerializationError, CssSerializationLimits};
 
 /// Private carrier for `?` conversions inside rule-graph providers.
@@ -85,9 +87,15 @@ pub(crate) fn serialize_specified(
     value: &(impl SpecifiedProvider + ?Sized),
     limits: CssSerializationLimits,
 ) -> Result<String, CssSerializationError> {
-    let mut writer = SpecifiedRuleWriter::new(limits);
-    value.append_to_rule_writer(&mut writer)?;
-    Ok(writer.css)
+    serialize_specified_counted(value, limits).0
+}
+
+/// [`serialize_specified`] with the work its writer admitted, on every path.
+pub(crate) fn serialize_specified_counted(
+    value: &(impl SpecifiedProvider + ?Sized),
+    limits: CssSerializationLimits,
+) -> (Result<String, CssSerializationError>, SerializationWork) {
+    SpecifiedRuleWriter::new(limits).run(|writer| value.append_to_rule_writer(writer))
 }
 
 /// Supplies `serialize_specified` for each listed [`SpecifiedProvider`].
@@ -118,6 +126,17 @@ macro_rules! specified_serialization {
 pub(crate) use specified_serialization;
 
 impl SpecifiedRuleWriter {
+    /// Runs `append` on this writer and returns its text, or its error, with
+    /// the work the writer admitted either way.
+    pub(crate) fn run<E>(
+        mut self,
+        append: impl FnOnce(&mut Self) -> Result<(), E>,
+    ) -> (Result<String, E>, SerializationWork) {
+        let result = append(&mut self);
+        let work = self.context.work();
+        (result.map(|()| self.css), work)
+    }
+
     pub(crate) fn new(limits: CssSerializationLimits) -> Self {
         Self {
             context: SpecifiedSerializationContext::new(limits),

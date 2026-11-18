@@ -283,9 +283,19 @@ impl CssRule {
         &self,
         limits: CssSerializationLimits,
     ) -> Result<String, CssRuleSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.append_cssom_rule_graph(self, Vec::new(), None)?;
-        Ok(writer.css)
+        self.serialize_cssom_counted(limits).0
+    }
+
+    /// [`Self::serialize_cssom`] with the work its writer admitted, on every path.
+    pub(crate) fn serialize_cssom_counted(
+        &self,
+        limits: CssSerializationLimits,
+    ) -> (
+        Result<String, CssRuleSerializationError>,
+        crate::serialization::specified_serialization::SerializationWork,
+    ) {
+        SpecifiedRuleWriter::new(limits)
+            .run(|writer| writer.append_cssom_rule_graph(self, Vec::new(), None))
     }
 }
 impl CssSheet {
@@ -297,7 +307,24 @@ impl CssSheet {
         &self,
         limits: CssSerializationLimits,
     ) -> Result<String, CssRuleSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.serialize_cssom_counted(limits).0
+    }
+
+    /// [`Self::serialize_cssom`] with the work its writer admitted, on every path.
+    pub(crate) fn serialize_cssom_counted(
+        &self,
+        limits: CssSerializationLimits,
+    ) -> (
+        Result<String, CssRuleSerializationError>,
+        crate::serialization::specified_serialization::SerializationWork,
+    ) {
+        SpecifiedRuleWriter::new(limits).run(|writer| self.append_cssom_sheet(writer))
+    }
+
+    fn append_cssom_sheet(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<(), CssRuleSerializationError> {
         writer.node().map_err(|value| {
             CssRuleSerializationError::new(
                 CssRuleSerializationOutput::Cssom,
@@ -333,6 +360,6 @@ impl CssSheet {
             }
             writer.append_cssom_rule_graph(rule, path, Some(&namespaces))?;
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
