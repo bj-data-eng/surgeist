@@ -546,3 +546,42 @@ fn an_operation_of_another_store_inside_one_charges_only_its_own_host() {
     assert_eq!(charged(&outer_ledger), [2, 6, 60, 600, 0]);
     assert_eq!(charged(&inner_ledger), [2, 7, 70, 700, 0]);
 }
+
+#[test]
+fn a_host_refusal_of_a_two_step_batch_method_poisons_the_batch() {
+    let add = |edit: &mut CssomBatch, sheet: &CssomSheetId| {
+        edit.add_sheet_rule(
+            sheet,
+            Some(".e"),
+            Some("color: blue"),
+            None,
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+    };
+    let (ledger, host) = open_host();
+    let (store, sheet) = with_sheet(CssomLimits::default(), Some(host)).unwrap();
+    let before = charged(&ledger)[0];
+    add(&mut store.batch(guard(&store)).unwrap(), &sheet).unwrap();
+    let needed = charged(&ledger)[0] - before;
+    let caps = CssLimits::new(
+        CssWorkTable::new(CssWorkFields {
+            CensusRun: before + needed - 1,
+            ..CssWorkFields::splat(u64::MAX)
+        }),
+        CssResourceTable::splat(u64::MAX),
+    );
+    let (_, host) = self::host(caps, ProfileMode::Off);
+    let (mut store, sheet) = with_sheet(CssomLimits::default(), Some(host)).unwrap();
+    let published = store.snapshot();
+    let mut edit = store.batch(guard(&store)).unwrap();
+    assert!(matches!(
+        add(&mut edit, &sheet),
+        Err(CssomError::Accounting(_))
+    ));
+    assert!(matches!(
+        edit.set_disabled(&sheet, true),
+        Err(CssomError::BatchAborted)
+    ));
+    assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
+    assert_eq!(store.snapshot().revision(), published.revision());
+}
