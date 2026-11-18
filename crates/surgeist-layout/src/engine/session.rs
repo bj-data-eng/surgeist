@@ -330,6 +330,16 @@ pub(crate) enum FloatChildTrial {
     InFlow,
 }
 
+/// Whether staging `entry` removes the cache stores of its node staged before
+/// it, as a hidden node's geometry does.
+fn hides_node_stores<Node: Copy, S: LayoutScalar>(entry: &LayoutOutputEntryOf<Node, S>) -> bool {
+    matches!(
+        entry.geometry_state(),
+        crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal }
+            if measured_normal.is_hidden()
+    )
+}
+
 /// One actual child request executed off-side against the same immutable tree
 /// and canonical Text invocation. This is not a rounded/completed child batch.
 pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
@@ -1367,12 +1377,14 @@ where
 
     /// The writes of a computation in fewest that give the same result. A
     /// store or an unrounded geometry write replaces an earlier write to its
-    /// slot and moves it last, so only the last write to a slot counts; a
-    /// cache clear and an inline fragment slot keep the position of their
-    /// first write, and the inline fragments the value of their last. Native
-    /// family writes are kept in order, and a capture that holds too many of
-    /// them is not reused. `None` when a write belongs to no node of the
-    /// document.
+    /// slot and moves it last, so only the last write to a slot counts. A
+    /// hidden geometry write also removes the stores of its node staged
+    /// before it, so those stores are dropped and the last hidden write is
+    /// kept, with the geometry that followed it. A cache clear and an inline
+    /// fragment slot keep the position of their first write, and the inline
+    /// fragments the value of their last. Native family writes are kept in
+    /// order, and a capture that holds too many of them is not reused. `None`
+    /// when a write belongs to no node of the document.
     fn compact_effects(
         &self,
         writes: &[StagedEffect<Tree::Node, Tree::Scalar>],
@@ -1410,22 +1422,28 @@ where
         for positions in buckets.values() {
             let mut stores: Vec<(&ComputeInputOf<Tree::Scalar>, &crate::CacheKeyContext)> =
                 Vec::new();
+            // A geometry write follows, and a hidden one, which makes every
+            // write of the node before it dead.
             let mut geometry = false;
+            let mut hidden = false;
             for &position in positions.iter().rev() {
                 match &writes[position] {
                     StagedEffect::Store { input, context, .. } => {
-                        if stores
-                            .iter()
-                            .any(|(seen, seen_context)| *seen == input && *seen_context == context)
+                        if hidden
+                            || stores.iter().any(|(seen, seen_context)| {
+                                *seen == input && *seen_context == context
+                            })
                         {
                             keep[position] = false;
                         } else {
                             stores.push((input, context));
                         }
                     }
-                    StagedEffect::Geometry(_) => {
-                        if geometry {
+                    StagedEffect::Geometry(entry) => {
+                        if hidden || (geometry && !hides_node_stores(entry)) {
                             keep[position] = false;
+                        } else if hides_node_stores(entry) {
+                            hidden = true;
                         }
                         geometry = true;
                     }
@@ -2564,13 +2582,7 @@ where
 
         let node = entry.node();
         entry.non_box = self.publication_kind(&entry);
-        if let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
-            entry.geometry_state()
-            && measured_normal.is_hidden()
-        {
-            // A hidden write removes the stores of its node staged before it,
-            // which a repeat of the write alone would not.
-            self.effects.poison_all();
+        if hides_node_stores(&entry) {
             if let Some(text) = &mut self.text {
                 text.discard_placement(node);
             }
