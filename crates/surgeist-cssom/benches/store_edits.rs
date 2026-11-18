@@ -23,9 +23,9 @@
 //! Each case also runs on a store built with a host scope of a ledger
 //! operation without caps ("with a host"), whose charged column gives what
 //! one call charges to the `cssom` scope: census runs, objects, entries and
-//! source walk steps. The edit at 1 000 rules also runs through a host at each
-//! profile mode ("profile ..."): summary, timed summary, and timed detail
-//! keeping its first 4096 events.
+//! source walk steps. The edits at 100 and 1 000 rules also run through a host
+//! at each profile mode ("profile ..."): summary, timed summary, and timed
+//! detail keeping its first 4096 events; profiling off is the plain host row.
 //!
 //! The 100 000-rule creation holds about 1.7 GB while it runs, and the two edit
 //! cases keep their own stores of that size alive for the whole run.
@@ -400,9 +400,11 @@ fn main() {
             },
         ),
     ];
-    let size = SIZES[1];
-    let text = sheet_text(size.rules);
-    for (label, mode) in profiles {
+    for (size, (label, mode)) in [SIZES[0], SIZES[1]]
+        .into_iter()
+        .flat_map(|size| profiles.map(|profile| (size, profile)))
+    {
+        let text = sheet_text(size.rules);
         let host = profiled_host(mode);
         let mut store = store_for(Some(&host.1));
         let sheet = create(&mut store, &text);

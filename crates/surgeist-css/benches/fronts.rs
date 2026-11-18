@@ -16,9 +16,10 @@
 //! "with a host" run the accounted front, and the retention case "with a host"
 //! runs the walk through `charge_walk`, against a host operation with no caps;
 //! their volume is what one call charges to that operation. The cases named
-//! "profile ..." run one representative call of each front through a host at
-//! each profile mode: off, summary, timed summary, and timed detail keeping its
-//! first 4096 events (later events are counted and dropped). Run with
+//! "profile ..." run one representative call of each front, and a UTF-16 parse,
+//! whose two scopes open two phases, through a host at each profile mode: off,
+//! summary, timed summary, and timed detail keeping its first 4096 events
+//! (later events are counted and dropped). Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts`.
 
 use std::hint::black_box;
@@ -1174,6 +1175,7 @@ fn profile_cases(cases: &mut Vec<Case>) {
         ),
     ];
     let large: &'static str = Box::leak(synthetic_sheet(1 << 20).into_boxed_str());
+    let large_units: &'static Arc<Vec<u16>> = Box::leak(Box::new(utf16(large)));
     let medium: &'static str = Box::leak(synthetic_sheet(256 * 1024).into_boxed_str());
     let sheet: &'static CssSheet = Box::leak(Box::new(parse_sheet(medium).into_parts().0));
     let normalizable: &'static CssSheet = Box::leak(Box::new(
@@ -1201,6 +1203,23 @@ fn profile_cases(cases: &mut Vec<Case>) {
                     .accounted(host)
                     .parse_sheet(black_box(large))
                     .expect("a host without caps admits the charge");
+                report.syntax().rules().len()
+            },
+        ));
+        cases.push(Case::new(
+            format!("profile {label}: parse_sheet_utf16 with a host, 1 MiB synthetic sheet"),
+            Some(large_units.len()),
+            Vec::new(),
+            move || {
+                let report = CssParser::default()
+                    .accounted(host)
+                    .parse_sheet_utf16(
+                        Arc::clone(black_box(large_units)),
+                        CssUtf16InputLimits::default(),
+                        || Ok::<_, ()>(()),
+                    )
+                    .expect("a host without caps admits the charge")
+                    .expect("the default limits admit the sheet");
                 report.syntax().rules().len()
             },
         ));

@@ -539,9 +539,9 @@ reaches prints `-`. The parse, serialization, normalization and colour cases nam
 against a host operation without caps, on the input of the plain case of the same
 name, and the retention case "with a host" runs the same walk through
 `CssSourceRetention::charge_walk`; their volume is what one call charges. The cases
-named "profile ..." run one representative call of each front through a host at
-each profile mode: off, summary, timed summary, and timed detail keeping its first
-4096 events.
+named "profile ..." run one representative call of each front, and a UTF-16 parse,
+through a host at each profile mode: off, summary, timed summary, and timed detail
+keeping its first 4096 events.
 
 ```sh
 cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts

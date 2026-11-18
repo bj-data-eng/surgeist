@@ -670,9 +670,9 @@ the two smaller sizes, the smallest `max_objects`, `max_entries` and
 `max_string_bytes` at which creation still succeeds. The limits are raised so
 that every size is admitted. Each case also runs on a store built with a host
 of an operation without caps, and those rows give what one call charges: census
-runs, objects, entries and source walk steps. The edit at 1 000 rules also runs
-through a host at each profile mode: summary, timed summary, and timed detail
-keeping its first 4096 events.
+runs, objects, entries and source walk steps. The edits at 100 and 1 000 rules
+also run through a host at each profile mode: summary, timed summary, and timed
+detail keeping its first 4096 events; profiling off is the plain host row.
 
 Adoption checks the limits after each adopted rule. The first check of an
 adoption is the census of the whole state; each later check extends that census
