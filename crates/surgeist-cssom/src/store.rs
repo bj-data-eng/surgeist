@@ -75,6 +75,20 @@ impl CssomStore {
     /// and captures run outside the store and are not charged. This
     /// constructor is itself charged.
     ///
+    /// The store also holds, in the scope's gauges, the size of the state it
+    /// has published:
+    /// [`CssResource::RetainedObject`](crate::accounting::CssResource::RetainedObject),
+    /// [`CssResource::RetainedEntry`](crate::accounting::CssResource::RetainedEntry)
+    /// and
+    /// [`CssResource::RetainedStringByte`](crate::accounting::CssResource::RetainedStringByte),
+    /// the figures `max_objects`, `max_entries` and `max_string_bytes` are
+    /// checked against. A commit acquires the increases in the same batch as
+    /// its work, before it publishes, so a cap on either refuses the commit;
+    /// publishing releases the decreases, a prepared commit dropped
+    /// unpublished releases its increases, and dropping the store releases
+    /// everything it holds. Pending replacement inputs, batches, snapshots
+    /// and captures are not part of the holding.
+    ///
     /// # Errors
     ///
     /// The errors of [`CssomStore::new`], and [`CssomError::Accounting`] when
