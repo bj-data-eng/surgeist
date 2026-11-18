@@ -14,8 +14,8 @@ Everything a task needs starts at the crate root: `CssParser` (the configured fr
 door), `CssParserContext`, `CssParserMode`, `CssParseReport` and
 `CssValidationFailure`. `CssAccountedParser`, which `CssParser::accounted` returns,
 is the same front door charged to a host's ledger scope, and `CssAccounted`, which
-`accounted` on a sheet, rule or rule graph returns, charges its serialization the same
-way. Every other item has exactly one path, in the module that owns
+`accounted` on a sheet, rule or rule graph returns, charges its serialization and
+normalization the same way. Every other item has exactly one path, in the module that owns
 its domain: `source`, `diagnostic`, `component`, `numeric`, `color`, `selector`,
 `query`, `rule`, `declaration`, `property`, `values`, `serialization`, `normalize` and
 `conformance`. The crate-level [rustdoc](src/lib.rs) lists them with the compiled
@@ -534,7 +534,7 @@ prints the median, minimum and maximum time of one call, the input bytes, the
 time per byte, and the volume the front counts: from the public result where it
 reports one, otherwise the smallest value of the public limit at which the call
 still succeeds, found outside the timed region. A dimension that no public limit
-reaches prints `-`. The parse and serialization cases named "with a host" call the accounted front
+reaches prints `-`. The parse, serialization and normalization cases named "with a host" call the accounted front
 against a host operation without caps, on the input of the plain case of the same
 name; their volume is what one call charges.
 

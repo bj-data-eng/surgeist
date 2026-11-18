@@ -12,7 +12,7 @@
 //! smallest value of that limit at which the call still succeeds, found once
 //! outside the timed region by doubling and bisection, the way the
 //! characterization adapter finds charged work. A dimension that no public limit
-//! reaches prints `-`. The parse and serialization cases "with a host" run the
+//! reaches prints `-`. The parse, serialization and normalization cases "with a host" run the
 //! accounted front against a host operation with no caps; their volume is what
 //! one call charges to that operation. Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts`.
@@ -840,6 +840,38 @@ fn normalize_cases(cases: &mut Vec<Case>) {
             let normalized = black_box(sheet)
                 .normalize(Default::default())
                 .expect("normalized");
+            let count = normalized.items().len();
+            black_box(&normalized);
+            count
+        },
+    ));
+
+    // The same sheet through a host handle.
+    let read_normalized = move |host: &CssHostScope| {
+        black_box(sheet)
+            .accounted(host)
+            .normalize(Default::default())
+            .expect("a host without caps admits the charge")
+            .expect("normalized")
+    };
+    let (ledger, host) = bench_host(ProfileMode::Off);
+    let _ = read_normalized(&host);
+    let usage = ledger
+        .usage(ledger.root())
+        .expect("the root of the bench operation");
+    let read = |dimension| usize::try_from(usage.work(dimension)).ok();
+    let counts = vec![
+        ("rules", read(CssWork::NormalizedRule)),
+        ("declarations", read(CssWork::NormalizedDeclaration)),
+        ("contributions", read(CssWork::NormalizedContribution)),
+    ];
+    let (_, host) = bench_host(ProfileMode::Off);
+    cases.push(Case::new(
+        "CssSheet::normalize with a host, 256 KiB normalizable sheet",
+        Some(source.len()),
+        counts,
+        move || {
+            let normalized = read_normalized(&host);
             let count = normalized.items().len();
             black_box(&normalized);
             count

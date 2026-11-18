@@ -715,6 +715,19 @@ impl CssSheet {
         &self,
         limits: CssNormalizationLimits,
     ) -> Result<CssNormalizedSheet, CssNormalizationError> {
+        self.normalize_counted(limits).0
+    }
+
+    /// [`Self::normalize`] with the rules, declarations and contributions the
+    /// normalizer admitted, on every path. A refused rule or declaration is
+    /// not counted.
+    pub(crate) fn normalize_counted(
+        &self,
+        limits: CssNormalizationLimits,
+    ) -> (
+        Result<CssNormalizedSheet, CssNormalizationError>,
+        NormalizationWork,
+    ) {
         let mut builder = Normalizer {
             limits,
             items: Vec::new(),
@@ -722,11 +735,26 @@ impl CssSheet {
             declarations: 0,
             contributions: 0,
         };
-        builder.rules(self.rules())?;
-        Ok(CssNormalizedSheet {
+        let result = builder.rules(self.rules());
+        let work = NormalizationWork {
+            rules: builder.rules,
+            declarations: builder.declarations,
+            contributions: builder.contributions,
+        };
+        let result = result.map(|()| CssNormalizedSheet {
             items: builder.items,
-        })
+        });
+        (result, work)
     }
+}
+
+/// What one normalization admitted: the rules, declarations and longhand
+/// contributions its normalizer counted against its limits.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct NormalizationWork {
+    pub(crate) rules: usize,
+    pub(crate) declarations: usize,
+    pub(crate) contributions: usize,
 }
 
 impl CssParseReport<CssSheet> {

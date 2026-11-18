@@ -13,6 +13,7 @@ use crate::accounting::{
     CssChange, CssFront, CssHostScope, CssLedger, CssLimits, CssResource, CssResourceTable,
     CssWork, CssWorkFields, CssWorkTable,
 };
+use crate::normalize::{CssNormalizationLimits, CssNormalizationResource};
 use crate::rule::{CssRule, CssSheet, CssStyleAncestor};
 use crate::selector::CssNamespaceContext;
 use crate::serialization::{CssRuleGraphInput, CssRuleSerializationLimits, CssSerializationLimits};
@@ -414,4 +415,195 @@ fn every_front_returns_its_own_refusal_and_stays_within_the_refusing_limit() {
         graph.serialize_specified(shallow).unwrap_err().rule_path()
     );
     assert!(charged(&ledger)[0] >= 1);
+}
+
+/// The rules, declarations and contributions the normalization scope holds.
+fn normalized(ledger: &CssLedger) -> [u64; 3] {
+    let usage = ledger.usage(ledger.root()).unwrap();
+    [
+        usage.work(CssWork::NormalizedRule),
+        usage.work(CssWork::NormalizedDeclaration),
+        usage.work(CssWork::NormalizedContribution),
+    ]
+}
+
+fn normalization_limits(
+    rules: usize,
+    declarations: usize,
+    contributions: usize,
+) -> CssNormalizationLimits {
+    CssNormalizationLimits::try_new(256, rules, declarations, contributions).unwrap()
+}
+
+/// The smallest of each normalization limit under which the plain front
+/// succeeds, the others unbounded.
+fn smallest_normalization(sheet: &CssSheet) -> [u64; 3] {
+    let admitted = |limits| sheet.normalize(limits).is_ok();
+    let smallest = |make: &dyn Fn(usize) -> CssNormalizationLimits| {
+        (0..100_000)
+            .find(|&count| admitted(make(count)))
+            .map(|count| u64::try_from(count).unwrap())
+            .unwrap()
+    };
+    [
+        smallest(&|n| normalization_limits(n, usize::MAX, usize::MAX)),
+        smallest(&|n| normalization_limits(usize::MAX, n, usize::MAX)),
+        smallest(&|n| normalization_limits(usize::MAX, usize::MAX, n)),
+    ]
+}
+
+#[test]
+fn a_normalization_charges_its_rules_declarations_and_contributions() {
+    // One rule; `color` contributes one longhand and `margin` four.
+    let (ledger, host) = open_host();
+    let small = sheet("a { color: red; margin: 1px }");
+    let normalized_sheet = small
+        .accounted(&host)
+        .normalize(CssNormalizationLimits::default())
+        .unwrap()
+        .unwrap();
+    let plain = small.normalize(CssNormalizationLimits::default()).unwrap();
+    assert_eq!(
+        format!("{:?}", normalized_sheet.items()),
+        format!("{:?}", plain.items())
+    );
+    assert_eq!(normalized(&ledger), [1, 2, 5]);
+
+    for source in [SOURCES[0], SOURCES[2], SOURCES[3], rules(20).as_str()] {
+        let sheet = sheet(source);
+        let (ledger, host) = open_host();
+        sheet
+            .accounted(&host)
+            .normalize(CssNormalizationLimits::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            normalized(&ledger),
+            smallest_normalization(&sheet),
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
+fn a_refused_normalization_is_returned_inside_ok_and_charged_what_was_admitted() {
+    // Three rules of two declarations; the third rule is refused.
+    let sheet = sheet(
+        "a { color: red; width: 1px } b { color: red; width: 1px } c { color: red; width: 1px }",
+    );
+    let limits = normalization_limits(2, usize::MAX, usize::MAX);
+    let (ledger, host) = open_host();
+    let refused = sheet
+        .accounted(&host)
+        .normalize(limits)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        refused.exhausted_limit(),
+        Some((CssNormalizationResource::Rules, 2))
+    );
+    assert_eq!(
+        refused.exhausted_limit(),
+        sheet.normalize(limits).unwrap_err().exhausted_limit()
+    );
+    assert_eq!(normalized(&ledger), [2, 4, 4]);
+
+    // The fourth declaration is refused: the second rule was admitted.
+    let limits = normalization_limits(usize::MAX, 3, usize::MAX);
+    let (ledger, host) = open_host();
+    let refused = sheet
+        .accounted(&host)
+        .normalize(limits)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        refused.exhausted_limit(),
+        Some((CssNormalizationResource::Declarations, 3))
+    );
+    assert_eq!(normalized(&ledger), [2, 3, 3]);
+}
+
+#[test]
+fn a_normalization_makes_one_batch_and_one_phase_whatever_the_size_of_the_sheet() {
+    for count in [1, 100] {
+        let sheet = sheet(&rules(count));
+        let mode = ProfileMode::Summary { timing: false };
+        let (ledger, host) = host(Limits::unlimited(), mode);
+        sheet
+            .accounted(&host)
+            .normalize(CssNormalizationLimits::default())
+            .unwrap()
+            .unwrap();
+        for front in CssFront::ALL {
+            let scope = report(&ledger, host.scope(front));
+            let expected = if front == CssFront::Normalization {
+                (1, 3, 1)
+            } else {
+                (0, 0, 0)
+            };
+            assert_eq!(
+                (scope.accepted_batches, scope.accepted_items, scope.phases),
+                expected,
+                "{front:?} with {count} rules"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_host_cap_on_normalized_declarations_replaces_the_result() {
+    let caps = CssLimits::new(
+        CssWorkTable::new(CssWorkFields {
+            NormalizedDeclaration: 1,
+            ..CssWorkFields::splat(u64::MAX)
+        }),
+        CssResourceTable::splat(u64::MAX),
+    );
+    let (ledger, host) = host(caps, ProfileMode::Off);
+    let stop = sheet("a { color: red; margin: 1px }")
+        .accounted(&host)
+        .normalize(CssNormalizationLimits::default())
+        .unwrap_err();
+    let refusal = stop.host_refusal().unwrap();
+    assert_eq!(
+        refusal.change(),
+        CssChange::Work(CssWork::NormalizedDeclaration, 2)
+    );
+    assert_eq!(
+        (refusal.limit(), refusal.total(), refusal.amount()),
+        (1, 0, 2)
+    );
+    assert_eq!(normalized(&ledger), [0, 0, 0]);
+}
+
+#[test]
+fn a_normalization_refused_for_rule_depth_is_charged_the_rules_above_it() {
+    // The nested rule is at depth one, beyond a depth limit of zero.
+    let sheet = sheet("a { color: red; & b { width: 1px } }");
+    let limits = CssNormalizationLimits::try_new(0, usize::MAX, usize::MAX, usize::MAX).unwrap();
+    let (ledger, host) = open_host();
+    let refused = sheet
+        .accounted(&host)
+        .normalize(limits)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        refused.exhausted_limit(),
+        Some((CssNormalizationResource::RuleDepth, 0))
+    );
+    assert_eq!(normalized(&ledger), [1, 1, 1]);
+}
+
+#[test]
+fn a_plain_normalization_after_an_accounted_one_charges_nothing() {
+    let sheet = sheet(SOURCES[2]);
+    let (ledger, host) = open_host();
+    sheet
+        .accounted(&host)
+        .normalize(CssNormalizationLimits::default())
+        .unwrap()
+        .unwrap();
+    let after = normalized(&ledger);
+    let _ = sheet.normalize(CssNormalizationLimits::default());
+    assert_eq!(normalized(&ledger), after);
 }
