@@ -1,4 +1,11 @@
 //! Font resources, instances, metrics, baselines and outlines.
+//!
+//! [`FontData`] is a strong font face with its catalogue publication, [`FontFace`] borrows one, and
+//! [`EffectiveFontInstance`] is a borrowed complete canonical font instance with executable synthesis
+//! ([`FontSynthesis`]). [`FontMetrics`], [`StrikeoutMetrics`], [`UprightFontMetrics`],
+//! [`VerticalGlyphMetrics`] and the `FontMetric*` types hold same-instance metrics and their numeric refusals;
+//! [`FontBaseline`] and the other `FontBaseline*` types hold named baseline observations; [`GlyphOutlineGeometry`],
+//! [`FontOutlineCapability`] and [`FontOutlineError`] cover outlines.
 
 use std::fmt;
 

@@ -4,6 +4,56 @@
 //! inline boxes, cursor geometry, selection geometry, and low-level movement.
 //! It does not own rendering, widgets, document identity, style resolution, or
 //! application commands.
+//!
+//! # Where things live
+//!
+//! The crate root holds only [`System`], [`Error`], [`ErrorCode`], [`ErrorDetail`] and [`Result`]. Every
+//! other public item has exactly one path, through the module that holds it:
+//!
+//! | Module | Holds |
+//! | --- | --- |
+//! | `accessibility` | Optional AccessKit projection of an analyzed source or a placed layout (feature `text-accessibility`) |
+//! | [`allocation`] | Layout-allocated atomic, control, boundary, strut and fit geometry |
+//! | [`analyzed`] | Font-independent semantic analysis with exact original-source custody |
+//! | [`cache`] | Layout cache identity and statistics |
+//! | [`capture`] | Contextual source capture and its processed paragraph views |
+//! | [`composer`] | Incremental construction of a source |
+//! | [`conditional`] | Conditional searches and phrase pieces |
+//! | [`finalized`] | Finalized lines, fragments, feedback, measurements, prefixes and readback views |
+//! | [`font`] | Font resources, instances, metrics, baselines and outlines |
+//! | [`geometry`] | Points, sizes, rectangles, glyph frames and numeric-category diagnostics |
+//! | [`hyphenation`] | Native hyphenation policy and indication inputs with bounded en-US resources |
+//! | [`inline_box`] | Inline-box edges, fragment families, pieces and supplied components |
+//! | [`layout`] | The committed layout and every way to read it |
+//! | [`leader`] | Isolated leader-pattern preparation and readback |
+//! | [`observation`] | Measurement flow, semantic window and scope-incidence observations |
+//! | [`options`] | Paragraph-level layout options |
+//! | [`paragraph`] | Native paragraph input: origins, connections, controls, anchors and boundary policies |
+//! | [`placement`] | Physical placement of finalized lines and atomics |
+//! | [`prepared`] | Prepared text, its issued capabilities and borrowed views |
+//! | [`processing`] | Source-local whitespace processing and its plaintext view |
+//! | [`range_fragments`] | Nonempty original-source observations over placed, selected grapheme units |
+//! | [`scope_alignment`] | Captured-scope alignment: limits, metrics, allocations and census |
+//! | [`selection`] | Line selection requests and the selected line |
+//! | [`source`] | Authored text: exact UTF-16 text, ranges, sources with spans and boxes, and edits |
+//! | [`spacing`] | Selected spacing slots, allocations and spacing diagnostics |
+//! | [`style`] | Resolved text style values and the text-style support matrix |
+//! | [`supplied_line`] | Supplied resolved-level ordering and text-edge decisions for mixed inline lines |
+//! | [`tabs`] | Captured CSS tab values and resource demand |
+//! | [`upright`] | Upright and vertical typography diagnostics vocabulary |
+//!
+//! Items are not re-exported at the root:
+//!
+//! ```compile_fail
+//! use surgeist_text::Style;
+//! ```
+//!
+//! The same name resolves through its module:
+//!
+//! ```
+//! use surgeist_text::style::Style;
+//! let _ = Style::default();
+//! ```
 
 #[cfg(feature = "text-accessibility")]
 pub mod accessibility;

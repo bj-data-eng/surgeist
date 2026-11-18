@@ -1,4 +1,10 @@
 //! Supplied resolved-level ordering and text-edge decisions for mixed inline lines.
+//!
+//! A [`SuppliedLine`] borrows a complete logical line whose [`BidiLevel`] values its producer already
+//! resolved; its slots are [`SuppliedInlineParticipant`] values. [`SuppliedLine::reorder_into`] returns a
+//! [`SuppliedVisualOrder`], failing with [`SuppliedLineError`], and the line's edge decisions are
+//! [`SuppliedLineEdges`] with [`InlineWhitespaceEdge`]. [`BidiLevelError`] reports a level above the highest
+//! resolved Unicode bidi level.
 
 /// A supplied resolved Unicode bidi level, after implicit resolution.
 ///

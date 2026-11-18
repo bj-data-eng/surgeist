@@ -1,4 +1,6 @@
-//! Optional AccessKit projection of a layout (feature `text-accessibility`).
+//! Optional AccessKit projection of an analyzed source or a placed layout (feature `text-accessibility`).
+//!
+//! [`Accessibility`] holds the accessibility bindings for one exact analyzed-source or placed projection.
 
 // Copyright 2025 the Parley Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT

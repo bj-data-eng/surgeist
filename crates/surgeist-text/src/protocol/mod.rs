@@ -627,7 +627,8 @@ pub enum PreparedAlternativeAvailability {
     AutoPhraseSuppressed,
 }
 
-/// An actual ordinary opportunity or an interval-bound conditional capability.
+/// An actual ordinary opportunity, an interval-bound conditional capability,
+/// or a measurement trial that is never placeable.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedTermination {
     Ordinary(PreparedOpportunity),

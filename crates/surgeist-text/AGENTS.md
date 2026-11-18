@@ -17,7 +17,7 @@ optional standalone paint adapter and consumes Text directly.
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
-| Public front door | [src/lib.rs](src/lib.rs) and its reexports |
+| Public front door | [src/lib.rs](src/lib.rs) and its public modules |
 | Source composition, ranges, validation, and edits | [src/source.rs](src/source.rs), [src/composer.rs](src/composer.rs), [src/range.rs](src/range.rs), [src/edit.rs](src/edit.rs) |
 | Exact UTF-16 storage and scalar provider mapping | [src/text.rs](src/text.rs), [src/projection.rs](src/projection.rs) |
 | Pre-font whitespace processing, correspondence and partial plaintext | [src/processing.rs](src/processing.rs), [owning tests](src/processing/tests.rs) |

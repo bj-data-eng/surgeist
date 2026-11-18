@@ -1,4 +1,10 @@
 //! Source-local whitespace processing and its plaintext view.
+//!
+//! [`process_source_whitespace`] executes the selected source-local whitespace mode over a source and
+//! [`DocumentSegmentBreaks`] classifies document delimiters; the result is a [`ProcessedSource`], read through
+//! [`ProcessedText`], [`ProcessedSpan`], [`ProcessedInlineBox`], [`ProcessedPosition`], [`ProcessedRange`] and
+//! the plaintext view [`PlaintextItems`] of [`PlaintextItem`]. [`DocumentSegmentBreakError`],
+//! [`ProcessingCapacityError`] and [`TextTransformError`] report refusals.
 
 use std::collections::BTreeSet;
 

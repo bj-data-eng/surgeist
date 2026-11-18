@@ -1,4 +1,12 @@
 //! Nonempty original-source observations over placed, selected grapheme units.
+//!
+//! [`SourceRangeFragments`] holds complete eagerly validated observations that borrow their placement;
+//! [`SourceRangeUnit`] is one selected grapheme unit, and its pieces are each a [`SourceRangeGeometry`]:
+//! either a line piece ([`SourceRangePiece`]) or a font piece ([`SourceRangeCellFontPiece`]) or tab piece
+//! ([`SourceRangeCellTabPiece`]) of a cell. The cell views [`SourceRangeCellUnit`],
+//! [`SourceRangeCellUnitKind`], [`SourceRangeCellLayoutFrame`] and [`SourceRangeCellMetricFrame`] describe a
+//! cell's inner units and their frames; [`SourceRangeFragmentError`] reports a request that cannot invent a
+//! placed unit or a font lender.
 
 use crate::protocol::{
     ProtocolError, ProtocolHandleKind,
