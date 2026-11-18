@@ -1,8 +1,13 @@
-//! Sheets, rules and rule graphs whose serialization and normalization are
-//! charged to a host's ledger scope.
+//! Sheets, rules, rule graphs and colours whose serialization, normalization
+//! and colour resolution are charged to a host's ledger scope.
 
 use crate::accounting::{
     CssAccount, CssAccountingError, CssChange, CssFront, CssHostScope, CssWork,
+};
+use crate::color::{
+    CssAuthoredColorOrdinaryLimits, CssAuthoredColorResult, CssColor, CssColorFactIdentity,
+    CssColorFacts, CssColorGrammarRequest, CssColorInput, CssColorOrdinaryLimits,
+    CssColorOrdinaryResult, CssColorResolveError,
 };
 use crate::normalize::normalization::NormalizationWork;
 use crate::normalize::{CssNormalizationError, CssNormalizationLimits, CssNormalizedSheet};
@@ -14,11 +19,15 @@ use crate::serialization::{
     CssSerializationError, CssSerializationLimits,
 };
 
-/// A sheet, rule or rule graph whose work is charged below a host's scope.
+/// A sheet, rule, rule graph, colour input or authored colour whose work is
+/// charged below a host's scope.
 ///
-/// `accounted` on [`CssSheet`], [`CssRule`] and [`CssRuleGraphInput`] makes
-/// one. Each method does exactly what the method of the same name on the
-/// value does, and returns its result inside `Ok`. The call runs inside one
+/// `accounted` on [`CssSheet`], [`CssRule`], [`CssRuleGraphInput`],
+/// [`CssColorInput`] and [`CssColor`] makes one. Each method does exactly what
+/// the plain front of the same name does (a method of the value, or for
+/// [`parse_used_color`](CssAccounted::parse_used_color) the function
+/// [`parse_used_color`](crate::color::parse_used_color)), and returns its
+/// result inside `Ok`. The call runs inside one
 /// phase of its front's scope, and when it returns it charges that scope once
 /// with what the call admitted against its limits. The number of ledger calls
 /// does not depend on the value.
@@ -35,6 +44,16 @@ use crate::serialization::{
 ///   [`CssWork::NormalizedDeclaration`](crate::accounting::CssWork::NormalizedDeclaration)
 ///   and [`CssWork::NormalizedContribution`](crate::accounting::CssWork::NormalizedContribution):
 ///   the rules, declarations and longhand contributions.
+/// - [`parse_used_color`](CssAccounted::parse_used_color) on a colour input
+///   charges the `css-color` scope with
+///   [`CssWork::ColorInputUnit`](crate::accounting::CssWork::ColorInputUnit),
+///   the length of the input, and
+///   [`CssWork::ColorAction`](crate::accounting::CssWork::ColorAction), the
+///   actions its driver admitted. [`resolve`](CssAccounted::resolve) on an
+///   authored colour charges only the actions: the colour is an already
+///   parsed value with no input of its own. When the host parsed it with the
+///   accounted parser, that parse charged its text to the `css-input` and
+///   `css-parse` scopes.
 ///
 /// A call that a limit refuses is charged the work admitted before the
 /// refusal and returns the refusal inside `Ok`.
@@ -83,6 +102,95 @@ impl CssSheet {
             value: self,
             account: CssAccount::host(host),
         }
+    }
+}
+
+impl<'source> CssColorInput<'source> {
+    /// This colour input, with its resolution charged below `host`.
+    #[must_use]
+    pub const fn accounted<'host>(self, host: &'host CssHostScope) -> CssAccounted<'host, Self> {
+        CssAccounted {
+            value: self,
+            account: CssAccount::host(host),
+        }
+    }
+}
+
+impl CssColor {
+    /// This authored colour, with its resolution charged below `host`.
+    #[must_use]
+    pub const fn accounted<'host>(&self, host: &'host CssHostScope) -> CssAccounted<'host, &Self> {
+        CssAccounted {
+            value: self,
+            account: CssAccount::host(host),
+        }
+    }
+}
+
+impl<'source> CssAccounted<'_, CssColorInput<'source>> {
+    /// [`parse_used_color`](crate::color::parse_used_color) over this input,
+    /// charged to the host.
+    ///
+    /// # Errors
+    ///
+    /// A [`CssAccountingError`] when the host's operation does not admit the
+    /// charge. The colour's own refusal is returned inside `Ok`, and is
+    /// charged the input and the actions admitted before it.
+    pub fn parse_used_color<'facts>(
+        &self,
+        request: CssColorGrammarRequest,
+        facts: &'facts CssColorFacts<'facts>,
+        expected: CssColorFactIdentity,
+        limits: CssColorOrdinaryLimits,
+    ) -> Result<
+        Result<CssColorOrdinaryResult<'source, 'facts>, CssColorResolveError>,
+        CssAccountingError,
+    > {
+        let input = self.value;
+        self.charged_to(
+            CssFront::Color,
+            || {
+                crate::color::ordinary::parse_used_color_counted(
+                    input, request, facts, expected, limits,
+                )
+            },
+            |actions| {
+                [
+                    CssChange::Work(CssWork::ColorInputUnit, amount(input.len())),
+                    CssChange::Work(CssWork::ColorAction, amount(actions)),
+                ]
+            },
+        )
+    }
+}
+
+impl<'authored> CssAccounted<'_, &'authored CssColor> {
+    /// [`CssColor::resolve`], charged to the host.
+    ///
+    /// # Errors
+    ///
+    /// A [`CssAccountingError`] when the host's operation does not admit the
+    /// charge. The colour's own refusal is returned inside `Ok`, and is
+    /// charged the actions admitted before it.
+    pub fn resolve<'facts>(
+        &self,
+        facts: &'facts CssColorFacts<'facts>,
+        expected: CssColorFactIdentity,
+        limits: CssAuthoredColorOrdinaryLimits,
+    ) -> Result<
+        Result<CssAuthoredColorResult<'authored, 'facts>, CssColorResolveError>,
+        CssAccountingError,
+    > {
+        let color = self.value;
+        self.charged_to(
+            CssFront::Color,
+            || {
+                crate::color::authored_resolution::ordinary::resolve_authored_color_counted(
+                    color, facts, expected, limits,
+                )
+            },
+            |actions| [CssChange::Work(CssWork::ColorAction, amount(actions))],
+        )
     }
 }
 
@@ -239,11 +347,11 @@ impl<T> CssAccounted<'_, T> {
 
     /// Runs `run` inside a phase of the scope of `front`, then charges that
     /// scope the changes of the work it admitted, whether it succeeded or not.
-    fn charged_to<R, E, W>(
+    fn charged_to<R, E, W, const N: usize>(
         &self,
         front: CssFront,
         run: impl FnOnce() -> (Result<R, E>, W),
-        changes: impl FnOnce(W) -> [CssChange; 3],
+        changes: impl FnOnce(W) -> [CssChange; N],
     ) -> Result<Result<R, E>, CssAccountingError> {
         let (result, work) = self.account.timed(front, run)?;
         self.account.charge(front, &changes(work))?;

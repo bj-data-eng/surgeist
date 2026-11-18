@@ -607,3 +607,356 @@ fn a_plain_normalization_after_an_accounted_one_charges_nothing() {
     let _ = sheet.normalize(CssNormalizationLimits::default());
     assert_eq!(normalized(&ledger), after);
 }
+
+mod colour {
+    //! What the accounted colour fronts charge. The independent figure for
+    //! actions is the smallest action limit under which the plain front
+    //! succeeds, the other limits unbounded; the input units are the length
+    //! of the input.
+
+    use super::*;
+    use crate::color::{
+        CssAuthoredColorOrdinaryLimits, CssColor, CssColorFactIdentity, CssColorFacts,
+        CssColorGrammarRequest, CssColorInput, CssColorOrdinaryLimits, CssColorOrdinaryResource,
+        CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
+    };
+    use crate::declaration::CssDeclarationList;
+    use crate::property::CssKnownPropertyValueRef;
+
+    const COLOURS: [&str; 5] = [
+        "red",
+        "rgb(10 20 30)",
+        "color(srgb 1 0.5 0)",
+        "lab(0 1e41 0)",
+        "bad",
+    ];
+
+    fn facts() -> CssColorFacts<'static> {
+        CssColorFacts::new(
+            CssColorFactIdentity::new(1, 1),
+            CssColorPropertyFacts::InitialProperties,
+            CssColorSchemeFact::Light,
+            &[],
+            &[],
+            &[],
+            CssDeviceColorFact::Unknown,
+        )
+    }
+
+    fn used_limits(actions: usize) -> CssColorOrdinaryLimits {
+        CssColorOrdinaryLimits {
+            input_units: usize::MAX,
+            algorithm_records: usize::MAX,
+            arithmetic_records: usize::MAX,
+            evaluation_records: usize::MAX,
+            actions,
+        }
+    }
+
+    fn authored_limits(actions: usize) -> CssAuthoredColorOrdinaryLimits {
+        CssAuthoredColorOrdinaryLimits {
+            algorithm_records: usize::MAX,
+            arithmetic_records: usize::MAX,
+            evaluation_records: usize::MAX,
+            path_steps: usize::MAX,
+            actions,
+        }
+    }
+
+    fn smallest(admitted: impl Fn(usize) -> bool) -> u64 {
+        let (mut low, mut high) = (0_usize, 1 << 24);
+        assert!(admitted(high));
+        while low < high {
+            let middle = low + (high - low) / 2;
+            if admitted(middle) {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+        u64::try_from(low).unwrap()
+    }
+
+    /// The colour input units and actions the root holds.
+    fn coloured(ledger: &CssLedger) -> [u64; 2] {
+        let usage = ledger.usage(ledger.root()).unwrap();
+        [
+            usage.work(CssWork::ColorInputUnit),
+            usage.work(CssWork::ColorAction),
+        ]
+    }
+
+    fn utf16(text: &str) -> Vec<u16> {
+        text.encode_utf16().collect()
+    }
+
+    fn inputs<'a>(text: &'a str, units: &'a [u16]) -> [CssColorInput<'a>; 2] {
+        [
+            CssColorInput::Utf8(text.as_bytes()),
+            CssColorInput::Utf16(units),
+        ]
+    }
+
+    #[test]
+    fn a_used_colour_charges_its_input_and_the_actions_it_took() {
+        let facts = facts();
+        for text in COLOURS {
+            let units = utf16(text);
+            for input in inputs(text, &units) {
+                let parse = |actions| {
+                    crate::color::parse_used_color(
+                        input,
+                        CssColorGrammarRequest::WholeColor,
+                        &facts,
+                        facts.identity(),
+                        used_limits(actions),
+                    )
+                };
+                let actions = smallest(|actions| parse(actions).is_ok());
+                let (ledger, host) = open_host();
+                let result = input
+                    .accounted(&host)
+                    .parse_used_color(
+                        CssColorGrammarRequest::WholeColor,
+                        &facts,
+                        facts.identity(),
+                        used_limits(usize::MAX),
+                    )
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    format!("{result:?}"),
+                    format!("{:?}", parse(usize::MAX).unwrap())
+                );
+                assert_eq!(
+                    coloured(&ledger),
+                    [u64::try_from(input.len()).unwrap(), actions],
+                    "{text:?} {input:?}"
+                );
+                assert!(actions > 0);
+            }
+        }
+    }
+
+    fn authored(text: &str) -> CssColor {
+        let report: CssParseReportOfList =
+            CssParser::default().parse_block_contents(format!("color: {text}"));
+        assert!(report.is_clean(), "{text}");
+        let Some(CssKnownPropertyValueRef::Color(color)) = report.syntax()[0]
+            .known()
+            .and_then(|known| known.property_value())
+        else {
+            panic!("{text}: a colour property value");
+        };
+        color.value().clone()
+    }
+
+    type CssParseReportOfList = crate::CssParseReport<CssDeclarationList>;
+
+    #[test]
+    fn an_authored_colour_charges_only_the_actions_it_took() {
+        let facts = facts();
+        for text in &COLOURS[..4] {
+            let color = authored(text);
+            let resolve =
+                |actions| color.resolve(&facts, facts.identity(), authored_limits(actions));
+            let actions = smallest(|actions| resolve(actions).is_ok());
+            let (ledger, host) = open_host();
+            let result = color
+                .accounted(&host)
+                .resolve(&facts, facts.identity(), authored_limits(usize::MAX))
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                format!("{result:?}"),
+                format!("{:?}", resolve(usize::MAX).unwrap())
+            );
+            assert_eq!(coloured(&ledger), [0, actions], "{text:?}");
+            assert!(actions > 0);
+        }
+    }
+
+    #[test]
+    fn a_refused_colour_is_returned_inside_ok_and_charged_what_was_admitted() {
+        let facts = facts();
+        let input = CssColorInput::Utf8(b"rgb(10 20 30)");
+        let parse = |limits| {
+            crate::color::parse_used_color(
+                input,
+                CssColorGrammarRequest::WholeColor,
+                &facts,
+                facts.identity(),
+                limits,
+            )
+        };
+        let needed =
+            usize::try_from(smallest(|actions| parse(used_limits(actions)).is_ok())).unwrap();
+        for short in [0, 1, needed / 2, needed - 1] {
+            let (ledger, host) = open_host();
+            let refused = input
+                .accounted(&host)
+                .parse_used_color(
+                    CssColorGrammarRequest::WholeColor,
+                    &facts,
+                    facts.identity(),
+                    used_limits(short),
+                )
+                .unwrap()
+                .unwrap_err();
+            assert_eq!(
+                refused.exhausted_limit(),
+                Some((CssColorOrdinaryResource::Actions, short, short + 1))
+            );
+            // Every action under the limit was admitted; the refused one is not counted.
+            assert_eq!(coloured(&ledger), [13, u64::try_from(short).unwrap()]);
+        }
+
+        // Refused for its length before any action.
+        let mut limits = used_limits(usize::MAX);
+        limits.input_units = 12;
+        let (ledger, host) = open_host();
+        let refused = input
+            .accounted(&host)
+            .parse_used_color(
+                CssColorGrammarRequest::WholeColor,
+                &facts,
+                facts.identity(),
+                limits,
+            )
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            refused.exhausted_limit(),
+            Some((CssColorOrdinaryResource::InputUnits, 12, 13))
+        );
+        assert_eq!(coloured(&ledger), [13, 0]);
+
+        // An authored colour refused one action short.
+        let color = authored("rgb(10 20 30)");
+        let resolve = |actions| color.resolve(&facts, facts.identity(), authored_limits(actions));
+        let needed = smallest(|actions| resolve(actions).is_ok());
+        let (ledger, host) = open_host();
+        let refused = color
+            .accounted(&host)
+            .resolve(
+                &facts,
+                facts.identity(),
+                authored_limits(usize::try_from(needed).unwrap() - 1),
+            )
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            refused.exhausted_limit().map(|(resource, ..)| resource),
+            Some(CssColorOrdinaryResource::Actions)
+        );
+        assert_eq!(coloured(&ledger), [0, needed - 1]);
+    }
+
+    #[test]
+    fn a_colour_call_makes_one_batch_and_one_phase_whatever_its_length() {
+        let facts = facts();
+        for text in ["red", "lab(0 1e2000000 0)"] {
+            let mode = ProfileMode::Summary { timing: false };
+            let (ledger, host) = host(Limits::unlimited(), mode);
+            CssColorInput::Utf8(text.as_bytes())
+                .accounted(&host)
+                .parse_used_color(
+                    CssColorGrammarRequest::WholeColor,
+                    &facts,
+                    facts.identity(),
+                    used_limits(usize::MAX),
+                )
+                .unwrap()
+                .unwrap();
+            for front in CssFront::ALL {
+                let scope = report(&ledger, host.scope(front));
+                let expected = if front == CssFront::Color {
+                    (1, 2, 1)
+                } else {
+                    (0, 0, 0)
+                };
+                assert_eq!(
+                    (scope.accepted_batches, scope.accepted_items, scope.phases),
+                    expected,
+                    "{front:?} for {text}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_host_cap_on_colour_actions_replaces_the_result() {
+        let facts = facts();
+        let input = CssColorInput::Utf8(b"red");
+        let needed = smallest(|actions| {
+            crate::color::parse_used_color(
+                input,
+                CssColorGrammarRequest::WholeColor,
+                &facts,
+                facts.identity(),
+                used_limits(actions),
+            )
+            .is_ok()
+        });
+        let caps = CssLimits::new(
+            CssWorkTable::new(CssWorkFields {
+                ColorAction: needed - 1,
+                ..CssWorkFields::splat(u64::MAX)
+            }),
+            CssResourceTable::splat(u64::MAX),
+        );
+        let (ledger, host) = host(caps, ProfileMode::Off);
+        let stop = input
+            .accounted(&host)
+            .parse_used_color(
+                CssColorGrammarRequest::WholeColor,
+                &facts,
+                facts.identity(),
+                used_limits(usize::MAX),
+            )
+            .unwrap_err();
+        let refusal = stop.host_refusal().unwrap();
+        assert_eq!(
+            refusal.change(),
+            CssChange::Work(CssWork::ColorAction, needed)
+        );
+        assert_eq!(
+            (refusal.limit(), refusal.total(), refusal.amount()),
+            (needed - 1, 0, needed)
+        );
+        assert_eq!(coloured(&ledger), [0, 0]);
+    }
+
+    #[test]
+    fn a_host_cap_on_colour_input_units_admits_neither_change() {
+        let facts = facts();
+        let input = CssColorInput::Utf8(b"red");
+        let caps = CssLimits::new(
+            CssWorkTable::new(CssWorkFields {
+                ColorInputUnit: 2,
+                ..CssWorkFields::splat(u64::MAX)
+            }),
+            CssResourceTable::splat(u64::MAX),
+        );
+        let (ledger, host) = host(caps, ProfileMode::Off);
+        let stop = input
+            .accounted(&host)
+            .parse_used_color(
+                CssColorGrammarRequest::WholeColor,
+                &facts,
+                facts.identity(),
+                used_limits(usize::MAX),
+            )
+            .unwrap_err();
+        let refusal = stop.host_refusal().unwrap();
+        assert_eq!(
+            refusal.change(),
+            CssChange::Work(CssWork::ColorInputUnit, 3)
+        );
+        assert_eq!(
+            (refusal.limit(), refusal.total(), refusal.amount()),
+            (2, 0, 3)
+        );
+        assert_eq!(coloured(&ledger), [0, 0]);
+    }
+}

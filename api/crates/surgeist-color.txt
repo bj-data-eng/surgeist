@@ -167,17 +167,6 @@ pub surgeist_color::SerializationAction::ReplaceDigit(surgeist_color::WriteDigit
 impl<'owner> surgeist_color::SerializationAction<'owner>
 pub fn surgeist_color::SerializationAction<'owner>::into_serialization(self) -> surgeist_color::Serialization<'owner>
 pub const fn surgeist_color::SerializationAction<'owner>::layout(&self) -> surgeist_color::ActionLayout
-#[non_exhaustive] pub enum surgeist_color::SerializationError
-pub surgeist_color::SerializationError::Allocation
-pub surgeist_color::SerializationError::Allocation::resource: surgeist_color::SerializationResource
-pub surgeist_color::SerializationError::CountOverflow
-pub surgeist_color::SerializationError::Limit
-pub surgeist_color::SerializationError::Limit::allowed: usize
-pub surgeist_color::SerializationError::Limit::required: usize
-pub surgeist_color::SerializationError::Limit::resource: surgeist_color::SerializationResource
-impl core::error::Error for surgeist_color::SerializationError
-impl core::fmt::Display for surgeist_color::SerializationError
-pub fn surgeist_color::SerializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_color::SerializationFamily
 pub surgeist_color::SerializationFamily::ColorFunction
 pub surgeist_color::SerializationFamily::LegacySrgb
@@ -185,10 +174,6 @@ pub surgeist_color::SerializationFamily::Natural
 pub enum surgeist_color::SerializationRequest
 pub surgeist_color::SerializationRequest::Css
 pub surgeist_color::SerializationRequest::HtmlCompatible
-pub enum surgeist_color::SerializationResource
-pub surgeist_color::SerializationResource::Actions
-pub surgeist_color::SerializationResource::Digits
-pub surgeist_color::SerializationResource::OutputBytes
 pub enum surgeist_color::SerializationStep<'owner>
 pub surgeist_color::SerializationStep::Complete(surgeist_color::SerializationReceipt)
 pub surgeist_color::SerializationStep::Pending(surgeist_color::SerializationAction<'owner>)
@@ -305,10 +290,6 @@ pub fn surgeist_color::SerializationCompute<'owner>::compute(self) -> surgeist_c
 pub const fn surgeist_color::SerializationCompute<'owner>::kernel(&self) -> surgeist_color::Kernel
 impl core::fmt::Debug for surgeist_color::SerializationCompute<'_>
 pub fn surgeist_color::SerializationCompute<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_color::SerializationLimits
-pub surgeist_color::SerializationLimits::actions: usize
-pub surgeist_color::SerializationLimits::digits: usize
-pub surgeist_color::SerializationLimits::output_bytes: usize
 pub struct surgeist_color::SerializationReceipt
 impl surgeist_color::SerializationReceipt
 pub const fn surgeist_color::SerializationReceipt::length(&self) -> usize
@@ -335,4 +316,3 @@ pub fn surgeist_color::convert_srgb_to_hsl(rgb: [surgeist_color::Finite; 3]) -> 
 pub fn surgeist_color::convert_srgb_to_hwb(rgb: [surgeist_color::Finite; 3]) -> surgeist_color::HwbCoordinates
 pub fn surgeist_color::naively_convert_cmyk_to_srgba(cmyka: [surgeist_color::Finite; 5]) -> [surgeist_color::Finite; 4]
 pub fn surgeist_color::naively_convert_srgba_to_cmyk(rgba: [surgeist_color::Finite; 4]) -> [surgeist_color::Finite; 5]
-pub fn surgeist_color::serialize(value: surgeist_color::Color, request: surgeist_color::SerializationRequest, limits: surgeist_color::SerializationLimits) -> core::result::Result<alloc::string::String, surgeist_color::SerializationError>

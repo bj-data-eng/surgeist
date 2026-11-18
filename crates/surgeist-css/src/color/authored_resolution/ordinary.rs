@@ -155,6 +155,32 @@ pub(crate) fn resolve_authored_color<'authored, 'facts>(
     expected: CssColorFactIdentity,
     limits: CssAuthoredColorOrdinaryLimits,
 ) -> Result<CssAuthoredColorResult<'authored, 'facts>, CssColorResolveError> {
+    resolve_authored_color_counted(root, facts, expected, limits).0
+}
+
+/// [`resolve_authored_color`] with the actions its driver admitted, on every
+/// path. A refused action is not counted.
+pub(crate) fn resolve_authored_color_counted<'authored, 'facts>(
+    root: &'authored CssColor,
+    facts: &'facts CssColorFacts<'facts>,
+    expected: CssColorFactIdentity,
+    limits: CssAuthoredColorOrdinaryLimits,
+) -> (
+    Result<CssAuthoredColorResult<'authored, 'facts>, CssColorResolveError>,
+    usize,
+) {
+    let mut actions = 0usize;
+    let result = resolve_authored_color_with(root, facts, expected, limits, &mut actions);
+    (result, actions)
+}
+
+fn resolve_authored_color_with<'authored, 'facts>(
+    root: &'authored CssColor,
+    facts: &'facts CssColorFacts<'facts>,
+    expected: CssColorFactIdentity,
+    limits: CssAuthoredColorOrdinaryLimits,
+    actions: &mut usize,
+) -> Result<CssAuthoredColorResult<'authored, 'facts>, CssColorResolveError> {
     use CssAuthoredColorActionDescription as A;
     let mut owner = CssColorOperationOwner::new();
     let mut path = CssColorPathBuffer::new();
@@ -163,7 +189,6 @@ pub(crate) fn resolve_authored_color<'authored, 'facts>(
         CssAuthoredColorOperation::resolve_authored(&mut owner, root, facts, expected, &mut path)
             .map_err(ordinary)?,
     );
-    let mut actions = 0usize;
     let execution: Result<(), Failure> = (|| {
         loop {
             let op = operation
@@ -174,7 +199,7 @@ pub(crate) fn resolve_authored_color<'authored, 'facts>(
             }
             let required = actions.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
             admit(CssColorOrdinaryResource::Actions, required, limits.actions)?;
-            actions = required;
+            *actions = required;
             let mut action = op.next_action();
             let _ = action.layout()?;
             match action.description() {

@@ -32,16 +32,7 @@ fn used_css(input: &str) -> String {
     let CssColorOrdinaryOutcome::Used(value) = result.outcome() else {
         panic!("used color for {input}")
     };
-    surgeist_color::serialize(
-        value,
-        surgeist_color::SerializationRequest::Css,
-        surgeist_color::SerializationLimits {
-            actions: 4_000_000,
-            digits: 4096,
-            output_bytes: 4096,
-        },
-    )
-    .unwrap()
+    crate::css::support::color_text::color_text(value, surgeist_color::SerializationRequest::Css)
 }
 
 #[test]

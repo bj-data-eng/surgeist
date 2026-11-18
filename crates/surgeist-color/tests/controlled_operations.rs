@@ -3,9 +3,8 @@ use surgeist_color::format::{FiniteFormatter, FormatAction, FormatStep, Rounding
 use surgeist_color::{
     ActionLayout, Color, ColorSpace as Space, Computation, DigitSlot, Finite, InterpolationMethod,
     Kernel, NumericalRequest, OperationOwner, PredefinedColorSpace as Predefined, Serialization,
-    SerializationAction as Action, SerializationError, SerializationFamily, SerializationLimits,
-    SerializationRequest, SerializationResource, SerializationStep, Transformation, UnitInterval,
-    serialize,
+    SerializationAction as Action, SerializationFamily, SerializationRequest, SerializationStep,
+    Transformation, UnitInterval,
 };
 
 fn color(space: Space, channels: [Option<f64>; 3], alpha: Option<f64>) -> Color {
@@ -16,15 +15,45 @@ fn color(space: Space, channels: [Option<f64>; 3], alpha: Option<f64>) -> Color 
     )
 }
 
-fn limits() -> SerializationLimits {
-    SerializationLimits {
-        actions: 100_000,
-        digits: 2048,
-        output_bytes: 4096,
-    }
-}
+/// The text of `value`, serializing it through the controlled continuation
+/// with unbounded caller storage.
 fn spelling(value: Color, request: SerializationRequest) -> String {
-    serialize(value, request, limits()).unwrap()
+    let mut owner = OperationOwner::new();
+    let mut serialization = Serialization::new(&mut owner, value, request);
+    let mut digits: Vec<DigitSlot<'_>> = Vec::new();
+    let mut output = Vec::new();
+    loop {
+        let action = match serialization.step() {
+            SerializationStep::Complete(receipt) => {
+                assert_eq!(receipt.length(), output.len());
+                break;
+            }
+            SerializationStep::Pending(action) => action,
+        };
+        serialization = match action {
+            Action::Compute(compute) => compute.compute(),
+            Action::ReadDigit(read) => {
+                let slot = &digits[read.index()];
+                read.read(slot)
+            }
+            Action::AppendDigit(write) => {
+                let (record, receipt) = write.record();
+                digits.push(record);
+                receipt.stored(&digits[digits.len() - 1])
+            }
+            Action::ReplaceDigit(write) => {
+                let index = write.index();
+                let (record, receipt) = write.record();
+                digits[index] = record;
+                receipt.stored(&digits[index])
+            }
+            Action::Emit(emit) => {
+                output.push(emit.unit());
+                emit.emitted()
+            }
+        };
+    }
+    String::from_utf8(output).unwrap()
 }
 fn pending(serialization: Serialization<'_>) -> Action<'_> {
     match serialization.step() {
@@ -422,45 +451,6 @@ fn missing_and_extended_native_coordinates_have_selected_natural_forms() {
     }
 }
 
-#[test]
-fn ordinary_native_output_has_exact_one_short_limit() {
-    let value = Color::from_srgba8([255, 0, 0, 255]);
-    let mut allowance = limits();
-    allowance.output_bytes = 6;
-    assert_eq!(
-        serialize(value, SerializationRequest::HtmlCompatible, allowance),
-        Err(SerializationError::Limit {
-            resource: SerializationResource::OutputBytes,
-            required: 7,
-            allowed: 6
-        })
-    );
-    allowance.output_bytes = 7;
-    assert_eq!(
-        serialize(value, SerializationRequest::HtmlCompatible, allowance).unwrap(),
-        "#ff0000"
-    );
-    allowance.actions = 0;
-    assert_eq!(
-        serialize(value, SerializationRequest::HtmlCompatible, allowance),
-        Err(SerializationError::Limit {
-            resource: SerializationResource::Actions,
-            required: 1,
-            allowed: 0
-        })
-    );
-    allowance = limits();
-    allowance.digits = 0;
-    assert_eq!(
-        serialize(value, SerializationRequest::Css, allowance),
-        Err(SerializationError::Limit {
-            resource: SerializationResource::Digits,
-            required: 1,
-            allowed: 0
-        })
-    );
-}
-
 /// Services a finite formatter to completion, recording the output and
 /// whether the planned length was known before the first emission.
 fn format(
@@ -649,7 +639,7 @@ fn overflowing_hsl_serializes_its_clipped_closest_finite_channels() {
     let after_plan = plan.compute();
     assert!(matches!(pending(after_plan), Action::Emit(emit) if emit.unit() == b'r'));
     assert_eq!(
-        serialize(value, SerializationRequest::Css, limits()).unwrap(),
+        spelling(value, SerializationRequest::Css),
         "rgb(0, 255, 255)"
     );
 }

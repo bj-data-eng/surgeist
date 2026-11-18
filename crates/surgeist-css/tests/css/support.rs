@@ -10,6 +10,7 @@ pub mod authored_syntax;
 pub mod color_and_selector_fixtures;
 pub mod color_components;
 pub mod color_property;
+pub mod color_text;
 pub mod csstree;
 pub mod descriptor_phases;
 pub mod digest;

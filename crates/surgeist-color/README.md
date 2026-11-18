@@ -8,18 +8,11 @@ publication policy.
 
 ## Native use
 
-```rust
-use surgeist_color::{Color, SerializationLimits, SerializationRequest, serialize};
-
-let red = Color::from_srgba8([255, 0, 0, 255]);
-let text = serialize(red, SerializationRequest::HtmlCompatible,
-    SerializationLimits { actions: 100_000, digits: 2048, output_bytes: 4096 })?;
-assert_eq!(text, "#ff0000");
-# Ok::<(), surgeist_color::SerializationError>(())
-```
-
-The [native example](examples/native.rs) also constructs extended coordinates,
-converts, interpolates and transforms them. It imports only this crate:
+A caller serializes a `Color` by servicing the actions of a `Serialization`
+continuation, which leaves the digit bank and the output to the caller, so the
+caller bounds them as it needs. The [native example](examples/native.rs) does
+that, and also constructs extended coordinates, converts, interpolates and
+transforms them. It imports only this crate:
 
 ```sh
 cargo run --offline --locked -j 1 -p surgeist-color --example native
@@ -78,8 +71,6 @@ operation, index and digit, so a substituted record with the same identity is
 accepted, and reading back a different stored record yields wrong output that
 the fixed registers cannot detect. Bank disposal remains the caller's
 responsibility. The consumer owns its output buffer and atomic publication.
-Ordinary `serialize` services this same continuation with explicit action,
-digit and output limits and fallible allocation.
 
 ## Named colors
 
