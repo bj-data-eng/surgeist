@@ -38,17 +38,21 @@ pub enum SourceRangeFragmentError {
         local: Range,
         captured: Range,
     },
-    /// The requested range lies outside the source the placement covers.
+    /// The aggregate range the request maps to lies outside the source the
+    /// placement covers.
     OutsidePlacement { aggregate: Range },
-    /// The placement has no original mapping for the range, or part of it.
+    /// The placement has no original mapping for the aggregate range, or for
+    /// the part of it that the payload names.
     MissingOriginalMapping { aggregate: Range },
-    /// The range has more than one original mapping.
+    /// The original mappings around the aggregate range overlap; the payload is
+    /// the whole mapping piece, of which only the overlap is doubly mapped.
     AmbiguousOriginalMapping { aggregate: Range },
-    /// The unit of the line has no geometry for the range.
+    /// The grapheme group of the line has no geometry for the range.
     MissingUnitGeometry { line: usize, unit: usize },
-    /// The unit of the line cannot be partitioned for the range.
+    /// The grapheme group of the line cannot be partitioned for the range.
     UnsupportedPartition { line: usize, unit: usize },
-    /// The unit of the line has no retained font metrics.
+    /// No font metrics are available for the grapheme group of the line: its
+    /// font run is missing or it yields no metric piece.
     MissingFontMetrics { line: usize, unit: usize },
     /// The actual retained font/native-layout reference for this inner EGC is missing.
     MissingCellReference {
@@ -85,31 +89,34 @@ impl fmt::Display for SourceRangeFragmentError {
             ),
             Self::OutsidePlacement { aggregate } => write!(
                 f,
-                "source range {}..{} lies outside the source covered by the placement",
+                "aggregate range {}..{} lies outside the source the placement covers",
                 aggregate.start, aggregate.end
             ),
             Self::MissingOriginalMapping { aggregate } => write!(
                 f,
-                "the placement has no original mapping for source range {}..{}",
+                "the placement has no original mapping for aggregate range {}..{}",
                 aggregate.start, aggregate.end
             ),
             Self::AmbiguousOriginalMapping { aggregate } => write!(
                 f,
-                "source range {}..{} has more than one original mapping",
+                "the original mappings of aggregate range {}..{} overlap one another",
                 aggregate.start, aggregate.end
             ),
             Self::MissingUnitGeometry { line, unit } => {
                 write!(
                     f,
-                    "unit {unit} of line {line} has no geometry for the source range"
+                    "grapheme group {unit} of line {line} has no geometry for the requested range"
                 )
             }
             Self::UnsupportedPartition { line, unit } => write!(
                 f,
-                "unit {unit} of line {line} cannot be partitioned for the source range"
+                "grapheme group {unit} of line {line} cannot be partitioned for the requested range"
             ),
             Self::MissingFontMetrics { line, unit } => {
-                write!(f, "unit {unit} of line {line} has no retained font metrics")
+                write!(
+                    f,
+                    "no font metrics are available for grapheme group {unit} of line {line}"
+                )
             }
             Self::MissingCellReference { line, cell, unit } => write!(
                 f,

@@ -116,12 +116,19 @@ pub enum ScopeAlignmentError {
     Overflow { kind: ScopeAlignmentLimitKind },
     /// Fallible feature-payload reservation was refused.
     Allocation { kind: ScopeAlignmentLimitKind },
-    /// The requested operation has no authentic contextual capture.
+    /// A contextual capture, a parent scope or an active scope-alignment
+    /// custody that the operation requires is missing or unavailable. Text
+    /// raises it for a preparation without a capture; Layout also raises it
+    /// when a scope has no parent and when a custody is not active or is
+    /// already on loan.
     MissingCapture,
-    /// A supplied captured handle belongs to another immutable capture.
+    /// A supplied scope, line or product belongs to a different immutable
+    /// capture or preparation.
     ForeignCapture,
-    /// A supplied scope or computed cause does not belong to the required
-    /// actual content domain.
+    /// A supplied scope, computed cause or scope tree does not fit the content
+    /// domain the operation requires: it belongs to another domain, is not an
+    /// inline scope or the domain root where one is required, or its tree does
+    /// not resolve.
     WrongDomain,
     /// An active scope or required inline ancestor lacks its early formatting
     /// classification; absent evidence cannot stand in for Initial alignment.
@@ -130,11 +137,14 @@ pub enum ScopeAlignmentError {
     MissingStyle { scope: usize },
     /// An actual demanded scope lacks its supplied script/axis/baseline facts.
     MissingFontReference { scope: usize },
-    /// This preparation did not retain demanded metrics for the actual scope.
+    /// The scope lacks metrics that the operation demands: they were not
+    /// retained, or a required own line height is absent.
     MissingMetrics { scope: usize },
-    /// The supplied reference cannot be used by the actual operation's frame.
+    /// The scope has a font reference, orientation or baseline that the actual
+    /// operation's frame cannot use.
     UnsupportedReference { scope: usize },
-    /// Actual content custody cannot represent the requested independent frame.
+    /// Actual content custody cannot represent the requested frame. `scope` is
+    /// the scope the operation names, or 0 where no scope applies.
     UnrepresentedOwnership { scope: usize },
     /// An independently demanded scope boundary divides an indivisible unit.
     UnpartitionableUnit { scope: usize },
@@ -142,11 +152,15 @@ pub enum ScopeAlignmentError {
     ForeignSelectedScope,
     /// One actual selected scope received more than one allocation.
     DuplicateAllocation { scope: usize },
-    /// A demanded selected scope has no allocation.
+    /// No allocation was supplied for a demanded selected scope, or the limits
+    /// that allocation is compared against are absent.
     MissingAllocation { scope: usize },
     /// Jointly owned native output was assigned inconsistent composed frames.
     IncompatibleFrames { first: usize, second: usize },
-    /// Late alignment disagrees with the captured early formatting class.
+    /// What was supplied for the scope disagrees with its captured formatting
+    /// or owner: a late alignment differs from the captured early class, a
+    /// supplied alignment differs from the retained row, or a declared scope
+    /// differs from the capture's owner.
     BoundaryMismatch { scope: usize },
 }
 
@@ -157,19 +171,26 @@ impl std::fmt::Display for ScopeAlignmentError {
                 "scope alignment needs explicit resource limits, but none were supplied",
             ),
             Self::Limit {
-                required, limit, ..
+                kind,
+                required,
+                limit,
             } => write!(
                 f,
-                "a scope-alignment resource limit of {limit} cannot admit the required {required}"
+                "the scope-alignment limit on {} ({limit}) cannot admit the required {required}",
+                limit_kind_label(*kind)
             ),
             Self::Overflow { .. } => {
                 f.write_str("scope-alignment count or byte arithmetic overflowed or underflowed")
             }
             Self::Allocation { .. } => f.write_str("reserving scope-alignment storage was refused"),
-            Self::MissingCapture => f.write_str("the operation has no contextual capture"),
-            Self::ForeignCapture => f.write_str("a supplied handle belongs to a different capture"),
+            Self::MissingCapture => f.write_str(
+                "a contextual capture, parent scope or scope-alignment custody that the operation requires is missing or unavailable",
+            ),
+            Self::ForeignCapture => f.write_str(
+                "a supplied scope, line or product belongs to a different capture or preparation",
+            ),
             Self::WrongDomain => f.write_str(
-                "a scope or computed cause belongs to a different content domain than the operation's",
+                "a scope, computed cause or scope tree does not fit the content domain the operation requires",
             ),
             Self::MissingBoundary { scope } => write!(
                 f,
@@ -182,17 +203,16 @@ impl std::fmt::Display for ScopeAlignmentError {
                 f,
                 "scope {scope} lacks its supplied script, axis and baseline facts"
             ),
-            Self::MissingMetrics { scope } => write!(
-                f,
-                "this preparation did not retain the metrics demanded for scope {scope}"
-            ),
+            Self::MissingMetrics { scope } => {
+                write!(f, "scope {scope} lacks the metrics the operation demands")
+            }
             Self::UnsupportedReference { scope } => write!(
                 f,
-                "the supplied font reference for scope {scope} cannot be used by the operation's frame"
+                "scope {scope} has a font reference, orientation or baseline that the operation's frame cannot use"
             ),
             Self::UnrepresentedOwnership { scope } => write!(
                 f,
-                "content custody cannot represent the frame requested for scope {scope}"
+                "content custody cannot represent the requested frame (scope {scope}; 0 when no scope applies)"
             ),
             Self::UnpartitionableUnit { scope } => write!(
                 f,
@@ -203,16 +223,30 @@ impl std::fmt::Display for ScopeAlignmentError {
             Self::DuplicateAllocation { scope } => {
                 write!(f, "scope {scope} received more than one allocation")
             }
-            Self::MissingAllocation { scope } => write!(f, "scope {scope} has no allocation"),
+            Self::MissingAllocation { scope } => write!(
+                f,
+                "no allocation or allocation limits were supplied for scope {scope}"
+            ),
             Self::IncompatibleFrames { first, second } => write!(
                 f,
                 "scopes {first} and {second} jointly own output but were assigned different frames"
             ),
             Self::BoundaryMismatch { scope } => write!(
                 f,
-                "late alignment disagrees with the captured early classification of scope {scope}"
+                "what was supplied for scope {scope} disagrees with its captured formatting or owner"
             ),
         }
+    }
+}
+
+/// The resource a limit message names. The vocabulary type has no public
+/// `Display`; this match has no fallback arm.
+const fn limit_kind_label(kind: ScopeAlignmentLimitKind) -> &'static str {
+    match kind {
+        ScopeAlignmentLimitKind::Records => "records",
+        ScopeAlignmentLimitKind::FontQueries => "font queries",
+        ScopeAlignmentLimitKind::StructuralWork => "structural work",
+        ScopeAlignmentLimitKind::PayloadBytes => "payload bytes",
     }
 }
 

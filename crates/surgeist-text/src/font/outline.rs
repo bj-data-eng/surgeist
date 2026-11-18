@@ -65,7 +65,7 @@ impl fmt::Display for FontOutlineError {
             ),
             Self::GlyphRange { count } => write!(
                 f,
-                "the requested glyph is outside the face's {count} glyphs"
+                "the requested glyph is outside the face's glyph count of {count}"
             ),
             Self::UnavailableOutline => {
                 f.write_str("the face has no available outline representation")

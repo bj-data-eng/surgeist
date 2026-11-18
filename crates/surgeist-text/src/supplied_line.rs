@@ -174,7 +174,7 @@ impl core::fmt::Display for SuppliedLineError {
         match self {
             Self::OrderBufferLength { expected, actual } => write!(
                 f,
-                "the visual-order buffer holds {actual} slots but the line has {expected} participants"
+                "the visual-order buffer length is {actual} but the line's participant count is {expected}"
             ),
         }
     }

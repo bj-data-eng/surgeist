@@ -600,7 +600,7 @@ impl fmt::Display for TextTransformError {
             ),
             Self::InvalidTextNodeRange { range, text_len } => write!(
                 f,
-                "text-node range {}..{} is reversed or extends beyond the node's {text_len} code units",
+                "text-node range {}..{} is reversed or extends beyond the node's UTF-16 length {text_len}",
                 range.start, range.end
             ),
             Self::TextNodeMismatch { origin } => write!(
@@ -919,7 +919,7 @@ impl fmt::Display for FontMetricTableError {
             }
             Self::LongMetricCount { count, glyph_count } => write!(
                 f,
-                "long metric count {count} must be at least 1 and at most the face's {glyph_count} glyphs"
+                "long metric count {count} must be at least 1 and at most the glyph count {glyph_count}"
             ),
             Self::Duplicate => f.write_str("more than one directory entry claims the table"),
             Self::Inaccessible => f.write_str("the table's recorded range cannot be read"),
@@ -972,7 +972,7 @@ impl fmt::Display for FontMetricTableError {
                 regions,
             } => write!(
                 f,
-                "the data subtable at offset {offset} declares {words} wide deltas but only {regions} regions"
+                "the data subtable at offset {offset} declares a wide-delta count of {words} but a region count of only {regions}"
             ),
             Self::VariationRow {
                 offset,
@@ -981,7 +981,7 @@ impl fmt::Display for FontMetricTableError {
                 actual,
             } => write!(
                 f,
-                "row {inner} of the data subtable at offset {offset} yields {actual} deltas where {expected} are declared"
+                "row {inner} of the data subtable at offset {offset} yields a delta count of {actual} where {expected} is declared"
             ),
             Self::VariationScalar { region, .. } => write!(
                 f,
@@ -995,11 +995,11 @@ impl fmt::Display for FontMetricTableError {
             }
             Self::BaselineValueCount { expected, actual } => write!(
                 f,
-                "the selected script has {actual} coordinates for {expected} baseline tags"
+                "the selected script's coordinate count {actual} differs from its baseline tag count {expected}"
             ),
             Self::BaselineDefaultIndex { index, count } => write!(
                 f,
-                "default baseline index {index} is outside the {count} coordinates"
+                "default baseline index {index} is outside the coordinate count {count}"
             ),
             Self::BaselineCoordinateFormat { format } => {
                 write!(f, "baseline coordinate format {format} is not 1, 2 or 3")
@@ -1023,7 +1023,7 @@ impl fmt::Display for FontMetricTableError {
                 count,
             } => write!(
                 f,
-                "point {point} of glyph {glyph} is outside its {count} stored points"
+                "point {point} of glyph {glyph} is outside its stored point count {count}"
             ),
             Self::BaselineScriptUnavailable => {
                 f.write_str("the run's script has no canonical four-letter Unicode short name")
@@ -1197,22 +1197,26 @@ pub enum TextNumericPhase {
 /// Category which a geometry value failed to preserve.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextNumericError {
-    /// The value, or the result of arithmetic on it, is not finite.
+    /// The value, or the result of converting or combining it, is not finite;
+    /// this includes a finite value whose narrower representation overflows.
     NonFinite,
     /// A positive value did not stay positive: the result is zero or negative.
     PositiveLost,
     /// A nonzero value was lost: it became zero or no longer changed its result.
     NonZeroLost,
     /// The value is outside the domain the operation admits: negative where a
-    /// nonnegative value is required, too large for its representation, or
-    /// inconsistent with its recorded counterpart.
+    /// nonnegative value is required, zero or negative where a positive one is
+    /// required, too large for its representation, or inconsistent with its
+    /// recorded counterpart.
     OutOfRange,
 }
 
 impl fmt::Display for TextNumericError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::NonFinite => "a geometry value is not finite",
+            Self::NonFinite => {
+                "a geometry value, or the result of converting or combining it, is not finite"
+            }
             Self::PositiveLost => "a positive geometry value did not stay positive",
             Self::NonZeroLost => {
                 "a nonzero geometry value was lost: it became zero or no longer changed its result"

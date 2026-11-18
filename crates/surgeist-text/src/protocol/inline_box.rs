@@ -96,14 +96,15 @@ impl InlineBoxEdgeContext {
 /// A source/parent declaration or selected incidence that cannot be represented.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InlineBoxEdgeError {
-    /// The operation, paragraph or control has no contextual capture.
+    /// The prepared paragraph, or a control, has no contextual capture.
     MissingCapture,
     /// A handle belongs to a different contextual capture.
     ForeignCapture,
     /// The handles belong to different content domains, or to a domain other
     /// than the prepared paragraph's.
     WrongDomain,
-    /// The declared box-edge owner is not a usable inline box.
+    /// The declared box-edge owner is not a usable inline box, or the control
+    /// is not one of its endpoints.
     InvalidOwner,
     /// The endpoints are not a valid, properly nested pair of boundary controls.
     InvalidPair,
@@ -119,12 +120,12 @@ pub enum InlineBoxEdgeError {
 impl core::fmt::Display for InlineBoxEdgeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
-            Self::MissingCapture => "the box-edge operation has no contextual capture",
+            Self::MissingCapture => "the prepared paragraph or a control has no contextual capture",
             Self::ForeignCapture => "the box-edge handles belong to a different contextual capture",
             Self::WrongDomain => {
                 "the box-edge handles belong to different content domains or to a domain other than the prepared paragraph's"
             }
-            Self::InvalidOwner => "the declared box-edge owner is not a usable inline box",
+            Self::InvalidOwner => "the declared box-edge owner is not a usable inline box, or the control is not one of its endpoints",
             Self::InvalidPair => {
                 "the box-edge endpoints are not a valid, properly nested pair of boundary controls"
             }

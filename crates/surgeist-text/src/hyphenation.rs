@@ -94,7 +94,9 @@ pub struct NativeHyphenationConvention {
 /// Invalid input, missing resource, or unsupported indication composition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HyphenationError {
-    /// The resource, or a cut it reports, does not map onto the retained word atoms.
+    /// The resource, or a cut it reports, cannot be mapped onto the retained text:
+    /// the query is inconsistent with the cut, or a cut's atoms have no origin
+    /// intersection or preceding atoms.
     InvalidResourceMapping,
     /// A resource query length or offset is not representable.
     ResourceLengthOverflow,
@@ -126,7 +128,7 @@ impl std::fmt::Display for HyphenationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::InvalidResourceMapping => {
-                "the hyphenation resource or its cuts do not map onto the retained word atoms"
+                "the hyphenation resource or a cut it reports cannot be mapped onto the retained text"
             }
             Self::ResourceLengthOverflow => {
                 "a hyphenation resource length or offset is not representable"

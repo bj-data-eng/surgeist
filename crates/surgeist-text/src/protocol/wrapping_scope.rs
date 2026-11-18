@@ -49,7 +49,8 @@ pub enum WrappingScopeQueryError {
     NonInlineScope,
     /// The scope belongs to another lexical domain.
     WrongDomain,
-    /// The executed correspondence does not represent this requested incidence.
+    /// The executed correspondence does not represent this requested
+    /// incidence, of a scope or of a control.
     UnrepresentedIncidence,
 }
 
@@ -63,7 +64,7 @@ impl core::fmt::Display for WrappingScopeQueryError {
                 "the scope belongs to a different content domain than the prepared paragraph"
             }
             Self::UnrepresentedIncidence => {
-                "the prepared paragraph does not represent the requested scope incidence"
+                "the prepared paragraph does not represent the requested incidence"
             }
         })
     }

@@ -1055,12 +1055,16 @@ pub enum ProtocolContextField {
 /// operation, and `source()` returns the reason.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
-    /// The request does not cover its exact issued semantic window, or a level
-    /// captured for the window cannot be represented.
+    /// The semantic window cannot be observed for this request and
+    /// preparation: the request does not cover its issued window, or a fact of
+    /// the preparation or capture is unusable (an alternative's source segment,
+    /// a mandatory occurrence with alternatives, a level that cannot be
+    /// represented).
     InvalidSemanticWindow,
     /// The atomic occurrence's kind differs from the kind issued for the window.
     InvalidSemanticAtomic { occurrence: usize },
-    /// An inline-box fragment request is invalid for the wrapped reason.
+    /// An inline-box fragmentation, or the components supplied for one, is
+    /// invalid for the wrapped reason.
     InlineBoxFragmentation(InlineBoxFragmentationError),
     /// An inline-box edge operation is invalid for the wrapped reason.
     InlineBoxEdge(InlineBoxEdgeError),
@@ -1070,14 +1074,15 @@ pub enum ProtocolError {
     /// Two source segments that must agree differ. The roles of `expected` and
     /// `actual` depend on the operation that compared them.
     MismatchedSourceSegment { expected: usize, actual: usize },
-    /// A wrapping scope query is invalid for the wrapped reason.
+    /// A wrapping scope or incidence query is invalid for the wrapped reason.
     WrappingScopeQuery { reason: WrappingScopeQueryError },
     /// The measurement flow is invalid.
     InvalidMeasurementFlow,
     /// The queried range does not belong to one canonical body bidi context,
     /// or the bidi input behind the query is inconsistent.
     InvalidLineDirectionQuery,
-    /// The word portion is invalid for this preparation.
+    /// The word portion is invalid for this preparation, or the presentation
+    /// boundary behind the request cannot be resolved.
     InvalidWordPortion,
     /// A measurement termination cannot be placed.
     MeasurementNotPlaceable,
@@ -1104,7 +1109,8 @@ pub enum ProtocolError {
     },
     /// A handle belongs to a different selected line or preparation.
     ForeignSelectedLine,
-    /// The finalized line belongs to a different preparation or placement.
+    /// The finalized line, or the receipt numbered `line`, belongs to a
+    /// different preparation or placement.
     ForeignFinalizedLine { line: usize },
     /// The origin's range is invalid.
     InvalidOriginRange {
@@ -1118,8 +1124,9 @@ pub enum ProtocolError {
         local: usize,
         aggregate: usize,
     },
-    /// The origins leave the source incompletely covered: `expected` is the
-    /// position at which coverage was due and `actual` the position found.
+    /// The origins do not cover the source contiguously: `expected` is the
+    /// position at which coverage was due and `actual` the position found,
+    /// whether a gap or an overlap.
     IncompleteOriginCoverage { expected: usize, actual: usize },
     /// Consecutive origins have no connection between them.
     MissingConnection { before: usize, after: usize },
@@ -1127,12 +1134,15 @@ pub enum ProtocolError {
     InvalidConnection { connection: usize, at: usize },
     /// The control has an invalid source position.
     InvalidControl { control: usize, at: usize },
-    /// The boundary policy is invalid at the source position.
+    /// The boundary policy is invalid or missing. `policy` is its ordinal, or
+    /// the policy count where a required policy is absent; `at` is its
+    /// location, which can be a connection position, a box index or the source
+    /// length.
     InvalidBoundaryPolicy { policy: usize, at: usize },
     /// A second group claims the same defining occurrence.
     DuplicateReplacement { alternative: usize, prior: usize },
-    /// The replacement does not describe a valid source range ending at its
-    /// insertion anchor.
+    /// The replacement does not match its defining soft hyphen or
+    /// discretionary break, its origin, or its insertion anchor.
     InvalidReplacement { alternative: usize, source: Range },
     /// The boundaries do not form a valid range in this preparation.
     InvalidBoundaryRange {
@@ -1140,7 +1150,8 @@ pub enum ProtocolError {
         end: usize,
         participants: usize,
     },
-    /// The position does not match the participants issued for the request.
+    /// The index, of a participant or of a presentation unit, does not match
+    /// the participants issued for the request.
     ParticipantMismatch { position: usize },
     /// No allocation was supplied for the atomic occurrence.
     MissingAtomic { occurrence: usize },
@@ -1176,9 +1187,9 @@ pub enum ProtocolError {
         alternative: usize,
         opportunity: usize,
     },
-    /// The line context field is not supported.
+    /// The context field is not supported.
     UnsupportedContext { field: ProtocolContextField },
-    /// The line context field is inconsistent with the prepared text or the request.
+    /// The context field is inconsistent with the prepared text or the request.
     MismatchedContext { field: ProtocolContextField },
     /// The allocation of the atomic occurrence is invalid.
     InvalidAtomicGeometry { occurrence: usize },
@@ -1207,7 +1218,8 @@ pub enum ProtocolError {
     MissingBoundaryContext { occurrence: usize },
     /// The boundary context for the control duplicates an allocation of the same control.
     DuplicateBoundaryContext { occurrence: usize },
-    /// The control was not demanded and cannot take a boundary context.
+    /// The boundary context for the control was not demanded, or was supplied
+    /// out of order.
     UnexpectedBoundaryContext { occurrence: usize },
     /// The control was allocated more than once.
     DuplicateControl { occurrence: usize },
@@ -1234,7 +1246,8 @@ pub enum ProtocolError {
     InvalidPlacedPosition { position: usize },
     /// The placement has no lines or source segments.
     EmptyPlacement,
-    /// Line coverage is incomplete at the line.
+    /// The lines do not cover the content contiguously at the line, whether a
+    /// gap, an overlap or a line that runs backwards.
     IncompleteLineCoverage { line: usize },
     /// The line was supplied more than once.
     DuplicateLine { line: usize },
@@ -1247,15 +1260,15 @@ pub enum ProtocolError {
 impl std::fmt::Display for ProtocolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidSemanticWindow => {
-                f.write_str("the request is invalid for its issued semantic window")
-            }
+            Self::InvalidSemanticWindow => f.write_str(
+                "the semantic window cannot be observed for this request and preparation",
+            ),
             Self::InvalidSemanticAtomic { occurrence } => write!(
                 f,
                 "atomic occurrence {occurrence} does not match the kind issued for the semantic window"
             ),
             Self::InlineBoxFragmentation(_) => {
-                f.write_str("the inline-box fragment request is invalid")
+                f.write_str("the inline-box fragmentation is invalid")
             }
             Self::InlineBoxEdge(_) => f.write_str("the inline-box edge operation is invalid"),
             Self::InvalidSourceSegment { segment } => {
@@ -1267,14 +1280,16 @@ impl std::fmt::Display for ProtocolError {
             Self::MismatchedSourceSegment { expected, actual } => {
                 write!(f, "source segments {expected} and {actual} do not match")
             }
-            Self::WrappingScopeQuery { .. } => f.write_str("the wrapping scope query is invalid"),
+            Self::WrappingScopeQuery { .. } => {
+                f.write_str("the wrapping scope or incidence query is invalid")
+            }
             Self::InvalidMeasurementFlow => f.write_str("the measurement flow is invalid"),
             Self::InvalidLineDirectionQuery => f.write_str(
                 "the line direction query or the bidi body context behind it is invalid",
             ),
-            Self::InvalidWordPortion => {
-                f.write_str("the word portion is invalid for this preparation")
-            }
+            Self::InvalidWordPortion => f.write_str(
+                "the word portion, or the presentation boundary behind the request, is invalid",
+            ),
             Self::MeasurementNotPlaceable => {
                 f.write_str("a measurement termination cannot be placed")
             }
@@ -1311,7 +1326,7 @@ impl std::fmt::Display for ProtocolError {
             }
             Self::ForeignFinalizedLine { line } => write!(
                 f,
-                "the finalized line {line} belongs to a different preparation or placement"
+                "finalized line or receipt {line} belongs to a different preparation or placement"
             ),
             Self::InvalidOriginRange { origin, .. } => {
                 write!(f, "the range of origin {origin} is invalid")
@@ -1326,7 +1341,7 @@ impl std::fmt::Display for ProtocolError {
             ),
             Self::IncompleteOriginCoverage { expected, actual } => write!(
                 f,
-                "the origins leave the source incompletely covered: position {expected} was expected but {actual} was found"
+                "the origins do not cover the source contiguously: position {expected} was expected but {actual} was found"
             ),
             Self::MissingConnection { before, after } => {
                 write!(f, "origins {before} and {after} have no connection")
@@ -1341,7 +1356,10 @@ impl std::fmt::Display for ProtocolError {
                 )
             }
             Self::InvalidBoundaryPolicy { policy, at } => {
-                write!(f, "boundary policy {policy} at {at} is invalid")
+                write!(
+                    f,
+                    "a boundary policy is invalid or missing (policy {policy}, location {at})"
+                )
             }
             Self::DuplicateReplacement { alternative, prior } => write!(
                 f,
@@ -1352,7 +1370,7 @@ impl std::fmt::Display for ProtocolError {
                 source,
             } => write!(
                 f,
-                "replacement {alternative} does not describe a valid source range {}..{} ending at its insertion anchor",
+                "replacement {alternative} does not match its defining soft hyphen or discretionary break, its origin, or its insertion anchor (source range {}..{})",
                 source.start, source.end
             ),
             Self::InvalidBoundaryRange {
@@ -1361,11 +1379,11 @@ impl std::fmt::Display for ProtocolError {
                 participants,
             } => write!(
                 f,
-                "boundaries {start} to {end} are not a valid range in this preparation of {participants} participants"
+                "boundaries {start} to {end} are not a valid range in this preparation (participant count {participants})"
             ),
             Self::ParticipantMismatch { position } => write!(
                 f,
-                "position {position} does not match the participants issued for the request"
+                "index {position} does not match the participants issued for the request"
             ),
             Self::MissingAtomic { occurrence } => write!(
                 f,
@@ -1438,12 +1456,12 @@ impl std::fmt::Display for ProtocolError {
             ),
             Self::UnsupportedContext { field } => write!(
                 f,
-                "the line context field {} is not supported",
+                "the context field {} is not supported",
                 context_field_label(*field)
             ),
             Self::MismatchedContext { field } => write!(
                 f,
-                "the line context field {} is inconsistent with the prepared text or the request",
+                "the context field {} is inconsistent with the prepared text or the request",
                 context_field_label(*field)
             ),
             Self::InvalidAtomicGeometry { occurrence } => write!(
@@ -1494,7 +1512,7 @@ impl std::fmt::Display for ProtocolError {
             ),
             Self::UnexpectedBoundaryContext { occurrence } => write!(
                 f,
-                "control {occurrence} was not demanded and cannot take a boundary context"
+                "the boundary context for control {occurrence} was not demanded, or was supplied out of order"
             ),
             Self::DuplicateControl { occurrence } => {
                 write!(f, "control {occurrence} was allocated more than once")
@@ -1528,7 +1546,10 @@ impl std::fmt::Display for ProtocolError {
             }
             Self::EmptyPlacement => f.write_str("the placement has no lines or source segments"),
             Self::IncompleteLineCoverage { line } => {
-                write!(f, "line coverage is incomplete at line {line}")
+                write!(
+                    f,
+                    "the lines do not cover the content contiguously at line {line}"
+                )
             }
             Self::DuplicateLine { line } => write!(f, "line {line} was supplied more than once"),
             Self::InvalidFragment { line, fragment } => {
