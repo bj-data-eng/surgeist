@@ -624,3 +624,34 @@ impl State {
         .map_err(|error| native_refusal(&self.failures, error))
     }
 }
+
+#[cfg(test)]
+mod conversion_cleanup_error_tests {
+    use super::*;
+
+    #[test]
+    fn each_cleanup_failure_states_where_it_arose_and_chains_its_cause() {
+        let accounting = ConversionCleanupError::Accounting(surgeist_ledger::Error::Allocation);
+        assert_eq!(
+            accounting.to_string(),
+            "guest conversion cleanup failed to settle its accounting"
+        );
+        assert_eq!(
+            std::error::Error::source(&accounting).unwrap().to_string(),
+            surgeist_ledger::Error::<
+                crate::document_scripting::DocumentGuestWork,
+                crate::document_scripting::DocumentGuestResource,
+            >::Allocation
+                .to_string()
+        );
+        let native = ConversionCleanupError::Native(Error::PreparationAlreadyAdmitted);
+        assert_eq!(
+            native.to_string(),
+            "guest conversion cleanup failed in the bindings"
+        );
+        assert_eq!(
+            std::error::Error::source(&native).unwrap().to_string(),
+            Error::PreparationAlreadyAdmitted.to_string()
+        );
+    }
+}
