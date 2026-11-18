@@ -564,6 +564,45 @@ impl<'admit> CssSourceRetention<'admit> {
         self.visits
     }
 
+    /// Runs `walk` on this collector and charges `host` the steps it took.
+    ///
+    /// The walk runs inside one phase of the host's `css-source` scope. When
+    /// it returns, that scope is charged
+    /// [`CssWork::SourceVisit`](crate::accounting::CssWork::SourceVisit): the
+    /// steps this collector counted during the walk, which [`Self::steps`]
+    /// reads. A step a limit refused is not counted. The walk's own result,
+    /// a refusal included, is returned inside `Ok`. The collector's limits,
+    /// admission and figures are those of a walk without a host.
+    ///
+    /// Each call charges the steps of its own walk, so a walk must not call
+    /// `charge_walk` on the same collector: those steps would be charged
+    /// twice.
+    ///
+    /// # Errors
+    ///
+    /// A [`CssAccountingError`](crate::accounting::CssAccountingError) when
+    /// the host's operation does not admit the charge, or when the ledger
+    /// cannot open the phase; in the second case `walk` has not run.
+    pub fn charge_walk<T>(
+        &mut self,
+        host: &crate::accounting::CssHostScope,
+        walk: impl FnOnce(&mut Self) -> T,
+    ) -> Result<T, crate::accounting::CssAccountingError> {
+        use crate::accounting::{CssAccount, CssChange, CssFront, CssWork};
+        let account = CssAccount::host(host);
+        let before = self.visits;
+        let value = account.timed(CssFront::SourceRetention, || walk(self))?;
+        let steps = self.visits.saturating_sub(before);
+        account.charge(
+            CssFront::SourceRetention,
+            &[CssChange::Work(
+                CssWork::SourceVisit,
+                u64::try_from(steps).unwrap_or(u64::MAX),
+            )],
+        )?;
+        Ok(value)
+    }
+
     /// Visits payloads beneath an actual consumer-owned representation depth.
     /// This preserves accumulated work/source identity and restores only the
     /// enclosing depth on return, including failure.
@@ -1327,3 +1366,6 @@ impl CssRetainedSources for CssRule {
 }
 #[cfg(test)]
 pub(crate) mod admission_tests;
+#[cfg(test)]
+#[path = "source_retention/charge_walk_tests.rs"]
+mod charge_walk_tests;
