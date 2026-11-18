@@ -10,8 +10,11 @@ mod spacing;
 
 use super::*;
 use crate::{
-    FontBaseline, FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance,
-    FontBaselineScript, GlyphBasis,
+    font::{
+        FontBaseline, FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance,
+        FontBaselineScript,
+    },
+    geometry::GlyphBasis,
 };
 use icu_properties::{CodePointMapData, props::VerticalOrientation};
 
@@ -229,19 +232,22 @@ fn packets(
         .collect()
 }
 
-fn copy_source(layout: &crate::Layout, source: &Source) {
+fn copy_source(layout: &crate::layout::Layout, source: &Source) {
     assert_eq!(layout.source(), source);
     // Placement iteration is visual. Locate the actual logical source cuts
     // rather than treating visual extremes as the original text's endpoints.
     let start = layout
         .positions()
-        .find(|position| position.source_cursor() == crate::Cursor::new(0, crate::Affinity::After))
+        .find(|position| {
+            position.source_cursor()
+                == crate::layout::Cursor::new(0, crate::layout::Affinity::After)
+        })
         .unwrap();
     let end = layout
         .positions()
         .find(|position| {
             position.source_cursor()
-                == crate::Cursor::new(source.text().len(), crate::Affinity::Before)
+                == crate::layout::Cursor::new(source.text().len(), crate::layout::Affinity::Before)
         })
         .unwrap();
     let selection = layout.position_selection(&start, &end).unwrap();

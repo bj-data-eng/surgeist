@@ -1,6 +1,31 @@
 //! Native upright scope receipts and source geometry from real SFNT data.
 //! Functional qualification of the captured API, without browser-parity claims.
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    font::{
+        FontBaseline, FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance,
+        FontBaselineScript, UprightMetricProvenance, UprightMetricReference,
+    },
+    geometry::{GlyphBasis, Point, Rect},
+    id::Id,
+    layout::{Affinity, Cursor, Hit, Layout, Selection},
+    options::Alignment,
+    processing::{
+        CapturedScope, ContextualSourceInput, ProcessedSource, ScopeAlignmentBoundary,
+        ScopeAlignmentError, ScopeFontReference, SourceProcessingScope, process_contextual_source,
+    },
+    protocol::{
+        FinalizedLine, LineAllocations, LineAnchor, LineBoxAlignment, LineBoxDirection,
+        LineOrientation, LinePlacement, ParagraphBaseDirection, PlacementCoverage, PlacementEntry,
+        PlacementRequest, PreparationOptions, PreparedScopeMetrics, PreparedText, ScopeAllocation,
+        ScopeAllocations, ScopeMetricContribution, SelectedLine, SpacingAllocations, SpacingPolicy,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+    },
+    range::Range,
+    source::{BaselineShift, Source},
+    style::{LineHeight, Wrap},
+};
 use crate::{baseline_test_fonts as base, test_fonts as sfnt, vertical_test_fonts as vertical};
 use skrifa::{
     GlyphId, MetadataProvider,

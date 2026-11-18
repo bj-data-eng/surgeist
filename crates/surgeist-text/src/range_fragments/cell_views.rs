@@ -65,7 +65,7 @@ impl<'a> SourceRangeCellUnit<'a> {
     pub fn kind(&self) -> SourceRangeCellUnitKind {
         self.kind
     }
-    pub fn source_cell(&self) -> crate::AnalyzedCombinedCell<'a> {
+    pub fn source_cell(&self) -> crate::analyzed::AnalyzedCombinedCell<'a> {
         self.layout.inner.lines[self.unit.line]
             .finalized
             .source_cell(self.cell)
@@ -154,11 +154,11 @@ impl<'a> SourceRangeCellFontPiece<'a> {
 /// paint origin. Retained ascent/descent are measured from this reference.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SourceRangeCellMetricFrame {
-    pub(super) origin: crate::Point,
+    pub(super) origin: crate::geometry::Point,
     pub(super) x_scale: f64,
 }
 impl SourceRangeCellMetricFrame {
-    pub fn origin(&self) -> crate::Point {
+    pub fn origin(&self) -> crate::geometry::Point {
         self.origin
     }
     pub fn x_scale(&self) -> f64 {
@@ -169,13 +169,13 @@ impl SourceRangeCellMetricFrame {
 /// Executed native horizontal layout, without a provider-baseline interpretation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SourceRangeCellLayoutFrame {
-    pub(super) origin: crate::Point,
+    pub(super) origin: crate::geometry::Point,
     pub(super) x_scale: f64,
     pub(super) extent: f64,
 }
 impl SourceRangeCellLayoutFrame {
     /// Physical layout origin after actual inner centering and scope placement.
-    pub fn origin(&self) -> crate::Point {
+    pub fn origin(&self) -> crate::geometry::Point {
         self.origin
     }
     pub fn x_scale(&self) -> f64 {
@@ -225,8 +225,8 @@ impl<'a> SourceRangeCellTabPiece<'a> {
         self.piece.frame
     }
     /// Native container reference; this is not a body-font metric lender.
-    pub fn container_metrics(&self) -> crate::PreparedScopeMetrics<'a> {
-        crate::PreparedScopeMetrics {
+    pub fn container_metrics(&self) -> crate::protocol::PreparedScopeMetrics<'a> {
+        crate::protocol::PreparedScopeMetrics {
             prepared: &self.unit.layout.inner.prepared,
             index: self.piece.metrics,
         }

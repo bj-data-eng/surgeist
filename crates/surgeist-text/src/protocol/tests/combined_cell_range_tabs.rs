@@ -1,7 +1,7 @@
 //! Native TAB spans remain separate from font metric geometry.
 use super::*;
 use crate::engine::layout::data::{ClusterContent, FinalizedRunFrame};
-use crate::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
+use crate::range_fragments::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
 
 fn place(prepared: &PreparedText, line: FinalizedLine) -> Layout {
     Layout::from_finalized_lines(PlacementRequest {
@@ -102,7 +102,7 @@ fn native_incidence_before_query(
 }
 
 fn em_reference(
-    piece: crate::SourceRangeCellTabPiece<'_>,
+    piece: crate::range_fragments::SourceRangeCellTabPiece<'_>,
     prepared: &PreparedText,
     capture: &Captured,
 ) {

@@ -21,7 +21,9 @@ use crate::engine::{
     },
 };
 use crate::{
-    PreparedText, Result, ScopeAlignmentAllowance, ScopeAlignmentRetention, ScopeAlignmentUsage,
+    Result,
+    processing::ScopeAlignmentUsage,
+    protocol::{PreparedText, ScopeAlignmentAllowance, ScopeAlignmentRetention},
 };
 use std::{fmt, ops::Range, sync::Arc};
 
@@ -81,7 +83,9 @@ impl std::error::Error for InlineBoxFragmentationError {
 }
 
 pub(crate) fn invalid(reason: InlineBoxFragmentationError) -> crate::Error {
-    crate::protocol::protocol_error(crate::ProtocolError::InlineBoxFragmentation(reason))
+    crate::protocol::protocol_error(crate::protocol::ProtocolError::InlineBoxFragmentation(
+        reason,
+    ))
 }
 
 /// One complete, source-authenticated family for the exact immutable preparation.
@@ -196,7 +200,7 @@ pub(crate) struct FamilyData {
 impl FamilyData {
     pub(crate) fn source(&self, owner: Owner) -> InlineBoxSource {
         match owner {
-            Owner::Scope(index) => InlineBoxSource::captured(crate::CapturedScope {
+            Owner::Scope(index) => InlineBoxSource::captured(crate::processing::CapturedScope {
                 capture: Arc::clone(
                     &self
                         .prepared
@@ -281,7 +285,7 @@ impl FamilyData {
     pub(crate) fn require_contexts<T: super::BoundaryControl>(
         &self,
         controls: &[T],
-        boundary_context: &[crate::InlineBoundaryContextAllocation],
+        boundary_context: &[crate::protocol::InlineBoundaryContextAllocation],
         ledger: &mut Ledger,
     ) -> Result<()> {
         let mut contexts = Vec::new();

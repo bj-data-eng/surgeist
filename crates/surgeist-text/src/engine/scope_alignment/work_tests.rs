@@ -6,7 +6,30 @@
 //! the number of times shaping chooses to invoke or hoist these helpers.
 use super::{CustodyInput, accounting};
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    font::{FontBaseline, FontBaselineAxis, FontBaselineScript},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentBoundary,
+        ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference,
+        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection, PreparationOptions, PreparedText,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style, WhiteSpace, Wrap},
+};
 use std::sync::Arc;
 
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");

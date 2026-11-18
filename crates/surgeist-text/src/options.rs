@@ -1,6 +1,7 @@
-use super::{
-    Error, ErrorCode, ErrorDetail, NumericRequirement, Result, TextStyleFeature,
-    UnsupportedTextStyleReason,
+use crate::{
+    Error, ErrorCode, ErrorDetail, Result,
+    error::NumericRequirement,
+    style_support::{TextStyleFeature, UnsupportedTextStyleReason},
 };
 
 /// Paragraph-level layout options.

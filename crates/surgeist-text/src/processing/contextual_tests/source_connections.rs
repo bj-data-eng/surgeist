@@ -1,7 +1,29 @@
 //! Existing-callable source continuity is independent of joint-analysis
 //! permission. Expectations come from the actual source, events and raw facts.
 
-use crate::*;
+use crate::{
+    ErrorDetail,
+    geometry::Size,
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, SourceProcessingConnection, SourceProcessingConnectionError,
+        SourceProcessingError, SourceProcessingEvent, SourceProcessingJointFlow,
+        SourceProcessingJointFlowError, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphOrigin,
+            ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Style, WhiteSpace},
+    text::Text,
+};
 use std::sync::Arc;
 
 fn input(kind: ParagraphConnectionKind) -> ContextualSourceInput {

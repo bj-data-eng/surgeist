@@ -2,14 +2,14 @@
 pub(crate) fn whitespace_edge(
     space: bool,
     ogham: bool,
-    mode: crate::WhiteSpace,
+    mode: crate::style::WhiteSpace,
     native: bool,
-) -> crate::InlineWhitespaceEdge {
+) -> crate::supplied_line::InlineWhitespaceEdge {
     if space && mode.collapses_spaces() {
-        crate::InlineWhitespaceEdge::DiscardAtBoth
+        crate::supplied_line::InlineWhitespaceEdge::DiscardAtBoth
     } else if native && ogham && mode.collapses_spaces() {
-        crate::InlineWhitespaceEdge::DiscardAtLineEnd
+        crate::supplied_line::InlineWhitespaceEdge::DiscardAtLineEnd
     } else {
-        crate::InlineWhitespaceEdge::Preserve
+        crate::supplied_line::InlineWhitespaceEdge::Preserve
     }
 }

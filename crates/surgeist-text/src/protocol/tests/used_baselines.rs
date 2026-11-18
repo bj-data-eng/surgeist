@@ -6,9 +6,17 @@ mod numeric;
 mod placement_precision;
 mod resources;
 use crate::{
-    Affinity, Cursor, FontBaseline, FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance,
-    FontBaselineScript, GlyphBasis, Hit, Id, LineHeight, Point, Range, Rect, Selection,
-    baseline_test_fonts as base, test_fonts as sfnt,
+    baseline_test_fonts as base,
+    font::{
+        FontBaseline, FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance,
+        FontBaselineScript,
+    },
+    geometry::{GlyphBasis, Point, Rect},
+    id::Id,
+    layout::{Affinity, Cursor, Hit, Selection},
+    range::Range,
+    style::LineHeight,
+    test_fonts as sfnt,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -112,34 +120,34 @@ fn analyzed(source: Source, style: Style) -> AnalyzedSource {
                 source: source.clone(),
                 base_style: style,
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source,
                     local: Range::new(0, len),
                     aggregate: Range::new(0, len),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
                 boundary_policies: vec![],
                 replacements: vec![],
                 anchor_order: if len == 0 {
-                    vec![crate::ParagraphAnchor {
-                        item: crate::ParagraphAnchorItem::EmptyOrigin(0),
+                    vec![crate::protocol::paragraph::ParagraphAnchor {
+                        item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
                         affinity: Affinity::After,
                     }]
                 } else {
                     vec![]
                 },
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     )
 }
 
@@ -153,18 +161,18 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(selection)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
 
-fn placed(prepared: &PreparedText, line: FinalizedLine, baseline: f64) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn placed(prepared: &PreparedText, line: FinalizedLine, baseline: f64) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 20.0,
@@ -177,7 +185,7 @@ fn placed(prepared: &PreparedText, line: FinalizedLine, baseline: f64) -> crate:
     .unwrap()
 }
 
-fn raw_reference(run: &crate::RunView<'_>, catalogue: &crate::CataloguePublication) {
+fn raw_reference(run: &crate::views::RunView<'_>, catalogue: &surgeist_font::CataloguePublication) {
     let instance = run.effective_instance().unwrap();
     assert_eq!(instance.font_size(), 10.0);
     assert_eq!(instance.axis_count(), 0);

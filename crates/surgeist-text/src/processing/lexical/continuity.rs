@@ -1,7 +1,8 @@
 //! Unavailable source relationships in the canonical lexical folds.
 
 use crate::{
-    Error, ErrorCode, ErrorDetail, Result, SourceContinuityOperation, SourceProcessingError,
+    Error, ErrorCode, ErrorDetail, Result,
+    processing::{SourceContinuityOperation, SourceProcessingError},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

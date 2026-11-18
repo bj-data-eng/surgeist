@@ -1,9 +1,17 @@
 //! Atomic run endpoints, transparency, selected cuts and native frames.
 use super::*;
 use crate::{
-    Affinity, AtomicPlacement, FontBaselineScript, Hit, InlineBox, InlineBoxKind, Layout,
-    ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
-    Point, Rect, Size, SpacingSlotOwner, SpacingSlotTarget,
+    font::FontBaselineScript,
+    geometry::{Point, Rect, Size},
+    layout::{Affinity, Hit, Layout},
+    protocol::{
+        AtomicPlacement, SpacingSlotOwner, SpacingSlotTarget,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy,
+        },
+    },
+    source::{InlineBox, InlineBoxKind},
 };
 
 // IDs deliberately sort opposite to semantic X/Y order; source storage is Y/X.
@@ -70,19 +78,19 @@ fn captured(
         source: source.clone(),
         base_style: own(base_tracking),
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: direction,
         origins: if len == 0 {
             vec![]
         } else {
-            vec![crate::ParagraphOrigin {
+            vec![crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: Range::new(0, len),
                 aggregate: Range::new(0, len),
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             }]
         },
         connections: vec![],
@@ -104,31 +112,31 @@ fn captured(
             })
             .map(|definition| ParagraphBoundaryPolicy {
                 definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
             })
             .collect(),
     };
     let typography = if orientation == LineOrientation::Vertical {
-        crate::AnalysisTypography::Upright {
+        crate::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::RightToLeft,
         }
     } else {
-        crate::AnalysisTypography::HorizontalComposition
+        crate::analyzed::AnalysisTypography::HorizontalComposition
     };
     let analyzed = crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_paragraph(value, typography).unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analyzed.source(), source);
     assert_eq!(analyzed.typography(), typography);
     assert_eq!(
         analyzed.direction(),
         if direction == ParagraphBaseDirection::LeftToRight {
-            crate::Direction::LeftToRight
+            crate::style::Direction::LeftToRight
         } else {
-            crate::Direction::RightToLeft
+            crate::style::Direction::RightToLeft
         }
     );
     let mut system = System::default();
@@ -196,7 +204,7 @@ fn captured(
 
 fn local_allocation() -> AtomicLineAllocation {
     AtomicLineAllocation::InFlow {
-        fit: crate::AtomicFitAllocation::NativeOccupied,
+        fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 10.0,
             normal_border_inline_size: 10.0,
@@ -250,16 +258,16 @@ fn select_range(
     } else {
         LineEnd::Soft
     };
-    let rtl = prepared.analyzed_source().direction() == crate::Direction::RightToLeft;
+    let rtl = prepared.analyzed_source().direction() == crate::style::Direction::RightToLeft;
     value.context.base_direction = if rtl {
         ParagraphBaseDirection::RightToLeft
     } else {
         ParagraphBaseDirection::LeftToRight
     };
     value.context.line_box_direction = if rtl {
-        crate::LineBoxDirection::RightToLeft
+        crate::protocol::LineBoxDirection::RightToLeft
     } else {
-        crate::LineBoxDirection::LeftToRight
+        crate::protocol::LineBoxDirection::LeftToRight
     };
     value.context.orientation = prepared.orientation();
     value.context.available_inline = None;
@@ -285,9 +293,9 @@ fn select_range(
 fn finish(prepared: &PreparedText, method: SpacingPolicy) -> FinalizedLine {
     let selected = select_range(prepared, 0, prepared.participants().len(), method);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.selected_line(), selected);
@@ -554,9 +562,9 @@ fn source_free_atomic_run_and_selected_cuts_suppress_only_actual_outer_endpoints
     ] {
         let selected = select_range(&prepared, from, to, SpacingPolicy::InterCharacter);
         let line = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(line.selected_line(), selected);

@@ -1,11 +1,19 @@
 //! Executed-provider and native-receipt qualification of immutable selection.
 use super::*;
 use crate::{
-    Affinity, Alignment, AnalysisTypography, AnalyzedSource, FinalizedLine, Font, LineContext,
-    LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
-    ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut, PreparationOptions,
-    PreparedBreakKind, PreparedTermination, PreparedText, SelectedLine, Source, SpacingAllocation,
-    SpacingAllocations, SpacingPolicy, Style, System, TabContext, WhiteSpace, Wrap,
+    System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    layout::Affinity,
+    options::Alignment,
+    protocol::{
+        FinalizedLine, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
+        ParagraphBaseDirection, ParagraphInput, PreparationOptions, PreparedBreakKind,
+        PreparedTermination, PreparedText, SelectedLine, SpacingAllocation, SpacingAllocations,
+        SpacingPolicy, TabContext,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+    },
+    source::Source,
+    style::{Font, Style, WhiteSpace, Wrap},
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -22,7 +30,7 @@ fn own(tracking: f64) -> Style {
     Style {
         font: Font::new().family("Ahem"),
         size: 10.0,
-        line_height: crate::LineHeight::Absolute(10.0),
+        line_height: crate::style::LineHeight::Absolute(10.0),
         white_space: WhiteSpace::Preserve,
         wrap: Wrap::Word,
         letter_spacing: tracking,
@@ -35,10 +43,10 @@ fn input(source: &Source, style: Style, direction: ParagraphBaseDirection) -> Pa
     ParagraphInput {
         source: source.clone(),
         base_style: style,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: direction,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![ParagraphOrigin {
             text_node: None,
@@ -112,13 +120,13 @@ fn request(
         line_box_struts: vec![],
         line_strut: None,
         context: LineContext {
-            alignment_insets: crate::LineAlignmentInsets::ZERO,
-            formatted_line: crate::FormattedLineContext::default(),
+            alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+            formatted_line: crate::protocol::FormattedLineContext::default(),
             base_direction: direction,
             line_box_direction: if direction == LTR {
-                crate::LineBoxDirection::LeftToRight
+                crate::protocol::LineBoxDirection::LeftToRight
             } else {
-                crate::LineBoxDirection::RightToLeft
+                crate::protocol::LineBoxDirection::RightToLeft
             },
             orientation: prepared.orientation(),
             start: LineStart::Paragraph,
@@ -213,7 +221,7 @@ fn first_and_repeated_allocation_use_one_actual_selected_provider_basis_in_nativ
         LineOrientation::Vertical,
     ] {
         let mut system = system(&bytes);
-        let source = Source::identified("AB", crate::Id::from_u64(1566070), 1);
+        let source = Source::identified("AB", crate::id::Id::from_u64(1566070), 1);
         let prepared = prepare(&mut system, input(&source, own(3.0), LTR), orientation);
         let second = if orientation == LineOrientation::Vertical {
             10.0
@@ -252,9 +260,9 @@ fn first_and_repeated_allocation_use_one_actual_selected_provider_basis_in_nativ
         drop(system);
         assert_calls(calls);
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_calls(calls);
@@ -270,17 +278,17 @@ fn first_and_repeated_allocation_use_one_actual_selected_provider_basis_in_nativ
             ]
         );
         let repeated = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_calls(calls);
         assert_eq!(packets(&repeated, &bytes), raw);
         let expanded = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: amounts(&selected, &[4.0]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_calls(calls);
@@ -347,30 +355,33 @@ fn exclusion_rows(shaped: &ShapedData) -> Vec<(usize, bool)> {
 }
 
 fn source_copy(prepared: &PreparedText, line: FinalizedLine, source: &Source) {
-    let layout = crate::Layout::from_finalized_lines(crate::PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(crate::protocol::PlacementRequest {
         prepared: prepared.clone(),
-        coverage: crate::PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(crate::LinePlacement {
-            line,
-            anchor: crate::LineAnchor {
-                inline_origin: 0.0,
-                baseline: 8.0,
+        coverage: crate::protocol::PlacementCoverage::WholeParagraph,
+        entries: vec![crate::protocol::PlacementEntry::Formatted(
+            crate::protocol::LinePlacement {
+                line,
+                anchor: crate::protocol::LineAnchor {
+                    inline_origin: 0.0,
+                    baseline: 8.0,
+                },
+                orientation: LineOrientation::Horizontal,
+                atomics: vec![],
             },
-            orientation: LineOrientation::Horizontal,
-            atomics: vec![],
-        })],
+        )],
     })
     .unwrap();
     assert_eq!(layout.source(), source);
     let positions = layout.positions().collect::<Vec<_>>();
     let first = positions
         .iter()
-        .find(|position| position.source_cursor() == crate::Cursor::new(0, Affinity::After))
+        .find(|position| position.source_cursor() == crate::layout::Cursor::new(0, Affinity::After))
         .unwrap();
     let last = positions
         .iter()
         .find(|position| {
-            position.source_cursor() == crate::Cursor::new(source.text().len(), Affinity::Before)
+            position.source_cursor()
+                == crate::layout::Cursor::new(source.text().len(), Affinity::Before)
         })
         .unwrap();
     let selection = layout.position_selection(first, last).unwrap();
@@ -412,16 +423,19 @@ fn actual_residual_only_receipts_publish_a_complete_empty_basis_and_keep_source_
         assert_eq!(exclusion_rows(&selected.inner.basis.shaped), [(0, false)]);
         assert_eq!(selected.spacing_slots().len(), 0);
         let line = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_calls(calls);
         assert_eq!(line.feedback().advance, 0.0);
         assert_eq!(line.feedback().line_height, 10.0);
         assert!(packets(&line, &bytes).is_empty());
-        assert_eq!(line.outline_ink().unwrap(), crate::LineOutlineInk::Empty);
+        assert_eq!(
+            line.outline_ink().unwrap(),
+            crate::protocol::readback::LineOutlineInk::Empty
+        );
         let zero = line.with_spacing(amounts(&selected, &[])).unwrap();
         assert_calls(calls);
         assert_eq!(zero.feedback().advance, 0.0);
@@ -471,9 +485,9 @@ fn residual_selector_and_repeated_edge_residuals_have_one_real_neighbor_gap_and_
             );
             assert_eq!(selected.spacing_slots().len(), 1);
             let natural = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_calls(calls);
@@ -539,9 +553,9 @@ fn optional_plan_changes_normal_di_to_selected_residual_before_complete_handles_
         .select(request(&prepared, LTR, SpacingPolicy::None))
         .unwrap();
     let ordinary_line = ordinary
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -569,7 +583,7 @@ fn optional_plan_changes_normal_di_to_selected_residual_before_complete_handles_
         "complete selected A-B basis must not retain preparation's A-D and D-B candidates"
     );
     let slot = selected.spacing_slots().next().unwrap();
-    let crate::SpacingSlotTarget::Boundary {
+    let crate::protocol::SpacingSlotTarget::Boundary {
         visual_before,
         visual_after,
     } = slot.target()
@@ -582,7 +596,7 @@ fn optional_plan_changes_normal_di_to_selected_residual_before_complete_handles_
             .pieces()
             .map(|p| p.owner())
             .collect::<Vec<_>>(),
-        [crate::SpacingSlotOwner::Source {
+        [crate::protocol::SpacingSlotOwner::Source {
             origin: origin.clone(),
             local: Range::new(0, 1),
             aggregate: Range::new(0, 1)
@@ -590,16 +604,16 @@ fn optional_plan_changes_normal_di_to_selected_residual_before_complete_handles_
     );
     assert_eq!(
         visual_after.pieces().map(|p| p.owner()).collect::<Vec<_>>(),
-        [crate::SpacingSlotOwner::Source {
+        [crate::protocol::SpacingSlotOwner::Source {
             origin,
             local: Range::new(2, 3),
             aggregate: Range::new(2, 3)
         }]
     );
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
@@ -619,7 +633,7 @@ fn optional_plan_changes_normal_di_to_selected_residual_before_complete_handles_
     assert!(matches!(
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextProtocol {
-            reason: crate::ProtocolError::ForeignSelectedLine
+            reason: crate::protocol::ProtocolError::ForeignSelectedLine
         })
     ));
     assert_calls(calls);
@@ -657,9 +671,9 @@ fn neutral_receipt(
     assert!(calls > 0);
     assert_eq!(exclusion_rows(&selected.inner.basis.shaped), exclusions);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
@@ -843,9 +857,9 @@ fn authored_optional_override_preserves_normal_di_and_refuses_its_real_unqualifi
     let ordinary = prepared
         .select(request(&prepared, LTR, SpacingPolicy::None))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(ordinary.feedback().advance, 45.0);
@@ -869,14 +883,17 @@ fn authored_optional_override_preserves_normal_di_and_refuses_its_real_unqualifi
     else {
         panic!("{error:?}")
     };
-    assert_eq!(*operation, crate::SpacingOperation::InterCharacterBasis);
+    assert_eq!(
+        *operation,
+        crate::error::SpacingOperation::InterCharacterBasis
+    );
     assert_eq!(
         *reason,
-        crate::SpacingFailureReason::UnqualifiedWritingSystem
+        crate::error::SpacingFailureReason::UnqualifiedWritingSystem
     );
     assert_eq!(
         pieces.as_ref(),
-        [crate::SpacingPiece::Source {
+        [crate::error::SpacingPiece::Source {
             origin: 0,
             local: Range::new(1, 2),
             aggregate: Range::new(1, 2)
@@ -1072,9 +1089,9 @@ fn conditional_zero_control(system: &mut System, bytes: &[u8]) {
     let calls = provider_calls();
     assert!(calls > 0);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
@@ -1095,8 +1112,8 @@ fn conditional_zero_control(system: &mut System, bytes: &[u8]) {
     source_copy(&prepared, line, &source);
 }
 
-fn conditional_boundary_custody(slot: &crate::SpacingSlot, prepared: &PreparedText) {
-    let crate::SpacingSlotTarget::Boundary {
+fn conditional_boundary_custody(slot: &crate::protocol::SpacingSlot, prepared: &PreparedText) {
+    let crate::protocol::SpacingSlotTarget::Boundary {
         visual_before,
         visual_after,
     } = slot.target()
@@ -1114,7 +1131,7 @@ fn conditional_boundary_custody(slot: &crate::SpacingSlot, prepared: &PreparedTe
         );
         assert_eq!(
             unit.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
-            [crate::SpacingSlotOwner::Source {
+            [crate::protocol::SpacingSlotOwner::Source {
                 origin: origin.clone(),
                 local: range,
                 aggregate: range
@@ -1131,7 +1148,7 @@ fn required_conditional_receipt(shaped: &ShapedData) {
             .flat_map(|invocation| &invocation.constraints)
             .any(|constraint| {
                 constraint.required
-                    && constraint.kind == crate::SpacingConstraintKind::Ligature
+                    && constraint.kind == crate::error::SpacingConstraintKind::Ligature
                     && constraint.components == [0, 2]
                     && constraint.provenance.iter().any(|provenance| {
                         provenance.tag() == surgeist_shaper::Tag::new(b"ccmp")
@@ -1179,9 +1196,9 @@ fn conditional_residual_demand_retains_required_ccmp_protection_after_neutral_pr
     let calls = provider_calls();
     assert!(calls > 0);
     let ordinary_line = ordinary
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
@@ -1198,16 +1215,18 @@ fn conditional_residual_demand_retains_required_ccmp_protection_after_neutral_pr
     assert_eq!(selected.spacing_slots().len(), 1);
     assert_eq!(exclusion_rows(&selected.inner.basis.shaped), [(1, false)]);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: amounts(&selected, &[0.0]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
     let row = line.spacing_slots().next().unwrap();
     assert_eq!(
         row.geometry,
-        crate::SpacingSlotGeometry::Boundary(crate::SpacingBoundaryGeometry::ProtectedRequired)
+        crate::protocol::SpacingSlotGeometry::Boundary(
+            crate::protocol::SpacingBoundaryGeometry::ProtectedRequired
+        )
     );
     assert_eq!((row.advance, row.allocation), (0.0, 0.0));
     assert!(!row.can_expand());
@@ -1261,9 +1280,9 @@ fn conditional_residual_demand_masks_optional_liga_before_reconciled_boundary_sh
     let calls = provider_calls();
     assert!(calls > 0);
     let ordinary_line = ordinary
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
@@ -1279,16 +1298,18 @@ fn conditional_residual_demand_masks_optional_liga_before_reconciled_boundary_sh
     assert_eq!(selected.spacing_slots().len(), 1);
     assert_eq!(exclusion_rows(&selected.inner.basis.shaped), [(1, false)]);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
     let row = line.spacing_slots().next().unwrap();
     assert_eq!(
         row.geometry,
-        crate::SpacingSlotGeometry::Boundary(crate::SpacingBoundaryGeometry::Independent)
+        crate::protocol::SpacingSlotGeometry::Boundary(
+            crate::protocol::SpacingBoundaryGeometry::Independent
+        )
     );
     assert_eq!(
         (row.authored_letter_spacing, row.advance, row.allocation),

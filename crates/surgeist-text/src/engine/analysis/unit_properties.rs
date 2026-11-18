@@ -293,7 +293,7 @@ pub(super) fn resolve_properties(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Source, Text, projection::SourceProjection};
+    use crate::{projection::SourceProjection, source::Source, text::Text};
 
     #[test]
     fn letter_query_matches_complete_appendix_e_category_resolution() {

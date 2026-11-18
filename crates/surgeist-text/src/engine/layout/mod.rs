@@ -8,7 +8,11 @@ mod standalone;
 
 use std::sync::Arc;
 
-use crate::{Result, TextNumericError, TextNumericPhase, ValidatedOptions};
+use crate::{
+    Result,
+    error::{TextNumericError, TextNumericPhase},
+    options::ValidatedOptions,
+};
 
 use super::{PreparedData, shape::ShapeContext, text_numeric_error};
 use data::PlacedLayout;
@@ -17,7 +21,7 @@ use data::PlacedLayout;
 pub(crate) fn qualify_selected_paint(
     input: crate::protocol::input::PresentationInput<'_>,
     shaped: &data::ShapedData,
-    participants: &[crate::PreparedParticipant],
+    participants: &[crate::protocol::PreparedParticipant],
 ) -> Result<()> {
     finalize::qualify_selected_paint(input, shaped, participants)
 }
@@ -34,15 +38,15 @@ pub(crate) fn metric_only_decoration_demand(
 pub(crate) fn scope_font_contribution(
     metrics: &data::RunMetrics,
     line_height: f64,
-) -> Result<crate::ScopeMetricContribution> {
+) -> Result<crate::protocol::ScopeMetricContribution> {
     let (before, after) = finalize::font_strut(data::RunMetrics {
         line_height,
         ..*metrics
     })?;
-    Ok(crate::ScopeMetricContribution {
+    Ok(crate::protocol::ScopeMetricContribution {
         before,
         after,
-        alignment: crate::LineBoxAlignment::Baseline,
+        alignment: crate::protocol::LineBoxAlignment::Baseline,
     })
 }
 
@@ -73,7 +77,7 @@ pub(crate) fn refinalize_selected(
 
 fn finalize_standalone(
     prepared: Arc<PreparedData>,
-    request: crate::LineSelectionRequest,
+    request: crate::protocol::LineSelectionRequest,
     quantize: bool,
     scratch: &mut ShapeContext,
     roles: &mut standalone::RawRoleBasis<'_>,
@@ -88,7 +92,7 @@ fn finalize_standalone(
     request.context.formatted_line = roles.initial(request.context.end);
     loop {
         let selected = select_with_scratch(
-            &crate::PreparedText {
+            &crate::protocol::PreparedText {
                 inner: Arc::clone(&prepared),
             },
             request.clone(),
@@ -128,8 +132,11 @@ fn finalize_standalone(
     }
 }
 
-fn missing_raw_role(error: &crate::Error, context: crate::FormattedLineContext) -> bool {
-    use crate::{ErrorDetail, PhaseTwoContext, ProtocolError};
+fn missing_raw_role(error: &crate::Error, context: crate::protocol::FormattedLineContext) -> bool {
+    use crate::{
+        ErrorDetail,
+        protocol::{PhaseTwoContext, ProtocolError},
+    };
     match error.detail() {
         Some(ErrorDetail::InvalidTextProtocol {
             reason: ProtocolError::MissingPhaseTwoContext(PhaseTwoContext::FirstFormattedLine),

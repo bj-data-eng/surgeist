@@ -2,8 +2,12 @@
 use super::fixtures::{allocations, select_method};
 use super::*;
 use crate::{
-    Affinity, ErrorDetail, FinalizedFragmentOwner, HyphenationPlacement, Rect, SpacingSlotOwner,
-    SpacingSlotTarget, TextNumericError, TextNumericPhase,
+    ErrorDetail,
+    error::{TextNumericError, TextNumericPhase},
+    geometry::Rect,
+    hyphenation::HyphenationPlacement,
+    layout::Affinity,
+    protocol::{SpacingSlotOwner, SpacingSlotTarget, readback::FinalizedFragmentOwner},
 };
 
 fn input(source: &Source, style: Style) -> ParagraphInput {
@@ -12,16 +16,16 @@ fn input(source: &Source, style: Style) -> ParagraphInput {
         source: source.clone(),
         base_style: style,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: extent,
             aggregate: extent,
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -41,21 +45,24 @@ fn register(bytes: &[u8]) -> System {
 
 fn prepare_input(system: &mut System, value: ParagraphInput) -> crate::Result<PreparedText> {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)?,
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            value,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )?,
+        crate::style::Wrap::Word,
     );
     system.prepare(&analyzed, PreparationOptions::default())
 }
 
-fn place(prepared: &PreparedText, lines: Vec<FinalizedLine>) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn place(prepared: &PreparedText, lines: Vec<FinalizedLine>) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: lines
             .into_iter()
             .enumerate()
             .map(|(index, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -70,7 +77,7 @@ fn place(prepared: &PreparedText, lines: Vec<FinalizedLine>) -> crate::Layout {
     .unwrap()
 }
 
-fn copied(layout: &crate::Layout, source: &Source) {
+fn copied(layout: &crate::layout::Layout, source: &Source) {
     assert_eq!(layout.source(), source);
     let positions = layout.positions().collect::<Vec<_>>();
     let selection = layout
@@ -126,13 +133,13 @@ fn source_owner(prepared: &PreparedText, range: Range) -> SpacingSlotOwner {
 
 fn indication_style(tracking: f64, placement: HyphenationPlacement) -> Style {
     Style {
-        hyphens: crate::Hyphens::Manual,
+        hyphens: crate::hyphenation::Hyphens::Manual,
         locale: Some("und-Latn".into()),
         native_hyphenation_convention: Some(
-            crate::NativeHyphenationConvention::language_script(
+            crate::hyphenation::NativeHyphenationConvention::language_script(
                 "und-Latn",
                 "Latn",
-                crate::Text::from("A"),
+                crate::text::Text::from("A"),
                 placement,
             )
             .unwrap(),
@@ -219,7 +226,7 @@ fn actual_before_after_and_both_indications_retain_selected_tracking_and_shy_que
             .unwrap();
         assert_eq!(
             cut.counts(),
-            Some(crate::HyphenationCounts {
+            Some(crate::protocol::HyphenationCounts {
                 total: 5,
                 before: 2,
                 after: 3
@@ -229,16 +236,16 @@ fn actual_before_after_and_both_indications_retain_selected_tracking_and_shy_que
             .opportunity()
             .expect("the actual SHY counts admit this cut");
         let chosen = offer.view().alternatives().next().unwrap().handle();
-        assert_eq!(chosen.view().text(), &crate::Text::from("A"));
+        assert_eq!(chosen.view().text(), &crate::text::Text::from("A"));
         assert_eq!(chosen.view().source_range(), Some(Range::new(2, 3)));
         assert_eq!(chosen.view().insertion_anchor().get(), 3);
         let first_selected = prepared
             .select(ending_request(&prepared, offer.clone(), chosen.clone()))
             .unwrap();
         let first_natural = first_selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -301,9 +308,9 @@ fn actual_before_after_and_both_indications_retain_selected_tracking_and_shy_que
         receiver.context.spacing = SpacingPolicy::InterCharacter;
         let second_selected = prepared.select(receiver).unwrap();
         let second_natural = second_selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -399,19 +406,23 @@ fn expanded_wbr_is_a_generated_endpoint_with_its_control_custody_and_no_authored
     let source = Source::identified("AA", Id::from_u64(1566061), 1);
     let capture = |tracking| {
         let mut value = input(&source, own(tracking));
-        value.controls.push(crate::ParagraphControl {
-            at: 1,
-            kind: crate::ParagraphControlKind::Wbr {
-                style: Box::new(Style {
-                    word_space_transform: crate::WordSpaceTransform::Space,
-                    ..own(tracking)
-                }),
-            },
-        });
-        value.anchor_order.push(crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::Control(0),
-            affinity: Affinity::After,
-        });
+        value
+            .controls
+            .push(crate::protocol::paragraph::ParagraphControl {
+                at: 1,
+                kind: crate::protocol::paragraph::ParagraphControlKind::Wbr {
+                    style: Box::new(Style {
+                        word_space_transform: crate::style::WordSpaceTransform::Space,
+                        ..own(tracking)
+                    }),
+                },
+            });
+        value
+            .anchor_order
+            .push(crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
+                affinity: Affinity::After,
+            });
         value
     };
     let mut system = register(&bytes);
@@ -437,9 +448,9 @@ fn expanded_wbr_is_a_generated_endpoint_with_its_control_custody_and_no_authored
         )
     );
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 38.0);
@@ -496,34 +507,34 @@ fn expanded_wbr_is_a_generated_endpoint_with_its_control_custody_and_no_authored
 }
 
 fn phrase_analysis(source: &Source, tracking: f64) -> AnalyzedSource {
-    use crate::SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     let processed = std::sync::Arc::new(
-        crate::process_contextual_source(crate::ContextualSourceInput {
+        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: crate::SourceProcessingEnvelope::Complete,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: crate::processing::SourceProcessingEnvelope::Complete,
             origins: input(source, own(0.0)).origins,
             connections: vec![],
             controls: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![crate::SourceProcessingScope::Block {
+            scopes: vec![crate::processing::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::SourceProcessingTopology::Complete,
+                topology: crate::processing::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: Style {
                     locale: Some("ja".into()),
-                    word_space_transform: crate::WordSpaceTransform::SpaceAutoPhrase,
+                    word_space_transform: crate::style::WordSpaceTransform::SpaceAutoPhrase,
                     ..own(tracking)
                 },
                 used_direction: ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![crate::SourceProcessingParagraph {
+            paragraphs: vec![crate::processing::SourceProcessingParagraph {
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
             }],
@@ -543,10 +554,10 @@ fn phrase_analysis(source: &Source, tracking: f64) -> AnalyzedSource {
     crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     )
 }
 
@@ -617,9 +628,9 @@ fn actual_phrase_separator_remains_a_virtual_endpoint_and_out_of_original_source
         )
     );
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 122.0);
@@ -689,9 +700,9 @@ fn exact_opposite_subnormal_and_extreme_values_cancel_without_materializing_priv
             assert_eq!(visual_before.letter_spacing_after(), left);
             assert_eq!(visual_after.letter_spacing_before(), -left);
             let line = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(
@@ -829,7 +840,7 @@ fn selected_before_indication_loses_a_mean_only_during_retained_finalization() {
             .unwrap();
         assert_eq!(
             cut.counts(),
-            Some(crate::HyphenationCounts {
+            Some(crate::protocol::HyphenationCounts {
                 total: 5,
                 before: 2,
                 after: 3,
@@ -837,7 +848,7 @@ fn selected_before_indication_loses_a_mean_only_during_retained_finalization() {
         );
         let offer = cut.opportunity().unwrap();
         let chosen = offer.view().alternatives().next().unwrap().handle();
-        assert_eq!(chosen.view().text(), &crate::Text::from("A"));
+        assert_eq!(chosen.view().text(), &crate::text::Text::from("A"));
         assert_eq!(chosen.view().source_range(), Some(Range::new(2, 3)));
         assert_eq!(chosen.view().insertion_anchor().get(), 3);
         let selected = prepared
@@ -865,9 +876,9 @@ fn selected_before_indication_loses_a_mean_only_during_retained_finalization() {
         assert_eq!(visual_after.letter_spacing_before(), tracking);
         if tracking == 0.0 {
             let first = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(first.feedback().advance, 30.0);
@@ -885,9 +896,9 @@ fn selected_before_indication_loses_a_mean_only_during_retained_finalization() {
             let second = prepared
                 .select(receiver)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(second.feedback().advance, 30.0);
@@ -919,9 +930,9 @@ fn selected_before_indication_loses_a_mean_only_during_retained_finalization() {
             // exactly halfway to min and rounds to even zero: the error belongs
             // to this retained operation, after preparation and selection.
             let error = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap_err();
             numeric(
@@ -951,9 +962,9 @@ fn same_sign_extreme_means_avoid_overflow_and_refuse_the_actual_following_ten_pi
             let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
             assert_eq!(selected.spacing_slots().len(), 1);
             let error = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap_err();
             numeric(
@@ -978,9 +989,9 @@ fn lost_actual_allocation_preserves_the_previous_line_and_allows_a_later_valid_r
     );
     let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
     let prior = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let least = f64::from_bits(1);
@@ -1018,7 +1029,7 @@ fn a_real_tracking_displacement_lost_at_a_finite_physical_anchor_preserves_the_p
     let placement = |anchor| PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line: line.clone(),
             anchor: LineAnchor {
                 inline_origin: anchor,
@@ -1028,7 +1039,7 @@ fn a_real_tracking_displacement_lost_at_a_finite_physical_anchor_preserves_the_p
             atomics: vec![],
         })],
     };
-    let retained = crate::Layout::from_finalized_lines(placement(20.0)).unwrap();
+    let retained = crate::layout::Layout::from_finalized_lines(placement(20.0)).unwrap();
     let old_glyphs = retained.glyph_runs();
     let old_bounds = retained.bounds();
     let ordinary = prepare(AHEM, &source, own(0.0), &units);
@@ -1043,10 +1054,10 @@ fn a_real_tracking_displacement_lost_at_a_finite_physical_anchor_preserves_the_p
         assert_ne!(anchor + 10.0, anchor);
         assert_ne!(anchor + 1.0, anchor);
         assert_eq!(anchor + 10.0, anchor + 10.0625);
-        let ordinary_placed = crate::Layout::from_finalized_lines(PlacementRequest {
+        let ordinary_placed = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: ordinary.clone(),
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: ordinary_line.clone(),
                 anchor: LineAnchor {
                     inline_origin: anchor,
@@ -1059,12 +1070,12 @@ fn a_real_tracking_displacement_lost_at_a_finite_physical_anchor_preserves_the_p
         .expect("the ordinary raw geometry is admitted at this same physical anchor");
         assert_eq!(
             ordinary_placed
-                .cursor(crate::Cursor::new(1, Affinity::After))
+                .cursor(crate::layout::Cursor::new(1, Affinity::After))
                 .unwrap()
                 .rect(),
             Rect::new(anchor + 10.0, 62.0, 1.0, 10.0)
         );
-        let error = crate::Layout::from_finalized_lines(placement(anchor)).unwrap_err();
+        let error = crate::layout::Layout::from_finalized_lines(placement(anchor)).unwrap_err();
         // The shared diagnostic names the actual word or character displacement.
         numeric(
             &error,
@@ -1078,7 +1089,7 @@ fn a_real_tracking_displacement_lost_at_a_finite_physical_anchor_preserves_the_p
         assert_eq!(line.feedback().advance, 20.0625);
     }
     assert_eq!(
-        crate::Layout::from_finalized_lines(placement(20.0))
+        crate::layout::Layout::from_finalized_lines(placement(20.0))
             .unwrap()
             .bounds(),
         old_bounds

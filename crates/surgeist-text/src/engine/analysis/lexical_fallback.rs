@@ -142,17 +142,17 @@ mod tests {
             "ก\u{200d}ก".to_owned(),
         ] {
             let end = text.encode_utf16().count();
-            let analyzed = crate::AnalyzedSource::new(
-                crate::Source::new(text.clone()),
-                crate::Style::default(),
-                crate::AnalysisTypography::HorizontalComposition,
+            let analyzed = crate::analyzed::AnalyzedSource::new(
+                crate::source::Source::new(text.clone()),
+                crate::style::Style::default(),
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(
                 analyzed.graphemes().collect::<Vec<_>>(),
                 [
-                    crate::Range::new(0, end - 1),
-                    crate::Range::new(end - 1, end)
+                    crate::range::Range::new(0, end - 1),
+                    crate::range::Range::new(end - 1, end)
                 ]
             );
             assert!(
@@ -185,18 +185,17 @@ mod tests {
             ("\u{600}ก", Some(Script::Thai)),
             ("\u{1}", None),
         ] {
-            let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
+            let projection = SourceProjection::new(&crate::source::Source::new(text)).unwrap();
             assert_eq!(
                 qualified_unit(&projection, 0..projection.atoms.len()),
                 expected,
                 "{text:?}"
             );
         }
-        let projection =
-            SourceProjection::new(&crate::Source::new(crate::Text::from_code_units(vec![
-                0xd800, 0x301,
-            ])))
-            .unwrap();
+        let projection = SourceProjection::new(&crate::source::Source::new(
+            crate::text::Text::from_code_units(vec![0xd800, 0x301]),
+        ))
+        .unwrap();
         assert_eq!(projection.graphemes, [0, 2]);
         assert_eq!(qualified_unit(&projection, 0..2), None);
     }

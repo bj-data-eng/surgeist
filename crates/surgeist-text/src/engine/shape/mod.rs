@@ -58,8 +58,10 @@ use super::{
     resolve::ResolvedStyle,
 };
 use crate::{
-    Error, ErrorCode, ErrorDetail, FontData, FontSynthesis, Range, Result, TextNumericError,
-    TextNumericPhase,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::{TextNumericError, TextNumericPhase},
+    font::{FontData, FontSynthesis},
+    range::Range,
 };
 
 pub(crate) struct ShapeContext {
@@ -72,7 +74,10 @@ pub(crate) struct ShapeContext {
 }
 
 impl ShapeContext {
-    fn control_font(&mut self, publication: &crate::CataloguePublication) -> Result<FontData> {
+    fn control_font(
+        &mut self,
+        publication: &surgeist_font::CataloguePublication,
+    ) -> Result<FontData> {
         if let Some(face) = &self.control_face {
             return Ok(FontData::from_face(face.clone(), publication.clone()));
         }
@@ -162,7 +167,7 @@ pub(crate) fn retain_original_fonts(
     let mut prior_run = None;
     let mut prior_original = None;
     for (atom, original) in originals.iter().enumerate() {
-        if prepared.options.tabs() == crate::TabPreparation::CssStops
+        if prepared.options.tabs() == crate::tabs::TabPreparation::CssStops
             && projection.atoms[atom].code_point == 9
         {
             continue;
@@ -224,7 +229,7 @@ pub(crate) fn assign_fonts(
         boxes: prepared.analyzed.processed.source().boxes(),
         font_catalogue: &prepared.font_catalogue,
         paragraph: &prepared.analyzed.paragraph,
-        css_tabs: prepared.options.tabs() == crate::TabPreparation::CssStops,
+        css_tabs: prepared.options.tabs() == crate::tabs::TabPreparation::CssStops,
         profile,
     };
     let mut cluster = CharCluster::default();
@@ -296,7 +301,7 @@ pub(crate) fn assign_fonts(
                 })
                 .ok_or_else(|| {
                     crate::hyphenation::error(
-                        crate::HyphenationError::UncapturedIndicationFontQuery,
+                        crate::hyphenation::HyphenationError::UncapturedIndicationFontQuery,
                     )
                 })?;
             let mut run = witness.run.clone();
@@ -546,7 +551,7 @@ fn shape_impl(
         separator_geometry: input.separator_geometry,
         characters: None,
         profile: super::upright::ShapingProfile::Horizontal,
-        baseline_reference: Some(crate::FontBaseline::Alphabetic),
+        baseline_reference: Some(crate::font::FontBaseline::Alphabetic),
         projection: input.projection,
         analysis: input.analysis,
         styles: input.styles,
@@ -853,8 +858,8 @@ pub(crate) fn default_metrics(
 pub(crate) fn finalize(
     selected: crate::protocol::input::PresentationInput<'_>,
     scratch: &mut ShapeContext,
-    spacing: crate::SpacingPolicy,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    spacing: crate::protocol::SpacingPolicy,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
     scope_input: super::scope_alignment::PlanInput<'_>,
 ) -> Result<(
     ShapedData,
@@ -894,25 +899,26 @@ pub(crate) fn finalize(
         super::spacing::character::Input::selected(prepared, presentation, &mut scope_budget)?;
     let characters = super::spacing::character::plan(
         character_input,
-        spacing == crate::SpacingPolicy::InterCharacter,
+        spacing == crate::protocol::SpacingPolicy::InterCharacter,
         &mut scope_budget,
     )?;
     let mut native_spacing = None;
-    let spacing_ledger = if character_input.has_cells() && spacing != crate::SpacingPolicy::None {
-        &mut scope_budget
-    } else {
-        &mut native_spacing
-    };
+    let spacing_ledger =
+        if character_input.has_cells() && spacing != crate::protocol::SpacingPolicy::None {
+            &mut scope_budget
+        } else {
+            &mut native_spacing
+        };
     let mut separator_feedback = false;
     match spacing {
-        crate::SpacingPolicy::None | crate::SpacingPolicy::InterCharacter => (),
-        crate::SpacingPolicy::Spaces => {
+        crate::protocol::SpacingPolicy::None | crate::protocol::SpacingPolicy::InterCharacter => (),
+        crate::protocol::SpacingPolicy::Spaces => {
             for unit in &presentation.units {
                 super::scope_alignment::accounting::work(spacing_ledger, 1)?;
                 separator_feedback |= unit.eligible_space;
             }
         }
-        crate::SpacingPolicy::InterWord => super::spacing::visit_outer_candidates(
+        crate::protocol::SpacingPolicy::InterWord => super::spacing::visit_outer_candidates(
             presentation,
             &selected.boundaries.presentation,
             spacing_ledger,
@@ -935,7 +941,7 @@ pub(crate) fn finalize(
         boxes: prepared.analyzed.processed.source().boxes(),
         font_catalogue: &prepared.font_catalogue,
         paragraph: &prepared.analyzed.paragraph,
-        css_tabs: prepared.options.tabs() == crate::TabPreparation::CssStops,
+        css_tabs: prepared.options.tabs() == crate::tabs::TabPreparation::CssStops,
         profile: super::upright::selected_profile(prepared, presentation),
     };
     let mut output = ShapedData {
@@ -1202,9 +1208,11 @@ pub(crate) fn finalize(
             split_bytes = split_bytes
                 .checked_add(super::scope_alignment::accounting::bytes(&row.run.coords)?)
                 .ok_or_else(|| {
-                    super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                        kind: crate::ScopeAlignmentLimitKind::PayloadBytes,
-                    })
+                    super::scope_alignment::refusal(
+                        crate::processing::ScopeAlignmentError::Overflow {
+                            kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+                        },
+                    )
                 })?;
         }
         drop(split_assignments);
@@ -1245,7 +1253,8 @@ pub(crate) fn finalize(
     }
     retain_external_invocations(&mut output);
     cells.retain(prepared, presentation, &mut output, &mut scope_budget)?;
-    let funded_word_receipts = spacing != crate::SpacingPolicy::None && !output.cells.is_empty();
+    let funded_word_receipts =
+        spacing != crate::protocol::SpacingPolicy::None && !output.cells.is_empty();
     super::spacing::authored_selected(
         selected,
         &mut output,
@@ -1266,7 +1275,7 @@ pub(crate) fn finalize(
                 )?;
             }
             PresentationUnitKind::Atomic { occurrence } => {
-                if input.boxes[occurrence].kind() == crate::InlineBoxKind::InFlow {
+                if input.boxes[occurrence].kind() == crate::source::InlineBoxKind::InFlow {
                     cells.push_item(
                         &mut output.items,
                         ShapedItem::InlineBox {
@@ -2225,7 +2234,7 @@ fn resolved_run(
     } else {
         coords.iter().map(|coord| coord.to_bits()).collect()
     };
-    let instance = crate::EffectiveFontInstance::qualify_synthesized(
+    let instance = crate::font::EffectiveFontInstance::qualify_synthesized(
         request.font.face(),
         style.font_size,
         &stored_coords,
@@ -2248,34 +2257,35 @@ fn resolved_run(
     let normal_extent = metrics.ascent() - metrics.descent() + leading;
     let line_height = resolved_line_height(style, normal_extent)?;
     let baseline_reference = match input.baseline_reference {
-        Some(crate::FontBaseline::Central)
+        Some(crate::font::FontBaseline::Central)
             if request.role() == super::upright::RunRole::SidewaysClockwise =>
         {
-            Some(crate::FontBaseline::Central)
+            Some(crate::font::FontBaseline::Central)
         }
-        Some(crate::FontBaseline::Alphabetic) => Some(crate::FontBaseline::Alphabetic),
+        Some(crate::font::FontBaseline::Alphabetic) => Some(crate::font::FontBaseline::Alphabetic),
         _ => None,
     };
     let font_origin_offset = if let Some(reference) = baseline_reference {
-        let script = crate::FontBaselineScript::from_script(request.script).ok_or_else(|| {
-            Error::new(
-                ErrorCode::InvalidFontMetrics,
-                "unavailable actual baseline script",
-            )
-            .with_detail(ErrorDetail::FontMetricTable {
-                table: crate::FontMetricTable::Base,
-                reason: crate::FontMetricTableError::BaselineScriptUnavailable,
-            })
-        })?;
+        let script =
+            crate::font::FontBaselineScript::from_script(request.script).ok_or_else(|| {
+                Error::new(
+                    ErrorCode::InvalidFontMetrics,
+                    "unavailable actual baseline script",
+                )
+                .with_detail(ErrorDetail::FontMetricTable {
+                    table: crate::error::FontMetricTable::Base,
+                    reason: crate::error::FontMetricTableError::BaselineScriptUnavailable,
+                })
+            })?;
         let baseline = instance.baseline(
             input.font_catalogue,
             script,
-            crate::FontBaselineAxis::HorizontalY,
+            crate::font::FontBaselineAxis::HorizontalY,
             reference,
         )?;
         // The raw owner supplies the named HorizontalY coordinate or its
         // qualified synthesis; malformed consumed data returned above.
-        let crate::FontBaselineOutcome::Available(value) = baseline.outcome() else {
+        let crate::font::FontBaselineOutcome::Available(value) = baseline.outcome() else {
             unreachable!("horizontal used baseline measurement always has a value")
         };
         value.coordinate()
@@ -2359,12 +2369,12 @@ fn resolved_run(
         script: request.script,
         atoms: request.atoms.clone(),
         glyph_basis: match request.role() {
-            super::upright::RunRole::SidewaysClockwise => crate::GlyphBasis::Clockwise,
+            super::upright::RunRole::SidewaysClockwise => crate::geometry::GlyphBasis::Clockwise,
             super::upright::RunRole::SidewaysCounterclockwise => {
-                crate::GlyphBasis::Counterclockwise
+                crate::geometry::GlyphBasis::Counterclockwise
             }
             super::upright::RunRole::Horizontal | super::upright::RunRole::Upright => {
-                crate::GlyphBasis::Unrotated
+                crate::geometry::GlyphBasis::Unrotated
             }
         },
         metrics: run_metrics,
@@ -2786,7 +2796,7 @@ fn retain_components(
                 .provenance()
                 .iter()
                 .any(|p| p.role() == surgeist_shaper::FeatureRole::Required),
-            kind: crate::SpacingConstraintKind::Ligature,
+            kind: crate::error::SpacingConstraintKind::Ligature,
             provenance: relation.provenance().to_vec(),
         });
     }
@@ -2801,10 +2811,10 @@ fn retain_components(
             required: false,
             kind: match relation.kind() {
                 surgeist_shaper::ComponentAttachmentKind::Mark => {
-                    crate::SpacingConstraintKind::MarkAttachment
+                    crate::error::SpacingConstraintKind::MarkAttachment
                 }
                 surgeist_shaper::ComponentAttachmentKind::Cursive => {
-                    crate::SpacingConstraintKind::CursiveAttachment
+                    crate::error::SpacingConstraintKind::CursiveAttachment
                 }
             },
             provenance: Vec::new(),
@@ -2861,7 +2871,7 @@ fn retain_external_joining(
                 run,
                 components: vec![previous, atom],
                 required: false,
-                kind: crate::SpacingConstraintKind::ExternalJoiningContext {
+                kind: crate::error::SpacingConstraintKind::ExternalJoiningContext {
                     body: request.atoms.clone(),
                     context: request.context.atoms.clone(),
                 },
@@ -2884,7 +2894,7 @@ fn retain_external_invocations(output: &mut ShapedData) {
         .collect();
     for invocation in &mut output.character_invocations {
         invocation.constraints.retain(|constraint| {
-            let crate::SpacingConstraintKind::ExternalJoiningContext { body, .. } =
+            let crate::error::SpacingConstraintKind::ExternalJoiningContext { body, .. } =
                 &constraint.kind
             else {
                 return true;
@@ -3344,7 +3354,7 @@ fn whitespace(code_point: u32) -> Whitespace {
 pub(crate) fn automatic_hyphen(
     mut query: FontQuery<'_>,
     style: &ResolvedStyle,
-) -> Result<(crate::Text, FontData)> {
+) -> Result<(crate::text::Text, FontData)> {
     let selected = query.visit_candidates(&style.font_family, attributes(style), |font| {
         let text = if font
             .charmap()
@@ -3356,14 +3366,14 @@ pub(crate) fn automatic_hyphen(
             "-"
         };
         ControlFlow::Break((
-            crate::Text::from(text),
+            crate::text::Text::from(text),
             FontData::from_face(font.face().clone(), font.publication().clone()),
         ))
     })?;
     match selected {
         ControlFlow::Break(result) => Ok(result),
         ControlFlow::Continue(()) => Err(crate::hyphenation::error(
-            crate::HyphenationError::MissingPrimaryFont,
+            crate::hyphenation::HyphenationError::MissingPrimaryFont,
         )),
     }
 }
@@ -3411,8 +3421,8 @@ pub(crate) struct CharacterProbe<'a> {
     pub(crate) input: ShapingInput<'a>,
     pub(crate) style_index: usize,
     pub(crate) ch: char,
-    pub(crate) direction: crate::ParagraphBaseDirection,
-    pub(crate) content: crate::UprightContent,
+    pub(crate) direction: crate::protocol::ParagraphBaseDirection,
+    pub(crate) content: crate::error::UprightContent,
 }
 pub(crate) fn measure_character(
     mut query: FontQuery<'_>,
@@ -3444,7 +3454,7 @@ pub(crate) fn measure_character(
             }
         };
     }
-    let level = u8::from(direction == crate::ParagraphBaseDirection::RightToLeft);
+    let level = u8::from(direction == crate::protocol::ParagraphBaseDirection::RightToLeft);
     let direction = if input.role(0) == super::upright::RunRole::Upright {
         surgeist_shaper::Direction::TopToBottom
     } else {
@@ -3567,7 +3577,7 @@ pub(crate) fn measure_character(
         buffer.set_language(language);
     }
     let advances: Vec<_> = if input.role(0) == super::upright::RunRole::Upright {
-        let effective = crate::EffectiveFontInstance::qualify_synthesized(
+        let effective = crate::font::EffectiveFontInstance::qualify_synthesized(
             run.font.face(),
             run.font_size,
             &run.coords,
@@ -3599,15 +3609,20 @@ pub(crate) fn measure_character(
                         .len()
                         .checked_add(1)
                         .ok_or_else(|| {
-                            super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                                kind: crate::ScopeAlignmentLimitKind::StructuralWork,
-                            })
+                            super::scope_alignment::refusal(
+                                crate::processing::ScopeAlignmentError::Overflow {
+                                    kind:
+                                        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                                },
+                            )
                         })?,
                 )
                 .ok_or_else(|| {
-                    super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
-                    })
+                    super::scope_alignment::refusal(
+                        crate::processing::ScopeAlignmentError::Overflow {
+                            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                        },
+                    )
                 })?,
         )?;
         account::collect(
@@ -3639,15 +3654,20 @@ pub(crate) fn measure_character(
                         .len()
                         .checked_add(1)
                         .ok_or_else(|| {
-                            super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                                kind: crate::ScopeAlignmentLimitKind::StructuralWork,
-                            })
+                            super::scope_alignment::refusal(
+                                crate::processing::ScopeAlignmentError::Overflow {
+                                    kind:
+                                        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                                },
+                            )
                         })?,
                 )
                 .ok_or_else(|| {
-                    super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
-                    })
+                    super::scope_alignment::refusal(
+                        crate::processing::ScopeAlignmentError::Overflow {
+                            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                        },
+                    )
                 })?,
         )?;
         account::collect(

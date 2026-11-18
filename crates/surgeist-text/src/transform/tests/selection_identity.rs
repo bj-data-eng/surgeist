@@ -3,8 +3,12 @@
 
 use crate::transform::relation::RelationEvent;
 use crate::{
-    Affinity, AnalysisTypography, AnalyzedSource, CaseTransform, PlaintextItem, Range, Source,
-    Style, TextTransform, TextTransformSet, WhiteSpace,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    layout::Affinity,
+    processing::PlaintextItem,
+    range::Range,
+    source::Source,
+    style::{CaseTransform, Style, TextTransform, TextTransformSet, WhiteSpace},
 };
 
 fn style(case: CaseTransform, width: bool, kana: bool) -> Style {
@@ -32,22 +36,26 @@ fn analyze(source: &Source, style: Style) -> AnalyzedSource {
 fn processed_paragraph(source: &Source, style: Style) -> AnalyzedSource {
     let range = Range::new(0, source.text().len());
     AnalyzedSource::from_paragraph(
-        crate::ParagraphInput {
+        crate::protocol::ParagraphInput {
             source: source.clone(),
             base_style: style,
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: crate::ParagraphBaseDirection::LeftToRight,
-            origins: vec![crate::ParagraphOrigin {
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
+            origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                 text_node: Some(
-                    crate::CompleteTextNodeContribution::new(source.text().clone(), range).unwrap(),
+                    crate::protocol::paragraph::CompleteTextNodeContribution::new(
+                        source.text().clone(),
+                        range,
+                    )
+                    .unwrap(),
                 ),
                 source: source.clone(),
                 local: range,
                 aggregate: range,
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],

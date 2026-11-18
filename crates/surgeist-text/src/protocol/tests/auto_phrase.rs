@@ -5,7 +5,45 @@
 //! not executable evidence from before the API existed.
 
 use super::*;
-use crate::*;
+use crate::{
+    System,
+    analyzed::AnalyzedSource,
+    cache::Key,
+    geometry::Size,
+    hyphenation::{
+        HyphenateCharacter, HyphenateLimitChars, HyphenationMinimum, HyphenationPlacement, Hyphens,
+        NativeHyphenationConvention,
+    },
+    id::Id,
+    layout::{Affinity, Layout},
+    options::{Options, ValidatedOptions},
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        ConditionalDisposition, ConditionalPurpose, ConditionalStage, ControlAllocation,
+        FinalizedLine, HyphenationContinuation, HyphenationCounts, HyphenationProvenance,
+        InlineBoundaryAllocation, LineAnchor, LineEnd, LineOrientation, LinePlacement,
+        LineSelectionRequest, LineStart, ParagraphBaseDirection, ParagraphInput,
+        ParagraphTerminalEdge, PhraseOverflowDecision, PlacementCoverage, PlacementRequest,
+        PreparationOptions, PreparedBoundary, PreparedBreakKind, PreparedConditionalBatch,
+        PreparedConditionalOpportunity, PreparedOpportunity, PreparedParticipant,
+        PreparedPhrasePieceOwner, PreparedPhrasePortion, PreparedPhraseProvenance,
+        PreparedTermination, PreparedText, SpacingAllocations, SpacingPolicy,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy, ParagraphConnection, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+        readback::{PreparedAlternativeDefinition, PresentationMappingKind},
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source, ValidatedSource},
+    style::{
+        Brush, Direction, Font, LineBreak, LineHeight, OverflowWrap, Style, TextTransform,
+        TextTransformSet, ValidatedStyle, WhiteSpace, WordBreak, Wrap,
+    },
+    text::Text,
+};
 
 const PHRASE_FONT: &[u8] =
     include_bytes!("../../../tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
@@ -99,9 +137,11 @@ fn prepare_in(mut input: ParagraphInput, ancestor_wrap: Wrap) -> PreparedText {
             following_wrap: wrap,
             ancestor_wrap,
         }));
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, ancestor_wrap);
     catalogue()
         .prepare(&analyzed, PreparationOptions::default())
@@ -130,15 +170,15 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         ParagraphBaseDirection::LeftToRight
     };
     r.context.line_box_direction = if p.analyzed_source().direction() == Direction::RightToLeft {
-        crate::LineBoxDirection::RightToLeft
+        crate::protocol::LineBoxDirection::RightToLeft
     } else {
-        crate::LineBoxDirection::LeftToRight
+        crate::protocol::LineBoxDirection::LeftToRight
     };
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -224,9 +264,9 @@ fn ordinary_trial(
         Some(width),
     ))
     .unwrap()
-    .finalize(crate::LineAllocations {
+    .finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
     .unwrap()
 }
@@ -241,9 +281,9 @@ fn phrase_trial(p: &PreparedText, portion: &PreparedPhrasePortion, width: f64) -
         Some(width),
     ))
     .unwrap()
-    .finalize(crate::LineAllocations {
+    .finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
     .unwrap()
 }
@@ -263,9 +303,9 @@ fn conditional_trial(
         width,
     ))
     .unwrap()
-    .finalize(crate::LineAllocations {
+    .finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
     .unwrap()
 }
@@ -764,7 +804,7 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&frame),
+            crate::protocol::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let again = p
@@ -777,7 +817,7 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&again_frame),
+            crate::protocol::ConditionalLineContext::Finalized(&again_frame),
         )
         .unwrap();
     assert_eq!(
@@ -868,7 +908,7 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&frame),
+            crate::protocol::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let trial = phrase_trial(&p, &search.phrase_portions()[0], 40.0);
@@ -900,7 +940,7 @@ fn finite_normal_hyphen_and_arbitrary_stages_require_exact_complete_trials() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&frame),
+            crate::protocol::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let trial = phrase_trial(&p, &search.phrase_portions()[0], 5.0);
@@ -957,7 +997,7 @@ fn intrinsic_anywhere_has_its_own_authority_and_cannot_unlock_finite_relaxation(
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 &[],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap();
         assert!(intrinsic.phrase_portions().is_empty());
@@ -981,7 +1021,7 @@ fn intrinsic_anywhere_has_its_own_authority_and_cannot_unlock_finite_relaxation(
                     &ceiling,
                     ConditionalPurpose::Overflow,
                     &[],
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .is_err()
         );
@@ -1024,7 +1064,7 @@ fn a_restored_cut_reissues_only_the_actual_remaining_phrase_on_the_next_line() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&frame),
+            crate::protocol::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let original = search.phrase_portions()[0].clone();
@@ -1053,7 +1093,7 @@ fn a_restored_cut_reissues_only_the_actual_remaining_phrase_on_the_next_line() {
             &remaining_ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&second),
+            crate::protocol::ConditionalLineContext::Finalized(&second),
         )
         .unwrap();
     let portions = remaining.phrase_portions();
@@ -1099,7 +1139,7 @@ fn a_restored_cut_reissues_only_the_actual_remaining_phrase_on_the_next_line() {
             .into_iter()
             .enumerate()
             .map(|(i, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -1139,7 +1179,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&frame),
+            crate::protocol::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let portion = search.phrase_portions()[0].clone();
@@ -1154,7 +1194,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&trial),
+                crate::protocol::ConditionalLineContext::Finalized(&trial),
             )
             .is_err(),
         "a nonplaceable measurement is not an ordinary search frame"
@@ -1179,7 +1219,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&other_frame),
+                crate::protocol::ConditionalLineContext::Finalized(&other_frame),
             )
             .is_err()
     );
@@ -1194,7 +1234,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
                 &other_ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&other_frame),
+                crate::protocol::ConditionalLineContext::Finalized(&other_frame),
             )
             .is_err()
     );
@@ -1208,7 +1248,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             &other_ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&other_frame),
+            crate::protocol::ConditionalLineContext::Finalized(&other_frame),
         )
         .unwrap();
     assert!(
@@ -1228,7 +1268,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&changed_frame),
+            crate::protocol::ConditionalLineContext::Finalized(&changed_frame),
         )
         .unwrap();
     assert_ne!(search, changed_search);
@@ -1282,7 +1322,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             &ceiling,
             ConditionalPurpose::MinContent,
             &[],
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .unwrap();
     assert!(
@@ -1325,7 +1365,7 @@ fn unsupported_phrase_language_restores_only_eligible_actual_hyphen_variants_bef
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&frame),
+                crate::protocol::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         assert!(
@@ -1433,7 +1473,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&frame),
+                crate::protocol::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         let trial = phrase_trial(&p, &search.phrase_portions()[0], 5.0);
@@ -1521,7 +1561,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&frame),
+                crate::protocol::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         assert!(search.phrase_portions().is_empty());
@@ -1566,7 +1606,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                 &residual_ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&second),
+                crate::protocol::ConditionalLineContext::Finalized(&second),
             )
             .unwrap();
         assert!(remaining.phrase_portions().is_empty());
@@ -1581,7 +1621,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                     &residual_ceiling,
                     ConditionalPurpose::Overflow,
                     &[],
-                    crate::ConditionalLineContext::Finalized(&second),
+                    crate::protocol::ConditionalLineContext::Finalized(&second),
                 )
                 .is_err()
         );
@@ -1594,7 +1634,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                     .into_iter()
                     .enumerate()
                     .map(|(i, line)| {
-                        crate::PlacementEntry::Formatted(LinePlacement {
+                        crate::protocol::PlacementEntry::Formatted(LinePlacement {
                             line,
                             anchor: LineAnchor {
                                 inline_origin: 0.0,
@@ -1698,7 +1738,7 @@ fn supported_phrase_measurement_authenticates_after_and_both_incoming_on_the_res
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&frame),
+                crate::protocol::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         let portions = search.phrase_portions();
@@ -1739,7 +1779,7 @@ fn supported_phrase_measurement_authenticates_after_and_both_incoming_on_the_res
                 &remaining_ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&second),
+                crate::protocol::ConditionalLineContext::Finalized(&second),
             )
             .unwrap();
         let portions = remaining.phrase_portions();

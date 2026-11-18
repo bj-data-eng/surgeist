@@ -1,15 +1,17 @@
 //! Actual used numerical box contributions join the existing native metric groups.
 use super::*;
 use crate::{
-    LineBoxAlignment, LineBoxStrut, LineHeight, LineStrut, OverflowWrap, Range, TextNumericError,
-    TextNumericPhase, Wrap,
+    error::{TextNumericError, TextNumericPhase},
+    protocol::{LineBoxAlignment, LineBoxStrut, LineStrut},
+    range::Range,
+    style::{LineHeight, OverflowWrap, Wrap},
 };
 use std::hash::{Hash, Hasher};
 
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn prepare(text: &str, overflow: OverflowWrap) -> PreparedText {
-    let source = Source::identified(text, crate::Id::from_u64(75083), 7);
+    let source = Source::identified(text, crate::id::Id::from_u64(75083), 7);
     let end = source.text().len();
     let analyzed = AnalyzedSource::from_paragraph(
         ParagraphInput {
@@ -19,22 +21,22 @@ fn prepare(text: &str, overflow: OverflowWrap) -> PreparedText {
                 size: 10.0,
                 line_height: LineHeight::Absolute(10.0),
                 white_space: WhiteSpace::Preserve,
-                word_break: crate::WordBreak::Normal,
+                word_break: crate::style::WordBreak::Normal,
                 wrap: Wrap::Word,
                 overflow_wrap: overflow,
                 ..Style::default()
             },
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
-            origins: vec![crate::ParagraphOrigin {
+            origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: Range::new(0, end),
                 aggregate: Range::new(0, end),
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -42,7 +44,7 @@ fn prepare(text: &str, overflow: OverflowWrap) -> PreparedText {
             boundary_policies: vec![],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = system();
@@ -75,9 +77,9 @@ fn whole(
     r.context.available_inline = Some(available);
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -128,7 +130,7 @@ fn used_baseline_top_and_bottom_rows_are_combined_once_with_real_font_and_line_s
         assert_eq!(line.selected_line().request().line_strut, line_strut);
         assert_eq!(
             line.run_views().map(|run| run.origin()).collect::<Vec<_>>(),
-            [crate::Point::new(0.0, expected.0)]
+            [crate::geometry::Point::new(0.0, expected.0)]
         );
         assert_eq!(
             line.run_views()
@@ -238,7 +240,7 @@ fn conditional_identity_retains_box_alignment_without_freezing_candidate_geometr
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(frame),
+                crate::protocol::ConditionalLineContext::Finalized(frame),
             )
             .unwrap()
     };

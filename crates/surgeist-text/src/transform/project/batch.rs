@@ -11,7 +11,7 @@ use crate::transform::{
     context::{self, SourceContext, StyleRow},
     relation::{ComponentOwner, RelationEvent, TransformMap},
 };
-use crate::{Range, Result, SourceContinuityOperation};
+use crate::{Result, processing::SourceContinuityOperation, range::Range};
 use std::sync::Arc;
 
 pub(in crate::transform) struct ProjectTarget {

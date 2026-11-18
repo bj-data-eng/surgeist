@@ -7,7 +7,24 @@ use crate::processing::{
 };
 use crate::protocol::paragraph::SemanticAnchorItem;
 use crate::transform::relation::{ComponentOwner, RelationEvent};
-use crate::*;
+use crate::{
+    analyzed::{AnalysisTypography, AnalyzedDomain},
+    geometry::Size,
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ProcessedSource, SourceProcessingConnection, SourceProcessingEvent, SourceProcessingScope,
+        SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{ParagraphBoundaryDefinition, ParagraphConnectionKind},
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind},
+    style::{Style, TextCombineUpright, TextTransform, WhiteSpace},
+    text::Text,
+};
 use std::sync::Arc;
 
 fn capture(mode: TextCombineUpright, with_oof: bool) -> Arc<ProcessedSource> {

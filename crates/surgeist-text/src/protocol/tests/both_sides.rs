@@ -58,7 +58,7 @@ fn consecutive(
 #[test]
 fn one_source_choice_has_two_query_units_without_broadening_partial_coverage() {
     let p = capture(
-        Source::identified("AB\u{ad}CDE", crate::Id::from_u64(92001), 0),
+        Source::identified("AB\u{ad}CDE", crate::id::Id::from_u64(92001), 0),
         both("A"),
         AHEM,
     );
@@ -117,8 +117,8 @@ fn one_source_choice_has_two_query_units_without_broadening_partial_coverage() {
             .flat_map(|u| u.pieces().map(|p| p.rect()).collect::<Vec<_>>())
             .collect::<Vec<_>>(),
         [
-            crate::Rect::new(20.0, 0.0, 10.0, 10.0),
-            crate::Rect::new(0.0, 10.0, 10.0, 10.0)
+            crate::geometry::Rect::new(20.0, 0.0, 10.0, 10.0),
+            crate::geometry::Rect::new(0.0, 10.0, 10.0, 10.0)
         ]
     );
     let ending = place_lines(
@@ -161,7 +161,7 @@ fn one_source_choice_has_two_query_units_without_broadening_partial_coverage() {
         c.units()
             .flat_map(|u| u.pieces().map(|p| p.rect()).collect::<Vec<_>>())
             .collect::<Vec<_>>(),
-        [crate::Rect::new(10.0, 0.0, 10.0, 10.0)]
+        [crate::geometry::Rect::new(10.0, 0.0, 10.0, 10.0)]
     );
     let mut absent = second.selected_line().request().clone();
     absent.incoming = None;
@@ -195,10 +195,10 @@ fn a_source_less_control_owns_the_same_two_emissions_and_its_actual_font_size() 
         ParagraphInput {
             source: source.clone(),
             base_style: own_style("X", HyphenationPlacement::LogicalBefore),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![paragraph::ParagraphOrigin {
                 text_node: None,
@@ -218,7 +218,7 @@ fn a_source_less_control_owns_the_same_two_emissions_and_its_actual_font_size() 
             }],
             anchor_order: vec![paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Control(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             }],
         },
         AHEM,
@@ -260,7 +260,7 @@ fn a_source_less_control_owns_the_same_two_emissions_and_its_actual_font_size() 
     );
     assert!(matches!(
         alternative(&offer).view().definition(),
-        crate::PreparedAlternativeDefinition::Control { .. }
+        crate::protocol::readback::PreparedAlternativeDefinition::Control { .. }
     ));
     assert!(alternative(&offer).view().source_range().is_none());
     let layout = place_lines(&p, PlacementCoverage::WholeParagraph, vec![first, second]).unwrap();
@@ -294,7 +294,7 @@ fn automatic_both_emissions_keep_the_actual_resource_cut_and_preceding_egc_owner
         .unwrap();
     assert!(matches!(
         native_cut.provenance(),
-        crate::HyphenationProvenance::SourceException { .. }
+        crate::protocol::HyphenationProvenance::SourceException { .. }
     ));
     assert_eq!(native_cut.counts(), Some(counts(4, 5)));
     let owner = native_cut.handle();
@@ -323,7 +323,7 @@ fn automatic_both_emissions_keep_the_actual_resource_cut_and_preceding_egc_owner
     assert_eq!(chosen.view().text().code_units(), [65]);
     assert!(matches!(
         chosen.view().definition(),
-        crate::PreparedAlternativeDefinition::Automatic { .. }
+        crate::protocol::readback::PreparedAlternativeDefinition::Automatic { .. }
     ));
     let origin = p.origin_views().next().unwrap().handle();
     let layout = place_lines(&p, PlacementCoverage::WholeParagraph, vec![first, second]).unwrap();
@@ -646,10 +646,10 @@ fn manual_portions_and_raw_profiles_keep_both_emissions_without_native_count_byp
             .layout(
                 short.clone(),
                 both("A"),
-                crate::Options {
+                crate::options::Options {
                     width: Some(30.0),
                     quantize,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();

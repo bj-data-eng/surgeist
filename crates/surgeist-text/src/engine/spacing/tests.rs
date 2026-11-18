@@ -4,7 +4,25 @@
 
 use super::*;
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    error::{SpacingFailureReason, SpacingOperation, SpacingPiece, SpacingStage},
+    id::Id,
+    options::Alignment,
+    processing::{DocumentSegmentBreaks, ScopeAlignmentLimits},
+    protocol::{
+        FinalizedLine, FormattedLineContext, LineAlignmentInsets, LineAllocations,
+        LineBoxDirection, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
+        ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PreparationOptions,
+        PreparedTermination, ScopeAllocations, SpacingAllocations, SpacingPolicy,
+        SpacingSlotGeometry, TabContext,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style, TextTransform, WhiteSpace, Wrap},
+};
 use skrifa::{MetadataProvider, raw::TableProvider};
 use std::mem::size_of;
 

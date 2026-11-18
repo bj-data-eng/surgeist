@@ -1,6 +1,10 @@
 use std::{error, fmt};
 
-use super::{CataloguePublication, TextStyleFeature, UnsupportedTextStyleReason, WhiteSpace};
+use crate::{
+    style::WhiteSpace,
+    style_support::{TextStyleFeature, UnsupportedTextStyleReason},
+};
+use surgeist_font::CataloguePublication;
 
 mod upright;
 pub use upright::{
@@ -42,12 +46,12 @@ pub enum SpacingPiece {
     },
     Source {
         origin: usize,
-        local: super::Range,
-        aggregate: super::Range,
+        local: crate::range::Range,
+        aggregate: crate::range::Range,
     },
     Alternative {
         alternative: usize,
-        local: super::Range,
+        local: crate::range::Range,
         insertion_anchor: usize,
     },
     Control {
@@ -217,11 +221,11 @@ pub enum ErrorCode {
 pub enum ErrorDetail {
     /// Source-owned text-combination context or preparation capability refusal.
     TextCombine {
-        reason: crate::TextCombineError,
+        reason: crate::transform::TextCombineError,
     },
     /// A typed captured-scope alignment refusal from its owning phase.
     ScopeAlignment {
-        reason: super::ScopeAlignmentError,
+        reason: crate::processing::ScopeAlignmentError,
     },
     /// A material spacing operation needs unavailable profile or movement capability.
     UnsupportedSpacing {
@@ -240,26 +244,26 @@ pub enum ErrorDetail {
     },
     /// Exact native hyphenation input/resource refusal.
     Hyphenation {
-        reason: crate::HyphenationError,
+        reason: crate::hyphenation::HyphenationError,
     },
     /// Admission or retained-association failure for a nonempty source range.
     SourceRangeFragments {
-        reason: crate::SourceRangeFragmentError,
+        reason: crate::range_fragments::SourceRangeFragmentError,
     },
     /// Atomic rejection of contextual source facts or view membership.
     SourceProcessing {
-        reason: super::SourceProcessingError,
+        reason: crate::processing::SourceProcessingError,
     },
     /// Actual phase association or request admission failure.
     InvalidTextProtocol {
-        reason: super::ProtocolError,
+        reason: crate::protocol::ProtocolError,
     },
     /// Actual glyph outline admission failed without publishing geometry.
     FontOutline {
         /// Requested glyph in the retained face.
         glyph: u32,
         /// Structural, capability, provider or storage refusal.
-        reason: super::FontOutlineError,
+        reason: crate::font::FontOutlineError,
     },
     /// Nominal glyph request is outside the retained face inventory.
     FontGlyphRange {
@@ -289,7 +293,7 @@ pub enum ErrorDetail {
     /// An enabled decoration needs an unavailable automatic upright metric.
     UprightDecoration {
         owner: TextStyleOwner,
-        kind: super::DecorationKind,
+        kind: crate::layout::DecorationKind,
         role: UprightDecorationRole,
     },
     /// Actual selected provider context cannot use supplied vertical positioning.
@@ -300,7 +304,7 @@ pub enum ErrorDetail {
     /// Actual unscaled origin reference cannot enter the provider input grid.
     VerticalOriginReference {
         content: UprightContent,
-        reference: super::UprightMetricReference,
+        reference: crate::font::UprightMetricReference,
         value: f64,
         reason: VerticalOriginReferenceReason,
     },
@@ -369,7 +373,7 @@ pub enum ErrorDetail {
         /// Original delimiter-vector ordinal.
         occurrence: usize,
         /// Supplied original source range.
-        range: super::Range,
+        range: crate::range::Range,
         /// Exact structural refusal.
         reason: DocumentSegmentBreakError,
     },
@@ -380,7 +384,7 @@ pub enum ErrorDetail {
         /// Original box-vector ordinal.
         box_ordinal: usize,
         /// Authentic box ID.
-        id: super::Id,
+        id: crate::id::Id,
         /// Original source anchor.
         anchor: usize,
     },
@@ -389,7 +393,7 @@ pub enum ErrorDetail {
         /// Actual delimiter-vector ordinal.
         occurrence: usize,
         /// Complete original delimiter extent.
-        range: super::Range,
+        range: crate::range::Range,
         /// Original offset at which the effective value changes.
         at: usize,
         /// Effective value before the boundary.
@@ -446,7 +450,7 @@ pub enum ErrorDetail {
         num_glyphs: u16,
     },
     UnsupportedAccessibilityUnit {
-        range: super::Range,
+        range: crate::range::Range,
         bytes: usize,
     },
     /// Cell source membership cannot be represented by original AX units.
@@ -454,7 +458,7 @@ pub enum ErrorDetail {
         /// Actual Cell binding ordinal in the analyzed output, in either phase.
         cell: usize,
         /// The original aggregate source interval whose mapping is unsupported.
-        range: super::Range,
+        range: crate::range::Range,
     },
     AccessibilityBindingMismatch,
     AccessibilityIdentityConflict {
@@ -506,7 +510,7 @@ pub enum TextTransformError {
     /// The transform cannot keep that indivisible unit whole: a structural
     /// frontier would divide it, or its transformed unit exceeds its exact
     /// output coverage.
-    IndivisibleCoverage { source: crate::Range },
+    IndivisibleCoverage { source: crate::range::Range },
     /// The retained phrase model data is invalid.
     InvalidPhraseData,
     /// Phrase separator insertion at `at` has no captured scope topology.
@@ -523,7 +527,7 @@ pub enum TextTransformError {
     /// connection side. The range identifies original text, never a control;
     /// `at` is the position of the connection.
     MissingOriginalSeparatorBoundaryContext {
-        source: crate::Range,
+        source: crate::range::Range,
         at: usize,
         connection: usize,
     },
@@ -532,12 +536,12 @@ pub enum TextTransformError {
     UnrepresentableSeparatorSeam {
         control: usize,
         at: usize,
-        retained: crate::Range,
+        retained: crate::range::Range,
     },
     /// The text-node range is reversed or extends beyond the node's content,
     /// measured in UTF-16 code units.
     InvalidTextNodeRange {
-        range: crate::Range,
+        range: crate::range::Range,
         text_len: usize,
     },
     /// The text-node content differs from its original occurrence.
@@ -893,7 +897,7 @@ pub enum FontMetricTableError {
     BaselineOutline {
         glyph: u16,
         point: u16,
-        reason: super::FontOutlineError,
+        reason: crate::font::FontOutlineError,
     },
     /// The point is outside the glyph's stored point inventory.
     BaselinePointRange {

@@ -5,10 +5,12 @@ use super::{
     relation::{ComponentOwner, Emission, RelationEvent, TransformMap},
 };
 use crate::{
-    ProcessedSource, Range, Result,
+    Result,
     engine::{OriginalAtom, analysis::wrapping::Event, resolve::AnalyzedStyleRun},
+    processing::ProcessedSource,
     projection::SourceProjection,
     protocol::paragraph::ParagraphContext,
+    range::Range,
 };
 use icu_normalizer::properties::CanonicalCombiningClassMap;
 use std::sync::Arc;
@@ -182,9 +184,9 @@ pub(super) fn canonical<'a>(
                             before.source.end <= edge.at
                                 && edge.at <= map.components[row].source.start
                         }) {
-                            return Err(
-                                edge.unavailable(crate::SourceContinuityOperation::Transformation)
-                            );
+                            return Err(edge.unavailable(
+                                crate::processing::SourceContinuityOperation::Transformation,
+                            ));
                         }
                     }
                 }

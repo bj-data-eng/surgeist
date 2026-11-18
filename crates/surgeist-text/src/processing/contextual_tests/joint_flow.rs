@@ -1,7 +1,28 @@
 //! Functional qualification of explicit joint-flow capture authority. These
 //! tests observe existing raw records, not a union analysis or used presentation.
 
-use crate::*;
+use crate::{
+    Error, ErrorDetail,
+    layout::Affinity,
+    processing::{
+        CapturedFlowEvent, ContextualSourceInput, DocumentSegmentBreaks,
+        SourceProcessingConnection, SourceProcessingConnectionError, SourceProcessingError,
+        SourceProcessingEvent, SourceProcessingJointFlow, SourceProcessingJointFlowError,
+        SourceProcessingParagraph, SourceProcessingScope, WhiteSpaceTrim,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphControl,
+            ParagraphControlKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{InlineBoxKind, Source},
+    style::WhiteSpace,
+    text::Text,
+};
 use std::sync::Arc;
 
 fn paragraph() -> SourceProcessingParagraph {
@@ -533,7 +554,7 @@ fn explicit_nondefault_paragraph_facts_do_not_borrow_domain_defaults() {
 
 #[test]
 fn declarations_refuse_empty_bounds_duplicate_overlap_order_and_skipped_empty_member() {
-    use SourceProcessingJointFlowError as J;
+    use crate::processing::SourceProcessingJointFlowError as J;
     let mut empty = two_members(ParagraphConnectionKind::Continuous);
     empty.joint_flows[0].paragraphs.clear();
     refuses(empty, J::EmptyMembers { declaration: 0 });
@@ -604,7 +625,7 @@ fn declarations_refuse_empty_bounds_duplicate_overlap_order_and_skipped_empty_me
 
 #[test]
 fn owning_scope_must_be_a_domain_and_every_member_must_belong_to_it() {
-    use SourceProcessingJointFlowError as J;
+    use crate::processing::SourceProcessingJointFlowError as J;
     let mut inline = two_members(ParagraphConnectionKind::Continuous);
     inline.scopes.push(SourceProcessingScope::Inline {
         trim: WhiteSpaceTrim::default(),
@@ -642,7 +663,7 @@ fn owning_scope_must_be_a_domain_and_every_member_must_belong_to_it() {
 
 #[test]
 fn designated_owner_and_exact_used_direction_and_strut_are_required() {
-    use SourceProcessingJointFlowError as J;
+    use crate::processing::SourceProcessingJointFlowError as J;
     let mut owner = two_members(ParagraphConnectionKind::Continuous);
     owner.joint_flows[0].facts_owner = 9;
     refuses(
@@ -678,8 +699,8 @@ fn designated_owner_and_exact_used_direction_and_strut_are_required() {
 
 #[test]
 fn cross_view_connections_require_actual_successive_endpoints_and_position() {
-    use SourceProcessingConnectionError as C;
-    use SourceProcessingJointFlowError as J;
+    use crate::processing::SourceProcessingConnectionError as C;
+    use crate::processing::SourceProcessingJointFlowError as J;
     let mut missing = two_members(ParagraphConnectionKind::Continuous);
     missing.connections.clear();
     missing.boundary_policies.clear();

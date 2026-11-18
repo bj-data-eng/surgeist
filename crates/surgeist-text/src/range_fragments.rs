@@ -7,9 +7,16 @@ use crate::protocol::{
     readback::PreparedOriginIntersectionView,
 };
 use crate::{
-    EffectiveFontInstance, Error, ErrorCode, ErrorDetail, FinalizedFragment, FinalizedLine, Layout,
-    PreparedAlternative, PreparedControl, PreparedOrigin, PreparedVirtualSeparator,
-    PresentationRange, Range, Rect, Result, SpacingSlotDisposition, TextNumericPhase,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::TextNumericPhase,
+    font::EffectiveFontInstance,
+    geometry::Rect,
+    layout::Layout,
+    protocol::{
+        FinalizedFragment, FinalizedLine, PreparedAlternative, PreparedControl, PreparedOrigin,
+        PreparedVirtualSeparator, PresentationRange, SpacingSlotDisposition,
+    },
+    range::Range,
 };
 mod cell_views;
 mod cells;
@@ -183,7 +190,7 @@ pub struct SourceRangeFragments<'a> {
     origin: PreparedOrigin,
     local: Range,
     units: Vec<Unit<'a>>,
-    usage: Option<crate::ScopeAlignmentUsage>,
+    usage: Option<crate::processing::ScopeAlignmentUsage>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum UnitIdentity {
@@ -237,7 +244,7 @@ impl SourceRangeFragments<'_> {
         self.layout
     }
     /// Actual operation-local accounting when a Cell activates the query ledger.
-    pub fn scope_alignment_usage(&self) -> Option<crate::ScopeAlignmentUsage> {
+    pub fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
         self.usage
     }
     pub fn units(&self) -> impl ExactSizeIterator<Item = SourceRangeUnit<'_>> {
@@ -314,11 +321,11 @@ impl<'a> SourceRangeUnit<'a> {
     /// Exact automatic source-attribution relations of every contributing owner.
     pub fn hyphenation_cuts(
         &self,
-    ) -> impl ExactSizeIterator<Item = crate::PreparedHyphenationCut> + '_ {
+    ) -> impl ExactSizeIterator<Item = crate::protocol::PreparedHyphenationCut> + '_ {
         self.unit
             .attributed_cuts
             .iter()
-            .map(|&index| crate::PreparedHyphenationCut {
+            .map(|&index| crate::protocol::PreparedHyphenationCut {
                 prepared: Arc::clone(&self.layout.inner.prepared),
                 index,
             })
@@ -448,17 +455,17 @@ fn source_intersection(
         row.local.start + aggregate.start - row.aggregate.start,
         row.local.start + aggregate.end - row.aggregate.start,
     );
-    let start =
+    let start = analyzed.processed.project_with(
+        aggregate.start,
+        crate::layout::Affinity::Before,
+        || account::work(ledger, 1),
+    )?;
+    let end =
         analyzed
             .processed
-            .project_with(aggregate.start, crate::Affinity::Before, || {
+            .project_with(aggregate.end, crate::layout::Affinity::After, || {
                 account::work(ledger, 1)
             })?;
-    let end = analyzed
-        .processed
-        .project_with(aggregate.end, crate::Affinity::After, || {
-            account::work(ledger, 1)
-        })?;
     Ok(OriginIntersection {
         origin,
         aggregate,
@@ -911,7 +918,9 @@ impl Layout {
                     account::work(&mut ledger, 1)?;
                     let row = &self.inner.prepared.tables.hyphenation_cuts[cut];
                     let atoms = row.preceding.clone().ok_or_else(|| {
-                        crate::hyphenation::error(crate::HyphenationError::InvalidResourceMapping)
+                        crate::hyphenation::error(
+                            crate::hyphenation::HyphenationError::InvalidResourceMapping,
+                        )
                     })?;
                     for atom in atoms {
                         account::work(&mut ledger, 1)?;
@@ -979,7 +988,10 @@ impl Layout {
                     let baseline = if let Some(reference) = cluster.reference {
                         crate::layout::cross_coordinate(
                             placed.orientation,
-                            crate::layout::line_point(placed, crate::Point::new(0.0, reference)),
+                            crate::layout::line_point(
+                                placed,
+                                crate::geometry::Point::new(0.0, reference),
+                            ),
                         )
                     } else {
                         crate::layout::line_baseline(placed)
@@ -989,7 +1001,10 @@ impl Layout {
                     let inline_delta = |inline| {
                         crate::layout::inline_coordinate(
                             placed.orientation,
-                            crate::layout::line_vector(placed, crate::Point::new(inline, 0.0)),
+                            crate::layout::line_vector(
+                                placed,
+                                crate::geometry::Point::new(inline, 0.0),
+                            ),
                         )
                     };
                     let start = add(
@@ -1004,11 +1019,11 @@ impl Layout {
                     )?;
                     let over = crate::layout::line_vector(
                         placed,
-                        crate::Point::new(0.0, -font.metrics.ascent),
+                        crate::geometry::Point::new(0.0, -font.metrics.ascent),
                     );
                     let under = crate::layout::line_vector(
                         placed,
-                        crate::Point::new(0.0, font.metrics.descent),
+                        crate::geometry::Point::new(0.0, font.metrics.descent),
                     );
                     let top = add(
                         "source range font top",
@@ -1047,7 +1062,7 @@ impl Layout {
                         return Err(crate::error::text_numeric_error(
                             "source range font extent",
                             TextNumericPhase::SourceRangeFragments,
-                            crate::TextNumericError::OutOfRange,
+                            crate::error::TextNumericError::OutOfRange,
                             height,
                         ));
                     }

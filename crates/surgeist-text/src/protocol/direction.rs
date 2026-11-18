@@ -92,8 +92,14 @@ impl PreparedText {
 mod tests {
     use super::*;
     use crate::{
-        AnalyzedSource, Font, ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
-        PreparationOptions, Source, Style, System,
+        System,
+        analyzed::AnalyzedSource,
+        protocol::{
+            ParagraphInput, PreparationOptions,
+            paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+        },
+        source::Source,
+        style::{Font, Style},
     };
 
     fn prepared(text: &str, base_direction: ParagraphBaseDirection) -> PreparedText {
@@ -108,9 +114,11 @@ mod tests {
                 crate::test_fonts::FONT_LIMITS,
             )
             .unwrap();
-        let analyzed =
-            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-                .unwrap();
+        let analyzed = AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         system
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap()
@@ -126,15 +134,15 @@ mod tests {
                 size: 10.0,
                 ..Style::default()
             },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![ParagraphOrigin {
                 source,
-                local: crate::Range::new(0, end),
-                aggregate: crate::Range::new(0, end),
+                local: crate::range::Range::new(0, end),
+                aggregate: crate::range::Range::new(0, end),
                 kind: ParagraphOriginKind::Authored,
                 text_node: None,
             }],
@@ -158,7 +166,7 @@ mod tests {
         let p = prepared("123A", ParagraphBaseDirection::RightToLeft);
         assert_eq!(
             p.analyzed_source().direction(),
-            crate::Direction::RightToLeft
+            crate::style::Direction::RightToLeft
         );
         let b = boundaries(&p);
         let weak = p
@@ -235,7 +243,7 @@ mod tests {
     #[test]
     fn phase_one_collapse_and_actual_generated_origin_count_in_the_canonical_body() {
         let mut value = input("A\n..", ParagraphBaseDirection::RightToLeft);
-        value.base_style.white_space = crate::WhiteSpace::Collapse;
+        value.base_style.white_space = crate::style::WhiteSpace::Collapse;
         let p = prepare_input(value);
         assert_eq!(
             p.analyzed_source()
@@ -278,8 +286,9 @@ mod tests {
     #[test]
     fn actual_uppercase_expansion_has_two_issued_strong_ranges_over_one_original() {
         let mut value = input("ß", ParagraphBaseDirection::RightToLeft);
-        value.base_style.text_transform = crate::TextTransform::Set(
-            crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+        value.base_style.text_transform = crate::style::TextTransform::Set(
+            crate::style::TextTransformSet::none()
+                .with_case(crate::style::CaseTransform::Uppercase),
         );
         let p = prepare_input(value);
         assert_eq!(
@@ -306,7 +315,7 @@ mod tests {
         }
         assert_eq!(
             p.origin_views().next().unwrap().aggregate_range(),
-            crate::Range::new(0, 1)
+            crate::range::Range::new(0, 1)
         );
     }
 
@@ -334,7 +343,7 @@ mod tests {
         value.anchor_order = (0..3)
             .map(|i| ParagraphAnchor {
                 item: ParagraphAnchorItem::Control(i),
-                affinity: crate::Affinity::Before,
+                affinity: crate::layout::Affinity::Before,
             })
             .collect();
         let p = prepare_input(value);
@@ -363,13 +372,13 @@ mod tests {
         // Phase I collapses the duplicate SPACE; the retained first SPACE is
         // only trimmed later by Phase II and is not a deleted participant.
         let mut value = input("  A", ParagraphBaseDirection::RightToLeft);
-        value.base_style.white_space = crate::WhiteSpace::Collapse;
+        value.base_style.white_space = crate::style::WhiteSpace::Collapse;
         value.origins.insert(
             0,
             ParagraphOrigin {
                 source: Source::new(""),
-                local: crate::Range::new(0, 0),
-                aggregate: crate::Range::new(0, 0),
+                local: crate::range::Range::new(0, 0),
+                aggregate: crate::range::Range::new(0, 0),
                 kind: ParagraphOriginKind::Authored,
                 text_node: None,
             },
@@ -380,15 +389,15 @@ mod tests {
         }];
         // Real producer-declared connection policy; the empty occurrence is
         // metadata and cannot by itself establish an influencing NCA pair.
-        value.boundary_policies = vec![crate::ParagraphBoundaryPolicy {
-            definition: crate::ParagraphBoundaryDefinition::Connection(0),
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+        value.boundary_policies = vec![crate::protocol::paragraph::ParagraphBoundaryPolicy {
+            definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         }];
         value.anchor_order = vec![ParagraphAnchor {
             item: ParagraphAnchorItem::EmptyOrigin(0),
-            affinity: crate::Affinity::Before,
+            affinity: crate::layout::Affinity::Before,
         }];
         let p = prepare_input(value);
         assert_eq!(
@@ -427,8 +436,9 @@ mod tests {
     fn selected_strong_indication_does_not_become_canonical_body_authority() {
         use skrifa::MetadataProvider;
         let mut value = input("12345\u{ad}67", ParagraphBaseDirection::RightToLeft);
-        value.base_style.hyphens = crate::Hyphens::Manual;
-        value.base_style.hyphenate_character = crate::HyphenateCharacter::String("A".into());
+        value.base_style.hyphens = crate::hyphenation::Hyphens::Manual;
+        value.base_style.hyphenate_character =
+            crate::hyphenation::HyphenateCharacter::String("A".into());
         let p = prepare_input(value);
         let b = boundaries(&p);
         let before = p
@@ -457,12 +467,12 @@ mod tests {
             .handle();
         let end = offer.view().boundary();
         let to = end.view().participant_offset();
-        let request = crate::LineSelectionRequest {
+        let request = crate::protocol::LineSelectionRequest {
             inline_boxes: None,
             segment: p.source_segments().next().unwrap(),
             start: b[0].clone(),
             end,
-            termination: crate::PreparedTermination::Ordinary(offer),
+            termination: crate::protocol::PreparedTermination::Ordinary(offer),
             alternative: Some(alternative),
             incoming: None,
             participants: p.participants().take(to).collect(),
@@ -471,27 +481,27 @@ mod tests {
             boundary_context: vec![],
             line_box_struts: Vec::new(),
             line_strut: None,
-            context: crate::LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+            context: crate::protocol::LineContext {
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::RightToLeft,
-                line_box_direction: crate::LineBoxDirection::RightToLeft,
-                orientation: crate::LineOrientation::Horizontal,
-                start: crate::LineStart::Paragraph,
-                end: crate::LineEnd::Soft,
+                line_box_direction: crate::protocol::LineBoxDirection::RightToLeft,
+                orientation: crate::protocol::LineOrientation::Horizontal,
+                start: crate::protocol::LineStart::Paragraph,
+                end: crate::protocol::LineEnd::Soft,
                 available_inline: Some(100.0),
                 indent: 0.0,
-                alignment: crate::Alignment::Start,
-                tabs: crate::TabContext::NoTabs,
-                spacing: crate::SpacingPolicy::Spaces,
+                alignment: crate::options::Alignment::Start,
+                tabs: crate::protocol::TabContext::NoTabs,
+                spacing: crate::protocol::SpacingPolicy::Spaces,
             },
         };
         let finalized = p
             .select(request)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: super::super::SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let font = skrifa::FontRef::new(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf"))

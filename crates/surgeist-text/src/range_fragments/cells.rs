@@ -702,7 +702,7 @@ impl CellGeometry {
             let origin = cell_geometry::placed_layout_point(
                 placed,
                 cell,
-                crate::Point::new(0.0, inner.baseline),
+                crate::geometry::Point::new(0.0, inner.baseline),
                 TextNumericPhase::SourceRangeFragments,
             )?;
             let bounds = cell_geometry::placed_metric_rect(
@@ -766,7 +766,7 @@ impl CellGeometry {
             let origin = cell_geometry::placed_layout_point(
                 placed,
                 cell,
-                crate::Point::new(0.0, 0.0),
+                crate::geometry::Point::new(0.0, 0.0),
                 TextNumericPhase::SourceRangeFragments,
             )?;
             cell_geometry::qualify_cluster_rect(

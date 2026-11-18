@@ -2,7 +2,67 @@
 //! Font-backed normal input and source-proved empty input retain the same
 //! fixed outer advance without fabricated glyph or parent-metric receipts.
 
-use crate::*;
+#[cfg(feature = "text-accessibility")]
+use crate::accessibility::Accessibility;
+#[cfg(feature = "text-accessibility")]
+use crate::options::Options;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    error::{SpacingPiece, TextNumericError, TextNumericPhase},
+    font::{
+        EffectiveFontInstance, FontBaseline, FontBaselineAxis, FontBaselineOutcome,
+        FontBaselineProvenance, FontBaselineScript, FontData, FontLineMetricSource,
+        UprightMetricProvenance, UprightMetricReference,
+    },
+    geometry::{GlyphBasis, Point, Rect, Size},
+    id::Id,
+    layout::{
+        Affinity, Cursor, Hit, Layout, Movement, PlacedPosition, Selection, SelectionGeometry,
+        SelectionRect,
+    },
+    options::Alignment,
+    processing::{
+        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem,
+        ProcessedSource, ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind,
+        ScopeAlignmentLimits, ScopeAlignmentUsage, ScopeFontReference, ScopeRole,
+        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+        SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ControlAllocation, FinalizedInlineBoxPiece, FinalizedLine, FormattedLineContext,
+        InlineBoxSource, LineAlignmentInsets, LineAllocations, LineAnchor, LineBoxDirection,
+        LineContext, LineEdgeDisposition, LineEdgeOwner, LineEnd, LineOrientation, LinePlacement,
+        LineSelectionRequest, LineStart, LineStrut, ParagraphBaseDirection, ParagraphInput,
+        ParagraphTerminalEdge, PhaseTwoContext, PlacementCoverage, PlacementEntry,
+        PlacementRequest, PreparationOptions, PreparedBreakKind, PreparedCell, PreparedOrigin,
+        PreparedParticipant, PreparedTermination, PreparedText, PresentationRange,
+        ProtocolContextField, ProtocolError, ScopeAlignmentAllowance, ScopeAlignmentCensusInput,
+        ScopeAlignmentProduct, ScopeAlignmentProducts, ScopeAllocation, ScopeAllocations,
+        SelectedLine, SemanticWindowRequest, SpacingAllocation, SpacingAllocations,
+        SpacingBoundaryGeometry, SpacingPolicy, SpacingSlotGeometry, SpacingSlotOwner,
+        SpacingSlotPiece, SpacingSlotTarget, SpacingStretchability, SpacingUnit, TabContext,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+        readback::LineOutlineInk,
+        scope_alignment_census,
+    },
+    range::Range,
+    range_fragments::{SourceRangeCellUnitKind, SourceRangeFragments, SourceRangeGeometry},
+    source::{BaselineShift, Source},
+    style::{
+        CaseTransform, Direction, Font, LineHeight, Style, TextCombineUpright,
+        TextCombineUprightDigits, TextTransform, TextTransformSet, WhiteSpace, Wrap,
+    },
+    supplied_line::BidiLevel,
+    tabs::{TabPreparation, TabSize},
+    text::Text,
+    transform::TextCombineError,
+};
 use crate::{baseline_test_fonts as base, test_fonts as sfnt, vertical_test_fonts as vertical};
 use std::sync::Arc;
 

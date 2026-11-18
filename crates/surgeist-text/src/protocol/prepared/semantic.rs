@@ -105,7 +105,7 @@ pub(crate) fn receives_incoming(
     nonempty && kind == PresentationUnitKind::Text
         || kind == PresentationUnitKind::Deleted && bidi
         || matches!(kind, PresentationUnitKind::Cell { .. })
-        || matches!(kind, PresentationUnitKind::Atomic { occurrence } if prepared.analyzed.processed.source().boxes()[occurrence].kind() == crate::InlineBoxKind::InFlow)
+        || matches!(kind, PresentationUnitKind::Atomic { occurrence } if prepared.analyzed.processed.source().boxes()[occurrence].kind() == crate::source::InlineBoxKind::InFlow)
         || matches!(kind, PresentationUnitKind::Control { .. }) && bidi
 }
 

@@ -2,12 +2,19 @@
 
 use super::*;
 use crate::{
-    Affinity, ContextualSourceInput, DocumentSegmentBreaks, Id, LineBreak, LineHeight,
-    ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
-    ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind, Range,
-    SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent as E,
-    SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
-    SourceProcessingTopology, WordBreak, Wrap,
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
+        SourceProcessingEnvelope, SourceProcessingEvent as E, SourceProcessingParagraph,
+        SourceProcessingScope, SourceProcessingScopeBoundaries, SourceProcessingTopology,
+    },
+    protocol::paragraph::{
+        ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+        ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+    },
+    range::Range,
+    style::{LineBreak, LineHeight, WordBreak, Wrap},
 };
 use std::sync::Arc;
 
@@ -66,7 +73,7 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
         events.retain(|event| !matches!(event, E::Control { .. }));
     }
     let processed = Arc::new(
-        crate::process_contextual_source(ContextualSourceInput {
+        crate::processing::process_contextual_source(ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: Source::identified("A\u{301}B", Id::from_u64(1_507_000), 7),
@@ -140,7 +147,7 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
     );
     let analyzed = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
@@ -165,7 +172,7 @@ fn finish(p: &PreparedText, mut input: LineSelectionRequest, edges: [f64; 2]) ->
                 occurrence: control.clone(),
                 strut: None,
                 boundary: Some(
-                    crate::InlineBoundaryAllocation::contribution(
+                    crate::protocol::InlineBoundaryAllocation::contribution(
                         if *control.view().kind() == ParagraphControlKind::InlineBoundaryStart {
                             edges[0]
                         } else {
@@ -186,16 +193,16 @@ fn finish(p: &PreparedText, mut input: LineSelectionRequest, edges: [f64; 2]) ->
         };
         input
             .boundary_context
-            .push(crate::InlineBoundaryContextAllocation {
+            .push(crate::protocol::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: crate::InlineBoundaryAllocation::contribution(advance).unwrap(),
+                boundary: crate::protocol::InlineBoundaryAllocation::contribution(advance).unwrap(),
             });
     }
     p.select(input)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -364,10 +371,10 @@ fn anywhere_positive_endpoints_preserve_shared_mark_attachment_and_count_each_ed
 
 // Flat native ParagraphInput is the existing source-only front door for exact
 // endpoint seams. It makes no claim to a captured physical scope pairing.
-fn native_pair(text: crate::Text, at: usize, whitespace: WhiteSpace) -> ParagraphInput {
+fn native_pair(text: crate::text::Text, at: usize, whitespace: WhiteSpace) -> ParagraphInput {
     let source = Source::identified(text, Id::from_u64(1_507_100), 19);
     ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
@@ -402,8 +409,8 @@ fn native_pair(text: crate::Text, at: usize, whitespace: WhiteSpace) -> Paragrap
         boundary_policies: vec![],
         replacements: vec![],
         anchor_order: (0..2)
-            .map(|control| crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::Control(control),
+            .map(|control| crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::Control(control),
                 affinity: Affinity::After,
             })
             .collect(),
@@ -427,7 +434,7 @@ fn prepare_native(analysis: &AnalyzedSource) -> PreparedText {
 }
 
 fn nested_capture(text: &str) -> PreparedText {
-    let input = native_pair(crate::Text::from(text), 1, WhiteSpace::Preserve);
+    let input = native_pair(crate::text::Text::from(text), 1, WhiteSpace::Preserve);
     let origin = |range| ParagraphOrigin {
         text_node: None,
         source: input.source.clone(),
@@ -440,7 +447,7 @@ fn nested_capture(text: &str) -> PreparedText {
         affinity: Affinity::After,
     };
     let processed = Arc::new(
-        crate::process_contextual_source(ContextualSourceInput {
+        crate::processing::process_contextual_source(ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: input.source.clone(),
@@ -538,7 +545,7 @@ fn nested_capture(text: &str) -> PreparedText {
     prepare_native(
         &AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
     )
@@ -561,7 +568,7 @@ fn nested_physical_pairs_retain_distinct_coincident_end_events_and_shared_glyphs
                 .map(|intersection| intersection.scope())
                 .collect::<Vec<_>>()
         })
-        .filter(|scope| scope.role() == crate::ScopeRole::Inline)
+        .filter(|scope| scope.role() == crate::processing::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
     for (start, end) in [(0, 3), (1, 2)] {
@@ -635,7 +642,7 @@ fn native_disconnected_surrogate_atoms_admit_exact_end_but_connected_scalar_refu
         ParagraphConnectionKind::Continuous,
     ] {
         let mut input = native_pair(
-            crate::Text::from_code_units(vec![0xd800, 0xdc00]),
+            crate::text::Text::from_code_units(vec![0xd800, 0xdc00]),
             1,
             WhiteSpace::Preserve,
         );
@@ -649,15 +656,17 @@ fn native_disconnected_surrogate_atoms_admit_exact_end_but_connected_scalar_refu
                 kind: ParagraphOriginKind::Authored,
             })
             .collect();
-        input.connections = vec![crate::ParagraphConnection { at: 1, kind }];
+        input.connections = vec![crate::protocol::paragraph::ParagraphConnection { at: 1, kind }];
         input.boundary_policies = vec![ParagraphBoundaryPolicy {
             definition: ParagraphBoundaryDefinition::Connection(0),
             preceding_wrap: Wrap::Word,
             following_wrap: Wrap::Word,
             ancestor_wrap: Wrap::Word,
         }];
-        let result =
-            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition);
+        let result = AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        );
         if kind == ParagraphConnectionKind::Continuous {
             let error = result.unwrap_err();
             assert!(
@@ -696,14 +705,14 @@ fn native_disconnected_surrogate_atoms_admit_exact_end_but_connected_scalar_refu
 #[test]
 fn phase_one_removed_seam_preserves_end_event_but_straddling_replacement_refuses() {
     let analysis = AnalyzedSource::from_paragraph(
-        native_pair(crate::Text::from("A  B"), 2, WhiteSpace::Discard),
-        crate::AnalysisTypography::HorizontalComposition,
+        native_pair(crate::text::Text::from("A  B"), 2, WhiteSpace::Discard),
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analysis.source().text().code_units(), [65, 32, 32, 66]);
     assert_eq!(
         analysis.processed_source().processed_text(),
-        &crate::Text::from("AB")
+        &crate::text::Text::from("AB")
     );
     let p = prepare_native(&analysis);
     let end = p.control_views().nth(1).unwrap();
@@ -722,11 +731,17 @@ fn phase_one_removed_seam_preserves_end_event_but_straddling_replacement_refuses
 
     // One declared document delimiter replaces the complete source1..3 row.
     // A physical End at2 has no exact emitted scalar side inside that row.
-    let mut input = native_pair(crate::Text::from("A\r\nB"), 2, WhiteSpace::PreserveSpaces);
+    let mut input = native_pair(
+        crate::text::Text::from("A\r\nB"),
+        2,
+        WhiteSpace::PreserveSpaces,
+    );
     input.segment_breaks = DocumentSegmentBreaks::Defined(vec![Range::new(1, 3)]);
-    let error =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap_err();
+    let error = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
     assert!(
         matches!(
             error.detail(),
@@ -740,13 +755,19 @@ fn phase_one_removed_seam_preserves_end_event_but_straddling_replacement_refuses
 
 #[test]
 fn compatible_case_expansion_keeps_end_between_original_components() {
-    let mut input = native_pair(crate::Text::from("ß\u{301}B"), 1, WhiteSpace::Preserve);
-    input.base_style.text_transform = crate::TextTransform::Set(
-        crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+    let mut input = native_pair(
+        crate::text::Text::from("ß\u{301}B"),
+        1,
+        WhiteSpace::Preserve,
     );
-    let analysis =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    input.base_style.text_transform = crate::style::TextTransform::Set(
+        crate::style::TextTransformSet::none().with_case(crate::style::CaseTransform::Uppercase),
+    );
+    let analysis = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analysis.source().text().code_units(), [223, 769, 66]);
     assert_eq!(
         analysis.graphemes().collect::<Vec<_>>(),
@@ -782,12 +803,16 @@ fn compatible_case_expansion_keeps_end_between_original_components() {
 
 #[test]
 fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() {
-    let mut input = native_pair(crate::Text::from("A\u{301}B"), 1, WhiteSpace::Preserve);
-    input.source.inline_box(crate::InlineBox::new(
-        Id::from_u64(1_507_199),
-        crate::InlineBoxKind::OutOfFlow,
+    let mut input = native_pair(
+        crate::text::Text::from("A\u{301}B"),
         1,
-        crate::Size::new(7.0, 9.0),
+        WhiteSpace::Preserve,
+    );
+    input.source.inline_box(crate::source::InlineBox::new(
+        Id::from_u64(1_507_199),
+        crate::source::InlineBoxKind::OutOfFlow,
+        1,
+        crate::geometry::Size::new(7.0, 9.0),
     ));
     input.origins = [Range::new(0, 1), Range::new(1, 1), Range::new(1, 3)]
         .into_iter()
@@ -800,7 +825,7 @@ fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() 
         })
         .collect();
     input.connections = (0..2)
-        .map(|_| crate::ParagraphConnection {
+        .map(|_| crate::protocol::paragraph::ParagraphConnection {
             at: 1,
             kind: ParagraphConnectionKind::Continuous,
         })
@@ -814,13 +839,13 @@ fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() 
         })
         .collect();
     input.anchor_order = [
-        crate::ParagraphAnchorItem::Control(0),
-        crate::ParagraphAnchorItem::EmptyOrigin(1),
-        crate::ParagraphAnchorItem::Atomic(0),
-        crate::ParagraphAnchorItem::Control(1),
+        crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
+        crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(1),
+        crate::protocol::paragraph::ParagraphAnchorItem::Atomic(0),
+        crate::protocol::paragraph::ParagraphAnchorItem::Control(1),
     ]
     .into_iter()
-    .map(|item| crate::ParagraphAnchor {
+    .map(|item| crate::protocol::paragraph::ParagraphAnchor {
         item,
         affinity: Affinity::After,
     })
@@ -830,7 +855,7 @@ fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() 
     // exact endpoint support does not redefine those other roles' affinity.
     let error = AnalyzedSource::from_paragraph(
         input.clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap_err();
     assert!(matches!(
@@ -846,20 +871,23 @@ fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() 
     // A noncrossing, equally authentic co-located request keeps physical End
     // before the transparent occurrences. Their existing After affinity stays.
     input.anchor_order = [
-        crate::ParagraphAnchorItem::Control(0),
-        crate::ParagraphAnchorItem::Control(1),
-        crate::ParagraphAnchorItem::EmptyOrigin(1),
-        crate::ParagraphAnchorItem::Atomic(0),
+        crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
+        crate::protocol::paragraph::ParagraphAnchorItem::Control(1),
+        crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(1),
+        crate::protocol::paragraph::ParagraphAnchorItem::Atomic(0),
     ]
     .into_iter()
-    .map(|item| crate::ParagraphAnchor {
+    .map(|item| crate::protocol::paragraph::ParagraphAnchor {
         item,
         affinity: Affinity::After,
     })
     .collect();
     let p = prepare_native(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
     );
     assert_eq!(
         p.analyzed_source().graphemes().collect::<Vec<_>>(),
@@ -877,7 +905,7 @@ fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() 
     assert_eq!(atomic.original_box().id(), Id::from_u64(1_507_199));
     assert_eq!(
         atomic.original_box().kind(),
-        crate::InlineBoxKind::OutOfFlow
+        crate::source::InlineBoxKind::OutOfFlow
     );
     let end = p.control_views().nth(1).unwrap().handle();
     assert!(!p.control_is_boundary_exact(&end).unwrap());
@@ -983,7 +1011,7 @@ fn odd_shared_unit_keeps_each_nested_end_interval_on_its_actual_visual_side() {
                 .map(|i| i.scope())
                 .collect::<Vec<_>>()
         })
-        .filter(|s| s.role() == crate::ScopeRole::Inline)
+        .filter(|s| s.role() == crate::processing::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
     for (start, end) in [(0, 3), (1, 2)] {

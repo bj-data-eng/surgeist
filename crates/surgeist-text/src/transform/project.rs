@@ -5,8 +5,9 @@ use super::{
     relation::{ComponentOwner, RelationEvent, TransformMap},
 };
 use crate::{
-    Error, ErrorCode, ErrorDetail, Range, Result, SourceContinuityOperation, TextTransformError,
-    engine::resolve::AnalyzedStyleRun, projection::SourceProjection,
+    Error, ErrorCode, ErrorDetail, Result, engine::resolve::AnalyzedStyleRun,
+    error::TextTransformError, processing::SourceContinuityOperation, projection::SourceProjection,
+    range::Range,
 };
 use std::sync::Arc;
 

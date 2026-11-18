@@ -3,18 +3,18 @@ use crate::engine::resolve::{AnalyzedStyleOwner, AnalyzedStyleRun};
 use icu_properties::{props::Script, script::ScriptWithExtensions};
 
 fn analyzed(text: &str) -> (SourceProjection, Words) {
-    let source = crate::Source::new(text);
+    let source = crate::source::Source::new(text);
     let projection = SourceProjection::new(&source).unwrap();
     let styles = [AnalyzedStyleRun {
-        owner: AnalyzedStyleOwner::Source(crate::Range::new(0, source.text().len())),
-        style: crate::ValidatedStyle::try_from(crate::Style::default()).unwrap(),
+        owner: AnalyzedStyleOwner::Source(crate::range::Range::new(0, source.text().len())),
+        style: crate::style::ValidatedStyle::try_from(crate::style::Style::default()).unwrap(),
     }];
     let (analysis, word_ranges, _) = super::super::analyze(
         &projection,
         &styles,
         &[],
         &crate::protocol::paragraph::ParagraphData::standalone(&source),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
         super::super::BidiScope::Indication,
     )
     .unwrap();
@@ -52,7 +52,7 @@ fn complete_word_uses_one_count_map_with_format_controls_marks_and_supplementary
             words
                 .at(cut)
                 .unwrap()
-                .admits(crate::HyphenateLimitChars::default())
+                .admits(crate::hyphenation::HyphenateLimitChars::default())
         );
     }
     for text in [
@@ -70,7 +70,7 @@ fn complete_word_uses_one_count_map_with_format_controls_marks_and_supplementary
         let counts = words.at(cut).unwrap();
         assert_eq!(counts.before, 1);
         assert!(
-            !counts.admits(crate::HyphenateLimitChars::default()),
+            !counts.admits(crate::hyphenation::HyphenateLimitChars::default()),
             "{text:?}"
         );
     }
@@ -122,7 +122,8 @@ fn effective_unit_categories_are_independent_of_lexical_membership_and_glyphs() 
 
 #[test]
 fn opaque_original_unit_keeps_its_raw_category_for_counting() {
-    let source = crate::Source::new(crate::Text::from_code_units(vec![0xd800, 0x301]));
+    let source =
+        crate::source::Source::new(crate::text::Text::from_code_units(vec![0xd800, 0x301]));
     let projection = SourceProjection::new(&source).unwrap();
     assert_eq!(projection.graphemes, [0, 2]);
     assert_eq!(projection.atoms[0].code_point, 0xd800);
@@ -222,6 +223,6 @@ fn independent_unicode_seventeen_vectors_keep_complete_egcs_and_both_cut_sides()
         );
     }
     let (projection, words) = analyzed("\u{10400}\u{10401}\u{ad}\u{10402}\u{10403}\u{10404}");
-    assert_eq!(projection.atoms[2].source, crate::Range::new(4, 5));
+    assert_eq!(projection.atoms[2].source, crate::range::Range::new(4, 5));
     assert_eq!(words.at(3).unwrap().before, 2);
 }

@@ -5,7 +5,12 @@ use super::{
 };
 use crate::engine::scope_alignment::accounting as account;
 use crate::protocol::paragraph::{ParagraphContext, ParagraphControlKind, SemanticAnchorItem};
-use crate::{AnalysisTypography, InlineBox, InlineBoxKind, Result, projection::SourceProjection};
+use crate::{
+    Result,
+    analyzed::AnalysisTypography,
+    projection::SourceProjection,
+    source::{InlineBox, InlineBoxKind},
+};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Row {
@@ -49,7 +54,7 @@ impl Input<'_> {
                 let (kind, occurrence) =
                     anchor_kind(self.paragraph.anchor_order[position + 1].item);
                 return Err(crate::protocol::protocol_error(
-                    crate::ProtocolError::InvalidAnchorOrder {
+                    crate::protocol::ProtocolError::InvalidAnchorOrder {
                         position: position + 1,
                         kind,
                         occurrence,
@@ -179,5 +184,5 @@ impl Input<'_> {
 }
 
 fn invalid() -> crate::Error {
-    crate::protocol::protocol_error(crate::ProtocolError::InvalidLineDirectionQuery)
+    crate::protocol::protocol_error(crate::protocol::ProtocolError::InvalidLineDirectionQuery)
 }

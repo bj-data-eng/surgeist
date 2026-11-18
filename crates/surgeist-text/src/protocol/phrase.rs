@@ -24,8 +24,8 @@ pub struct PreparedPhrase {
 pub enum PreparedPhrasePieceOwner {
     Original {
         origin: PreparedOrigin,
-        aggregate: crate::Range,
-        local: crate::Range,
+        aggregate: crate::range::Range,
+        local: crate::range::Range,
     },
     Control(PreparedControl),
     Virtual(PreparedVirtualSeparator),

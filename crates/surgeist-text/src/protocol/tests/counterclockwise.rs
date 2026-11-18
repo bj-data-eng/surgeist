@@ -6,7 +6,12 @@ mod allocations;
 mod source_custody;
 
 use super::*;
-use crate::{Affinity, Cursor, GlyphBasis, Hit, Id, Movement, Point, Range, Rect, Selection, Size};
+use crate::{
+    geometry::{GlyphBasis, Point, Rect, Size},
+    id::Id,
+    layout::{Affinity, Cursor, Hit, Movement, Selection},
+    range::Range,
+};
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
 
 const CCW: LineOrientation = LineOrientation::SidewaysCounterclockwise;
@@ -18,7 +23,7 @@ fn own_style() -> Style {
     Style {
         font: Font::new().family("Ahem"),
         size: 10.0,
-        line_height: crate::LineHeight::Absolute(10.0),
+        line_height: crate::style::LineHeight::Absolute(10.0),
         white_space: WhiteSpace::Preserve,
         ..Style::default()
     }
@@ -32,28 +37,28 @@ fn paragraph(source: Source, style: Style, rtl: bool) -> ParagraphInput {
         source: source.clone(),
         base_style: style,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: if rtl {
             ParagraphBaseDirection::RightToLeft
         } else {
             ParagraphBaseDirection::LeftToRight
         },
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
         boundary_policies: vec![],
         replacements: vec![],
         anchor_order: if len == 0 {
-            vec![crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
+            vec![crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
                 affinity: Affinity::After,
             }]
         } else {
@@ -70,9 +75,12 @@ fn system_with(bytes: Vec<u8>) -> System {
 }
 fn analyze(value: ParagraphInput) -> AnalyzedSource {
     crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            value,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     )
 }
 fn prepare(
@@ -112,16 +120,16 @@ fn selected_request(
 ) -> LineSelectionRequest {
     let mut r = request(p);
     r.context.orientation = p.orientation();
-    let rtl = p.analyzed_source().direction() == crate::Direction::RightToLeft;
+    let rtl = p.analyzed_source().direction() == crate::style::Direction::RightToLeft;
     r.context.base_direction = if rtl {
         ParagraphBaseDirection::RightToLeft
     } else {
         ParagraphBaseDirection::LeftToRight
     };
     r.context.line_box_direction = if rtl {
-        crate::LineBoxDirection::RightToLeft
+        crate::protocol::LineBoxDirection::RightToLeft
     } else {
-        crate::LineBoxDirection::LeftToRight
+        crate::protocol::LineBoxDirection::LeftToRight
     };
     r.start = from;
     r.end = offer.view().boundary();
@@ -152,23 +160,26 @@ fn selected_request(
     };
     r.context.spacing = SpacingPolicy::None;
     r.context.available_inline = None;
-    r.context.alignment = crate::Alignment::Start;
-    r.termination = crate::PreparedTermination::Ordinary(offer);
+    r.context.alignment = crate::options::Alignment::Start;
+    r.termination = crate::protocol::PreparedTermination::Ordinary(offer);
     r
 }
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(selected_request(p, start(p), terminal(p)))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
-fn entries(p: &PreparedText, rows: Vec<(FinalizedLine, f64, f64)>) -> Vec<crate::PlacementEntry> {
+fn entries(
+    p: &PreparedText,
+    rows: Vec<(FinalizedLine, f64, f64)>,
+) -> Vec<crate::protocol::PlacementEntry> {
     rows.into_iter()
         .map(|(line, x, y)| {
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: y,
@@ -180,8 +191,8 @@ fn entries(p: &PreparedText, rows: Vec<(FinalizedLine, f64, f64)>) -> Vec<crate:
         })
         .collect()
 }
-fn placed(p: &PreparedText, rows: Vec<(FinalizedLine, f64, f64)>) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn placed(p: &PreparedText, rows: Vec<(FinalizedLine, f64, f64)>) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: entries(p, rows),
@@ -197,13 +208,13 @@ fn glyphs(line: &FinalizedLine) -> Vec<(u32, f64, f32, f32, f32)> {
         })
         .collect()
 }
-fn text_hit(layout: &crate::Layout, point: Point) -> usize {
+fn text_hit(layout: &crate::layout::Layout, point: Point) -> usize {
     let Hit::Text(position) = layout.hit(point) else {
         panic!("expected real text hit at {point:?}")
     };
     position.source_cursor().index()
 }
-fn caret(layout: &crate::Layout, index: usize, affinity: Affinity) -> Rect {
+fn caret(layout: &crate::layout::Layout, index: usize, affinity: Affinity) -> Rect {
     layout.cursor(Cursor::new(index, affinity)).unwrap().rect()
 }
 
@@ -445,7 +456,8 @@ fn source_range_piece_uses_decreasing_physical_edges_and_retained_instance() {
             .collect::<Vec<_>>(),
         [(origin, Range::new(0, 1))]
     );
-    let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+    let crate::range_fragments::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap()
+    else {
         panic!("ordinary Range fixture must retain Line geometry");
     };
     assert_eq!(piece.rect(), Rect::new(-15.25, 3.5, 10.0, 10.0));
@@ -478,9 +490,9 @@ fn adjacent_movement_preserves_true_u_instead_of_inverse_caret_hull_top_left() {
     let first = p
         .select(a)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let mut b = selected_request(&p, forced.view().boundary(), terminal(&p));
@@ -488,9 +500,9 @@ fn adjacent_movement_preserves_true_u_instead_of_inverse_caret_hull_top_left() {
     let second = p
         .select(b)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -538,9 +550,9 @@ fn signed_underline_offsets_are_rotated_once_into_counterclockwise_physical_boun
             &mut system,
             "A",
             Style {
-                underline: crate::Decoration::solid()
-                    .with_offset(crate::DecorationOffset::try_absolute(offset).unwrap())
-                    .with_thickness(crate::DecorationThickness::try_absolute(1.0).unwrap()),
+                underline: crate::style::Decoration::solid()
+                    .with_offset(crate::style::DecorationOffset::try_absolute(offset).unwrap())
+                    .with_thickness(crate::style::DecorationThickness::try_absolute(1.0).unwrap()),
                 ..own_style()
             },
             false,
@@ -563,7 +575,7 @@ fn accesskit_uses_actual_ccw_direction_bounds_and_positive_inline_character_exte
         let mut system = system_with(crate::shaping_test_fonts::sideways_ahem());
         let p = capture(&mut system, raw, own_style(), rtl, CCW);
         let layout = placed(&p, vec![(whole(&p), -7.25, 13.5)]);
-        let mut accessibility = crate::Accessibility::default();
+        let mut accessibility = crate::accessibility::Accessibility::default();
         let parent = accesskit::NodeId(1_579_002);
         let update = layout
             .accessibility_update(&mut accessibility, parent, parent, Point::new(3.0, 7.0))
@@ -601,7 +613,7 @@ fn named_alphabetic_reference_is_horizontal_while_central_and_upright_profiles_r
             &analysis,
             PreparationOptions::default()
                 .with_orientation(CCW)
-                .with_baseline_reference(crate::FontBaseline::Alphabetic),
+                .with_baseline_reference(crate::font::FontBaseline::Alphabetic),
         )
         .unwrap();
     let layout = placed(&p, vec![(whole(&p), -7.25, 13.5)]);
@@ -615,7 +627,7 @@ fn named_alphabetic_reference_is_horizontal_while_central_and_upright_profiles_r
             &analysis,
             PreparationOptions::default()
                 .with_orientation(CCW)
-                .with_baseline_reference(crate::FontBaseline::Central),
+                .with_baseline_reference(crate::font::FontBaseline::Central),
         )
         .unwrap_err();
     assert_eq!(
@@ -625,8 +637,8 @@ fn named_alphabetic_reference_is_horizontal_while_central_and_upright_profiles_r
         }
     );
     for typography in [
-        crate::AnalysisTypography::Mixed,
-        crate::AnalysisTypography::Upright {
+        crate::analyzed::AnalysisTypography::Mixed,
+        crate::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::LeftToRight,
         },
     ] {
@@ -714,7 +726,7 @@ fn odd_rtl_range_pieces_use_actual_visual_provider_intervals_in_h_and_ccw() {
         );
         assert_eq!(
             p.analyzed_source().direction(),
-            crate::Direction::RightToLeft
+            crate::style::Direction::RightToLeft
         );
         assert_eq!(
             p.unit_views().map(|u| u.level().get()).collect::<Vec<_>>(),
@@ -787,7 +799,9 @@ fn odd_rtl_range_pieces_use_actual_visual_provider_intervals_in_h_and_ccw() {
                     .collect::<Vec<_>>(),
                 [range]
             );
-            let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+            let crate::range_fragments::SourceRangeGeometry::Line(piece) =
+                unit.pieces().next().unwrap()
+            else {
                 panic!("ordinary Range fixture must retain Line geometry");
             };
             assert_eq!(piece.rect(), rect, "{orientation:?} source{range:?}");

@@ -3,7 +3,29 @@
 
 use super::*;
 use crate::processing::{MappingKind, identity};
-use crate::*;
+use crate::{
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::Size,
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, ProcessedSource,
+        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+        process_contextual_source, process_source_whitespace,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Style, WhiteSpace, Wrap},
+    text::Text,
+};
 use std::sync::Arc;
 
 type CharacterFact = (

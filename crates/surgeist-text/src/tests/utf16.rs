@@ -699,7 +699,7 @@ mod accessibility {
         let analyzed = AnalyzedSource::new(
             Source::new("ab"),
             Style::default(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .expect("original source analysis needs no font");
         let mut state = Accessibility::default();
@@ -753,7 +753,7 @@ mod accessibility {
         let analyzed = AnalyzedSource::new(
             Source::new(""),
             ahem_style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let mut state = Accessibility::default();
@@ -789,14 +789,14 @@ mod accessibility {
         let analyzed = AnalyzedSource::new(
             Source::identified("AX", Id::from_u64(31), 7),
             ahem_style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let same = analyzed.clone();
         let foreign = AnalyzedSource::new(
             analyzed.source().clone(),
             ahem_style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let mut system = system();
@@ -918,13 +918,13 @@ mod accessibility {
         let original = AnalyzedSource::new(
             Source::new("A"),
             ahem_style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let invalid = AnalyzedSource::new(
             Source::new(Text::from_code_units(vec![0x41, 0xd800])),
             ahem_style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let mut state = Accessibility::new(10);
@@ -980,13 +980,13 @@ mod accessibility {
         let allowed = AnalyzedSource::new(
             Source::new(format!("a{}", "\u{301}".repeat(127))),
             ahem_style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let refused = AnalyzedSource::new(
             Source::new(format!("é{}", "\u{301}".repeat(127))),
             ahem_style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let mut state = Accessibility::default();

@@ -19,8 +19,13 @@ pub use contextual::{
 };
 
 use crate::{
-    Affinity, DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, InlineBox, InlineBoxKind,
-    ProcessingCapacityError, Range, Result, Source, SourcePosition, Span, Style, Text, WhiteSpace,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::{DocumentSegmentBreakError, ProcessingCapacityError},
+    layout::Affinity,
+    range::{Range, SourcePosition},
+    source::{InlineBox, InlineBoxKind, Source, Span},
+    style::{Style, WhiteSpace},
+    text::Text,
 };
 
 /// Actual document-language delimiter classification in original source units.
@@ -945,7 +950,7 @@ fn effective_modes(source: &Source, base: &Style) -> Result<Vec<EffectiveInterva
 fn admit_text_node(
     source: &Source,
     range: Range,
-    node: Option<&crate::CompleteTextNodeContribution>,
+    node: Option<&crate::protocol::paragraph::CompleteTextNodeContribution>,
     origin: usize,
     base: &Style,
     modes: &[EffectiveInterval],
@@ -962,7 +967,7 @@ fn admit_text_node(
                 .span
                 .map_or(base, |i| source.spans()[i].style())
                 .text_transform
-                == crate::TextTransform::MathAuto
+                == crate::style::TextTransform::MathAuto
         })
     {
         return Err(Error::new(
@@ -970,7 +975,7 @@ fn admit_text_node(
             "math-auto requires complete original Text-node context",
         )
         .with_detail(ErrorDetail::TextTransform {
-            reason: crate::TextTransformError::MissingTextNodeContext { origin },
+            reason: crate::error::TextTransformError::MissingTextNodeContext { origin },
         }));
     }
     Ok(())

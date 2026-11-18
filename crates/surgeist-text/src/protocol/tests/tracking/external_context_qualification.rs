@@ -1,7 +1,9 @@
 //! Functional qualification of Text-owned external joining context constraints.
 use super::super::fixtures::allocations;
 use super::*;
-use crate::{SpacingBoundaryGeometry, SpacingSlotGeometry, SpacingSlotOwner, SpacingSlotTarget};
+use crate::protocol::{
+    SpacingBoundaryGeometry, SpacingSlotGeometry, SpacingSlotOwner, SpacingSlotTarget,
+};
 
 fn system(bytes: &[u8]) -> System {
     let mut system = System::default();
@@ -14,7 +16,7 @@ fn system(bytes: &[u8]) -> System {
 fn selected(prepared: &PreparedText) -> SelectedLine {
     let mut value = request(prepared);
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    value.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     value.context.available_inline = None;
     value.context.spacing = SpacingPolicy::InterCharacter;
     prepared.select(value).unwrap()
@@ -46,23 +48,23 @@ fn disconnected(source: &Source, tracking: f64) -> AnalyzedSource {
         source: source.clone(),
         base_style: own(tracking),
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::RightToLeft,
         origins: [Range::new(0, 1), Range::new(1, 2)]
             .into_iter()
-            .map(|range| crate::ParagraphOrigin {
+            .map(|range| crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: range,
                 aggregate: range,
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
-        connections: vec![crate::ParagraphConnection {
+        connections: vec![crate::protocol::paragraph::ParagraphConnection {
             at: 1,
-            kind: crate::ParagraphConnectionKind::Disconnected,
+            kind: crate::protocol::paragraph::ParagraphConnectionKind::Disconnected,
         }],
         controls: vec![],
         boundary_policies: vec![],
@@ -70,9 +72,12 @@ fn disconnected(source: &Source, tracking: f64) -> AnalyzedSource {
         anchor_order: vec![],
     };
     let result = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            value,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     assert_eq!(result.source(), source);
     assert_eq!(
@@ -141,9 +146,9 @@ fn real_external_context_retains_a_complete_constrained_zero_basis_and_precise_m
         );
     }
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&natural, &bytes), expected);
@@ -180,22 +185,22 @@ fn real_external_context_retains_a_complete_constrained_zero_basis_and_precise_m
     else {
         panic!("precise actual external-context capability required: {error:?}")
     };
-    assert_eq!(*stage, crate::SpacingStage::SelectedShaping);
+    assert_eq!(*stage, crate::error::SpacingStage::SelectedShaping);
     assert_eq!(
         *operation,
-        crate::SpacingOperation::InterCharacterAllocation
+        crate::error::SpacingOperation::InterCharacterAllocation
     );
     assert_eq!(
         *reason,
-        crate::SpacingFailureReason::UnqualifiedProviderPath
+        crate::error::SpacingFailureReason::UnqualifiedProviderPath
     );
     let expected_pieces = [
-        crate::SpacingPiece::Source {
+        crate::error::SpacingPiece::Source {
             origin: 0,
             local: Range::new(1, 2),
             aggregate: Range::new(1, 2),
         },
-        crate::SpacingPiece::Source {
+        crate::error::SpacingPiece::Source {
             origin: 0,
             local: Range::new(0, 1),
             aggregate: Range::new(0, 1),
@@ -241,7 +246,7 @@ fn real_external_context_retains_a_complete_constrained_zero_basis_and_precise_m
     assert_eq!(constraints.len(), 2);
     let mut scopes = Vec::new();
     for constraint in constraints.iter() {
-        let crate::SpacingConstraintKind::ExternalJoiningContext { body, context } =
+        let crate::error::SpacingConstraintKind::ExternalJoiningContext { body, context } =
             &constraint.kind
         else {
             panic!(
@@ -301,9 +306,9 @@ fn same_script_joining_is_protected_without_inventing_an_external_uncertainty() 
         assert_eq!(authored.feedback().advance, 20.0);
         let selected = selected(&prepared);
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(glyphs(&natural, &bytes), expected);
@@ -401,9 +406,9 @@ fn a_real_nonjoining_endpoint_admits_disjoint_script_tracking_and_character_allo
     );
     let selected = selected(&prepared);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     independent(&natural, 4.0, 0.0);
@@ -476,9 +481,9 @@ fn a_disconnected_origin_connection_bounds_both_joining_contexts_and_admits_spac
         );
     }
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     independent(&natural, 4.0, 0.0);
@@ -527,9 +532,9 @@ fn independent_outside_allocation_translates_the_whole_external_context_pair() {
     );
     let selected = selected(&prepared);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&natural, &bytes), expected);

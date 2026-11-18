@@ -10,7 +10,7 @@ use crate::protocol::{
     placement::{PlacementMetricPolicy, place_request},
     selection::LineMetricPolicy,
 };
-use crate::{Point, Result, TextNumericPhase};
+use crate::{Result, error::TextNumericPhase, geometry::Point};
 
 pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> {
     let prepared = Arc::clone(
@@ -60,11 +60,11 @@ pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> 
                         border_origin,
                         ..
                     } => (
-                        crate::Rect {
+                        crate::geometry::Rect {
                             origin: border_origin,
                             size: box_geometry.border.size,
                         },
-                        crate::Rect::new(
+                        crate::geometry::Rect::new(
                             item.slot.x + box_geometry.content.origin.x,
                             item.slot.y + box_geometry.content.origin.y,
                             box_geometry.content.size.width,
@@ -76,7 +76,7 @@ pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> 
                         // Only standalone placement owns these authored physical dimensions.
                         let size =
                             prepared.analyzed.processed.source().boxes()[item.occurrence].size();
-                        let rect = crate::Rect::new(
+                        let rect = crate::geometry::Rect::new(
                             item.slot.x,
                             item.slot.y - size.height,
                             size.width,

@@ -134,7 +134,7 @@ fn stop(cp: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Source, projection::SourceProjection};
+    use crate::{projection::SourceProjection, source::Source};
 
     #[test]
     fn effective_units_keep_marked_literals_but_reclassify_a_real_space_mark_sequence() {

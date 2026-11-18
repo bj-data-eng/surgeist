@@ -8,8 +8,10 @@ use super::super::{
 use crate::projection::SourceProjection;
 use crate::protocol::{input::PresentationInput, prepared::SelectedPresentation};
 use crate::{
-    InlineBox, InlineBoxKind, Result, SpacingBoundaryGeometry, SpacingFailureReason,
-    TextNumericPhase,
+    Result,
+    error::{SpacingFailureReason, TextNumericPhase},
+    protocol::SpacingBoundaryGeometry,
+    source::{InlineBox, InlineBoxKind},
 };
 use icu_properties::{
     CodePointSetData,
@@ -115,7 +117,7 @@ pub(crate) struct Constraint {
     pub(crate) run: usize,
     pub(crate) components: Vec<usize>,
     pub(crate) required: bool,
-    pub(crate) kind: crate::SpacingConstraintKind,
+    pub(crate) kind: crate::error::SpacingConstraintKind,
     pub(crate) provenance: Vec<surgeist_shaper::FeatureProvenance>,
 }
 
@@ -331,7 +333,8 @@ impl Graph {
             for relation in &invocation.constraints {
                 account::work(ledger, 1)?;
                 if self.crosses_accounted(edge, &relation.components, ledger)? {
-                    if relation.required && relation.kind == crate::SpacingConstraintKind::Ligature
+                    if relation.required
+                        && relation.kind == crate::error::SpacingConstraintKind::Ligature
                     {
                         return Ok(SpacingBoundaryGeometry::ProtectedRequired);
                     }
@@ -361,7 +364,7 @@ pub(crate) enum Owner {
 }
 
 struct DiagnosticContext {
-    pieces: Vec<crate::SpacingPiece>,
+    pieces: Vec<crate::error::SpacingPiece>,
     locale: Option<String>,
 }
 // Failure diagnostics are Native-owned, outside ScopeAlignmentLimits payload.
@@ -379,14 +382,14 @@ pub(crate) fn failure(
     input: PresentationInput<'_>,
     graph: &Graph,
     edge: usize,
-    operation: crate::SpacingOperation,
+    operation: crate::error::SpacingOperation,
     invocations: &[Invocation],
 ) -> crate::Error {
     diagnostic(
         graph,
         edge,
         invocations,
-        crate::SpacingStage::SelectedShaping,
+        crate::error::SpacingStage::SelectedShaping,
         operation,
         |unit| DiagnosticSource::Selected(input).context(unit),
     )
@@ -396,8 +399,8 @@ fn diagnostic(
     graph: &Graph,
     edge: usize,
     invocations: &[Invocation],
-    stage: crate::SpacingStage,
-    operation: crate::SpacingOperation,
+    stage: crate::error::SpacingStage,
+    operation: crate::error::SpacingOperation,
     mut context: impl FnMut(&Unit) -> Result<DiagnosticContext>,
 ) -> crate::Error {
     let build = (|| -> Result<crate::Error> {
@@ -422,12 +425,12 @@ fn diagnostic(
             for relation in &invocation.constraints {
                 if graph.crosses_accounted(edge, &relation.components, &mut None)? {
                     optional |= !relation.required
-                        && relation.kind == crate::SpacingConstraintKind::Ligature;
+                        && relation.kind == crate::error::SpacingConstraintKind::Ligature;
                     external |= matches!(
                         relation.kind,
-                        crate::SpacingConstraintKind::ExternalJoiningContext { .. }
+                        crate::error::SpacingConstraintKind::ExternalJoiningContext { .. }
                     );
-                    constraints.push(crate::SpacingConstraint {
+                    constraints.push(crate::error::SpacingConstraint {
                         kind: relation.kind.clone(),
                         run: relation.run,
                         components: relation.components.iter().map(|&a| a..a + 1).collect(),
@@ -441,8 +444,8 @@ fn diagnostic(
             if graph.touches_accounted(edge, invocation, &mut None)?
                 && let Some(path) = invocation.path
             {
-                constraints.push(crate::SpacingConstraint {
-                    kind: crate::SpacingConstraintKind::UnqualifiedProviderPath(path),
+                constraints.push(crate::error::SpacingConstraint {
+                    kind: crate::error::SpacingConstraintKind::UnqualifiedProviderPath(path),
                     run: invocation.run,
                     components: vec![invocation.atoms.clone()].into_boxed_slice(),
                     provenance: Box::new([]),
@@ -530,7 +533,7 @@ pub(crate) fn original(
             return Err(super::super::text_numeric_error(
                 "character boundary mean",
                 TextNumericPhase::Shaping,
-                crate::TextNumericError::NonZeroLost,
+                crate::error::TextNumericError::NonZeroLost,
                 boundary.authored,
             ));
         }
@@ -542,8 +545,8 @@ pub(crate) fn original(
                 graph,
                 edge,
                 &shaped.character_invocations,
-                crate::SpacingStage::Preparation,
-                crate::SpacingOperation::AuthoredTracking,
+                crate::error::SpacingStage::Preparation,
+                crate::error::SpacingOperation::AuthoredTracking,
                 |unit| {
                     if let Subject::Cell(binding) = unit.subject {
                         return cell_context(analyzed, binding);
@@ -558,7 +561,7 @@ pub(crate) fn original(
                     pieces.extend(
                         unit.atomics
                             .iter()
-                            .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
+                            .map(|&occurrence| crate::error::SpacingPiece::Atomic { occurrence }),
                     );
                     let locale = unit.base.and_then(|base| {
                         analyzed.styles[analyzed.analysis.infos[base].1]
@@ -664,7 +667,7 @@ pub(crate) fn discarded(
     graph: &Graph,
     edge: usize,
     shaped: &ShapedData,
-    dispositions: &[crate::SpacingSlotDisposition],
+    dispositions: &[crate::protocol::SpacingSlotDisposition],
     ledger: &mut Ledger,
 ) -> Result<bool> {
     let boundary = &graph.boundaries[edge];
@@ -674,7 +677,8 @@ pub(crate) fn discarded(
             for a in &graph.units[u].atoms {
                 account::work(ledger, 1)?;
                 if a.contains(&c.atoms.start)
-                    && dispositions[i] == crate::SpacingSlotDisposition::DiscardedAtLineEdge
+                    && dispositions[i]
+                        == crate::protocol::SpacingSlotDisposition::DiscardedAtLineEdge
                 {
                     return Ok(true);
                 }
@@ -689,7 +693,7 @@ pub(crate) fn apply_selected_accounted(
     graph: &Graph,
     shaped: &mut ShapedData,
     order: &[usize],
-    dispositions: &[crate::SpacingSlotDisposition],
+    dispositions: &[crate::protocol::SpacingSlotDisposition],
     allocations: Option<&[f64]>,
     ledger: &mut Ledger,
 ) -> Result<()> {
@@ -705,8 +709,8 @@ pub(crate) fn apply_selected_accounted(
                 selected,
                 graph,
                 region,
-                crate::SpacingStage::SelectedShaping,
-                crate::SpacingOperation::AuthoredTracking,
+                crate::error::SpacingStage::SelectedShaping,
+                crate::error::SpacingOperation::AuthoredTracking,
             ));
         }
     }
@@ -716,8 +720,8 @@ pub(crate) fn apply_selected_accounted(
             return Err(unit_error(
                 selected,
                 unit,
-                crate::SpacingStage::SelectedShaping,
-                crate::SpacingOperation::AuthoredTracking,
+                crate::error::SpacingStage::SelectedShaping,
+                crate::error::SpacingOperation::AuthoredTracking,
             ));
         }
     }
@@ -751,7 +755,7 @@ pub(crate) fn apply_selected_accounted(
         ) {
             if allocation != 0.0 {
                 return Err(crate::protocol::protocol_error(
-                    crate::ProtocolError::IneligibleSpacingSlot { slot: edge },
+                    crate::protocol::ProtocolError::IneligibleSpacingSlot { slot: edge },
                 ));
             }
             if geometry == SpacingBoundaryGeometry::ProtectedRequired {
@@ -762,7 +766,7 @@ pub(crate) fn apply_selected_accounted(
             return Err(super::super::text_numeric_error(
                 "character boundary mean",
                 TextNumericPhase::Finalization,
-                crate::TextNumericError::NonZeroLost,
+                crate::error::TextNumericError::NonZeroLost,
                 boundary.authored,
             ));
         }
@@ -782,9 +786,9 @@ pub(crate) fn apply_selected_accounted(
                 graph,
                 edge,
                 if allocation != 0.0 {
-                    crate::SpacingOperation::InterCharacterAllocation
+                    crate::error::SpacingOperation::InterCharacterAllocation
                 } else {
-                    crate::SpacingOperation::AuthoredTracking
+                    crate::error::SpacingOperation::AuthoredTracking
                 },
                 &shaped.character_invocations,
             ));
@@ -798,11 +802,11 @@ pub(crate) fn apply_selected_accounted(
                             selected,
                             graph,
                             region,
-                            crate::SpacingStage::SelectedShaping,
+                            crate::error::SpacingStage::SelectedShaping,
                             if allocation == 0.0 {
-                                crate::SpacingOperation::AuthoredTracking
+                                crate::error::SpacingOperation::AuthoredTracking
                             } else {
-                                crate::SpacingOperation::InterCharacterAllocation
+                                crate::error::SpacingOperation::InterCharacterAllocation
                             },
                         ));
                     }
@@ -1030,26 +1034,26 @@ fn splits_region(
 
 fn unit_context(
     unit: &Unit,
-    pieces: Vec<crate::SpacingPiece>,
+    pieces: Vec<crate::error::SpacingPiece>,
     locale: Option<String>,
-) -> crate::SpacingContext {
-    crate::SpacingContext {
+) -> crate::error::SpacingContext {
+    crate::error::SpacingContext {
         pieces: pieces.into_boxed_slice(),
         locale,
         candidates: unit
             .scripts
             .iter()
-            .filter_map(|&s| crate::TextScript::from_script(s))
+            .filter_map(|&s| crate::error::TextScript::from_script(s))
             .collect(),
         resolved_scripts: unit
             .resolved_scripts
             .iter()
-            .filter_map(|&s| crate::TextScript::from_script(s))
+            .filter_map(|&s| crate::error::TextScript::from_script(s))
             .collect(),
         writing_systems: unit
             .context_scripts
             .iter()
-            .filter_map(|&s| crate::TextScript::from_script(s))
+            .filter_map(|&s| crate::error::TextScript::from_script(s))
             .collect(),
         letter_spacing_before: unit.left,
         letter_spacing_after: unit.right,
@@ -1068,12 +1072,12 @@ impl<'a> DiagnosticSource<'a> {
             Self::Selected(i) => &i.prepared.analyzed,
         }
     }
-    fn pieces(self, member: &Member) -> Result<Vec<crate::SpacingPiece>> {
+    fn pieces(self, member: &Member) -> Result<Vec<crate::error::SpacingPiece>> {
         match member {
             Member::Cell(binding) => {
                 Input::original(self.analyzed(), &[], 1.0).cell_pieces(*binding, &mut None)
             }
-            Member::Atomic(occurrence) => Ok(vec![crate::SpacingPiece::Atomic {
+            Member::Atomic(occurrence) => Ok(vec![crate::error::SpacingPiece::Atomic {
                 occurrence: *occurrence,
             }]),
             Member::Text(atoms) => match self {
@@ -1101,7 +1105,7 @@ impl<'a> DiagnosticSource<'a> {
         pieces.extend(
             unit.atomics
                 .iter()
-                .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
+                .map(|&occurrence| crate::error::SpacingPiece::Atomic { occurrence }),
         );
         let locale = unit
             .base
@@ -1124,8 +1128,8 @@ fn region_diagnostic(
     source: DiagnosticSource<'_>,
     graph: &Graph,
     region: &Region,
-    stage: crate::SpacingStage,
-    operation: crate::SpacingOperation,
+    stage: crate::error::SpacingStage,
+    operation: crate::error::SpacingOperation,
 ) -> crate::Error {
     let build = (|| -> Result<crate::Error> {
         let mut contexts = Vec::new();
@@ -1164,8 +1168,8 @@ fn region_error(
     input: PresentationInput<'_>,
     graph: &Graph,
     region: &Region,
-    stage: crate::SpacingStage,
-    operation: crate::SpacingOperation,
+    stage: crate::error::SpacingStage,
+    operation: crate::error::SpacingOperation,
 ) -> crate::Error {
     region_diagnostic(
         DiagnosticSource::Selected(input),
@@ -1184,8 +1188,8 @@ fn original_region_error(
         DiagnosticSource::Original(analyzed),
         graph,
         region,
-        crate::SpacingStage::Preparation,
-        crate::SpacingOperation::AuthoredTracking,
+        crate::error::SpacingStage::Preparation,
+        crate::error::SpacingOperation::AuthoredTracking,
     )
 }
 
@@ -1209,11 +1213,11 @@ pub(crate) fn admit(
                 input,
                 graph,
                 region,
-                crate::SpacingStage::Selection,
+                crate::error::SpacingStage::Selection,
                 if basis {
-                    crate::SpacingOperation::InterCharacterBasis
+                    crate::error::SpacingOperation::InterCharacterBasis
                 } else {
-                    crate::SpacingOperation::AuthoredTracking
+                    crate::error::SpacingOperation::AuthoredTracking
                 },
             ));
         }
@@ -1238,11 +1242,11 @@ pub(crate) fn admit(
             return Err(unit_error(
                 input,
                 u,
-                crate::SpacingStage::Selection,
+                crate::error::SpacingStage::Selection,
                 if basis {
-                    crate::SpacingOperation::InterCharacterBasis
+                    crate::error::SpacingOperation::InterCharacterBasis
                 } else {
-                    crate::SpacingOperation::AuthoredTracking
+                    crate::error::SpacingOperation::AuthoredTracking
                 },
             ));
         }
@@ -1270,8 +1274,8 @@ fn unqualified_unit(unit: &Unit) -> bool {
 fn unit_error(
     input: PresentationInput<'_>,
     unit: &Unit,
-    stage: crate::SpacingStage,
-    operation: crate::SpacingOperation,
+    stage: crate::error::SpacingStage,
+    operation: crate::error::SpacingOperation,
 ) -> crate::Error {
     let own = match DiagnosticSource::Selected(input).context(unit) {
         Ok(own) => own,
@@ -1304,7 +1308,7 @@ fn original_unit_error(analyzed: &super::super::AnalyzedData, unit: &Unit) -> cr
     pieces.extend(
         unit.atomics
             .iter()
-            .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
+            .map(|&occurrence| crate::error::SpacingPiece::Atomic { occurrence }),
     );
     let locale = unit.base.and_then(|b| {
         analyzed.styles[analyzed.analysis.infos[b].1]
@@ -1317,8 +1321,8 @@ fn original_unit_error(analyzed: &super::super::AnalyzedData, unit: &Unit) -> cr
         "character-unit topology is not qualified for authored tracking",
     )
     .with_detail(crate::ErrorDetail::UnsupportedSpacing {
-        stage: crate::SpacingStage::Preparation,
-        operation: crate::SpacingOperation::AuthoredTracking,
+        stage: crate::error::SpacingStage::Preparation,
+        operation: crate::error::SpacingOperation::AuthoredTracking,
         reason: SpacingFailureReason::UnqualifiedWritingSystem,
         contexts: vec![unit_context(unit, pieces.clone(), locale)].into_boxed_slice(),
         pieces: pieces.into_boxed_slice(),

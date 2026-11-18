@@ -7,8 +7,14 @@ use std::{
 };
 
 use crate::engine::PreparedData;
-use crate::{Alignment, CataloguePublication, Point, Range, Rect, Result};
+use crate::{
+    Result,
+    geometry::{Point, Rect},
+    options::Alignment,
+    range::Range,
+};
 use selection::SelectedData;
+use surgeist_font::CataloguePublication;
 
 pub(crate) mod inline_box;
 pub use inline_box::{
@@ -95,23 +101,23 @@ pub use prepared::PreparedBreakKind;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PreparationOptions {
     scale: f32,
-    tabs: crate::TabPreparation,
+    tabs: crate::tabs::TabPreparation,
     orientation: LineOrientation,
-    baseline_reference: Option<crate::FontBaseline>,
+    baseline_reference: Option<crate::font::FontBaseline>,
 }
 
 impl PreparationOptions {
     /// Select one tab resource operation for the complete original/alternative inventory.
     /// CSS preparation fails atomically if a potentially selectable tab lacks required capture or metrics.
-    pub fn try_new(scale: f32, tabs: crate::TabPreparation) -> Result<Self> {
+    pub fn try_new(scale: f32, tabs: crate::tabs::TabPreparation) -> Result<Self> {
         if !scale.is_finite() || scale <= 0.0 {
             return Err(crate::error::text_numeric_error(
                 "preparation scale",
-                crate::TextNumericPhase::Preparation,
+                crate::error::TextNumericPhase::Preparation,
                 if scale.is_finite() {
-                    crate::TextNumericError::OutOfRange
+                    crate::error::TextNumericError::OutOfRange
                 } else {
-                    crate::TextNumericError::NonFinite
+                    crate::error::TextNumericError::NonFinite
                 },
                 f64::from(scale),
             ));
@@ -139,19 +145,19 @@ impl PreparationOptions {
     /// preparation. Without a request, H/Sideways use raw font-design zero and
     /// native Upright uses its existing Central reference.
     #[must_use]
-    pub const fn with_baseline_reference(mut self, reference: crate::FontBaseline) -> Self {
+    pub const fn with_baseline_reference(mut self, reference: crate::font::FontBaseline) -> Self {
         self.baseline_reference = Some(reference);
         self
     }
     /// Exact named-reference demand, independently of successful admission.
     #[must_use]
-    pub const fn requested_baseline_reference(self) -> Option<crate::FontBaseline> {
+    pub const fn requested_baseline_reference(self) -> Option<crate::font::FontBaseline> {
         self.baseline_reference
     }
     /// Only called after the owning preparation admits the profile/request pair.
-    pub(crate) const fn resolved_baseline_reference(self) -> Option<crate::FontBaseline> {
+    pub(crate) const fn resolved_baseline_reference(self) -> Option<crate::font::FontBaseline> {
         match self.orientation {
-            LineOrientation::Vertical => Some(crate::FontBaseline::Central),
+            LineOrientation::Vertical => Some(crate::font::FontBaseline::Central),
             LineOrientation::Horizontal
             | LineOrientation::SidewaysClockwise
             | LineOrientation::SidewaysCounterclockwise => self.baseline_reference,
@@ -163,7 +169,7 @@ impl PreparationOptions {
         self.orientation
     }
     #[must_use]
-    pub const fn tabs(self) -> crate::TabPreparation {
+    pub const fn tabs(self) -> crate::tabs::TabPreparation {
         self.tabs
     }
     #[must_use]
@@ -175,7 +181,7 @@ impl Default for PreparationOptions {
     fn default() -> Self {
         Self {
             scale: 1.0,
-            tabs: crate::TabPreparation::FontAdvance,
+            tabs: crate::tabs::TabPreparation::FontAdvance,
             orientation: LineOrientation::Horizontal,
             baseline_reference: None,
         }
@@ -215,7 +221,7 @@ impl PreparedText {
     /// Upright observes Central even when no explicit name was requested.
     /// Per-run paint origins may differ from this shared alignment reference.
     #[must_use]
-    pub fn baseline_reference(&self) -> Option<crate::FontBaseline> {
+    pub fn baseline_reference(&self) -> Option<crate::font::FontBaseline> {
         self.inner.options.resolved_baseline_reference()
     }
     /// Exact preparation demand retained with this immutable allocation.
@@ -225,7 +231,7 @@ impl PreparedText {
     }
     /// Actual captured nearest block authority, when supplied by the producer.
     #[must_use]
-    pub fn tab_reference(&self) -> Option<&crate::ParagraphTabReference> {
+    pub fn tab_reference(&self) -> Option<&crate::tabs::ParagraphTabReference> {
         self.inner.analyzed.paragraph.tab_reference.as_ref()
     }
     /// Actual captured end role, independent of numeric coverage and completion.
@@ -234,8 +240,8 @@ impl PreparedText {
         self.inner.analyzed.paragraph.terminal_edge
     }
     #[must_use]
-    pub fn analyzed_source(&self) -> crate::AnalyzedSource {
-        crate::AnalyzedSource::from_inner(Arc::clone(&self.inner.analyzed))
+    pub fn analyzed_source(&self) -> crate::analyzed::AnalyzedSource {
+        crate::analyzed::AnalyzedSource::from_inner(Arc::clone(&self.inner.analyzed))
     }
     #[must_use]
     pub fn font_catalogue_identity(&self) -> &CataloguePublication {
@@ -474,7 +480,7 @@ pub enum LineBoxAlignment {
     /// The displacement is already allocated in used line-coordinate units,
     /// like the accompanying box/strut geometry. Preparation scale is not
     /// applied again. This does not execute standalone Requested metadata.
-    Shift(crate::BaselineShift),
+    Shift(crate::source::BaselineShift),
 }
 
 /// Coupled allocated control geometry; these are Layout facts, not font metrics.
@@ -515,16 +521,16 @@ impl InlineBoundaryAllocation {
     };
     pub fn contribution(advance: f64) -> Result<Self> {
         let category = if !advance.is_finite() {
-            Some(crate::TextNumericError::NonFinite)
+            Some(crate::error::TextNumericError::NonFinite)
         } else if advance < 0.0 {
-            Some(crate::TextNumericError::OutOfRange)
+            Some(crate::error::TextNumericError::OutOfRange)
         } else {
             None
         };
         if let Some(category) = category {
             return Err(crate::error::text_numeric_error(
                 "inline boundary advance",
-                crate::TextNumericPhase::Selection,
+                crate::error::TextNumericPhase::Selection,
                 category,
                 advance,
             ));
@@ -609,7 +615,7 @@ pub struct LineStrut {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineBoxStrut {
     /// Authentic captured owner of this own-box contribution; None is common line.
-    pub scope: Option<crate::CapturedScope>,
+    pub scope: Option<crate::processing::CapturedScope>,
     pub metrics: LineStrut,
     pub alignment: LineBoxAlignment,
 }
@@ -1011,7 +1017,7 @@ pub struct AtomicSlotFeedback {
     /// Actual cumulative scope contribution, positive toward line-over.
     /// In-flow origins already contain it; OOF static-anchor policy consumes
     /// this contribution once without reconstructing it from an absolute slot.
-    pub scope_displacement: crate::BaselineShift,
+    pub scope_displacement: crate::source::BaselineShift,
     pub allocation: AtomicLineAllocation,
 }
 
@@ -1240,7 +1246,7 @@ pub enum ProtocolError {
     /// The source index is ambiguous at the given affinity.
     AmbiguousSourcePosition {
         index: usize,
-        affinity: crate::Affinity,
+        affinity: crate::layout::Affinity,
     },
     /// The placed position is invalid.
     InvalidPlacedPosition { position: usize },
@@ -1746,26 +1752,28 @@ mod option_tests {
     fn preparation_options_classifies_actual_input_domain_without_conversion_loss() {
         for value in [0.0_f32, -0.0, -1.0] {
             let error =
-                PreparationOptions::try_new(value, crate::TabPreparation::FontAdvance).unwrap_err();
+                PreparationOptions::try_new(value, crate::tabs::TabPreparation::FontAdvance)
+                    .unwrap_err();
             assert!(
                 matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric {
-                category: crate::TextNumericError::OutOfRange, value: actual, ..
+                category: crate::error::TextNumericError::OutOfRange, value: actual, ..
             }) if *actual == f64::from(value))
             );
         }
         for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
             let error =
-                PreparationOptions::try_new(value, crate::TabPreparation::FontAdvance).unwrap_err();
+                PreparationOptions::try_new(value, crate::tabs::TabPreparation::FontAdvance)
+                    .unwrap_err();
             assert!(matches!(
                 error.detail(),
                 Some(crate::ErrorDetail::InvalidTextNumeric {
-                    category: crate::TextNumericError::NonFinite,
+                    category: crate::error::TextNumericError::NonFinite,
                     ..
                 })
             ));
         }
         assert_eq!(
-            PreparationOptions::try_new(0.5, crate::TabPreparation::FontAdvance)
+            PreparationOptions::try_new(0.5, crate::tabs::TabPreparation::FontAdvance)
                 .unwrap()
                 .scale(),
             0.5

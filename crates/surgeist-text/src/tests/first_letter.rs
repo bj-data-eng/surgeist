@@ -1,4 +1,4 @@
-use crate::{ErrorCode, Range, Text};
+use crate::{ErrorCode, range::Range, text::Text};
 
 type Partition = (Option<Range>, Range, Option<Range>);
 

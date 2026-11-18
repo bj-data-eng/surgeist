@@ -1,5 +1,12 @@
 //! Nonempty whitespace lines retain the metrics of their selected source.
-use crate::{Font, Id, LineHeight, Options, Range, Source, Style, System};
+use crate::{
+    System,
+    id::Id,
+    options::Options,
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style},
+};
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 

@@ -61,7 +61,7 @@ pub(super) fn validate(
                 != Some(value))
     {
         return Err(crate::hyphenation::error(
-            crate::HyphenationError::InvalidContinuation,
+            crate::hyphenation::HyphenationError::InvalidContinuation,
         ));
     }
     if let Some(value) = incoming {
@@ -75,7 +75,7 @@ pub(super) fn validate(
             })
         {
             return Err(crate::hyphenation::error(
-                crate::HyphenationError::InvalidContinuation,
+                crate::hyphenation::HyphenationError::InvalidContinuation,
             ));
         }
     }

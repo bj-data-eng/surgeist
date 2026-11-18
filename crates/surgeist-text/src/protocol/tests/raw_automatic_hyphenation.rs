@@ -3,7 +3,12 @@
 //! come from the qualified en-US exception table. W60's furthest-fitting choice
 //! is the selected Surgeist greedy policy, not a CSS-prescribed coordinate.
 use super::*;
-use crate::{HyphenateCharacter, Hyphens, LineHeight, PlaintextItem, Range};
+use crate::{
+    hyphenation::{HyphenateCharacter, Hyphens},
+    processing::PlaintextItem,
+    range::Range,
+    style::LineHeight,
+};
 use skrifa::MetadataProvider;
 
 fn raw_auto_font(primary_hyphen: bool) -> Vec<u8> {
@@ -26,8 +31,8 @@ fn raw_auto_style(hyphens: Hyphens, locale: Option<&str>) -> Style {
         hyphens,
         locale: locale.map(str::to_owned),
         hyphenate_character: HyphenateCharacter::Auto,
-        wrap: crate::Wrap::Word,
-        overflow_wrap: crate::OverflowWrap::Normal,
+        wrap: crate::style::Wrap::Word,
+        overflow_wrap: crate::style::OverflowWrap::Normal,
         ..Style::default()
     }
 }
@@ -52,7 +57,7 @@ fn expected_line(
     }
 }
 
-fn raw_auto_glyphs(layout: &crate::Layout, bytes: &[u8]) -> Vec<(usize, Range, u32, f32)> {
+fn raw_auto_glyphs(layout: &crate::layout::Layout, bytes: &[u8]) -> Vec<(usize, Range, u32, f32)> {
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), bytes);
         assert_eq!(
@@ -76,7 +81,7 @@ fn raw_auto_glyphs(layout: &crate::Layout, bytes: &[u8]) -> Vec<(usize, Range, u
     rows
 }
 
-fn raw_auto_advances(layout: &crate::Layout) -> Vec<f64> {
+fn raw_auto_advances(layout: &crate::layout::Layout) -> Vec<f64> {
     let mut advances = vec![0.0; layout.lines().len()];
     for run in layout.inline_metric_facts().runs() {
         advances[run.line()] += run.advance();
@@ -132,7 +137,7 @@ fn raw_auto_case(
         primary_hyphen.then_some(36)
     );
     let indication = if primary_hyphen { 36 } else { 15 };
-    let source = Source::identified(source_text, crate::Id::from_u64(6602), 9);
+    let source = Source::identified(source_text, crate::id::Id::from_u64(6602), 9);
     let original = source_text.encode_utf16().collect::<Vec<_>>();
     let own = raw_auto_style(hyphens, locale);
     let mut system = System::default();
@@ -147,9 +152,9 @@ fn raw_auto_case(
         .layout(
             indication_source.clone(),
             own.clone(),
-            crate::Options {
+            crate::options::Options {
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
@@ -163,9 +168,9 @@ fn raw_auto_case(
         .layout(
             source.clone(),
             own.clone(),
-            crate::Options {
+            crate::options::Options {
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
@@ -175,7 +180,7 @@ fn raw_auto_case(
     // These actual unbroken source/resource/provider controls precede any
     // missing-automatic or SHY-priority assertion. No manual-layout precondition.
     assert_eq!(unbroken.source(), &source);
-    assert_eq!(unbroken.source().id(), Some(crate::Id::from_u64(6602)));
+    assert_eq!(unbroken.source().id(), Some(crate::id::Id::from_u64(6602)));
     assert_eq!(unbroken.source().revision(), 9);
     assert_eq!(unbroken.source().text().code_units(), original);
     assert_eq!(
@@ -188,14 +193,14 @@ fn raw_auto_case(
     );
     assert_eq!(raw_auto_advances(&unbroken), [count as f64 * 10.0]);
     assert_eq!(raw_auto_glyphs(&unbroken, &bytes), whole_glyphs);
-    let processed = crate::process_source_whitespace(
+    let processed = crate::processing::process_source_whitespace(
         source.clone(),
         own.clone(),
-        crate::DocumentSegmentBreaks::LineFeedDefault,
+        crate::processing::DocumentSegmentBreaks::LineFeedDefault,
     )
     .unwrap();
     let mut plain = Vec::new();
-    for item in processed.plaintext_items(crate::Affinity::Before) {
+    for item in processed.plaintext_items(crate::layout::Affinity::Before) {
         match item {
             PlaintextItem::Text(text) => plain.extend_from_slice(text.code_units()),
             PlaintextItem::InlineBox(_) => panic!("fixture has no inline boxes"),
@@ -207,10 +212,10 @@ fn raw_auto_case(
         .layout(
             source.clone(),
             own,
-            crate::Options {
+            crate::options::Options {
                 width: Some(width),
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();

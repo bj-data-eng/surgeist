@@ -43,7 +43,7 @@ fn funded() -> Funded {
             kind: ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     input.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
@@ -120,7 +120,7 @@ fn funded() -> Funded {
             strut: None,
             boundary: Some(InlineBoundaryAllocation::box_edge(
                 context.clone(),
-                crate::InlineBoxEdgeComponents::from_f64(0.0, 1.0, 0.0).unwrap(),
+                crate::protocol::InlineBoxEdgeComponents::from_f64(0.0, 1.0, 0.0).unwrap(),
             )),
         },
         ControlAllocation {
@@ -128,7 +128,7 @@ fn funded() -> Funded {
             strut: None,
             boundary: Some(InlineBoundaryAllocation::box_edge(
                 context,
-                crate::InlineBoxEdgeComponents::from_f64(0.0, 2.0, 0.0).unwrap(),
+                crate::protocol::InlineBoxEdgeComponents::from_f64(0.0, 2.0, 0.0).unwrap(),
             )),
         },
     ];

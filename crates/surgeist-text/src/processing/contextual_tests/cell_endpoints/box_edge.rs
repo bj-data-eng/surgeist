@@ -269,12 +269,12 @@ fn native_parent_opposed_box_edges_reorder_the_complete_cw_cell_packet() {
         if allocation.occurrence == controls[1] {
             allocation.boundary = Some(InlineBoundaryAllocation::box_edge(
                 context.clone(),
-                crate::InlineBoxEdgeComponents::from_f64(0.0, 2.0, 0.0).unwrap(),
+                crate::protocol::InlineBoxEdgeComponents::from_f64(0.0, 2.0, 0.0).unwrap(),
             ));
         } else if allocation.occurrence == controls[2] {
             allocation.boundary = Some(InlineBoundaryAllocation::box_edge(
                 context.clone(),
-                crate::InlineBoxEdgeComponents::from_f64(0.0, 3.0, 0.0).unwrap(),
+                crate::protocol::InlineBoxEdgeComponents::from_f64(0.0, 3.0, 0.0).unwrap(),
             ));
         } else {
             assert_eq!(allocation.boundary.as_ref().unwrap().advance(), 0.0);
@@ -331,7 +331,8 @@ fn native_parent_opposed_box_edges_reorder_the_complete_cw_cell_packet() {
         if let Some([margin, border, padding]) = parts {
             allocation.boundary = Some(InlineBoundaryAllocation::box_edge(
                 context.clone(),
-                crate::InlineBoxEdgeComponents::from_f64(margin, border, padding).unwrap(),
+                crate::protocol::InlineBoxEdgeComponents::from_f64(margin, border, padding)
+                    .unwrap(),
             ));
         }
     }
@@ -354,7 +355,7 @@ fn native_parent_opposed_box_edges_reorder_the_complete_cw_cell_packet() {
     );
     assert_eq!(
         signed.measurements().margin_edge_fit().authority(),
-        crate::MarginEdgeFitAuthority::CssComposed
+        crate::protocol::MarginEdgeFitAuthority::CssComposed
     );
     assert_eq!(
         signed

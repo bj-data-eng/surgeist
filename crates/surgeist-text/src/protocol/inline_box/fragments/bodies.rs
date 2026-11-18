@@ -369,7 +369,7 @@ pub(super) fn selected_body(
 
 pub(super) fn control_body(
     prepared: &PreparedData,
-    request: &crate::LineSelectionRequest,
+    request: &crate::protocol::LineSelectionRequest,
     control: usize,
     ledger: &mut Ledger,
 ) -> Result<usize> {
@@ -382,7 +382,7 @@ pub(super) fn control_body(
 
 fn body_for_outer(
     prepared: &PreparedData,
-    request: &crate::LineSelectionRequest,
+    request: &crate::protocol::LineSelectionRequest,
     outer: usize,
     ledger: &mut Ledger,
 ) -> Result<Option<usize>> {

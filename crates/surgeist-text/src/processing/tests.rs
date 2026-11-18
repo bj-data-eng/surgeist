@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Id, Size};
+use crate::{geometry::Size, id::Id};
 
 #[test]
 fn actual_space_preservation_survives_coalescence_without_source_local_plaintext_tokens() {
@@ -289,7 +289,7 @@ fn last_span_policy_and_original_borrowed_records_are_exact_without_font_admissi
     source.span(Range::new(1, 3), discard());
     source.span(Range::new(2, 2), Style::default());
     let base = Style {
-        font: crate::Font::new().family("[invalid-unused"),
+        font: crate::style::Font::new().family("[invalid-unused"),
         size: f32::NAN,
         ..Style::default()
     };
@@ -633,13 +633,17 @@ fn intrinsic_validation_and_result_relative_bounds_remain_precise_before_modes()
     );
     let mut system = crate::System::default();
     let error = system
-        .layout(Source::new("A B"), discard(), crate::Options::default())
+        .layout(
+            Source::new("A B"),
+            discard(),
+            crate::options::Options::default(),
+        )
         .unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::UnsupportedTextStyle {
-            feature: crate::TextStyleFeature::WhiteSpaceDiscard,
-            reason: crate::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
+            feature: crate::style_support::TextStyleFeature::WhiteSpaceDiscard,
+            reason: crate::style_support::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
         })
     );
 }

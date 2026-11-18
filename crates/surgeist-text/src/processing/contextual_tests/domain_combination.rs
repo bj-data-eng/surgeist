@@ -2,7 +2,27 @@
 //! WM4/native source authority determines selection and joins before fonts.
 //! Selected cells deliberately stop at the public preparation capability guard.
 
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail, Result, System,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, ProcessedSource, SourceContinuityOperation,
+        SourceProcessingConnection, SourceProcessingError, SourceProcessingEvent,
+        SourceProcessingJointFlow, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection, PreparationOptions,
+        paragraph::{ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::{TextCombineUpright, TextCombineUprightDigits, WhiteSpace},
+    text::Text,
+    transform::TextCombineError,
+};
 use std::sync::Arc;
 
 fn split(

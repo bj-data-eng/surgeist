@@ -1,6 +1,6 @@
 use std::ops::Range as StdRange;
 
-use super::{Error, ErrorCode, ErrorDetail, Result, Text};
+use crate::{Error, ErrorCode, ErrorDetail, Result, text::Text};
 
 /// UTF-16 code-unit range in source text.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]

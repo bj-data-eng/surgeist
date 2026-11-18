@@ -1,9 +1,15 @@
 use crate::transform::relation::RelationEvent;
-use crate::{AnalyzedSource, CaseTransform, Range, Source, Style, Text, TextTransform};
+use crate::{
+    analyzed::AnalyzedSource,
+    range::Range,
+    source::Source,
+    style::{CaseTransform, Style, TextTransform},
+    text::Text,
+};
 
 fn style(case: CaseTransform, locale: Option<&str>) -> Style {
     Style {
-        text_transform: TextTransform::Set(crate::TextTransformSet::none().with_case(case)),
+        text_transform: TextTransform::Set(crate::style::TextTransformSet::none().with_case(case)),
         locale: locale.map(str::to_owned),
         ..Style::default()
     }
@@ -11,7 +17,7 @@ fn style(case: CaseTransform, locale: Option<&str>) -> Style {
 
 #[test]
 fn actual_transform_phase_executes_full_contextual_and_initial_unit_literals() {
-    use CaseTransform::{Capitalize, Lowercase, Uppercase};
+    use crate::style::CaseTransform::{Capitalize, Lowercase, Uppercase};
     for (input, case, locale, expected) in [
         ("ABc", Lowercase, None, "abc"),
         ("ABc", Capitalize, None, "ABc"),
@@ -51,7 +57,7 @@ fn actual_transform_phase_executes_full_contextual_and_initial_unit_literals() {
         let analyzed = AnalyzedSource::new(
             source.clone(),
             style(case, locale),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -94,7 +100,7 @@ fn actual_component_operations_and_languages_never_borrow_the_neighbors_policy()
             AnalyzedSource::new(
                 source,
                 left,
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             )
             .unwrap()
             .inner
@@ -114,7 +120,7 @@ fn actual_component_operations_and_languages_never_borrow_the_neighbors_policy()
             AnalyzedSource::new(
                 source,
                 style(CaseTransform::Capitalize, Some("lt")),
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             )
             .unwrap()
             .inner
@@ -146,7 +152,7 @@ fn actual_component_operations_and_languages_never_borrow_the_neighbors_policy()
             AnalyzedSource::new(
                 source,
                 left,
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             )
             .unwrap()
             .inner
@@ -161,7 +167,7 @@ fn actual_component_operations_and_languages_never_borrow_the_neighbors_policy()
         AnalyzedSource::new(
             source,
             Style::default(),
-            crate::AnalysisTypography::HorizontalComposition
+            crate::analyzed::AnalysisTypography::HorizontalComposition
         )
         .unwrap()
         .inner
@@ -175,7 +181,7 @@ fn actual_component_operations_and_languages_never_borrow_the_neighbors_policy()
         AnalyzedSource::new(
             source,
             Style::default(),
-            crate::AnalysisTypography::HorizontalComposition
+            crate::analyzed::AnalysisTypography::HorizontalComposition
         )
         .unwrap()
         .inner
@@ -195,7 +201,7 @@ fn actual_relation_keeps_reordered_noncontiguous_emissions_and_a_real_removal() 
     let analyzed = AnalyzedSource::new(
         source.clone(),
         style(CaseTransform::Uppercase, None),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.inner.projection.text, "\u{1f08}\u{301}Ι");
@@ -236,7 +242,7 @@ fn opaque_original_units_and_kana_composition_keep_independent_phase_custody() {
     let analyzed = AnalyzedSource::new(
         source.clone(),
         style(CaseTransform::Uppercase, None),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -255,13 +261,13 @@ fn opaque_original_units_and_kana_composition_keep_independent_phase_custody() {
         source.clone(),
         Style {
             text_transform: TextTransform::Set(
-                crate::TextTransformSet::none()
+                crate::style::TextTransformSet::none()
                     .with_case(CaseTransform::Uppercase)
                     .with_full_size_kana(true),
             ),
             ..Style::default()
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.inner.projection.text, "SSこ");
@@ -282,84 +288,96 @@ fn opaque_original_units_and_kana_composition_keep_independent_phase_custody() {
 #[test]
 fn immutable_context_crosses_connected_origins_and_neutral_oof_but_not_real_domains() {
     for (connection, box_kind, expected) in [
-        (crate::ParagraphConnectionKind::Continuous, None, "οσα"),
         (
-            crate::ParagraphConnectionKind::Continuous,
-            Some(crate::InlineBoxKind::OutOfFlow),
+            crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+            None,
             "οσα",
         ),
-        (crate::ParagraphConnectionKind::Disconnected, None, "οςα"),
         (
-            crate::ParagraphConnectionKind::Continuous,
-            Some(crate::InlineBoxKind::InFlow),
+            crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+            Some(crate::source::InlineBoxKind::OutOfFlow),
+            "οσα",
+        ),
+        (
+            crate::protocol::paragraph::ParagraphConnectionKind::Disconnected,
+            None,
+            "οςα",
+        ),
+        (
+            crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+            Some(crate::source::InlineBoxKind::InFlow),
             "οςα",
         ),
     ] {
         let mut source = Source::new("ΟΣΑ");
         if let Some(kind) = box_kind {
-            source.inline_box(crate::InlineBox::new(
-                crate::Id::from_u64(6305),
+            source.inline_box(crate::source::InlineBox::new(
+                crate::id::Id::from_u64(6305),
                 kind,
                 2,
-                crate::Size::new(0.0, 0.0),
+                crate::geometry::Size::new(0.0, 0.0),
             ));
         }
         let analyzed = AnalyzedSource::from_paragraph(
-            crate::ParagraphInput {
+            crate::protocol::ParagraphInput {
                 source: source.clone(),
                 base_style: style(CaseTransform::Lowercase, None),
-                paragraph_strut: crate::ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-                base_direction: crate::ParagraphBaseDirection::LeftToRight,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 origins: [(0, 2), (2, 3)]
                     .into_iter()
-                    .map(|(start, end)| crate::ParagraphOrigin {
+                    .map(|(start, end)| crate::protocol::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: source.clone(),
                         local: Range::new(start, end),
                         aggregate: Range::new(start, end),
-                        kind: crate::ParagraphOriginKind::Authored,
+                        kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect(),
-                connections: vec![crate::ParagraphConnection {
+                connections: vec![crate::protocol::paragraph::ParagraphConnection {
                     at: 2,
                     kind: connection,
                 }],
                 controls: vec![],
                 replacements: vec![],
-                boundary_policies: (if connection == crate::ParagraphConnectionKind::Continuous {
-                    vec![crate::ParagraphBoundaryDefinition::Connection(0)]
+                boundary_policies: (if connection
+                    == crate::protocol::paragraph::ParagraphConnectionKind::Continuous
+                {
+                    vec![crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(0)]
                 } else {
                     vec![]
                 })
                 .into_iter()
-                .chain(if box_kind == Some(crate::InlineBoxKind::InFlow) {
+                .chain(if box_kind == Some(crate::source::InlineBoxKind::InFlow) {
                     vec![
-                        crate::ParagraphBoundaryDefinition::AtomicBefore(0),
-                        crate::ParagraphBoundaryDefinition::AtomicAfter(0),
+                        crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                        crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
                     ]
                 } else {
                     vec![]
                 })
-                .map(|definition| crate::ParagraphBoundaryPolicy {
-                    definition,
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
-                })
+                .map(
+                    |definition| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                        definition,
+                        preceding_wrap: crate::style::Wrap::Word,
+                        following_wrap: crate::style::Wrap::Word,
+                        ancestor_wrap: crate::style::Wrap::Word,
+                    },
+                )
                 .collect(),
                 anchor_order: if box_kind.is_some() {
-                    vec![crate::ParagraphAnchor {
-                        item: crate::ParagraphAnchorItem::Atomic(0),
-                        affinity: crate::Affinity::After,
+                    vec![crate::protocol::paragraph::ParagraphAnchor {
+                        item: crate::protocol::paragraph::ParagraphAnchorItem::Atomic(0),
+                        affinity: crate::layout::Affinity::After,
                     }]
                 } else {
                     vec![]
                 },
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
@@ -369,7 +387,7 @@ fn immutable_context_crosses_connected_origins_and_neutral_oof_but_not_real_doma
     let analyzed = AnalyzedSource::new(
         Source::new("ΟΣ\nΑ"),
         style(CaseTransform::Lowercase, None),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.inner.projection.text, "ος\nα");
@@ -384,55 +402,58 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
         for oof in [false, true] {
             let mut source = Source::new(format!("I{mark}"));
             if oof {
-                source.inline_box(crate::InlineBox::new(
-                    crate::Id::from_u64(6320),
-                    crate::InlineBoxKind::OutOfFlow,
+                source.inline_box(crate::source::InlineBox::new(
+                    crate::id::Id::from_u64(6320),
+                    crate::source::InlineBoxKind::OutOfFlow,
                     1,
-                    crate::Size::new(0.0, 0.0),
+                    crate::geometry::Size::new(0.0, 0.0),
                 ));
             }
             let analyzed = AnalyzedSource::from_paragraph(
-                crate::ParagraphInput {
+                crate::protocol::ParagraphInput {
                     source: source.clone(),
                     base_style: style(CaseTransform::Lowercase, Some(locale)),
-                    paragraph_strut: crate::ParagraphStrut::DefaultFont,
-                    terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                    paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+                    terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                     tab_reference: None,
-                    segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-                    base_direction: crate::ParagraphBaseDirection::LeftToRight,
+                    segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+                    base_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                     origins: [Source::new("I"), Source::new(mark)]
                         .into_iter()
                         .enumerate()
-                        .map(|(index, original)| crate::ParagraphOrigin {
-                            text_node: None,
-                            source: original,
-                            local: Range::new(0, 1),
-                            aggregate: Range::new(index, index + 1),
-                            kind: crate::ParagraphOriginKind::Authored,
-                        })
+                        .map(
+                            |(index, original)| crate::protocol::paragraph::ParagraphOrigin {
+                                text_node: None,
+                                source: original,
+                                local: Range::new(0, 1),
+                                aggregate: Range::new(index, index + 1),
+                                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
+                            },
+                        )
                         .collect(),
-                    connections: vec![crate::ParagraphConnection {
+                    connections: vec![crate::protocol::paragraph::ParagraphConnection {
                         at: 1,
-                        kind: crate::ParagraphConnectionKind::Continuous,
+                        kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
                     }],
                     controls: vec![],
                     replacements: vec![],
-                    boundary_policies: vec![crate::ParagraphBoundaryPolicy {
-                        definition: crate::ParagraphBoundaryDefinition::Connection(0),
-                        preceding_wrap: crate::Wrap::Word,
-                        following_wrap: crate::Wrap::Word,
-                        ancestor_wrap: crate::Wrap::Word,
+                    boundary_policies: vec![crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                        definition:
+                            crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                        preceding_wrap: crate::style::Wrap::Word,
+                        following_wrap: crate::style::Wrap::Word,
+                        ancestor_wrap: crate::style::Wrap::Word,
                     }],
                     anchor_order: if oof {
-                        vec![crate::ParagraphAnchor {
-                            item: crate::ParagraphAnchorItem::Atomic(0),
-                            affinity: crate::Affinity::After,
+                        vec![crate::protocol::paragraph::ParagraphAnchor {
+                            item: crate::protocol::paragraph::ParagraphAnchorItem::Atomic(0),
+                            affinity: crate::layout::Affinity::After,
                         }]
                     } else {
                         vec![]
                     },
                 },
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(analyzed.inner.projection.text, expected);

@@ -8,7 +8,10 @@ use super::{
 };
 use crate::engine::PlacedLine;
 use crate::{
-    Error, ErrorCode, LineOrientation, Point, Rect, Result, TextNumericError, TextNumericPhase,
+    Error, ErrorCode, Result,
+    error::{TextNumericError, TextNumericPhase},
+    geometry::{Point, Rect},
+    protocol::LineOrientation,
 };
 
 struct Arithmetic {

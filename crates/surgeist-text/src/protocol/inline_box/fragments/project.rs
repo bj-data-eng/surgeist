@@ -282,7 +282,7 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
         let Some(context) = allocation
             .boundary
             .as_ref()
-            .and_then(crate::InlineBoundaryAllocation::box_context)
+            .and_then(crate::protocol::InlineBoundaryAllocation::box_context)
         else {
             continue;
         };
@@ -371,7 +371,7 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
             let Some(context) = allocation
                 .boundary
                 .as_ref()
-                .and_then(crate::InlineBoundaryAllocation::box_context)
+                .and_then(crate::protocol::InlineBoundaryAllocation::box_context)
             else {
                 continue;
             };
@@ -392,9 +392,9 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
                 return Err(invalid(InlineBoxFragmentationError::InvalidIncidence));
             }
             let physical_start = if source_start {
-                context.start_side == crate::LineEdgeSide::Start
+                context.start_side == crate::protocol::LineEdgeSide::Start
             } else {
-                context.start_side == crate::LineEdgeSide::End
+                context.start_side == crate::protocol::LineEdgeSide::End
             };
             let mut target = None;
             for (index, piece) in projected.pieces.iter().enumerate() {

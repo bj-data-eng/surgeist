@@ -1,7 +1,11 @@
 //! Actual non-control allocations without a default-font contribution.
 
 use super::*;
-use crate::{LineBoxAlignment, LineBoxStrut, LineHeight, LineStrut, Range};
+use crate::{
+    protocol::{LineBoxAlignment, LineBoxStrut, LineStrut},
+    range::Range,
+    style::LineHeight,
+};
 
 fn row(baseline: f64, line_extent: f64, alignment: LineBoxAlignment) -> LineBoxStrut {
     LineBoxStrut {
@@ -28,27 +32,27 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
                 ..style()
             },
             paragraph_strut: ParagraphStrut::AllocatedContributions,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
-            origins: vec![crate::ParagraphOrigin {
+            origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: Range::new(0, 0),
                 aggregate: Range::new(0, 0),
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             }],
-            anchor_order: vec![crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: crate::Affinity::After,
+            anchor_order: vec![crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
+                affinity: crate::layout::Affinity::After,
             }],
             connections: vec![],
             controls: vec![],
             boundary_policies: vec![],
             replacements: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let p = system()
@@ -57,9 +61,9 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
     let no_allocations = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap_err();
     assert!(matches!(
@@ -94,9 +98,9 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
         let line = p
             .select(input)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(

@@ -2,7 +2,12 @@
 //! operations over actual registered shaping. No subset is a complete basis.
 use super::fixtures::allocations;
 use super::*;
-use crate::{AtomicPlacement, Cursor, InlineBox, InlineBoxKind, Point, Rect, Size};
+use crate::{
+    geometry::{Point, Rect, Size},
+    layout::Cursor,
+    protocol::AtomicPlacement,
+    source::{InlineBox, InlineBoxKind},
+};
 
 const BOX: Id = Id::from_u64(1566090);
 
@@ -20,16 +25,16 @@ fn analyze(source: &Source, style: Style) -> AnalyzedSource {
         source: source.clone(),
         base_style: style,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: extent,
             aggregate: extent,
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -38,10 +43,12 @@ fn analyze(source: &Source, style: Style) -> AnalyzedSource {
             .boxes()
             .iter()
             .enumerate()
-            .map(|(occurrence, _)| crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::Atomic(occurrence),
-                affinity: crate::Affinity::After,
-            })
+            .map(
+                |(occurrence, _)| crate::protocol::paragraph::ParagraphAnchor {
+                    item: crate::protocol::paragraph::ParagraphAnchorItem::Atomic(occurrence),
+                    affinity: crate::layout::Affinity::After,
+                },
+            )
             .collect(),
         boundary_policies: source
             .boxes()
@@ -49,22 +56,30 @@ fn analyze(source: &Source, style: Style) -> AnalyzedSource {
             .enumerate()
             .flat_map(|(occurrence, _)| {
                 [
-                    crate::ParagraphBoundaryDefinition::AtomicBefore(occurrence),
-                    crate::ParagraphBoundaryDefinition::AtomicAfter(occurrence),
+                    crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicBefore(
+                        occurrence,
+                    ),
+                    crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicAfter(
+                        occurrence,
+                    ),
                 ]
             })
-            .map(|definition| crate::ParagraphBoundaryPolicy {
-                definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
-            })
+            .map(
+                |definition| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                    definition,
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
+                },
+            )
             .collect(),
     };
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
-    crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word)
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
+    crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word)
 }
 
 fn prepared(system: &mut System, source: &Source, style: Style) -> crate::Result<PreparedText> {
@@ -79,7 +94,7 @@ fn prepared_raw(system: &mut System, source: &Source, style: Style) -> crate::Re
     let analyzed = AnalyzedSource::new(
         source.clone(),
         style,
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.source(), source);
@@ -88,7 +103,7 @@ fn prepared_raw(system: &mut System, source: &Source, style: Style) -> crate::Re
 
 fn flow() -> AtomicLineAllocation {
     AtomicLineAllocation::InFlow {
-        fit: crate::AtomicFitAllocation::NativeOccupied,
+        fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 10.0,
             normal_border_inline_size: 10.0,
@@ -131,14 +146,14 @@ fn selection(
 fn ordinary(prepared: &PreparedText) -> FinalizedLine {
     selection(prepared, SpacingPolicy::None, None)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
 
-fn placed(prepared: &PreparedText, line: &FinalizedLine) -> crate::Layout {
+fn placed(prepared: &PreparedText, line: &FinalizedLine) -> crate::layout::Layout {
     // Host placement uses the actual finalized H slots and the same supplied
     // box geometry. It supplies no provider glyph or character-unit geometry.
     let map = |origin: Point, rect: Rect| {
@@ -166,10 +181,10 @@ fn placed(prepared: &PreparedText, line: &FinalizedLine) -> crate::Layout {
             },
         })
         .collect();
-    crate::Layout::from_finalized_lines(PlacementRequest {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line: line.clone(),
             anchor: LineAnchor {
                 inline_origin: 20.0,
@@ -182,7 +197,7 @@ fn placed(prepared: &PreparedText, line: &FinalizedLine) -> crate::Layout {
     .unwrap()
 }
 
-fn carets(layout: &crate::Layout) -> Vec<(Cursor, Rect)> {
+fn carets(layout: &crate::layout::Layout) -> Vec<(Cursor, Rect)> {
     layout
         .positions()
         .map(|position| {
@@ -194,8 +209,8 @@ fn carets(layout: &crate::Layout) -> Vec<(Cursor, Rect)> {
         .collect()
 }
 
-fn piece(range: Range) -> crate::SpacingPiece {
-    crate::SpacingPiece::Source {
+fn piece(range: Range) -> crate::error::SpacingPiece {
+    crate::error::SpacingPiece::Source {
         origin: 0,
         local: range,
         aggregate: range,
@@ -204,8 +219,8 @@ fn piece(range: Range) -> crate::SpacingPiece {
 
 fn profile_error(
     error: &crate::Error,
-    stage: crate::SpacingStage,
-    operation: crate::SpacingOperation,
+    stage: crate::error::SpacingStage,
+    operation: crate::error::SpacingOperation,
     script: [u8; 4],
     locale: Option<&str>,
     tracking: f64,
@@ -226,7 +241,7 @@ fn profile_error(
     assert_eq!((*actual_stage, *actual_operation), (stage, operation));
     assert_eq!(
         *reason,
-        crate::SpacingFailureReason::UnqualifiedWritingSystem
+        crate::error::SpacingFailureReason::UnqualifiedWritingSystem
     );
     assert_eq!(pieces.as_ref(), [piece(Range::new(0, 1))]);
     assert_eq!(provider_atoms.as_ref(), std::slice::from_ref(&(0..1)));
@@ -335,8 +350,8 @@ fn unqualified_complex_profiles_allow_ordinary_zero_but_never_issue_a_complete_c
         let error = selection(&prepared, SpacingPolicy::InterCharacter, Some(20.0)).unwrap_err();
         profile_error(
             &error,
-            crate::SpacingStage::Selection,
-            crate::SpacingOperation::InterCharacterBasis,
+            crate::error::SpacingStage::Selection,
+            crate::error::SpacingOperation::InterCharacterBasis,
             script,
             None,
             0.0,
@@ -347,8 +362,8 @@ fn unqualified_complex_profiles_allow_ordinary_zero_but_never_issue_a_complete_c
         let error = self::prepared(&mut system, &source, own(4.0)).unwrap_err();
         profile_error(
             &error,
-            crate::SpacingStage::Preparation,
-            crate::SpacingOperation::AuthoredTracking,
+            crate::error::SpacingStage::Preparation,
+            crate::error::SpacingOperation::AuthoredTracking,
             script,
             None,
             4.0,
@@ -361,8 +376,8 @@ fn unqualified_complex_profiles_allow_ordinary_zero_but_never_issue_a_complete_c
     let error = selection(&prepared, SpacingPolicy::InterCharacter, Some(10.0)).unwrap_err();
     profile_error(
         &error,
-        crate::SpacingStage::Selection,
-        crate::SpacingOperation::InterCharacterBasis,
+        crate::error::SpacingStage::Selection,
+        crate::error::SpacingOperation::InterCharacterBasis,
         *b"Thai",
         None,
         0.0,
@@ -392,8 +407,8 @@ fn an_unqualified_bare_language_remains_declared_and_refuses_material_or_complet
     let error = selection(&prepared, SpacingPolicy::InterCharacter, Some(20.0)).unwrap_err();
     profile_error(
         &error,
-        crate::SpacingStage::Selection,
-        crate::SpacingOperation::InterCharacterBasis,
+        crate::error::SpacingStage::Selection,
+        crate::error::SpacingOperation::InterCharacterBasis,
         *b"Latn",
         Some("qaa"),
         0.0,
@@ -402,8 +417,8 @@ fn an_unqualified_bare_language_remains_declared_and_refuses_material_or_complet
     let error = self::prepared(&mut system, &source, style).unwrap_err();
     profile_error(
         &error,
-        crate::SpacingStage::Preparation,
-        crate::SpacingOperation::AuthoredTracking,
+        crate::error::SpacingStage::Preparation,
+        crate::error::SpacingOperation::AuthoredTracking,
         *b"Latn",
         Some("qaa"),
         4.0,
@@ -438,7 +453,11 @@ fn mark_scripts(resolved: bool) -> Vec<[u8; 4]> {
         .collect()
 }
 
-fn mark_context(context: &crate::SpacingContext, pieces: &[crate::SpacingPiece], tracking: f64) {
+fn mark_context(
+    context: &crate::error::SpacingContext,
+    pieces: &[crate::error::SpacingPiece],
+    tracking: f64,
+) {
     use icu_properties::{CodePointMapData, props::GeneralCategory};
     assert_eq!(
         CodePointMapData::<GeneralCategory>::new().get('\u{301}'),
@@ -471,9 +490,9 @@ fn mark_context(context: &crate::SpacingContext, pieces: &[crate::SpacingPiece],
 
 fn mark_profile_error(
     error: &crate::Error,
-    stage: crate::SpacingStage,
-    operation: crate::SpacingOperation,
-    mark_pieces: &[crate::SpacingPiece],
+    stage: crate::error::SpacingStage,
+    operation: crate::error::SpacingOperation,
+    mark_pieces: &[crate::error::SpacingPiece],
     atoms: &[std::ops::Range<usize>],
     tracking: f64,
     preceding_atomic: Option<f64>,
@@ -494,19 +513,19 @@ fn mark_profile_error(
     assert_eq!((*actual_stage, *actual_operation), (stage, operation));
     assert_eq!(
         *reason,
-        crate::SpacingFailureReason::UnqualifiedWritingSystem
+        crate::error::SpacingFailureReason::UnqualifiedWritingSystem
     );
     assert_eq!(provider_atoms.as_ref(), atoms);
     assert!(constraints.is_empty());
     if let Some(value) = preceding_atomic {
-        let mut expected = vec![crate::SpacingPiece::Atomic { occurrence: 0 }];
+        let mut expected = vec![crate::error::SpacingPiece::Atomic { occurrence: 0 }];
         expected.extend_from_slice(mark_pieces);
         assert_eq!(pieces.as_ref(), expected);
         assert_eq!(contexts.len(), 2);
         let atomic = &contexts[0];
         assert_eq!(
             atomic.pieces.as_ref(),
-            [crate::SpacingPiece::Atomic { occurrence: 0 }]
+            [crate::error::SpacingPiece::Atomic { occurrence: 0 }]
         );
         assert_eq!(
             (atomic.letter_spacing_before, atomic.letter_spacing_after),
@@ -592,8 +611,8 @@ fn actual_atomic_barrier_preserves_zero_but_standalone_mark_demands_its_own_prof
         let error = route(&mut system, &marked, own(0.0)).unwrap_err();
         mark_profile_error(
             &error,
-            crate::SpacingStage::Preparation,
-            crate::SpacingOperation::AuthoredTracking,
+            crate::error::SpacingStage::Preparation,
+            crate::error::SpacingOperation::AuthoredTracking,
             &[piece(Range::new(1, 2))],
             std::slice::from_ref(&(1..2)),
             99.0,
@@ -608,8 +627,8 @@ fn actual_atomic_barrier_preserves_zero_but_standalone_mark_demands_its_own_prof
         .unwrap_err();
         mark_profile_error(
             &error,
-            crate::SpacingStage::Selection,
-            crate::SpacingOperation::InterCharacterBasis,
+            crate::error::SpacingStage::Selection,
+            crate::error::SpacingOperation::InterCharacterBasis,
             &[piece(Range::new(1, 2))],
             std::slice::from_ref(&(1..2)),
             0.0,
@@ -623,8 +642,8 @@ fn actual_atomic_barrier_preserves_zero_but_standalone_mark_demands_its_own_prof
         .unwrap_err();
         mark_profile_error(
             &error,
-            crate::SpacingStage::Selection,
-            crate::SpacingOperation::InterCharacterBasis,
+            crate::error::SpacingStage::Selection,
+            crate::error::SpacingOperation::InterCharacterBasis,
             &[piece(Range::new(1, 2))],
             std::slice::from_ref(&(1..2)),
             0.0,
@@ -637,8 +656,8 @@ fn actual_atomic_barrier_preserves_zero_but_standalone_mark_demands_its_own_prof
             // With mark0/atomic4, the first failing effect is Atomic -> mark.
             mark_profile_error(
                 &error,
-                crate::SpacingStage::Preparation,
-                crate::SpacingOperation::AuthoredTracking,
+                crate::error::SpacingStage::Preparation,
+                crate::error::SpacingOperation::AuthoredTracking,
                 &[piece(Range::new(1, 2))],
                 std::slice::from_ref(&(1..2)),
                 text,
@@ -680,9 +699,9 @@ fn an_actual_atomic_at_the_egc_endpoint_uses_its_own_exterior_value_and_remains_
     assert_eq!(attached_selection.spacing_slots().len(), 2);
     assert_eq!(
         attached_selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -693,9 +712,9 @@ fn an_actual_atomic_at_the_egc_endpoint_uses_its_own_exterior_value_and_remains_
     let prepared = prepared(&mut system, &source, own(4.0)).unwrap();
     let selected = selection(&prepared, SpacingPolicy::InterCharacter, Some(42.0)).unwrap();
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(raw(&natural, &bytes), expected);
@@ -705,7 +724,9 @@ fn an_actual_atomic_at_the_egc_endpoint_uses_its_own_exterior_value_and_remains_
     for row in &rows {
         assert_eq!(
             row.geometry,
-            crate::SpacingSlotGeometry::Boundary(crate::SpacingBoundaryGeometry::Independent)
+            crate::protocol::SpacingSlotGeometry::Boundary(
+                crate::protocol::SpacingBoundaryGeometry::Independent
+            )
         );
         assert_eq!(
             (row.authored_letter_spacing, row.allocation, row.advance),
@@ -752,9 +773,9 @@ fn positioned_atomic_and_ignored_format_keep_the_two_supported_endpoint_units() 
         let prepared = prepared(&mut system, &source, own(4.0)).unwrap();
         let selected = selection(&prepared, SpacingPolicy::InterCharacter, Some(26.0)).unwrap();
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(natural.feedback().advance, 24.0);
@@ -766,7 +787,7 @@ fn positioned_atomic_and_ignored_format_keep_the_two_supported_endpoint_units() 
                 .next()
                 .unwrap()
                 .pieces()
-                .any(|piece| matches!(piece.owner(), crate::SpacingSlotOwner::Atomic(_)))
+                .any(|piece| matches!(piece.owner(), crate::protocol::SpacingSlotOwner::Atomic(_)))
         );
         let actual = natural
             .with_spacing(allocations(&selected, &[2.0]))
@@ -822,9 +843,9 @@ fn declared_en_does_not_misclassify_unambiguous_hebrew_or_arabic_as_latin_member
         assert_eq!(raw(&natural, &bytes), expected);
         let selected = selection(&prepared, SpacingPolicy::InterCharacter, Some(26.0)).unwrap();
         let actual = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: allocations(&selected, &[2.0]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(actual.feedback().advance, 26.0);
@@ -845,9 +866,9 @@ fn profile_and_atomic_barrier_refusals_preserve_a_real_completed_layout_and_its_
     let bytes = crate::shaping_test_fonts::mark_ahem();
     let mut system = system_with(&bytes);
     let source = Source::identified("AB", Id::from_u64(1566091), 1);
-    let options = crate::Options {
+    let options = crate::options::Options {
         quantize: false,
-        ..crate::Options::default()
+        ..crate::options::Options::default()
     };
     let published = system.layout(source.clone(), own(0.0), options).unwrap();
     let before = system.stats();
@@ -883,8 +904,8 @@ fn profile_and_atomic_barrier_refusals_preserve_a_real_completed_layout_and_its_
     .unwrap_err();
     mark_profile_error(
         &error,
-        crate::SpacingStage::Selection,
-        crate::SpacingOperation::InterCharacterBasis,
+        crate::error::SpacingStage::Selection,
+        crate::error::SpacingOperation::InterCharacterBasis,
         &[piece(Range::new(1, 2))],
         std::slice::from_ref(&(1..2)),
         0.0,
@@ -893,8 +914,8 @@ fn profile_and_atomic_barrier_refusals_preserve_a_real_completed_layout_and_its_
     let error = prepared_raw(&mut system, &seam, own(4.0)).unwrap_err();
     mark_profile_error(
         &error,
-        crate::SpacingStage::Preparation,
-        crate::SpacingOperation::AuthoredTracking,
+        crate::error::SpacingStage::Preparation,
+        crate::error::SpacingOperation::AuthoredTracking,
         &[piece(Range::new(1, 2))],
         std::slice::from_ref(&(1..2)),
         4.0,
@@ -906,8 +927,8 @@ fn profile_and_atomic_barrier_refusals_preserve_a_real_completed_layout_and_its_
     let error = selection(&unknown, SpacingPolicy::InterCharacter, Some(20.0)).unwrap_err();
     profile_error(
         &error,
-        crate::SpacingStage::Selection,
-        crate::SpacingOperation::InterCharacterBasis,
+        crate::error::SpacingStage::Selection,
+        crate::error::SpacingOperation::InterCharacterBasis,
         *b"Latn",
         Some("qaa"),
         0.0,

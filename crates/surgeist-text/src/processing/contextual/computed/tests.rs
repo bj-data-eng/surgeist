@@ -1,5 +1,31 @@
 use super::*;
-use crate::*;
+use crate::{
+    ErrorDetail, System,
+    analyzed::AnalyzedSource,
+    layout::Affinity,
+    options::Alignment,
+    processing::{
+        CapturedComputedLineBoundaryTarget, ComputedLineBoundaryError, ComputedLineBoundaryInput,
+        ContextualSourceInput, DocumentSegmentBreaks, SourceBoxSide, SourceProcessingConnection,
+        SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
+        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        FormattedLineContext, LineBoxDirection, LineContext, LineEnd, LineOrientation,
+        LineSelectionRequest, LineStart, ParagraphBaseDirection, PreparationOptions,
+        PreparedBreakKind, PreparedTermination, SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{CaseTransform, Font, LineHeight, Style, TextTransform, TextTransformSet, Wrap},
+    text::Text,
+};
 
 fn input(left: Text, right: Text) -> ContextualSourceInput {
     let split = left.len();
@@ -89,7 +115,7 @@ fn analyze(input: ContextualSourceInput) -> AnalyzedSource {
     let processed = Arc::new(process_contextual_source(input).unwrap());
     AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap()
 }
@@ -298,7 +324,7 @@ fn real_native_finalization_consumes_computed_forces_without_host_control_or_fra
                     line_box_struts: Vec::new(),
                     line_strut: None,
                     context: LineContext {
-                        alignment_insets: crate::LineAlignmentInsets::ZERO,
+                        alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
                         formatted_line: FormattedLineContext::default(),
                         base_direction: ParagraphBaseDirection::LeftToRight,
                         line_box_direction: LineBoxDirection::LeftToRight,
@@ -322,9 +348,9 @@ fn real_native_finalization_consumes_computed_forces_without_host_control_or_fra
                 })
                 .unwrap();
             let finalized = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(finalized.control_slots().count(), 0);

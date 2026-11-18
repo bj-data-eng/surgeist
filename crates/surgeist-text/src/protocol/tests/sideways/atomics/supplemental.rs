@@ -1,6 +1,9 @@
 //! Current clockwise atomic alignment, custody, bidi and empty dispositions.
 use super::*;
-use crate::{Error, ErrorCode, ErrorDetail, TextNumericError, TextNumericPhase};
+use crate::{
+    Error, ErrorCode, ErrorDetail,
+    error::{TextNumericError, TextNumericPhase},
+};
 
 fn value(raw: &str, rtl: bool, kinds: &[InlineBoxKind], affinity: Affinity) -> ParagraphInput {
     let mut src = Source::identified(raw, Id::from_u64(1_556_100), 1);
@@ -39,9 +42,9 @@ fn value(raw: &str, rtl: bool, kinds: &[InlineBoxKind], affinity: Affinity) -> P
         })
         .map(|definition| ParagraphBoundaryPolicy {
             definition,
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         })
         .collect();
     result
@@ -72,9 +75,9 @@ fn finalized(prepared: &PreparedText, alignment: LineBoxAlignment) -> FinalizedL
     prepared
         .select(selected)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -199,7 +202,7 @@ fn clockwise_baseline_top_bottom_keep_physical_box_and_actual_cross_reference() 
             Rect::new(108.0 - height, 20.0, height, 1.0)
         );
         for run in layout.run_views() {
-            assert_eq!(run.glyph_basis(), crate::GlyphBasis::Clockwise);
+            assert_eq!(run.glyph_basis(), crate::geometry::GlyphBasis::Clockwise);
         }
     }
 }
@@ -456,7 +459,7 @@ fn clockwise_odd_level_inflow_and_positioned_affinities_keep_source_custody() {
     assert_eq!(layout.source().text().code_units(), [0x5d0, 0x5d0]);
     assert_eq!(layout.hit(Point::new(98.0, 35.0)), Hit::InlineBox(INFLOW));
     for run in layout.run_views() {
-        assert_eq!(run.glyph_basis(), crate::GlyphBasis::Clockwise);
+        assert_eq!(run.glyph_basis(), crate::geometry::GlyphBasis::Clockwise);
     }
 
     // RTL Hebrew1 + Latin2 produces Latin at u0 and Hebrew at u10. At their

@@ -35,9 +35,9 @@ fn real_space_expansion_past_the_outer_width_overflows_only_the_resolved_end() {
                 assert_eq!(selected.request().context.start, LineStart::Paragraph);
                 assert_eq!(selected.request().context.end, LineEnd::Paragraph);
                 let natural = selected
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 // Real Ahem10 has A10 + SPACE10 + A10, which fits width35.
@@ -50,19 +50,19 @@ fn real_space_expansion_past_the_outer_width_overflows_only_the_resolved_end() {
                         .pieces()
                         .map(|piece| piece.owner())
                         .collect::<Vec<_>>(),
-                    [crate::SpacingSlotOwner::Source {
+                    [crate::protocol::SpacingSlotOwner::Source {
                         origin: p.origin_views().next().unwrap().handle(),
                         local: Range::new(1, 2),
                         aggregate: Range::new(1, 2),
                     }]
                 );
                 let expanded = selected
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                             slot: slots[0].clone(),
                             amount: 20.0,
                         }]),
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
 

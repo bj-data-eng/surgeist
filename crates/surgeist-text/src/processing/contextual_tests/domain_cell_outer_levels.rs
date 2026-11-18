@@ -1,7 +1,28 @@
 //! Source-cell outer levels are real analysis results even without inner
 //! presentation atoms, and remain local to each completed output binding.
 
-use crate::*;
+use crate::{
+    analyzed::{AnalysisTypography, AnalyzedDomain},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+        SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{TextCombineUpright, TextTransform, WhiteSpace},
+    supplied_line::BidiLevel,
+    text::Text,
+};
 use std::sync::Arc;
 
 fn root_input(

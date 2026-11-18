@@ -1,6 +1,32 @@
 //! Real request-proof frames are input custody, including older proof owners.
 //! Native AutoPhrase/history/flow capabilities, without fabricated frame data.
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    font::{FontBaseline, FontBaselineAxis, FontBaselineScript},
+    id::Id,
+    layout::Layout,
+    options::Alignment,
+    processing::{
+        ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
+        ScopeFontReference, SourceProcessingScope, process_contextual_source,
+    },
+    protocol::{
+        ConditionalDisposition, ConditionalPurpose, ConditionalStage, FinalizedLine,
+        FlowObservationRequest, FlowSegmentRole, LineAllocations, LineAnchor, LineEnd,
+        LineOrientation, LinePlacement, LineSelectionRequest, LineStart, PhraseOverflowDecision,
+        PlacementCoverage, PlacementEntry, PlacementRequest, PreparationOptions, PreparedBoundary,
+        PreparedBreakKind, PreparedConditionalSearch, PreparedTermination, PreparedText,
+        ScopeAlignmentAllowance, ScopeAlignmentCensus, ScopeAlignmentCensusInput,
+        ScopeAlignmentProduct, ScopeAlignmentProducts, ScopeAlignmentRetention, ScopeAllocation,
+        ScopeAllocations, SelectedLine, SpacingAllocations, SpacingPolicy,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+        scope_alignment_census,
+    },
+    range::Range,
+    source::{BaselineShift, Source},
+    style::{Font, LineHeight, OverflowWrap, Style, WhiteSpace, WordBreak, Wrap},
+};
 use std::sync::Arc;
 
 const AHEM: &[u8] = include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -168,7 +194,7 @@ fn search(prepared: &PreparedText, frame: &FinalizedLine) -> PreparedConditional
             ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(frame),
+            crate::protocol::ConditionalLineContext::Finalized(frame),
         )
         .unwrap()
 }

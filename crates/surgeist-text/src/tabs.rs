@@ -1,5 +1,5 @@
 //! Captured CSS tab values and resource demand.
-use crate::{ParagraphBaseDirection, Result, Style, TextNumericError};
+use crate::{Result, error::TextNumericError, protocol::ParagraphBaseDirection, style::Style};
 pub(crate) mod cell;
 
 /// Finite, nonnegative CSS `tab-size`, kept symbolic until preparation.
@@ -19,11 +19,11 @@ impl TabSize {
         if !value.is_finite() || value < 0.0 {
             return Err(crate::error::text_numeric_error(
                 "tab size",
-                crate::TextNumericPhase::Preparation,
+                crate::error::TextNumericPhase::Preparation,
                 if value.is_finite() {
-                    crate::TextNumericError::OutOfRange
+                    crate::error::TextNumericError::OutOfRange
                 } else {
-                    crate::TextNumericError::NonFinite
+                    crate::error::TextNumericError::NonFinite
                 },
                 value,
             ));
@@ -59,7 +59,7 @@ pub struct ParagraphTabReference {
 }
 impl ParagraphTabReference {
     pub fn new(style: Style, direction: ParagraphBaseDirection) -> Result<Self> {
-        crate::ValidatedStyle::for_processed(style.clone())?;
+        crate::style::ValidatedStyle::for_processed(style.clone())?;
         Ok(Self { style, direction })
     }
     #[must_use]
@@ -88,23 +88,23 @@ pub(crate) struct ResolvedTab {
     pub(crate) font: Option<crate::engine::layout::data::PreparedRun>,
     pub(crate) _block_font: Option<crate::engine::layout::data::PreparedRun>,
 }
-fn capability(field: crate::ProtocolContextField) -> crate::Error {
-    crate::protocol::protocol_error(crate::ProtocolError::UnsupportedContext { field })
+fn capability(field: crate::protocol::ProtocolContextField) -> crate::Error {
+    crate::protocol::protocol_error(crate::protocol::ProtocolError::UnsupportedContext { field })
 }
 pub(crate) fn multiply(field: &'static str, a: f64, b: f64) -> Result<f64> {
     let value = a * b;
     if !value.is_finite() || (a != 0.0 && b != 0.0 && value == 0.0) {
         return Err(crate::error::text_numeric_error(
             field,
-            crate::TextNumericPhase::Preparation,
+            crate::error::TextNumericPhase::Preparation,
             if value.is_finite() {
                 if a > 0.0 && b > 0.0 {
-                    crate::TextNumericError::PositiveLost
+                    crate::error::TextNumericError::PositiveLost
                 } else {
-                    crate::TextNumericError::NonZeroLost
+                    crate::error::TextNumericError::NonZeroLost
                 }
             } else {
-                crate::TextNumericError::NonFinite
+                crate::error::TextNumericError::NonFinite
             },
             value,
         ));
@@ -116,7 +116,7 @@ pub(crate) fn prepare(
     analyzed: &crate::engine::AnalyzedData,
     styles: &[crate::engine::resolve::ResolvedStyleRun],
     alternatives: &[crate::protocol::prepared::PreparedIndication],
-    options: crate::PreparationOptions,
+    options: crate::protocol::PreparationOptions,
     scratch: &mut crate::engine::shape::ShapeContext,
     ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
 ) -> Result<Vec<Option<ResolvedTab>>> {
@@ -159,9 +159,9 @@ pub(crate) fn prepare(
             .paragraph
             .tab_reference
             .as_ref()
-            .ok_or_else(|| capability(crate::ProtocolContextField::TabReference))?;
+            .ok_or_else(|| capability(crate::protocol::ProtocolContextField::TabReference))?;
         if size.spaces {
-            let block = crate::ValidatedStyle::for_processed(reference.style().clone())?;
+            let block = crate::style::ValidatedStyle::for_processed(reference.style().clone())?;
             let block_style =
                 crate::engine::resolve::resolve_default(catalogue, &block, options.scale())?;
             let block_styles = [block_style];
@@ -192,16 +192,16 @@ pub(crate) fn prepare(
                     style_index: 0,
                     ch: ' ',
                     direction: reference.direction(),
-                    content: crate::UprightContent::TabMeasurement {
-                        role: crate::UprightTabMeasurement::SpaceInterval,
-                        owner: crate::TextStyleOwner::TabReference,
+                    content: crate::error::UprightContent::TabMeasurement {
+                        role: crate::error::UprightTabMeasurement::SpaceInterval,
+                        owner: crate::error::TextStyleOwner::TabReference,
                     },
                 },
                 scratch,
                 &mut None,
                 &[],
             )?
-            .ok_or_else(|| capability(crate::ProtocolContextField::TabMetrics))?;
+            .ok_or_else(|| capability(crate::protocol::ProtocolContextField::TabMetrics))?;
             // The actual hypothetical SPACE operation already applied the
             // shared intrinsic-zero gate and authored spacing exactly once.
             metric.period = multiply("tab interval", size.value, advance)?;
@@ -236,9 +236,9 @@ pub(crate) fn prepare(
                     input,
                     style_index: index,
                     ch: '0',
-                    direction: crate::ParagraphBaseDirection::LeftToRight,
-                    content: crate::UprightContent::TabMeasurement {
-                        role: crate::UprightTabMeasurement::ZeroThreshold,
+                    direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
+                    content: crate::error::UprightContent::TabMeasurement {
+                        role: crate::error::UprightTabMeasurement::ZeroThreshold,
                         owner: crate::engine::upright::style_owner(analyzed.styles[index].owner),
                     },
                 },
@@ -257,7 +257,9 @@ pub(crate) fn prepare(
                 )?
             };
             if ch < 0.0 {
-                return Err(capability(crate::ProtocolContextField::TabMetrics));
+                return Err(capability(
+                    crate::protocol::ProtocolContextField::TabMetrics,
+                ));
             }
             metric.threshold = multiply("tab half ch", ch, 0.5)?;
         }
@@ -268,10 +270,10 @@ pub(crate) fn prepare(
 
 /// One checked consumed tab-grid evaluator, shared by outer and Cell layout.
 pub(crate) struct Grid {
-    phase: crate::TextNumericPhase,
+    phase: crate::error::TextNumericPhase,
 }
 impl Grid {
-    pub(crate) fn new(phase: crate::TextNumericPhase) -> Self {
+    pub(crate) fn new(phase: crate::error::TextNumericPhase) -> Self {
         Self { phase }
     }
     pub(crate) fn stop(

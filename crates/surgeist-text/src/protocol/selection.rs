@@ -70,7 +70,7 @@ pub(crate) struct SpacingUnitData {
 }
 
 pub(crate) struct SpacingSlotPieceData {
-    pub(crate) owner: crate::SpacingPiece,
+    pub(crate) owner: crate::error::SpacingPiece,
     pub(crate) presentation: super::PresentationRange,
 }
 
@@ -90,7 +90,11 @@ use super::{
     PreparedParticipant, PreparedText, PresentationRange, ProtocolContextField, ProtocolError,
     ProtocolHandleKind, SelectedLine, SpacingPolicy, TabContext, protocol_error,
 };
-use crate::{InlineBoxKind, Result, TextNumericError, TextNumericPhase};
+use crate::{
+    Result,
+    error::{TextNumericError, TextNumericPhase},
+    source::InlineBoxKind,
+};
 
 impl PreparedText {
     /// Establishes this exact selected shaping basis and complete spacing handles.
@@ -104,7 +108,7 @@ impl PreparedText {
     pub fn select_with_scope_allowance(
         &self,
         request: LineSelectionRequest,
-        allowance: crate::ScopeAlignmentAllowance,
+        allowance: crate::protocol::ScopeAlignmentAllowance,
     ) -> Result<SelectedLine> {
         select_with_policy(
             self,
@@ -155,7 +159,7 @@ fn select_with_policy(
     request: LineSelectionRequest,
     metric_policy: LineMetricPolicy,
     scratch: &mut crate::engine::shape::ShapeContext,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
 ) -> Result<SelectedLine> {
     let mut presentation = admit(prepared, &request)?;
     let (boundaries, missing) =
@@ -691,11 +695,13 @@ pub(crate) fn admit_geometry(
     }
     if matches!(
         (&request.context.tabs, prepared.inner.options.tabs()),
-        (TabContext::FontAdvance, crate::TabPreparation::CssStops)
-            | (
-                TabContext::CssStops { .. } | TabContext::IntrinsicCssStops,
-                crate::TabPreparation::FontAdvance
-            )
+        (
+            TabContext::FontAdvance,
+            crate::tabs::TabPreparation::CssStops
+        ) | (
+            TabContext::CssStops { .. } | TabContext::IntrinsicCssStops,
+            crate::tabs::TabPreparation::FontAdvance
+        )
     ) {
         return Err(protocol_error(ProtocolError::MismatchedContext {
             field: ProtocolContextField::TabPreparation,
@@ -772,17 +778,17 @@ pub(crate) fn scope_allocation_roots(
                 .as_ref()
                 .ok_or_else(|| {
                     crate::engine::scope_alignment::refusal(
-                        crate::ScopeAlignmentError::MissingCapture,
+                        crate::processing::ScopeAlignmentError::MissingCapture,
                     )
                 })?;
             if !Arc::ptr_eq(&topology.capture, &scope.capture) {
                 return Err(crate::engine::scope_alignment::refusal(
-                    crate::ScopeAlignmentError::ForeignCapture,
+                    crate::processing::ScopeAlignmentError::ForeignCapture,
                 ));
             }
             if scope.capture.scopes[scope.index].domain != topology.domain {
                 return Err(crate::engine::scope_alignment::refusal(
-                    crate::ScopeAlignmentError::WrongDomain,
+                    crate::processing::ScopeAlignmentError::WrongDomain,
                 ));
             }
         }
@@ -1034,7 +1040,7 @@ pub(crate) fn standalone_request(
     alternative: Option<super::PreparedAlternative>,
     available: Option<f64>,
     indent: f64,
-    alignment: crate::Alignment,
+    alignment: crate::options::Alignment,
 ) -> Result<LineSelectionRequest> {
     use super::PreparedBoundary;
     let end = match &termination {
@@ -1095,7 +1101,7 @@ pub(crate) fn standalone_request(
         termination,
         alternative,
         context: LineContext {
-            alignment_insets: crate::LineAlignmentInsets::ZERO,
+            alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
             formatted_line: super::FormattedLineContext::default(),
             base_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
                 ParagraphBaseDirection::LeftToRight
@@ -1163,7 +1169,7 @@ pub(crate) fn standalone_atomics(
                 },
                 allocation: if in_flow {
                     super::AtomicLineAllocation::InFlow {
-                        fit: crate::AtomicFitAllocation::NativeOccupied,
+                        fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                         flow: AtomicFlowAllocation {
                             advance: size.width,
                             normal_border_inline_size: size.width,
@@ -1174,8 +1180,18 @@ pub(crate) fn standalone_atomics(
                         },
                         alignment: super::LineBoxAlignment::Baseline,
                         box_geometry: AtomicBoxAllocation {
-                            border: crate::Rect::new(0.0, -size.height, size.width, size.height),
-                            content: crate::Rect::new(0.0, -size.height, size.width, size.height),
+                            border: crate::geometry::Rect::new(
+                                0.0,
+                                -size.height,
+                                size.width,
+                                size.height,
+                            ),
+                            content: crate::geometry::Rect::new(
+                                0.0,
+                                -size.height,
+                                size.width,
+                                size.height,
+                            ),
                             baseline: 0.0,
                         },
                     }

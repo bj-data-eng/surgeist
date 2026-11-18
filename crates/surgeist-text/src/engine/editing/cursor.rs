@@ -14,7 +14,11 @@ use super::super::{
     layout::data::{FinalizedCluster, FinalizedVisualItem, PlacedLayout, Whitespace},
 };
 use crate::protocol::LineEnd;
-use crate::{Affinity, Cursor, CursorGeometry, Hit, Movement, Point, Rect, Result};
+use crate::{
+    Result,
+    geometry::{Point, Rect},
+    layout::{Affinity, Cursor, CursorGeometry, Hit, Movement},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ClusterPath {
@@ -482,7 +486,7 @@ fn anchor_geometry(
 // Vertical inline axes use actual physical metric rectangles without assuming
 // a left/right paragraph stack. Source ordinal resolves exact ties.
 pub(super) fn line_at_point(layout: &PlacedLayout, point: Point) -> Option<usize> {
-    if layout.prepared.options.orientation() != crate::LineOrientation::Horizontal {
+    if layout.prepared.options.orientation() != crate::protocol::LineOrientation::Horizontal {
         return layout
             .lines
             .iter()
@@ -618,7 +622,7 @@ pub(super) fn from_point(layout: &PlacedLayout, point: Point) -> Cursor {
         }
     }
     // The provider's non-exact query above the layout clamps to its first cluster.
-    if layout.prepared.options.orientation() == crate::LineOrientation::Horizontal
+    if layout.prepared.options.orientation() == crate::protocol::LineOrientation::Horizontal
         && point.y <= layout.bounds.origin.y
         && let Some(first) = layout.lines.first()
         && let Some((visual, cluster)) = first
@@ -744,12 +748,13 @@ pub(crate) fn move_cursor(
             });
             target.map_or(value, |index| {
                 let line = &layout.lines[index];
-                let inline = if line.orientation == crate::LineOrientation::SidewaysCounterclockwise
+                let inline = if line.orientation
+                    == crate::protocol::LineOrientation::SidewaysCounterclockwise
                 {
                     local_geometry(layout, value).1
                 } else {
                     let (current, rect) = geometry(layout, value);
-                    if line.orientation != crate::LineOrientation::Horizontal {
+                    if line.orientation != crate::protocol::LineOrientation::Horizontal {
                         crate::layout::local_point(&layout.lines[current], rect.origin).x
                     } else {
                         rect.origin.x
@@ -861,7 +866,7 @@ fn visible_end(layout: &PlacedLayout, line: &PlacedLine) -> usize {
     while end > range.start
         && layout.prepared.analyzed.paragraph.contains(
             layout.prepared.analyzed.processed.source(),
-            crate::Range::new(end - 1, end),
+            crate::range::Range::new(end - 1, end),
         )
         && matches!(units[end - 1], 0x0a | 0x0d)
     {
@@ -1011,9 +1016,9 @@ fn adjacent_word_row(
 pub(super) fn word_target<K: Copy>(
     value: Cursor,
     forward: bool,
-    extent: crate::Range,
+    extent: crate::range::Range,
     neighbors: impl Fn(usize) -> [Option<K>; 2],
-    facts: impl Fn(K) -> (crate::Range, Boundary, u8),
+    facts: impl Fn(K) -> (crate::range::Range, Boundary, u8),
     adjacent: impl Fn(K, bool) -> Option<K>,
 ) -> WordTarget<K> {
     let [upstream, downstream] = neighbors(value.index());
@@ -1154,7 +1159,12 @@ fn visual_move(layout: &PlacedLayout, value: Cursor, rightward: bool) -> Cursor 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Font, Options, Source, Style, System};
+    use crate::{
+        System,
+        options::Options,
+        source::Source,
+        style::{Font, Style},
+    };
 
     fn system() -> (System, Style) {
         let mut system = System::default();
@@ -1431,11 +1441,11 @@ mod tests {
     fn visual_queries_keep_atomic_gaps_and_left_midpoint_ties() {
         let (mut system, style) = system();
         let mut source = Source::new("AB");
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(1),
-            crate::InlineBoxKind::InFlow,
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(1),
+            crate::source::InlineBoxKind::InFlow,
             1,
-            crate::Size::new(20.0, 20.0),
+            crate::geometry::Size::new(20.0, 20.0),
         ));
         let output = system
             .layout(
@@ -1469,7 +1479,7 @@ mod tests {
             40.0
         );
         let selected = output
-            .selection(crate::Selection::new(
+            .selection(crate::layout::Selection::new(
                 Cursor::new(0, Affinity::After),
                 Cursor::new(2, Affinity::Before),
             ))

@@ -4,22 +4,24 @@
 use std::{ops::Deref, sync::Arc};
 
 use crate::{
-    Error, ErrorCode, ErrorDetail, ParagraphConnectionKind, ProcessedSource, Range, Result,
-    SourceContinuityOperation, SourceProcessingError, SourceProcessingEvent, Style, TextTransform,
-    TextTransformError,
+    Error, ErrorCode, ErrorDetail, Result,
     engine::{
         OriginalAtom,
         resolve::{self, AnalyzedStyleOwner, AnalyzedStyleRun},
     },
+    error::TextTransformError,
     processing::{
+        ProcessedSource, SourceContinuityOperation, SourceProcessingError, SourceProcessingEvent,
         contextual::ParagraphTopology,
         lexical_inventory::{LexicalContext, LexicalDisposition, LexicalRecordKind, LexicalState},
     },
     projection::SourceProjection,
     protocol::paragraph::{
-        ComputedBoundaryData, FlowOriginKey, OriginData, ParagraphContext, ParagraphControl,
-        SemanticAnchor, SemanticAnchorItem,
+        ComputedBoundaryData, FlowOriginKey, OriginData, ParagraphConnectionKind, ParagraphContext,
+        ParagraphControl, SemanticAnchor, SemanticAnchorItem,
     },
+    range::Range,
+    style::{Style, TextTransform},
 };
 
 pub(super) fn capacity() -> Error {
@@ -198,17 +200,17 @@ impl<'a> SourceContext<'a> {
         if self.processed.is_leader_pattern() && self.scope_topology.is_none() {
             return false;
         }
-        let authored =
-            self.processed.base_style().text_combine_upright != crate::TextCombineUpright::None
-                || self.processed.source().spans().iter().any(|span| {
-                    span.style().text_combine_upright != crate::TextCombineUpright::None
-                });
+        let authored = self.processed.base_style().text_combine_upright
+            != crate::style::TextCombineUpright::None
+            || self.processed.source().spans().iter().any(|span| {
+                span.style().text_combine_upright != crate::style::TextCombineUpright::None
+            });
         authored
             || self.scope_topology.is_some_and(|topology| {
                 topology.capture.scopes.iter().any(|scope| {
                     scope.domain == topology.domain
                         && scope.style.as_ref().is_some_and(|style| {
-                            style.text_combine_upright != crate::TextCombineUpright::None
+                            style.text_combine_upright != crate::style::TextCombineUpright::None
                         })
                 })
             })
@@ -611,10 +613,12 @@ impl<'a> SourceContext<'a> {
     pub(super) fn hard_anchor(&self, item: SemanticAnchorItem) -> bool {
         match item {
             SemanticAnchorItem::Atomic(index) => {
-                self.processed.source().boxes()[index].kind() == crate::InlineBoxKind::InFlow
+                self.processed.source().boxes()[index].kind()
+                    == crate::source::InlineBoxKind::InFlow
             }
             SemanticAnchorItem::Control(index) => {
-                self.controls[index].kind == crate::ParagraphControlKind::ForcedBreak
+                self.controls[index].kind
+                    == crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
             }
             SemanticAnchorItem::ComputedLineBoundary(_) => true,
             SemanticAnchorItem::EmptyOrigin(_) => false,
@@ -976,8 +980,9 @@ impl<'a> SourceContext<'a> {
             )?;
         }
         for (index, control) in self.controls.iter().enumerate() {
-            if let crate::ParagraphControlKind::Wbr { style }
-            | crate::ParagraphControlKind::DiscretionaryBreak { style } = &control.kind
+            if let crate::protocol::paragraph::ParagraphControlKind::Wbr { style }
+            | crate::protocol::paragraph::ParagraphControlKind::DiscretionaryBreak { style } =
+                &control.kind
             {
                 push(
                     &mut rows,
@@ -1045,7 +1050,9 @@ impl<'a> SourceContext<'a> {
                     output,
                     AnalyzedStyleRun {
                         owner: AnalyzedStyleOwner::Scope(scope),
-                        style: crate::ValidatedStyle::for_processed(row.style.authored().clone())?,
+                        style: crate::style::ValidatedStyle::for_processed(
+                            row.style.authored().clone(),
+                        )?,
                     },
                 )?;
                 Ok(index)

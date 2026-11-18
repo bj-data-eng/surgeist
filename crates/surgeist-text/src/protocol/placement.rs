@@ -12,7 +12,13 @@ use crate::engine::{
         FinalizedCell, FinalizedRun, FinalizedRunFrame, PlacedLayout, RunMetricBasis, cell_geometry,
     },
 };
-use crate::{Layout, Point, Range, Rect, Result, TextNumericError, TextNumericPhase};
+use crate::{
+    Result,
+    error::{TextNumericError, TextNumericPhase},
+    geometry::{Point, Rect},
+    layout::Layout,
+    range::Range,
+};
 
 /// Original coverage plus its actual mixed-occurrence authority. A numeric
 /// source interval alone cannot identify repeated source-less controls.
@@ -61,8 +67,8 @@ pub(crate) enum PlacementMetricPolicy {
 fn qualify_spacing_displacement(
     placed: &PlacedLine,
     frame: FinalizedRunFrame,
-    before: crate::Point,
-    after: crate::Point,
+    before: crate::geometry::Point,
+    after: crate::geometry::Point,
     half: f64,
 ) -> Result<()> {
     let (before, after) = match frame {
@@ -78,8 +84,8 @@ fn qualify_spacing_displacement(
     if half != 0.0 && before == after {
         return Err(crate::error::text_numeric_error(
             "placed spacing displacement",
-            crate::TextNumericPhase::Placement,
-            crate::TextNumericError::NonZeroLost,
+            crate::error::TextNumericPhase::Placement,
+            crate::error::TextNumericError::NonZeroLost,
             half,
         ));
     }
@@ -143,7 +149,7 @@ fn qualify_cell_frame(
     placed: &PlacedLine,
     cell: &FinalizedCell,
     local: Point,
-) -> Result<crate::GlyphFrame> {
+) -> Result<crate::geometry::GlyphFrame> {
     let inner = cell
         .frame
         .expect("an actual shaped cell has an inner frame");
@@ -159,14 +165,14 @@ fn qualify_cell_frame(
 pub(crate) fn qualify_run_glyph_frame(
     placed: &PlacedLine,
     run: &FinalizedRun,
-) -> Result<crate::GlyphFrame> {
+) -> Result<crate::geometry::GlyphFrame> {
     let baseline = placed.finalized.data.metrics.baseline;
     if let FinalizedRunFrame::Line = run.frame
         && let Some(reference) = run.reference
     {
         qualify_allocated_shift(
             placed,
-            crate::BaselineShift::try_new(baseline - reference)?,
+            crate::source::BaselineShift::try_new(baseline - reference)?,
             run.x,
             0.0,
         )?;
@@ -183,18 +189,21 @@ pub(crate) fn qualify_run_glyph_frame(
     let origin = if matches!(run.frame, FinalizedRunFrame::Cell(_)) {
         frame.origin()
     } else {
-        let vector = crate::layout::line_vector(placed, crate::Point::new(run.x, run.y - baseline));
+        let vector = crate::layout::line_vector(
+            placed,
+            crate::geometry::Point::new(run.x, run.y - baseline),
+        );
         // Finalization qualifies the local font displacement. Translation
         // can lose it again at a finite physical anchor, so check the
         // required cross-axis contribution in this owning phase as well.
         match placed.orientation {
-            LineOrientation::Horizontal => crate::Point::new(
+            LineOrientation::Horizontal => crate::geometry::Point::new(
                 placed.anchor.x + vector.x,
                 checked_add("placed run origin y", placed.anchor.y, vector.y)?,
             ),
             LineOrientation::SidewaysClockwise
             | LineOrientation::SidewaysCounterclockwise
-            | LineOrientation::Vertical => crate::Point::new(
+            | LineOrientation::Vertical => crate::geometry::Point::new(
                 checked_add("placed run origin x", placed.anchor.x, vector.x)?,
                 placed.anchor.y + vector.y,
             ),
@@ -225,7 +234,7 @@ pub(crate) fn qualify_run_glyph_frame(
 /// A locally representable allocated shift can disappear at a physical anchor.
 fn qualify_allocated_shift(
     placed: &PlacedLine,
-    shift: crate::BaselineShift,
+    shift: crate::source::BaselineShift,
     inline: f64,
     local_baseline: f64,
 ) -> Result<()> {
@@ -268,7 +277,7 @@ pub enum BreakFontMetricBasis {
 /// Distances are measured from the line's common baseline, before line-height leading.
 #[derive(Clone, Copy, Debug)]
 pub struct PlacedBreakFontMetrics<'a> {
-    instance: crate::EffectiveFontInstance<'a>,
+    instance: crate::font::EffectiveFontInstance<'a>,
     ascent: f64,
     descent: f64,
     basis: BreakFontMetricBasis,
@@ -276,7 +285,7 @@ pub struct PlacedBreakFontMetrics<'a> {
 
 impl<'a> PlacedBreakFontMetrics<'a> {
     #[must_use]
-    pub const fn instance(self) -> crate::EffectiveFontInstance<'a> {
+    pub const fn instance(self) -> crate::font::EffectiveFontInstance<'a> {
         self.instance
     }
 
@@ -300,7 +309,7 @@ impl Layout {
     /// Places these exact finalized lines once; no wrapping, font query, pixel
     /// snapping, or independent paragraph layout occurs here.
     pub fn from_finalized_lines(request: PlacementRequest) -> Result<Self> {
-        let key = crate::Key::from_placement(&request);
+        let key = crate::cache::Key::from_placement(&request);
         let placed = place_request(request, PlacementMetricPolicy::Explicit)?;
         let layout = Layout::from_placed(placed, key, crate::layout::LayoutBasis::Explicit);
         layout.qualify_decorations()?;
@@ -331,7 +340,7 @@ impl Layout {
         };
         if !matches!(
             control.view().kind(),
-            crate::ParagraphControlKind::ForcedBreak
+            crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
         ) {
             return Ok(None);
         }
@@ -370,7 +379,7 @@ impl Layout {
             }
             _ => return Ok(None),
         };
-        let instance = crate::EffectiveFontInstance::qualify_synthesized(
+        let instance = crate::font::EffectiveFontInstance::qualify_synthesized(
             run.font.face(),
             run.font_size,
             &run.coords,
@@ -545,7 +554,7 @@ pub(crate) fn place_request(
             && selected.request.incoming != incoming
         {
             return Err(crate::hyphenation::error(
-                crate::HyphenationError::InvalidContinuation,
+                crate::hyphenation::HyphenationError::InvalidContinuation,
             ));
         }
         incoming = placement.line.hyphenation_continuation();
@@ -554,7 +563,7 @@ pub(crate) fn place_request(
             && incoming.is_some()
         {
             return Err(crate::hyphenation::error(
-                crate::HyphenationError::InvalidContinuation,
+                crate::hyphenation::HyphenationError::InvalidContinuation,
             ));
         }
         let from = row(&selected.request.start)?.participant;
@@ -580,7 +589,7 @@ pub(crate) fn place_request(
         if completes_segment {
             if incoming.is_some() {
                 return Err(crate::hyphenation::error(
-                    crate::HyphenationError::InvalidContinuation,
+                    crate::hyphenation::HyphenationError::InvalidContinuation,
                 ));
             }
             source_segment += 1;
@@ -650,7 +659,7 @@ pub(crate) fn place_request(
             )?;
             qualify_allocated_shift(
                 &placed,
-                crate::BaselineShift::try_new(displacement)?,
+                crate::source::BaselineShift::try_new(displacement)?,
                 item.slot.x,
                 local,
             )?;
@@ -669,7 +678,7 @@ pub(crate) fn place_request(
                 let displacement = checked_add("placed composed control frame", scope, own)?;
                 qualify_allocated_shift(
                     &placed,
-                    crate::BaselineShift::try_new(displacement)?,
+                    crate::source::BaselineShift::try_new(displacement)?,
                     anchor.map_or(0.0, |anchor| anchor.slot.x),
                     0.0,
                 )?;
@@ -693,7 +702,7 @@ pub(crate) fn place_request(
                 let displacement = checked_add("placed composed box-strut frame", scope, own)?;
                 qualify_allocated_shift(
                     &placed,
-                    crate::BaselineShift::try_new(displacement)?,
+                    crate::source::BaselineShift::try_new(displacement)?,
                     0.0,
                     0.0,
                 )?;

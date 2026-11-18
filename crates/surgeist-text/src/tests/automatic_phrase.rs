@@ -1,5 +1,42 @@
 //! Native custody and presentation contracts over the published BudouX example.
-use crate::*;
+#[cfg(feature = "text-accessibility")]
+use crate::accessibility::Accessibility;
+#[cfg(feature = "text-accessibility")]
+use crate::geometry::Point;
+use crate::{
+    ErrorCode, ErrorDetail, Result, System,
+    analyzed::AnalyzedSource,
+    error::TextTransformError,
+    geometry::Size,
+    id::Id,
+    layout::{Affinity, Layout},
+    options::Alignment,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, ScopeRole, SourceProcessingConnection,
+        SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
+        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ControlAllocation, FinalizedLine, LineAnchor, LineContext, LineEnd, LineOrientation,
+        LinePlacement, LineSelectionRequest, LineStart, ParagraphBaseDirection, PlacementCoverage,
+        PlacementRequest, PreparationOptions, PreparedBreakKind, PreparedParticipant,
+        PreparedTermination, PreparedText, SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+        readback::{FinalizedFragmentOwner, PresentationMappingKind},
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{
+        Font, LineHeight, Style, TextTransform, TextTransformSet, WhiteSpace, WordSpaceTransform,
+        Wrap,
+    },
+    text::Text,
+};
 use std::sync::Arc;
 
 // BudouX 0.9.3's published README marks 今日は▁天気です。.
@@ -109,7 +146,7 @@ fn analyze(input: ContextualSourceInput) -> Result<AnalyzedSource> {
     let owner = Arc::new(process_contextual_source(input)?);
     AnalyzedSource::from_processed_paragraph(
         owner.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
 }
 
@@ -270,10 +307,10 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
                     ControlAllocation {
                         boundary: matches!(
                             occurrence.view().kind(),
-                            crate::ParagraphControlKind::InlineBoundaryStart
-                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                        .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }
@@ -282,10 +319,10 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                line_box_direction: crate::LineBoxDirection::LeftToRight,
+                line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
                 orientation: LineOrientation::Horizontal,
                 start: LineStart::Paragraph,
                 end: LineEnd::Paragraph,
@@ -297,9 +334,9 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
             },
         })
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -308,7 +345,7 @@ fn place(prepared: PreparedText, line: FinalizedLine) -> Layout {
     Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -648,9 +685,9 @@ fn selecting_a_real_shy_indication_keeps_virtual_owner_font_and_mapping() {
     request.context.end = LineEnd::Soft;
     let selected = crate::test_wrapping::select_neutral(&prepared, request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(
@@ -1025,7 +1062,7 @@ fn out_of_flow_child_interiors_do_not_split_parent_analysis_but_in_flow_atomics_
         let views: Vec<_> = processed.paragraphs().collect();
         let parent = AnalyzedSource::from_processed_paragraph(
             views[0].clone(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -1039,7 +1076,7 @@ fn out_of_flow_child_interiors_do_not_split_parent_analysis_but_in_flow_atomics_
         assert_eq!(
             AnalyzedSource::from_processed_paragraph(
                 views[1].clone(),
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             )
             .unwrap()
             .inner

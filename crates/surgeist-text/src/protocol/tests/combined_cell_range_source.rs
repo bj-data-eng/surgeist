@@ -5,7 +5,7 @@ mod accessibility;
 
 use super::*;
 use crate::protocol::tests::combined_cells::inner_tabs as tabs;
-use crate::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
+use crate::range_fragments::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
 use skrifa::{GlyphId, MetadataProvider};
 use surgeist_shaper::{
     Direction as ShapeDirection, FontRef as ShapeFont, ShaperData, ShapingStatus, UnicodeBuffer,

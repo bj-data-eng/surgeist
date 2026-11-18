@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Range, WordBreak};
+use crate::{range::Range, style::WordBreak};
 
 fn breaking_style() -> Style {
     Style {
@@ -17,7 +17,7 @@ fn arabic_system() -> System {
         .unwrap();
     value
 }
-fn placed_forms(layout: &crate::Layout) -> Vec<(Range, u32)> {
+fn placed_forms(layout: &crate::layout::Layout) -> Vec<(Range, u32)> {
     let fixture = crate::shaping_test_fonts::arabic_nonjoining_ahem();
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), fixture);
@@ -49,9 +49,9 @@ fn standalone_metric_policies_keep_unforced_arabic_joining() {
             .layout(
                 source.clone(),
                 breaking_style(),
-                crate::Options {
+                crate::options::Options {
                     quantize,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -68,10 +68,10 @@ fn standalone_metric_policies_keep_unforced_arabic_joining() {
             .layout(
                 source.clone(),
                 breaking_style(),
-                crate::Options {
+                crate::options::Options {
                     width: Some(20.0),
                     quantize,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -106,11 +106,11 @@ fn standalone_metric_policies_keep_unforced_arabic_joining() {
 fn native_input(source: Source) -> ParagraphInput {
     let length = source.text().len();
     ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: breaking_style(),
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::RightToLeft,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
@@ -133,10 +133,10 @@ fn native_prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             ),
             PreparationOptions::default(),
         )
@@ -171,10 +171,10 @@ fn selected_line(
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -194,7 +194,7 @@ fn selected_line(
         })
         .collect();
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    value.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     value.context.start = if from == 0 {
         LineStart::Paragraph
     } else {
@@ -205,11 +205,13 @@ fn selected_line(
         PreparedBreakKind::Forced => LineEnd::Forced,
         PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
     };
-    value.termination = crate::PreparedTermination::Ordinary(ending);
-    prepared.select(value)?.finalize(crate::LineAllocations {
-        spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
-    })
+    value.termination = crate::protocol::PreparedTermination::Ordinary(ending);
+    prepared
+        .select(value)?
+        .finalize(crate::protocol::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
+        })
 }
 fn source_glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(Range, u32, f32)> {
     let mut result = Vec::new();
@@ -281,7 +283,7 @@ fn actual_forced_and_disconnected_boundaries_stop_joining_context() {
     });
     input.anchor_order.push(paragraph::ParagraphAnchor {
         item: paragraph::ParagraphAnchorItem::Control(0),
-        affinity: crate::Affinity::After,
+        affinity: crate::layout::Affinity::After,
     });
     let prepared = native_prepare(&mut system, input);
     let first = selected_line(
@@ -393,12 +395,12 @@ fn full_captured_context_reports_real_context_limit_without_mutating_prior_resul
     input.controls.push(paragraph::ParagraphControl {
         at: 1,
         kind: paragraph::ParagraphControlKind::OptionalBreak {
-            wrap: crate::Wrap::Word,
+            wrap: crate::style::Wrap::Word,
         },
     });
     input.anchor_order.push(paragraph::ParagraphAnchor {
         item: paragraph::ParagraphAnchorItem::Control(0),
-        affinity: crate::Affinity::After,
+        affinity: crate::layout::Affinity::After,
     });
     let prepared = native_prepare(&mut system, input);
     let before = system.stats();
@@ -424,7 +426,7 @@ fn full_captured_context_reports_real_context_limit_without_mutating_prior_resul
     assert_eq!(
         error.detail(),
         Some(&crate::ErrorDetail::ShapingRefused {
-            reason: crate::ShapingRefusalReason::ContextLimit
+            reason: crate::error::ShapingRefusalReason::ContextLimit
         })
     );
     let post_error = selected_line(
@@ -436,7 +438,7 @@ fn full_captured_context_reports_real_context_limit_without_mutating_prior_resul
     assert_eq!(
         post_error.detail(),
         Some(&crate::ErrorDetail::ShapingRefused {
-            reason: crate::ShapingRefusalReason::ContextLimit,
+            reason: crate::error::ShapingRefusalReason::ContextLimit,
         })
     );
     assert_eq!(prepared.analyzed_source().source(), &source);
@@ -488,11 +490,20 @@ fn deleted_source_text_does_not_reenter_processed_joining_context() {
 #[test]
 fn child_domain_hole_is_excluded_from_parent_joining_context() {
     use crate::{
-        Affinity, ContextualSourceInput, DocumentSegmentBreaks, Id, InlineBox, InlineBoxKind,
-        ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
-        ParagraphOrigin, ParagraphOriginKind, Size, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-        SourceProcessingScope, WhiteSpaceTrim, Wrap, process_contextual_source,
+        geometry::Size,
+        id::Id,
+        layout::Affinity,
+        processing::{
+            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
+            SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+            SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+        },
+        protocol::paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind,
+        },
+        source::{InlineBox, InlineBoxKind},
+        style::Wrap,
     };
     let mut source = Source::new("\u{628}I\u{628}");
     source.inline_box(InlineBox::new(
@@ -535,8 +546,8 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::SourceProcessingTopology::Unknown,
-                used_direction: crate::ParagraphBaseDirection::LeftToRight,
+                topology: crate::processing::SourceProcessingTopology::Unknown,
+                used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: breaking_style(),
             },
@@ -544,8 +555,8 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::SourceProcessingTopology::Unknown,
-                used_direction: crate::ParagraphBaseDirection::LeftToRight,
+                topology: crate::processing::SourceProcessingTopology::Unknown,
+                used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(),
                 atomic: 0,
@@ -589,7 +600,7 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
     let processed = std::sync::Arc::new(process_contextual_source(capture).unwrap());
     let parent = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = arabic_system();
@@ -652,7 +663,7 @@ fn discretionary_input(
             });
             input.anchor_order.push(paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Control(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             });
             3
         }
@@ -661,7 +672,7 @@ fn discretionary_input(
         paragraph::ParagraphReplacement::resolved_native_logical_before(
             definition,
             anchor,
-            vec![crate::Text::from(text)],
+            vec![crate::text::Text::from(text)],
         )
         .unwrap(),
     );
@@ -694,10 +705,10 @@ fn discretionary_line(
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -708,17 +719,19 @@ fn discretionary_line(
     value.termination = PreparedTermination::Ordinary(offer.handle());
     value.alternative = Some(offer.alternatives().next().unwrap().handle());
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    value.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     value.context.start = if from == 0 {
         LineStart::Paragraph
     } else {
         LineStart::Continuation
     };
     value.context.end = LineEnd::Soft;
-    prepared.select(value)?.finalize(crate::LineAllocations {
-        spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
-    })
+    prepared
+        .select(value)?
+        .finalize(crate::protocol::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
+        })
 }
 
 type OriginalBehForms = Vec<(Range, u32, f32)>;
@@ -852,7 +865,7 @@ fn selected_source_shy_on_continuation_keeps_both_original_context_sides() {
                 source: Range::new(5, 6),
             },
             6,
-            vec![crate::Text::from("-")],
+            vec![crate::text::Text::from("-")],
         )
         .unwrap(),
     );
@@ -962,7 +975,7 @@ fn selected_source_shy_after_forced_boundary_keeps_only_same_domain_context() {
     });
     input.anchor_order.push(paragraph::ParagraphAnchor {
         item: paragraph::ParagraphAnchorItem::Control(0),
-        affinity: crate::Affinity::After,
+        affinity: crate::layout::Affinity::After,
     });
     let mut system = arabic_system();
     let prepared = native_prepare(&mut system, input);

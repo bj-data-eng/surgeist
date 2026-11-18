@@ -2,7 +2,28 @@
 //! composition as an upright TCU for outer bidi, while the real horizontal
 //! payload resolves its own declared direction. Breaking keeps actual content.
 
-use crate::*;
+use crate::{
+    analyzed::{AnalysisTypography, AnalyzedDomain},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
+        SourceProcessingScope, SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphControl,
+            ParagraphControlKind, ParagraphOriginKind,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{TextCombineUpright, TextTransform, WhiteSpace},
+    supplied_line::BidiLevel,
+    text::Text,
+};
 use std::sync::Arc;
 
 fn root_input(

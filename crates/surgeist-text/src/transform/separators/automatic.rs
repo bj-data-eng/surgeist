@@ -8,7 +8,8 @@ use crate::processing::contextual::ParagraphTopology;
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::SemanticAnchorItem;
 use crate::{
-    Error, ErrorCode, ErrorDetail, InlineBoxKind, Result, SourceProcessingEvent, TextTransformError,
+    Error, ErrorCode, ErrorDetail, Result, error::TextTransformError,
+    processing::SourceProcessingEvent, source::InlineBoxKind,
 };
 use icu_properties::{
     CodePointMapData,
@@ -255,7 +256,9 @@ impl PhraseReads {
         if let Some(edge) = paragraph.missing.iter().find(|edge| {
             input.atoms[start].source.start < edge.at && edge.at < input.atoms[end - 1].source.end
         }) {
-            return Err(edge.unavailable(crate::SourceContinuityOperation::Transformation));
+            return Err(
+                edge.unavailable(crate::processing::SourceContinuityOperation::Transformation)
+            );
         }
         let language = self
             .language(styles, map.rows[start].style)?
@@ -294,7 +297,7 @@ pub(crate) struct PhraseAnalysis {
     model: PhraseModel,
     language: parlance::Language,
     input: Vec<u32>,
-    coverage: Vec<crate::Range>,
+    coverage: Vec<crate::range::Range>,
     cuts: Vec<usize>,
     qualified: Vec<bool>,
 }
@@ -531,7 +534,9 @@ pub(in crate::transform) fn proposal_at<'a>(
         capture_cut,
         scope: issued_scope,
         source: at,
-        processed: paragraph.processed.project(at, crate::Affinity::After),
+        processed: paragraph
+            .processed
+            .project(at, crate::layout::Affinity::After),
         control_cut,
     });
     Ok(Some(Proposal {

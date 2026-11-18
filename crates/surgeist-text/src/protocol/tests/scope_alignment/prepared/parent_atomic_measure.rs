@@ -135,7 +135,7 @@ fn atomic_request(
             boundary: Some(if boxed {
                 InlineBoundaryAllocation::box_edge(
                     context.clone(),
-                    crate::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
+                    crate::protocol::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
                 )
             } else {
                 InlineBoundaryAllocation::contribution(advance).unwrap()

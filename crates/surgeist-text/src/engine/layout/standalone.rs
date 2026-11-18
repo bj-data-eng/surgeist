@@ -10,7 +10,7 @@ use crate::protocol::selection::standalone_request;
 use crate::protocol::{
     PreparedAlternative, PreparedBreakKind, PreparedOpportunity, PreparedTermination,
 };
-use crate::{Result, ValidatedOptions, Wrap};
+use crate::{Result, options::ValidatedOptions, style::Wrap};
 use std::sync::Arc;
 
 /// Raw emitted history stays invocation-local. Indentation's each-line state is
@@ -23,7 +23,7 @@ struct RawAcceptedLine {
 #[derive(Clone, Copy)]
 pub(super) struct RawEntry<'a> {
     start: usize,
-    incoming: Option<&'a crate::HyphenationContinuation>,
+    incoming: Option<&'a crate::protocol::HyphenationContinuation>,
     accepted: &'a [RawAcceptedLine],
 }
 
@@ -33,26 +33,29 @@ pub(super) enum RawRoleBasis<'a> {
 }
 
 impl RawRoleBasis<'_> {
-    pub(super) fn initial(&self, end: crate::LineEnd) -> crate::FormattedLineContext {
+    pub(super) fn initial(
+        &self,
+        end: crate::protocol::LineEnd,
+    ) -> crate::protocol::FormattedLineContext {
         match self {
-            Self::Actual { first } => crate::FormattedLineContext::new(
+            Self::Actual { first } => crate::protocol::FormattedLineContext::new(
                 Some(*first),
-                Some(end == crate::LineEnd::Paragraph),
+                Some(end == crate::protocol::LineEnd::Paragraph),
             ),
             // A measurement can describe a receiving line even while its query
             // is on the actual first line. Never copy the query's role flags.
-            Self::Prospective { .. } => crate::FormattedLineContext::default(),
+            Self::Prospective { .. } => crate::protocol::FormattedLineContext::default(),
         }
     }
 
     pub(super) fn resolve(
         &self,
         prepared: &Arc<PreparedData>,
-        request: &crate::LineSelectionRequest,
+        request: &crate::protocol::LineSelectionRequest,
         profile: crate::protocol::selection::LineMetricPolicy,
         scratch: &mut ShapeContext,
-    ) -> Result<crate::FormattedLineContext> {
-        use crate::{FlowSegmentRole, LineEnd};
+    ) -> Result<crate::protocol::FormattedLineContext> {
+        use crate::protocol::{FlowSegmentRole, LineEnd};
         let Self::Prospective { entry } = self else {
             return Ok(self.initial(request.context.end));
         };
@@ -63,10 +66,10 @@ impl RawRoleBasis<'_> {
         ) {
             return Err(invalid_raw_flow());
         }
-        let handle = crate::PreparedText {
+        let handle = crate::protocol::PreparedText {
             inner: Arc::clone(prepared),
         };
-        let query_start = crate::PreparedBoundary {
+        let query_start = crate::protocol::PreparedBoundary {
             prepared: Arc::clone(prepared),
             index: entry.start,
         };
@@ -85,11 +88,11 @@ impl RawRoleBasis<'_> {
         let mut observations = Vec::new();
         for segment in flow.segments() {
             let mut context = request.context.clone();
-            context.formatted_line = crate::FormattedLineContext::default();
+            context.formatted_line = crate::protocol::FormattedLineContext::default();
             context.start = if segment.start().view().participant_offset() == 0 {
-                crate::LineStart::Paragraph
+                crate::protocol::LineStart::Paragraph
             } else {
-                crate::LineStart::Continuation
+                crate::protocol::LineStart::Continuation
             };
             context.end = if segment.role() == FlowSegmentRole::Target {
                 LineEnd::Soft
@@ -102,7 +105,7 @@ impl RawRoleBasis<'_> {
                         _ => LineEnd::Soft,
                     })
             };
-            let observation_request = crate::FlowObservationRequest {
+            let observation_request = crate::protocol::FlowObservationRequest {
                 context,
                 atomics: crate::protocol::selection::standalone_atomics(
                     prepared,
@@ -163,7 +166,7 @@ impl RawRoleBasis<'_> {
         // The raw call owns the complete single container. Its recipe completion
         // has no external child tail; actual trailing Forced/empty work above is
         // still required and never erased by a Soft measurement API ending.
-        Ok(crate::FormattedLineContext::new(
+        Ok(crate::protocol::FormattedLineContext::new(
             Some(first),
             Some(!later_line),
         ))
@@ -171,13 +174,13 @@ impl RawRoleBasis<'_> {
 }
 
 fn invalid_raw_flow() -> crate::Error {
-    crate::protocol::protocol_error(crate::ProtocolError::InvalidMeasurementFlow)
+    crate::protocol::protocol_error(crate::protocol::ProtocolError::InvalidMeasurementFlow)
 }
 
 fn manual_entry_first(
     prepared: &Arc<PreparedData>,
     entry: RawEntry<'_>,
-    word_entry: &crate::PreparedBoundary,
+    word_entry: &crate::protocol::PreparedBoundary,
 ) -> Result<bool> {
     let at = word_entry.view().participant_offset();
     for row in entry.accepted {
@@ -191,7 +194,7 @@ fn manual_entry_first(
             if from == at {
                 return Ok(true);
             }
-            let participant = crate::PreparedText {
+            let participant = crate::protocol::PreparedText {
                 inner: Arc::clone(prepared),
             }
             .participants()
@@ -199,7 +202,9 @@ fn manual_entry_first(
             .ok_or_else(invalid_raw_flow)?;
             let line = receipt(&row.line);
             return Ok(!line
-                .prefix_at(&crate::TextSeam::BeforeParticipant(participant))?
+                .prefix_at(&crate::protocol::prefix::TextSeam::BeforeParticipant(
+                    participant,
+                ))?
                 .has_retained_flow_participation());
         }
     }
@@ -250,10 +255,10 @@ pub(super) fn layout(
         incoming = request
             .alternative
             .clone()
-            .and_then(crate::HyphenationContinuation::from_alternative);
+            .and_then(crate::protocol::HyphenationContinuation::from_alternative);
         start = request.end.index;
-        paragraph_start = request.context.end == crate::LineEnd::Forced;
-        let done = request.context.end == crate::LineEnd::Paragraph;
+        paragraph_start = request.context.end == crate::protocol::LineEnd::Forced;
+        let done = request.context.end == crate::protocol::LineEnd::Paragraph;
         let first = lines.is_empty();
         lines.push(RawAcceptedLine { line, first });
         if done {
@@ -296,7 +301,7 @@ fn fits(line: &FinalizedLine, width: Option<f64>) -> Result<bool> {
     let Some(width) = width else { return Ok(true) };
     let available = super::finite(
         "raw available span",
-        crate::TextNumericPhase::Finalization,
+        crate::error::TextNumericPhase::Finalization,
         width - line.selected.request.context.indent,
     )?;
     let measure = line
@@ -307,7 +312,7 @@ fn fits(line: &FinalizedLine, width: Option<f64>) -> Result<bool> {
         .fit();
     let occupied = super::finite(
         "raw occupied span",
-        crate::TextNumericPhase::Finalization,
+        crate::error::TextNumericPhase::Finalization,
         measure.occupied_end() - measure.occupied_start(),
     )?;
     Ok(measure.advance() <= available && occupied <= available)
@@ -329,7 +334,7 @@ fn raw_soft_admitted(prepared: &PreparedData, start: usize, end: usize) -> bool 
                 ParticipantData::Atomic(i) => {
                     prepared.analyzed.processed.source().boxes()[tables.atomics[i].occurrence]
                         .kind()
-                        == crate::InlineBoxKind::InFlow
+                        == crate::source::InlineBoxKind::InFlow
                 }
                 ParticipantData::Control(_) | ParticipantData::ComputedLineBoundary(_) => false,
             })
@@ -342,7 +347,7 @@ fn automatic_allowed(
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
-    conditional: Option<&crate::PreparedConditionalOpportunity>,
+    conditional: Option<&crate::protocol::PreparedConditionalOpportunity>,
 ) -> Result<bool> {
     let AlternativeDefinition::Automatic { cut, .. } =
         prepared.tables.alternatives[alternative].definition
@@ -352,7 +357,7 @@ fn automatic_allowed(
     let word = prepared.tables.hyphenation_cuts[cut]
         .word
         .expect("automatic cut has a lexical owner");
-    let handle = crate::PreparedWord {
+    let handle = crate::protocol::PreparedWord {
         prepared: Arc::clone(prepared),
         index: word,
     };
@@ -540,8 +545,8 @@ fn choose(
         })
 }
 
-fn receipt(line: &FinalizedLine) -> crate::FinalizedLine {
-    crate::FinalizedLine {
+fn receipt(line: &FinalizedLine) -> crate::protocol::FinalizedLine {
+    crate::protocol::FinalizedLine {
         inner: Arc::new(FinalizedLine {
             selected: Arc::clone(&line.selected),
             data: line.data.clone(),
@@ -557,13 +562,13 @@ fn choose_phrase(
     scratch: &mut ShapeContext,
     frame: &FinalizedLine,
 ) -> Result<Option<FinalizedLine>> {
-    use crate::{
+    use crate::protocol::{
         ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
     };
     let RawEntry {
         start, incoming, ..
     } = entry;
-    let handle = crate::PreparedText {
+    let handle = crate::protocol::PreparedText {
         inner: Arc::clone(prepared),
     };
     let PreparedTermination::Ordinary(ceiling) = &frame.selected.request.termination else {
@@ -625,7 +630,7 @@ fn choose_phrase(
         )
     })?)
     .conditional_search(
-        &crate::PreparedBoundary {
+        &crate::protocol::PreparedBoundary {
             prepared: Arc::clone(prepared),
             index: start,
         },
@@ -633,7 +638,7 @@ fn choose_phrase(
         ceiling,
         ConditionalPurpose::Overflow,
         &skipped,
-        crate::ConditionalLineContext::Finalized(&receipt(frame)),
+        crate::protocol::ConditionalLineContext::Finalized(&receipt(frame)),
     )?;
     let mut decisions = Vec::new();
     for portion in search.phrase_portions() {
@@ -746,7 +751,12 @@ mod punctuation_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Font, InlineBoxKind, OverflowWrap, Range, Source, Style, System};
+    use crate::{
+        System,
+        range::Range,
+        source::{InlineBoxKind, Source},
+        style::{Font, OverflowWrap, Style},
+    };
 
     fn system() -> (System, Style) {
         let mut system = System::default();
@@ -775,7 +785,7 @@ mod tests {
             .unwrap();
         style.font = Font::new().family("Surgeist Phrase Ahem");
         style.locale = Some("ja".to_owned());
-        style.word_break = crate::WordBreak::AutoPhrase;
+        style.word_break = crate::style::WordBreak::AutoPhrase;
         style.size = 10.0;
         for (width, expected) in [
             (20.0, vec![Range::new(0, 2), Range::new(2, 3)]),
@@ -788,10 +798,10 @@ mod tests {
                 .layout(
                     Source::new("日本へ"),
                     style.clone(),
-                    crate::Options {
+                    crate::options::Options {
                         width: Some(width),
                         quantize: false,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -814,18 +824,19 @@ mod tests {
     fn unsupported_phrase_locale_restores_authored_hyphen_before_raw_arbitrary_cuts() {
         let (mut system, mut style) = system();
         style.size = 10.0;
-        style.word_break = crate::WordBreak::AutoPhrase;
-        style.hyphens = crate::Hyphens::Manual;
-        style.hyphenate_character = crate::HyphenateCharacter::String(crate::Text::from("A"));
+        style.word_break = crate::style::WordBreak::AutoPhrase;
+        style.hyphens = crate::hyphenation::Hyphens::Manual;
+        style.hyphenate_character =
+            crate::hyphenation::HyphenateCharacter::String(crate::text::Text::from("A"));
         style.overflow_wrap = OverflowWrap::Anywhere;
         let output = system
             .layout(
                 Source::new("AB\u{ad}CD"),
                 style,
-                crate::Options {
+                crate::options::Options {
                     width: Some(30.0),
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -840,7 +851,7 @@ mod tests {
         assert_eq!(output.inner.lines[0].finalized.data.metrics.advance, 30.0);
         assert!(
             matches!(output.inner.lines[0].finalized.selected.request.termination,
-            PreparedTermination::Conditional(ref cut) if cut.stage()==crate::ConditionalStage::Hyphens)
+            PreparedTermination::Conditional(ref cut) if cut.stage()==crate::protocol::ConditionalStage::Hyphens)
         );
     }
 
@@ -851,10 +862,10 @@ mod tests {
             .layout(
                 Source::new("A X"),
                 style,
-                crate::Options {
+                crate::options::Options {
                     width: Some(40.0),
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -894,9 +905,9 @@ mod tests {
             .layout(
                 Source::new("X\u{202b}\u{05d0}  \u{202c}"),
                 style,
-                crate::Options {
+                crate::options::Options {
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -936,20 +947,20 @@ mod tests {
             let (mut system, style) = system();
             let mut source = Source::new("X\u{202b}\u{05d0}  \u{202c}");
             if let Some(kind) = kind {
-                source.inline_box(crate::InlineBox::new(
-                    crate::Id::from_u64(91222),
+                source.inline_box(crate::source::InlineBox::new(
+                    crate::id::Id::from_u64(91222),
                     kind,
                     at,
-                    crate::Size::new(0.0, 0.0),
+                    crate::geometry::Size::new(0.0, 0.0),
                 ));
             }
             let output = system
                 .layout(
                     source,
                     style,
-                    crate::Options {
+                    crate::options::Options {
                         quantize: false,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -1006,9 +1017,9 @@ mod tests {
                 .layout(
                     source,
                     style.clone(),
-                    crate::Options {
+                    crate::options::Options {
                         quantize: false,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -1020,16 +1031,19 @@ mod tests {
                     .collect::<Vec<_>>(),
                 [Range::new(0, 2), Range::new(2, 3)]
             );
-            assert_eq!(output.metrics().size(), crate::Size::new(20.0, 40.0));
+            assert_eq!(
+                output.metrics().size(),
+                crate::geometry::Size::new(20.0, 40.0)
+            );
             assert_eq!(output.metrics().first_baseline(), Some(16.0));
             assert_eq!(output.metrics().last_baseline(), Some(36.0));
             let terminal = system
                 .layout(
                     Source::new(format!("A{delimiter}")),
                     style,
-                    crate::Options {
+                    crate::options::Options {
                         quantize: false,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -1041,7 +1055,10 @@ mod tests {
                     .collect::<Vec<_>>(),
                 [Range::new(0, 2), Range::new(2, 2)]
             );
-            assert_eq!(terminal.metrics().size(), crate::Size::new(20.0, 40.0));
+            assert_eq!(
+                terminal.metrics().size(),
+                crate::geometry::Size::new(20.0, 40.0)
+            );
             assert_eq!(terminal.metrics().last_baseline(), Some(36.0));
         }
     }
@@ -1070,9 +1087,9 @@ mod tests {
                 .layout(
                     Source::new(text),
                     style,
-                    crate::Options {
+                    crate::options::Options {
                         quantize: false,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -1084,7 +1101,10 @@ mod tests {
                     .collect::<Vec<_>>(),
                 ranges
             );
-            assert_eq!(output.metrics().size(), crate::Size::new(width, 60.0));
+            assert_eq!(
+                output.metrics().size(),
+                crate::geometry::Size::new(width, 60.0)
+            );
             assert_eq!(
                 output
                     .lines()
@@ -1099,13 +1119,16 @@ mod tests {
             .layout(
                 Source::new(""),
                 style,
-                crate::Options {
+                crate::options::Options {
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
-        assert_eq!(empty.metrics().size(), crate::Size::new(0.0, 20.0));
+        assert_eq!(
+            empty.metrics().size(),
+            crate::geometry::Size::new(0.0, 20.0)
+        );
         assert_eq!(empty.metrics().full_width(), 0.0);
         assert_eq!(empty.metrics().first_baseline(), Some(16.0));
         assert_eq!(empty.lines()[0].range(), Range::new(0, 0));
@@ -1125,10 +1148,10 @@ mod tests {
                 .layout(
                     Source::new("A".repeat(512)),
                     style,
-                    crate::Options {
+                    crate::options::Options {
                         width: Some(10240.0),
                         quantize: false,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -1150,10 +1173,10 @@ mod tests {
             .layout(
                 Source::new("A".repeat(512)),
                 style,
-                crate::Options {
+                crate::options::Options {
                     width: Some(1.0),
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -1226,10 +1249,10 @@ mod tests {
             .layout(
                 Source::new("AAB"),
                 style,
-                crate::Options {
+                crate::options::Options {
                     width: Some(35.0),
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -1277,26 +1300,26 @@ mod tests {
     fn mixed_atomic_occurrences_and_overflowing_space_keep_the_existing_break_priority() {
         let (mut system, style) = system();
         let mut source = Source::new("A X");
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(1),
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(1),
             InlineBoxKind::InFlow,
             0,
-            crate::Size::new(20.0, 20.0),
+            crate::geometry::Size::new(20.0, 20.0),
         ));
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(2),
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(2),
             InlineBoxKind::OutOfFlow,
             1,
-            crate::Size::new(50.0, 50.0),
+            crate::geometry::Size::new(50.0, 50.0),
         ));
         let output = system
             .layout(
                 source,
                 style,
-                crate::Options {
+                crate::options::Options {
                     width: Some(40.0),
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -1308,7 +1331,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             [Range::new(0, 2), Range::new(2, 3)]
         );
-        assert_eq!(output.metrics().size(), crate::Size::new(40.0, 40.0));
+        assert_eq!(
+            output.metrics().size(),
+            crate::geometry::Size::new(40.0, 40.0)
+        );
         assert_eq!(output.metrics().full_width(), 60.0);
         assert_eq!(
             output
@@ -1316,7 +1342,10 @@ mod tests {
                 .iter()
                 .map(|item| (item.id(), item.line()))
                 .collect::<Vec<_>>(),
-            [(crate::Id::from_u64(1), 0), (crate::Id::from_u64(2), 0)]
+            [
+                (crate::id::Id::from_u64(1), 0),
+                (crate::id::Id::from_u64(2), 0)
+            ]
         );
     }
 
@@ -1326,28 +1355,28 @@ mod tests {
             let mut system = System::default();
             let mut source = Source::new("");
             for index in 0..count {
-                source.inline_box(crate::InlineBox::new(
-                    crate::Id::from_u64(index + 1),
+                source.inline_box(crate::source::InlineBox::new(
+                    crate::id::Id::from_u64(index + 1),
                     InlineBoxKind::InFlow,
                     0,
-                    crate::Size::new(12.0, 10.0),
+                    crate::geometry::Size::new(12.0, 10.0),
                 ));
             }
             let output = system
                 .layout(
                     source,
                     Style::default(),
-                    crate::Options {
+                    crate::options::Options {
                         width: Some(8.0),
                         quantize: false,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
             assert_eq!(output.lines().len(), usize::try_from(count).unwrap());
             assert_eq!(
                 output.metrics().size(),
-                crate::Size::new(12.0, 10.0 * count as f64)
+                crate::geometry::Size::new(12.0, 10.0 * count as f64)
             );
             assert!(
                 output

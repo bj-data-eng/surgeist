@@ -2,12 +2,34 @@
 //! The fresh helper ledger excludes the prior capture and caller scratch. These
 //! tests assert semantic results/admission, not heap steps, allocation or a trace.
 use super::{ScopeAlignmentBudget, operations};
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail,
+    font::{FontBaseline, FontBaselineAxis, FontBaselineScript},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, ProcessedSource,
+        ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
+        ScopeAlignmentUsage, ScopeFontReference, SourceProcessingConnection,
+        SourceProcessingEnvelope, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style, WhiteSpace, Wrap},
+};
 use std::cmp::Ordering;
 use std::sync::Arc;
 
 fn capture(count: usize) -> Arc<ProcessedSource> {
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     let style = Style {
         font: Font::new().family("Ahem"),
         size: 10.0,

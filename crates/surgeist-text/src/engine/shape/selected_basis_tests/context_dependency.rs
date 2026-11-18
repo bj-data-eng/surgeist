@@ -127,9 +127,9 @@ fn every_final_ic_endpoint_was_covered(selected: &SelectedLine) {
             .unwrap();
         if matches!(
             movement,
-            crate::SpacingBoundaryGeometry::ProtectedRequired
-                | crate::SpacingBoundaryGeometry::ProtectedCursive
-        ) || boundary.geometry == crate::SpacingBoundaryGeometry::ProtectedCursive
+            crate::protocol::SpacingBoundaryGeometry::ProtectedRequired
+                | crate::protocol::SpacingBoundaryGeometry::ProtectedCursive
+        ) || boundary.geometry == crate::protocol::SpacingBoundaryGeometry::ProtectedCursive
         {
             continue;
         }
@@ -235,9 +235,9 @@ fn residual_mvs_context_change_covers_later_ic_endpoints_across_disconnections()
         .collect();
     value.connections = [1, 3]
         .into_iter()
-        .map(|at| crate::ParagraphConnection {
+        .map(|at| crate::protocol::paragraph::ParagraphConnection {
             at,
-            kind: crate::ParagraphConnectionKind::Disconnected,
+            kind: crate::protocol::paragraph::ParagraphConnectionKind::Disconnected,
         })
         .collect();
     let mut system = system(&bytes);
@@ -336,7 +336,7 @@ fn residual_mvs_context_change_covers_later_ic_endpoints_across_disconnections()
             .boundaries
             .iter()
             .all(|boundary| boundary.authored == 0.0
-                && boundary.geometry == crate::SpacingBoundaryGeometry::Independent)
+                && boundary.geometry == crate::protocol::SpacingBoundaryGeometry::Independent)
     );
     every_final_ic_endpoint_was_covered(&selected);
 
@@ -347,7 +347,7 @@ fn residual_mvs_context_change_covers_later_ic_endpoints_across_disconnections()
         .map(|origin| origin.handle())
         .collect::<Vec<_>>();
     for (slot, pair) in slots.iter().zip([[0, 3], [3, 4], [4, 5]]) {
-        let crate::SpacingSlotTarget::Boundary {
+        let crate::protocol::SpacingSlotTarget::Boundary {
             visual_before,
             visual_after,
         } = slot.target()
@@ -358,7 +358,7 @@ fn residual_mvs_context_change_covers_later_ic_endpoints_across_disconnections()
             let range = Range::new(atom, atom + 1);
             assert_eq!(
                 unit.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
-                [crate::SpacingSlotOwner::Source {
+                [crate::protocol::SpacingSlotOwner::Source {
                     origin: origins[if atom == 0 { 0 } else { 2 }].clone(),
                     local: range,
                     aggregate: range
@@ -372,7 +372,9 @@ fn residual_mvs_context_change_covers_later_ic_endpoints_across_disconnections()
     assert_native_packets(&natural, &bytes, "A\u{180e}\u{180e}!!!", &native);
     assert_eq!(inline_paints(&natural), [0.0, 10.0, 20.0, 30.0]);
     assert!(natural.spacing_slots().all(|slot| slot.geometry
-        == crate::SpacingSlotGeometry::Boundary(crate::SpacingBoundaryGeometry::Independent)));
+        == crate::protocol::SpacingSlotGeometry::Boundary(
+            crate::protocol::SpacingBoundaryGeometry::Independent
+        )));
     let allocated = natural
         .with_spacing(amounts(&selected, &[0.0, 2.0, 3.0]))
         .unwrap();

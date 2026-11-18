@@ -3,15 +3,25 @@
 
 use crate::test_fonts::{remove_tables, replace_tables, table, u16_at};
 use crate::vertical_test_fonts as fixture;
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, Result, System,
+    analyzed::AnalyzedSource,
+    error::{FontMetricTable, FontMetricTableError},
+    font::{FontData, FontOutlineCapability, FontOutlineError, VerticalGlyphMetrics},
+    id::Id,
+    options::Options,
+    range::Range,
+    source::Source,
+    style::{Font, Slant, Style, Weight},
+};
 use skrifa::{
     GlyphId, MetadataProvider,
     instance::{LocationRef, Size as FontSize},
     raw::TableProvider,
 };
 
-use FontLineMetricSource as L;
-use VerticalGlyphMetricProvenance as P;
+use crate::font::FontLineMetricSource as L;
+use crate::font::VerticalGlyphMetricProvenance as P;
 const X: u32 = 58;
 
 fn registered(bytes: Vec<u8>) -> (System, FontData) {
@@ -845,7 +855,7 @@ fn querying_actual_run_instance_leaves_source_glyphs_carets_and_cache_unchanged(
             size: 10.0,
             ..Style::default()
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let options = Options {

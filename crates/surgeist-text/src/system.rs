@@ -2,11 +2,20 @@ use std::{collections::HashMap, sync::Arc};
 
 use surgeist_font::{DecodeLimits, FontCatalogue, FontResource};
 
-use super::{
-    CataloguePublication, FontData, Id, InlineBox, Key, Layout, Options, Range, Result, Source,
-    Span, Stats, Style, Text, ValidatedOptions, ValidatedSource, ValidatedStyle,
+use crate::{
+    Result,
+    cache::{Key, Stats},
+    font::FontData,
+    id::Id,
+    layout::Layout,
+    options::{Options, ValidatedOptions},
+    range::Range,
+    source::{InlineBox, Source, Span, ValidatedSource},
+    style::{Style, ValidatedStyle},
+    text::Text,
 };
 use crate::{engine, projection::SourceProjection};
+use surgeist_font::CataloguePublication;
 
 /// Shared font and layout system.
 pub struct System {
@@ -56,12 +65,12 @@ impl System {
     /// A cache result from an independently issued equal analysis cannot substitute.
     pub fn layout_analyzed(
         &mut self,
-        analyzed: &crate::AnalyzedSource,
+        analyzed: &crate::analyzed::AnalyzedSource,
         options: Options,
     ) -> Result<Layout> {
         if analyzed.inner.paragraph.base_direction.is_some() {
             return Err(crate::protocol::protocol_error(
-                crate::ProtocolError::UnsupportedStandaloneAnalysis,
+                crate::protocol::ProtocolError::UnsupportedStandaloneAnalysis,
             ));
         }
         let options = ValidatedOptions::try_from(options)?;
@@ -85,9 +94,9 @@ impl System {
     /// selected resources without choosing, finalizing, or placing a line.
     pub fn prepare(
         &mut self,
-        analyzed: &crate::AnalyzedSource,
-        options: crate::PreparationOptions,
-    ) -> Result<crate::PreparedText> {
+        analyzed: &crate::analyzed::AnalyzedSource,
+        options: crate::protocol::PreparationOptions,
+    ) -> Result<crate::protocol::PreparedText> {
         let inner = engine::prepare(
             &mut self.catalogue,
             Arc::clone(&analyzed.inner),
@@ -95,7 +104,7 @@ impl System {
             engine::PreparationProfile::Native,
             &mut self.shape_context,
         )?;
-        Ok(crate::PreparedText { inner })
+        Ok(crate::protocol::PreparedText { inner })
     }
 
     /// Finalizes one isolated generated leader pattern for reuse by Layout.
@@ -104,8 +113,8 @@ impl System {
     /// Surviving spaces and glyphs retain their advances at pattern edges.
     pub fn prepare_leader_pattern(
         &mut self,
-        input: crate::LeaderPatternInput,
-    ) -> Result<crate::FinalizedLeaderPattern> {
+        input: crate::engine::leader::LeaderPatternInput,
+    ) -> Result<crate::engine::leader::FinalizedLeaderPattern> {
         let direction = input.direction;
         let (analyzed, options) = engine::leader::analyze(input)?;
         let prepared = self.prepare(&analyzed, options)?;
@@ -121,9 +130,9 @@ impl System {
         let prepared = engine::prepare(
             &mut self.catalogue,
             analyzed,
-            crate::PreparationOptions::try_new(
+            crate::protocol::PreparationOptions::try_new(
                 options.authored().scale,
-                crate::TabPreparation::FontAdvance,
+                crate::tabs::TabPreparation::FontAdvance,
             )?,
             engine::PreparationProfile::Standalone,
             &mut self.shape_context,
@@ -257,7 +266,7 @@ impl Builder<'_> {
         let analyzed = engine::analyze(
             validated_source,
             default_style,
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )?;
         self.system.place_analyzed(analyzed, key, validated_options)
     }
@@ -279,21 +288,21 @@ mod tests {
     }
 
     fn decoration_style(offset: f64, thickness: f64, strike: bool) -> Style {
-        let decoration = crate::Decoration::solid()
-            .with_offset(crate::DecorationOffset::try_absolute(offset).unwrap())
-            .with_thickness(crate::DecorationThickness::try_absolute(thickness).unwrap());
+        let decoration = crate::style::Decoration::solid()
+            .with_offset(crate::style::DecorationOffset::try_absolute(offset).unwrap())
+            .with_thickness(crate::style::DecorationThickness::try_absolute(thickness).unwrap());
         Style {
-            font: crate::Font::new().family("Ahem"),
+            font: crate::style::Font::new().family("Ahem"),
             size: 20.0,
             underline: if strike {
-                crate::Decoration::none()
+                crate::style::Decoration::none()
             } else {
                 decoration
             },
             strikethrough: if strike {
                 decoration
             } else {
-                crate::Decoration::none()
+                crate::style::Decoration::none()
             },
             ..Style::default()
         }
@@ -333,7 +342,7 @@ mod tests {
         assert!(matches!(
             error.detail(),
             Some(crate::ErrorDetail::InvalidTextNumeric {
-                category: crate::TextNumericError::NonFinite,
+                category: crate::error::TextNumericError::NonFinite,
                 ..
             })
         ));
@@ -361,9 +370,9 @@ mod tests {
     #[test]
     fn decoration_geometry_disabled_extremes_emit_no_rectangles() {
         let mut system = decoration_system();
-        let disabled = crate::Decoration::none()
-            .with_offset(crate::DecorationOffset::try_absolute(f64::MAX).unwrap())
-            .with_thickness(crate::DecorationThickness::try_absolute(f64::MAX).unwrap());
+        let disabled = crate::style::Decoration::none()
+            .with_offset(crate::style::DecorationOffset::try_absolute(f64::MAX).unwrap())
+            .with_thickness(crate::style::DecorationThickness::try_absolute(f64::MAX).unwrap());
         let layout = system
             .layout(
                 Source::new("A"),

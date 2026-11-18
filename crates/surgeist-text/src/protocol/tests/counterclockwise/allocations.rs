@@ -1,8 +1,8 @@
 //! Allocated children remain physical; positive-over is left for the CCW line.
 use super::*;
 use crate::{
-    AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation, BaselineShift, InlineBox,
-    InlineBoxKind, LineBoxAlignment,
+    protocol::{AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation, LineBoxAlignment},
+    source::{BaselineShift, InlineBox, InlineBoxKind},
 };
 
 const INFLOW: Id = Id::from_u64(1_579_011);
@@ -25,30 +25,32 @@ fn atomic_input() -> ParagraphInput {
     let mut value = paragraph(src, own_style(), false);
     value.anchor_order = [1, 0]
         .into_iter()
-        .map(|index| crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::Atomic(index),
+        .map(|index| crate::protocol::paragraph::ParagraphAnchor {
+            item: crate::protocol::paragraph::ParagraphAnchorItem::Atomic(index),
             affinity: Affinity::Before,
         })
         .collect();
     value.boundary_policies = (0..2)
         .flat_map(|index| {
             [
-                crate::ParagraphBoundaryDefinition::AtomicBefore(index),
-                crate::ParagraphBoundaryDefinition::AtomicAfter(index),
+                crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicBefore(index),
+                crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicAfter(index),
             ]
         })
-        .map(|definition| crate::ParagraphBoundaryPolicy {
-            definition,
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
-        })
+        .map(
+            |definition| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition,
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
+            },
+        )
         .collect();
     value
 }
 fn allocation(shift: f64) -> AtomicLineAllocation {
     AtomicLineAllocation::InFlow {
-        fit: crate::AtomicFitAllocation::NativeOccupied,
+        fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 14.0,
             normal_border_inline_size: 14.0,
@@ -80,9 +82,9 @@ fn finalized(p: &PreparedText, shift: f64) -> FinalizedLine {
         .collect();
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -112,7 +114,7 @@ fn atomic_placement(p: &PreparedText, line: FinalizedLine, shift: f64) -> Placem
     PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 20.0,
@@ -163,7 +165,8 @@ fn shifted_inflow_boxes_move_left_while_positioned_boxes_keep_their_actual_physi
             );
         }
         let layout =
-            crate::Layout::from_finalized_lines(atomic_placement(&p, line.clone(), shift)).unwrap();
+            crate::layout::Layout::from_finalized_lines(atomic_placement(&p, line.clone(), shift))
+                .unwrap();
         assert_eq!(
             layout.lines()[0].bounds(),
             Rect::new(92.0, -4.0, height, 24.0)
@@ -201,12 +204,12 @@ fn shifted_inflow_boxes_move_left_while_positioned_boxes_keep_their_actual_physi
         );
         // A missing physical occurrence refuses without replacing the old value.
         let mut missing = atomic_placement(&p, line, shift);
-        let crate::PlacementEntry::Formatted(row) = &mut missing.entries[0] else {
+        let crate::protocol::PlacementEntry::Formatted(row) = &mut missing.entries[0] else {
             unreachable!()
         };
         row.atomics.pop();
         assert!(matches!(
-            reason(&crate::Layout::from_finalized_lines(missing).unwrap_err()),
+            reason(&crate::layout::Layout::from_finalized_lines(missing).unwrap_err()),
             ProtocolError::MissingAtomic { .. }
         ));
         assert_eq!(
@@ -224,9 +227,11 @@ fn shifted_inflow_boxes_move_left_while_positioned_boxes_keep_their_actual_physi
 fn controls(p: &PreparedText, shift: f64) -> FinalizedLine {
     let mut r = selected_request(p, start(p), terminal(p));
     for row in &mut r.controls {
-        row.boundary = Some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO);
-        if *row.occurrence.view().kind() == crate::ParagraphControlKind::InlineBoundaryStart {
-            row.strut = Some(crate::ControlStrut {
+        row.boundary = Some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO);
+        if *row.occurrence.view().kind()
+            == crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+        {
+            row.strut = Some(crate::protocol::ControlStrut {
                 baseline: 2.0,
                 line_extent: 3.0,
                 alignment: LineBoxAlignment::Shift(BaselineShift::try_new(shift).unwrap()),
@@ -235,16 +240,16 @@ fn controls(p: &PreparedText, shift: f64) -> FinalizedLine {
     }
     while let Some(occurrence) = p.boundary_context_demand(&r).unwrap() {
         r.boundary_context
-            .push(crate::InlineBoundaryContextAllocation {
+            .push(crate::protocol::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
+                boundary: crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
             });
     }
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -254,25 +259,27 @@ fn native_control_shift_uses_leftward_over_even_at_asymmetric_f64_spacing_bounda
     let mut system = system_with(AHEM.to_vec());
     let mut value = paragraph(source("A"), own_style(), false);
     value.controls = vec![
-        crate::ParagraphControl {
+        crate::protocol::paragraph::ParagraphControl {
             at: 0,
-            kind: crate::ParagraphControlKind::InlineBoundaryStart,
+            kind: crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
-        crate::ParagraphControl {
+        crate::protocol::paragraph::ParagraphControl {
             at: 1,
-            kind: crate::ParagraphControlKind::InlineBoundaryEnd,
+            kind: crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
     value.anchor_order = (0..2)
-        .map(|control| crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::Control(control),
+        .map(|control| crate::protocol::paragraph::ParagraphAnchor {
+            item: crate::protocol::paragraph::ParagraphAnchorItem::Control(control),
             affinity: Affinity::After,
         })
         .collect();
     let p = prepare(&mut system, value, CCW);
     let control = p
         .control_views()
-        .find(|c| *c.kind() == crate::ParagraphControlKind::InlineBoundaryStart)
+        .find(|c| {
+            *c.kind() == crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+        })
         .unwrap()
         .handle();
     for shift in [-1.0, 0.0, 1.0] {
@@ -295,7 +302,7 @@ fn native_control_shift_uses_leftward_over_even_at_asymmetric_f64_spacing_bounda
     let x = 9_007_199_254_740_992.0;
     let old = placed(&p, vec![(controls(&p, 1.0), x, 100.0)]);
     assert_eq!(old.lines()[0].baseline(), x);
-    let error = crate::Layout::from_finalized_lines(PlacementRequest {
+    let error = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: entries(&p, vec![(controls(&p, -1.0), x, 100.0)]),
@@ -304,7 +311,7 @@ fn native_control_shift_uses_leftward_over_even_at_asymmetric_f64_spacing_bounda
     assert!(matches!(
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
-            category: crate::TextNumericError::NonZeroLost,
+            category: crate::error::TextNumericError::NonZeroLost,
             ..
         })
     ));

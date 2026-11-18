@@ -15,7 +15,10 @@ use crate::phrase::{
 };
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{ParagraphContext, ParagraphControlKind, SemanticAnchorItem};
-use crate::{InlineBox, InlineBoxKind, Result};
+use crate::{
+    Result,
+    source::{InlineBox, InlineBoxKind},
+};
 
 #[derive(Clone, Debug)]
 pub(crate) struct PhraseComponent {
@@ -30,7 +33,7 @@ pub(crate) struct PhraseComponent {
 pub(crate) struct PhraseData {
     pub(crate) component: usize,
     pub(crate) atoms: Range<usize>,
-    pub(crate) presentation: crate::Range,
+    pub(crate) presentation: crate::range::Range,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -185,7 +188,7 @@ pub(super) fn analyze(
             catalog.phrases.push(PhraseData {
                 component,
                 atoms: start..end,
-                presentation: crate::Range::new(
+                presentation: crate::range::Range::new(
                     projection.atoms[start].presentation.start,
                     projection.atoms[end - 1].presentation.end,
                 ),
@@ -331,26 +334,26 @@ mod tests {
     use super::*;
     use crate::engine::analysis::LineCause;
 
-    fn style(locale: &str) -> crate::Style {
-        crate::Style {
-            word_break: crate::WordBreak::AutoPhrase,
+    fn style(locale: &str) -> crate::style::Style {
+        crate::style::Style {
+            word_break: crate::style::WordBreak::AutoPhrase,
             locale: Some(locale.to_owned()),
-            ..crate::Style::default()
+            ..crate::style::Style::default()
         }
     }
 
     #[test]
     fn published_phrase_context_includes_normal_runs_and_keeps_final_coordinates() {
-        let mut source = crate::Source::new("今日は天気です。");
-        source.span(crate::Range::new(1, 3), style("ja-JP"));
-        let analyzed = crate::AnalyzedSource::new(
+        let mut source = crate::source::Source::new("今日は天気です。");
+        source.span(crate::range::Range::new(1, 3), style("ja-JP"));
+        let analyzed = crate::analyzed::AnalyzedSource::new(
             source,
-            crate::Style {
-                word_break: crate::WordBreak::Normal,
+            crate::style::Style {
+                word_break: crate::style::WordBreak::Normal,
                 locale: Some("ja".to_owned()),
-                ..crate::Style::default()
+                ..crate::style::Style::default()
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let catalog = &analyzed.inner.analysis.phrases;
@@ -374,7 +377,10 @@ mod tests {
                 .iter()
                 .map(|row| row.presentation)
                 .collect::<Vec<_>>(),
-            [crate::Range::new(0, 3), crate::Range::new(3, 8)]
+            [
+                crate::range::Range::new(0, 3),
+                crate::range::Range::new(3, 8)
+            ]
         );
         assert_eq!(catalog.phrase_containing_cut(2), Some(0));
         assert_eq!(catalog.phrase_containing_cut(3), None);
@@ -384,10 +390,10 @@ mod tests {
     #[test]
     fn supported_empty_inference_and_unsupported_language_are_distinct() {
         for locale in ["ja", "ja-JP", "ja-Jpan", "ja-u-ca-japanese"] {
-            let analyzed = crate::AnalyzedSource::new(
-                crate::Source::new("日"),
+            let analyzed = crate::analyzed::AnalyzedSource::new(
+                crate::source::Source::new("日"),
                 style(locale),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let catalog = &analyzed.inner.analysis.phrases;
@@ -398,10 +404,10 @@ mod tests {
         for locale in ["en-JP", "und-Jpan", "ja-Latn", "zh", "ko"] {
             let authored = style(locale);
             assert!(authored.effective_breaking().auto_phrase);
-            let analyzed = crate::AnalyzedSource::new(
-                crate::Source::new("日本へ"),
+            let analyzed = crate::analyzed::AnalyzedSource::new(
+                crate::source::Source::new("日本へ"),
                 authored,
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert!(
@@ -417,12 +423,12 @@ mod tests {
 
     #[test]
     fn hard_and_unsupported_tcus_bound_final_components() {
-        let mut source = crate::Source::new("日は\n天気");
-        source.span(crate::Range::new(4, 5), style("en"));
-        let analyzed = crate::AnalyzedSource::new(
+        let mut source = crate::source::Source::new("日は\n天気");
+        source.span(crate::range::Range::new(4, 5), style("en"));
+        let analyzed = crate::analyzed::AnalyzedSource::new(
             source,
             style("ja"),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -436,12 +442,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             [0..2, 3..4]
         );
-        let mut source = crate::Source::new("か\u{3099}日");
-        source.span(crate::Range::new(1, 2), style("en"));
-        let analyzed = crate::AnalyzedSource::new(
+        let mut source = crate::source::Source::new("か\u{3099}日");
+        source.span(crate::range::Range::new(1, 2), style("en"));
+        let analyzed = crate::analyzed::AnalyzedSource::new(
             source,
             style("ja"),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.inner.analysis.graphemes, [0..2, 2..3]);
@@ -459,7 +465,7 @@ mod tests {
             ("a\u{200d}b", vec![1, 2], vec![]),
             ("a\u{301}b", vec![1], vec![]),
         ] {
-            let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
+            let projection = SourceProjection::new(&crate::source::Source::new(text)).unwrap();
             let units: Vec<_> = projection
                 .graphemes
                 .windows(2)
@@ -488,11 +494,11 @@ mod tests {
     #[test]
     fn causes_keep_independent_owners_without_rewriting_word_metadata() {
         let mut authored = style("ja");
-        authored.line_break = crate::LineBreak::Loose;
-        let analyzed = crate::AnalyzedSource::new(
-            crate::Source::new("漢ぁ"),
+        authored.line_break = crate::style::LineBreak::Loose;
+        let analyzed = crate::analyzed::AnalyzedSource::new(
+            crate::source::Source::new("漢ぁ"),
             authored,
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert!(
@@ -503,10 +509,10 @@ mod tests {
                 .iter()
                 .any(|row| row.atom == 1 && row.cause == LineCause::RequiredLineBreak)
         );
-        let analyzed = crate::AnalyzedSource::new(
-            crate::Source::new("a\u{200b} b"),
+        let analyzed = crate::analyzed::AnalyzedSource::new(
+            crate::source::Source::new("a\u{200b} b"),
             style("ja"),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert!(
@@ -525,15 +531,15 @@ mod tests {
                 .iter()
                 .any(|row| row.atom == 3 && row.cause == LineCause::Whitespace { atom: 2 })
         );
-        let mut source = crate::Source::new("漢 漢");
-        source.span(crate::Range::new(1, 2), style("ja"));
-        let analyzed = crate::AnalyzedSource::new(
+        let mut source = crate::source::Source::new("漢 漢");
+        source.span(crate::range::Range::new(1, 2), style("ja"));
+        let analyzed = crate::analyzed::AnalyzedSource::new(
             source,
-            crate::Style {
+            crate::style::Style {
                 locale: Some("ja".to_owned()),
-                ..crate::Style::default()
+                ..crate::style::Style::default()
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let whitespace = analyzed
@@ -545,21 +551,21 @@ mod tests {
             .unwrap();
         assert_eq!(whitespace.style, analyzed.inner.analysis.infos[2].1);
         assert_ne!(whitespace.style, analyzed.inner.analysis.infos[1].1);
-        let source = crate::Source::new("กก");
-        let normal = crate::AnalyzedSource::new(
+        let source = crate::source::Source::new("กก");
+        let normal = crate::analyzed::AnalyzedSource::new(
             source.clone(),
-            crate::Style {
-                word_break: crate::WordBreak::Normal,
+            crate::style::Style {
+                word_break: crate::style::WordBreak::Normal,
                 locale: Some("th".to_owned()),
-                ..crate::Style::default()
+                ..crate::style::Style::default()
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
-        let analyzed = crate::AnalyzedSource::new(
+        let analyzed = crate::analyzed::AnalyzedSource::new(
             source,
             style("th"),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert!(analyzed.inner.analysis.phrases.phrases.is_empty());

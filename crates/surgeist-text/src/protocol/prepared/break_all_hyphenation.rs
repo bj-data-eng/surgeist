@@ -1,7 +1,8 @@
 //! Actual source SHY permission is independent from the indication's owner.
 use super::*;
 use crate::{
-    HyphenateCharacter, HyphenateLimitChars, HyphenationMinimum::Count, Hyphens, WordBreak, Wrap,
+    hyphenation::{HyphenateCharacter, HyphenateLimitChars, HyphenationMinimum::Count, Hyphens},
+    style::{WordBreak, Wrap},
 };
 
 fn style(mode: WordBreak, indication: &str) -> Style {
@@ -24,8 +25,11 @@ fn style(mode: WordBreak, indication: &str) -> Style {
 
 fn prepare(input: ParagraphInput, ancestor: Wrap) -> PreparedText {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
         ancestor,
     );
     let mut system = System::default();
@@ -63,8 +67,12 @@ fn selection(
     let mut context = context(LineEnd::Soft);
     context.base_direction = direction;
     context.line_box_direction = match direction {
-        crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-        crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        crate::protocol::ParagraphBaseDirection::LeftToRight => {
+            crate::protocol::LineBoxDirection::LeftToRight
+        }
+        crate::protocol::ParagraphBaseDirection::RightToLeft => {
+            crate::protocol::LineBoxDirection::RightToLeft
+        }
     };
     context.spacing = SpacingPolicy::None;
     LineSelectionRequest {
@@ -133,9 +141,9 @@ fn shy_local_wrap_cannot_lend_an_ordinary_cut_its_missing_ancestor_permission() 
                 let line = p
                     .select(request)
                     .unwrap()
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 assert_eq!(line.feedback().advance, 20.0);
@@ -225,9 +233,9 @@ fn normal_empty_manual_indication_is_an_admitted_choice_and_partition() {
     let line = p
         .select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
@@ -245,10 +253,10 @@ fn standalone_break_all_shy_keeps_ordinary_flow_without_an_indication() {
         .layout(
             source.clone(),
             style(WordBreak::BreakAll, "X"),
-            crate::Options {
+            crate::options::Options {
                 width: Some(10.0),
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
@@ -330,9 +338,9 @@ fn atomic_ordinary_permission_unions_with_manual_without_vetoing_it_when_false()
                 let ordinary = p
                     .select(request.clone())
                     .unwrap()
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 assert_eq!(ordinary.feedback().advance, 10.0);
@@ -350,9 +358,9 @@ fn atomic_ordinary_permission_unions_with_manual_without_vetoing_it_when_false()
             let line = p
                 .select(manual)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(line.feedback().advance, 20.0);
@@ -407,7 +415,7 @@ fn standalone_atomic_fallback_does_not_lend_the_source_shy_an_oof_permission() {
         let analyzed = AnalyzedSource::new(
             source.clone(),
             style(WordBreak::BreakAll, "X"),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let p = system()

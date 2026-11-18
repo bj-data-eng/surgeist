@@ -3,7 +3,10 @@
 #![cfg(feature = "text-accessibility")]
 
 use super::*;
-use crate::{Accessibility, Cursor, Selection};
+use crate::{
+    accessibility::Accessibility,
+    layout::{Cursor, Selection},
+};
 
 #[path = "combined_cell_ax_ordinary.rs"]
 mod ordinary;

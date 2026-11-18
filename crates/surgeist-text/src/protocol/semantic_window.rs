@@ -4,7 +4,7 @@ use super::{
     *,
 };
 use crate::engine::scope_alignment::accounting::{self as account, Ledger};
-use crate::{InlineBoxKind, Result};
+use crate::{Result, source::InlineBoxKind};
 use std::sync::Arc;
 
 /// An actual occurrence's semantic role, without its line-time dimensions.
@@ -131,7 +131,7 @@ struct Window {
     request: SemanticWindowRequest,
     partitions: Vec<SemanticPartitionEvidence>,
     conditionals: Vec<SemanticConditionalEvidence>,
-    usage: Option<crate::ScopeAlignmentUsage>,
+    usage: Option<crate::processing::ScopeAlignmentUsage>,
     retention: ScopeAlignmentRetention,
     input_retention: ScopeAlignmentRetention,
 }
@@ -142,7 +142,7 @@ struct Window {
 #[derive(Debug)]
 pub struct SemanticWindowFailure {
     error: crate::Error,
-    usage: Option<crate::ScopeAlignmentUsage>,
+    usage: Option<crate::processing::ScopeAlignmentUsage>,
     input_retention: ScopeAlignmentRetention,
 }
 impl SemanticWindowFailure {
@@ -153,7 +153,7 @@ impl SemanticWindowFailure {
         self,
     ) -> (
         crate::Error,
-        Option<crate::ScopeAlignmentUsage>,
+        Option<crate::processing::ScopeAlignmentUsage>,
         ScopeAlignmentRetention,
     ) {
         (self.error, self.usage, self.input_retention)
@@ -161,7 +161,7 @@ impl SemanticWindowFailure {
     pub const fn input_retention(&self) -> ScopeAlignmentRetention {
         self.input_retention
     }
-    pub const fn scope_alignment_usage(&self) -> Option<crate::ScopeAlignmentUsage> {
+    pub const fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
         self.usage
     }
 }
@@ -209,7 +209,7 @@ impl SemanticWindowEvidence {
     pub fn conditionals(&self) -> &[SemanticConditionalEvidence] {
         &self.inner.conditionals
     }
-    pub fn scope_alignment_usage(&self) -> Option<crate::ScopeAlignmentUsage> {
+    pub fn scope_alignment_usage(&self) -> Option<crate::processing::ScopeAlignmentUsage> {
         self.inner.usage
     }
     /// This proof's own live rows/bytes, excluding shared preparation/family
@@ -458,7 +458,7 @@ fn retention(
     .into_iter()
     .try_fold(0usize, |sum, count| {
         sum.checked_add(count)
-            .ok_or_else(|| count_overflow(crate::ScopeAlignmentLimitKind::Records))
+            .ok_or_else(|| count_overflow(crate::processing::ScopeAlignmentLimitKind::Records))
     })?;
     let payload_bytes = [
         account::bytes(&request.atomics)?,
@@ -470,7 +470,7 @@ fn retention(
     .into_iter()
     .try_fold(std::mem::size_of::<Window>(), |sum, count| {
         sum.checked_add(count)
-            .ok_or_else(|| count_overflow(crate::ScopeAlignmentLimitKind::PayloadBytes))
+            .ok_or_else(|| count_overflow(crate::processing::ScopeAlignmentLimitKind::PayloadBytes))
     })?;
     Ok(ScopeAlignmentRetention {
         records,
@@ -478,10 +478,12 @@ fn retention(
     })
 }
 fn structural_overflow() -> crate::Error {
-    count_overflow(crate::ScopeAlignmentLimitKind::StructuralWork)
+    count_overflow(crate::processing::ScopeAlignmentLimitKind::StructuralWork)
 }
-fn count_overflow(kind: crate::ScopeAlignmentLimitKind) -> crate::Error {
-    crate::engine::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow { kind })
+fn count_overflow(kind: crate::processing::ScopeAlignmentLimitKind) -> crate::Error {
+    crate::engine::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
+        kind,
+    })
 }
 
 fn work(ledger: &mut Ledger, counts: &[usize]) -> Result<()> {
@@ -496,9 +498,11 @@ fn push<T>(ledger: &mut Ledger, values: &mut Vec<T>, value: T) -> Result<()> {
         return account::push(ledger, values, value);
     }
     values.try_reserve(1).map_err(|_| {
-        crate::engine::scope_alignment::refusal(crate::ScopeAlignmentError::Allocation {
-            kind: crate::ScopeAlignmentLimitKind::PayloadBytes,
-        })
+        crate::engine::scope_alignment::refusal(
+            crate::processing::ScopeAlignmentError::Allocation {
+                kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
+            },
+        )
     })?;
     values.push(value);
     Ok(())
@@ -655,7 +659,7 @@ fn validate_allocations(
 
 #[derive(Clone, Copy)]
 struct Row {
-    edge: crate::SuppliedInlineParticipant,
+    edge: crate::supplied_line::SuppliedInlineParticipant,
     content: super::semantic_content::Content,
 }
 
@@ -695,13 +699,14 @@ fn observe(
         {
             emit_indication(data, after.alternative.index, &mut rows, ledger)?;
         }
-        let level = crate::BidiLevel::try_new(unit.capture.level).map_err(|_| invalid())?;
+        let level =
+            crate::supplied_line::BidiLevel::try_new(unit.capture.level).map_err(|_| invalid())?;
         match kind {
             PresentationUnitKind::Cell { .. } => push(
                 ledger,
                 &mut rows,
                 Row {
-                    edge: crate::SuppliedInlineParticipant::Cell { level },
+                    edge: crate::supplied_line::SuppliedInlineParticipant::Cell { level },
                     content: Content::Cell,
                 },
             )?,
@@ -713,7 +718,7 @@ fn observe(
                         ledger,
                         &mut rows,
                         Row {
-                            edge: crate::SuppliedInlineParticipant::Atomic { level },
+                            edge: crate::supplied_line::SuppliedInlineParticipant::Atomic { level },
                             content: Content::Atomic { in_flow },
                         },
                     )?;
@@ -747,12 +752,12 @@ fn observe(
     }
     if incoming.is_some() {
         return Err(crate::hyphenation::error(
-            crate::HyphenationError::MissingReceivingBidiAuthority,
+            crate::hyphenation::HyphenationError::MissingReceivingBidiAuthority,
         ));
     }
     let projected = collect(ledger, rows.iter().map(|row| row.edge))?;
     work(ledger, &[projected.len(), projected.len()])?;
-    let edges = crate::SuppliedLine::new(&projected).edges();
+    let edges = crate::supplied_line::SuppliedLine::new(&projected).edges();
     let mut result = anchor_content;
     for (i, row) in rows.iter().enumerate() {
         account::work(ledger, 1)?;
@@ -778,8 +783,8 @@ fn emit_indication(
 ) -> Result<()> {
     let semantic = &prepared.indications[index].semantic;
     for atom in semantic.inserted_atoms.clone() {
-        let level =
-            crate::BidiLevel::try_new(semantic.analysis.levels[atom]).map_err(|_| invalid())?;
+        let level = crate::supplied_line::BidiLevel::try_new(semantic.analysis.levels[atom])
+            .map_err(|_| invalid())?;
         emit_atom(
             prepared,
             semantic.projection.atoms[atom].code_point,
@@ -795,7 +800,7 @@ fn emit_atom(
     prepared: &crate::engine::PreparedData,
     code_point: u32,
     style: usize,
-    level: crate::BidiLevel,
+    level: crate::supplied_line::BidiLevel,
     rows: &mut Vec<Row>,
     ledger: &mut Ledger,
 ) -> Result<()> {
@@ -814,7 +819,7 @@ fn emit_atom(
         ledger,
         rows,
         Row {
-            edge: crate::SuppliedInlineParticipant::Text { level, edge },
+            edge: crate::supplied_line::SuppliedInlineParticipant::Text { level, edge },
             content: super::semantic_content::Content::Text {
                 retained: true,
                 hard_separator: false,

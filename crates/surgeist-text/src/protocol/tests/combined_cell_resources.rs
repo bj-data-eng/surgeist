@@ -7,7 +7,34 @@ use super::{native_metric_font, setup};
 use crate::engine::layout::data::{CellPayload, ShapedData};
 use crate::engine::scope_alignment::{accounting, census, visit_prepared_allocations};
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
-use crate::*;
+use crate::{
+    Error, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedDomain},
+    id::Id,
+    layout::Affinity,
+    options::Alignment,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentError, ScopeAlignmentLimitKind,
+        ScopeAlignmentLimits, SourceProcessingConnection, SourceProcessingEnvelope,
+        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        FormattedLineContext, LineAlignmentInsets, LineAllocations, LineBoxDirection, LineContext,
+        LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
+        PreparationOptions, PreparedTermination, PreparedText, ScopeAlignmentAllowance,
+        ScopeAlignmentCensusInput, ScopeAlignmentProduct, ScopeAlignmentProducts, ScopeAllocations,
+        SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+        scope_alignment_census,
+    },
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style, TextCombineUpright, WhiteSpace, Wrap},
+};
 use std::mem::{size_of, size_of_val};
 use std::sync::Arc;
 
@@ -421,7 +448,8 @@ fn selected_retention_contains_whole_mixed_arenas_coordinates_and_unique_resourc
             own.backing(&layout.tabs);
         }
     }
-    let identity = |font: &crate::FontData| (font.bytes().as_ptr() as usize, font.bytes().len());
+    let identity =
+        |font: &crate::font::FontData| (font.bytes().as_ptr() as usize, font.bytes().len());
     let mut pins = prepared
         .inner
         .scope_alignment

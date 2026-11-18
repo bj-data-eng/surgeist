@@ -3,7 +3,7 @@
 // Adapted from Parley 0.9.0 shape/cache.rs. Keys retain actual resources and
 // catalogue publication; no borrowed query result or bare resource ID escapes.
 
-use crate::FontData;
+use crate::font::FontData;
 
 #[derive(Clone)]
 pub(super) struct ResourceKey(pub(super) FontData);
@@ -18,7 +18,7 @@ impl PartialEq for ResourceKey {
 #[derive(Clone, PartialEq)]
 pub(super) struct InstanceKey {
     pub(super) resource: ResourceKey,
-    pub(super) synthesis: crate::FontSynthesis,
+    pub(super) synthesis: crate::font::FontSynthesis,
     pub(super) suggested_variations: Vec<parlance::FontVariation>,
     pub(super) variations: Vec<parlance::FontVariation>,
     pub(super) coords: Vec<i16>,

@@ -1,6 +1,6 @@
 //! Receiver event custody is independent of visibility and local bidi parity.
 use super::*;
-use crate::ParagraphControlKind as K;
+use crate::protocol::paragraph::ParagraphControlKind as K;
 use crate::protocol::prepared::{ParticipantData, PresentationUnitKind as U};
 
 fn fixture(
@@ -24,31 +24,31 @@ fn fixture_with_style(
     anchor_order: Option<Vec<paragraph::ParagraphAnchor>>,
 ) -> PreparedText {
     let len = source.text().len();
-    style.hyphenate_limit_chars = crate::HyphenateLimitChars {
-        total: crate::HyphenationMinimum::Count(0),
-        before: crate::HyphenationMinimum::Count(0),
-        after: crate::HyphenationMinimum::Count(0),
+    style.hyphenate_limit_chars = crate::hyphenation::HyphenateLimitChars {
+        total: crate::hyphenation::HyphenationMinimum::Count(0),
+        before: crate::hyphenation::HyphenationMinimum::Count(0),
+        after: crate::hyphenation::HyphenationMinimum::Count(0),
     };
     let mut anchors: Vec<_> = (0..kinds.len())
         .map(|control| paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Control(control),
-            affinity: crate::Affinity::Before,
+            affinity: crate::layout::Affinity::Before,
         })
         .collect();
     anchors.extend(
         (0..source.boxes().len()).map(|atomic| paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Atomic(atomic),
-            affinity: crate::Affinity::Before,
+            affinity: crate::layout::Affinity::Before,
         }),
     );
     capture_input(
         ParagraphInput {
             source: source.clone(),
             base_style: style,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: direction,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![paragraph::ParagraphOrigin {
                 source: source.clone(),
@@ -67,9 +67,9 @@ fn fixture_with_style(
                 })
                 .map(|definition| paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
@@ -92,11 +92,15 @@ fn finish_at_edges(
 ) -> crate::Result<FinalizedLine> {
     request.context.base_direction = direction;
     request.context.line_box_direction = match direction {
-        crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-        crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        crate::protocol::ParagraphBaseDirection::LeftToRight => {
+            crate::protocol::LineBoxDirection::LeftToRight
+        }
+        crate::protocol::ParagraphBaseDirection::RightToLeft => {
+            crate::protocol::LineBoxDirection::RightToLeft
+        }
     };
     let edge = |control: &PreparedControl| {
-        crate::InlineBoundaryAllocation::contribution(
+        crate::protocol::InlineBoundaryAllocation::contribution(
             if *control.view().kind() == K::InlineBoundaryStart {
                 5.0
             } else {
@@ -113,7 +117,7 @@ fn finish_at_edges(
     while let Some(control) = p.boundary_context_demand(&request)? {
         request
             .boundary_context
-            .push(crate::InlineBoundaryContextAllocation {
+            .push(crate::protocol::InlineBoundaryContextAllocation {
                 boundary: edge(&control),
                 occurrence: control,
             });
@@ -339,14 +343,14 @@ fn a_source_free_formatting_receiver_precedes_the_first_visible_original() {
 fn atomic_prepared(
     indication: &str,
     placement: HyphenationPlacement,
-    size: crate::Size,
+    size: crate::geometry::Size,
     kinds: Vec<(usize, K)>,
     anchor_order: Option<Vec<paragraph::ParagraphAnchor>>,
 ) -> PreparedText {
-    let mut source = Source::identified("AB\u{ad}CDE", crate::Id::from_u64(150300), 1);
-    source.inline_box(crate::InlineBox::new(
-        crate::Id::from_u64(91224),
-        crate::InlineBoxKind::InFlow,
+    let mut source = Source::identified("AB\u{ad}CDE", crate::id::Id::from_u64(150300), 1);
+    source.inline_box(crate::source::InlineBox::new(
+        crate::id::Id::from_u64(91224),
+        crate::source::InlineBoxKind::InFlow,
         3,
         size,
     ));
@@ -362,7 +366,7 @@ fn atomic_offer(p: &PreparedText) -> PreparedOpportunity {
     let cut = p
         .hyphenation_cut_views()
         .find(|cut| {
-            cut.provenance() == crate::HyphenationProvenance::Source
+            cut.provenance() == crate::protocol::HyphenationProvenance::Source
                 && cut.boundary().view().source_before().get() == 3
         })
         .unwrap();
@@ -372,7 +376,7 @@ fn atomic_offer(p: &PreparedText) -> PreparedOpportunity {
     assert_eq!(offer.view().kind(), PreparedBreakKind::Allowed);
     assert_eq!(offer.view().alternatives().count(), 1);
     assert!(
-        matches!(alternative(&offer).view().definition(),crate::PreparedAlternativeDefinition::Source{source,..} if source==Range::new(2,3))
+        matches!(alternative(&offer).view().definition(),crate::protocol::readback::PreparedAlternativeDefinition::Source{source,..} if source==Range::new(2,3))
     );
     offer
 }
@@ -396,7 +400,7 @@ fn with_atomic(p: &PreparedText, mut request: LineSelectionRequest) -> LineSelec
     request.atomics = vec![AtomicAllocation {
         occurrence,
         allocation: AtomicLineAllocation::InFlow {
-            fit: crate::AtomicFitAllocation::NativeOccupied,
+            fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
             flow: AtomicFlowAllocation {
                 advance: size.width,
                 normal_border_inline_size: size.width,
@@ -406,8 +410,8 @@ fn with_atomic(p: &PreparedText, mut request: LineSelectionRequest) -> LineSelec
                 occupied_end: size.width,
             },
             box_geometry: AtomicBoxAllocation {
-                border: crate::Rect::new(0.0, -before, size.width, size.height),
-                content: crate::Rect::new(0.0, -before, size.width, size.height),
+                border: crate::geometry::Rect::new(0.0, -before, size.width, size.height),
+                content: crate::geometry::Rect::new(0.0, -before, size.width, size.height),
                 baseline: 0.0,
             },
             alignment: LineBoxAlignment::Baseline,
@@ -426,8 +430,11 @@ fn atomic_pair(
     );
     assert_eq!(p.atomic_views().count(), 1);
     let view = p.atomic_views().next().unwrap();
-    assert_eq!(view.original_box().id(), crate::Id::from_u64(91224));
-    assert_eq!(view.original_box().kind(), crate::InlineBoxKind::InFlow);
+    assert_eq!(view.original_box().id(), crate::id::Id::from_u64(91224));
+    assert_eq!(
+        view.original_box().kind(),
+        crate::source::InlineBoxKind::InFlow
+    );
     assert_eq!(view.source_position().get(), 3);
     let offer = atomic_offer(p);
     let chosen = alternative(&offer);
@@ -486,7 +493,7 @@ fn place_atomic_pair(
     first: FinalizedLine,
     second: FinalizedLine,
     x: f64,
-) -> crate::Layout {
+) -> crate::layout::Layout {
     let atomic = p.atomic_views().next().unwrap().handle();
     let size = atomic.view().original_box().size();
     let before = if size.height == 0.0 { 0.0 } else { 8.0 };
@@ -495,18 +502,18 @@ fn place_atomic_pair(
     assert_eq!(slots[0].occurrence, atomic);
     // Slot origin retains the actual line-local Ahem baseline8; the later
     // LineAnchor maps that frame to the independently supplied baseline18.
-    assert_eq!(slots[0].origin, crate::Point::new(x, 8.0));
+    assert_eq!(slots[0].origin, crate::geometry::Point::new(x, 8.0));
     assert_eq!(second.selected_line().request().atomics.len(), 1);
     assert_eq!(
         slots[0].allocation,
         second.selected_line().request().atomics[0].allocation
     );
-    let rect = crate::Rect::new(x, 18.0 - before, size.width, size.height);
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let rect = crate::geometry::Rect::new(x, 18.0 - before, size.width, size.height);
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: vec![
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: first,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -515,7 +522,7 @@ fn place_atomic_pair(
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
             }),
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: second,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -534,8 +541,8 @@ fn place_atomic_pair(
     .unwrap();
     let boxes = layout.inline_boxes();
     assert_eq!(boxes.len(), 1);
-    assert_eq!(boxes[0].id(), crate::Id::from_u64(91224));
-    assert_eq!(boxes[0].kind(), crate::InlineBoxKind::InFlow);
+    assert_eq!(boxes[0].id(), crate::id::Id::from_u64(91224));
+    assert_eq!(boxes[0].kind(), crate::source::InlineBoxKind::InFlow);
     assert_eq!(boxes[0].index(), 3);
     assert_eq!(boxes[0].line(), 1);
     assert_eq!(boxes[0].rect(), rect);
@@ -564,7 +571,7 @@ fn place_atomic_pair(
 fn simple_atomic_receiver(
     indication: &str,
     placement: HyphenationPlacement,
-    size: crate::Size,
+    size: crate::geometry::Size,
     start_edge: bool,
 ) {
     let p = atomic_prepared(
@@ -668,11 +675,11 @@ fn simple_atomic_receiver(
     let layout = place_atomic_pair(&p, first, second, edge + emission);
     assert_eq!(
         layout.lines()[0].bounds(),
-        crate::Rect::new(0.0, 0.0, 100.0, 10.0)
+        crate::geometry::Rect::new(0.0, 0.0, 100.0, 10.0)
     );
     assert_eq!(
         layout.lines()[1].bounds(),
-        crate::Rect::new(0.0, 10.0, 100.0, 10.0)
+        crate::geometry::Rect::new(0.0, 10.0, 100.0, 10.0)
     );
     assert_eq!(first_snapshot.prepared_text(), p);
     assert_eq!(second_snapshot.prepared_text(), p);
@@ -682,7 +689,7 @@ fn incoming_after_inflow_atomic_preserves_real_glyph_allocation_and_placement() 
     simple_atomic_receiver(
         "A",
         HyphenationPlacement::LogicalAfter,
-        crate::Size::new(10.0, 10.0),
+        crate::geometry::Size::new(10.0, 10.0),
         false,
     );
 }
@@ -691,7 +698,7 @@ fn incoming_both_sides_inflow_atomic_preserves_one_choice_and_both_emissions() {
     simple_atomic_receiver(
         "A",
         HyphenationPlacement::BothSides,
-        crate::Size::new(10.0, 10.0),
+        crate::geometry::Size::new(10.0, 10.0),
         false,
     );
 }
@@ -703,8 +710,8 @@ fn incoming_atomic_empty_indication_keeps_real_zero_extent_and_ending_controls()
         HyphenationPlacement::LogicalAfter,
         HyphenationPlacement::BothSides,
     ] {
-        simple_atomic_receiver("", placement, crate::Size::new(10.0, 10.0), false);
-        simple_atomic_receiver("", placement, crate::Size::new(0.0, 0.0), false);
+        simple_atomic_receiver("", placement, crate::geometry::Size::new(10.0, 10.0), false);
+        simple_atomic_receiver("", placement, crate::geometry::Size::new(0.0, 0.0), false);
     }
 }
 #[test]
@@ -713,7 +720,7 @@ fn incoming_atomic_real_zero_extent_accepts_nonempty_after_and_both_indications(
         HyphenationPlacement::LogicalAfter,
         HyphenationPlacement::BothSides,
     ] {
-        simple_atomic_receiver("A", placement, crate::Size::new(0.0, 0.0), false);
+        simple_atomic_receiver("A", placement, crate::geometry::Size::new(0.0, 0.0), false);
     }
 }
 #[test]
@@ -721,7 +728,7 @@ fn incoming_atomic_preserves_positive_prefix_control_before_indication() {
     simple_atomic_receiver(
         "A",
         HyphenationPlacement::LogicalAfter,
-        crate::Size::new(10.0, 10.0),
+        crate::geometry::Size::new(10.0, 10.0),
         true,
     );
 }
@@ -735,20 +742,20 @@ fn incoming_atomic_uses_actual_original_and_receiving_l1_not_paragraph_or_later_
     let p = atomic_prepared(
         "A",
         HyphenationPlacement::LogicalAfter,
-        crate::Size::new(10.0, 10.0),
+        crate::geometry::Size::new(10.0, 10.0),
         vec![(0, K::RightToLeftOverride), (3, K::LeftToRightEmbedding)],
         Some(vec![
             ParagraphAnchor {
                 item: I::Control(0),
-                affinity: crate::Affinity::Before,
+                affinity: crate::layout::Affinity::Before,
             },
             ParagraphAnchor {
                 item: I::Atomic(0),
-                affinity: crate::Affinity::Before,
+                affinity: crate::layout::Affinity::Before,
             },
             ParagraphAnchor {
                 item: I::Control(1),
-                affinity: crate::Affinity::Before,
+                affinity: crate::layout::Affinity::Before,
             },
         ]),
     );

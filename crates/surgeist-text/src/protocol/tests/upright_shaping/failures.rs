@@ -1,10 +1,13 @@
 //! Failures exercised through actual public upright preparation/selection.
 use super::*;
 use crate::{
-    Error, ErrorCode, ErrorDetail, FontBaselineScript, FontMetricTable, FontMetricTableError,
-    ParagraphTabReference, TabPreparation, TabSize, TextStyleOwner, UprightContent,
-    UprightContentPiece, UprightMetricReference, UprightTabMeasurement,
-    VerticalOriginReferenceReason, VerticalShapingContextReason,
+    Error, ErrorCode, ErrorDetail,
+    error::{
+        FontMetricTable, FontMetricTableError, TextStyleOwner, UprightContent, UprightContentPiece,
+        UprightTabMeasurement, VerticalOriginReferenceReason, VerticalShapingContextReason,
+    },
+    font::{FontBaselineScript, UprightMetricReference},
+    tabs::{ParagraphTabReference, TabPreparation, TabSize},
 };
 
 fn style() -> Style {
@@ -21,26 +24,26 @@ fn paragraph(source: Source, base_style: Style) -> ParagraphInput {
     ParagraphInput {
         source: source.clone(),
         base_style,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source,
             local: Range::new(0, length),
             aggregate: Range::new(0, length),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
         boundary_policies: vec![],
         replacements: vec![],
         anchor_order: if length == 0 {
-            vec![crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: crate::Affinity::After,
+            vec![crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
+                affinity: crate::layout::Affinity::After,
             }]
         } else {
             vec![]
@@ -61,7 +64,7 @@ fn prepare(
             },
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analysis.direction(), Direction::LeftToRight);
     system_with(bytes).prepare(
@@ -373,7 +376,7 @@ fn bad_joint_mark_font() -> Vec<u8> {
     font
 }
 
-fn offer(prepared: &PreparedText, at: usize) -> crate::PreparedOpportunity {
+fn offer(prepared: &PreparedText, at: usize) -> crate::protocol::PreparedOpportunity {
     prepared
         .opportunity_views()
         .find(|view| {
@@ -386,9 +389,9 @@ fn offer(prepared: &PreparedText, at: usize) -> crate::PreparedOpportunity {
 
 fn through_offer(
     prepared: &PreparedText,
-    start: crate::PreparedBoundary,
-    end: crate::PreparedOpportunity,
-    incoming: Option<crate::HyphenationContinuation>,
+    start: crate::protocol::PreparedBoundary,
+    end: crate::protocol::PreparedOpportunity,
+    incoming: Option<crate::protocol::HyphenationContinuation>,
 ) -> LineSelectionRequest {
     let mut input = request(prepared);
     input.start = start;
@@ -413,7 +416,7 @@ fn through_offer(
     input.context.orientation = LineOrientation::Vertical;
     input.context.base_direction = ParagraphBaseDirection::LeftToRight;
     input.context.line_box_direction = LineBoxDirection::LeftToRight;
-    input.context.alignment = crate::Alignment::Start;
+    input.context.alignment = crate::options::Alignment::Start;
     input.context.available_inline = None;
     input.context.spacing = SpacingPolicy::None;
     input
@@ -423,11 +426,11 @@ fn through_offer(
 fn a_body_and_indication_mark_egc_failure_retains_both_ordered_pieces() {
     let bytes = bad_joint_mark_font();
     let mut authored = style();
-    authored.hyphens = crate::Hyphens::Manual;
+    authored.hyphens = crate::hyphenation::Hyphens::Manual;
     let mut input = paragraph(Source::new("AA\u{ad}XXX"), authored);
     input.replacements.push(
-        crate::ParagraphReplacement::resolved_native_logical_before(
-            crate::ParagraphReplacementDefinition::Source {
+        crate::protocol::paragraph::ParagraphReplacement::resolved_native_logical_before(
+            crate::protocol::paragraph::ParagraphReplacementDefinition::Source {
                 origin: 0,
                 source: Range::new(2, 3),
             },
@@ -570,7 +573,7 @@ fn actual_overlong_combining_context_preserves_the_first_provider_refusal() {
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::ShapingRefused {
-            reason: crate::ShapingRefusalReason::ContextLimit
+            reason: crate::error::ShapingRefusalReason::ContextLimit
         })
     );
 }
@@ -657,12 +660,12 @@ fn a_valid_large_base_reference_has_a_numeric_provider_range_failure_and_glyph_f
     );
 }
 
-fn native_style(indication: &str, placement: crate::HyphenationPlacement) -> Style {
+fn native_style(indication: &str, placement: crate::hyphenation::HyphenationPlacement) -> Style {
     Style {
-        hyphens: crate::Hyphens::Manual,
+        hyphens: crate::hyphenation::Hyphens::Manual,
         locale: Some("und-Latn".into()),
         native_hyphenation_convention: Some(
-            crate::NativeHyphenationConvention::language_script(
+            crate::hyphenation::NativeHyphenationConvention::language_script(
                 "und-Latn",
                 "Latn",
                 indication.into(),
@@ -680,17 +683,20 @@ fn two_distinct_indications_sharing_one_real_mark_egc_keep_both_local_ranges_and
     let mut source = Source::new("XX\u{ad}\u{ad}XX\u{ad}XX");
     source.span(
         Range::new(3, 4),
-        native_style("\u{301}", crate::HyphenationPlacement::LogicalBefore),
+        native_style(
+            "\u{301}",
+            crate::hyphenation::HyphenationPlacement::LogicalBefore,
+        ),
     );
     let mut input = paragraph(
         source,
-        native_style("A", crate::HyphenationPlacement::LogicalAfter),
+        native_style("A", crate::hyphenation::HyphenationPlacement::LogicalAfter),
     );
     // This separately offered native alternative captures the complete
     // A+acute font query. It is never emitted or borrowed as this line's text.
     input.replacements.push(
-        crate::ParagraphReplacement::resolved_native_logical_before(
-            crate::ParagraphReplacementDefinition::Source {
+        crate::protocol::paragraph::ParagraphReplacement::resolved_native_logical_before(
+            crate::protocol::paragraph::ParagraphReplacementDefinition::Source {
                 origin: 0,
                 source: Range::new(6, 7),
             },
@@ -711,9 +717,9 @@ fn two_distinct_indications_sharing_one_real_mark_egc_keep_both_local_ranges_and
             None,
         ))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let continuation = first
@@ -824,11 +830,11 @@ fn repeated_gpos(attachment: bool) -> Vec<u8> {
 #[test]
 fn actual_accumulated_gpos_offset_reports_its_half_unit_range_owner() {
     for (attachment, text, expected_stage, count) in [
-        (false, "A", crate::VerticalPositionStage::Gpos, 32731),
+        (false, "A", crate::error::VerticalPositionStage::Gpos, 32731),
         (
             true,
             "A\u{301}",
-            crate::VerticalPositionStage::Attachment,
+            crate::error::VerticalPositionStage::Attachment,
             32722,
         ),
     ] {

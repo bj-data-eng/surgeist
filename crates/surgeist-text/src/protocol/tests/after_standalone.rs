@@ -1,8 +1,10 @@
 //! Real raw chooser uses the same continuation/shaping/placement owners.
 use super::*;
 use crate::{
-    HyphenateCharacter, HyphenationPlacement, Hyphens, LineHeight, NativeHyphenationConvention,
-    Range, Text,
+    hyphenation::{HyphenateCharacter, HyphenationPlacement, Hyphens, NativeHyphenationConvention},
+    range::Range,
+    style::LineHeight,
+    text::Text,
 };
 #[test]
 fn raw_after_carries_one_real_prefix_and_preserves_raw_metric_profiles() {
@@ -34,9 +36,9 @@ fn raw_after_carries_one_real_prefix_and_preserves_raw_metric_profiles() {
                 .layout(
                     source.clone(),
                     style.clone(),
-                    crate::Options {
+                    crate::options::Options {
                         quantize,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -49,10 +51,10 @@ fn raw_after_carries_one_real_prefix_and_preserves_raw_metric_profiles() {
                 .layout(
                     source.clone(),
                     style,
-                    crate::Options {
+                    crate::options::Options {
                         width: Some(40.0),
                         quantize,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();

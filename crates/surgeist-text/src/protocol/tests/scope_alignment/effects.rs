@@ -1,6 +1,34 @@
 //! New-API effects qualification from real capture, pinned Ahem data and the
 //! mathematical H/CW/CCW frames. No historical preimplementation RED is claimed.
-use crate::*;
+#[cfg(feature = "text-accessibility")]
+use crate::accessibility::Accessibility;
+use crate::{
+    System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    font::FontBaselineScript,
+    geometry::{Point, Rect, Size},
+    id::Id,
+    layout::{Affinity, Cursor, Hit, Layout, Selection},
+    processing::{
+        CapturedScope, ProcessedSource, ScopeAlignmentBoundary, SourceProcessingConnection,
+        SourceProcessingScope, SourceProcessingScopeBoundaries, process_contextual_source,
+    },
+    protocol::{
+        AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+        AtomicPlacement, ControlAllocation, ControlStrut, FinalizedLine, InlineBoundaryAllocation,
+        InlineBoundaryContextAllocation, LineAllocations, LineAnchor, LineBoxAlignment,
+        LineOrientation, LinePlacement, LineSelectionRequest, LineStrut, PlacementCoverage,
+        PlacementEntry, PlacementRequest, PreparationOptions, PreparedText, ScopeAllocation,
+        ScopeAllocations, SelectedLine, SpacingAllocations, SpacingPolicy,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+        },
+    },
+    range::Range,
+    source::{BaselineShift, InlineBox, InlineBoxKind, Source},
+    style::{Brush, Decoration, DecorationOffset, DecorationThickness, Style, Wrap},
+};
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
 use std::sync::Arc;
 
@@ -19,7 +47,7 @@ fn decorated() -> Style {
 }
 
 fn capture() -> Arc<ProcessedSource> {
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     let mut source = Source::identified("A\u{3a7}\u{3a7}B", Id::from_u64(1_578_701), 29);
     source.span(
         Range::new(0, 1),
@@ -289,7 +317,9 @@ fn nested_real_scopes_move_paint_source_carets_selection_and_decoration_once_in_
                 .handle();
             let query = layout.source_range_fragments(&origin, range).unwrap();
             let unit = query.units().next().unwrap();
-            let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+            let crate::range_fragments::SourceRangeGeometry::Line(piece) =
+                unit.pieces().next().unwrap()
+            else {
                 panic!("ordinary Range fixture must retain Line geometry");
             };
             assert_eq!(piece.rect(), cell(orientation, i, shift));
@@ -469,7 +499,7 @@ const EDGE_ATOMICS: [Id; 5] = [
 ];
 
 fn edge_leaves(orientation: LineOrientation) -> (PreparedText, CapturedScope) {
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     let mut source = Source::identified("AB", Id::from_u64(1_578_720), 37);
     source.span(
         Range::new(0, 1),
@@ -680,7 +710,7 @@ fn edge_request(prepared: &PreparedText) -> LineSelectionRequest {
                 AtomicLineAllocation::OutOfFlow
             } else {
                 AtomicLineAllocation::InFlow {
-                    fit: crate::AtomicFitAllocation::NativeOccupied,
+                    fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 4.0,
                         normal_border_inline_size: 4.0,

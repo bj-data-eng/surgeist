@@ -6,7 +6,7 @@ use crate::engine::{
     bidi::{self, LineReset},
 };
 use crate::protocol::inline_box::incidence::{SourceIncidence, visit_bidi_owner};
-use crate::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
+use crate::supplied_line::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 use icu_properties::{
     CodePointSetData,
     props::{BidiClass, BidiControl},
@@ -460,8 +460,8 @@ fn body(
     // then scans and reverses per level. Admit its full bound before entry;
     // discovering our bound above shares the already-required slot visit.
     let work = slots.len().checked_mul(3 + 4 * passes).ok_or_else(|| {
-        crate::engine::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-            kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+        crate::engine::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
+            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
         })
     })?;
     account::work(ledger, work)?;

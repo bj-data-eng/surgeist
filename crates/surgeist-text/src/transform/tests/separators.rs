@@ -1,6 +1,9 @@
 use crate::{
-    AnalyzedSource, Range, Source, Style, Text, TextTransform, TextTransformSet, WhiteSpace,
-    WordSpaceTransform,
+    analyzed::AnalyzedSource,
+    range::Range,
+    source::Source,
+    style::{Style, TextTransform, TextTransformSet, WhiteSpace, WordSpaceTransform},
+    text::Text,
 };
 
 fn style(operation: WordSpaceTransform) -> Style {
@@ -10,22 +13,22 @@ fn style(operation: WordSpaceTransform) -> Style {
     }
 }
 
-fn input(source: Source, style: Style) -> crate::ParagraphInput {
+fn input(source: Source, style: Style) -> crate::protocol::ParagraphInput {
     let len = source.text().len();
-    crate::ParagraphInput {
+    crate::protocol::ParagraphInput {
         source: source.clone(),
         base_style: style,
-        paragraph_strut: crate::ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: crate::ParagraphBaseDirection::LeftToRight,
-        origins: vec![crate::ParagraphOrigin {
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -46,7 +49,7 @@ fn explicit_rows_replace_before_casing_without_changing_original_phase_i_or_plai
         let a = AnalyzedSource::new(
             source.clone(),
             style(operation),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(a.source(), &source);
@@ -72,10 +75,10 @@ fn explicit_rows_replace_before_casing_without_changing_original_phase_i_or_plai
         );
         let plaintext: Vec<_> = a
             .processed_source()
-            .plaintext_items(crate::Affinity::After)
+            .plaintext_items(crate::layout::Affinity::After)
             .flat_map(|item| match item {
-                crate::PlaintextItem::Text(t) => t.code_units().to_vec(),
-                crate::PlaintextItem::InlineBox(_) => vec![],
+                crate::processing::PlaintextItem::Text(t) => t.code_units().to_vec(),
+                crate::processing::PlaintextItem::InlineBox(_) => vec![],
             })
             .collect();
         assert_eq!(plaintext, source.text().code_units());
@@ -89,11 +92,11 @@ fn explicit_rows_replace_before_casing_without_changing_original_phase_i_or_plai
             Source::new("ΟΣ\u{200b}Α"),
             Style {
                 text_transform: TextTransform::Set(
-                    TextTransformSet::none().with_case(crate::CaseTransform::Lowercase),
+                    TextTransformSet::none().with_case(crate::style::CaseTransform::Lowercase),
                 ),
                 ..style(operation)
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(a.inner.projection.text, expected);
@@ -124,7 +127,7 @@ fn generated_space_is_width_eligible_in_every_mode_without_replaying_phase_i() {
                         ..style(WordSpaceTransform::Space)
                     },
                 ),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(a.inner.projection.text, expected, "{mode:?}");
@@ -141,7 +144,7 @@ fn generated_space_is_width_eligible_in_every_mode_without_replaying_phase_i() {
                     ..style(WordSpaceTransform::Space)
                 },
             ),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -170,7 +173,7 @@ fn actual_winning_component_style_is_the_only_separator_authority() {
     let a = AnalyzedSource::new(
         source,
         style(WordSpaceTransform::Space),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(a.inner.projection.text, "A\u{200b}A\u{3000}A");
@@ -178,21 +181,22 @@ fn actual_winning_component_style_is_the_only_separator_authority() {
     let a = AnalyzedSource::new(
         Source::new(" \u{a0}\u{3000}\u{200b}"),
         style(WordSpaceTransform::Space),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(a.inner.projection.text, " \u{a0}\u{3000} ");
     for phase in [
-        crate::TextStylePhase::Standalone,
-        crate::TextStylePhase::ProcessedParagraph,
+        crate::style_support::TextStylePhase::Standalone,
+        crate::style_support::TextStylePhase::ProcessedParagraph,
     ] {
         assert_eq!(
-            crate::TextStyleFeature::ExplicitWordSeparators.support(phase),
-            crate::TextStyleSupport::Supported
+            crate::style_support::TextStyleFeature::ExplicitWordSeparators.support(phase),
+            crate::style_support::TextStyleSupport::Supported
         );
     }
     assert!(
-        crate::TextStyleFeature::ALL.contains(&crate::TextStyleFeature::ExplicitWordSeparators)
+        crate::style_support::TextStyleFeature::ALL
+            .contains(&crate::style_support::TextStyleFeature::ExplicitWordSeparators)
     );
     assert_eq!(
         Style::default().word_space_transform,
@@ -232,7 +236,7 @@ fn forced_character_adjacency_uses_the_executed_phase_i_value() {
                     ..style(WordSpaceTransform::Space)
                 },
             ),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -246,7 +250,7 @@ fn forced_character_adjacency_uses_the_executed_phase_i_value() {
 
 #[test]
 fn controls_and_atomic_occurrences_determine_mixed_adjacency() {
-    use crate::{
+    use crate::protocol::paragraph::{
         ParagraphAnchor, ParagraphAnchorItem as Item, ParagraphControl,
         ParagraphControlKind as Kind,
     };
@@ -264,7 +268,7 @@ fn controls_and_atomic_occurrences_determine_mixed_adjacency() {
             vec![
                 Kind::ForcedBreak,
                 Kind::OptionalBreak {
-                    wrap: crate::Wrap::Word,
+                    wrap: crate::style::Wrap::Word,
                 },
             ],
             "A A",
@@ -272,7 +276,7 @@ fn controls_and_atomic_occurrences_determine_mixed_adjacency() {
         (
             vec![
                 Kind::OptionalBreak {
-                    wrap: crate::Wrap::Word,
+                    wrap: crate::style::Wrap::Word,
                 },
                 Kind::ForcedBreak,
             ],
@@ -287,23 +291,26 @@ fn controls_and_atomic_occurrences_determine_mixed_adjacency() {
         i.anchor_order = (0..i.controls.len())
             .map(|n| ParagraphAnchor {
                 item: Item::Control(n),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             })
             .collect();
-        let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+        let a = AnalyzedSource::from_paragraph(
+            i,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(a.inner.projection.text, expected);
     }
     for (kind, expected) in [
-        (crate::InlineBoxKind::OutOfFlow, "A\u{200b}A"),
-        (crate::InlineBoxKind::InFlow, "A A"),
+        (crate::source::InlineBoxKind::OutOfFlow, "A\u{200b}A"),
+        (crate::source::InlineBoxKind::InFlow, "A A"),
     ] {
         let mut source = Source::new("A\u{200b}A");
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(6301),
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(6301),
             kind,
             1,
-            crate::Size::new(0.0, 0.0),
+            crate::geometry::Size::new(0.0, 0.0),
         ));
         let mut i = input(source, style(WordSpaceTransform::Space));
         i.controls = vec![ParagraphControl {
@@ -313,44 +320,49 @@ fn controls_and_atomic_occurrences_determine_mixed_adjacency() {
         i.anchor_order = vec![
             ParagraphAnchor {
                 item: Item::Control(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             },
             ParagraphAnchor {
                 item: Item::Atomic(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             },
         ];
         i.boundary_policies = vec![
-            crate::ParagraphBoundaryPolicy {
-                definition: crate::ParagraphBoundaryDefinition::AtomicBefore(0),
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
+            crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicBefore(
+                    0,
+                ),
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
             },
-            crate::ParagraphBoundaryPolicy {
-                definition: crate::ParagraphBoundaryDefinition::AtomicAfter(0),
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
+            crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
             },
         ];
-        let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+        let a = AnalyzedSource::from_paragraph(
+            i,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(a.inner.projection.text, expected);
     }
 }
 
 #[test]
 fn deleted_rows_empty_origins_and_oof_remain_transparent_to_the_actual_forced_neighbor() {
-    use crate::{
+    use crate::protocol::paragraph::{
         ParagraphAnchor, ParagraphAnchorItem as Item, ParagraphControl, ParagraphControlKind,
     };
     let mut source = Source::new("A \u{200b}A");
-    source.inline_box(crate::InlineBox::new(
-        crate::Id::from_u64(6302),
-        crate::InlineBoxKind::OutOfFlow,
+    source.inline_box(crate::source::InlineBox::new(
+        crate::id::Id::from_u64(6302),
+        crate::source::InlineBoxKind::OutOfFlow,
         1,
-        crate::Size::new(0.0, 0.0),
+        crate::geometry::Size::new(0.0, 0.0),
     ));
     let mut i = input(
         source.clone(),
@@ -361,27 +373,31 @@ fn deleted_rows_empty_origins_and_oof_remain_transparent_to_the_actual_forced_ne
     );
     i.origins = [(0, 1), (1, 1), (1, 4)]
         .into_iter()
-        .map(|(start, end)| crate::ParagraphOrigin {
+        .map(|(start, end)| crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: Range::new(start, end),
             aggregate: Range::new(start, end),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         })
         .collect();
     i.connections = (0..2)
-        .map(|_| crate::ParagraphConnection {
+        .map(|_| crate::protocol::paragraph::ParagraphConnection {
             at: 1,
-            kind: crate::ParagraphConnectionKind::Continuous,
+            kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
         })
         .collect();
     i.boundary_policies = (0..2)
-        .map(|index| crate::ParagraphBoundaryPolicy {
-            definition: crate::ParagraphBoundaryDefinition::Connection(index),
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
-        })
+        .map(
+            |index| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                    index,
+                ),
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
+            },
+        )
         .collect();
     i.controls = vec![ParagraphControl {
         at: 1,
@@ -390,19 +406,22 @@ fn deleted_rows_empty_origins_and_oof_remain_transparent_to_the_actual_forced_ne
     i.anchor_order = vec![
         ParagraphAnchor {
             item: Item::Control(0),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         },
         ParagraphAnchor {
             item: Item::EmptyOrigin(1),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         },
         ParagraphAnchor {
             item: Item::Atomic(0),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         },
     ];
-    let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-        .unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        i,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.source(), &source);
     assert_eq!(
         a.processed_source().processed_text(),
@@ -433,21 +452,21 @@ fn source_local_phase_i_receipts_allow_generated_width_in_all_modes() {
         WhiteSpace::PreserveSpaces,
     ] {
         let source = Source::new("A\u{200b}A");
-        let processed = crate::process_source_whitespace(
+        let processed = crate::processing::process_source_whitespace(
             source.clone(),
             Style {
                 white_space: mode,
                 text_transform: TextTransform::Set(TextTransformSet::none().with_full_width(true)),
                 ..style(WordSpaceTransform::Space)
             },
-            crate::DocumentSegmentBreaks::LineFeedDefault,
+            crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         )
         .unwrap();
         let paragraph = crate::protocol::paragraph::ParagraphData::standalone(&source);
         let projection =
             crate::projection::SourceProjection::from_processed(&processed, &paragraph).unwrap();
         let validated =
-            crate::ValidatedStyle::for_processed(processed.base_style().clone()).unwrap();
+            crate::style::ValidatedStyle::for_processed(processed.base_style().clone()).unwrap();
         let mut styles =
             crate::engine::resolve::analyze_styles(&source, &[], &validated, &paragraph);
         let super::super::CompletedTransform {
@@ -467,7 +486,25 @@ fn original_separator_at_disconnected_join(
     separator_before_join: bool,
     forced_on_same_side: bool,
 ) -> AnalyzedSource {
-    use crate::*;
+    use crate::{
+        analyzed::AnalyzedSource,
+        layout::Affinity,
+        processing::{
+            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
+            SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+            process_contextual_source,
+        },
+        protocol::{
+            ParagraphBaseDirection,
+            paragraph::{
+                ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+                ParagraphOriginKind, ParagraphStrut,
+            },
+        },
+        range::Range,
+        source::Source,
+    };
     let source = Source::new("A\u{200b}B");
     let at = if separator_before_join { 2 } else { 1 };
     let control = SourceProcessingEvent::Control {
@@ -543,7 +580,7 @@ fn original_separator_at_disconnected_join(
     let processed = std::sync::Arc::new(process_contextual_source(input).unwrap());
     let analyzed = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.source(), &source);
@@ -598,8 +635,16 @@ fn original_separator_flat_disconnected(
     text: &str,
     at: usize,
     operation: WordSpaceTransform,
-) -> crate::ParagraphInput {
-    use crate::*;
+) -> crate::protocol::ParagraphInput {
+    use crate::{
+        layout::Affinity,
+        protocol::paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphConnection, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+        },
+        range::Range,
+        source::Source,
+    };
     let source = Source::new(text);
     let mut captured = input(source.clone(), style(operation));
     captured.origins = [Range::new(0, at), Range::new(at, source.text().len())]
@@ -630,7 +675,7 @@ fn original_separator_flat_disconnected(
 fn assert_original_separator_flat_side_missing(at: usize, operation: WordSpaceTransform) {
     let error = AnalyzedSource::from_paragraph(
         original_separator_flat_disconnected("A\u{200b}B", at, operation),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap_err();
     assert_eq!(error.code, crate::ErrorCode::UnsupportedFeature);
@@ -665,7 +710,7 @@ fn original_separator_disconnected_flat_none_does_not_demand_control_side() {
     for at in [1, 2] {
         let analyzed = AnalyzedSource::from_paragraph(
             original_separator_flat_disconnected("A\u{200b}B", at, WordSpaceTransform::None),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, "A\u{200b}B");
@@ -683,7 +728,7 @@ fn original_separator_disconnected_flat_known_source_hard_break_suppression_need
         for (text, at) in [("A\u{200b}\nB", 3), ("A\n\u{200b}B", 1)] {
             let analyzed = AnalyzedSource::from_paragraph(
                 original_separator_flat_disconnected(text, at, operation),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(analyzed.inner.projection.text, text);
@@ -705,7 +750,7 @@ fn original_separator_disconnected_flat_intervening_original_blocks_unknown_forc
         for (text, at, expected) in [("A\u{200b}XB", 3, before), ("AX\u{200b}B", 1, after)] {
             let analyzed = AnalyzedSource::from_paragraph(
                 original_separator_flat_disconnected(text, at, operation),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(analyzed.inner.projection.text, expected);
@@ -723,17 +768,18 @@ fn original_separator_disconnected_flat_refusal_identifies_original_range_and_co
         for at in [1, 2] {
             let error = AnalyzedSource::from_paragraph(
                 original_separator_flat_disconnected("A\u{200b}B", at, operation),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap_err();
             assert_eq!(
                 error.detail(),
                 Some(&crate::ErrorDetail::TextTransform {
-                    reason: crate::TextTransformError::MissingOriginalSeparatorBoundaryContext {
-                        source: Range::new(1, 2),
-                        at,
-                        connection: 0,
-                    },
+                    reason:
+                        crate::error::TextTransformError::MissingOriginalSeparatorBoundaryContext {
+                            source: Range::new(1, 2),
+                            at,
+                            connection: 0,
+                        },
                 })
             );
         }
@@ -751,7 +797,7 @@ fn original_separator_disconnected_flat_split_surrogate_barrier_blocks_control_i
     ] {
         let analyzed = AnalyzedSource::from_paragraph(
             original_separator_flat_disconnected("😀\u{200b}B", 1, operation),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
@@ -762,7 +808,18 @@ fn original_separator_disconnected_flat_split_surrogate_barrier_blocks_control_i
 #[test]
 fn original_separator_disconnected_flat_uncertain_forcing_on_both_sides_is_not_proven_suppression()
 {
-    use crate::*;
+    use crate::{
+        ErrorCode, ErrorDetail,
+        analyzed::AnalyzedSource,
+        error::TextTransformError,
+        layout::Affinity,
+        protocol::paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphConnection, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+        },
+        range::Range,
+        style::WordSpaceTransform,
+    };
     let mut captured =
         original_separator_flat_disconnected("A\u{200b}B", 1, WordSpaceTransform::Space);
     captured.origins = [Range::new(0, 1), Range::new(1, 2), Range::new(2, 3)]
@@ -787,9 +844,11 @@ fn original_separator_disconnected_flat_uncertain_forcing_on_both_sides_is_not_p
         item: ParagraphAnchorItem::Control(1),
         affinity: Affinity::After,
     });
-    let error =
-        AnalyzedSource::from_paragraph(captured, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap_err();
+    let error = AnalyzedSource::from_paragraph(
+        captured,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
     assert_eq!(error.code, ErrorCode::UnsupportedFeature);
     assert!(matches!(error.detail(), Some(ErrorDetail::TextTransform {
         reason: TextTransformError::MissingOriginalSeparatorBoundaryContext { source, .. }
@@ -799,7 +858,20 @@ fn original_separator_disconnected_flat_uncertain_forcing_on_both_sides_is_not_p
 #[test]
 fn original_separator_disconnected_flat_reversed_empty_occurrences_refuse_contradictory_connection_order()
  {
-    use crate::*;
+    use crate::{
+        ErrorCode, ErrorDetail,
+        analyzed::AnalyzedSource,
+        layout::Affinity,
+        protocol::{
+            ProtocolError,
+            paragraph::{
+                ParagraphAnchor, ParagraphAnchorItem, ParagraphConnection, ParagraphConnectionKind,
+                ParagraphOrigin, ParagraphOriginKind,
+            },
+        },
+        range::Range,
+        style::WordSpaceTransform,
+    };
     let mut captured =
         original_separator_flat_disconnected("A\u{200b}B", 1, WordSpaceTransform::Space);
     captured.origins = [
@@ -834,9 +906,11 @@ fn original_separator_disconnected_flat_reversed_empty_occurrences_refuse_contra
         affinity: Affinity::After,
     })
     .collect();
-    let error =
-        AnalyzedSource::from_paragraph(captured, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap_err();
+    let error = AnalyzedSource::from_paragraph(
+        captured,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
     assert_eq!(
         error.detail(),
@@ -853,8 +927,11 @@ fn original_separator_disconnected_flat_reversed_empty_occurrences_refuse_contra
 fn original_separator_disconnected_flat_nearer_nonforced_control_blocks_uncertain_forced_influence()
 {
     use crate::{
-        Affinity, ParagraphAnchor, ParagraphAnchorItem, ParagraphControl,
-        ParagraphControlKind as Kind, Wrap,
+        layout::Affinity,
+        protocol::paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphControl, ParagraphControlKind as Kind,
+        },
+        style::Wrap,
     };
     for (operation, expected) in [
         (WordSpaceTransform::Space, "A B"),
@@ -879,7 +956,7 @@ fn original_separator_disconnected_flat_nearer_nonforced_control_blocks_uncertai
                 .collect();
             let analyzed = AnalyzedSource::from_paragraph(
                 captured,
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(analyzed.inner.projection.text, expected);

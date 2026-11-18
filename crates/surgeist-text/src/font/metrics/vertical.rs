@@ -8,13 +8,14 @@ use super::{
     fallback_ad, finite, numeric, table, table_error,
 };
 use crate::{
-    CataloguePublication, Error, ErrorCode, ErrorDetail, FontOutlineCapability, FontOutlineError,
-    Result,
+    Error, ErrorCode, ErrorDetail, Result,
+    font::{FontOutlineCapability, FontOutlineError},
 };
 use skrifa::{
     FontRef, Tag,
     raw::{FontData, TableProvider},
 };
+use surgeist_font::CataloguePublication;
 
 /// Independent source of a nominal vertical metric component.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

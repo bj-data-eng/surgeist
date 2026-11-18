@@ -1,6 +1,11 @@
 //! Actual control-owned separators: literal metrics, membership and extraction.
 use super::*;
-use crate::{FinalizedFragmentOwner, Id, LineHeight, Range, WordSpaceTransform};
+use crate::{
+    id::Id,
+    protocol::readback::FinalizedFragmentOwner,
+    range::Range,
+    style::{LineHeight, WordSpaceTransform},
+};
 
 fn style(operation: WordSpaceTransform, mode: WhiteSpace) -> Style {
     Style {
@@ -29,7 +34,7 @@ fn input(
     let mut anchor_order: Vec<_> = (0..controls.len())
         .map(|i| paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Control(i),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         })
         .collect();
     if len == 0 {
@@ -37,7 +42,7 @@ fn input(
             0,
             paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             },
         );
     }
@@ -45,9 +50,9 @@ fn input(
         source: source.clone(),
         base_style: style(WordSpaceTransform::None, mode),
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
@@ -73,11 +78,14 @@ fn catalogue() -> System {
     s
 }
 fn prepare(value: ParagraphInput) -> PreparedText {
-    let a = AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-        .unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        value,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     catalogue()
         .prepare(
-            &crate::test_wrapping::bind_missing(&a, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(&a, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -93,10 +101,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -106,9 +114,9 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         .collect();
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -123,7 +131,7 @@ fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32)> {
         })
         .collect()
 }
-fn full_selection(layout: &crate::Layout) -> crate::PlacedSelection {
+fn full_selection(layout: &crate::layout::Layout) -> crate::layout::PlacedSelection {
     let positions: Vec<_> = layout.positions().collect();
     layout
         .position_selection(positions.first().unwrap(), positions.last().unwrap())
@@ -145,8 +153,8 @@ fn control_participant_keeps_the_ordinary_control_occurrence() {
     let line = whole(&p);
     let participant = control.view().participant().unwrap();
     for seam in [
-        crate::TextSeam::BeforeParticipant(participant.clone()),
-        crate::TextSeam::AfterParticipant(participant),
+        crate::protocol::prefix::TextSeam::BeforeParticipant(participant.clone()),
+        crate::protocol::prefix::TextSeam::AfterParticipant(participant),
     ] {
         let prefix = line.prefix_at(&seam).unwrap();
         assert_eq!(prefix.advance(), 10.0);
@@ -179,7 +187,9 @@ fn control_participant_keeps_distinct_generated_text_at_equal_anchors() {
         assert!(unit.view().origins().next().is_none());
         assert_eq!(unit.prepared_text(), p);
         let prefix = line
-            .prefix_at(&crate::TextSeam::AfterParticipant(participant.clone()))
+            .prefix_at(&crate::protocol::prefix::TextSeam::AfterParticipant(
+                participant.clone(),
+            ))
             .unwrap();
         // Actual width-Ahem A10, SPACE5, ideographic SPACE20 and mark0.
         assert_eq!(prefix.advance(), expected);
@@ -206,7 +216,9 @@ fn control_participant_retains_its_preparation_after_the_view_drops() {
         (participant, whole(&p))
     };
     let prefix = line
-        .prefix_at(&crate::TextSeam::AfterParticipant(participant.clone()))
+        .prefix_at(&crate::protocol::prefix::TextSeam::AfterParticipant(
+            participant.clone(),
+        ))
         .unwrap();
     assert_eq!(prefix.advance(), 5.0);
     assert!(prefix.has_in_flow_content());
@@ -220,7 +232,9 @@ fn control_participant_retains_its_preparation_after_the_view_drops() {
         .unwrap();
     assert_ne!(participant, foreign_participant);
     let error = line
-        .prefix_at(&crate::TextSeam::AfterParticipant(foreign_participant))
+        .prefix_at(&crate::protocol::prefix::TextSeam::AfterParticipant(
+            foreign_participant,
+        ))
         .unwrap_err();
     assert!(matches!(
         error.detail(),
@@ -261,7 +275,9 @@ fn control_participant_discarded_wbr_does_not_acquire_following_mark_content() {
     assert_ne!(generated, mark);
     let line = whole(&p);
     let prefix = line
-        .prefix_at(&crate::TextSeam::AfterParticipant(generated.clone()))
+        .prefix_at(&crate::protocol::prefix::TextSeam::AfterParticipant(
+            generated.clone(),
+        ))
         .unwrap();
     // Width-Ahem's SPACE5/mark0 provider group is shared across two semantic
     // inputs before Phase-II discard: SPACE2.5 is discarded, mark2.5 remains.
@@ -280,7 +296,7 @@ fn control_participant_discarded_wbr_does_not_acquire_following_mark_content() {
     );
     assert_eq!(generated_slot.advance, 0.0);
     let after_mark = line
-        .prefix_at(&crate::TextSeam::AfterParticipant(mark))
+        .prefix_at(&crate::protocol::prefix::TextSeam::AfterParticipant(mark))
         .unwrap();
     assert!(after_mark.has_in_flow_content());
     assert_eq!(prefix.advance(), 2.5);
@@ -515,10 +531,15 @@ fn separator_only_placement_has_five_pixel_geometry_and_empty_original_copy() {
     assert_eq!(layout.source(), &source);
     #[cfg(feature = "text-accessibility")]
     {
-        let mut state = crate::Accessibility::new(6311);
+        let mut state = crate::accessibility::Accessibility::new(6311);
         let parent = 1001_u64.into();
         let update = layout
-            .accessibility_update(&mut state, parent, parent, crate::Point::new(0.0, 0.0))
+            .accessibility_update(
+                &mut state,
+                parent,
+                parent,
+                crate::geometry::Point::new(0.0, 0.0),
+            )
             .unwrap();
         assert!(
             update
@@ -582,8 +603,9 @@ fn generated_wbr_space_is_full_width_eligible_in_all_actual_whitespace_modes() {
         );
         if let paragraph::ParagraphControlKind::Wbr { style } = &mut value.controls[0].kind {
             style.white_space = mode;
-            style.text_transform =
-                crate::TextTransform::Set(crate::TextTransformSet::none().with_full_width(true));
+            style.text_transform = crate::style::TextTransform::Set(
+                crate::style::TextTransformSet::none().with_full_width(true),
+            );
         }
         let p = prepare(value);
         let line = whole(&p);
@@ -598,16 +620,16 @@ fn generated_wbr_space_is_full_width_eligible_in_all_actual_whitespace_modes() {
 
 #[test]
 fn unexpanded_wbr_keeps_its_own_wrap_and_is_not_an_optional_break_conversion() {
-    for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+    for wrap in [crate::style::Wrap::Word, crate::style::Wrap::None] {
         let mut value = input(
             Source::new("AA"),
             WhiteSpace::Preserve,
             vec![wbr(1, WordSpaceTransform::None)],
         );
-        value.base_style.wrap = if wrap == crate::Wrap::Word {
-            crate::Wrap::None
+        value.base_style.wrap = if wrap == crate::style::Wrap::Word {
+            crate::style::Wrap::None
         } else {
-            crate::Wrap::Word
+            crate::style::Wrap::Word
         };
         if let paragraph::ParagraphControlKind::Wbr { style } = &mut value.controls[0].kind {
             style.wrap = wrap;
@@ -627,7 +649,7 @@ fn unexpanded_wbr_keeps_its_own_wrap_and_is_not_an_optional_break_conversion() {
             p.opportunity_views()
                 .filter(|o| o.kind() == PreparedBreakKind::Allowed)
                 .count(),
-            usize::from(wrap == crate::Wrap::Word)
+            usize::from(wrap == crate::style::Wrap::Word)
         );
         let line = whole(&p);
         assert_eq!(glyphs(&line), [(35, 10.0), (35, 10.0)]);
@@ -643,7 +665,7 @@ fn unexpanded_wbr_keeps_its_own_wrap_and_is_not_an_optional_break_conversion() {
         vec![paragraph::ParagraphControl {
             at: 1,
             kind: paragraph::ParagraphControlKind::OptionalBreak {
-                wrap: crate::Wrap::Word,
+                wrap: crate::style::Wrap::Word,
             },
         }],
     );
@@ -671,10 +693,15 @@ fn wbr_accessibility_keeps_authored_values_and_real_source_glyph_positions() {
             }
         );
         let layout = place(p, line, 0.0, 8.0).unwrap();
-        let mut state = crate::Accessibility::new(6309);
+        let mut state = crate::accessibility::Accessibility::new(6309);
         let parent = 1001_u64.into();
         let update = layout
-            .accessibility_update(&mut state, parent, parent, crate::Point::new(0.0, 0.0))
+            .accessibility_update(
+                &mut state,
+                parent,
+                parent,
+                crate::geometry::Point::new(0.0, 0.0),
+            )
             .unwrap();
         let values: Vec<_> = update.nodes.iter().filter_map(|(_, n)| n.value()).collect();
         assert_eq!(values.concat(), "AA");

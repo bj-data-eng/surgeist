@@ -74,7 +74,7 @@ fn analyze(p: ContextualSourceInput) -> AnalyzedSource {
     let owner = Arc::new(process_contextual_source(p).unwrap());
     AnalyzedSource::from_processed_paragraph(
         owner.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap()
 }
@@ -114,10 +114,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -140,10 +140,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
-            alignment_insets: crate::LineAlignmentInsets::ZERO,
-            formatted_line: crate::FormattedLineContext::default(),
+            alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+            formatted_line: crate::protocol::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::LeftToRight,
-            line_box_direction: crate::LineBoxDirection::LeftToRight,
+            line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
             orientation: LineOrientation::Horizontal,
             start: LineStart::Paragraph,
             end: LineEnd::Paragraph,
@@ -155,9 +155,9 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         },
     })
     .unwrap()
-    .finalize(crate::LineAllocations {
+    .finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
     .unwrap()
 }
@@ -536,8 +536,11 @@ fn direct_paragraph_and_scalar_span_admission_use_only_wbr_decode_cuts() {
         p.origins = vec![origin(&p.source, Range::new(0, 4))];
         p.connections.clear();
         p.boundary_policies.clear();
-        let a = AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+        let a = AnalyzedSource::from_paragraph(
+            p,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let expected: &[u16] = if wbr {
             &[0xd840, 0xdc00, 0x20, 0x6f22]
         } else {
@@ -563,9 +566,11 @@ fn direct_paragraph_and_scalar_span_admission_use_only_wbr_decode_cuts() {
     unsplit.origins = vec![origin(&unsplit.source, Range::new(0, 2))];
     unsplit.connections.clear();
     unsplit.boundary_policies.clear();
-    let a =
-        AnalyzedSource::from_paragraph(unsplit, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        unsplit,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(
         a.inner
             .host_projection
@@ -587,9 +592,11 @@ fn direct_paragraph_and_scalar_span_admission_use_only_wbr_decode_cuts() {
     }
     let without_wbr = direct(p.clone());
     add_wbr(&mut p, WordSpaceTransform::None);
-    let a =
-        AnalyzedSource::from_paragraph(direct(p), crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        direct(p),
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(
         a.inner
             .host_projection
@@ -602,7 +609,7 @@ fn direct_paragraph_and_scalar_span_admission_use_only_wbr_decode_cuts() {
     assert_eq!(prepare_ahem(&a).unit_views().count(), 2);
     let error = AnalyzedSource::from_paragraph(
         without_wbr,
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap_err();
     assert_eq!(
@@ -702,7 +709,7 @@ fn an_empty_out_of_flow_child_wbr_cannot_split_parent_phase_one_decoding() {
         let paragraphs: Vec<_> = processed.paragraphs().collect();
         let parent = AnalyzedSource::from_processed_paragraph(
             paragraphs[0].clone(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(

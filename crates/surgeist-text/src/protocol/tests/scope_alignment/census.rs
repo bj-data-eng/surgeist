@@ -1,6 +1,28 @@
 //! Allocation identity, related-result coexistence and bounded census scratch.
 //! New API functional qualification; no allocator capacity is an oracle.
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::{Point, Rect},
+    layout::Layout,
+    options::Alignment,
+    processing::{
+        CapturedScope, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
+        SourceProcessingScope, process_contextual_source,
+    },
+    protocol::{
+        FinalizedLine, LineAllocations, LineAnchor, LineOrientation, LinePlacement,
+        PlacementCoverage, PlacementEntry, PlacementRequest, PreparationOptions, PreparedText,
+        ScopeAlignmentAllowance, ScopeAlignmentCensus, ScopeAlignmentCensusFailure,
+        ScopeAlignmentCensusInput, ScopeAlignmentProduct, ScopeAlignmentProducts,
+        ScopeAlignmentRetention, ScopeAllocation, ScopeAllocations, SelectedLine,
+        SpacingAllocations, SpacingPolicy, readback::FinalizedFragmentOwner,
+        scope_alignment_census,
+    },
+    range::Range,
+    source::BaselineShift,
+    style::{WhiteSpace, Wrap},
+};
 use std::sync::Arc;
 
 const AHEM: &[u8] = include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf");

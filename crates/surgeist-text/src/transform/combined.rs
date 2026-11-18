@@ -3,7 +3,11 @@
 pub(super) mod selection;
 mod used;
 use super::{context, execute::Canonical, relation::OriginalPiece};
-use crate::{Range, Result, TextCombineUpright, WhiteSpace};
+use crate::{
+    Result,
+    range::Range,
+    style::{TextCombineUpright, WhiteSpace},
+};
 use std::{ops::Range as IndexRange, sync::Arc};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -41,7 +45,7 @@ pub(crate) struct FixedGroup {
     pub(crate) scope: usize,
     pub(crate) parent: Option<usize>,
     pub(crate) mode: TextCombineUpright,
-    pub(crate) inner_direction: crate::ParagraphBaseDirection,
+    pub(crate) inner_direction: crate::protocol::ParagraphBaseDirection,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct UsedPayload {

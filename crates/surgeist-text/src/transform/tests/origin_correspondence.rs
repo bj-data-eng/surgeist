@@ -4,7 +4,30 @@
 
 use crate::protocol::paragraph::{FlowOriginKey, OriginSource};
 use crate::transform::relation::RelationEvent;
-use crate::*;
+use crate::{
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::Size,
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, SourceProcessingConnection,
+        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+        SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge,
+        paragraph::{
+            CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
+            ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+            ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{CaseTransform, Style, TextTransform, TextTransformSet, WhiteSpace, Wrap},
+    text::Text,
+};
 use std::sync::Arc;
 
 fn style(transform: TextTransform) -> Style {

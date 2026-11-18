@@ -1,7 +1,7 @@
 //! Cell-inner font geometry and immutable unit identity.
 use super::*;
 use crate::engine::layout::data::FinalizedRunFrame;
-use crate::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
+use crate::range_fragments::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
 
 fn actual_inner_clusters(layout: &Layout) -> [usize; 2] {
     // Independent finalized producer incidence, read BEFORE any Range result.

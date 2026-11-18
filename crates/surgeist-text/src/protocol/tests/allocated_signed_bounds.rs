@@ -1,8 +1,12 @@
 //! Old allocated API characterization: absence is not a zero parent strut.
 use super::*;
 use crate::{
-    Affinity, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation, Id, InlineBox,
-    InlineBoxKind, LineBoxAlignment, Point, Range, Rect, Size,
+    geometry::{Point, Rect, Size},
+    id::Id,
+    layout::Affinity,
+    protocol::{AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation, LineBoxAlignment},
+    range::Range,
+    source::{InlineBox, InlineBoxKind},
 };
 
 #[test]
@@ -22,51 +26,53 @@ fn actual_fontless_signed_atomic_keeps_ten_unit_occupied_extent_without_a_parent
                 ..Style::default()
             },
             paragraph_strut: ParagraphStrut::AllocatedContributions,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
-            origins: vec![crate::ParagraphOrigin {
+            origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: Range::new(0, 0),
                 aggregate: Range::new(0, 0),
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
             replacements: vec![],
             anchor_order: vec![
-                crate::ParagraphAnchor {
-                    item: crate::ParagraphAnchorItem::EmptyOrigin(0),
+                crate::protocol::paragraph::ParagraphAnchor {
+                    item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
                     affinity: Affinity::Before,
                 },
-                crate::ParagraphAnchor {
-                    item: crate::ParagraphAnchorItem::Atomic(0),
+                crate::protocol::paragraph::ParagraphAnchor {
+                    item: crate::protocol::paragraph::ParagraphAnchorItem::Atomic(0),
                     affinity: Affinity::After,
                 },
             ],
             boundary_policies: [
-                crate::ParagraphBoundaryDefinition::AtomicBefore(0),
-                crate::ParagraphBoundaryDefinition::AtomicAfter(0),
+                crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+                crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
             ]
             .into_iter()
-            .map(|definition| crate::ParagraphBoundaryPolicy {
-                definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
-            })
+            .map(
+                |definition| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                    definition,
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
+                },
+            )
             .collect(),
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = System::default();
     assert_eq!(system.registered_font_faces().count(), 0);
     let p = system
         .prepare(
-            &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap();
@@ -77,7 +83,7 @@ fn actual_fontless_signed_atomic_keeps_ten_unit_occupied_extent_without_a_parent
     r.atomics = vec![AtomicAllocation {
         occurrence: atomic.clone(),
         allocation: AtomicLineAllocation::InFlow {
-            fit: crate::AtomicFitAllocation::NativeOccupied,
+            fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
             flow: AtomicFlowAllocation {
                 advance: 6.0,
                 normal_border_inline_size: 6.0,
@@ -97,9 +103,9 @@ fn actual_fontless_signed_atomic_keeps_ten_unit_occupied_extent_without_a_parent
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // The actual box occupies [-20,-10] relative to its baseline: extent10,

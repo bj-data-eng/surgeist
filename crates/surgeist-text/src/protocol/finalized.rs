@@ -6,7 +6,10 @@ use super::{
     AtomicSlotFeedback, FinalizedLine, LineFeedback, PreparedParticipant, ProtocolError,
     SelectedLine, SpacingAllocations, SpacingSlot, protocol_error,
 };
-use crate::{Result, TextNumericError, TextNumericPhase};
+use crate::{
+    Result,
+    error::{TextNumericError, TextNumericPhase},
+};
 
 impl SelectedLine {
     /// Complete receipt-qualified candidates from this exact retained basis.
@@ -70,7 +73,7 @@ impl SelectedLine {
     pub fn finalize_with_scope_allowance(
         &self,
         allocations: super::LineAllocations,
-        allowance: crate::ScopeAlignmentAllowance,
+        allowance: crate::protocol::ScopeAlignmentAllowance,
     ) -> Result<FinalizedLine> {
         self.finalize_allocations(allocations, Some(allowance))
     }
@@ -78,7 +81,7 @@ impl SelectedLine {
     fn finalize_allocations(
         &self,
         allocations: super::LineAllocations,
-        allowance: Option<crate::ScopeAlignmentAllowance>,
+        allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
     ) -> Result<FinalizedLine> {
         let mut scopes = crate::engine::scope_alignment::allocation_frames(
             &self.inner,
@@ -188,7 +191,7 @@ impl FinalizedLine {
     pub fn with_spacing_with_scope_allowance(
         &self,
         allocations: SpacingAllocations,
-        allowance: crate::ScopeAlignmentAllowance,
+        allowance: crate::protocol::ScopeAlignmentAllowance,
     ) -> Result<FinalizedLine> {
         self.replace_spacing(allocations, Some(allowance))
     }
@@ -196,7 +199,7 @@ impl FinalizedLine {
     fn replace_spacing(
         &self,
         allocations: SpacingAllocations,
-        allowance: Option<crate::ScopeAlignmentAllowance>,
+        allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
     ) -> Result<FinalizedLine> {
         let mut scopes =
             crate::engine::scope_alignment::replay_frames(&self.inner, allowance, &allocations)?;

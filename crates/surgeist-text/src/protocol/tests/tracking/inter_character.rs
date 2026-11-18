@@ -1,7 +1,7 @@
 //! Functional native InterCharacter qualification over selected bases.
 use super::fixtures::{abc_premises, allocations, assert_cells, ligature_font, select_method};
 use super::*;
-use crate::{
+use crate::protocol::{
     SpacingBoundaryGeometry as BoundaryGeometry, SpacingSlotGeometry, SpacingSlotOwner,
     SpacingSlotTarget, SpacingStretchability,
 };
@@ -19,7 +19,12 @@ fn abc_raw() -> [RawGlyph; 3] {
     ]
 }
 
-fn endpoint(unit: &crate::SpacingUnit, prepared: &PreparedText, index: usize, tracking: f64) {
+fn endpoint(
+    unit: &crate::protocol::SpacingUnit,
+    prepared: &PreparedText,
+    index: usize,
+    tracking: f64,
+) {
     assert_eq!(unit.letter_spacing_before(), tracking);
     assert_eq!(unit.letter_spacing_after(), tracking);
     let pieces = unit.pieces().collect::<Vec<_>>();
@@ -117,9 +122,9 @@ fn inter_character_replaces_allocations_on_the_same_qualified_basis_and_shared_c
         boundary_custody(&selected, index, 4.0);
     }
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(raw(&natural, AHEM), abc_raw());
@@ -157,9 +162,9 @@ fn inter_character_replaces_allocations_on_the_same_qualified_basis_and_shared_c
         [(0.0, 0.0), (15.0, 0.0), (30.0, 0.0)]
     );
     let fresh = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: allocations(&selected, &[1.0, 1.0]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(raw(&replaced, AHEM), raw(&fresh, AHEM));
@@ -185,9 +190,9 @@ fn inter_character_complete_amounts_reject_foreign_missing_duplicate_and_invalid
     let prepared = prepare(AHEM, &source, own(4.0), &UNITS);
     let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(raw(&natural, AHEM), abc_raw());
@@ -233,16 +238,16 @@ fn inter_character_complete_amounts_reject_foreign_missing_duplicate_and_invalid
         &ProtocolError::ForeignSelectedLine
     );
     for (value, category) in [
-        (f64::NAN, crate::TextNumericError::NonFinite),
-        (f64::INFINITY, crate::TextNumericError::NonFinite),
-        (-1.0, crate::TextNumericError::OutOfRange),
+        (f64::NAN, crate::error::TextNumericError::NonFinite),
+        (f64::INFINITY, crate::error::TextNumericError::NonFinite),
+        (-1.0, crate::error::TextNumericError::OutOfRange),
     ] {
         let error = natural
             .with_spacing(allocations(&selected, &[value, 0.0]))
             .unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
         assert!(
-            matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric { phase: crate::TextNumericPhase::Finalization, category: actual, .. }) if *actual == category),
+            matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric { phase: crate::error::TextNumericPhase::Finalization, category: actual, .. }) if *actual == category),
             "{error:?}"
         );
     }
@@ -267,9 +272,9 @@ fn real_liga_and_clig_defaults_change_the_spacing_capable_natural_width_before_a
         let source = Source::identified("fiA", Id::from_u64(1566012), 1);
         let prepared = prepare(&bytes, &source, own(0.0), &UNITS);
         let ordinary = select_method(&prepared, SpacingPolicy::None)
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let ordinary_raw = [
@@ -280,9 +285,9 @@ fn real_liga_and_clig_defaults_change_the_spacing_capable_natural_width_before_a
         assert_eq!(ordinary.feedback().advance, 20.0);
         let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let unligated = [
@@ -335,9 +340,9 @@ fn authored_optional_ligature_keeps_the_internal_candidate_and_allows_only_real_
         boundary_custody(&selected, index, 0.0);
     }
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(raw(&natural, &bytes), expected_raw);
@@ -375,24 +380,24 @@ fn authored_optional_ligature_keeps_the_internal_candidate_and_allows_only_real_
     else {
         panic!("expected preserved-optional capability: {error:?}")
     };
-    assert_eq!(*stage, crate::SpacingStage::SelectedShaping);
+    assert_eq!(*stage, crate::error::SpacingStage::SelectedShaping);
     assert_eq!(
         *operation,
-        crate::SpacingOperation::InterCharacterAllocation
+        crate::error::SpacingOperation::InterCharacterAllocation
     );
     assert_eq!(
         *reason,
-        crate::SpacingFailureReason::PreservedOptionalLigature
+        crate::error::SpacingFailureReason::PreservedOptionalLigature
     );
     assert_eq!(
         pieces.as_ref(),
         [
-            crate::SpacingPiece::Source {
+            crate::error::SpacingPiece::Source {
                 origin: 0,
                 local: UNITS[0],
                 aggregate: UNITS[0]
             },
-            crate::SpacingPiece::Source {
+            crate::error::SpacingPiece::Source {
                 origin: 0,
                 local: UNITS[1],
                 aggregate: UNITS[1]
@@ -448,9 +453,9 @@ fn actual_rlig_protects_its_internal_pair_and_preserves_an_independent_outside_b
         boundary_custody(&selected, index, 0.0);
     }
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(raw(&natural, &bytes), expected_raw);

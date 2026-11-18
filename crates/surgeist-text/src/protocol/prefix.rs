@@ -5,7 +5,11 @@ use crate::processing::contextual::alignment::operations;
 use std::{ops::Range as Indices, sync::Arc};
 
 use crate::engine::layout::data::{OrdinalMap, ShapedData, ShapedItem, Whitespace};
-use crate::{ErrorDetail, Range, Result, SourcePosition, TextNumericError, TextNumericPhase};
+use crate::{
+    ErrorDetail, Result,
+    error::{TextNumericError, TextNumericPhase},
+    range::{Range, SourcePosition},
+};
 
 use super::prepared::PresentationUnitKind;
 use super::selection::SelectedData;

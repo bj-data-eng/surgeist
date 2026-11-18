@@ -1,14 +1,23 @@
 use std::{fmt, sync::Arc};
 
-use super::{
-    BaselineShift, Brush, CataloguePublication, Direction, Edit, FontData, Id, InlineBoxKind, Key,
-    LineOrientation, Options, Point, Range, Rect, Result, SelectionPaint, Size, Source, Style,
-    VerticalAlign,
-};
 use crate::engine::{
     PlacedLine, editing,
     layout::data::{FinalizedCell, FinalizedRun, FinalizedRunFrame, PlacedLayout, PreparedRun},
 };
+use crate::{
+    Result,
+    cache::Key,
+    edit::Edit,
+    font::FontData,
+    geometry::{Point, Rect, Size},
+    id::Id,
+    options::Options,
+    protocol::LineOrientation,
+    range::Range,
+    source::{BaselineShift, InlineBoxKind, Source, VerticalAlign},
+    style::{Brush, Direction, SelectionPaint, Style},
+};
+use surgeist_font::CataloguePublication;
 
 /// Immutable committed rows and their sole original-source preparation owner.
 #[derive(Clone)]
@@ -68,8 +77,8 @@ impl Layout {
 
     /// Retains the exact original analysis shared by this placement and its preparation.
     #[must_use]
-    pub fn analyzed_source(&self) -> crate::AnalyzedSource {
-        crate::AnalyzedSource::from_inner(Arc::clone(&self.inner.prepared.analyzed))
+    pub fn analyzed_source(&self) -> crate::analyzed::AnalyzedSource {
+        crate::analyzed::AnalyzedSource::from_inner(Arc::clone(&self.inner.prepared.analyzed))
     }
 
     pub(crate) fn default_style(&self) -> &Style {
@@ -328,12 +337,12 @@ impl Layout {
     fn admit_position(&self, position: &PlacedPosition) -> Result<usize> {
         if !Arc::ptr_eq(&self.inner, &position.placement) {
             return Err(crate::protocol::protocol_error(
-                crate::ProtocolError::ForeignPlacement,
+                crate::protocol::ProtocolError::ForeignPlacement,
             ));
         }
         if position.index >= self.inner.interaction.positions.len() {
             return Err(crate::protocol::protocol_error(
-                crate::ProtocolError::InvalidPlacedPosition {
+                crate::protocol::ProtocolError::InvalidPlacedPosition {
                     position: position.index,
                 },
             ));
@@ -501,9 +510,9 @@ pub(crate) fn run_glyph_frame(
     line: &PlacedLine,
     run: &FinalizedRun,
     shaped: &PreparedRun,
-) -> crate::GlyphFrame {
+) -> crate::geometry::GlyphFrame {
     match run.frame {
-        FinalizedRunFrame::Line => crate::GlyphFrame::line(
+        FinalizedRunFrame::Line => crate::geometry::GlyphFrame::line(
             line_point(line, Point::new(run.x, run.y)),
             line.orientation,
             shaped.glyph_basis,
@@ -522,12 +531,12 @@ pub(crate) fn cell_glyph_frame(
     line: &PlacedLine,
     cell: &FinalizedCell,
     local: Point,
-) -> crate::GlyphFrame {
+) -> crate::geometry::GlyphFrame {
     let frame = cell
         .frame
         .expect("a shaped cell has its executed inner frame");
     let square = cell_square_origin(line, cell);
-    crate::GlyphFrame::horizontal(
+    crate::geometry::GlyphFrame::horizontal(
         Point::new(
             square.x + frame.x_offset + frame.x_scale * local.x,
             square.y + frame.baseline + local.y,
@@ -600,7 +609,7 @@ pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
 /// treating an upright outline as a rotated line rectangle.
 pub(crate) fn glyph_origin(
     orientation: LineOrientation,
-    basis: crate::GlyphBasis,
+    basis: crate::geometry::GlyphBasis,
     physical_run_origin: Point,
     pen: f64,
     dx: f64,
@@ -608,36 +617,37 @@ pub(crate) fn glyph_origin(
 ) -> Point {
     let Point { x, y } = physical_run_origin;
     match (orientation, basis) {
-        (LineOrientation::Horizontal, crate::GlyphBasis::Unrotated) => {
+        (LineOrientation::Horizontal, crate::geometry::GlyphBasis::Unrotated) => {
             Point::new(x + pen + dx, y + dy)
         }
-        (LineOrientation::Horizontal, crate::GlyphBasis::Clockwise) => {
+        (LineOrientation::Horizontal, crate::geometry::GlyphBasis::Clockwise) => {
             Point::new(x + pen - dy, y + dx)
         }
-        (LineOrientation::Horizontal, crate::GlyphBasis::Counterclockwise) => {
+        (LineOrientation::Horizontal, crate::geometry::GlyphBasis::Counterclockwise) => {
             Point::new(x + pen + dy, y - dx)
         }
         (
             LineOrientation::SidewaysClockwise | LineOrientation::Vertical,
-            crate::GlyphBasis::Clockwise,
+            crate::geometry::GlyphBasis::Clockwise,
         ) => Point::new(x - dy, y + pen + dx),
         (
             LineOrientation::SidewaysClockwise | LineOrientation::Vertical,
-            crate::GlyphBasis::Unrotated,
+            crate::geometry::GlyphBasis::Unrotated,
         ) => Point::new(x + dx, y + pen + dy),
         (
             LineOrientation::SidewaysClockwise | LineOrientation::Vertical,
-            crate::GlyphBasis::Counterclockwise,
+            crate::geometry::GlyphBasis::Counterclockwise,
         ) => Point::new(x + dy, y + pen - dx),
-        (LineOrientation::SidewaysCounterclockwise, crate::GlyphBasis::Unrotated) => {
+        (LineOrientation::SidewaysCounterclockwise, crate::geometry::GlyphBasis::Unrotated) => {
             Point::new(x + dx, y - pen + dy)
         }
-        (LineOrientation::SidewaysCounterclockwise, crate::GlyphBasis::Clockwise) => {
+        (LineOrientation::SidewaysCounterclockwise, crate::geometry::GlyphBasis::Clockwise) => {
             Point::new(x - dy, y - pen + dx)
         }
-        (LineOrientation::SidewaysCounterclockwise, crate::GlyphBasis::Counterclockwise) => {
-            Point::new(x + dy, y - pen - dx)
-        }
+        (
+            LineOrientation::SidewaysCounterclockwise,
+            crate::geometry::GlyphBasis::Counterclockwise,
+        ) => Point::new(x + dy, y - pen - dx),
     }
 }
 
@@ -777,8 +787,8 @@ pub struct Run {
     style: Style,
     brush: Brush,
     metrics: RunMetrics,
-    glyph_basis: crate::GlyphBasis,
-    glyph_frame: crate::GlyphFrame,
+    glyph_basis: crate::geometry::GlyphBasis,
+    glyph_frame: crate::geometry::GlyphFrame,
     glyphs: Vec<Glyph>,
 }
 
@@ -791,7 +801,7 @@ impl Run {
 
     /// Actual outline axes, independent of this run's line frame.
     #[must_use]
-    pub const fn glyph_basis(&self) -> crate::GlyphBasis {
+    pub const fn glyph_basis(&self) -> crate::geometry::GlyphBasis {
         self.glyph_basis
     }
 
@@ -809,7 +819,7 @@ impl Run {
         style: Style,
         brush: Brush,
         metrics: RunMetrics,
-        glyph_basis: crate::GlyphBasis,
+        glyph_basis: crate::geometry::GlyphBasis,
         glyphs: Vec<Glyph>,
     ) -> Self {
         Self {
@@ -820,7 +830,7 @@ impl Run {
             brush,
             metrics,
             glyph_basis,
-            glyph_frame: crate::GlyphFrame::line(
+            glyph_frame: crate::geometry::GlyphFrame::line(
                 physical_origin(metrics.orientation, metrics.offset, metrics.baseline),
                 metrics.orientation,
                 glyph_basis,
@@ -876,7 +886,7 @@ impl Run {
 
     /// Executed glyph frame, including actual cell compression and pen axes.
     #[must_use]
-    pub const fn glyph_frame(&self) -> crate::GlyphFrame {
+    pub const fn glyph_frame(&self) -> crate::geometry::GlyphFrame {
         self.glyph_frame
     }
 
@@ -1482,14 +1492,14 @@ impl Selection {
 /// Equal text in a different occurrence does not identify this piece.
 #[derive(Clone, Debug)]
 pub struct PlacedSelectionPiece {
-    pub(crate) origin: crate::PreparedOrigin,
+    pub(crate) origin: crate::protocol::PreparedOrigin,
     pub(crate) local: Range,
     pub(crate) aggregate: Range,
 }
 
 impl PlacedSelectionPiece {
     #[must_use]
-    pub fn origin(&self) -> &crate::PreparedOrigin {
+    pub fn origin(&self) -> &crate::protocol::PreparedOrigin {
         &self.origin
     }
 
@@ -1521,8 +1531,8 @@ pub struct PlacedSelection {
     pub(crate) _placement: Arc<PlacedLayout>,
     pub(crate) geometry: SelectionGeometry,
     pub(crate) pieces: Vec<PlacedSelectionPiece>,
-    pub(crate) source_text: crate::Text,
-    pub(crate) plaintext: crate::Text,
+    pub(crate) source_text: crate::text::Text,
+    pub(crate) plaintext: crate::text::Text,
     pub(crate) collapsed: bool,
 }
 
@@ -1540,13 +1550,13 @@ impl PlacedSelection {
 
     /// Covered original UTF-16 once per occurrence, in original logical order.
     #[must_use]
-    pub fn source_text(&self) -> &crate::Text {
+    pub fn source_text(&self) -> &crate::text::Text {
         &self.source_text
     }
 
     /// The processing owner's plaintext policy over this original coverage.
     #[must_use]
-    pub fn plaintext(&self) -> &crate::Text {
+    pub fn plaintext(&self) -> &crate::text::Text {
         &self.plaintext
     }
 
@@ -1682,7 +1692,7 @@ mod glyph_frame_tests {
         assert_eq!(
             glyph_origin(
                 LineOrientation::Vertical,
-                crate::GlyphBasis::Unrotated,
+                crate::geometry::GlyphBasis::Unrotated,
                 origin,
                 10.0,
                 -7.0,
@@ -1693,7 +1703,7 @@ mod glyph_frame_tests {
         assert_eq!(
             glyph_origin(
                 LineOrientation::Horizontal,
-                crate::GlyphBasis::Unrotated,
+                crate::geometry::GlyphBasis::Unrotated,
                 origin,
                 10.0,
                 -7.0,
@@ -1704,7 +1714,7 @@ mod glyph_frame_tests {
         assert_eq!(
             glyph_origin(
                 LineOrientation::SidewaysClockwise,
-                crate::GlyphBasis::Clockwise,
+                crate::geometry::GlyphBasis::Clockwise,
                 origin,
                 10.0,
                 -7.0,
@@ -1724,7 +1734,7 @@ mod glyph_frame_tests {
             assert_eq!(
                 glyph_origin(
                     orientation,
-                    crate::GlyphBasis::Unrotated,
+                    crate::geometry::GlyphBasis::Unrotated,
                     origin,
                     10.0,
                     -7.0,
@@ -1735,7 +1745,7 @@ mod glyph_frame_tests {
             assert_eq!(
                 glyph_origin(
                     orientation,
-                    crate::GlyphBasis::Clockwise,
+                    crate::geometry::GlyphBasis::Clockwise,
                     origin,
                     10.0,
                     -7.0,
@@ -1747,7 +1757,7 @@ mod glyph_frame_tests {
         assert_eq!(
             glyph_origin(
                 LineOrientation::Horizontal,
-                crate::GlyphBasis::Clockwise,
+                crate::geometry::GlyphBasis::Clockwise,
                 origin,
                 10.0,
                 -7.0,

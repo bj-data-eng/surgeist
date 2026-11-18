@@ -5,7 +5,7 @@ fn placement(prepared: &PreparedText, line: &FinalizedLine, baseline: f64) -> Pl
     PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line: line.clone(),
             anchor: LineAnchor {
                 inline_origin: 20.0,
@@ -48,7 +48,8 @@ fn required_displacement(orientation: LineOrientation) {
             100.0
         };
         let retained =
-            crate::Layout::from_finalized_lines(placement(&prepared, &line, safe_anchor)).unwrap();
+            crate::layout::Layout::from_finalized_lines(placement(&prepared, &line, safe_anchor))
+                .unwrap();
         let old_glyphs = retained.glyph_runs();
         let old_bounds = retained.bounds();
         let old_origin = retained.run_views().next().unwrap().origin();
@@ -71,7 +72,8 @@ fn required_displacement(orientation: LineOrientation) {
             assert_eq!(anchor + delta, anchor);
             assert!(anchor + 10.0 > anchor);
             let raw_placed =
-                crate::Layout::from_finalized_lines(placement(&raw, &raw_line, anchor)).unwrap();
+                crate::layout::Layout::from_finalized_lines(placement(&raw, &raw_line, anchor))
+                    .unwrap();
             assert_eq!(
                 if orientation == LineOrientation::Horizontal {
                     raw_placed.run_views().next().unwrap().origin().y
@@ -81,7 +83,8 @@ fn required_displacement(orientation: LineOrientation) {
                 anchor,
                 "raw design-zero composition has no requested displacement"
             );
-            let result = crate::Layout::from_finalized_lines(placement(&prepared, &line, anchor));
+            let result =
+                crate::layout::Layout::from_finalized_lines(placement(&prepared, &line, anchor));
             assert!(
                 result.is_err(),
                 "required signed font displacement {delta} must not vanish at {anchor} in {orientation:?}"
@@ -91,8 +94,8 @@ fn required_displacement(orientation: LineOrientation) {
             assert!(
                 matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric {
                     field,
-                    phase: crate::TextNumericPhase::Placement,
-                    category: crate::TextNumericError::NonZeroLost,
+                    phase: crate::error::TextNumericPhase::Placement,
+                    category: crate::error::TextNumericError::NonZeroLost,
                     value,
                 }) if *field == if orientation == LineOrientation::Horizontal {
                     "placed run origin y"

@@ -3,8 +3,14 @@
 use std::sync::Arc;
 
 use crate::{
-    Affinity, AnalyzedSource, DocumentSegmentBreaks, ProcessedSource, Range, Result, Source, Style,
-    Text, Wrap,
+    Result,
+    analyzed::AnalyzedSource,
+    layout::Affinity,
+    processing::{DocumentSegmentBreaks, ProcessedSource},
+    range::Range,
+    source::Source,
+    style::{Style, Wrap},
+    text::Text,
 };
 
 use super::{ProtocolError, ProtocolHandleKind, protocol_error};
@@ -58,7 +64,7 @@ impl CompleteTextNodeContribution {
                 "Text-node contribution is outside its complete original content",
             )
             .with_detail(crate::ErrorDetail::TextTransform {
-                reason: crate::TextTransformError::InvalidTextNodeRange {
+                reason: crate::error::TextTransformError::InvalidTextNodeRange {
                     range,
                     text_len: text.len(),
                 },
@@ -92,7 +98,7 @@ impl CompleteTextNodeContribution {
                 "Text-node contribution differs from its original occurrence",
             )
             .with_detail(crate::ErrorDetail::TextTransform {
-                reason: crate::TextTransformError::TextNodeMismatch { origin },
+                reason: crate::error::TextTransformError::TextNodeMismatch { origin },
             }));
         }
         Ok(())
@@ -249,7 +255,11 @@ pub struct ParagraphBoundaryPolicy {
 }
 
 impl ParagraphBoundaryPolicy {
-    pub(crate) fn at(self, paragraph: &ParagraphContext, boxes: &[crate::InlineBox]) -> usize {
+    pub(crate) fn at(
+        self,
+        paragraph: &ParagraphContext,
+        boxes: &[crate::source::InlineBox],
+    ) -> usize {
         match self.definition {
             ParagraphBoundaryDefinition::Connection(i) => paragraph.connections[i].at,
             ParagraphBoundaryDefinition::AtomicBefore(i)
@@ -336,7 +346,7 @@ impl ParagraphReplacement {
     ) -> Result<Self> {
         if alternatives.is_empty() {
             return Err(crate::hyphenation::error(
-                crate::HyphenationError::EmptyNativeAlternatives,
+                crate::hyphenation::HyphenationError::EmptyNativeAlternatives,
             ));
         }
         Ok(Self {
@@ -391,7 +401,7 @@ pub struct ParagraphInput {
     pub segment_breaks: DocumentSegmentBreaks,
     pub base_direction: ParagraphBaseDirection,
     pub paragraph_strut: ParagraphStrut,
-    pub tab_reference: Option<crate::ParagraphTabReference>,
+    pub tab_reference: Option<crate::tabs::ParagraphTabReference>,
     pub origins: Vec<ParagraphOrigin>,
     pub connections: Vec<ParagraphConnection>,
     pub controls: Vec<ParagraphControl>,
@@ -473,7 +483,7 @@ impl OriginMap {
     pub(crate) fn captured(orders: Vec<usize>, count: usize) -> Result<Self> {
         if orders.len() != count || orders.windows(2).any(|pair| pair[0] >= pair[1]) {
             return Err(crate::processing::contextual::invalid(
-                crate::SourceProcessingError::OriginCorrespondence,
+                crate::processing::SourceProcessingError::OriginCorrespondence,
             ));
         }
         Ok(Self {
@@ -560,7 +570,7 @@ pub(crate) struct ParagraphContext {
     pub(crate) terminal_edge: ParagraphTerminalEdge,
     pub(crate) base_direction: Option<ParagraphBaseDirection>,
     pub(crate) paragraph_strut: ParagraphStrut,
-    pub(crate) tab_reference: Option<crate::ParagraphTabReference>,
+    pub(crate) tab_reference: Option<crate::tabs::ParagraphTabReference>,
     pub(crate) domain_style: Option<Style>,
 }
 impl std::ops::Deref for ParagraphContext {
@@ -656,7 +666,7 @@ impl ParagraphContent {
             Ok(())
         } else {
             Err(crate::processing::contextual::invalid(
-                crate::SourceProcessingError::OutsideParagraph,
+                crate::processing::SourceProcessingError::OutsideParagraph,
             ))
         }
     }
@@ -869,7 +879,7 @@ impl AnalyzedSource {
     /// computed direction does not replace contradictory capture authority.
     pub fn from_paragraph(
         input: ParagraphInput,
-        typography: crate::AnalysisTypography,
+        typography: crate::analyzed::AnalysisTypography,
     ) -> Result<Self> {
         validate(&input)?;
         let ParagraphInput {
@@ -1166,7 +1176,7 @@ fn validate_boundaries(
         .enumerate()
         .filter(|(i, _)| contains_atomic(*i))
     {
-        if box_.kind() == crate::InlineBoxKind::InFlow {
+        if box_.kind() == crate::source::InlineBoxKind::InFlow {
             for definition in [
                 ParagraphBoundaryDefinition::AtomicBefore(i),
                 ParagraphBoundaryDefinition::AtomicAfter(i),

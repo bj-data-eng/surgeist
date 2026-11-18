@@ -6,8 +6,13 @@
 use super::AHEM;
 use crate::test_fonts::{replace_tables, table, u16_at, u32_at};
 use crate::{
-    Alignment, Font, Id, Layout, LineHeight, Options, Range, Source, Style, System, TextTransform,
-    WhiteSpace,
+    System,
+    id::Id,
+    layout::Layout,
+    options::{Alignment, Options},
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style, TextTransform, WhiteSpace},
 };
 use skrifa::{
     GlyphId, MetadataProvider,

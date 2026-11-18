@@ -5,14 +5,14 @@ pub(crate) mod position;
 mod selection;
 
 use super::{PlacedLine, PreparedData};
-use crate::{Affinity, Range, Result};
+use crate::{Result, layout::Affinity, range::Range};
 pub(crate) use cursor::{cursor, hit, move_cursor};
 pub(crate) use selection::selection;
 
 /// Original-side ownership of a nonempty source unit. At a shared endpoint,
 /// Before borrows the upstream unit and After the downstream unit. Actual
 /// deleted-anchor geometry uses this occurrence eligibility relation.
-pub(super) fn owns_source_side(source: Range, value: crate::Cursor) -> bool {
+pub(super) fn owns_source_side(source: Range, value: crate::layout::Cursor) -> bool {
     match value.affinity() {
         Affinity::Before => source.start < value.index() && value.index() <= source.end,
         Affinity::After => source.start <= value.index() && value.index() < source.end,

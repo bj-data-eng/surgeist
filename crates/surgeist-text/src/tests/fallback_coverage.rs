@@ -123,7 +123,7 @@ fn analysis(text: &str, id: u64) -> AnalyzedSource {
     let analyzed = AnalyzedSource::new(
         source.clone(),
         style(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.direction(), Direction::LeftToRight);

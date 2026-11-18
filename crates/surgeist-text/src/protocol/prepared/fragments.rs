@@ -1,7 +1,7 @@
 //! Associations emitted by the actual selected presentation owner.
 
 use super::{AlternativeDefinition, GeneratedSeparatorOwner, PresentationUnitKind};
-use crate::Range;
+use crate::range::Range;
 
 /// Actual selected occurrence associations, including distinct selected empty
 /// origins and source-less native controls/alternatives. No inclusive numeric

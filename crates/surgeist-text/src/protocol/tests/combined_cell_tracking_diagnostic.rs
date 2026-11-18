@@ -78,8 +78,8 @@ fn attempt(parent: Vec<u8>, tracking: f64) -> crate::Result<Mixed> {
     )
 }
 
-fn piece(origin: usize) -> crate::SpacingPiece {
-    crate::SpacingPiece::Source {
+fn piece(origin: usize) -> crate::error::SpacingPiece {
+    crate::error::SpacingPiece::Source {
         origin,
         local: Range::new(origin, origin + 1),
         aggregate: Range::new(origin, origin + 1),
@@ -172,9 +172,12 @@ fn mixed_cell_preparation_keeps_ordinary_cursive_tracking_diagnostic_source_and_
     else {
         panic!("actual constrained tracking detail: {error:?}");
     };
-    assert_eq!(*stage, crate::SpacingStage::Preparation);
-    assert_eq!(*operation, crate::SpacingOperation::AuthoredTracking);
-    assert_eq!(*reason, crate::SpacingFailureReason::CrossUnitConstraint);
+    assert_eq!(*stage, crate::error::SpacingStage::Preparation);
+    assert_eq!(*operation, crate::error::SpacingOperation::AuthoredTracking);
+    assert_eq!(
+        *reason,
+        crate::error::SpacingFailureReason::CrossUnitConstraint
+    );
     assert_eq!(pieces.as_ref(), [piece(0), piece(1)]);
     assert_eq!(provider_atoms.as_ref(), [0..1, 1..2]);
     assert_eq!(contexts.len(), 2);
@@ -187,7 +190,7 @@ fn mixed_cell_preparation_keeps_ordinary_cursive_tracking_diagnostic_source_and_
     };
     assert_eq!(
         constraint.kind,
-        crate::SpacingConstraintKind::CursiveAttachment
+        crate::error::SpacingConstraintKind::CursiveAttachment
     );
     assert_eq!(constraint.run, 0);
     assert_eq!(constraint.components.as_ref(), [0..1, 1..2]);

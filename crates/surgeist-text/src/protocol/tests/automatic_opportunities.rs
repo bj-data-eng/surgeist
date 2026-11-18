@@ -2,7 +2,13 @@
 //! Cuts are from the qualified en-US2005-05-30 source exceptions and the
 //! separately adopted exact-word democrat correction, not engine measurements.
 use super::*;
-use crate::{HyphenateCharacter, Hyphens, LineHeight, PlaintextItem, Range, Text};
+use crate::{
+    hyphenation::{HyphenateCharacter, Hyphens},
+    processing::PlaintextItem,
+    range::Range,
+    style::LineHeight,
+    text::Text,
+};
 use skrifa::MetadataProvider;
 
 fn auto_fixture() -> Vec<u8> {
@@ -21,9 +27,9 @@ fn auto_prepare(word: &str, hyphens: Hyphens, locale: Option<&str>) -> (Prepared
         assert!(value.is_ascii_lowercase());
         assert_eq!(font.charmap().map(u32::from(value)).unwrap().to_u32(), 35);
     }
-    let source = Source::identified(word, crate::Id::from_u64(4201), 7);
+    let source = Source::identified(word, crate::id::Id::from_u64(4201), 7);
     let input = ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
@@ -34,7 +40,7 @@ fn auto_prepare(word: &str, hyphens: Hyphens, locale: Option<&str>) -> (Prepared
             hyphenate_character: HyphenateCharacter::String(Text::from("")),
             ..style()
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
@@ -51,9 +57,12 @@ fn auto_prepare(word: &str, hyphens: Hyphens, locale: Option<&str>) -> (Prepared
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     let mut system = System::default();
     system
@@ -95,13 +104,16 @@ fn assert_auto_case(word: &str, hyphens: Hyphens, locale: Option<&str>, cuts: &[
     assert_eq!(analyzed.style().hyphens, hyphens);
     assert_eq!(analyzed.style().locale.as_deref(), locale);
     let origin = prepared.origin_views().next().unwrap().handle();
-    assert_eq!(origin.view().source().id(), Some(crate::Id::from_u64(4201)));
+    assert_eq!(
+        origin.view().source().id(),
+        Some(crate::id::Id::from_u64(4201))
+    );
     assert_eq!(origin.view().source().revision(), 7);
     assert_eq!(origin.view().source().text().code_units(), original);
     let mut plaintext = Vec::new();
     for item in analyzed
         .processed_source()
-        .plaintext_items(crate::Affinity::Before)
+        .plaintext_items(crate::layout::Affinity::Before)
     {
         match item {
             PlaintextItem::Text(text) => plaintext.extend_from_slice(text.code_units()),
@@ -114,9 +126,9 @@ fn assert_auto_case(word: &str, hyphens: Hyphens, locale: Option<&str>, cuts: &[
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(whole.selected_line().request().alternative.is_none());
@@ -184,9 +196,9 @@ fn assert_auto_case(word: &str, hyphens: Hyphens, locale: Option<&str>, cuts: &[
         let first = prepared
             .select(first_request)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(first.feedback().advance, at as f64 * 10.0);
@@ -206,9 +218,9 @@ fn assert_auto_case(word: &str, hyphens: Hyphens, locale: Option<&str>, cuts: &[
         let continued = prepared
             .select(continued_request)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert!(continued.selected_line().request().alternative.is_none());
@@ -265,7 +277,7 @@ fn native_automatic_en_us_requires_auto_and_the_qualified_language() {
 #[test]
 fn native_direct_analysis_counts_differ_from_the_actual_raw_standalone_operation() {
     let bytes = auto_fixture();
-    let source = Source::identified("ab\u{ad}cd", crate::Id::from_u64(4202), 8);
+    let source = Source::identified("ab\u{ad}cd", crate::id::Id::from_u64(4202), 8);
     let own = Style {
         size: 10.0,
         line_height: LineHeight::Absolute(10.0),
@@ -280,17 +292,17 @@ fn native_direct_analysis_counts_differ_from_the_actual_raw_standalone_operation
     let analyzed = AnalyzedSource::new(
         source.clone(),
         own.clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     // This existing operation is raw and remains unconstrained.
     let raw = system
         .layout_analyzed(
             &analyzed,
-            crate::Options {
+            crate::options::Options {
                 width: Some(20.0),
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
@@ -315,9 +327,9 @@ fn native_direct_analysis_counts_differ_from_the_actual_raw_standalone_operation
     let whole = native
         .select(request(&native))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(

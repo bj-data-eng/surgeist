@@ -4,8 +4,8 @@ use super::*;
 
 fn visual_region_error(
     error: &crate::Error,
-    stage: crate::SpacingStage,
-    operation: crate::SpacingOperation,
+    stage: crate::error::SpacingStage,
+    operation: crate::error::SpacingOperation,
     tracking: f64,
 ) {
     assert_eq!(error.code, crate::ErrorCode::LayoutFailed);
@@ -22,7 +22,7 @@ fn visual_region_error(
         panic!("expected actual visually interleaved unit custody: {error:?}")
     };
     assert_eq!((*actual_stage, *actual_operation), (stage, operation));
-    assert_eq!(*reason, crate::SpacingFailureReason::InterleavedUnit);
+    assert_eq!(*reason, crate::error::SpacingFailureReason::InterleavedUnit);
     // X9 formats retain their original custody. L2 reverses the level-one
     // mark/atomic/PDF sequence; no source hull and no following B belongs here.
     assert_eq!(
@@ -31,7 +31,7 @@ fn visual_region_error(
             piece(Range::new(0, 1)),
             piece(Range::new(1, 2)),
             piece(Range::new(3, 4)),
-            crate::SpacingPiece::Atomic { occurrence: 0 },
+            crate::error::SpacingPiece::Atomic { occurrence: 0 },
             piece(Range::new(2, 3)),
         ]
     );
@@ -88,7 +88,7 @@ fn visual_region_error(
     let atomic = &contexts[1];
     assert_eq!(
         atomic.pieces.as_ref(),
-        [crate::SpacingPiece::Atomic { occurrence: 0 }]
+        [crate::error::SpacingPiece::Atomic { occurrence: 0 }]
     );
     assert_eq!(atomic.locale, None);
     assert!(atomic.candidates.is_empty());
@@ -216,15 +216,15 @@ fn component_local_a_mark_unit_can_straddle_an_inflow_atomic_after_real_bidi_reo
     .unwrap_err();
     visual_region_error(
         &error,
-        crate::SpacingStage::Selection,
-        crate::SpacingOperation::InterCharacterBasis,
+        crate::error::SpacingStage::Selection,
+        crate::error::SpacingOperation::InterCharacterBasis,
         0.0,
     );
     let error = self::prepared(&mut system, &source, own(4.0)).unwrap_err();
     visual_region_error(
         &error,
-        crate::SpacingStage::Preparation,
-        crate::SpacingOperation::AuthoredTracking,
+        crate::error::SpacingStage::Preparation,
+        crate::error::SpacingOperation::AuthoredTracking,
         4.0,
     );
     assert_eq!(raw(&natural, &bytes), old_raw);

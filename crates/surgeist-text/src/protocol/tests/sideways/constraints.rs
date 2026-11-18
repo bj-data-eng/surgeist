@@ -26,9 +26,9 @@ fn actual_finite_word_cut_and_intrinsic_whole_keep_distinct_selection_contributi
     let first = p
         .select(finite)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let mut finite = selected_request(&p, cut.view().boundary(), terminal(&p));
@@ -36,9 +36,9 @@ fn actual_finite_word_cut_and_intrinsic_whole_keep_distinct_selection_contributi
     let second = p
         .select(finite)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     for line in [&first, &second] {
@@ -56,7 +56,7 @@ fn actual_finite_word_cut_and_intrinsic_whole_keep_distinct_selection_contributi
     assert_eq!(first.selected_line().request().context.end, LineEnd::Soft);
     assert_eq!(
         first.selected_line().request().termination,
-        crate::PreparedTermination::Ordinary(cut)
+        crate::protocol::PreparedTermination::Ordinary(cut)
     );
     let split = placed(&p, vec![(first, 20.0, 100.0), (second, 20.0, 80.0)]);
     assert_eq!(
@@ -120,9 +120,9 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         // The provider's SPACE advance remains10. Its actual signed spacing
@@ -164,9 +164,9 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
     let line = p
         .select(finite)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -226,9 +226,9 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
     let horizontal = hp
         .select(hr)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(horizontal.feedback().advance, 20.0);
@@ -247,53 +247,53 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
 
 #[test]
 fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_proxy() {
-    use crate::{SourceBoxSide, SourceProcessingEvent as E};
+    use crate::processing::{SourceBoxSide, SourceProcessingEvent as E};
     let original = source("AB");
     let processed = std::sync::Arc::new(
-        crate::process_contextual_source(crate::ContextualSourceInput {
+        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: original.clone(),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: crate::SourceProcessingEnvelope::Complete,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: crate::processing::SourceProcessingEnvelope::Complete,
             origins: [Range::new(0, 1), Range::new(1, 2)]
                 .into_iter()
-                .map(|range| crate::ParagraphOrigin {
+                .map(|range| crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: original.clone(),
                     local: range,
                     aggregate: range,
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
-            connections: vec![crate::SourceProcessingConnection {
+            connections: vec![crate::processing::SourceProcessingConnection {
                 before_origin: 0,
                 after_origin: 1,
-                kind: crate::ParagraphConnectionKind::Continuous,
+                kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
             }],
-            boundary_policies: vec![crate::ParagraphBoundaryPolicy {
-                definition: crate::ParagraphBoundaryDefinition::Connection(0),
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
+            boundary_policies: vec![crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
             }],
             controls: vec![],
             replacements: vec![],
-            computed_line_boundaries: vec![crate::ComputedLineBoundaryInput::Scope {
+            computed_line_boundaries: vec![crate::processing::ComputedLineBoundaryInput::Scope {
                 scope: 1,
                 side: SourceBoxSide::Before,
             }],
             scopes: vec![
-                crate::SourceProcessingScope::Block {
+                crate::processing::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: crate::SourceProcessingTopology::Complete,
+                    topology: crate::processing::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: own_style(),
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
-                crate::SourceProcessingScope::Inline {
+                crate::processing::SourceProcessingScope::Inline {
                     horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
@@ -302,7 +302,7 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
                     boundaries: None,
                 },
             ],
-            paragraphs: vec![crate::SourceProcessingParagraph {
+            paragraphs: vec![crate::processing::SourceProcessingParagraph {
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
             }],
@@ -329,7 +329,7 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(
         cause.target(),
-        crate::CapturedComputedLineBoundaryTarget::Scope {
+        crate::processing::CapturedComputedLineBoundaryTarget::Scope {
             scope: processed.captured_scope(1).unwrap(),
             side: SourceBoxSide::Before
         }
@@ -340,10 +340,10 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
     let a = crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     let mut s = system_with(crate::shaping_test_fonts::sideways_ahem());
     let p = s
@@ -371,17 +371,17 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
     let first = p
         .select(selected_request(&p, start(&p), force.clone()))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let second = p
         .select(selected_request(&p, force.view().boundary(), terminal(&p)))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -406,21 +406,21 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
 
 #[test]
 fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection() {
-    use crate::ParagraphControlKind as K;
+    use crate::protocol::paragraph::ParagraphControlKind as K;
     let mut value = input(source("A"), own_style(), false);
     value.controls = vec![
-        crate::ParagraphControl {
+        crate::protocol::paragraph::ParagraphControl {
             at: 0,
             kind: K::InlineBoundaryStart,
         },
-        crate::ParagraphControl {
+        crate::protocol::paragraph::ParagraphControl {
             at: 1,
             kind: K::InlineBoundaryEnd,
         },
     ];
     value.anchor_order = (0..2)
-        .map(|control| crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::Control(control),
+        .map(|control| crate::protocol::paragraph::ParagraphAnchor {
+            item: crate::protocol::paragraph::ParagraphAnchorItem::Control(control),
             affinity: Affinity::After,
         })
         .collect();
@@ -429,7 +429,7 @@ fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection()
     let controls = p.control_views().map(|c| c.handle()).collect::<Vec<_>>();
     assert_eq!(controls.len(), 2);
     let allocation = |c: &PreparedControl| {
-        crate::InlineBoundaryAllocation::contribution(match c.view().kind() {
+        crate::protocol::InlineBoundaryAllocation::contribution(match c.view().kind() {
             K::InlineBoundaryStart => 2.0,
             K::InlineBoundaryEnd => 3.0,
             _ => panic!("only actual endpoints in this profile"),
@@ -442,7 +442,7 @@ fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection()
     }
     while let Some(occurrence) = p.boundary_context_demand(&r).unwrap() {
         r.boundary_context
-            .push(crate::InlineBoundaryContextAllocation {
+            .push(crate::protocol::InlineBoundaryContextAllocation {
                 boundary: allocation(&occurrence),
                 occurrence,
             });
@@ -450,9 +450,9 @@ fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection()
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 15.0);
@@ -465,7 +465,12 @@ fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection()
     }
     let fragments = line
         .fragment_views()
-        .filter(|f| matches!(f.owner(), crate::FinalizedFragmentOwner::Control(_)))
+        .filter(|f| {
+            matches!(
+                f.owner(),
+                crate::protocol::readback::FinalizedFragmentOwner::Control(_)
+            )
+        })
         .collect::<Vec<_>>();
     assert_eq!(fragments.len(), 2);
     for ((fragment, control), rect) in fragments.iter().zip(&controls).zip([
@@ -474,7 +479,7 @@ fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection()
     ]) {
         assert_eq!(
             fragment.owner(),
-            crate::FinalizedFragmentOwner::Control(control.clone())
+            crate::protocol::readback::FinalizedFragmentOwner::Control(control.clone())
         );
         assert_eq!(fragment.bounds(), Some(rect));
         assert!(fragment.origin().is_none());
@@ -538,7 +543,7 @@ fn non_square_sideways_ax_width_is_actual_inline_height_not_cross_width() {
         &mut s,
         "X",
         Style {
-            line_height: crate::LineHeight::Absolute(20.0),
+            line_height: crate::style::LineHeight::Absolute(20.0),
             ..own_style()
         },
         false,
@@ -554,7 +559,7 @@ fn non_square_sideways_ax_width_is_actual_inline_height_not_cross_width() {
     );
     let layout = placed(&p, vec![(line, 20.0, 100.0)]);
     assert_frames(&layout, Rect::new(93.0, 20.0, 20.0, 10.0));
-    let mut state = crate::Accessibility::default();
+    let mut state = crate::accessibility::Accessibility::default();
     let parent = accesskit::NodeId(1515006);
     let update = layout
         .accessibility_update(&mut state, parent, parent, Point::default())

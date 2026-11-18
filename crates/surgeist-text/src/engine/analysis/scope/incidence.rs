@@ -5,9 +5,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use super::{ScopeIndexCapacity, anchor_exact};
 use crate::engine::AnalyzedCore;
 use crate::processing::contextual::canonical::CanonicalFlow;
+use crate::processing::{SourceBoxSide, SourceProcessingEvent};
 use crate::protocol::paragraph::SemanticAnchorItem;
 use crate::transform::relation::{ComponentOwner, RelationEvent};
-use crate::{SourceBoxSide, SourceProcessingEvent};
 
 // A cut before an original event sorts before that event's split body. Rank
 // removes only nonparticipating connection bookkeeping in the same domain.
@@ -376,8 +376,8 @@ impl IncidenceIndex {
         &self,
         placement: Placement,
         scope: usize,
-    ) -> Option<crate::CapturedScopeIncidence> {
-        use crate::CapturedScopeIncidence as R;
+    ) -> Option<crate::protocol::CapturedScopeIncidence> {
+        use crate::protocol::CapturedScopeIncidence as R;
         let (before, after) = self.canonical.scope_ranks(scope)?;
         let point = placement.point();
         Some(if point == Point(before, false) {

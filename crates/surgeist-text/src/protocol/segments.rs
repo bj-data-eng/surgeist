@@ -4,7 +4,7 @@ use super::{
     PreparedBoundary, PreparedOpportunity, PreparedText, ProtocolError, ProtocolHandleKind,
     protocol_error,
 };
-use crate::{CapturedEventPosition, Result};
+use crate::{Result, processing::CapturedEventPosition};
 use std::{
     fmt,
     hash::{Hash, Hasher},

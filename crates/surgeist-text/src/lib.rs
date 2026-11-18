@@ -174,7 +174,6 @@ pub use supplied_line::{
     BidiLevel, BidiLevelError, InlineWhitespaceEdge, SuppliedInlineParticipant, SuppliedLine,
     SuppliedLineEdges, SuppliedLineError, SuppliedVisualOrder,
 };
-use surgeist_font::CataloguePublication;
 pub use system::{Builder, System};
 pub use text::Text;
 pub use views::{GlyphPlacement, RunView};

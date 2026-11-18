@@ -1,7 +1,24 @@
 //! Segment-owned conditional-query admission. Empty source sections retain
 //! identity at equal numerical cuts; the ordinary no-progress policy is kept.
 
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail,
+    analyzed::{AnalysisTypography, AnalyzedDomain},
+    layout::Affinity,
+    processing::{
+        ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
+        SourceProcessingJointFlow, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ConditionalPurpose, ParagraphBaseDirection, PreparationOptions, PreparedBoundary,
+        PreparedText, ProtocolError, SemanticWindowRequest,
+        paragraph::{ParagraphConnectionKind, ParagraphStrut},
+    },
+    range::Range,
+    style::{TextCombineUpright, TextTransform, WhiteSpace},
+    text::Text,
+};
 use std::sync::Arc;
 
 #[test]
@@ -234,7 +251,7 @@ fn empty_structural_sections_reject_cross_owned_ceilings_even_at_identical_numer
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 &[],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap_err();
         assert_eq!(
@@ -252,7 +269,7 @@ fn empty_structural_sections_reject_cross_owned_ceilings_even_at_identical_numer
                 &other.end_opportunity(),
                 ConditionalPurpose::MinContent,
                 &[],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap_err();
         assert_eq!(
@@ -289,7 +306,7 @@ fn successful_conditional_searches_retain_their_structural_segment_identity() {
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 &[],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap();
         assert_eq!(query.source_segment(), *segment);
@@ -302,7 +319,7 @@ fn successful_conditional_searches_retain_their_structural_segment_identity() {
                     &ceiling,
                     ConditionalPurpose::MinContent,
                     &[],
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .unwrap()
         );
@@ -314,7 +331,7 @@ fn successful_conditional_searches_retain_their_structural_segment_identity() {
                 &other.end_opportunity(),
                 ConditionalPurpose::MinContent,
                 &[],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap_err();
         assert_eq!(

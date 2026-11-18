@@ -7,7 +7,12 @@ use std::{
 };
 
 use crate::engine::{self, AnalyzedData};
-use crate::{Direction, Range, Result, Source, Style, ValidatedSource, ValidatedStyle};
+use crate::{
+    Result,
+    range::Range,
+    source::{Source, ValidatedSource},
+    style::{Direction, Style, ValidatedStyle},
+};
 
 pub(crate) mod captured;
 mod combined;
@@ -29,7 +34,7 @@ pub enum AnalysisTypography {
     Upright {
         /// Actual computed paragraph direction; the used direction is LTR.
         /// This is not a replacement for an already-resolved captured used base.
-        computed_direction: crate::ParagraphBaseDirection,
+        computed_direction: crate::protocol::ParagraphBaseDirection,
     },
 }
 impl AnalysisTypography {
@@ -105,7 +110,7 @@ impl AnalyzedSource {
 
     /// The same retained executed source correspondence used by preparation.
     #[must_use]
-    pub fn processed_source(&self) -> &crate::ProcessedSource {
+    pub fn processed_source(&self) -> &crate::processing::ProcessedSource {
         &self.inner.processed
     }
 
@@ -168,7 +173,7 @@ impl AnalyzedSource {
     #[cfg(feature = "text-accessibility")]
     pub fn accessibility_update(
         &self,
-        state: &mut crate::Accessibility,
+        state: &mut crate::accessibility::Accessibility,
         parent: accesskit::NodeId,
         focus: accesskit::NodeId,
     ) -> Result<accesskit::TreeUpdate> {
@@ -179,8 +184,8 @@ impl AnalyzedSource {
     #[cfg(feature = "text-accessibility")]
     pub fn access_position(
         &self,
-        state: &crate::Accessibility,
-        cursor: crate::Cursor,
+        state: &crate::accessibility::Accessibility,
+        cursor: crate::layout::Cursor,
     ) -> Result<Option<accesskit::TextPosition>> {
         crate::accessibility::analyzed_access_position(&self.inner, state, cursor)
     }
@@ -189,8 +194,8 @@ impl AnalyzedSource {
     #[cfg(feature = "text-accessibility")]
     pub fn access_selection(
         &self,
-        state: &crate::Accessibility,
-        selection: crate::Selection,
+        state: &crate::accessibility::Accessibility,
+        selection: crate::layout::Selection,
     ) -> Result<Option<accesskit::TextSelection>> {
         crate::accessibility::analyzed_access_selection(&self.inner, state, selection)
     }

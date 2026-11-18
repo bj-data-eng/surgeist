@@ -2,7 +2,8 @@ use std::fmt;
 
 use skrifa::{Tag, raw::TableProvider};
 
-use crate::{CataloguePublication, Error, ErrorCode, ErrorDetail, NumericRequirement, Result};
+use crate::{Error, ErrorCode, ErrorDetail, Result, error::NumericRequirement};
+use surgeist_font::CataloguePublication;
 
 /// Strong actual font face and associated catalogue publication.
 ///
@@ -428,8 +429,8 @@ mod synthesis_tests {
         assert!(matches!(
             error.detail(),
             Some(ErrorDetail::InvalidTextNumeric {
-                phase: crate::TextNumericPhase::FontSynthesis,
-                category: crate::TextNumericError::PositiveLost,
+                phase: crate::error::TextNumericPhase::FontSynthesis,
+                category: crate::error::TextNumericError::PositiveLost,
                 ..
             })
         ));
@@ -448,15 +449,15 @@ mod synthesis_tests {
             .unwrap();
         let layout = system
             .layout(
-                crate::Source::new("X"),
-                crate::Style {
-                    font: crate::Font::new().family("Ahem"),
+                crate::source::Source::new("X"),
+                crate::style::Style {
+                    font: crate::style::Font::new().family("Ahem"),
                     size: 36.0,
-                    ..crate::Style::default()
+                    ..crate::style::Style::default()
                 },
-                crate::Options {
+                crate::options::Options {
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();

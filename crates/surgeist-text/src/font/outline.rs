@@ -3,8 +3,9 @@
 
 use super::EffectiveFontInstance;
 use crate::{
-    CataloguePublication, Error, ErrorCode, ErrorDetail, Rect, Result, TextNumericError,
-    TextNumericPhase,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::{TextNumericError, TextNumericPhase},
+    geometry::Rect,
 };
 use skrifa::{
     GlyphId, Tag,
@@ -13,6 +14,7 @@ use skrifa::{
     raw::TableProvider,
 };
 use std::{fmt, mem::size_of};
+use surgeist_font::CataloguePublication;
 
 /// A font-outline representation not qualified by this geometry entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

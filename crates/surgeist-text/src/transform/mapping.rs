@@ -9,13 +9,13 @@ use icu_segmenter::{WordSegmenter, options::WordBreakInvariantOptions};
 
 use super::casing::{self, Locale, Mapper, MappingError, Operation};
 use crate::{
-    Error, ErrorCode, ErrorDetail, Result, TextTransform, TextTransformError,
-    projection::SourceProjection,
+    Error, ErrorCode, ErrorDetail, Result, error::TextTransformError, projection::SourceProjection,
+    style::TextTransform,
 };
 
 pub(super) fn failed(reason: MappingError) -> Error {
     if let MappingError::Context(edge) = reason {
-        return edge.unavailable(crate::SourceContinuityOperation::Transformation);
+        return edge.unavailable(crate::processing::SourceContinuityOperation::Transformation);
     }
     let (code, reason) = match reason {
         MappingError::DataUnavailable => (

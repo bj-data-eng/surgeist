@@ -1,6 +1,9 @@
 //! Source-only AX is a real consumer of the retained analysis, without fonts.
 use super::*;
-use crate::{Accessibility, Cursor, Selection};
+use crate::{
+    accessibility::Accessibility,
+    layout::{Cursor, Selection},
+};
 use accesskit::{NodeId, Role};
 
 #[test]

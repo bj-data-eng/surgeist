@@ -8,8 +8,8 @@ pub(crate) struct CellTabMetric {
     pub(crate) font: Option<crate::engine::layout::data::PreparedRun>,
 }
 pub(crate) struct CellTabReference {
-    pub(crate) scope: crate::CapturedScope,
-    pub(crate) direction: crate::ParagraphBaseDirection,
+    pub(crate) scope: crate::processing::CapturedScope,
+    pub(crate) direction: crate::protocol::ParagraphBaseDirection,
     pub(crate) space: Option<CellTabMetric>,
     pub(crate) ch: Option<CellTabMetric>,
 }
@@ -17,7 +17,7 @@ pub(crate) struct CellTabReference {
 pub(crate) struct CellTabOperation {
     pub(crate) atom: usize,
     pub(crate) reference: usize,
-    pub(crate) size: crate::TabSize,
+    pub(crate) size: crate::tabs::TabSize,
     pub(crate) period: f64,
     pub(crate) threshold: f64,
 }

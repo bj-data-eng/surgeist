@@ -7,7 +7,7 @@ use super::{
     protocol_error, selection::require_prepared,
 };
 use crate::engine::analysis::scope::ScopeCutIndex;
-use crate::{CapturedScope, Result};
+use crate::{Result, processing::CapturedScope};
 
 /// One authenticated original placement of an existing prepared boundary.
 /// It grants no additional break opportunity, selection or placement authority.
@@ -276,8 +276,23 @@ impl PreparedText {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::*;
+    use crate::{
+        ErrorDetail, System,
+        analyzed::AnalyzedSource,
+        layout::Affinity,
+        processing::DocumentSegmentBreaks,
+        protocol::{
+            ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PreparationOptions,
+            PreparedText, ProtocolError, ProtocolHandleKind,
+            paragraph::{
+                ParagraphAnchor, ParagraphAnchorItem, ParagraphControl, ParagraphControlKind,
+                ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+            },
+        },
+        range::Range,
+        source::Source,
+        style::{Font, Style, Wrap},
+    };
 
     fn prepare(text: &str, at: usize, kind: ParagraphControlKind) -> PreparedText {
         let source = Source::new(text);
@@ -309,9 +324,11 @@ mod tests {
                 affinity: Affinity::After,
             }],
         };
-        let analyzed =
-            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-                .unwrap();
+        let analyzed = AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let mut system = System::default();
         system
             .register_fonts(

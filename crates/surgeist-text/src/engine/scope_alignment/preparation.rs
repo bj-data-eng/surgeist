@@ -27,7 +27,7 @@ pub(crate) fn prepare_cell_resources(
     data: &mut PreparedScopes,
     catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
-    options: crate::PreparationOptions,
+    options: crate::protocol::PreparationOptions,
     budget: &mut Option<ScopeAlignmentBudget>,
 ) -> Result<()> {
     let Some(output) = analyzed
@@ -139,7 +139,7 @@ fn ensure_metric(
     data: &mut PreparedScopes,
     catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
-    options: crate::PreparationOptions,
+    options: crate::protocol::PreparationOptions,
     (scope, mut names): (usize, [bool; 2]),
     budget: &mut ScopeAlignmentBudget,
     pinned: &mut Vec<(usize, usize)>,
@@ -154,10 +154,10 @@ fn ensure_metric(
         .scope_alignment_fact_with_budget(scope, budget)?
         .and_then(|row| row.font_reference)
         .ok_or_else(|| refusal(ScopeAlignmentError::MissingFontReference { scope }))?;
-    let axis = if options.orientation() == crate::LineOrientation::Vertical {
-        crate::FontBaselineAxis::VerticalX
+    let axis = if options.orientation() == crate::protocol::LineOrientation::Vertical {
+        crate::font::FontBaselineAxis::VerticalX
     } else {
-        crate::FontBaselineAxis::HorizontalY
+        crate::font::FontBaselineAxis::HorizontalY
     };
     if reference.axis != axis {
         return Err(refusal(ScopeAlignmentError::UnsupportedReference { scope }));
@@ -212,7 +212,7 @@ pub(crate) fn prepare_resources(
     data: &mut PreparedScopes,
     catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
-    options: crate::PreparationOptions,
+    options: crate::protocol::PreparationOptions,
     shaped: &crate::engine::layout::data::ShapedData,
     tables: &crate::protocol::prepared::PreparedTables,
     budget: Option<ScopeAlignmentBudget>,
@@ -227,17 +227,17 @@ pub(crate) fn prepare_resources(
         .expect("active scope capture");
     let capture = &topology.capture;
     let visits = checked_sum(
-        crate::ScopeAlignmentLimitKind::StructuralWork,
+        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
         shaped.scope_glyph_custody.len(),
         shaped.scope_relations.len(),
     )?;
     let visits = checked_sum(
-        crate::ScopeAlignmentLimitKind::StructuralWork,
+        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
         visits,
         analyzed.paragraph.anchor_order.len(),
     )?;
     budget.work(checked_sum(
-        crate::ScopeAlignmentLimitKind::StructuralWork,
+        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
         visits,
         tables.alternatives.len(),
     )?)?;
@@ -246,7 +246,7 @@ pub(crate) fn prepare_resources(
         budget.work(1)?;
         for &target in &data.targets {
             budget.work(checked_sum(
-                crate::ScopeAlignmentLimitKind::StructuralWork,
+                crate::processing::ScopeAlignmentLimitKind::StructuralWork,
                 1,
                 active.len(),
             )?)?;
@@ -310,7 +310,7 @@ pub(crate) fn prepare_resources(
         let mut current = Some(target);
         while let Some(scope) = current {
             budget.work(checked_sum(
-                crate::ScopeAlignmentLimitKind::StructuralWork,
+                crate::processing::ScopeAlignmentLimitKind::StructuralWork,
                 demands.len(),
                 1,
             )?)?;
@@ -327,10 +327,10 @@ pub(crate) fn prepare_resources(
             let reference = alignment
                 .and_then(|row| row.font_reference)
                 .ok_or_else(|| refusal(ScopeAlignmentError::MissingFontReference { scope }))?;
-            let axis = if options.orientation() == crate::LineOrientation::Vertical {
-                crate::FontBaselineAxis::VerticalX
+            let axis = if options.orientation() == crate::protocol::LineOrientation::Vertical {
+                crate::font::FontBaselineAxis::VerticalX
             } else {
-                crate::FontBaselineAxis::HorizontalY
+                crate::font::FontBaselineAxis::HorizontalY
             };
             if reference.axis != axis {
                 return Err(refusal(ScopeAlignmentError::UnsupportedReference { scope }));
@@ -424,8 +424,8 @@ fn measure_scope(
     scope: CapturedScope,
     reference: ScopeFontReference,
     instance: crate::engine::shape::CanonicalFontInstance,
-    own_line_height: crate::LineHeight,
-    options: crate::PreparationOptions,
+    own_line_height: crate::style::LineHeight,
+    options: crate::protocol::PreparationOptions,
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<ScopeMetricsData> {
     let crate::engine::shape::CanonicalFontInstance {
@@ -434,12 +434,12 @@ fn measure_scope(
         synthesis,
         coords,
     } = instance;
-    let vertical = options.orientation() == crate::LineOrientation::Vertical;
+    let vertical = options.orientation() == crate::protocol::LineOrientation::Vertical;
     if reference.axis
         != if vertical {
-            crate::FontBaselineAxis::VerticalX
+            crate::font::FontBaselineAxis::VerticalX
         } else {
-            crate::FontBaselineAxis::HorizontalY
+            crate::font::FontBaselineAxis::HorizontalY
         }
     {
         return Err(refusal(ScopeAlignmentError::UnsupportedReference {
@@ -451,7 +451,7 @@ fn measure_scope(
         &[*b"head", *b"hhea", *b"OS/2", *b"fvar", *b"avar", *b"MVAR"],
         budget,
     )?;
-    let instance = crate::EffectiveFontInstance::qualify_synthesized(
+    let instance = crate::font::EffectiveFontInstance::qualify_synthesized(
         font.face(),
         font_size,
         &coords,
@@ -466,27 +466,33 @@ fn measure_scope(
         native_coordinate = metrics.central_coordinate_or_distance();
         upright_reference = Some(metrics.reference());
         upright_provenance = Some(metrics.provenance());
-        let gap = if matches!(own_line_height, crate::LineHeight::MetricsRelative(_)) {
+        let gap = if matches!(
+            own_line_height,
+            crate::style::LineHeight::MetricsRelative(_)
+        ) {
             let gap = instance.upright_line_gap(font.catalogue_identity())?;
             let scale = f64::from(font_size) / f64::from(metrics.units_per_em());
             crate::engine::layout::finite(
                 "scope upright gap",
-                crate::TextNumericPhase::Preparation,
+                crate::error::TextNumericPhase::Preparation,
                 gap * scale,
             )?
         } else {
             0.0
         };
-        let normal = if matches!(own_line_height, crate::LineHeight::MetricsRelative(_)) {
+        let normal = if matches!(
+            own_line_height,
+            crate::style::LineHeight::MetricsRelative(_)
+        ) {
             let extent = crate::engine::layout::add(
                 "scope upright extent",
-                crate::TextNumericPhase::Preparation,
+                crate::error::TextNumericPhase::Preparation,
                 metrics.used_over(),
                 -metrics.used_under(),
             )?;
             crate::engine::layout::add(
                 "scope upright normal extent",
-                crate::TextNumericPhase::Preparation,
+                crate::error::TextNumericPhase::Preparation,
                 extent,
                 gap,
             )?
@@ -513,26 +519,29 @@ fn measure_scope(
         }
         let over = crate::engine::layout::add(
             "scope font over",
-            crate::TextNumericPhase::Preparation,
+            crate::error::TextNumericPhase::Preparation,
             metrics.ascent(),
             -native_coordinate,
         )?;
         let under = crate::engine::layout::add(
             "scope font under",
-            crate::TextNumericPhase::Preparation,
+            crate::error::TextNumericPhase::Preparation,
             -metrics.descent(),
             native_coordinate,
         )?;
-        let normal = if matches!(own_line_height, crate::LineHeight::MetricsRelative(_)) {
+        let normal = if matches!(
+            own_line_height,
+            crate::style::LineHeight::MetricsRelative(_)
+        ) {
             let extent = crate::engine::layout::add(
                 "scope font extent",
-                crate::TextNumericPhase::Preparation,
+                crate::error::TextNumericPhase::Preparation,
                 metrics.ascent(),
                 -metrics.descent(),
             )?;
             crate::engine::layout::add(
                 "scope normal extent",
-                crate::TextNumericPhase::Preparation,
+                crate::error::TextNumericPhase::Preparation,
                 extent,
                 metrics.leading(),
             )?
@@ -543,19 +552,19 @@ fn measure_scope(
     };
     let over = crate::engine::layout::finite(
         "scope font over",
-        crate::TextNumericPhase::Preparation,
+        crate::error::TextNumericPhase::Preparation,
         over,
     )?;
     let under = crate::engine::layout::finite(
         "scope font under",
-        crate::TextNumericPhase::Preparation,
+        crate::error::TextNumericPhase::Preparation,
         under,
     )?;
     let line_height = crate::engine::resolve::font_line_height(
         font_size,
         own_line_height,
         normal,
-        crate::TextNumericPhase::Preparation,
+        crate::error::TextNumericPhase::Preparation,
     )?;
     Ok(ScopeMetricsData {
         scope,
@@ -588,7 +597,7 @@ fn measure_baselines(
     if !needed.into_iter().any(|name| name) {
         return Ok(());
     }
-    let instance = crate::EffectiveFontInstance::qualify_synthesized(
+    let instance = crate::font::EffectiveFontInstance::qualify_synthesized(
         data.font.face(),
         data.font_size,
         &data.coords,
@@ -617,7 +626,7 @@ fn measure_baselines(
             }
             (_, _, FontBaselineOutcome::Available(value)) => crate::engine::layout::add(
                 "scope matching baseline",
-                crate::TextNumericPhase::Preparation,
+                crate::error::TextNumericPhase::Preparation,
                 value.coordinate(),
                 -data.native_coordinate,
             )?,
@@ -748,7 +757,7 @@ fn prepared_retention(
     shaped: &crate::engine::layout::data::ShapedData,
     tables: &crate::protocol::prepared::PreparedTables,
     budget: &mut ScopeAlignmentBudget,
-) -> Result<crate::ScopeAlignmentRetention> {
+) -> Result<crate::protocol::ScopeAlignmentRetention> {
     super::census::retained_prepared(data, analyzed, shaped, tables, budget)
 }
 
@@ -757,13 +766,13 @@ pub(crate) fn prepare_cell_tabs(
     data: &mut PreparedScopes,
     catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
-    options: crate::PreparationOptions,
+    options: crate::protocol::PreparationOptions,
     scratch: &mut crate::engine::shape::ShapeContext,
     ledger: &mut accounting::Ledger,
 ) -> Result<crate::tabs::cell::CellTabPlan> {
     use crate::tabs::cell::{CellTabMetric, CellTabOperation, CellTabPlan, CellTabReference};
     let mut plan = CellTabPlan::default();
-    if options.tabs() != crate::TabPreparation::CssStops {
+    if options.tabs() != crate::tabs::TabPreparation::CssStops {
         return Ok(plan);
     }
     let Some(output) = &analyzed.combination else {
@@ -885,9 +894,9 @@ pub(crate) fn prepare_cell_tabs(
                 style_index: 0,
                 ch: ' ',
                 direction,
-                content: crate::UprightContent::TabMeasurement {
-                    role: crate::UprightTabMeasurement::SpaceInterval,
-                    owner: crate::TextStyleOwner::Scope { scope: scope.index },
+                content: crate::error::UprightContent::TabMeasurement {
+                    role: crate::error::UprightTabMeasurement::SpaceInterval,
+                    owner: crate::error::TextStyleOwner::Scope { scope: scope.index },
                 },
             };
             let (advance, font) = crate::engine::shape::measure_character(
@@ -898,9 +907,11 @@ pub(crate) fn prepare_cell_tabs(
                 &pinned,
             )?
             .ok_or_else(|| {
-                crate::protocol::protocol_error(crate::ProtocolError::UnsupportedContext {
-                    field: crate::ProtocolContextField::TabMetrics,
-                })
+                crate::protocol::protocol_error(
+                    crate::protocol::ProtocolError::UnsupportedContext {
+                        field: crate::protocol::ProtocolContextField::TabMetrics,
+                    },
+                )
             })?;
             remember_pin(
                 &mut pinned,
@@ -943,10 +954,10 @@ pub(crate) fn prepare_cell_tabs(
                 input: cell_tab_probe_input(analyzed, &styles, &catalogue_identity),
                 style_index: 0,
                 ch: '0',
-                direction: crate::ParagraphBaseDirection::LeftToRight,
-                content: crate::UprightContent::TabMeasurement {
-                    role: crate::UprightTabMeasurement::ZeroThreshold,
-                    owner: crate::TextStyleOwner::Scope { scope: owner },
+                direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
+                content: crate::error::UprightContent::TabMeasurement {
+                    role: crate::error::UprightTabMeasurement::ZeroThreshold,
+                    owner: crate::error::TextStyleOwner::Scope { scope: owner },
                 },
             };
             let measured = crate::engine::shape::measure_character(
@@ -980,8 +991,8 @@ pub(crate) fn prepare_cell_tabs(
             };
             if metric.advance < 0.0 {
                 return Err(crate::protocol::protocol_error(
-                    crate::ProtocolError::UnsupportedContext {
-                        field: crate::ProtocolContextField::TabMetrics,
+                    crate::protocol::ProtocolError::UnsupportedContext {
+                        field: crate::protocol::ProtocolContextField::TabMetrics,
                     },
                 ));
             }
@@ -1004,7 +1015,7 @@ pub(crate) fn prepare_cell_tabs(
 fn cell_tab_probe_input<'a>(
     analyzed: &'a AnalyzedData,
     styles: &'a [crate::engine::resolve::ResolvedStyleRun],
-    catalogue: &'a crate::CataloguePublication,
+    catalogue: &'a surgeist_font::CataloguePublication,
 ) -> crate::engine::ShapingInput<'a> {
     crate::engine::ShapingInput {
         formatting_breaks: &[],
@@ -1012,7 +1023,7 @@ fn cell_tab_probe_input<'a>(
         characters: None,
         separator_geometry: false,
         profile: crate::engine::upright::ShapingProfile::Horizontal,
-        baseline_reference: Some(crate::FontBaseline::Alphabetic),
+        baseline_reference: Some(crate::font::FontBaseline::Alphabetic),
         projection: &analyzed.projection,
         analysis: &analyzed.analysis,
         styles,

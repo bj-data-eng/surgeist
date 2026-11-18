@@ -1,8 +1,11 @@
 //! Real provider and selected-presentation witnesses for upright arrangement.
 use super::*;
 use crate::{
-    FinalizedFragmentOwner, GlyphBasis, HyphenationPlacement, Hyphens, NativeHyphenationConvention,
-    OverflowWrap, Text,
+    geometry::GlyphBasis,
+    hyphenation::{HyphenationPlacement, Hyphens, NativeHyphenationConvention},
+    protocol::readback::FinalizedFragmentOwner,
+    style::OverflowWrap,
+    text::Text,
 };
 use icu_properties::{CodePointMapData, props::LineBreak as UnicodeLineBreak};
 
@@ -234,17 +237,17 @@ fn prepare(system: &mut System, text: &str, style: Style) -> PreparedText {
             ParagraphInput {
                 source: source.clone(),
                 base_style: style,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
                 terminal_edge: ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: Range::new(0, len),
                     aggregate: Range::new(0, len),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -257,7 +260,7 @@ fn prepare(system: &mut System, text: &str, style: Style) -> PreparedText {
             },
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analyzed.source(), &source);
     assert_eq!(analyzed.direction(), Direction::LeftToRight);
@@ -304,16 +307,16 @@ fn select_request(
         LineEnd::Soft
     };
     r.context.available_inline = None;
-    r.context.alignment = crate::Alignment::Start;
+    r.context.alignment = crate::options::Alignment::Start;
     r.context.spacing = SpacingPolicy::None;
     r
 }
 fn finish(p: &PreparedText, r: LineSelectionRequest) -> FinalizedLine {
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -322,15 +325,15 @@ fn ids(line: &FinalizedLine) -> Vec<u32> {
         .flat_map(|run| run.glyphs().map(|g| g.id()).collect::<Vec<_>>())
         .collect()
 }
-fn place(p: &PreparedText, lines: Vec<FinalizedLine>) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn place(p: &PreparedText, lines: Vec<FinalizedLine>) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: lines
             .into_iter()
             .enumerate()
             .map(|(index, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 20.0,
@@ -651,7 +654,7 @@ fn a_real_intrinsic_conditional_cut_rebuilds_the_tibetan_prefix_context() {
             &ceiling,
             ConditionalPurpose::MinContent,
             &[],
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .unwrap()
         .begin(&[])
@@ -700,7 +703,7 @@ fn a_real_intrinsic_conditional_cut_rebuilds_the_tibetan_prefix_context() {
     );
 }
 
-fn portion_line(p: &PreparedText, portion: &crate::PreparedWordPortion) -> FinalizedLine {
+fn portion_line(p: &PreparedText, portion: &crate::protocol::PreparedWordPortion) -> FinalizedLine {
     let mut r = select_request(p, portion.start(), terminal(p));
     r.end = portion.end();
     let first = r.start.view().participant_offset();
@@ -715,10 +718,10 @@ fn portion_line(p: &PreparedText, portion: &crate::PreparedWordPortion) -> Final
 
 fn flow_request(
     p: &PreparedText,
-    segment: &crate::PreparedFlowSegment,
-) -> crate::FlowObservationRequest {
+    segment: &crate::protocol::PreparedFlowSegment,
+) -> crate::protocol::FlowObservationRequest {
     let mut r = select_request(p, segment.start(), terminal(p));
-    r.context.end = if segment.role() == crate::FlowSegmentRole::Target {
+    r.context.end = if segment.role() == crate::protocol::FlowSegmentRole::Target {
         LineEnd::Soft
     } else {
         segment
@@ -729,7 +732,7 @@ fn flow_request(
                 _ => unreachable!("a mandatory flow endpoint has its actual cause"),
             })
     };
-    crate::FlowObservationRequest {
+    crate::protocol::FlowObservationRequest {
         context: r.context,
         atomics: vec![],
         controls: vec![],
@@ -807,13 +810,13 @@ fn actual_native_indication_portions_and_flows_keep_each_selected_side() {
                     .iter()
                     .all(|&level| level == 0)
             );
-            let error = crate::Layout::from_finalized_lines(PlacementRequest {
+            let error = crate::layout::Layout::from_finalized_lines(PlacementRequest {
                 prepared: p.clone(),
                 coverage: PlacementCoverage::Range {
                     start: portion.start(),
                     end: portion.end(),
                 },
-                entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+                entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 20.0,
@@ -846,7 +849,7 @@ fn actual_native_indication_portions_and_flows_keep_each_selected_side() {
             let segments = flow.segments().collect::<Vec<_>>();
             let target = segments
                 .iter()
-                .find(|s| s.role() == crate::FlowSegmentRole::Target)
+                .find(|s| s.role() == crate::protocol::FlowSegmentRole::Target)
                 .unwrap();
             assert_eq!(target.start(), portion.start());
             assert_eq!(target.end(), portion.end());
@@ -905,7 +908,7 @@ fn cursive_font(script: [u8; 4], letter: u32, mark: u32) -> Vec<u8> {
     native(&sfnt::replace_tables(&font, tables), &[*b"latn", script])
 }
 
-fn physical_glyphs(layout: &crate::Layout) -> Vec<(u32, Point)> {
+fn physical_glyphs(layout: &crate::layout::Layout) -> Vec<(u32, Point)> {
     layout
         .run_views()
         .flat_map(|r| {

@@ -26,14 +26,14 @@ pub struct GlyphFrame {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GlyphFrameKind {
-    Line(crate::LineOrientation, GlyphBasis),
+    Line(crate::protocol::LineOrientation, GlyphBasis),
     Horizontal(f64),
 }
 
 impl GlyphFrame {
     pub(crate) const fn line(
         origin: Point,
-        orientation: crate::LineOrientation,
+        orientation: crate::protocol::LineOrientation,
         basis: GlyphBasis,
     ) -> Self {
         Self {
@@ -81,10 +81,10 @@ impl GlyphFrame {
     /// Pen direction in raw outline coordinates, before the outline transform.
     #[must_use]
     pub const fn pen_direction(self) -> Point {
-        use crate::LineOrientation::{
+        use crate::geometry::GlyphBasis::{Clockwise, Counterclockwise, Unrotated};
+        use crate::protocol::LineOrientation::{
             Horizontal, SidewaysClockwise, SidewaysCounterclockwise, Vertical,
         };
-        use GlyphBasis::{Clockwise, Counterclockwise, Unrotated};
         match self.kind {
             GlyphFrameKind::Horizontal(_)
             | GlyphFrameKind::Line(Horizontal, Unrotated)
@@ -199,10 +199,10 @@ impl Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LineOrientation::{
+    use crate::geometry::GlyphBasis::{Clockwise, Counterclockwise, Unrotated};
+    use crate::protocol::LineOrientation::{
         Horizontal, SidewaysClockwise, SidewaysCounterclockwise, Vertical,
     };
-    use GlyphBasis::{Clockwise, Counterclockwise, Unrotated};
 
     #[test]
     fn line_frame_keeps_pen_direction_independent_of_outline_rotation() {

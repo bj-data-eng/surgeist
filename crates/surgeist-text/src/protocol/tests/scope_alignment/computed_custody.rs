@@ -1,7 +1,31 @@
 //! Real computed source-box cuts retain their exterior lexical frame.
 //! This new-API qualification uses public capture and placement producers only.
 use super::capture::{captured_input, generous, reference, style};
-use crate::*;
+use crate::{
+    System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::{Point, Rect},
+    id::Id,
+    layout::{Affinity, Cursor, Layout},
+    processing::{
+        ComputedLineBoundaryInput, ContextualSourceInput, ScopeAlignmentBoundary, SourceBoxSide,
+        SourceProcessingConnection, SourceProcessingScope, process_contextual_source,
+    },
+    protocol::{
+        LineAllocations, LineAnchor, LineEnd, LineOrientation, LinePlacement, PlacementCoverage,
+        PlacementEntry, PlacementRequest, PreparationOptions, PreparedBreakKind,
+        PreparedParticipant, PreparedTermination, ScopeAllocation, ScopeAllocations,
+        SpacingAllocations, SpacingPolicy,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind,
+        },
+        readback::PresentationMappingKind,
+    },
+    range::Range,
+    source::{BaselineShift, Source},
+    style::Wrap,
+};
 use std::sync::Arc;
 
 const AHEM: &[u8] = include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -60,7 +84,7 @@ fn exterior_input(side: SourceBoxSide) -> ContextualSourceInput {
     // Child2 is an empty inline, with no nominated boundary pair or
     // origin. Its source-box cuts are before EnterScope2 and after ExitScope2;
     // both are inside parent1. Naming child2 is not custody of child2's frame.
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     input.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),

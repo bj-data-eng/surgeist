@@ -227,7 +227,7 @@ pub(crate) fn cff() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FontData, System};
+    use crate::{System, font::FontData};
     use skrifa::{
         outline::{DrawSettings, OutlineGlyphFormat, OutlinePen},
         raw::TableProvider,

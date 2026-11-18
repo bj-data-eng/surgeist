@@ -246,7 +246,7 @@ pub(crate) fn visit_logical_event(
 
 fn visit_deleted_source(
     prepared: &crate::engine::PreparedData,
-    source: crate::Range,
+    source: crate::range::Range,
     ledger: &mut Ledger,
     emit: &mut impl FnMut(SourceIncidence, &mut Ledger) -> Result<()>,
 ) -> Result<()> {

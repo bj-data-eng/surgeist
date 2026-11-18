@@ -1,4 +1,7 @@
-use crate::{Result, TextNumericError, TextNumericPhase};
+use crate::{
+    Result,
+    error::{TextNumericError, TextNumericPhase},
+};
 use std::hash::{Hash, Hasher};
 
 /// Native-lane used components of an authenticated non-atomic box edge.
@@ -179,12 +182,12 @@ impl InlineBoxEdgeComponents {
     pub(crate) fn evaluate(
         self,
         pen: f64,
-        side: crate::LineEdgeSide,
+        side: crate::protocol::LineEdgeSide,
         phase: TextNumericPhase,
     ) -> Result<EdgeExecution> {
         use crate::engine::layout::add;
         let flow_end = add("inline edge flow end", phase, pen, self.flow_advance())?;
-        let strip_start = if side == crate::LineEdgeSide::Start {
+        let strip_start = if side == crate::protocol::LineEdgeSide::Start {
             add("inline edge margin recipient", phase, pen, self.margin())?
         } else {
             pen
@@ -195,7 +198,10 @@ impl InlineBoxEdgeComponents {
             strip_start,
             self.border_padding_advance(),
         )?;
-        if self.margin() != 0.0 && side == crate::LineEdgeSide::End && strip_end == flow_end {
+        if self.margin() != 0.0
+            && side == crate::protocol::LineEdgeSide::End
+            && strip_end == flow_end
+        {
             return Err(crate::error::text_numeric_error(
                 "inline edge margin recipient",
                 phase,

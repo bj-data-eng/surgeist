@@ -6,7 +6,37 @@
 //! These tests establish fallible admission/results, not an execution trace.
 use super::{control_frame_owner, selected_frame};
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    font::{FontBaseline, FontBaselineAxis, FontBaselineScript},
+    geometry::Rect,
+    id::Id,
+    layout::{Affinity, Layout},
+    options::Alignment,
+    processing::{
+        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentBoundary,
+        ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference,
+        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingParagraph,
+        SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ControlAllocation, FinalizedLine, FormattedLineContext, LineAlignmentInsets,
+        LineAllocations, LineAnchor, LineBoxDirection, LineContext, LineEnd, LineOrientation,
+        LinePlacement, LineSelectionRequest, LineStart, ParagraphBaseDirection, PlacementCoverage,
+        PlacementEntry, PlacementRequest, PreparationOptions, PreparedBreakKind, PreparedControl,
+        PreparedTermination, PreparedText, ScopeAllocation, ScopeAllocations, SelectedLine,
+        SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{BaselineShift, Source},
+    style::{Font, LineHeight, Style, WhiteSpace, Wrap},
+};
 use std::sync::Arc;
 
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -24,7 +54,7 @@ struct Fixture {
 }
 
 fn fixture(classified: bool) -> Fixture {
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     let style = Style {
         font: Font::new().family("Ahem"),
         size: 10.0,

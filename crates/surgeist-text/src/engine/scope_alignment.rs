@@ -19,9 +19,15 @@ use std::sync::Arc;
 use super::{AnalyzedData, PreparedData};
 use crate::processing::contextual::alignment::{ScopeAlignmentBudget, operations};
 use crate::{
-    CapturedScope, FontBaseline, FontBaselineOutcome, FontData, FontSynthesis, Result,
-    ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentUsage, ScopeFontReference,
-    SourceProcessingEvent, UprightMetricProvenance, UprightMetricReference,
+    Result,
+    font::{
+        FontBaseline, FontBaselineOutcome, FontData, FontSynthesis, UprightMetricProvenance,
+        UprightMetricReference,
+    },
+    processing::{
+        CapturedScope, ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentUsage,
+        ScopeFontReference, SourceProcessingEvent,
+    },
 };
 
 pub(crate) fn refusal(reason: ScopeAlignmentError) -> crate::Error {
@@ -34,8 +40,8 @@ pub(crate) fn refusal(reason: ScopeAlignmentError) -> crate::Error {
 /// Immutable capture policy, optionally reduced for one composed operation.
 pub(crate) fn operation_limits(
     prepared: &PreparedData,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
-) -> Result<Option<crate::ScopeAlignmentLimits>> {
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
+) -> Result<Option<crate::processing::ScopeAlignmentLimits>> {
     let Some(topology) = prepared.analyzed.paragraph.scope_topology.as_ref() else {
         return if allowance.is_some() {
             Err(refusal(ScopeAlignmentError::MissingCapture))
@@ -59,12 +65,12 @@ pub(crate) fn operation_limits(
     };
     for (kind, required, limit) in [
         (
-            crate::ScopeAlignmentLimitKind::Records,
+            crate::processing::ScopeAlignmentLimitKind::Records,
             allowance.records(),
             limits.records(),
         ),
         (
-            crate::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
             allowance.payload_bytes(),
             limits.payload_bytes(),
         ),
@@ -77,7 +83,7 @@ pub(crate) fn operation_limits(
             }));
         }
     }
-    Ok(Some(crate::ScopeAlignmentLimits::new(
+    Ok(Some(crate::processing::ScopeAlignmentLimits::new(
         allowance.records(),
         limits.font_queries(),
         limits.structural_work(),
@@ -119,7 +125,7 @@ pub(crate) struct PreparedScopes {
     pub(crate) atom_owners: Vec<Vec<usize>>,
     pub(crate) breaks: Vec<usize>,
     pub(crate) usage: Option<ScopeAlignmentUsage>,
-    pub(crate) retention: Option<crate::ScopeAlignmentRetention>,
+    pub(crate) retention: Option<crate::protocol::ScopeAlignmentRetention>,
 }
 
 #[derive(Clone, Copy)]
@@ -394,7 +400,7 @@ pub(crate) struct ContributionChain {
 pub(crate) struct MetricContribution {
     /// Independently resolved aligned-component frame, not a source relabeling.
     pub(crate) owner: Option<usize>,
-    pub(crate) metrics: crate::ScopeMetricContribution,
+    pub(crate) metrics: crate::protocol::ScopeMetricContribution,
     pub(crate) next_direct: Option<usize>,
 }
 #[derive(Default)]
@@ -411,13 +417,13 @@ pub(crate) struct SelectedScopes {
     pub(crate) shared: Vec<(Option<usize>, Option<usize>)>,
     pub(crate) uncertain: Vec<(Option<usize>, Option<usize>)>,
     pub(crate) usage: Option<ScopeAlignmentUsage>,
-    pub(crate) retention: Option<crate::ScopeAlignmentRetention>,
+    pub(crate) retention: Option<crate::protocol::ScopeAlignmentRetention>,
 }
 impl SelectedScopes {
     pub(crate) fn contribution_chain(
         &self,
         mut next: Option<usize>,
-    ) -> impl Iterator<Item = crate::ScopeMetricContribution> + '_ {
+    ) -> impl Iterator<Item = crate::protocol::ScopeMetricContribution> + '_ {
         std::iter::from_fn(move || {
             let row = &self.contributions[next?];
             next = row.next_direct;
@@ -428,7 +434,7 @@ impl SelectedScopes {
     fn push_contribution(
         &mut self,
         owner: Option<usize>,
-        metrics: crate::ScopeMetricContribution,
+        metrics: crate::protocol::ScopeMetricContribution,
         budget: &mut ScopeAlignmentBudget,
     ) -> Result<()> {
         budget.work(1)?;
@@ -471,7 +477,10 @@ impl SelectedScopes {
     }
 }
 
-pub(crate) fn shares_operands(a: &crate::SelectedScope, b: &crate::SelectedScope) -> Result<bool> {
+pub(crate) fn shares_operands(
+    a: &crate::protocol::SelectedScope,
+    b: &crate::protocol::SelectedScope,
+) -> Result<bool> {
     if !Arc::ptr_eq(&a.selected, &b.selected) {
         return Err(refusal(ScopeAlignmentError::ForeignSelectedScope));
     }
@@ -956,14 +965,14 @@ fn selected_owners(
 
 #[derive(Clone, Copy)]
 pub(crate) enum PlanInput<'a> {
-    Selection(&'a crate::LineSelectionRequest),
+    Selection(&'a crate::protocol::LineSelectionRequest),
     Flow {
-        segment: &'a crate::PreparedFlowSegment,
-        request: &'a crate::FlowObservationRequest,
+        segment: &'a crate::protocol::PreparedFlowSegment,
+        request: &'a crate::protocol::FlowObservationRequest,
     },
 }
 impl<'a> PlanInput<'a> {
-    pub(crate) fn inline_box_family(self) -> Option<&'a crate::PreparedInlineBoxFamily> {
+    pub(crate) fn inline_box_family(self) -> Option<&'a crate::protocol::PreparedInlineBoxFamily> {
         match self {
             Self::Selection(request) => request.inline_boxes.as_ref(),
             Self::Flow { segment, .. } => segment.inline_box_family(),
@@ -1007,7 +1016,7 @@ pub(crate) struct SelectionPlan {
 pub(crate) fn selection_plan(
     prepared: &PreparedData,
     presentation: &crate::protocol::prepared::SelectedPresentation,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
     input: PlanInput<'_>,
 ) -> Result<SelectionPlan> {
     operation_limits(prepared, allowance)?;
@@ -1151,7 +1160,7 @@ impl<'a> SelectedFonts<'a> {
             budget.work(1)?;
             let atom = self.atom;
             self.atom += 1;
-            if self.prepared.options.tabs() != crate::TabPreparation::CssStops
+            if self.prepared.options.tabs() != crate::tabs::TabPreparation::CssStops
                 || self.presentation.projection.atoms[atom].code_point != 9
             {
                 continue;
@@ -1263,7 +1272,7 @@ pub(crate) fn select(
     prepared: &PreparedData,
     presentation: &crate::protocol::prepared::SelectedPresentation,
     basis: &super::SelectedShape,
-    request: &crate::LineSelectionRequest,
+    request: &crate::protocol::LineSelectionRequest,
     spacing_slots: &Vec<crate::protocol::selection::SpacingSlotData>,
     plan: SelectionPlan,
 ) -> Result<SelectedScopes> {
@@ -1581,10 +1590,10 @@ pub(crate) fn select(
                     let owner = selected_frame(&result.rows, scope, &mut budget)?;
                     result.push_contribution(
                         owner,
-                        crate::ScopeMetricContribution {
+                        crate::protocol::ScopeMetricContribution {
                             before: cell.before,
                             after: cell.after,
-                            alignment: crate::LineBoxAlignment::Baseline,
+                            alignment: crate::protocol::LineBoxAlignment::Baseline,
                         },
                         &mut budget,
                     )?;
@@ -1610,7 +1619,7 @@ pub(crate) fn select(
     }
     for allocation in &request.atomics {
         budget.work(1)?;
-        if let crate::AtomicLineAllocation::InFlow {
+        if let crate::protocol::AtomicLineAllocation::InFlow {
             flow, alignment, ..
         } = allocation.allocation
         {
@@ -1624,7 +1633,7 @@ pub(crate) fn select(
             .and_then(|index| result.unit_owners[index]);
             result.push_contribution(
                 owner,
-                crate::ScopeMetricContribution {
+                crate::protocol::ScopeMetricContribution {
                     before: flow.before_baseline,
                     after: flow.after_baseline,
                     alignment,
@@ -1641,7 +1650,7 @@ pub(crate) fn select(
                 .and_then(|index| result.unit_owners[index]);
             if matches!(
                 strut.alignment,
-                crate::LineBoxAlignment::Top | crate::LineBoxAlignment::Bottom
+                crate::protocol::LineBoxAlignment::Top | crate::protocol::LineBoxAlignment::Bottom
             ) && let Some(index) = owner
                 && matches!(capture.events[topology.control_orders[occurrence]].event,
                     SourceProcessingEvent::Control{control,..} if capture.scopes[result.rows[index].scope.index].boundaries.is_some_and(|pair|pair.start==control||pair.end==control))
@@ -1652,7 +1661,7 @@ pub(crate) fn select(
             }
             result.push_contribution(
                 owner,
-                crate::ScopeMetricContribution {
+                crate::protocol::ScopeMetricContribution {
                     before: strut.baseline,
                     after: strut.line_extent - strut.baseline,
                     alignment: strut.alignment,
@@ -1661,9 +1670,11 @@ pub(crate) fn select(
             )?;
         }
     }
-    if prepared.analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont {
+    if prepared.analyzed.paragraph.paragraph_strut
+        == crate::protocol::paragraph::ParagraphStrut::DefaultFont
+    {
         let run = prepared.shaped.empty_run.as_ref().ok_or_else(|| {
-            crate::protocol::protocol_error(crate::ProtocolError::MissingLineMetrics)
+            crate::protocol::protocol_error(crate::protocol::ProtocolError::MissingLineMetrics)
         })?;
         let metrics =
             super::layout::scope_font_contribution(&run.metrics, run.metrics.line_height)?;
@@ -1672,10 +1683,10 @@ pub(crate) fn select(
     if let Some(strut) = request.line_strut {
         result.push_contribution(
             None,
-            crate::ScopeMetricContribution {
+            crate::protocol::ScopeMetricContribution {
                 before: strut.baseline,
                 after: strut.line_extent - strut.baseline,
-                alignment: crate::LineBoxAlignment::Baseline,
+                alignment: crate::protocol::LineBoxAlignment::Baseline,
             },
             &mut budget,
         )?;
@@ -1696,7 +1707,7 @@ pub(crate) fn select(
         push(&mut budget, &mut result.strut_owners, owner)?;
         result.push_contribution(
             owner,
-            crate::ScopeMetricContribution {
+            crate::protocol::ScopeMetricContribution {
                 before: strut.metrics.baseline,
                 after: strut.metrics.line_extent - strut.metrics.baseline,
                 alignment: strut.alignment,
@@ -1708,18 +1719,18 @@ pub(crate) fn select(
     for row in &owners {
         budget.work(1)?;
         scratch = checked_sum(
-            crate::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
             scratch,
             capacity_bytes(row)?,
         )?;
     }
     scratch = checked_sum(
-        crate::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
         scratch,
         capacity_bytes(&active)?,
     )?;
     scratch = checked_sum(
-        crate::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
         scratch,
         capacity_bytes(&breaks)?,
     )?;
@@ -1740,7 +1751,11 @@ pub(crate) fn select(
     Ok(result)
 }
 
-fn checked_sum(kind: crate::ScopeAlignmentLimitKind, left: usize, right: usize) -> Result<usize> {
+fn checked_sum(
+    kind: crate::processing::ScopeAlignmentLimitKind,
+    left: usize,
+    right: usize,
+) -> Result<usize> {
     left.checked_add(right)
         .ok_or_else(|| refusal(ScopeAlignmentError::Overflow { kind }))
 }
@@ -1750,46 +1765,48 @@ fn capacity_bytes<T>(values: &Vec<T>) -> Result<usize> {
         .checked_mul(std::mem::size_of::<T>())
         .ok_or_else(|| {
             refusal(ScopeAlignmentError::Overflow {
-                kind: crate::ScopeAlignmentLimitKind::PayloadBytes,
+                kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
             })
         })
 }
 
-fn argument_retention<T>(values: &Vec<T>) -> Result<crate::ScopeAlignmentRetention> {
+fn argument_retention<T>(values: &Vec<T>) -> Result<crate::protocol::ScopeAlignmentRetention> {
     // The enum's Vec header moves on the stack. Only its real buffer is heap
     // custody; element metadata is already included in size_of::<T>().
-    Ok(crate::ScopeAlignmentRetention {
+    Ok(crate::protocol::ScopeAlignmentRetention {
         records: values.len(),
         payload_bytes: capacity_bytes(values)?,
     })
 }
 pub(crate) fn spacing_input_retention(
-    values: &crate::SpacingAllocations,
-) -> Result<crate::ScopeAlignmentRetention> {
+    values: &crate::protocol::SpacingAllocations,
+) -> Result<crate::protocol::ScopeAlignmentRetention> {
     match values {
-        crate::SpacingAllocations::None => Ok(crate::ScopeAlignmentRetention::default()),
-        crate::SpacingAllocations::Complete(rows) => argument_retention(rows),
+        crate::protocol::SpacingAllocations::None => {
+            Ok(crate::protocol::ScopeAlignmentRetention::default())
+        }
+        crate::protocol::SpacingAllocations::Complete(rows) => argument_retention(rows),
     }
 }
 fn input_budget(
-    limits: crate::ScopeAlignmentLimits,
-    base: crate::ScopeAlignmentRetention,
-    scope: crate::ScopeAlignmentRetention,
-    spacing: crate::ScopeAlignmentRetention,
+    limits: crate::processing::ScopeAlignmentLimits,
+    base: crate::protocol::ScopeAlignmentRetention,
+    scope: crate::protocol::ScopeAlignmentRetention,
+    spacing: crate::protocol::ScopeAlignmentRetention,
 ) -> Result<ScopeAlignmentBudget> {
     let records = checked_sum(
-        crate::ScopeAlignmentLimitKind::Records,
+        crate::processing::ScopeAlignmentLimitKind::Records,
         checked_sum(
-            crate::ScopeAlignmentLimitKind::Records,
+            crate::processing::ScopeAlignmentLimitKind::Records,
             base.records(),
             scope.records(),
         )?,
         spacing.records(),
     )?;
     let bytes = checked_sum(
-        crate::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
         checked_sum(
-            crate::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
             base.payload_bytes(),
             scope.payload_bytes(),
         )?,
@@ -1800,24 +1817,26 @@ fn input_budget(
 
 pub(crate) fn allocation_frames(
     selected: &Arc<crate::protocol::selection::SelectedData>,
-    allocations: crate::ScopeAllocations,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
-    spacing: &crate::SpacingAllocations,
+    allocations: crate::protocol::ScopeAllocations,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
+    spacing: &crate::protocol::SpacingAllocations,
 ) -> Result<FrameAllocations> {
     let limits = operation_limits(&selected.prepared, allowance)?;
     let count = selected.scopes.rows.len();
     let Some(retention) = selected.scopes.retention else {
         return match allocations {
-            crate::ScopeAllocations::None => Ok(FrameAllocations::default()),
-            crate::ScopeAllocations::Complete(rows) if rows.is_empty() => {
+            crate::protocol::ScopeAllocations::None => Ok(FrameAllocations::default()),
+            crate::protocol::ScopeAllocations::Complete(rows) if rows.is_empty() => {
                 Ok(FrameAllocations::default())
             }
             _ => Err(refusal(ScopeAlignmentError::ForeignSelectedScope)),
         };
     };
     let scope_input = match &allocations {
-        crate::ScopeAllocations::None => crate::ScopeAlignmentRetention::default(),
-        crate::ScopeAllocations::Complete(rows) => argument_retention(rows)?,
+        crate::protocol::ScopeAllocations::None => {
+            crate::protocol::ScopeAlignmentRetention::default()
+        }
+        crate::protocol::ScopeAllocations::Complete(rows) => argument_retention(rows)?,
     };
     let mut budget = input_budget(
         limits.expect("feature retention retains limits"),
@@ -1831,13 +1850,13 @@ pub(crate) fn allocation_frames(
     budget.reserve(&mut own, count)?;
     own.resize(count, None);
     match allocations {
-        crate::ScopeAllocations::None if count != 0 => {
+        crate::protocol::ScopeAllocations::None if count != 0 => {
             return Err(refusal(ScopeAlignmentError::MissingAllocation {
                 scope: selected.scopes.rows[0].scope.index,
             }));
         }
-        crate::ScopeAllocations::None => {}
-        crate::ScopeAllocations::Complete(rows) => {
+        crate::protocol::ScopeAllocations::None => {}
+        crate::protocol::ScopeAllocations::Complete(rows) => {
             for row in rows {
                 budget.work(1)?;
                 if !Arc::ptr_eq(selected, &row.scope.selected) || row.scope.index >= count {
@@ -1854,7 +1873,7 @@ pub(crate) fn allocation_frames(
         }
     }
     budget.release_bytes(scope_input.payload_bytes())?;
-    let mut result: Vec<crate::ScopeFrameAllocation> = Vec::new();
+    let mut result: Vec<crate::protocol::ScopeFrameAllocation> = Vec::new();
     for (index, row) in selected.scopes.rows.iter().enumerate() {
         budget.work(1)?;
         let displacement = own[index].ok_or_else(|| {
@@ -1867,15 +1886,15 @@ pub(crate) fn allocation_frames(
             .map_or(0.0, |parent| result[parent].cumulative_displacement.get());
         let cumulative = super::layout::add(
             "cumulative scope frame",
-            crate::TextNumericPhase::Finalization,
+            crate::error::TextNumericPhase::Finalization,
             parent,
             displacement.get(),
         )?;
-        let cumulative_displacement = crate::BaselineShift::try_new(cumulative)?;
+        let cumulative_displacement = crate::source::BaselineShift::try_new(cumulative)?;
         push(
             &mut budget,
             &mut result,
-            crate::ScopeFrameAllocation {
+            crate::protocol::ScopeFrameAllocation {
                 scope: row.scope.clone(),
                 displacement,
                 cumulative_displacement,
@@ -1927,7 +1946,7 @@ pub(crate) fn allocation_frames(
 
 #[derive(Default)]
 pub(crate) struct FrameAllocations {
-    pub(crate) frames: Vec<crate::ScopeFrameAllocation>,
+    pub(crate) frames: Vec<crate::protocol::ScopeFrameAllocation>,
     pub(crate) budget: Option<ScopeAlignmentBudget>,
 }
 impl FrameAllocations {
@@ -1940,8 +1959,8 @@ impl FrameAllocations {
 
 pub(crate) fn replay_frames(
     line: &super::FinalizedLine,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
-    spacing: &crate::SpacingAllocations,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
+    spacing: &crate::protocol::SpacingAllocations,
 ) -> Result<FrameAllocations> {
     let limits = operation_limits(&line.selected.prepared, allowance)?;
     let Some(retention) = line.data.scope_retention else {
@@ -1952,7 +1971,7 @@ pub(crate) fn replay_frames(
     let mut budget = input_budget(
         limits.expect("feature retention retains limits"),
         retention,
-        crate::ScopeAlignmentRetention::default(),
+        crate::protocol::ScopeAlignmentRetention::default(),
         spacing_input_retention(spacing)?,
     )?;
     let mut frames = Vec::new();
@@ -1986,7 +2005,7 @@ pub(crate) fn finish_frames(
         .checked_sub(retention.payload_bytes())
         .ok_or_else(|| {
             refusal(ScopeAlignmentError::Overflow {
-                kind: crate::ScopeAlignmentLimitKind::PayloadBytes,
+                kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
             })
         })?;
     budget.release_bytes(extra)?;

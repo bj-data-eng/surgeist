@@ -1,7 +1,11 @@
 use super::*;
 use crate::{
-    AnalysisTypography, AnalyzedSource, ParagraphBaseDirection, Range, Source, Style,
-    UprightContentPiece, UprightPresentation, WhiteSpace,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    error::{UprightContentPiece, UprightPresentation},
+    protocol::ParagraphBaseDirection,
+    range::Range,
+    source::Source,
+    style::{Style, WhiteSpace},
 };
 
 fn style(locale: Option<&str>) -> Style {

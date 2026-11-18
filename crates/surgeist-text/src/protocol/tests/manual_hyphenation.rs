@@ -1,6 +1,8 @@
 //! Bare authored SHY under the initial manual/unknown-convention policy.
 use super::*;
-use crate::{PlaintextItem, PreparedAlternativeDefinition, Range};
+use crate::{
+    processing::PlaintextItem, protocol::readback::PreparedAlternativeDefinition, range::Range,
+};
 use skrifa::MetadataProvider;
 
 fn fixture(primary_hyphen: bool) -> Vec<u8> {
@@ -17,14 +19,14 @@ fn prepare(bytes: &[u8], text: &str) -> PreparedText {
     let source = Source::new(text);
     let end = source.text().len();
     let value = ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
             locale: None,
             ..style()
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
@@ -42,9 +44,12 @@ fn prepare(bytes: &[u8], text: &str) -> PreparedText {
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            value,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     let mut system = System::default();
     system
@@ -59,7 +64,7 @@ fn plaintext(prepared: &PreparedText) -> Vec<u16> {
     for item in prepared
         .analyzed_source()
         .processed_source()
-        .plaintext_items(crate::Affinity::Before)
+        .plaintext_items(crate::layout::Affinity::Before)
     {
         match item {
             PlaintextItem::Text(text) => result.extend_from_slice(text.code_units()),
@@ -120,9 +125,9 @@ fn bare_shy(primary_hyphen: bool) {
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(whole.selected_line().request().alternative.is_none());
@@ -151,9 +156,9 @@ fn bare_shy(primary_hyphen: bool) {
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(whole.feedback().advance, 100.0);
@@ -209,9 +214,9 @@ fn bare_shy(primary_hyphen: bool) {
     let first = prepared
         .select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(first.feedback().advance, 60.0);
@@ -239,9 +244,9 @@ fn bare_shy(primary_hyphen: bool) {
     let second = prepared
         .select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(second.feedback().advance, 60.0);
@@ -254,14 +259,14 @@ fn bare_shy(primary_hyphen: bool) {
             (Range::new(5, 6), 58, 20.0)
         ]
     );
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: [first, second]
             .into_iter()
             .enumerate()
             .map(|(index, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -283,9 +288,9 @@ fn bare_shy(primary_hyphen: bool) {
             .collect::<Vec<_>>(),
         [Range::new(0, 3), Range::new(3, 6)]
     );
-    let selection = crate::Selection::new(
-        crate::Cursor::new(0, crate::Affinity::After),
-        crate::Cursor::new(6, crate::Affinity::Before),
+    let selection = crate::layout::Selection::new(
+        crate::layout::Cursor::new(0, crate::layout::Affinity::After),
+        crate::layout::Cursor::new(6, crate::layout::Affinity::Before),
     );
     assert_eq!(selection.range(), Range::new(0, 6));
     assert_eq!(layout.selection(selection).unwrap().rects().len(), 2);
@@ -301,7 +306,7 @@ fn bare_manual_shy_falls_back_to_u002d_when_primary_u2010_is_absent() {
     bare_shy(false);
 }
 
-fn raw_glyphs(layout: &crate::Layout, bytes: &[u8]) -> Vec<(usize, Range, u32, f32)> {
+fn raw_glyphs(layout: &crate::layout::Layout, bytes: &[u8]) -> Vec<(usize, Range, u32, f32)> {
     let mut rows = Vec::new();
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), bytes);
@@ -324,7 +329,7 @@ fn raw_glyphs(layout: &crate::Layout, bytes: &[u8]) -> Vec<(usize, Range, u32, f
     rows.sort_by_key(|(line, range, _, _)| (*line, range.start, range.end));
     rows
 }
-fn raw_line_advances(layout: &crate::Layout) -> Vec<f64> {
+fn raw_line_advances(layout: &crate::layout::Layout) -> Vec<f64> {
     let mut advances = vec![0.0; layout.lines().len()];
     // These published finalized run facts include the actual used insertion.
     // This fixture has no inline boxes or extra spacing allocations.
@@ -356,9 +361,9 @@ fn raw_bare_shy(primary_hyphen: bool) {
         .layout(
             source.clone(),
             style(),
-            crate::Options {
+            crate::options::Options {
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
@@ -383,10 +388,10 @@ fn raw_bare_shy(primary_hyphen: bool) {
         .layout(
             source.clone(),
             style(),
-            crate::Options {
+            crate::options::Options {
                 width: Some(40.0),
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
@@ -396,14 +401,14 @@ fn raw_bare_shy(primary_hyphen: bool) {
     assert_eq!(unbroken.metrics().full_width(), 60.0);
     assert_eq!(wrapped.source(), &source);
     assert_eq!(wrapped.source().text().code_units(), original);
-    let processed = crate::process_source_whitespace(
+    let processed = crate::processing::process_source_whitespace(
         wrapped.source().clone(),
         style(),
-        crate::DocumentSegmentBreaks::LineFeedDefault,
+        crate::processing::DocumentSegmentBreaks::LineFeedDefault,
     )
     .unwrap();
     let mut plain = Vec::new();
-    for item in processed.plaintext_items(crate::Affinity::Before) {
+    for item in processed.plaintext_items(crate::layout::Affinity::Before) {
         match item {
             PlaintextItem::Text(text) => plain.extend_from_slice(text.code_units()),
             PlaintextItem::InlineBox(_) => panic!("raw fixture has no boxes"),
@@ -437,9 +442,9 @@ fn raw_bare_shy(primary_hyphen: bool) {
     );
     assert_eq!(wrapped.metrics().full_width(), 40.0);
     assert!(!wrapped.metrics().overflow());
-    let selection = crate::Selection::new(
-        crate::Cursor::new(0, crate::Affinity::After),
-        crate::Cursor::new(4, crate::Affinity::Before),
+    let selection = crate::layout::Selection::new(
+        crate::layout::Cursor::new(0, crate::layout::Affinity::After),
+        crate::layout::Cursor::new(4, crate::layout::Affinity::Before),
     );
     assert_eq!(wrapped.selection(selection).unwrap().rects().len(), 2);
     assert_eq!(wrapped.source().text().code_units(), original);

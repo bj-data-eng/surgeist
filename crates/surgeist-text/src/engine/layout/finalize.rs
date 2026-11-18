@@ -9,8 +9,12 @@
 use std::sync::Arc;
 
 use crate::{
-    Alignment, BidiLevel, Error, ErrorCode, LineBoxDirection, Point, Rect, Result,
-    SuppliedInlineParticipant, SuppliedLine, TextNumericError, TextNumericPhase,
+    Error, ErrorCode, Result,
+    error::{TextNumericError, TextNumericPhase},
+    geometry::{Point, Rect},
+    options::Alignment,
+    protocol::LineBoxDirection,
+    supplied_line::{BidiLevel, SuppliedInlineParticipant, SuppliedLine},
 };
 
 use super::super::{
@@ -34,7 +38,7 @@ mod phase_two;
 pub(super) fn shape_and_collapse(
     input: PresentationInput<'_>,
     scratch: &mut ShapeContext,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
     scope_input: super::super::scope_alignment::PlanInput<'_>,
 ) -> Result<(
     ShapedData,
@@ -44,7 +48,7 @@ pub(super) fn shape_and_collapse(
     let (mut shaped, mapping, mut scope_plan) = shape::finalize(
         input,
         scratch,
-        crate::SpacingPolicy::None,
+        crate::protocol::SpacingPolicy::None,
         allowance,
         scope_input,
     )?;
@@ -110,9 +114,9 @@ pub(super) fn shape_and_collapse(
 pub(super) fn finalize(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine> {
     let scopes = super::super::scope_alignment::allocation_frames(
         &selected,
-        crate::ScopeAllocations::None,
+        crate::protocol::ScopeAllocations::None,
         None,
-        &crate::SpacingAllocations::None,
+        &crate::protocol::SpacingAllocations::None,
     )?;
     execute(selected, amounts, scopes)
 }
@@ -128,7 +132,7 @@ pub(super) fn finalize_scoped(
 pub(super) fn refinalize(
     line: &FinalizedLine,
     amounts: &[f64],
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
 ) -> Result<FinalizedLine> {
     execute(
         Arc::clone(&line.selected),
@@ -136,7 +140,7 @@ pub(super) fn refinalize(
         super::super::scope_alignment::replay_frames(
             line,
             allowance,
-            &crate::SpacingAllocations::None,
+            &crate::protocol::SpacingAllocations::None,
         )?,
     )
 }
@@ -151,7 +155,7 @@ fn paints_cluster(cluster: &PreparedCluster, disposition: SpacingSlotDisposition
 
 fn metric_only_run<'a>(
     shaped: &'a ShapedData,
-    participants: &[crate::PreparedParticipant],
+    participants: &[crate::protocol::PreparedParticipant],
     has_paint: bool,
 ) -> Option<&'a PreparedRun> {
     if has_paint
@@ -160,9 +164,9 @@ fn metric_only_run<'a>(
             .iter()
             .any(|item| matches!(item, ShapedItem::Cell(_)))
         || !((shaped.empty_run.is_some()
-            && !participants
-                .iter()
-                .any(|participant| matches!(participant, crate::PreparedParticipant::Atomic(_))))
+            && !participants.iter().any(|participant| {
+                matches!(participant, crate::protocol::PreparedParticipant::Atomic(_))
+            }))
             || shaped
                 .items
                 .iter()
@@ -192,9 +196,9 @@ pub(super) fn metric_only_decoration_demand(
 pub(super) fn qualify_selected_paint(
     input: PresentationInput<'_>,
     shaped: &ShapedData,
-    participants: &[crate::PreparedParticipant],
+    participants: &[crate::protocol::PreparedParticipant],
 ) -> Result<()> {
-    if input.prepared.analyzed.typography != crate::AnalysisTypography::Mixed {
+    if input.prepared.analyzed.typography != crate::analyzed::AnalysisTypography::Mixed {
         return Ok(());
     }
     let dispositions = edge_dispositions(input, shaped)?;
@@ -209,7 +213,7 @@ pub(super) fn qualify_selected_paint(
         && metric_only_decoration_demand(run, shaped, &input.presentation.projection)
     {
         let owner = if input.prepared.default_style_index == Some(run.style) {
-            crate::TextStyleOwner::Paragraph
+            crate::error::TextStyleOwner::Paragraph
         } else {
             let captured = input
                 .prepared
@@ -269,7 +273,7 @@ fn execute(
     let participants = account::try_collect(
         &mut ledger,
         levels.iter().map(|&level| {
-            crate::BidiLevel::try_new(level)
+            crate::supplied_line::BidiLevel::try_new(level)
                 .map(|level| SuppliedInlineParticipant::Boundary { level })
                 .map_err(|_| invalid("selected line has an invalid resolved level"))
         }),
@@ -316,7 +320,7 @@ fn execute(
     account::drop_vec(&mut ledger, responses)?;
     if matches!(
         selection.spacing,
-        crate::SpacingPolicy::InterWord | crate::SpacingPolicy::InterCharacter
+        crate::protocol::SpacingPolicy::InterWord | crate::protocol::SpacingPolicy::InterCharacter
     ) {
         super::super::spacing::character::restore(&mut shaped);
         let next = super::super::spacing::visual_authored_accounted(
@@ -333,7 +337,8 @@ fn execute(
             &mut shaped,
             &character_order,
             &dispositions,
-            (selection.spacing == crate::SpacingPolicy::InterCharacter).then_some(amounts),
+            (selection.spacing == crate::protocol::SpacingPolicy::InterCharacter)
+                .then_some(amounts),
             &mut ledger,
         )?;
     }
@@ -376,8 +381,8 @@ fn execute(
             row.advance = if discarded
                 || matches!(
                     row.geometry,
-                    crate::SpacingSlotGeometry::Boundary(
-                        crate::SpacingBoundaryGeometry::ProtectedRequired
+                    crate::protocol::SpacingSlotGeometry::Boundary(
+                        crate::protocol::SpacingBoundaryGeometry::ProtectedRequired
                     )
                 ) {
                 0.0
@@ -521,7 +526,7 @@ fn execute(
                         presentation: {
                             let atoms =
                                 &selected.presentation.projection.atoms[cluster.atoms.clone()];
-                            crate::Range::new(
+                            crate::range::Range::new(
                                 atoms[0].presentation.start,
                                 atoms[atoms.len() - 1].presentation.end,
                             )
@@ -676,7 +681,7 @@ fn execute(
                     &mut data.anchors,
                     FinalizedAnchor {
                         reference: reference.map(|_| slot_y),
-                        scope_displacement: crate::BaselineShift::try_new(delta)?,
+                        scope_displacement: crate::source::BaselineShift::try_new(delta)?,
                         unit,
                         slot: Point::new(slot, slot_y),
                         level,
@@ -788,7 +793,7 @@ fn execute(
                     &mut ledger,
                     &mut data.boxes,
                     FinalizedBox {
-                        scope_displacement: crate::BaselineShift::try_new(delta)?,
+                        scope_displacement: crate::source::BaselineShift::try_new(delta)?,
                         occurrence,
                         atomic: allocation.occurrence.clone(),
                         slot: Point::new(pen, baseline),
@@ -919,7 +924,7 @@ fn execute(
                             cluster.content.font_run().is_some_and(|font| {
                                 run.run == font
                                     || (selected.prepared.options.tabs()
-                                        == crate::TabPreparation::CssStops
+                                        == crate::tabs::TabPreparation::CssStops
                                         && same_paint_font(
                                             &shaped.runs[run.run],
                                             &shaped.runs[font],
@@ -1029,7 +1034,8 @@ fn execute(
                     let run = &mut data.runs[index];
                     if cluster.content.font_run().is_some_and(|font| {
                         run.run == font
-                            || (selected.prepared.options.tabs() == crate::TabPreparation::CssStops
+                            || (selected.prepared.options.tabs()
+                                == crate::tabs::TabPreparation::CssStops
                                 && same_paint_font(&shaped.runs[run.run], &shaped.runs[font]))
                     }) && run.level == level
                     {
@@ -1492,7 +1498,7 @@ struct CellFlow<'a> {
 /// The required half must survive the actual inner paint mapping, including
 /// compression and centering. Glyph-free units use the same baseline frame.
 fn qualify_cell_word_half(
-    frame: crate::GlyphFrame,
+    frame: crate::geometry::GlyphFrame,
     pen_base: f64,
     pen: f64,
     offset: Point,
@@ -1556,7 +1562,10 @@ fn append_cell(
     let participant = selected.presentation.units[unit]
         .participant
         .and_then(|index| selected.request.participants.get(index));
-    if !matches!(participant, Some(crate::PreparedParticipant::Cell(_))) {
+    if !matches!(
+        participant,
+        Some(crate::protocol::PreparedParticipant::Cell(_))
+    ) {
         return Err(invalid("cell selected unit has no Cell participant"));
     }
     let owner = selected
@@ -1566,7 +1575,7 @@ fn append_cell(
         .copied()
         .ok_or_else(|| invalid("cell has no admitted scope ownership"))?;
     let delta = scopes.displacement(owner);
-    let shift = crate::BaselineShift::try_new(delta)?;
+    let shift = crate::source::BaselineShift::try_new(delta)?;
     let reference = scoped_reference(origin.y, delta)?;
     qualify_local_shift(origin.y, reference, -cell.before, shift)?;
     qualify_local_shift(origin.y, reference, cell.after, shift)?;
@@ -1676,8 +1685,10 @@ fn append_cell(
         x_offset: layout.transform.x_offset,
         baseline: provider.baseline,
     };
-    let unit_frame =
-        crate::GlyphFrame::horizontal(Point::new(inner.x_offset, inner.baseline), inner.x_scale);
+    let unit_frame = crate::geometry::GlyphFrame::horizontal(
+        Point::new(inner.x_offset, inner.baseline),
+        inner.x_scale,
+    );
     let positions = &layout.positions;
     let mut last_run: Option<usize> = None;
     for position in positions {
@@ -1766,7 +1777,7 @@ fn append_cell(
             if word_half != 0.0 {
                 // The run origin is PRE-half. Preserve that independent operand;
                 // never recover it by subtracting a half from rounded paint data.
-                let local_frame = crate::GlyphFrame::horizontal(
+                let local_frame = crate::geometry::GlyphFrame::horizontal(
                     Point::new(
                         finite(
                             "cell local run x",
@@ -1857,7 +1868,7 @@ fn shared_endpoint_offsets(
     selected: &SelectedData,
     shaped: &ShapedData,
     dispositions: &[SpacingSlotDisposition],
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    order: &crate::supplied_line::SuppliedVisualOrder<'_, '_>,
     groups: SharedEndpointGroups<'_>,
     boxed_units: Option<&[bool]>,
     ledger: &mut Ledger,
@@ -2025,9 +2036,9 @@ fn add_owned_fragment_bounds(
 }
 
 fn add_fragment_bounds(
-    index: &[(crate::Range, usize, usize)],
+    index: &[(crate::range::Range, usize, usize)],
     fragments: &mut [FinalizedFragmentData],
-    source: crate::Range,
+    source: crate::range::Range,
     rect: Rect,
     ledger: &mut Ledger,
 ) -> Result<()> {
@@ -2090,7 +2101,7 @@ fn inflow_allocation(
     crate::protocol::AtomicFlowAllocation,
     crate::protocol::AtomicBoxAllocation,
     LineBoxAlignment,
-    crate::AtomicFitAllocation,
+    crate::protocol::AtomicFitAllocation,
 )> {
     match allocation.allocation {
         crate::protocol::AtomicLineAllocation::InFlow {
@@ -2239,8 +2250,8 @@ fn install_out_of_flow(
         }
         let affinity = selected.prepared.tables.atomics[atomic.index].affinity;
         let x = match affinity {
-            crate::Affinity::Before => before[unit_index].or(after[unit_index]),
-            crate::Affinity::After => after[unit_index].or(before[unit_index]),
+            crate::layout::Affinity::Before => before[unit_index].or(after[unit_index]),
+            crate::layout::Affinity::After => after[unit_index].or(before[unit_index]),
         }
         .unwrap_or(data.metrics.offset);
         account::push(
@@ -2263,7 +2274,7 @@ fn install_out_of_flow(
                         ),
                     )?,
                 ),
-                scope_displacement: crate::BaselineShift::try_new(
+                scope_displacement: crate::source::BaselineShift::try_new(
                     scopes.displacement(
                         selected
                             .scopes
@@ -2604,7 +2615,7 @@ fn line_metrics(
                 result.ascent = result.ascent.max(flow.before_baseline);
                 result.descent = result.descent.max(flow.after_baseline);
                 if selected.prepared.analyzed.processed.source().boxes()[occurrence].kind()
-                    == crate::InlineBoxKind::InFlow
+                    == crate::source::InlineBoxKind::InFlow
                 {
                     have_metrics = true;
                 }
@@ -2696,7 +2707,7 @@ pub(super) fn font_strut(metrics: RunMetrics) -> Result<(f64, f64)> {
     ))
 }
 
-fn shifted_baseline(baseline: f64, shift: crate::BaselineShift) -> Result<f64> {
+fn shifted_baseline(baseline: f64, shift: crate::source::BaselineShift) -> Result<f64> {
     add(
         "allocated baseline displacement",
         TextNumericPhase::Finalization,
@@ -2709,7 +2720,7 @@ fn qualify_local_shift(
     before: f64,
     after: f64,
     local: f64,
-    shift: crate::BaselineShift,
+    shift: crate::source::BaselineShift,
 ) -> Result<()> {
     let before = finite(
         "unshifted allocated coordinate",
@@ -2725,7 +2736,7 @@ fn qualify_local_shift(
         return Err(super::super::text_numeric_error(
             "allocated coordinate displacement",
             TextNumericPhase::Finalization,
-            crate::TextNumericError::NonZeroLost,
+            crate::error::TextNumericError::NonZeroLost,
             shift.get(),
         ));
     }
@@ -2733,7 +2744,11 @@ fn qualify_local_shift(
 }
 
 /// Preserve local metrics; only their relative endpoints are displaced.
-fn shifted_bounds(before: f64, after: f64, shift: crate::BaselineShift) -> Result<(f64, f64)> {
+fn shifted_bounds(
+    before: f64,
+    after: f64,
+    shift: crate::source::BaselineShift,
+) -> Result<(f64, f64)> {
     let actual_before = add(
         "allocated shifted over bound",
         TextNumericPhase::Finalization,
@@ -2760,7 +2775,7 @@ fn shifted_bounds(before: f64, after: f64, shift: crate::BaselineShift) -> Resul
         return Err(super::super::text_numeric_error(
             "allocated shifted extent",
             TextNumericPhase::Finalization,
-            crate::TextNumericError::NonZeroLost,
+            crate::error::TextNumericError::NonZeroLost,
             extent,
         ));
     }
@@ -2883,10 +2898,10 @@ fn native_metrics_scoped(
                 LineBoxAlignment::Top | LineBoxAlignment::Bottom => row.metrics.alignment,
                 LineBoxAlignment::Baseline if delta == 0.0 => LineBoxAlignment::Baseline,
                 LineBoxAlignment::Baseline => {
-                    LineBoxAlignment::Shift(crate::BaselineShift::try_new(delta)?)
+                    LineBoxAlignment::Shift(crate::source::BaselineShift::try_new(delta)?)
                 }
                 LineBoxAlignment::Shift(own) => {
-                    LineBoxAlignment::Shift(crate::BaselineShift::try_new(add(
+                    LineBoxAlignment::Shift(crate::source::BaselineShift::try_new(add(
                         "scope leaf alignment",
                         TextNumericPhase::Finalization,
                         own.get(),
@@ -2898,7 +2913,9 @@ fn native_metrics_scoped(
         }
         return groups.finish(result);
     }
-    if selected.prepared.analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont {
+    if selected.prepared.analyzed.paragraph.paragraph_strut
+        == crate::protocol::paragraph::ParagraphStrut::DefaultFont
+    {
         let font = selected
             .prepared
             .shaped
@@ -3019,7 +3036,7 @@ fn edge_dispositions_accounted(
             ShapedItem::Anchor { .. } => {}
             ShapedItem::InlineBox { occurrence, level } => {
                 if selected.prepared.analyzed.processed.source().boxes()[occurrence].kind()
-                    == crate::InlineBoxKind::InFlow
+                    == crate::source::InlineBoxKind::InFlow
                 {
                     account::push(
                         ledger,
@@ -3101,7 +3118,7 @@ fn classify_trailing(
             ShapedItem::Anchor { unit } => {
                 if crate::protocol::boundary::facts(selected.presentation_input(), unit)
                     .allocation()
-                    .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
+                    .is_some_and(crate::protocol::InlineBoundaryAllocation::blocks_hanging)
                 {
                     break;
                 }
@@ -3131,14 +3148,14 @@ fn apply_spacing(
     shaped: &mut ShapedData,
     amounts: &[f64],
     dispositions: &[SpacingSlotDisposition],
-    responses: &[(crate::SpacingStretchability, usize)],
+    responses: &[(crate::protocol::SpacingStretchability, usize)],
     character_order: &[usize],
     ledger: &mut Ledger,
 ) -> Result<Vec<FinalizedSpacingSlot>> {
     if amounts.len() != selected.spacing_slots.len() {
         return Err(invalid("spacing amounts do not cover selected slots"));
     }
-    if selected.request.context.spacing == crate::SpacingPolicy::InterCharacter {
+    if selected.request.context.spacing == crate::protocol::SpacingPolicy::InterCharacter {
         return character_slots(
             selected,
             shaped,
@@ -3201,7 +3218,7 @@ fn apply_spacing(
             }));
         }
         match selected.request.context.spacing {
-            crate::SpacingPolicy::Spaces => {
+            crate::protocol::SpacingPolicy::Spaces => {
                 let cluster = &mut shaped.clusters[index];
                 if !cluster.whitespace.is_space_or_nbsp() {
                     return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
@@ -3214,7 +3231,7 @@ fn apply_spacing(
                 } else { cluster.advance = add("selected spacing amount", TextNumericPhase::Finalization, cluster.advance, amount)?; }
                 cluster.logical_adjustments[2] = amount;
             }
-            crate::SpacingPolicy::InterWord => {
+            crate::protocol::SpacingPolicy::InterWord => {
                 if amount < 0.0 {
                     return Err(super::super::text_numeric_error(
                         "selected spacing amount",
@@ -3226,15 +3243,15 @@ fn apply_spacing(
                 if amount != 0.0 {
                     if let Some(provider_atoms) = shared {
                         return Err(super::super::spacing::unsupported(
-                            crate::SpacingStage::SelectedShaping,
-                            crate::SpacingOperation::InterWordAllocation,
+                            crate::error::SpacingStage::SelectedShaping,
+                            crate::error::SpacingOperation::InterWordAllocation,
                             row.pieces.iter().map(|piece| piece.owner).collect(),
                             provider_atoms,
                         ));
                     }
                     if matches!(
                         geometry,
-                        crate::SpacingSlotGeometry::Independent {
+                        crate::protocol::SpacingSlotGeometry::Independent {
                             intrinsic_advance: 0.0
                         }
                     ) {
@@ -3247,7 +3264,8 @@ fn apply_spacing(
                     .ok_or_else(|| invalid("separator candidate has no actual unit geometry"))?]
                 .allocation = amount;
             }
-            crate::SpacingPolicy::None | crate::SpacingPolicy::InterCharacter => {
+            crate::protocol::SpacingPolicy::None
+            | crate::protocol::SpacingPolicy::InterCharacter => {
                 return Err(invalid("None has no selected spacing slots"));
             }
         }
@@ -3279,12 +3297,12 @@ fn character_slots(
     shaped: &ShapedData,
     amounts: &[f64],
     dispositions: &[SpacingSlotDisposition],
-    responses: &[(crate::SpacingStretchability, usize)],
+    responses: &[(crate::protocol::SpacingStretchability, usize)],
     order: &[usize],
     ledger: &mut Ledger,
 ) -> Result<Vec<FinalizedSpacingSlot>> {
     use super::super::spacing::character::{self, Owner};
-    use crate::{SpacingBoundaryGeometry as Geometry, SpacingSlotGeometry};
+    use crate::protocol::{SpacingBoundaryGeometry as Geometry, SpacingSlotGeometry};
     let mut rows = Vec::new();
     let owners = selected.basis.characters.owners(shaped, order, ledger)?;
     for (slot, (target, &amount)) in selected.spacing_slots.iter().zip(amounts).enumerate() {
@@ -3340,9 +3358,11 @@ fn character_slots(
             Some(owner @ (Owner::Atomic(_) | Owner::Cell(_))) => {
                 let mut traversal = account::clone_vec(ledger, order)?;
                 let scans = traversal.len().checked_mul(3).ok_or_else(|| {
-                    super::super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
-                    })
+                    super::super::scope_alignment::refusal(
+                        crate::processing::ScopeAlignmentError::Overflow {
+                            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                        },
+                    )
                 })?;
                 account::work(ledger, scans)?;
                 if selected.presentation.analysis.base_level & 1 != 0 {
@@ -3358,19 +3378,23 @@ fn character_slots(
                         _ => false,
                     })
                     .unwrap_or(0);
-                let downstream_tab=traversal.iter().skip(rank+1).any(|&i| matches!(shaped.items[i],ShapedItem::TextCluster(c) if matches!(shaped.clusters[c].content,ClusterContent::CssTab(_)) && responses[c].0!=crate::SpacingStretchability::Excluded));
+                let downstream_tab=traversal.iter().skip(rank+1).any(|&i| matches!(shaped.items[i],ShapedItem::TextCluster(c) if matches!(shaped.clusters[c].content,ClusterContent::CssTab(_)) && responses[c].0!=crate::protocol::SpacingStretchability::Excluded));
                 account::drop_vec(ledger, traversal)?;
                 (
                     usize::MAX,
                     if downstream_tab {
-                        crate::SpacingStretchability::TabDependent
+                        crate::protocol::SpacingStretchability::TabDependent
                     } else {
-                        crate::SpacingStretchability::Direct
+                        crate::protocol::SpacingStretchability::Direct
                     },
                     rank,
                 )
             }
-            None => (usize::MAX, crate::SpacingStretchability::Excluded, 0),
+            None => (
+                usize::MAX,
+                crate::protocol::SpacingStretchability::Excluded,
+                0,
+            ),
         };
         account::push(
             ledger,
@@ -3381,7 +3405,7 @@ fn character_slots(
                 members: Vec::new(),
                 geometry: SpacingSlotGeometry::Boundary(geometry),
                 stretchability: if discarded || protected {
-                    crate::SpacingStretchability::Excluded
+                    crate::protocol::SpacingStretchability::Excluded
                 } else {
                     response
                 },
@@ -3411,7 +3435,7 @@ fn character_slots(
 pub(super) fn standalone_amounts(
     selected: &SelectedData,
     metrics: &LineMetrics,
-    measurements: &crate::LineMeasurements,
+    measurements: &crate::protocol::LineMeasurements,
 ) -> Result<Vec<f64>> {
     let measured = LineMetrics {
         advance: measurements.alignment().advance(),
@@ -3476,7 +3500,7 @@ pub(super) fn standalone_amounts(
 /// content alignment and its explicit spacing budget consume these insets.
 fn alignment_width(selection: &LineContext, width: f64) -> Result<f64> {
     let insets = selection.alignment_insets;
-    if insets == crate::LineAlignmentInsets::ZERO {
+    if insets == crate::protocol::LineAlignmentInsets::ZERO {
         return Ok(width);
     }
     let after_left = add(
@@ -3617,16 +3641,16 @@ fn resolve_tabs(
     selected: &SelectedData,
     shaped: &mut ShapedData,
     atomics: &OrdinalMap<&AtomicAllocation>,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    order: &crate::supplied_line::SuppliedVisualOrder<'_, '_>,
     ledger: &mut Ledger,
 ) -> Result<()> {
-    if selected.prepared.options.tabs() != crate::TabPreparation::CssStops {
+    if selected.prepared.options.tabs() != crate::tabs::TabPreparation::CssStops {
         return Ok(());
     }
-    let intrinsic = selected.request.context.tabs == crate::TabContext::IntrinsicCssStops;
+    let intrinsic = selected.request.context.tabs == crate::protocol::TabContext::IntrinsicCssStops;
     let origin = match selected.request.context.tabs {
-        crate::TabContext::CssStops { origin } => origin,
-        crate::TabContext::IntrinsicCssStops => Some(0.0),
+        crate::protocol::TabContext::CssStops { origin } => origin,
+        crate::protocol::TabContext::IntrinsicCssStops => Some(0.0),
         _ => return Ok(()),
     };
     // The signed grid frame is a consumed capability, not another general
@@ -3683,7 +3707,7 @@ fn resolve_tabs(
                     } else {
                         let origin = origin.ok_or_else(|| {
                             protocol_error(ProtocolError::MissingPhaseTwoContext(
-                                crate::PhaseTwoContext::TabOrigin,
+                                crate::protocol::PhaseTwoContext::TabOrigin,
                             ))
                         })?;
                         grid.stop(origin, pen, grid_sign, metric.period, metric.threshold)?
@@ -3725,19 +3749,24 @@ fn same_paint_font(a: &PreparedRun, b: &PreparedRun) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::*;
-    use crate::{FinalizedFragmentOwner, Font, Source, Style, System, WhiteSpace};
-    use crate::{
+    use crate::protocol::paragraph::{
         ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
         ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
         ParagraphStrut,
+    };
+    use crate::protocol::*;
+    use crate::{
+        System,
+        protocol::readback::FinalizedFragmentOwner,
+        source::Source,
+        style::{Font, Style, WhiteSpace},
     };
     use icu_properties::props::BidiClass;
 
     fn selected(
         text: &str,
         mode: WhiteSpace,
-        atomic: Option<crate::InlineBoxKind>,
+        atomic: Option<crate::source::InlineBoxKind>,
         control: Option<ParagraphControlKind>,
     ) -> SelectedLine {
         selected_with_source(
@@ -3756,58 +3785,58 @@ mod tests {
     fn selected_with_source(
         mut source: Source,
         style: Style,
-        atomic: Option<crate::InlineBoxKind>,
+        atomic: Option<crate::source::InlineBoxKind>,
         control: Option<ParagraphControlKind>,
     ) -> SelectedLine {
         let source_len = source.text().len();
         if let Some(kind) = atomic {
-            source.inline_box(crate::InlineBox::new(
-                crate::Id::from_u64(1),
+            source.inline_box(crate::source::InlineBox::new(
+                crate::id::Id::from_u64(1),
                 kind,
                 0,
-                crate::Size::new(5.0, 10.0),
+                crate::geometry::Size::new(5.0, 10.0),
             ));
         }
         let mut anchor_order = Vec::new();
         if source_len == 0 {
             anchor_order.push(ParagraphAnchor {
                 item: ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: crate::Affinity::Before,
+                affinity: crate::layout::Affinity::Before,
             });
         }
         if control.is_some() {
             anchor_order.push(ParagraphAnchor {
                 item: ParagraphAnchorItem::Control(0),
-                affinity: crate::Affinity::Before,
+                affinity: crate::layout::Affinity::Before,
             });
         }
         if atomic.is_some() {
             anchor_order.push(ParagraphAnchor {
                 item: ParagraphAnchorItem::Atomic(0),
-                affinity: crate::Affinity::Before,
+                affinity: crate::layout::Affinity::Before,
             });
         }
-        let analyzed = crate::AnalyzedSource::from_paragraph(
+        let analyzed = crate::analyzed::AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: source.clone(),
                 base_style: style,
-                segment_breaks: crate::DocumentSegmentBreaks::Defined(Vec::new()),
+                segment_breaks: crate::processing::DocumentSegmentBreaks::Defined(Vec::new()),
                 paragraph_strut: ParagraphStrut::DefaultFont,
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 origins: vec![ParagraphOrigin {
                     text_node: None,
                     source,
-                    local: crate::Range::new(0, source_len),
-                    aggregate: crate::Range::new(0, source_len),
+                    local: crate::range::Range::new(0, source_len),
+                    aggregate: crate::range::Range::new(0, source_len),
                     kind: ParagraphOriginKind::Authored,
                 }],
                 connections: Vec::new(),
                 controls: control
                     .map(|kind| vec![ParagraphControl { at: 0, kind }])
                     .unwrap_or_default(),
-                boundary_policies: if atomic == Some(crate::InlineBoxKind::InFlow) {
+                boundary_policies: if atomic == Some(crate::source::InlineBoxKind::InFlow) {
                     [
                         ParagraphBoundaryDefinition::AtomicBefore(0),
                         ParagraphBoundaryDefinition::AtomicAfter(0),
@@ -3815,9 +3844,9 @@ mod tests {
                     .into_iter()
                     .map(|definition| ParagraphBoundaryPolicy {
                         definition,
-                        preceding_wrap: crate::Wrap::Word,
-                        following_wrap: crate::Wrap::Word,
-                        ancestor_wrap: crate::Wrap::Word,
+                        preceding_wrap: crate::style::Wrap::Word,
+                        following_wrap: crate::style::Wrap::Word,
+                        ancestor_wrap: crate::style::Wrap::Word,
                     })
                     .collect()
                 } else {
@@ -3826,7 +3855,7 @@ mod tests {
                 replacements: Vec::new(),
                 anchor_order,
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let mut system = System::default();
@@ -3836,7 +3865,7 @@ mod tests {
                 crate::test_fonts::FONT_LIMITS,
             )
             .unwrap();
-        let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
+        let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word);
         let prepared = system
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap();
@@ -3852,12 +3881,12 @@ mod tests {
         let atomics = prepared
             .atomic_views()
             .map(|view| {
-                let inflow = atomic == Some(crate::InlineBoxKind::InFlow);
+                let inflow = atomic == Some(crate::source::InlineBoxKind::InFlow);
                 AtomicAllocation {
                     occurrence: view.handle(),
                     allocation: if inflow {
                         AtomicLineAllocation::InFlow {
-                            fit: crate::AtomicFitAllocation::NativeOccupied,
+                            fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                             alignment: LineBoxAlignment::Baseline,
                             flow: AtomicFlowAllocation {
                                 advance: 5.0,
@@ -3886,10 +3915,10 @@ mod tests {
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -3904,13 +3933,13 @@ mod tests {
                 start: boundaries[0].clone(),
                 end: boundaries.last().unwrap().clone(),
                 participants: prepared.participants().collect(),
-                termination: crate::PreparedTermination::Ordinary(termination),
+                termination: crate::protocol::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
-                    alignment_insets: crate::LineAlignmentInsets::ZERO,
+                    alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: LineBoxDirection::LeftToRight,
-                    formatted_line: crate::FormattedLineContext::default(),
+                    formatted_line: crate::protocol::FormattedLineContext::default(),
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
@@ -3933,19 +3962,19 @@ mod tests {
         Style {
             font: Font::new().family("Ahem"),
             size,
-            line_height: crate::LineHeight::Absolute(line_height),
+            line_height: crate::style::LineHeight::Absolute(line_height),
             ..Style::default()
         }
     }
 
     #[test]
     fn compatible_shaping_spans_keep_their_own_line_heights() {
-        use crate::Range;
+        use crate::range::Range;
 
         let mut short = ahem_strut(10.0, 10.0);
         short.white_space = WhiteSpace::Collapse;
         let mut tall = short.clone();
-        tall.line_height = crate::LineHeight::Absolute(20.0);
+        tall.line_height = crate::style::LineHeight::Absolute(20.0);
         let mut observations = Vec::new();
         for tall_first in [false, true] {
             let mut source = Source::new("X X");
@@ -3959,9 +3988,9 @@ mod tests {
             );
             let selected = selected_with_source(source, short.clone(), None, None);
             let whole = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             // Real Ahem has one-em advances, ascent8/descent2 at10px. Only
@@ -4011,9 +4040,9 @@ mod tests {
             let prefix = prepared
                 .select(request)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(prefix.feedback().advance, 10.0);
@@ -4051,7 +4080,7 @@ mod tests {
         let initial = selected_with_source(
             Source::new("X"),
             ahem_strut(16.0, line_height),
-            before.map(|_| crate::InlineBoxKind::InFlow),
+            before.map(|_| crate::source::InlineBoxKind::InFlow),
             control.map(|_| ParagraphControlKind::InlineBoundaryStart),
         );
         let mut request = initial.inner.request.clone();
@@ -4079,9 +4108,9 @@ mod tests {
         }
         .select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
     }
@@ -4182,13 +4211,16 @@ mod tests {
 
     #[test]
     fn native_font_strut_preserves_each_run_half_leading_and_signed_descent() {
-        for range in [crate::Range::new(1, 2), crate::Range::new(0, 2)] {
+        for range in [
+            crate::range::Range::new(1, 2),
+            crate::range::Range::new(0, 2),
+        ] {
             let mut source = Source::new("XX");
             source.span(range, ahem_strut(8.0, 20.0));
             let line = selected_with_source(source, ahem_strut(16.0, 20.0), None, None)
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             // Ahem8 contributes12.4/7.6, while the actual default16px strut
@@ -4221,19 +4253,19 @@ mod tests {
             .unwrap();
         for (quantize, baseline) in [(false, 38.4), (true, 38.0)] {
             let mut source = Source::new("X");
-            source.inline_box(crate::InlineBox::new(
-                crate::Id::from_u64(9),
-                crate::InlineBoxKind::InFlow,
+            source.inline_box(crate::source::InlineBox::new(
+                crate::id::Id::from_u64(9),
+                crate::source::InlineBoxKind::InFlow,
                 0,
-                crate::Size::new(5.0, 40.0),
+                crate::geometry::Size::new(5.0, 40.0),
             ));
             let layout = system
                 .layout(
                     source,
                     ahem_strut(16.0, 20.0),
-                    crate::Options {
+                    crate::options::Options {
                         quantize,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -4244,20 +4276,20 @@ mod tests {
     #[test]
     fn native_allocated_negative_outer_box_keeps_zero_physical_line_and_real_overflow() {
         let mut source = Source::new("");
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(41),
-            crate::InlineBoxKind::InFlow,
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(41),
+            crate::source::InlineBoxKind::InFlow,
             0,
-            crate::Size::new(4.0, 4.0),
+            crate::geometry::Size::new(4.0, 4.0),
         ));
-        let analyzed = crate::AnalyzedSource::from_paragraph(
+        let analyzed = crate::analyzed::AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source,
                 base_style: Style::default(),
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-                paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+                paragraph_strut: crate::protocol::paragraph::ParagraphStrut::AllocatedContributions,
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 origins: vec![],
                 connections: vec![],
@@ -4270,17 +4302,17 @@ mod tests {
                 .into_iter()
                 .map(|definition| ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
                 })
                 .collect(),
                 anchor_order: vec![ParagraphAnchor {
                     item: ParagraphAnchorItem::Atomic(0),
-                    affinity: crate::Affinity::Before,
+                    affinity: crate::layout::Affinity::Before,
                 }],
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         // No font is registered or requested: the sole actual allocation owns
@@ -4304,12 +4336,12 @@ mod tests {
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: prepared.boundary_views().last().unwrap().handle(),
                 participants: prepared.participants().collect(),
-                termination: crate::PreparedTermination::Ordinary(termination),
+                termination: crate::protocol::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 atomics: vec![AtomicAllocation {
                     occurrence: occurrence.clone(),
                     allocation: AtomicLineAllocation::InFlow {
-                        fit: crate::AtomicFitAllocation::NativeOccupied,
+                        fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                         // Four-unit border box, internal baseline3, margins-10/-10:
                         // before=-10+3=-7; after=(4-3)-10=-9.
                         flow: AtomicFlowAllocation {
@@ -4332,10 +4364,10 @@ mod tests {
                 line_box_struts: Vec::new(),
                 line_strut: None,
                 context: LineContext {
-                    alignment_insets: crate::LineAlignmentInsets::ZERO,
+                    alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: LineBoxDirection::LeftToRight,
-                    formatted_line: crate::FormattedLineContext::default(),
+                    formatted_line: crate::protocol::FormattedLineContext::default(),
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
@@ -4348,19 +4380,19 @@ mod tests {
                 },
             })
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(line.feedback().line_height, 0.0);
         assert_eq!(line.feedback().baseline, -7.0);
         let slot = line.atomic_slots().next().unwrap();
         assert_eq!(slot.origin, Point::new(0.0, -7.0));
-        let placed = crate::Layout::from_finalized_lines(PlacementRequest {
+        let placed = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -4384,9 +4416,9 @@ mod tests {
     fn composed_collapse_suppresses_actual_line_edges_before_feedback_and_spacing() {
         let selected = selected("  X  ", WhiteSpace::Collapse, None, None);
         let line = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(line.feedback().advance, 10.0);
@@ -4394,7 +4426,7 @@ mod tests {
         assert_eq!(line.inner.data.glyphs.len(), 1);
         assert_eq!(
             line.inner.data.glyphs[0].glyph.source,
-            crate::Range::new(2, 3)
+            crate::range::Range::new(2, 3)
         );
         assert_eq!(
             selected
@@ -4410,7 +4442,7 @@ mod tests {
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 2);
         let error = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::Complete(
                     slots
                         .into_iter()
@@ -4421,7 +4453,7 @@ mod tests {
                         })
                         .collect(),
                 ),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap_err();
         assert!(matches!(
@@ -4435,7 +4467,7 @@ mod tests {
     #[test]
     fn new_whitespace_modes_issue_distinct_edge_and_intrinsic_measurements() {
         qualify_en_quad_fixture();
-        for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+        for wrap in [crate::style::Wrap::Word, crate::style::Wrap::None] {
             for (value, mode, raw, contribution) in [
                 (" X ", WhiteSpace::PreserveBreaks, 10.0, 10.0),
                 ("\u{1680}X\u{1680}", WhiteSpace::PreserveBreaks, 20.0, 20.0),
@@ -4457,9 +4489,9 @@ mod tests {
                     None,
                 );
                 let line = selected
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 assert_eq!(line.feedback().advance, raw, "{value:?}/{mode:?}/{wrap:?}");
@@ -4482,7 +4514,7 @@ mod tests {
         qualify_en_quad_fixture();
         let mut source = Source::new("X\u{2000}\u{2000}");
         source.span(
-            crate::Range::new(2, 3),
+            crate::range::Range::new(2, 3),
             Style {
                 font: Font::new().family("Ahem"),
                 size: 10.0,
@@ -4501,9 +4533,9 @@ mod tests {
             None,
             None,
         )
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
         assert_eq!(line.feedback().advance, 20.0);
@@ -4544,9 +4576,9 @@ mod tests {
             ("\u{a0}X\u{a0}", WhiteSpace::Collapse),
         ] {
             let line = selected(text, mode, None, None)
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(line.feedback().advance, 30.0);
@@ -4556,18 +4588,18 @@ mod tests {
 
     #[test]
     fn neutral_controls_and_out_of_flow_slots_are_transparent_to_collapse_edges() {
-        for atomic in [None, Some(crate::InlineBoxKind::OutOfFlow)] {
+        for atomic in [None, Some(crate::source::InlineBoxKind::OutOfFlow)] {
             let line = selected(
                 " X ",
                 WhiteSpace::Collapse,
                 atomic,
                 Some(ParagraphControlKind::OptionalBreak {
-                    wrap: crate::Wrap::Word,
+                    wrap: crate::style::Wrap::Word,
                 }),
             )
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
             assert_eq!(line.feedback().advance, 10.0);
@@ -4578,14 +4610,14 @@ mod tests {
         let line = selected(
             " X ",
             WhiteSpace::Collapse,
-            Some(crate::InlineBoxKind::InFlow),
+            Some(crate::source::InlineBoxKind::InFlow),
             Some(ParagraphControlKind::OptionalBreak {
-                wrap: crate::Wrap::Word,
+                wrap: crate::style::Wrap::Word,
             }),
         )
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
         assert_eq!(line.feedback().advance, 25.0);
@@ -4641,9 +4673,9 @@ mod tests {
             let line = prepared
                 .select(request)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(
@@ -4690,8 +4722,11 @@ mod tests {
     #[test]
     fn rtl_trailing_pdi_keeps_original_class_through_l1_l2_and_exact_placement() {
         use crate::{
-            Affinity, AnalyzedSource, Cursor, Id, Layout, ParagraphConnection,
-            ParagraphConnectionKind, Range,
+            analyzed::AnalyzedSource,
+            id::Id,
+            layout::{Affinity, Cursor, Layout},
+            protocol::paragraph::{ParagraphConnection, ParagraphConnectionKind},
+            range::Range,
         };
 
         // Native characterization, not a browser Range-coordinate oracle.
@@ -4714,15 +4749,15 @@ mod tests {
             .collect();
         let analyzed = AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: source.clone(),
                 base_style: Style {
                     white_space: WhiteSpace::Collapse,
-                    wrap: crate::Wrap::Word,
+                    wrap: crate::style::Wrap::Word,
                     ..ahem_strut(16.0, 20.0)
                 },
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::RightToLeft,
                 paragraph_strut: ParagraphStrut::DefaultFont,
                 origins,
@@ -4741,9 +4776,9 @@ mod tests {
                 boundary_policies: (0..2)
                     .map(|index| ParagraphBoundaryPolicy {
                         definition: ParagraphBoundaryDefinition::Connection(index),
-                        preceding_wrap: crate::Wrap::Word,
-                        following_wrap: crate::Wrap::Word,
-                        ancestor_wrap: crate::Wrap::Word,
+                        preceding_wrap: crate::style::Wrap::Word,
+                        following_wrap: crate::style::Wrap::Word,
+                        ancestor_wrap: crate::style::Wrap::Word,
                     })
                     .collect(),
                 replacements: vec![],
@@ -4754,7 +4789,7 @@ mod tests {
                     })
                     .collect(),
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.source().text().code_units(), original);
@@ -4801,10 +4836,10 @@ mod tests {
                         ControlAllocation {
                             boundary: matches!(
                                 occurrence.view().kind(),
-                                crate::ParagraphControlKind::InlineBoundaryStart
-                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                                crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                            .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }
@@ -4822,13 +4857,13 @@ mod tests {
                     start,
                     end: termination.view().boundary(),
                     participants,
-                    termination: crate::PreparedTermination::Ordinary(termination),
+                    termination: crate::protocol::PreparedTermination::Ordinary(termination),
                     alternative: None,
                     context: LineContext {
-                        alignment_insets: crate::LineAlignmentInsets::ZERO,
+                        alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
                         base_direction: ParagraphBaseDirection::RightToLeft,
                         line_box_direction: LineBoxDirection::RightToLeft,
-                        formatted_line: crate::FormattedLineContext::default(),
+                        formatted_line: crate::protocol::FormattedLineContext::default(),
                         orientation: LineOrientation::Horizontal,
                         start: if first {
                             LineStart::Paragraph
@@ -4901,15 +4936,15 @@ mod tests {
         );
 
         let first = first_selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let second = second_selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(first.selected_line(), first_selected);
@@ -4993,7 +5028,7 @@ mod tests {
                 .into_iter()
                 .enumerate()
                 .map(|(index, line)| {
-                    crate::PlacementEntry::Formatted(LinePlacement {
+                    crate::protocol::PlacementEntry::Formatted(LinePlacement {
                         anchor: LineAnchor {
                             inline_origin: 0.0,
                             baseline: index as f64 * 20.0 + line.feedback().baseline,

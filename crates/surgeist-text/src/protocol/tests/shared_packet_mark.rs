@@ -26,9 +26,9 @@ fn demanded_family_keeps_attached_mark_packet_and_the_childs_actual_source_membe
     let scope = control.scope();
     assert_eq!(
         scope.domain_topology(),
-        crate::SourceProcessingTopology::Complete
+        crate::processing::SourceProcessingTopology::Complete
     );
-    let owner = crate::InlineBoxSource::captured(scope);
+    let owner = crate::protocol::InlineBoxSource::captured(scope);
     let base = p
         .unit_views()
         .find(|u| u.source_range() == Range::new(0, 1))
@@ -51,9 +51,9 @@ fn demanded_family_keeps_attached_mark_packet_and_the_childs_actual_source_membe
         .collect::<Vec<_>>();
     assert_eq!(chosen.len(), 1);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let mut pieces = line
@@ -78,7 +78,7 @@ fn demanded_family_keeps_attached_mark_packet_and_the_childs_actual_source_membe
     let parent = piece.fragment().parent().unwrap();
     assert_eq!(
         parent.owner(),
-        crate::InlineBoxSource::captured(p.captured_owner().unwrap().domain())
+        crate::protocol::InlineBoxSource::captured(p.captured_owner().unwrap().domain())
     );
     assert_eq!(line.inline_box_family(), Some(&family));
     assert_eq!(

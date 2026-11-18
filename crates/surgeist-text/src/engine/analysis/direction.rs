@@ -374,7 +374,7 @@ impl DirectionIndex {
     }
 }
 fn invalid() -> crate::Error {
-    crate::protocol::protocol_error(crate::ProtocolError::InvalidLineDirectionQuery)
+    crate::protocol::protocol_error(crate::protocol::ProtocolError::InvalidLineDirectionQuery)
 }
 
 #[cfg(test)]
@@ -386,8 +386,29 @@ mod tests {
     /// Actual child InlineAll SPACE followed by an ordinary EN. The cell's
     /// source SPACE is removed only by its own inner edges. Optional
     /// captured isolate controls surround that cell, outside its owned parts.
-    fn source_zero_cell(isolate: Option<bool>) -> crate::AnalyzedSource {
-        use crate::*;
+    fn source_zero_cell(isolate: Option<bool>) -> crate::analyzed::AnalyzedSource {
+        use crate::{
+            analyzed::{AnalysisTypography, AnalyzedSource},
+            id::Id,
+            layout::Affinity,
+            processing::{
+                ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
+                SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+                SourceProcessingScope, SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim,
+                process_contextual_source,
+            },
+            protocol::{
+                ParagraphBaseDirection,
+                paragraph::{
+                    ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+                    ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+                    ParagraphStrut,
+                },
+            },
+            range::Range,
+            source::Source,
+            style::{Style, TextCombineUpright, TextTransform, WhiteSpace, Wrap},
+        };
         let source = Source::identified(" 1", Id::from_u64(78491), 3);
         let style = Style {
             white_space: WhiteSpace::Collapse,
@@ -515,7 +536,7 @@ mod tests {
         assert!(cell.atoms.is_empty());
         assert!(cell.participants.is_empty());
         assert!(!cell.events.is_empty());
-        assert_eq!(analyzed.source().text(), &crate::Text::from(" 1"));
+        assert_eq!(analyzed.source().text(), &crate::text::Text::from(" 1"));
         assert_eq!(core.projection.text, "1");
         assert_eq!(
             core.direction
@@ -687,25 +708,25 @@ mod tests {
     #[test]
     fn real_owner_binding_preserves_control_empty_deleted_and_source_zero_custody() {
         use BidiClass as B;
-        let processed = crate::process_source_whitespace(
-            crate::Source::new(" "),
-            crate::Style {
-                white_space: crate::WhiteSpace::Discard,
-                ..crate::Style::default()
+        let processed = crate::processing::process_source_whitespace(
+            crate::source::Source::new(" "),
+            crate::style::Style {
+                white_space: crate::style::WhiteSpace::Discard,
+                ..crate::style::Style::default()
             },
-            crate::DocumentSegmentBreaks::LineFeedDefault,
+            crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         )
         .unwrap();
         assert!(processed.processed_text().is_empty());
         let deleted = processed.lexical.deletion(
-            crate::Range::new(0, 1),
+            crate::range::Range::new(0, 1),
             crate::processing::DeletionCause::Discard,
         );
         let anchor = |item| {
             Event::Anchor(
                 ParagraphAnchor {
                     item,
-                    affinity: crate::Affinity::After,
+                    affinity: crate::layout::Affinity::After,
                 }
                 .into(),
             )
@@ -713,7 +734,7 @@ mod tests {
         let events = [
             anchor(ParagraphAnchorItem::EmptyOrigin(0)),
             Event::Text(0),
-            Event::Deleted(crate::Range::new(0, 1), 0, deleted),
+            Event::Deleted(crate::range::Range::new(0, 1), 0, deleted),
             anchor(ParagraphAnchorItem::Control(1)),
             anchor(ParagraphAnchorItem::EmptyOrigin(1)),
             Event::Text(1),

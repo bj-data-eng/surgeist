@@ -1,5 +1,5 @@
 use super::{logical_add, logical_multiply};
-use crate::{ErrorDetail, TextNumericError};
+use crate::{ErrorDetail, error::TextNumericError};
 
 mod selected_context;
 

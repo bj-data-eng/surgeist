@@ -3,7 +3,32 @@
 //! The retained fixtures author actual GSUB/GPOS operations. Expected glyphs,
 //! advances and attachment offsets below follow those tables, not a comparison
 //! with another preparation. These new-API cases have no historical RED claim.
-use crate::*;
+use crate::{
+    Error, ErrorDetail, Result, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    font::FontBaselineScript,
+    geometry::Point,
+    id::Id,
+    layout::{Affinity, Layout},
+    options::Alignment,
+    processing::{
+        ContextualSourceInput, ScopeAlignmentBoundary, ScopeAlignmentError, ScopeFontReference,
+        SourceProcessingConnection, SourceProcessingScope, process_contextual_source,
+    },
+    protocol::{
+        FinalizedLine, LineAllocations, LineAnchor, LineBoxDirection, LineOrientation,
+        LinePlacement, ParagraphBaseDirection, PlacementCoverage, PlacementEntry, PlacementRequest,
+        PreparationOptions, PreparedText, ScopeAllocation, ScopeAllocations, SelectedLine,
+        SpacingAllocations, SpacingPolicy,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{BaselineShift, Source},
+    style::{Decoration, DecorationOffset, DecorationThickness, Wrap},
+};
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
 use std::sync::Arc;
 
@@ -68,7 +93,7 @@ fn input(
         *font_reference = Some(reference());
     }
     value.paragraphs[0].paragraph_strut = ParagraphStrut::AllocatedContributions;
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     value.events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     let mut open = None;
     for (i, &owner) in owners.iter().enumerate() {

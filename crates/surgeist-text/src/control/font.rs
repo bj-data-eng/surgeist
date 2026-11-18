@@ -319,12 +319,12 @@ fn invalid() -> Error {
 
 /// Admit the complete authored resource through its actual production readers
 /// before the shaping context retains it.
-pub(crate) fn validate(font: &crate::FontData) -> Result<()> {
-    let instance = crate::EffectiveFontInstance::qualify_synthesized(
+pub(crate) fn validate(font: &crate::font::FontData) -> Result<()> {
+    let instance = crate::font::EffectiveFontInstance::qualify_synthesized(
         font.face(),
         f32::from(EM),
         &[],
-        crate::FontSynthesis::default(),
+        crate::font::FontSynthesis::default(),
     )
     .map_err(|_| invalid())?;
     instance

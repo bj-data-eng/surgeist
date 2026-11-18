@@ -1,5 +1,26 @@
-use super::*;
-use crate::*;
+use crate::{
+    Error, ErrorDetail, System,
+    analyzed::AnalyzedSource,
+    error::{TextNumericError, TextNumericPhase},
+    layout::{Affinity, Cursor, Layout},
+    options::Alignment,
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        ControlAllocation, InlineBoundaryAllocation, InlineBoundaryContextAllocation, LineAnchor,
+        LineContext, LineEnd, LineOrientation, LinePlacement, LineSelectionRequest, LineStart,
+        ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PlacementCoverage,
+        PlacementRequest, PreparationOptions, PreparedBreakKind, PreparedParticipant,
+        PreparedTermination, PreparedText, ProtocolError, SpacingAllocations, SpacingPolicy,
+        TabContext,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphControl, ParagraphControlKind,
+            ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+        prefix::TextSeam,
+    },
+    source::Source,
+    style::{Font, Style, WordBreak, Wrap},
+};
 
 fn fixture() -> PreparedText {
     fixture_controls(vec![
@@ -39,8 +60,8 @@ fn fixture_controls(controls: Vec<ParagraphControl>) -> PreparedText {
             tab_reference: None,
             origins: vec![ParagraphOrigin {
                 source,
-                local: crate::Range::new(0, 2),
-                aggregate: crate::Range::new(0, 2),
+                local: crate::range::Range::new(0, 2),
+                aggregate: crate::range::Range::new(0, 2),
                 kind: ParagraphOriginKind::Authored,
                 text_node: None,
             }],
@@ -55,7 +76,7 @@ fn fixture_controls(controls: Vec<ParagraphControl>) -> PreparedText {
                 .collect(),
             controls,
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     system
@@ -93,10 +114,10 @@ fn first_request(prepared: &PreparedText) -> LineSelectionRequest {
         line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
-            alignment_insets: crate::LineAlignmentInsets::ZERO,
-            formatted_line: crate::FormattedLineContext::default(),
+            alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+            formatted_line: crate::protocol::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::LeftToRight,
-            line_box_direction: crate::LineBoxDirection::LeftToRight,
+            line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
             orientation: LineOrientation::Horizontal,
             start: LineStart::Paragraph,
             end: LineEnd::Soft,
@@ -172,9 +193,9 @@ fn forced_event_stops_context_before_same_atom_endpoints() {
         prepared
             .select(request.clone())
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -245,9 +266,9 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
     let positive = prepared
         .select(request.clone())
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(positive.feedback().advance, 10.0);
@@ -270,9 +291,9 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
         prepared
             .select(request.clone())
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -344,18 +365,18 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(matches!(
         prepared
             .select(overflow)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap_err()
             .detail(),
@@ -393,7 +414,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     let layout = Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -406,7 +427,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let fragments = layout
-        .source_range_fragments(&origin, crate::Range::new(1, 2))
+        .source_range_fragments(&origin, crate::range::Range::new(1, 2))
         .unwrap();
     let pieces: Vec<_> = fragments
         .units()

@@ -1,7 +1,7 @@
 //! Complete topology/body admission before deriving any global fragments.
 use super::*;
 use crate::processing::contextual::alignment::operations;
-use crate::{ScopeRole, SourceProcessingTopology};
+use crate::processing::{ScopeRole, SourceProcessingTopology};
 
 pub(super) fn prepare(
     prepared: &PreparedText,

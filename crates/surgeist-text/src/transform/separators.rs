@@ -5,13 +5,15 @@ pub(super) mod automatic;
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{ParagraphControlKind, SemanticAnchorItem};
-use crate::{Error, ErrorCode, ErrorDetail, InlineBoxKind, Result, TextTransformError};
+use crate::{
+    Error, ErrorCode, ErrorDetail, Result, error::TextTransformError, source::InlineBoxKind,
+};
 
 /// None is transparent; Some records the next actual item's forced role.
 fn forced(
     event: &LogicalEvent,
     input: &SourceProjection,
-    source: &crate::Source,
+    source: &crate::source::Source,
     paragraph: &SourceContext,
 ) -> Option<bool> {
     match event.kind {
@@ -66,7 +68,7 @@ pub(super) fn original_value(
         return Ok(unchanged);
     };
     if let Some(edge) = proof.missing {
-        return Err(edge.unavailable(crate::SourceContinuityOperation::Transformation));
+        return Err(edge.unavailable(crate::processing::SourceContinuityOperation::Transformation));
     }
     if let Some(connection) = proof.uncertain {
         return Err(Error::new(
@@ -108,7 +110,9 @@ pub(super) fn wbr_value(
     });
     if paragraph.connection_anchor_cuts.is_none() && !same_component_forced {
         for value in &paragraph.connections {
-            if value.kind == crate::ParagraphConnectionKind::Disconnected && value.at == at {
+            if value.kind == crate::protocol::paragraph::ParagraphConnectionKind::Disconnected
+                && value.at == at
+            {
                 return Err(Error::new(
                     ErrorCode::UnsupportedFeature,
                     "wbr lacks boundary event order",
@@ -127,7 +131,7 @@ pub(super) fn wbr_value(
         return Ok(None);
     }
     if let Some(edge) = proof.missing {
-        return Err(edge.unavailable(crate::SourceContinuityOperation::Transformation));
+        return Err(edge.unavailable(crate::processing::SourceContinuityOperation::Transformation));
     }
     if let Some(connection) = proof.uncertain {
         return Err(Error::new(
@@ -189,7 +193,7 @@ pub(crate) fn connection_seams(
     events: &[LogicalEvent],
     paragraph: &SourceContext,
 ) -> Result<Vec<ConnectionSeam>> {
-    use crate::ParagraphConnectionKind;
+    use crate::protocol::paragraph::ParagraphConnectionKind;
     let mut control_events = Vec::new();
     control_events
         .try_reserve_exact(paragraph.controls.len())
@@ -298,7 +302,7 @@ pub(crate) fn connection_seams(
             };
             if lower > upper {
                 return Err(crate::protocol::protocol_error(
-                    crate::ProtocolError::InvalidConnection {
+                    crate::protocol::ProtocolError::InvalidConnection {
                         connection: index,
                         at: connection.at,
                     },
@@ -333,7 +337,7 @@ struct ForcedNeighbors {
 fn forced_neighbors(
     input: &SourceProjection,
     events: &[LogicalEvent],
-    source: &crate::Source,
+    source: &crate::source::Source,
     paragraph: &SourceContext,
     cuts: &[usize],
 ) -> Result<ForcedNeighbors> {
@@ -380,7 +384,7 @@ fn forced_neighbors(
 pub(super) fn forced_adjacency(
     input: &SourceProjection,
     events: &[LogicalEvent],
-    source: &crate::Source,
+    source: &crate::source::Source,
     paragraph: &SourceContext,
     seams: &[ConnectionSeam],
 ) -> Result<Vec<Adjacency>> {
@@ -470,7 +474,22 @@ pub(super) fn forced_adjacency(
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use crate::{
+        ErrorCode,
+        analyzed::AnalyzedSource,
+        layout::Affinity,
+        processing::DocumentSegmentBreaks,
+        protocol::{
+            ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge,
+            paragraph::{
+                ParagraphAnchor, ParagraphAnchorItem, ParagraphControl, ParagraphControlKind,
+                ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+            },
+        },
+        range::Range,
+        source::Source,
+        style::{CaseTransform, Style, TextTransform, TextTransformSet, WordSpaceTransform},
+    };
 
     fn capture(
         text: &str,
@@ -535,7 +554,7 @@ mod tests {
                     own,
                     ParagraphBaseDirection::LeftToRight,
                 ),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(a.inner.projection.text, expected);
@@ -564,7 +583,7 @@ mod tests {
                 own,
                 ParagraphBaseDirection::RightToLeft,
             ),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(a.inner.projection.text, "א A");
@@ -592,7 +611,7 @@ mod tests {
                 own,
                 ParagraphBaseDirection::LeftToRight,
             ),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidStyle);
@@ -601,7 +620,24 @@ mod tests {
 
 #[cfg(test)]
 mod barrier_tests {
-    use crate::*;
+    use crate::{
+        analyzed::AnalyzedSource,
+        geometry::Size,
+        id::Id,
+        layout::Affinity,
+        processing::DocumentSegmentBreaks,
+        protocol::{
+            ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge,
+            paragraph::{
+                ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+                ParagraphBoundaryPolicy, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+                ParagraphOriginKind, ParagraphStrut,
+            },
+        },
+        range::Range,
+        source::{InlineBox, InlineBoxKind, Source},
+        style::{Style, WordSpaceTransform, Wrap},
+    };
 
     fn atomic_input(before: bool) -> ParagraphInput {
         let mut source = Source::new("A\u{3099}");
@@ -669,7 +705,7 @@ mod barrier_tests {
     fn atomic_order(before: bool) -> AnalyzedSource {
         AnalyzedSource::from_paragraph(
             atomic_input(before),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap()
     }
@@ -717,8 +753,11 @@ mod barrier_tests {
                 ancestor_wrap: Wrap::Word,
             });
         }
-        let a = AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+        let a = AnalyzedSource::from_paragraph(
+            p,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(a.inner.projection.text, "A \u{3099}");
         assert_eq!(a.inner.projection.barriers, [1]);
         assert_eq!(a.inner.projection.barrier_atoms, [1, 2]);

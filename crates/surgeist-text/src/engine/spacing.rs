@@ -19,10 +19,11 @@ use super::{
     resolve::ResolvedStyleRun,
 };
 use crate::{
-    Error, ErrorCode, ErrorDetail, Range, Result, SpacingOperation, SpacingPiece,
-    SpacingSlotDisposition, SpacingStage, TextNumericError, TextNumericPhase,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::{SpacingOperation, SpacingPiece, SpacingStage, TextNumericError, TextNumericPhase},
     projection::SourceProjection,
-    protocol::{input::PresentationInput, prepared::PresentationUnitKind},
+    protocol::{SpacingSlotDisposition, input::PresentationInput, prepared::PresentationUnitKind},
+    range::Range,
     transform::relation::ComponentOwner,
 };
 
@@ -41,7 +42,7 @@ pub(crate) struct WordSpacingUnit {
     pub(crate) components: Vec<WordSpacingComponent>,
     pub(crate) authored: f64,
     pub(crate) allocation: f64,
-    pub(crate) geometry: crate::SpacingSlotGeometry,
+    pub(crate) geometry: crate::protocol::SpacingSlotGeometry,
     pub(crate) shared: Option<AtomRange<usize>>,
 }
 
@@ -110,7 +111,7 @@ pub(crate) fn authored_selected(
     let has_cells = !shaped.cells.is_empty();
     if funded && ledger.is_none() {
         return Err(crate::engine::scope_alignment::refusal(
-            crate::ScopeAlignmentError::LimitsRequired,
+            crate::processing::ScopeAlignmentError::LimitsRequired,
         ));
     }
     let mut native = None;
@@ -174,7 +175,7 @@ fn outside_cell<'a>(
         if matches!(unit.kind, PresentationUnitKind::Cell { .. }) {
             if atoms.start < unit.atoms.start || atoms.end > unit.atoms.end {
                 return Err(crate::transform::combined::refused(
-                    crate::TextCombineError::UnsupportedCellPreparation,
+                    crate::transform::TextCombineError::UnsupportedCellPreparation,
                 ));
             }
             return Ok(false);
@@ -266,7 +267,7 @@ pub(crate) fn visit_slot_pieces(
             emit(
                 crate::protocol::selection::SpacingSlotPieceData {
                     owner: *owner,
-                    presentation: crate::PresentationRange {
+                    presentation: crate::protocol::PresentationRange {
                         start: range.start,
                         end: range.end,
                     },
@@ -509,9 +510,11 @@ fn authored_unit_accounted(
 ) -> Result<WordSpacingUnit> {
     let (geometry, shared) = geometry_accounted(shaped, members, candidate.atoms.clone(), ledger)?;
     let intrinsic = match geometry {
-        crate::SpacingSlotGeometry::Independent { intrinsic_advance } => intrinsic_advance,
-        crate::SpacingSlotGeometry::SharedProviderGroup => 0.0,
-        crate::SpacingSlotGeometry::Boundary(_) => unreachable!("separator geometry"),
+        crate::protocol::SpacingSlotGeometry::Independent { intrinsic_advance } => {
+            intrinsic_advance
+        }
+        crate::protocol::SpacingSlotGeometry::SharedProviderGroup => 0.0,
+        crate::protocol::SpacingSlotGeometry::Boundary(_) => unreachable!("separator geometry"),
     };
     if let Some(provider_atoms) = &shared {
         if authored != 0.0 {
@@ -566,7 +569,10 @@ pub(crate) fn geometry_accounted(
     members: &[usize],
     atoms: AtomRange<usize>,
     ledger: &mut Ledger,
-) -> Result<(crate::SpacingSlotGeometry, Option<AtomRange<usize>>)> {
+) -> Result<(
+    crate::protocol::SpacingSlotGeometry,
+    Option<AtomRange<usize>>,
+)> {
     let mut membership = Vec::new();
     for &index in members {
         account::work(ledger, 1)?;
@@ -610,9 +616,9 @@ pub(crate) fn geometry_accounted(
     account::drop_vec(ledger, membership)?;
     Ok((
         if shared.is_some() {
-            crate::SpacingSlotGeometry::SharedProviderGroup
+            crate::protocol::SpacingSlotGeometry::SharedProviderGroup
         } else {
-            crate::SpacingSlotGeometry::Independent {
+            crate::protocol::SpacingSlotGeometry::Independent {
                 intrinsic_advance: intrinsic,
             }
         },
@@ -635,7 +641,7 @@ pub(crate) fn unsupported(
         operation,
         pieces: pieces.into_boxed_slice(),
         provider_atoms: vec![provider_atoms].into_boxed_slice(),
-        reason: crate::SpacingFailureReason::CrossUnitConstraint,
+        reason: crate::error::SpacingFailureReason::CrossUnitConstraint,
         contexts: Box::new([]),
         constraints: Box::new([]),
     })
@@ -658,14 +664,14 @@ fn half(amount: f64, phase: TextNumericPhase) -> Result<f64> {
 /// group receives the same half, independently of raw provider component shares.
 pub(crate) fn visual_authored(
     shaped: &mut ShapedData,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    order: &crate::supplied_line::SuppliedVisualOrder<'_, '_>,
     dispositions: &[SpacingSlotDisposition],
 ) -> Result<Vec<WordSpacingPlacement>> {
     visual_authored_accounted(shaped, order, dispositions, &mut None)
 }
 pub(crate) fn visual_authored_accounted(
     shaped: &mut ShapedData,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    order: &crate::supplied_line::SuppliedVisualOrder<'_, '_>,
     dispositions: &[SpacingSlotDisposition],
     ledger: &mut Ledger,
 ) -> Result<Vec<WordSpacingPlacement>> {

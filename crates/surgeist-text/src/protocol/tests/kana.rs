@@ -1,6 +1,10 @@
 //! Real transformed glyphs and distinct original/Phase-I/presentation custody.
 use super::*;
-use crate::{Id, LineHeight, Range, TextTransform};
+use crate::{
+    id::Id,
+    range::Range,
+    style::{LineHeight, TextTransform},
+};
 
 fn kana_style() -> Style {
     Style {
@@ -9,7 +13,7 @@ fn kana_style() -> Style {
         line_height: LineHeight::Absolute(10.0),
         white_space: WhiteSpace::Preserve,
         text_transform: TextTransform::Set(
-            crate::TextTransformSet::none().with_full_size_kana(true),
+            crate::style::TextTransformSet::none().with_full_size_kana(true),
         ),
         ..Style::default()
     }
@@ -20,9 +24,9 @@ fn input(source: Source, style: Style) -> ParagraphInput {
         source: source.clone(),
         base_style: style,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
@@ -50,20 +54,26 @@ fn capture_input(mut input: ParagraphInput, bytes: Vec<u8>) -> PreparedText {
         .connections
         .iter()
         .enumerate()
-        .filter(|(_, c)| c.kind == crate::ParagraphConnectionKind::Continuous)
-        .map(|(index, _)| crate::ParagraphBoundaryPolicy {
-            definition: crate::ParagraphBoundaryDefinition::Connection(index),
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
-        })
+        .filter(|(_, c)| c.kind == crate::protocol::paragraph::ParagraphConnectionKind::Continuous)
+        .map(
+            |(index, _)| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                    index,
+                ),
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
+            },
+        )
         .collect();
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     system
         .prepare(
-            &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -83,9 +93,9 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         .collect();
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -137,9 +147,9 @@ fn transformed_native_glyphs_metrics_mapping_and_partial_surrogate_ranges_share_
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 25.0);
@@ -188,29 +198,27 @@ fn transformed_native_glyphs_metrics_mapping_and_partial_surrogate_ranges_share_
     }
     assert_eq!(layout.source(), &source);
     for (affinity, endpoint, x) in [
-        (crate::Affinity::Before, 1, 10.0),
-        (crate::Affinity::After, 3, 15.0),
+        (crate::layout::Affinity::Before, 1, 10.0),
+        (crate::layout::Affinity::After, 3, 15.0),
     ] {
-        let interior = layout.cursor(crate::Cursor::new(2, affinity)).unwrap();
+        let interior = layout
+            .cursor(crate::layout::Cursor::new(2, affinity))
+            .unwrap();
         assert_eq!(
             interior,
             layout
-                .cursor(crate::Cursor::new(endpoint, affinity))
+                .cursor(crate::layout::Cursor::new(endpoint, affinity))
                 .unwrap()
         );
         assert_eq!(interior.rect().origin.x, x);
     }
     let positions: Vec<_> = layout.positions().collect();
-    assert!(
-        positions
-            .iter()
-            .any(|p| p.source_cursor() == crate::Cursor::new(1, crate::Affinity::After))
-    );
-    assert!(
-        positions
-            .iter()
-            .any(|p| p.source_cursor() == crate::Cursor::new(3, crate::Affinity::Before))
-    );
+    assert!(positions.iter().any(
+        |p| p.source_cursor() == crate::layout::Cursor::new(1, crate::layout::Affinity::After)
+    ));
+    assert!(positions.iter().any(
+        |p| p.source_cursor() == crate::layout::Cursor::new(3, crate::layout::Affinity::Before)
+    ));
 }
 
 #[test]
@@ -221,16 +229,16 @@ fn actual_enabled_and_neutral_styles_cross_origins_and_transparent_occurrences()
             Range::new(1, 3),
             Style {
                 text_transform: TextTransform::Set(
-                    crate::TextTransformSet::none().with_full_size_kana(enabled),
+                    crate::style::TextTransformSet::none().with_full_size_kana(enabled),
                 ),
                 ..kana_style()
             },
         );
-        source.inline_box(crate::InlineBox::new(
+        source.inline_box(crate::source::InlineBox::new(
             Id::from_u64(6303),
-            crate::InlineBoxKind::OutOfFlow,
+            crate::source::InlineBoxKind::OutOfFlow,
             3,
-            crate::Size::new(0.0, 0.0),
+            crate::geometry::Size::new(0.0, 0.0),
         ));
         let mut i = input(source.clone(), kana_style());
         i.origins = [(0, 1), (1, 3), (3, 3), (3, 4)]
@@ -245,19 +253,19 @@ fn actual_enabled_and_neutral_styles_cross_origins_and_transparent_occurrences()
             .collect();
         i.connections = [1, 3, 3]
             .into_iter()
-            .map(|at| crate::ParagraphConnection {
+            .map(|at| crate::protocol::paragraph::ParagraphConnection {
                 at,
-                kind: crate::ParagraphConnectionKind::Continuous,
+                kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
             })
             .collect();
         i.anchor_order = vec![
             paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::EmptyOrigin(2),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             },
             paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Atomic(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             },
         ];
         let p = capture_input(i, crate::shaping_test_fonts::kana_ahem());
@@ -319,9 +327,9 @@ fn transformed_base_and_cross_origin_mark_keep_one_real_gpos_unit_and_component_
             kind: paragraph::ParagraphOriginKind::Authored,
         })
         .collect();
-    i.connections = vec![crate::ParagraphConnection {
+    i.connections = vec![crate::protocol::paragraph::ParagraphConnection {
         at: 2,
-        kind: crate::ParagraphConnectionKind::Continuous,
+        kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
     }];
     let p = capture_input(i, bytes);
     assert_eq!(p.inner.analyzed.analysis.graphemes.len(), 1);
@@ -389,14 +397,14 @@ fn standalone_wrap_and_warm_cache_use_transformed_metrics_without_mutating_sourc
     ] {
         let st = Style {
             text_transform: TextTransform::Set(
-                crate::TextTransformSet::none().with_full_size_kana(enabled),
+                crate::style::TextTransformSet::none().with_full_size_kana(enabled),
             ),
             ..kana_style()
         };
-        let options = crate::Options {
+        let options = crate::options::Options {
             quantize: false,
-            alignment: crate::Alignment::Left,
-            ..crate::Options::default()
+            alignment: crate::options::Alignment::Left,
+            ..crate::options::Options::default()
         };
         let l = system.layout(source.clone(), st.clone(), options).unwrap();
         assert_eq!(l.source(), &source);
@@ -424,13 +432,13 @@ fn standalone_wrap_and_warm_cache_use_transformed_metrics_without_mutating_sourc
         .layout(
             source.clone(),
             Style {
-                word_break: crate::WordBreak::BreakAll,
+                word_break: crate::style::WordBreak::BreakAll,
                 ..kana_style()
             },
-            crate::Options {
+            crate::options::Options {
                 width: Some(15.0),
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
@@ -522,16 +530,19 @@ fn part(
     r.context.available_inline = None;
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
 #[test]
 fn transformed_receiving_body_and_exact_before_after_both_indications_share_custody() {
     use crate::{
-        HyphenateCharacter, HyphenationPlacement as P, Hyphens, NativeHyphenationConvention, Text,
+        hyphenation::{
+            HyphenateCharacter, HyphenationPlacement as P, Hyphens, NativeHyphenationConvention,
+        },
+        text::Text,
     };
     for (placement, first_advance, last_advance) in [
         (P::LogicalBefore, 30.0, 45.0),
@@ -561,7 +572,7 @@ fn transformed_receiving_body_and_exact_before_after_both_indications_share_cust
             .unwrap();
         assert_eq!(
             cut.counts(),
-            Some(crate::HyphenationCounts {
+            Some(crate::protocol::HyphenationCounts {
                 total: 6,
                 before: 2,
                 after: 4
@@ -601,11 +612,11 @@ fn transformed_receiving_body_and_exact_before_after_both_indications_share_cust
         assert_eq!(middle.presentation_range().len(), 1);
         assert_eq!(glyphs(&last).iter().filter(|g| g.0 == 36).count(), 1);
         let origin = p.origin_views().next().unwrap().handle();
-        let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+        let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: p,
             coverage: PlacementCoverage::WholeParagraph,
             entries: vec![
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line: first,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -614,7 +625,7 @@ fn transformed_receiving_body_and_exact_before_after_both_indications_share_cust
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
                 }),
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line: last,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -643,10 +654,15 @@ fn kana_accessibility_exposes_original_supplementary_unit_at_transformed_geometr
     let p = captured(source.clone(), kana_style());
     let line = whole(&p);
     let layout = place(p, line, 0.0, 8.0).unwrap();
-    let mut state = crate::Accessibility::default();
+    let mut state = crate::accessibility::Accessibility::default();
     let parent = accesskit::NodeId(10000);
     let update = layout
-        .accessibility_update(&mut state, parent, parent, crate::Point::default())
+        .accessibility_update(
+            &mut state,
+            parent,
+            parent,
+            crate::geometry::Point::default(),
+        )
         .unwrap();
     let node = &update
         .nodes
@@ -667,14 +683,14 @@ fn native_rtl_frame_and_foreign_positions_keep_exact_transformed_source_identity
     let p = capture_input(i, crate::shaping_test_fonts::kana_ahem());
     let mut r = request(&p);
     r.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    r.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
-    r.context.alignment = crate::Alignment::Right;
+    r.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
+    r.context.alignment = crate::options::Alignment::Right;
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 25.0);
@@ -690,7 +706,10 @@ fn native_rtl_frame_and_foreign_positions_keep_exact_transformed_source_identity
     let layout = place(p, line, 0.0, 8.0).unwrap();
     assert_eq!(
         layout
-            .cursor(crate::Cursor::new(2, crate::Affinity::Before))
+            .cursor(crate::layout::Cursor::new(
+                2,
+                crate::layout::Affinity::Before
+            ))
             .unwrap()
             .rect()
             .origin
@@ -699,7 +718,10 @@ fn native_rtl_frame_and_foreign_positions_keep_exact_transformed_source_identity
     );
     assert_eq!(
         layout
-            .cursor(crate::Cursor::new(2, crate::Affinity::After))
+            .cursor(crate::layout::Cursor::new(
+                2,
+                crate::layout::Affinity::After
+            ))
             .unwrap()
             .rect()
             .origin

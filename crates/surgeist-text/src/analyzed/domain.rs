@@ -1,6 +1,8 @@
 //! Atomic domain analysis issued only from an authentic processed member.
 use crate::{
-    AnalysisTypography, AnalyzedSource, CapturedScope, ProcessedParagraph, ProcessedSource, Result,
+    Result,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    processing::{CapturedScope, ProcessedParagraph, ProcessedSource},
 };
 use std::sync::Arc;
 

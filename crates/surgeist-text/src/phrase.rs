@@ -177,9 +177,9 @@ mod tests {
             (Some("ja-Jpan"), true),
             (Some("ja-Jpan-JP"), true),
         ] {
-            let style = crate::ValidatedStyle::try_from(crate::Style {
+            let style = crate::style::ValidatedStyle::try_from(crate::style::Style {
                 locale: locale.map(str::to_owned),
-                ..crate::Style::default()
+                ..crate::style::Style::default()
             })
             .unwrap();
             assert_eq!(

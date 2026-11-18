@@ -5,8 +5,13 @@ mod frames;
 mod inter_word;
 mod qualification;
 use crate::{
-    Affinity, Cursor, FontBaseline, FontBaselineScript, GlyphBasis, Id, LineHeight, Point, Range,
-    Rect, Selection, test_fonts as sfnt, vertical_test_fonts as vertical,
+    font::{FontBaseline, FontBaselineScript},
+    geometry::{GlyphBasis, Point, Rect},
+    id::Id,
+    layout::{Affinity, Cursor, Selection},
+    range::Range,
+    style::LineHeight,
+    test_fonts as sfnt, vertical_test_fonts as vertical,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -155,16 +160,16 @@ fn prepare(
                     ..Style::default()
                 },
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: Range::new(0, 3),
                     aggregate: Range::new(0, 3),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -173,15 +178,15 @@ fn prepare(
                 anchor_order: vec![],
             },
             if orientation == LineOrientation::Vertical {
-                crate::AnalysisTypography::Upright {
+                crate::analyzed::AnalysisTypography::Upright {
                     computed_direction: ParagraphBaseDirection::RightToLeft,
                 }
             } else {
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             },
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     let prepared = system
         .prepare(
@@ -209,9 +214,9 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(selection)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -259,10 +264,10 @@ fn assert_placement(
     let upright = orientation == LineOrientation::Vertical;
     let counterclockwise = orientation == LineOrientation::SidewaysCounterclockwise;
     let cross = if horizontal { 70.0 } else { 100.0 };
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 20.0,

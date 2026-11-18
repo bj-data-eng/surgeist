@@ -7,7 +7,10 @@ use crate::protocol::paragraph::{
     ParagraphBoundaryDefinition, ParagraphContext, ParagraphControlKind, SemanticAnchor,
     SemanticAnchorItem,
 };
-use crate::{InlineBoxKind, ProcessedSource, Range, Wrap, WrappingNeighbor};
+use crate::{
+    processing::ProcessedSource, range::Range, source::InlineBoxKind, style::Wrap,
+    wrapping::WrappingNeighbor,
+};
 
 use super::{Analysis, is_hard_separator};
 
@@ -293,7 +296,7 @@ impl LogicalParagraph {
                 .is_some_and(|wrap| wrap != policy.ancestor_wrap)
             {
                 return Err(crate::protocol::protocol_error(
-                    crate::ProtocolError::InvalidBoundaryPolicy {
+                    crate::protocol::ProtocolError::InvalidBoundaryPolicy {
                         policy: policy_index,
                         at: policy.at(paragraph, processed.source().boxes()),
                     },

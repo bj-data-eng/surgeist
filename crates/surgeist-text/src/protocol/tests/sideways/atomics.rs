@@ -3,8 +3,11 @@
 use super::*;
 mod supplemental;
 use crate::{
-    InlineBox, InlineBoxKind, Layout, ParagraphAnchor, ParagraphAnchorItem,
-    ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
+    layout::Layout,
+    protocol::paragraph::{
+        ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
+    },
+    source::{InlineBox, InlineBoxKind},
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -49,9 +52,9 @@ fn mixed_input() -> ParagraphInput {
         })
         .map(|definition| ParagraphBoundaryPolicy {
             definition,
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         })
         .collect();
     value
@@ -59,7 +62,7 @@ fn mixed_input() -> ParagraphInput {
 
 fn allocation() -> AtomicLineAllocation {
     AtomicLineAllocation::InFlow {
-        fit: crate::AtomicFitAllocation::NativeOccupied,
+        fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 14.0,
             normal_border_inline_size: 14.0,
@@ -81,15 +84,15 @@ fn finish(prepared: &PreparedText, atomics: Vec<AtomicAllocation>) -> FinalizedL
     let mut value = request(prepared);
     value.context.orientation = prepared.orientation();
     value.context.available_inline = None;
-    value.context.alignment = crate::Alignment::Start;
+    value.context.alignment = crate::options::Alignment::Start;
     value.context.spacing = SpacingPolicy::None;
     value.atomics = atomics;
     prepared
         .select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -143,9 +146,9 @@ fn clockwise_mixed_atomics_keep_unrotated_physical_boxes_and_horizontal_font_met
     let analysis = analyze(mixed_input());
     assert_eq!(
         analysis.typography(),
-        crate::AnalysisTypography::HorizontalComposition
+        crate::analyzed::AnalysisTypography::HorizontalComposition
     );
-    assert_eq!(analysis.direction(), crate::Direction::LeftToRight);
+    assert_eq!(analysis.direction(), crate::style::Direction::LeftToRight);
     let horizontal = system
         .prepare(&analysis, PreparationOptions::default())
         .unwrap();
@@ -278,7 +281,7 @@ fn clockwise_mixed_atomics_keep_unrotated_physical_boxes_and_horizontal_font_met
         Hit::InlineBox(POSITIONED)
     );
     for run in layout.run_views() {
-        assert_eq!(run.glyph_basis(), crate::GlyphBasis::Clockwise);
+        assert_eq!(run.glyph_basis(), crate::geometry::GlyphBasis::Clockwise);
         assert_eq!(run.face().bytes(), AHEM);
         assert_eq!(run.origin(), Point::new(100.0, 20.0));
         assert_eq!(run.range(), Range::new(0, 1));

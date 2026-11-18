@@ -1,7 +1,24 @@
 //! Independent real-font inputs and literal named-baseline observations.
 use crate::baseline_test_fonts as fixture;
 use crate::test_fonts;
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    error::{
+        FontMetricField, FontMetricNumericError, FontMetricPhase, FontMetricTable,
+        FontMetricTableError,
+    },
+    font::{
+        FontBaseline, FontBaselineAbsence, FontBaselineAxis, FontBaselineMeasurement,
+        FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript,
+        FontBaselineUnavailableReason, FontBaselineValue, FontData, FontOutlineCapability,
+        FontOutlineError,
+    },
+    id::Id,
+    layout::{Affinity, Cursor, Selection},
+    options::Options,
+    source::Source,
+    style::{Font, LineHeight, Style, WhiteSpace},
+};
 use fixture::{Axis, Coord, Script as ScriptRecord};
 
 const AHEM: &[u8] = include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf");

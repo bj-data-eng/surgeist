@@ -17,9 +17,12 @@ use super::{
     unit_properties::{Properties, base, properties},
 };
 use crate::{
-    Error, ErrorCode, ErrorDetail, Result, TextScript, TextStyleOwner, UprightContent,
-    UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure,
+    Error, ErrorCode, ErrorDetail, Result,
     engine::resolve::{AnalyzedStyleOwner, AnalyzedStyleRun},
+    error::{
+        TextScript, TextStyleOwner, UprightContent, UprightScriptContext,
+        UprightScriptContextFailure, UprightScriptFailure,
+    },
     projection::SourceProjection,
 };
 #[cfg(test)]
@@ -294,7 +297,7 @@ fn explicit_script(
     styles: &[AnalyzedStyleRun],
     indices: &[usize],
 ) -> std::result::Result<Script, UprightScriptContextFailure> {
-    use UprightScriptContextFailure::{
+    use crate::error::UprightScriptContextFailure::{
         ConflictingScripts, MissingExplicitScript, NonMember, UnqualifiedSingleScript,
     };
     let parser = PropertyParser::<Script>::new();

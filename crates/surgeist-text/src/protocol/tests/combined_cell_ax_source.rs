@@ -3,7 +3,10 @@
 #![cfg(feature = "text-accessibility")]
 
 use super::*;
-use crate::{Accessibility, Cursor, Selection};
+use crate::{
+    accessibility::Accessibility,
+    layout::{Cursor, Selection},
+};
 use accesskit::{Node, NodeId, Role, TextPosition, TextSelection, TreeUpdate};
 
 const PARENT: NodeId = NodeId(1);

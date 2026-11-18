@@ -2,7 +2,25 @@
 //! full Unicode case mapping uses Final_Sigma context; source continuity and
 //! joint-output authority remain distinct under the adopted issue-784 contract.
 
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, ProcessedSource, SourceProcessingConnection, SourceProcessingError,
+        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::{CaseTransform, Style, TextTransform, TextTransformSet, WhiteSpace},
+    text::Text,
+};
 use std::sync::Arc;
 
 fn request(

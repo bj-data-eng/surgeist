@@ -4,7 +4,7 @@ use super::{
     EffectiveFontInstance, Field, Numeric, Phase, Table, TableError, finite, numeric, table,
     table_error,
 };
-use crate::{CataloguePublication, Error, ErrorCode, ErrorDetail, Result};
+use crate::{Error, ErrorCode, ErrorDetail, Result};
 use icu_properties::{PropertyNamesShort, PropertyParser, props::Script};
 use skrifa::{
     FontRef, Tag,
@@ -13,6 +13,7 @@ use skrifa::{
         tables::base::{Axis, Base, BaseCoord},
     },
 };
+use surgeist_font::CataloguePublication;
 
 /// Font-design coordinate reference, before page placement or sideways rotation.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -326,8 +327,8 @@ impl<'instance, 'font> Reader<'instance, 'font> {
         name: FontBaseline,
         expected: &CataloguePublication,
     ) -> Result<FontBaselineOutcome> {
-        use FontBaselineAxis::{HorizontalY, VerticalX};
-        use FontBaselineProvenance as P;
+        use crate::font::FontBaselineAxis::{HorizontalY, VerticalX};
+        use crate::font::FontBaselineProvenance as P;
         if name == FontBaseline::Alphabetic {
             let alpha = self.lookup(script, axis, *b"romn")?;
             if let Some(value) = alpha.coordinate {
@@ -391,8 +392,8 @@ impl<'instance, 'font> Reader<'instance, 'font> {
         }
     }
     fn vertical_em(&self, script: FontBaselineScript) -> Result<VerticalEmOutcome> {
-        use FontBaselineAxis::{HorizontalY, VerticalX};
-        use FontBaselineProvenance as P;
+        use crate::font::FontBaselineAxis::{HorizontalY, VerticalX};
+        use crate::font::FontBaselineProvenance as P;
         let bottom = self.lookup(script, VerticalX, *b"ideo")?;
         let top = self.lookup(script, VerticalX, *b"idtp")?;
         if let Some(value) = bottom.coordinate

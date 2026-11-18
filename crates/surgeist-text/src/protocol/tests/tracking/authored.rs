@@ -117,16 +117,18 @@ fn actual_kern_pair_keeps_raw_adjustment_and_an_independently_expandable_boundar
     assert_eq!(paint_offsets(&ordinary), [(0.0, 0.0), (9.0, 0.0)]);
     let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(raw(&natural, &bytes), expected_raw);
     let row = natural.spacing_slots().next().unwrap();
     assert_eq!(
         row.geometry,
-        crate::SpacingSlotGeometry::Boundary(crate::SpacingBoundaryGeometry::Independent)
+        crate::protocol::SpacingSlotGeometry::Boundary(
+            crate::protocol::SpacingBoundaryGeometry::Independent
+        )
     );
     assert_eq!(row.authored_letter_spacing, 4.0);
     assert!(row.can_expand());

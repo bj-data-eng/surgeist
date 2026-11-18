@@ -12,7 +12,7 @@ use crate::protocol::selection::SpacingSlotPieceData;
 use crate::protocol::{PreparedSourceSegment, PresentationRange, ProtocolError, protocol_error};
 use crate::transform::combined::{CellBinding, FixedGroup, Part};
 use crate::transform::relation::{ComponentOwner, GeneratedSeparatorOwner, RelationEvent};
-use crate::{Range, Result, SpacingPiece};
+use crate::{Result, error::SpacingPiece, range::Range};
 
 pub(crate) fn visit_original_part(
     prepared: &PreparedData,
@@ -29,7 +29,7 @@ pub(crate) fn visit_original_part(
             .visit_view_origin(piece.origin, || account::work(ledger, 1))?
             .ok_or_else(|| {
                 crate::processing::contextual::invalid(
-                    crate::SourceProcessingError::OriginCorrespondence,
+                    crate::processing::SourceProcessingError::OriginCorrespondence,
                 )
             })?
             .get();

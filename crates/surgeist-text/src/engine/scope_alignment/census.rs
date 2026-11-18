@@ -68,13 +68,13 @@ impl AllocationWitness {
 
 struct AllocationSet {
     seen: Vec<AllocationWitness>,
-    retention: crate::ScopeAlignmentRetention,
+    retention: crate::protocol::ScopeAlignmentRetention,
 }
 impl AllocationSet {
     fn new() -> Self {
         Self {
             seen: Vec::new(),
-            retention: crate::ScopeAlignmentRetention::default(),
+            retention: crate::protocol::ScopeAlignmentRetention::default(),
         }
     }
     fn observe(
@@ -86,12 +86,12 @@ impl AllocationSet {
             return Ok(false);
         }
         let inspection = checked_sum(
-            crate::ScopeAlignmentLimitKind::StructuralWork,
+            crate::processing::ScopeAlignmentLimitKind::StructuralWork,
             witness.records,
             1,
         )?;
         budget.work(checked_sum(
-            crate::ScopeAlignmentLimitKind::StructuralWork,
+            crate::processing::ScopeAlignmentLimitKind::StructuralWork,
             self.seen.len(),
             inspection,
         )?)?;
@@ -100,18 +100,21 @@ impl AllocationSet {
         }
         push(budget, &mut self.seen, witness)?;
         self.retention.records = checked_sum(
-            crate::ScopeAlignmentLimitKind::Records,
+            crate::processing::ScopeAlignmentLimitKind::Records,
             self.retention.records,
             witness.records,
         )?;
         self.retention.payload_bytes = checked_sum(
-            crate::ScopeAlignmentLimitKind::PayloadBytes,
+            crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
             self.retention.payload_bytes,
             witness.payload_bytes,
         )?;
         Ok(true)
     }
-    fn finish(self, budget: &mut ScopeAlignmentBudget) -> Result<crate::ScopeAlignmentRetention> {
+    fn finish(
+        self,
+        budget: &mut ScopeAlignmentBudget,
+    ) -> Result<crate::protocol::ScopeAlignmentRetention> {
         let Self { seen, retention } = self;
         let bytes = capacity_bytes(&seen)?;
         drop(seen);
@@ -126,7 +129,7 @@ pub(crate) fn retained_prepared(
     shaped: &super::super::layout::data::ShapedData,
     tables: &crate::protocol::prepared::PreparedTables,
     budget: &mut ScopeAlignmentBudget,
-) -> Result<crate::ScopeAlignmentRetention> {
+) -> Result<crate::protocol::ScopeAlignmentRetention> {
     let mut set = AllocationSet::new();
     preparation::visit_prepared_allocations(data, analyzed, shaped, tables, &mut |allocation| {
         set.observe(allocation, budget).map(|_| ())
@@ -140,7 +143,7 @@ fn visit_selected_own_allocations(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
     basis: &crate::engine::SelectedShape,
-    policy: crate::SpacingPolicy,
+    policy: crate::protocol::SpacingPolicy,
     slots: &Vec<crate::protocol::selection::SpacingSlotData>,
     request: &crate::protocol::LineSelectionRequest,
     visit: &mut AllocationVisitor<'_>,
@@ -261,7 +264,7 @@ fn visit_selected_allocations(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
     basis: &crate::engine::SelectedShape,
-    policy: crate::SpacingPolicy,
+    policy: crate::protocol::SpacingPolicy,
     slots: &Vec<crate::protocol::selection::SpacingSlotData>,
     request: &crate::protocol::LineSelectionRequest,
     visit: &mut AllocationVisitor<'_>,
@@ -281,7 +284,7 @@ pub(crate) fn proof_frames_contain_resource(
     bytes: &[u8],
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<bool> {
-    let work = crate::ScopeAlignmentLimitKind::StructuralWork;
+    let work = crate::processing::ScopeAlignmentLimitKind::StructuralWork;
     budget.work(checked_sum(work, frames.len(), 1)?)?;
     if bytes.is_empty() {
         return Ok(false);
@@ -306,11 +309,11 @@ pub(crate) fn retained_selected(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
     basis: &crate::engine::SelectedShape,
-    policy: crate::SpacingPolicy,
+    policy: crate::protocol::SpacingPolicy,
     slots: &Vec<crate::protocol::selection::SpacingSlotData>,
     request: &crate::protocol::LineSelectionRequest,
     budget: &mut ScopeAlignmentBudget,
-) -> Result<crate::ScopeAlignmentRetention> {
+) -> Result<crate::protocol::ScopeAlignmentRetention> {
     let mut set = AllocationSet::new();
     visit_selected_allocations(
         prepared,
@@ -328,7 +331,7 @@ pub(crate) fn retained_finalized(
     selected: &crate::protocol::selection::SelectedData,
     data: &crate::engine::layout::data::FinalizedLineData,
     budget: &mut ScopeAlignmentBudget,
-) -> Result<crate::ScopeAlignmentRetention> {
+) -> Result<crate::protocol::ScopeAlignmentRetention> {
     let mut set = AllocationSet::new();
     visit_selected_allocations(
         &selected.prepared,
@@ -345,7 +348,7 @@ pub(crate) fn retained_finalized(
     // to this scalar receipt without fabricating an allocation identity. Its
     // embedded data and prefix headers are already part of this single header.
     retention.payload_bytes = checked_sum(
-        crate::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
         retention.payload_bytes,
         std::mem::size_of::<crate::engine::FinalizedLine>(),
     )?;
@@ -369,7 +372,7 @@ enum Input<'a> {
     Placed(&'a crate::engine::layout::data::PlacedLayout),
     InlineBoxFamily {
         prepared: &'a PreparedData,
-        native_boxes: &'a Vec<crate::InlineBoxSource>,
+        native_boxes: &'a Vec<crate::protocol::InlineBoxSource>,
     },
     Selection {
         prepared: &'a PreparedData,
@@ -377,7 +380,7 @@ enum Input<'a> {
     },
     SemanticWindow {
         prepared: &'a PreparedData,
-        request: &'a crate::SemanticWindowRequest,
+        request: &'a crate::protocol::SemanticWindowRequest,
     },
     Flow {
         prepared: &'a PreparedData,
@@ -461,11 +464,11 @@ enum Phase {
 #[derive(Clone, Copy)]
 enum Root<'a> {
     Prepared(&'a PreparedData),
-    InlineBoxFamily(&'a crate::PreparedInlineBoxFamily),
-    NativeBoxes(&'a Vec<crate::InlineBoxSource>),
+    InlineBoxFamily(&'a crate::protocol::PreparedInlineBoxFamily),
+    NativeBoxes(&'a Vec<crate::protocol::InlineBoxSource>),
     Request(&'a crate::protocol::LineSelectionRequest),
-    SemanticRequest(&'a crate::SemanticWindowRequest),
-    SemanticWindow(&'a crate::SemanticWindowEvidence),
+    SemanticRequest(&'a crate::protocol::SemanticWindowRequest),
+    SemanticWindow(&'a crate::protocol::SemanticWindowEvidence),
     Selected(&'a Arc<crate::protocol::selection::SelectedData>),
     Finalized(&'a Arc<crate::engine::FinalizedLine>),
 }
@@ -532,7 +535,7 @@ fn related_slots(related: crate::protocol::ScopeAlignmentProducts<'_>) -> Result
             finalized,
             families,
         } => checked_sum(
-            crate::ScopeAlignmentLimitKind::StructuralWork,
+            crate::processing::ScopeAlignmentLimitKind::StructuralWork,
             finalized.len(),
             families.len(),
         ),
@@ -738,7 +741,7 @@ fn visit_raw_roots<'a>(
 ) -> Result<()> {
     use crate::protocol::ScopeAlignmentProducts as Products;
     emit(RootVisit::Work(checked_sum(
-        crate::ScopeAlignmentLimitKind::StructuralWork,
+        crate::processing::ScopeAlignmentLimitKind::StructuralWork,
         related_slots(related)?,
         1,
     )?))?;
@@ -798,7 +801,7 @@ fn visit_roots<'a>(
     related: crate::protocol::ScopeAlignmentProducts<'a>,
     emit: &mut dyn FnMut(RootVisit<'a>) -> Result<()>,
 ) -> Result<()> {
-    let work = crate::ScopeAlignmentLimitKind::StructuralWork;
+    let work = crate::processing::ScopeAlignmentLimitKind::StructuralWork;
     let mut ordinal = 0;
     visit_raw_roots(input, related, &mut |event| {
         let (root, phase) = match event {
@@ -842,16 +845,16 @@ fn visit_products(
 }
 
 fn add_retention(
-    retention: &mut crate::ScopeAlignmentRetention,
+    retention: &mut crate::protocol::ScopeAlignmentRetention,
     witness: AllocationWitness,
 ) -> Result<()> {
     retention.records = checked_sum(
-        crate::ScopeAlignmentLimitKind::Records,
+        crate::processing::ScopeAlignmentLimitKind::Records,
         retention.records,
         witness.records(),
     )?;
     retention.payload_bytes = checked_sum(
-        crate::ScopeAlignmentLimitKind::PayloadBytes,
+        crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
         retention.payload_bytes,
         witness.payload_bytes(),
     )?;
@@ -865,10 +868,10 @@ fn retained_union(
     input: Input<'_>,
     related: crate::protocol::ScopeAlignmentProducts<'_>,
     budget: &mut ScopeAlignmentBudget,
-) -> Result<crate::ScopeAlignmentRetention> {
-    let work = crate::ScopeAlignmentLimitKind::StructuralWork;
+) -> Result<crate::protocol::ScopeAlignmentRetention> {
+    let work = crate::processing::ScopeAlignmentLimitKind::StructuralWork;
     let mut ordinal = 0;
-    let mut retention = crate::ScopeAlignmentRetention::default();
+    let mut retention = crate::protocol::ScopeAlignmentRetention::default();
     visit_products(input, related, &mut |event| {
         let witness = match event {
             Visit::Work(count) => return budget.work(count),
@@ -912,7 +915,7 @@ struct Census {
 fn census(
     input: Input<'_>,
     related: crate::protocol::ScopeAlignmentProducts<'_>,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
 ) -> Result<Option<Census>> {
     let Some(limits) = super::operation_limits(input.prepared(), allowance)? else {
         return Ok(None);
@@ -925,27 +928,30 @@ fn census(
 
 #[derive(Default)]
 struct CensusRetentions {
-    input: crate::ScopeAlignmentRetention,
-    external: crate::ScopeAlignmentRetention,
-    admitted: crate::ScopeAlignmentRetention,
+    input: crate::protocol::ScopeAlignmentRetention,
+    external: crate::protocol::ScopeAlignmentRetention,
+    admitted: crate::protocol::ScopeAlignmentRetention,
     seeded_records: usize,
     seeded_bytes: usize,
 }
 
 impl CensusRetentions {
-    fn accounting(&self, budget: &ScopeAlignmentBudget) -> crate::ScopeAlignmentCensusAccounting {
+    fn accounting(
+        &self,
+        budget: &ScopeAlignmentBudget,
+    ) -> crate::protocol::ScopeAlignmentCensusAccounting {
         let usage = budget.usage_after_discard(self.seeded_bytes);
         let new_records = usage
             .records()
             .checked_sub(self.seeded_records)
             .expect("successful record seeding remains in the census budget");
-        crate::ScopeAlignmentCensusAccounting::new(usage, new_records)
+        crate::protocol::ScopeAlignmentCensusAccounting::new(usage, new_records)
     }
 }
 
 fn census_on_budget(
     input: Input<'_>,
-    related: crate::ScopeAlignmentProducts<'_>,
+    related: crate::protocol::ScopeAlignmentProducts<'_>,
     budget: &mut ScopeAlignmentBudget,
     retention: &mut CensusRetentions,
 ) -> Result<()> {
@@ -976,10 +982,10 @@ fn census_on_budget(
 
 pub(crate) fn semantic_window_budget(
     prepared: &PreparedData,
-    request: &crate::SemanticWindowRequest,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    request: &crate::protocol::SemanticWindowRequest,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
     ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
-    admitted: &mut crate::ScopeAlignmentRetention,
+    admitted: &mut crate::protocol::ScopeAlignmentRetention,
 ) -> Result<()> {
     let Some(limits) = super::operation_limits(prepared, allowance)? else {
         return Ok(());
@@ -988,7 +994,7 @@ pub(crate) fn semantic_window_budget(
     let mut retention = CensusRetentions::default();
     let result = census_on_budget(
         Input::SemanticWindow { prepared, request },
-        crate::ScopeAlignmentProducts::Mixed(&[]),
+        crate::protocol::ScopeAlignmentProducts::Mixed(&[]),
         ledger.as_mut().expect("funded semantic transaction"),
         &mut retention,
     );
@@ -999,7 +1005,7 @@ pub(crate) fn semantic_window_budget(
 pub(crate) fn begin_selection(
     prepared: &PreparedData,
     request: &crate::protocol::LineSelectionRequest,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
 ) -> Result<Option<ScopeAlignmentBudget>> {
     Ok(census(
         Input::Selection { prepared, request },
@@ -1013,7 +1019,7 @@ pub(crate) fn begin_flow(
     prepared: &PreparedData,
     segment: &crate::protocol::PreparedFlowSegment,
     _request: &crate::protocol::FlowObservationRequest,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
 ) -> Result<Option<ScopeAlignmentBudget>> {
     Ok(census(
         Input::Flow { prepared, segment },
@@ -1041,10 +1047,13 @@ pub(crate) fn begin_range(
 pub(crate) fn live_products(
     input: crate::protocol::ScopeAlignmentCensusInput<'_>,
     related: crate::protocol::ScopeAlignmentProducts<'_>,
-    allowance: crate::ScopeAlignmentAllowance,
-) -> std::result::Result<crate::ScopeAlignmentCensus, crate::ScopeAlignmentCensusFailure> {
+    allowance: crate::protocol::ScopeAlignmentAllowance,
+) -> std::result::Result<
+    crate::protocol::ScopeAlignmentCensus,
+    crate::protocol::ScopeAlignmentCensusFailure,
+> {
     let input = Input::public(input);
-    let unfunded = |error| crate::ScopeAlignmentCensusFailure::new(error, None);
+    let unfunded = |error| crate::protocol::ScopeAlignmentCensusFailure::new(error, None);
     let limits = super::operation_limits(input.prepared(), Some(allowance))
         .map_err(unfunded)?
         .ok_or_else(|| unfunded(refusal(ScopeAlignmentError::LimitsRequired)))?;
@@ -1053,12 +1062,12 @@ pub(crate) fn live_products(
     let result = census_on_budget(input, related, &mut budget, &mut retention);
     let accounting = retention.accounting(&budget);
     if let Err(error) = result {
-        return Err(crate::ScopeAlignmentCensusFailure::new(
+        return Err(crate::protocol::ScopeAlignmentCensusFailure::new(
             error,
             Some(accounting),
         ));
     }
-    Ok(crate::ScopeAlignmentCensus::new(
+    Ok(crate::protocol::ScopeAlignmentCensus::new(
         retention.input,
         retention.external,
         accounting,
@@ -1068,8 +1077,8 @@ pub(crate) fn live_products(
 /// Admit actual prepared/native declaration custody before family allocation.
 pub(crate) fn begin_inline_box_family(
     prepared: &PreparedData,
-    native_boxes: &Vec<crate::InlineBoxSource>,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    native_boxes: &Vec<crate::protocol::InlineBoxSource>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
 ) -> Result<Option<ScopeAlignmentBudget>> {
     Ok(census(
         Input::InlineBoxFamily {
@@ -1083,9 +1092,9 @@ pub(crate) fn begin_inline_box_family(
 }
 
 pub(crate) fn retained_inline_box_family(
-    family: &crate::PreparedInlineBoxFamily,
+    family: &crate::protocol::PreparedInlineBoxFamily,
     budget: &mut ScopeAlignmentBudget,
-) -> Result<crate::ScopeAlignmentRetention> {
+) -> Result<crate::protocol::ScopeAlignmentRetention> {
     let mut set = AllocationSet::new();
     visit_prepared(&family.inner.prepared.inner, &mut |w| {
         set.observe(w, budget).map(|_| ())

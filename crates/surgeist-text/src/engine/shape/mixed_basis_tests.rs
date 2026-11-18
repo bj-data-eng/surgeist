@@ -1,11 +1,11 @@
 //! Retained Mixed bases use real per-role providers only during selection.
 //! Registered by Root as a child of selected_basis_tests after producer freeze.
 use super::*;
-use crate::{GlyphBasis, mixed_test_fonts as mixed_fonts};
+use crate::{geometry::GlyphBasis, mixed_test_fonts as mixed_fonts};
 
 fn prepare_mixed(system: &mut System, source: &Source) -> PreparedText {
     let style = Style {
-        line_height: crate::LineHeight::Absolute(12.0),
+        line_height: crate::style::LineHeight::Absolute(12.0),
         ..own(0.0)
     };
     let analyzed = crate::test_wrapping::bind_missing(
@@ -58,9 +58,9 @@ fn mixed_selected_basis_retains_axes_resources_and_raw_packets_without_replay_pr
     drop(system);
     assert_calls(calls);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
@@ -78,9 +78,9 @@ fn mixed_selected_basis_retains_axes_resources_and_raw_packets_without_replay_pr
         .map(|run| run.face().to_owned())
         .collect::<Vec<_>>();
     let repeated = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
@@ -102,8 +102,8 @@ fn mixed_selected_basis_retains_axes_resources_and_raw_packets_without_replay_pr
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
             field: "character cell advance",
-            phase: crate::TextNumericPhase::Finalization,
-            category: crate::TextNumericError::NonZeroLost,
+            phase: crate::error::TextNumericPhase::Finalization,
+            category: crate::error::TextNumericError::NonZeroLost,
             ..
         })
     ));
@@ -254,9 +254,9 @@ fn mixed_native_di_receipts_preserve_normal_clockwise_output_and_removed_source_
         assert_eq!(di_run.atoms, 1..2);
         assert_eq!(di_run.glyph_basis, GlyphBasis::Clockwise);
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_calls(calls);
@@ -268,9 +268,9 @@ fn mixed_native_di_receipts_preserve_normal_clockwise_output_and_removed_source_
         assert_eq!(roles(&natural), expected);
         assert_eq!(natural.feedback().advance, if normal { 47.0 } else { 32.0 });
         let repeated = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_calls(calls);
@@ -280,20 +280,23 @@ fn mixed_native_di_receipts_preserve_normal_clockwise_output_and_removed_source_
         assert_eq!(roles(&restored), expected);
         assert_eq!(packets(&restored, &bytes), packets(&natural, &bytes));
         assert_eq!(prepared.analyzed_source().source(), &source);
-        let placed = crate::Layout::from_finalized_lines(crate::PlacementRequest {
-            prepared: prepared.clone(),
-            coverage: crate::PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(crate::LinePlacement {
-                line: restored,
-                anchor: crate::LineAnchor {
-                    inline_origin: 20.0,
-                    baseline: 100.0,
-                },
-                orientation: LineOrientation::Vertical,
-                atomics: vec![],
-            })],
-        })
-        .unwrap();
+        let placed =
+            crate::layout::Layout::from_finalized_lines(crate::protocol::PlacementRequest {
+                prepared: prepared.clone(),
+                coverage: crate::protocol::PlacementCoverage::WholeParagraph,
+                entries: vec![crate::protocol::PlacementEntry::Formatted(
+                    crate::protocol::LinePlacement {
+                        line: restored,
+                        anchor: crate::protocol::LineAnchor {
+                            inline_origin: 20.0,
+                            baseline: 100.0,
+                        },
+                        orientation: LineOrientation::Vertical,
+                        atomics: vec![],
+                    },
+                )],
+            })
+            .unwrap();
         let positions = placed.positions().collect::<Vec<_>>();
         let selection = placed
             .position_selection(positions.first().unwrap(), positions.last().unwrap())

@@ -2,8 +2,10 @@
 //! the outer line frame separate from physical content and editing geometry.
 use super::*;
 use crate::{
-    Affinity, Alignment, Cursor, GlyphBasis, Hit, LineAlignmentInsets, Selection,
-    SpacingSlotDisposition, SpacingSlotOwner,
+    geometry::GlyphBasis,
+    layout::{Affinity, Cursor, Hit, Selection},
+    options::Alignment,
+    protocol::{LineAlignmentInsets, SpacingSlotDisposition, SpacingSlotOwner},
 };
 
 #[test]
@@ -93,12 +95,12 @@ fn finite_upright_centering_applies_indent_insets_and_actual_space_allocation_on
     assert_eq!(space.prepared_text(), prepared);
     assert_eq!(space.view().source_range(), Range::new(1, 2));
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                 slot: slots[0].clone(),
                 amount: 8.0,
             }]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.selected_line(), selected);
@@ -201,7 +203,7 @@ fn finite_upright_centering_applies_indent_insets_and_actual_space_allocation_on
     let pieces = unit
         .pieces()
         .map(|piece| {
-            let crate::SourceRangeGeometry::Line(piece) = piece else {
+            let crate::range_fragments::SourceRangeGeometry::Line(piece) = piece else {
                 panic!("ordinary Range fixture must retain Line geometry");
             };
             piece

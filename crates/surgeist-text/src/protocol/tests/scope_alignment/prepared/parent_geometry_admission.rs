@@ -160,7 +160,7 @@ fn context(f: &Family, index: usize, side: LineEdgeSide) -> InlineBoxEdgeContext
 fn allocation(context: &InlineBoxEdgeContext, advance: f64) -> InlineBoundaryAllocation {
     InlineBoundaryAllocation::box_edge(
         context.clone(),
-        crate::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
+        crate::protocol::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
     )
 }
 fn request_for(f: &Family, boundaries: Vec<InlineBoundaryAllocation>) -> LineSelectionRequest {
@@ -532,7 +532,7 @@ fn real_controls_and_inline_owner_from_another_domain_of_the_same_capture_refuse
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
     });
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     value.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),

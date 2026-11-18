@@ -3,7 +3,28 @@
 //! provider visibility or the implementation's intermediate plan representation.
 
 use crate::processing::DeletionCause;
-use crate::*;
+use crate::{
+    analyzed::{AnalysisTypography, AnalyzedCombinedCell, AnalyzedDomain},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
+        SourceProcessingScope, SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphOriginKind},
+    },
+    range::Range,
+    source::Source,
+    style::{
+        CaseTransform, TextCombineUpright, TextCombineUprightDigits, TextTransform,
+        TextTransformSet, WhiteSpace,
+    },
+    supplied_line::BidiLevel,
+    text::Text,
+};
 use std::sync::Arc;
 
 fn root_input(

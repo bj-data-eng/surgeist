@@ -1,6 +1,9 @@
 //! Positioned custody, phantom completion and provider transparency.
 use super::*;
-use crate::{Error, ErrorCode, ErrorDetail, TextNumericError, TextNumericPhase};
+use crate::{
+    Error, ErrorCode, ErrorDetail,
+    error::{TextNumericError, TextNumericPhase},
+};
 
 fn typography() -> AnalysisTypography {
     AnalysisTypography::Upright {
@@ -262,9 +265,9 @@ fn arabic_input(affinity: Option<Affinity>) -> ParagraphInput {
         .into_iter()
         .map(|definition| ParagraphBoundaryPolicy {
             definition,
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         })
         .collect();
     }
@@ -275,7 +278,7 @@ fn arabic_finish(prepared: &PreparedText) -> FinalizedLine {
     let mut value = request(prepared);
     value.context.orientation = LineOrientation::Vertical;
     value.context.available_inline = Some(24.0);
-    value.context.alignment = crate::Alignment::Start;
+    value.context.alignment = crate::options::Alignment::Start;
     value.context.spacing = SpacingPolicy::None;
     value.atomics = prepared
         .atomic_views()
@@ -287,9 +290,9 @@ fn arabic_finish(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -431,7 +434,7 @@ fn positioned_inside_real_arabic_cell_preserves_isol_mark_joiner_context_and_bid
         assert_eq!(layout.source(), prepared.analyzed_source().source());
         assert_eq!(
             layout.hit(Point::new(310.0, 510.0)),
-            crate::Hit::InlineBox(BOX)
+            crate::layout::Hit::InlineBox(BOX)
         );
     }
 }

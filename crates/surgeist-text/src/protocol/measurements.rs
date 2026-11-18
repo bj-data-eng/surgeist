@@ -1,6 +1,6 @@
 //! Borrowed measurements of one exact finalized selection, not paragraph sizing.
 use super::{FinalizedLine, PreparedAlternative, PreparedParticipant, PresentationRange};
-use crate::Range;
+use crate::range::Range;
 
 /// Signed flow and an ordered physical occupied interval in the line's
 /// prealignment frame. Indentation is excluded; the consumer adds it once.
@@ -134,8 +134,8 @@ impl MarginEdgeFit {
         if !required.is_finite() {
             return Err(crate::error::text_numeric_error(
                 "Native fit requirement",
-                crate::TextNumericPhase::Finalization,
-                crate::TextNumericError::NonFinite,
+                crate::error::TextNumericPhase::Finalization,
+                crate::error::TextNumericError::NonFinite,
                 required,
             ));
         }
@@ -151,7 +151,7 @@ impl MarginEdgeFit {
         // the final required size; retain the unanchored opaque operands.
         let required = crate::engine::layout::add(
             "CSS-composed fit width",
-            crate::TextNumericPhase::Finalization,
+            crate::error::TextNumericPhase::Finalization,
             end,
             -start,
         )?
@@ -298,9 +298,9 @@ impl FinalizedLine {
     }
     /// Actual Text metric frame, independent of a consumer's intrinsic
     /// allocation. This is line-local and excludes the later placement anchor.
-    pub fn metric_bounds(&self) -> crate::Rect {
+    pub fn metric_bounds(&self) -> crate::geometry::Rect {
         let metrics = self.inner.data.metrics;
-        crate::Rect::new(
+        crate::geometry::Rect::new(
             metrics.inline_min,
             metrics.block_min,
             metrics.inline_max - metrics.inline_min,
@@ -351,7 +351,7 @@ impl LineEdgeUnitView<'_> {
                 .next(),
         }
     }
-    pub(crate) fn cell(&self) -> Option<crate::FinalizedCellView<'_>> {
+    pub(crate) fn cell(&self) -> Option<crate::protocol::readback::FinalizedCellView<'_>> {
         let EdgeTarget::Cell(index, _) = self.target() else {
             return None;
         };
@@ -398,12 +398,12 @@ impl LineEdgeUnitView<'_> {
     }
     /// Allocated contribution across the full final line metric band, after
     /// alignment and before placement. This is neither inner ink nor the Cell square.
-    pub fn bounds(&self) -> crate::Rect {
+    pub fn bounds(&self) -> crate::geometry::Rect {
         match self.target() {
             EdgeTarget::Cluster(index, _) => {
                 let cluster = &self.line.inner.data.clusters[index];
                 let metrics = self.line.metric_bounds();
-                crate::Rect::new(
+                crate::geometry::Rect::new(
                     cluster.x.min(cluster.x + cluster.advance),
                     metrics.origin.y,
                     cluster.advance.abs(),

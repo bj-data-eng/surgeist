@@ -1,5 +1,34 @@
 //! Native upright cells and unrotated glyph facts through the public phase front.
-use crate::*;
+#[cfg(feature = "text-accessibility")]
+use crate::accessibility::Accessibility;
+use crate::{
+    System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::{GlyphBasis, Point, Rect},
+    id::Id,
+    layout::{Affinity, Cursor, Hit, Layout, Movement, Selection},
+    options::Alignment,
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        ControlAllocation, FinalizedLine, FormattedLineContext, LineAlignmentInsets, LineAnchor,
+        LineBoxDirection, LineContext, LineEnd, LineOrientation, LinePlacement,
+        LineSelectionRequest, LineStart, NonFormattedLinePlacement, ParagraphBaseDirection,
+        ParagraphInput, ParagraphTerminalEdge, PlacementCoverage, PlacementEntry, PlacementRequest,
+        PreparationOptions, PreparedBoundary, PreparedBreakKind, PreparedOpportunity,
+        PreparedParticipant, PreparedTermination, PreparedText, SpacingAllocations, SpacingPolicy,
+        TabContext,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{
+        Decoration, DecorationOffset, DecorationThickness, Direction, Font, LineHeight, Style,
+        WhiteSpace, Wrap,
+    },
+};
 use skrifa::{
     GlyphId, MetadataProvider,
     instance::{LocationRef, Size as FontSize},
@@ -187,9 +216,9 @@ fn finalize(
     prepared
         .select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -298,7 +327,9 @@ fn real_uniform_runs_report_outline_basis_and_physical_source_geometry() {
                 .collect::<Vec<_>>(),
             [Range::new(0, 1)]
         );
-        let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+        let crate::range_fragments::SourceRangeGeometry::Line(piece) =
+            unit.pieces().next().unwrap()
+        else {
             panic!("ordinary Range fixture must retain Line geometry");
         };
         assert_eq!(piece.rect(), cell);

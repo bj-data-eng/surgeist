@@ -2,7 +2,7 @@
 //! forced controls, atomics and disconnections confer no section boundary.
 use crate::protocol::paragraph::{ParagraphContext, SemanticAnchorItem};
 use crate::transform::relation::{ComponentOwner, RelationEvent, TransformMap};
-use crate::{Range, Result, SourceProcessingEvent};
+use crate::{Result, processing::SourceProcessingEvent, range::Range};
 use std::ops::Range as IndexRange;
 
 #[derive(Clone, Debug)]
@@ -152,7 +152,7 @@ pub(crate) fn sections(
     paragraph: &ParagraphContext,
     map: &TransformMap,
     projection: &crate::projection::SourceProjection,
-    processed: &crate::ProcessedSource,
+    processed: &crate::processing::ProcessedSource,
 ) -> Result<Vec<Section>> {
     let atom_count = projection.atoms.len();
     let Some(topology) = &paragraph.scope_topology else {
@@ -168,12 +168,12 @@ pub(crate) fn sections(
             entry_cursor: Cursor {
                 source_before: extent.start,
                 source_after: extent.start,
-                processed: processed.project(extent.start, crate::Affinity::Before),
+                processed: processed.project(extent.start, crate::layout::Affinity::Before),
             },
             exit_cursor: Cursor {
                 source_before: extent.end,
                 source_after: extent.end,
-                processed: processed.project(extent.end, crate::Affinity::After),
+                processed: processed.project(extent.end, crate::layout::Affinity::After),
             },
             span: None,
         }]);
@@ -249,7 +249,7 @@ pub(crate) fn sections(
                 "source event crosses a structural frontier",
             )
             .with_detail(crate::ErrorDetail::TextTransform {
-                reason: crate::TextTransformError::IndivisibleCoverage {
+                reason: crate::error::TextTransformError::IndivisibleCoverage {
                     source: map.event_source(event_index, paragraph, processed.source()),
                 },
             }));
@@ -274,7 +274,7 @@ pub(crate) fn sections(
         let exit = span.exit.min(end);
         if entry > exit {
             return Err(crate::processing::contextual::invalid(
-                crate::SourceProcessingError::Domain,
+                crate::processing::SourceProcessingError::Domain,
             ));
         }
         let atom_start = index.checked_sub(1).map_or(0, |before| atoms[before]);
@@ -294,7 +294,7 @@ pub(crate) fn sections(
                     "structural frontier cuts a completed source unit",
                 )
                 .with_detail(crate::ErrorDetail::TextTransform {
-                    reason: crate::TextTransformError::IndivisibleCoverage {
+                    reason: crate::error::TextTransformError::IndivisibleCoverage {
                         source: source_envelope(paragraph, map, atom_start..atom_end),
                     },
                 }));
@@ -326,8 +326,8 @@ pub(crate) fn sections(
                     ..map
                         .logical_prefix_at_cut(event_end)
                         .expect("completed source cut"),
-                entry_cursor: cursor(entry, crate::Affinity::Before),
-                exit_cursor: cursor(exit, crate::Affinity::After),
+                entry_cursor: cursor(entry, crate::layout::Affinity::Before),
+                exit_cursor: cursor(exit, crate::layout::Affinity::After),
                 span: Some(span),
             },
         )?;

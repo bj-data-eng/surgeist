@@ -6,7 +6,7 @@ use skrifa::{
     raw::TableProvider,
 };
 
-fn observe_actual_instance(line: &FinalizedLine, expected: &crate::CataloguePublication) {
+fn observe_actual_instance(line: &FinalizedLine, expected: &surgeist_font::CataloguePublication) {
     let run = line.run_views().next().unwrap();
     let font = skrifa::FontRef::new(run.face().bytes()).unwrap();
     assert_eq!(run.face().catalogue_identity(), expected);
@@ -54,9 +54,9 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_selection() {
     let line = p
         .select(input.clone())
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 20.0);
@@ -67,7 +67,7 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_selection() {
                 .map(|g| (g.id(), g.advance(), g.range()))
                 .collect::<Vec<_>>())
             .collect::<Vec<_>>(),
-        [(58, 20.0, crate::Range::new(0, 1))]
+        [(58, 20.0, crate::range::Range::new(0, 1))]
     );
     observe_actual_instance(&line, system.font_catalogue_identity());
     for orientation in [
@@ -100,7 +100,7 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_selection() {
             .flat_map(|run| run.glyphs())
             .map(|g| (g.id(), g.advance(), g.range()))
             .collect::<Vec<_>>(),
-        [(58, 20.0, crate::Range::new(0, 1))]
+        [(58, 20.0, crate::range::Range::new(0, 1))]
     );
 }
 
@@ -111,9 +111,9 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_placement() {
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     observe_actual_instance(&line, system.font_catalogue_identity());
@@ -124,15 +124,15 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_placement() {
         .flat_map(|run| run.glyphs())
         .map(|g| (g.id(), g.advance(), g.range()))
         .collect::<Vec<_>>();
-    assert_eq!(before, [(58, 20.0, crate::Range::new(0, 1))]);
+    assert_eq!(before, [(58, 20.0, crate::range::Range::new(0, 1))]);
     for orientation in [
         LineOrientation::Vertical,
         LineOrientation::SidewaysClockwise,
     ] {
-        let error = crate::Layout::from_finalized_lines(PlacementRequest {
+        let error = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: p.clone(),
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: line.clone(),
                 anchor: LineAnchor {
                     inline_origin: 0.0,

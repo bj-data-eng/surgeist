@@ -1,6 +1,12 @@
-use super::{
-    Error, ErrorCode, ErrorDetail, Id, NumericRequirement, Range, Result, Size, SourcePosition,
-    SourceRange, Style, Text, ValidatedStyle, range,
+use crate::{
+    Error, ErrorCode, ErrorDetail, Result,
+    error::NumericRequirement,
+    geometry::Size,
+    id::Id,
+    range,
+    range::{Range, SourcePosition, SourceRange},
+    style::{Style, ValidatedStyle},
+    text::Text,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -121,7 +127,7 @@ pub(crate) fn processed_span_styles(
 }
 
 impl TryFrom<Source> for ValidatedSource {
-    type Error = super::Error;
+    type Error = crate::Error;
 
     fn try_from(source: Source) -> Result<Self> {
         let span_styles = validate_source(&source)?;

@@ -44,7 +44,7 @@ pub(crate) fn build_spacing_slots(
     let ledger = if active {
         if ledger.is_none() {
             return Err(crate::engine::scope_alignment::refusal(
-                crate::ScopeAlignmentError::LimitsRequired,
+                crate::processing::ScopeAlignmentError::LimitsRequired,
             ));
         }
         account::header::<Vec<SpacingSlotData>>(ledger)?;
@@ -230,7 +230,7 @@ pub(crate) fn build_spacing_slots(
                                 ledger,
                                 &mut pieces,
                                 SpacingSlotPieceData {
-                                    owner: crate::SpacingPiece::Atomic { occurrence },
+                                    owner: crate::error::SpacingPiece::Atomic { occurrence },
                                     presentation: PresentationRange {
                                         start: actual.presentation.start,
                                         end: actual.presentation.end,

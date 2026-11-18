@@ -1,7 +1,7 @@
 use icu_segmenter::GraphemeClusterSegmenter;
 
-use super::{Error, ErrorCode, ErrorDetail, Range, Result, Source, Text};
 use crate::engine::OriginalAtom;
+use crate::{Error, ErrorCode, ErrorDetail, Result, range::Range, source::Source, text::Text};
 
 /// A byte boundary in the glyph-only UTF-8 projection.
 #[cfg(any(test, feature = "text-accessibility"))]
@@ -70,25 +70,29 @@ impl SourceProjection {
             Self::admit_boundary(
                 source.text(),
                 span.range().start,
-                super::ShapingBoundary::SpanStart,
+                crate::error::ShapingBoundary::SpanStart,
             )?;
             Self::admit_boundary(
                 source.text(),
                 span.range().end,
-                super::ShapingBoundary::SpanEnd,
+                crate::error::ShapingBoundary::SpanEnd,
             )?;
         }
         for box_ in source.boxes() {
             Self::admit_boundary(
                 source.text(),
                 box_.index(),
-                super::ShapingBoundary::InlineBox,
+                crate::error::ShapingBoundary::InlineBox,
             )?;
         }
         Ok(())
     }
 
-    fn admit_boundary(text: &Text, index: usize, kind: super::ShapingBoundary) -> Result<()> {
+    fn admit_boundary(
+        text: &Text,
+        index: usize,
+        kind: crate::error::ShapingBoundary,
+    ) -> Result<()> {
         if !text.is_scalar_boundary(index) {
             return Err(Error::new(
                 ErrorCode::UnsupportedFeature,
@@ -229,7 +233,7 @@ impl SourceProjection {
     /// Builds semantic input from actual executed correspondence, decoding Copy
     /// pieces before any removed original units can falsely join surrogate halves.
     pub(crate) fn from_processed(
-        processed: &crate::ProcessedSource,
+        processed: &crate::processing::ProcessedSource,
         paragraph: &crate::protocol::paragraph::ParagraphContext,
     ) -> Result<Self> {
         use crate::processing::MappingKind;
@@ -272,7 +276,10 @@ impl SourceProjection {
         }
         let projection = Self::from_atoms(
             atoms,
-            processed.project(paragraph.extent(processed).end, crate::Affinity::After),
+            processed.project(
+                paragraph.extent(processed).end,
+                crate::layout::Affinity::After,
+            ),
             barriers,
         )?;
         admit_physical_endpoint_cuts(&projection.atoms, paragraph)?;
@@ -483,7 +490,7 @@ fn paragraph_barriers(
             .iter()
             .enumerate()
             .filter(|(i, item)| {
-                item.kind() == crate::InlineBoxKind::InFlow
+                item.kind() == crate::source::InlineBoxKind::InFlow
                     && paragraph.anchor_order.iter().any(|anchor| {
                         anchor.item == crate::protocol::paragraph::SemanticAnchorItem::Atomic(*i)
                     })
@@ -534,8 +541,8 @@ fn admit_connected(
         .map(|_| paragraph.intersections(paragraph.extent_in(source)));
     for span in source.spans() {
         for (at, kind) in [
-            (span.range().start, super::ShapingBoundary::SpanStart),
-            (span.range().end, super::ShapingBoundary::SpanEnd),
+            (span.range().start, crate::error::ShapingBoundary::SpanStart),
+            (span.range().end, crate::error::ShapingBoundary::SpanEnd),
         ] {
             // Scalar boundaries constrain incident original text. An authentic
             // parent occurrence inside a child hole owns only its point; it

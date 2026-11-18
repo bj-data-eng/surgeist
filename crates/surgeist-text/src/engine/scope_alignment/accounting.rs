@@ -5,7 +5,10 @@ use crate::engine::layout::data::{
     CellArenaOwnership, CellPayload, OrdinalMap, PreparedCell, PreparedRun, ShapedData,
 };
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
-use crate::{Result, ScopeAlignmentError, ScopeAlignmentLimitKind};
+use crate::{
+    Result,
+    processing::{ScopeAlignmentError, ScopeAlignmentLimitKind},
+};
 
 pub(crate) type Ledger = Option<ScopeAlignmentBudget>;
 

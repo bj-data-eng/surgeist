@@ -2,7 +2,31 @@
 //! Contained source cells and definite ineligibility require no domain widening;
 //! #1588 demand locality excludes unrelated neighbor font/style validation.
 
-use crate::*;
+#[cfg(feature = "text-accessibility")]
+use crate::accessibility::Accessibility;
+use crate::{
+    ErrorCode,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+        SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{TextCombineUpright, TextCombineUprightDigits, TextTransform, WhiteSpace},
+    supplied_line::BidiLevel,
+    text::Text,
+};
 use std::sync::Arc;
 
 fn root_input(

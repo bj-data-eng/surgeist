@@ -1,7 +1,14 @@
 use crate::shaping_test_fonts::{arabic_ahem, ligature_ahem, mark_ahem};
 use crate::{
-    ErrorCode, ErrorDetail, Font, Glyph, Id, InlineBox, InlineBoxKind, LineHeight, Options, Range,
-    ShapingRefusalReason, Size, Source, Style, System,
+    ErrorCode, ErrorDetail, System,
+    error::ShapingRefusalReason,
+    geometry::Size,
+    id::Id,
+    layout::Glyph,
+    options::Options,
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Font, LineHeight, Style},
 };
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -30,7 +37,7 @@ fn options() -> Options {
     }
 }
 
-fn glyphs(layout: &crate::Layout) -> Vec<Glyph> {
+fn glyphs(layout: &crate::layout::Layout) -> Vec<Glyph> {
     layout
         .glyph_runs()
         .iter()

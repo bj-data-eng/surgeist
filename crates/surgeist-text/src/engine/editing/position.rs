@@ -8,7 +8,10 @@ use crate::protocol::prepared::SelectedRelationEvent;
 use crate::protocol::{ProtocolError, protocol_error};
 use crate::transform::relation::{OriginalPiece, RelationEvent};
 use crate::{
-    Affinity, Cursor, CursorGeometry, Movement, Point, Range, Rect, Result, SelectionGeometry,
+    Result,
+    geometry::{Point, Rect},
+    layout::{Affinity, Cursor, CursorGeometry, Movement, SelectionGeometry},
+    range::Range,
 };
 use std::sync::Arc;
 
@@ -497,7 +500,7 @@ pub(crate) fn hit(layout: &PlacedLayout, point: Point) -> Option<usize> {
     }
     let source = super::cursor::from_point(layout, point);
     let vertical_axis_line =
-        if layout.prepared.options.orientation() != crate::LineOrientation::Horizontal {
+        if layout.prepared.options.orientation() != crate::protocol::LineOrientation::Horizontal {
             super::cursor::line_at_point(layout, point)
         } else {
             None
@@ -525,7 +528,7 @@ fn position_distance(layout: &PlacedLayout, index: usize, point: Point) -> f64 {
         .expect("owned interaction row")
         .rect();
     let orientation = layout.prepared.options.orientation();
-    if orientation == crate::LineOrientation::SidewaysCounterclockwise {
+    if orientation == crate::protocol::LineOrientation::SidewaysCounterclockwise {
         let position = &layout.interaction.positions[index];
         let line = &layout.lines[position.line];
         // The top edge of a CCW caret hull is not its actual source edge.
@@ -542,8 +545,8 @@ fn position_distance(layout: &PlacedLayout, index: usize, point: Point) -> f64 {
         distance(rect, point, orientation)
     }
 }
-fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f64 {
-    if orientation != crate::LineOrientation::Horizontal {
+fn distance(rect: Rect, point: Point, orientation: crate::protocol::LineOrientation) -> f64 {
+    if orientation != crate::protocol::LineOrientation::Horizontal {
         let dx = if point.x < rect.origin.x {
             rect.origin.x - point.x
         } else if point.x > rect.origin.x + rect.size.width {
@@ -570,7 +573,7 @@ fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f6
 /// Horizontal proximity uses physical x; vertical axes use local inline distance.
 pub(super) fn nearest_on_line(layout: &PlacedLayout, line: usize, inline: f64) -> Option<usize> {
     let coordinate = |index: usize| {
-        if layout.lines[line].orientation != crate::LineOrientation::Horizontal {
+        if layout.lines[line].orientation != crate::protocol::LineOrientation::Horizontal {
             local_x(
                 &layout.lines[line],
                 layout.interaction.positions[index].target,
@@ -741,8 +744,8 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
             match target {
                 None => index,
                 Some(target) => {
-                    let vertical_axis =
-                        layout.prepared.options.orientation() != crate::LineOrientation::Horizontal;
+                    let vertical_axis = layout.prepared.options.orientation()
+                        != crate::protocol::LineOrientation::Horizontal;
                     let inline = if vertical_axis {
                         local_x(&layout.lines[current.line], current.target)
                     } else {
@@ -804,7 +807,7 @@ pub(crate) fn selection(
     layout: &Arc<PlacedLayout>,
     anchor: usize,
     focus: usize,
-) -> Result<crate::PlacedSelection> {
+) -> Result<crate::layout::PlacedSelection> {
     let a = row(layout, anchor)?;
     let b = row(layout, focus)?;
     let (first, last) = if a.cut <= b.cut { (a, b) } else { (b, a) };
@@ -975,11 +978,11 @@ pub(crate) fn selection(
             },
         )?
     };
-    Ok(crate::PlacedSelection {
+    Ok(crate::layout::PlacedSelection {
         _placement: Arc::clone(layout),
         geometry,
         pieces,
-        source_text: crate::Text::from_code_units(original),
+        source_text: crate::text::Text::from_code_units(original),
         plaintext,
         collapsed: start == end,
     })
@@ -1010,7 +1013,7 @@ fn append_source_pieces(layout: &PlacedLayout, source: Range, pieces: &mut Vec<O
 fn normalize_pieces(
     layout: &PlacedLayout,
     mut pieces: Vec<OriginalPiece>,
-) -> Result<Vec<crate::PlacedSelectionPiece>> {
+) -> Result<Vec<crate::layout::PlacedSelectionPiece>> {
     // Normalize original occurrences only after event coverage has been chosen.
     // Equal text in another occurrence remains distinct; holes stay holes.
     let paragraph = &layout.prepared.analyzed.paragraph;
@@ -1026,7 +1029,7 @@ fn normalize_pieces(
             piece.local.end,
         )
     });
-    let mut normalized: Vec<crate::PlacedSelectionPiece> = Vec::new();
+    let mut normalized: Vec<crate::layout::PlacedSelectionPiece> = Vec::new();
     for piece in pieces {
         let view_origin = paragraph
             .origin_map
@@ -1073,8 +1076,8 @@ fn normalize_pieces(
             previous.local.end = previous.local.end.max(piece.local.end);
             previous.aggregate.end = previous.aggregate.end.max(piece.aggregate.end);
         } else {
-            normalized.push(crate::PlacedSelectionPiece {
-                origin: crate::PreparedOrigin {
+            normalized.push(crate::layout::PlacedSelectionPiece {
+                origin: crate::protocol::PreparedOrigin {
                     prepared: Arc::clone(&layout.prepared),
                     index: view_origin,
                 },
@@ -1188,11 +1191,16 @@ mod tests {
     };
     use crate::protocol::*;
     use crate::{
-        Alignment, AnalyzedSource, DocumentSegmentBreaks, Font, Layout, LineHeight, Source, Style,
         System,
+        analyzed::AnalyzedSource,
+        layout::Layout,
+        options::Alignment,
+        processing::DocumentSegmentBreaks,
+        source::Source,
+        style::{Font, LineHeight, Style},
     };
 
-    fn transformed(text: &str, case: crate::CaseTransform, locale: Option<&str>) -> Layout {
+    fn transformed(text: &str, case: crate::style::CaseTransform, locale: Option<&str>) -> Layout {
         let mut system = System::default();
         system
             .register_fonts(
@@ -1207,23 +1215,23 @@ mod tests {
                     font: Font::new().family("Ahem"),
                     size: 10.0,
                     line_height: LineHeight::Absolute(10.0),
-                    white_space: crate::WhiteSpace::Preserve,
-                    text_transform: crate::TextTransform::Set(
-                        crate::TextTransformSet::none().with_case(case),
+                    white_space: crate::style::WhiteSpace::Preserve,
+                    text_transform: crate::style::TextTransform::Set(
+                        crate::style::TextTransformSet::none().with_case(case),
                     ),
                     locale: locale.map(str::to_owned),
                     ..Style::default()
                 },
-                crate::Options {
+                crate::options::Options {
                     alignment: Alignment::Left,
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap()
     }
 
-    fn at_cut(layout: &Layout, cut: usize) -> crate::PlacedPosition {
+    fn at_cut(layout: &Layout, cut: usize) -> crate::layout::PlacedPosition {
         layout
             .positions()
             .find(|position| layout.inner.interaction.positions[position.index].cut == cut)
@@ -1245,15 +1253,16 @@ mod tests {
             .layout(
                 Source::new("ß"),
                 Style {
-                    text_transform: crate::TextTransform::Set(
-                        crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+                    text_transform: crate::style::TextTransform::Set(
+                        crate::style::TextTransformSet::none()
+                            .with_case(crate::style::CaseTransform::Uppercase),
                     ),
                     ..native_style()
                 },
-                crate::Options {
+                crate::options::Options {
                     alignment: Alignment::Left,
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -1294,7 +1303,11 @@ mod tests {
 
     #[test]
     fn removed_dot_has_distinct_cuts_without_a_rectangle_or_emission_coverage() {
-        let layout = transformed("I\u{307}B", crate::CaseTransform::Lowercase, Some("tr"));
+        let layout = transformed(
+            "I\u{307}B",
+            crate::style::CaseTransform::Lowercase,
+            Some("tr"),
+        );
         assert_eq!(layout.source().text().code_units(), &[0x49, 0x307, 0x42]);
         assert_eq!(layout.lines()[0].bounds().size.width, 20.0);
         let (start, before, after, end) = (
@@ -1334,15 +1347,15 @@ mod tests {
             .unwrap();
         let layout = system
             .layout(
-                Source::new(crate::Text::from_code_units(vec![0x41, 0xd800, 0x42])),
+                Source::new(crate::text::Text::from_code_units(vec![0x41, 0xd800, 0x42])),
                 Style {
                     font: Font::new().family("Ahem"),
                     size: 10.0,
                     ..Style::default()
                 },
-                crate::Options {
+                crate::options::Options {
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -1368,7 +1381,7 @@ mod tests {
 
     fn native_selection_layout(
         source: Source,
-        origins: Vec<crate::ParagraphOrigin>,
+        origins: Vec<crate::protocol::paragraph::ParagraphOrigin>,
         style: Style,
         controls: Vec<ParagraphControl>,
         base_direction: ParagraphBaseDirection,
@@ -1378,18 +1391,22 @@ mod tests {
         // context, with the same real governing wrapping policy on both sides.
         let connections: Vec<_> = origins
             .windows(2)
-            .map(|pair| crate::ParagraphConnection {
+            .map(|pair| crate::protocol::paragraph::ParagraphConnection {
                 at: pair[0].aggregate.end,
-                kind: crate::ParagraphConnectionKind::Continuous,
+                kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
             })
             .collect();
         let boundary_policies = (0..connections.len())
-            .map(|index| crate::ParagraphBoundaryPolicy {
-                definition: crate::ParagraphBoundaryDefinition::Connection(index),
-                preceding_wrap: style.wrap,
-                following_wrap: style.wrap,
-                ancestor_wrap: style.wrap,
-            })
+            .map(
+                |index| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                    definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                        index,
+                    ),
+                    preceding_wrap: style.wrap,
+                    following_wrap: style.wrap,
+                    ancestor_wrap: style.wrap,
+                },
+            )
             .collect();
         let anchor_order = (0..controls.len())
             .map(|index| ParagraphAnchor {
@@ -1399,13 +1416,13 @@ mod tests {
             .collect();
         let analyzed = AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source,
                 base_style: style,
                 segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
                 base_direction,
-                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
                 origins,
                 connections,
                 controls,
@@ -1413,7 +1430,7 @@ mod tests {
                 replacements: vec![],
                 anchor_order,
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let mut system = System::default();
@@ -1438,19 +1455,19 @@ mod tests {
                 incoming: None,
                 start,
                 end,
-                termination: crate::PreparedTermination::Ordinary(termination),
+                termination: crate::protocol::PreparedTermination::Ordinary(termination),
                 participants: prepared.participants().collect(),
                 alternative: None,
                 context: LineContext {
-                    alignment_insets: crate::LineAlignmentInsets::ZERO,
-                    formatted_line: crate::FormattedLineContext::default(),
+                    alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                    formatted_line: crate::protocol::FormattedLineContext::default(),
                     base_direction,
                     line_box_direction: match base_direction {
-                        crate::ParagraphBaseDirection::LeftToRight => {
-                            crate::LineBoxDirection::LeftToRight
+                        crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                            crate::protocol::LineBoxDirection::LeftToRight
                         }
-                        crate::ParagraphBaseDirection::RightToLeft => {
-                            crate::LineBoxDirection::RightToLeft
+                        crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                            crate::protocol::LineBoxDirection::RightToLeft
                         }
                     },
                     orientation: LineOrientation::Horizontal,
@@ -1470,10 +1487,10 @@ mod tests {
                             ControlAllocation {
                                 boundary: matches!(
                                     occurrence.view().kind(),
-                                    crate::ParagraphControlKind::InlineBoundaryStart
-                                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                                    crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                        | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                                 )
-                                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                                .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                                 occurrence,
                                 strut: None,
                             }
@@ -1485,15 +1502,15 @@ mod tests {
                 line_strut: None,
             })
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -1520,18 +1537,20 @@ mod tests {
         let source = Source::new("AA");
         // The exact same immutable resource occurs twice. Occurrence identity,
         // not text, ID, revision or resource identity, controls deduplication.
-        let original = Source::identified("A", crate::Id::from_u64(1), 3);
+        let original = Source::identified("A", crate::id::Id::from_u64(1), 3);
         let originals = [original.clone(), original];
         let origins = originals
             .iter()
             .enumerate()
-            .map(|(index, source)| crate::ParagraphOrigin {
-                text_node: None,
-                source: source.clone(),
-                local: Range::new(0, 1),
-                aggregate: Range::new(index, index + 1),
-                kind: crate::ParagraphOriginKind::Authored,
-            })
+            .map(
+                |(index, source)| crate::protocol::paragraph::ParagraphOrigin {
+                    text_node: None,
+                    source: source.clone(),
+                    local: Range::new(0, 1),
+                    aggregate: Range::new(index, index + 1),
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
+                },
+            )
             .collect();
         let layout = native_selection_layout(
             source,
@@ -1560,18 +1579,18 @@ mod tests {
     #[test]
     fn native_plaintext_uses_executed_collapse_while_original_extraction_retains_spaces() {
         let source = Source::new("A  B");
-        let origins = vec![crate::ParagraphOrigin {
+        let origins = vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: Range::new(0, 4),
             aggregate: Range::new(0, 4),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }];
         let layout = native_selection_layout(
             source,
             origins,
             Style {
-                white_space: crate::WhiteSpace::Collapse,
+                white_space: crate::style::WhiteSpace::Collapse,
                 ..native_style()
             },
             vec![],
@@ -1603,9 +1622,9 @@ mod tests {
             .layout(
                 Source::new("AA"),
                 native_style(),
-                crate::Options {
+                crate::options::Options {
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -1621,7 +1640,7 @@ mod tests {
             .unwrap();
         assert_eq!(selection.source_text().code_units(), &[0x41, 0x41]);
         assert_eq!(selection.geometry().rects()[0].rect().size.width, 10.0);
-        let marked = transformed("i\u{307}", crate::CaseTransform::None, None);
+        let marked = transformed("i\u{307}", crate::style::CaseTransform::None, None);
         assert_eq!(marked.positions().count(), 2);
         let positions: Vec<_> = marked.positions().collect();
         let selection = marked
@@ -1635,7 +1654,11 @@ mod tests {
         // Root uppercase decomposes the source's subscript iota to a delayed
         // capital Iota AFTER the following original acute: 1F08,0301,0399.
         // Unicode canonical composition shapes the first two as 1F0C, glyph189.
-        let layout = transformed("\u{1f80}\u{301}", crate::CaseTransform::Uppercase, None);
+        let layout = transformed(
+            "\u{1f80}\u{301}",
+            crate::style::CaseTransform::Uppercase,
+            None,
+        );
         let glyphs: Vec<_> = layout
             .run_views()
             .flat_map(|run| run.glyphs().map(|glyph| glyph.id()).collect::<Vec<_>>())
@@ -1661,7 +1684,11 @@ mod tests {
 
     #[test]
     fn trailing_removal_belongs_to_the_whole_line_without_extending_ink_geometry() {
-        let layout = transformed("I\u{307}", crate::CaseTransform::Lowercase, Some("tr"));
+        let layout = transformed(
+            "I\u{307}",
+            crate::style::CaseTransform::Lowercase,
+            Some("tr"),
+        );
         let positions: Vec<_> = layout.positions().collect();
         assert_eq!(
             layout.inner.interaction.positions[positions.first().unwrap().index].cut,
@@ -1687,27 +1714,28 @@ mod tests {
     #[test]
     fn removal_adjoining_a_real_zero_width_control_does_not_select_its_slot() {
         let source = Source::new("I\u{307}B");
-        let origins = vec![crate::ParagraphOrigin {
+        let origins = vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: Range::new(0, 3),
             aggregate: Range::new(0, 3),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }];
         let layout = native_selection_layout(
             source,
             origins,
             Style {
                 locale: Some("tr".to_owned()),
-                text_transform: crate::TextTransform::Set(
-                    crate::TextTransformSet::none().with_case(crate::CaseTransform::Lowercase),
+                text_transform: crate::style::TextTransform::Set(
+                    crate::style::TextTransformSet::none()
+                        .with_case(crate::style::CaseTransform::Lowercase),
                 ),
                 ..native_style()
             },
             vec![ParagraphControl {
                 at: 2,
                 kind: ParagraphControlKind::OptionalBreak {
-                    wrap: crate::Wrap::Word,
+                    wrap: crate::style::Wrap::Word,
                 },
             }],
             ParagraphBaseDirection::LeftToRight,
@@ -1741,15 +1769,15 @@ mod tests {
             .layout(
                 Source::new("A\u{1b132}C"),
                 Style {
-                    text_transform: crate::TextTransform::Set(
-                        crate::TextTransformSet::none().with_full_size_kana(true),
+                    text_transform: crate::style::TextTransform::Set(
+                        crate::style::TextTransformSet::none().with_full_size_kana(true),
                     ),
                     ..native_style()
                 },
-                crate::Options {
+                crate::options::Options {
                     alignment: Alignment::Left,
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -1781,19 +1809,20 @@ mod tests {
     #[test]
     fn real_rtl_override_expansion_keeps_both_interior_affinities_and_exact_coverage() {
         let source = Source::new("ß");
-        let origins = vec![crate::ParagraphOrigin {
+        let origins = vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: Range::new(0, 1),
             aggregate: Range::new(0, 1),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }];
         let layout = native_selection_layout(
             source,
             origins,
             Style {
-                text_transform: crate::TextTransform::Set(
-                    crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+                text_transform: crate::style::TextTransform::Set(
+                    crate::style::TextTransformSet::none()
+                        .with_case(crate::style::CaseTransform::Uppercase),
                 ),
                 ..native_style()
             },
@@ -1921,7 +1950,7 @@ mod tests {
         let source_end = source.text().len();
         let analyzed = AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: source.clone(),
                 base_style: Style {
@@ -1936,36 +1965,36 @@ mod tests {
                 origins: if disconnected {
                     assert_eq!(text, "AB");
                     vec![
-                        crate::ParagraphOrigin {
+                        crate::protocol::paragraph::ParagraphOrigin {
                             text_node: None,
                             source: Source::new("A"),
                             local: Range::new(0, 1),
                             aggregate: Range::new(0, 1),
-                            kind: crate::ParagraphOriginKind::Authored,
+                            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                         },
-                        crate::ParagraphOrigin {
+                        crate::protocol::paragraph::ParagraphOrigin {
                             text_node: None,
                             source: Source::new("B"),
                             local: Range::new(0, 1),
                             aggregate: Range::new(1, 2),
-                            kind: crate::ParagraphOriginKind::Authored,
+                            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                         },
                     ]
                 } else if source_end != 0 {
-                    vec![crate::ParagraphOrigin {
+                    vec![crate::protocol::paragraph::ParagraphOrigin {
                         text_node: None,
                         source,
                         local: Range::new(0, source_end),
                         aggregate: Range::new(0, source_end),
-                        kind: crate::ParagraphOriginKind::Authored,
+                        kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                     }]
                 } else {
                     Vec::new()
                 },
                 connections: if disconnected {
-                    vec![crate::ParagraphConnection {
+                    vec![crate::protocol::paragraph::ParagraphConnection {
                         at: 1,
-                        kind: crate::ParagraphConnectionKind::Disconnected,
+                        kind: crate::protocol::paragraph::ParagraphConnectionKind::Disconnected,
                     }]
                 } else {
                     Vec::new()
@@ -1991,7 +2020,7 @@ mod tests {
                 })
                 .collect(),
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let prepared = system
@@ -2029,13 +2058,13 @@ mod tests {
                     start: start.clone(),
                     end: end.clone(),
                     participants: participants[from..to].to_vec(),
-                    termination: crate::PreparedTermination::Ordinary(opportunity),
+                    termination: crate::protocol::PreparedTermination::Ordinary(opportunity),
                     alternative: None,
                     context: LineContext {
-                        alignment_insets: crate::LineAlignmentInsets::ZERO,
-                        formatted_line: crate::FormattedLineContext::default(),
+                        alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                        formatted_line: crate::protocol::FormattedLineContext::default(),
                         base_direction: ParagraphBaseDirection::LeftToRight,
-                        line_box_direction: crate::LineBoxDirection::LeftToRight,
+                        line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
                         orientation: LineOrientation::Horizontal,
                         start: if index == 0 {
                             LineStart::Paragraph
@@ -2066,11 +2095,11 @@ mod tests {
                                     ControlAllocation {
                                         boundary: matches!(
                                             occurrence.view().kind(),
-                                            crate::ParagraphControlKind::InlineBoundaryStart
-                                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                                            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                                | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                                         )
                                         .then_some(
-                                            crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
+                                            crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
                                         ),
                                         occurrence,
                                         strut: None,
@@ -2095,9 +2124,9 @@ mod tests {
                     }
                 });
             let line = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             if let Some(expected) = expected_control {
@@ -2122,7 +2151,7 @@ mod tests {
             coverage: PlacementCoverage::WholeParagraph,
             entries: lines
                 .into_iter()
-                .map(crate::PlacementEntry::Formatted)
+                .map(crate::protocol::PlacementEntry::Formatted)
                 .collect(),
         })
         .unwrap()
@@ -2200,7 +2229,7 @@ mod tests {
         let source = Source::new("abcdef");
         let analysis = AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: source.clone(),
                 base_style: Style {
@@ -2211,19 +2240,19 @@ mod tests {
                 },
                 segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: crate::ParagraphStrut::DefaultFont,
-                origins: vec![crate::ParagraphOrigin {
+                paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source,
                     local: Range::new(0, 6),
                     aggregate: Range::new(0, 6),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![ParagraphControl {
                     at: 4,
                     kind: ParagraphControlKind::OptionalBreak {
-                        wrap: crate::Wrap::Word,
+                        wrap: crate::style::Wrap::Word,
                     },
                 }],
                 boundary_policies: vec![],
@@ -2233,7 +2262,7 @@ mod tests {
                     affinity: Affinity::After,
                 }],
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let prepared = system
@@ -2267,10 +2296,10 @@ mod tests {
                         ControlAllocation {
                             boundary: matches!(
                                 occurrence.view().kind(),
-                                crate::ParagraphControlKind::InlineBoundaryStart
-                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                                crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                            .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }
@@ -2289,13 +2318,13 @@ mod tests {
                 start: start.clone(),
                 end: end.clone(),
                 participants,
-                termination: crate::PreparedTermination::Ordinary(termination),
+                termination: crate::protocol::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
-                    alignment_insets: crate::LineAlignmentInsets::ZERO,
-                    formatted_line: crate::FormattedLineContext::default(),
+                    alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                    formatted_line: crate::protocol::FormattedLineContext::default(),
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    line_box_direction: crate::LineBoxDirection::LeftToRight,
+                    line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Continuation,
                     end: LineEnd::Soft,
@@ -2313,15 +2342,15 @@ mod tests {
             })
             .unwrap();
         let line = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::Range { start, end },
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -2461,7 +2490,7 @@ mod tests {
         );
     }
 
-    fn native_whitespace_line(text: &str, white_space: crate::WhiteSpace) -> Layout {
+    fn native_whitespace_line(text: &str, white_space: crate::style::WhiteSpace) -> Layout {
         native_whitespace_line_with_direction(
             text,
             white_space,
@@ -2471,7 +2500,7 @@ mod tests {
 
     fn native_whitespace_prepared(
         text: &str,
-        white_space: crate::WhiteSpace,
+        white_space: crate::style::WhiteSpace,
         base_direction: ParagraphBaseDirection,
     ) -> PreparedText {
         let mut system = System::default();
@@ -2485,7 +2514,7 @@ mod tests {
         let end = text.encode_utf16().count();
         let analysis = AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: source.clone(),
                 base_style: Style {
@@ -2497,13 +2526,13 @@ mod tests {
                 },
                 segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
                 base_direction,
-                paragraph_strut: crate::ParagraphStrut::DefaultFont,
-                origins: vec![crate::ParagraphOrigin {
+                paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source,
                     local: Range::new(0, end),
                     aggregate: Range::new(0, end),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -2511,10 +2540,10 @@ mod tests {
                 replacements: vec![],
                 anchor_order: vec![],
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
-        let analysis = crate::test_wrapping::bind_missing(&analysis, crate::Wrap::Word);
+        let analysis = crate::test_wrapping::bind_missing(&analysis, crate::style::Wrap::Word);
         system
             .prepare(&analysis, PreparationOptions::default())
             .unwrap()
@@ -2522,7 +2551,7 @@ mod tests {
 
     fn native_whitespace_line_with_direction(
         text: &str,
-        white_space: crate::WhiteSpace,
+        white_space: crate::style::WhiteSpace,
         base_direction: ParagraphBaseDirection,
     ) -> Layout {
         let prepared = native_whitespace_prepared(text, white_space, base_direction);
@@ -2540,18 +2569,18 @@ mod tests {
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: termination.view().boundary(),
                 participants: prepared.participants().collect(),
-                termination: crate::PreparedTermination::Ordinary(termination),
+                termination: crate::protocol::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
-                    alignment_insets: crate::LineAlignmentInsets::ZERO,
-                    formatted_line: crate::FormattedLineContext::default(),
+                    alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                    formatted_line: crate::protocol::FormattedLineContext::default(),
                     base_direction,
                     line_box_direction: match base_direction {
-                        crate::ParagraphBaseDirection::LeftToRight => {
-                            crate::LineBoxDirection::LeftToRight
+                        crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                            crate::protocol::LineBoxDirection::LeftToRight
                         }
-                        crate::ParagraphBaseDirection::RightToLeft => {
-                            crate::LineBoxDirection::RightToLeft
+                        crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                            crate::protocol::LineBoxDirection::RightToLeft
                         }
                     },
                     orientation: LineOrientation::Horizontal,
@@ -2571,15 +2600,15 @@ mod tests {
             })
             .unwrap();
         let line = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -2594,7 +2623,7 @@ mod tests {
 
     #[test]
     fn native_collapsed_gap_next_word_uses_the_next_actual_source_cluster() {
-        let preserved = native_whitespace_line("A B", crate::WhiteSpace::Preserve);
+        let preserved = native_whitespace_line("A B", crate::style::WhiteSpace::Preserve);
         assert_eq!(
             preserved
                 .move_cursor(Cursor::new(1, Affinity::After), Movement::NextWord)
@@ -2602,7 +2631,7 @@ mod tests {
             Cursor::new(2, Affinity::Before)
         );
         assert_eq!(preserved.source().text().code_units(), [0x41, 0x20, 0x42]);
-        let collapsed = native_whitespace_line("A  B", crate::WhiteSpace::Collapse);
+        let collapsed = native_whitespace_line("A  B", crate::style::WhiteSpace::Collapse);
         assert_eq!(
             collapsed
                 .analyzed_source()
@@ -2644,14 +2673,14 @@ mod tests {
 
     #[test]
     fn native_collapsed_gap_previous_word_uses_the_previous_actual_source_cluster() {
-        let preserved = native_whitespace_line("A B", crate::WhiteSpace::Preserve);
+        let preserved = native_whitespace_line("A B", crate::style::WhiteSpace::Preserve);
         assert_eq!(
             preserved
                 .move_cursor(Cursor::new(2, Affinity::After), Movement::PreviousWord)
                 .unwrap(),
             Cursor::new(0, Affinity::After)
         );
-        let collapsed = native_whitespace_line("A  B", crate::WhiteSpace::Collapse);
+        let collapsed = native_whitespace_line("A  B", crate::style::WhiteSpace::Collapse);
         assert_eq!(
             collapsed.source().text().code_units(),
             [0x41, 0x20, 0x20, 0x42]
@@ -2722,7 +2751,7 @@ mod tests {
 
     #[test]
     fn native_collapsed_gap_affinity_probe_keeps_the_actual_b_start_geometry() {
-        let layout = native_whitespace_line("A  B", crate::WhiteSpace::Collapse);
+        let layout = native_whitespace_line("A  B", crate::style::WhiteSpace::Collapse);
         let line = &layout.inner.lines[0].finalized;
         let b = line
             .data
@@ -2794,7 +2823,7 @@ mod tests {
         assert_eq!(b.bounds(), Rect::new(0.0, 20.0, 20.0, 20.0));
         assert_eq!(
             layout.inner.lines[0].finalized.selected.request.context.end,
-            crate::LineEnd::Forced
+            crate::protocol::LineEnd::Forced
         );
         let start = layout
             .positions()
@@ -2810,7 +2839,7 @@ mod tests {
 
     #[test]
     fn native_preserved_long_space_interior_word_uses_the_original_segment() {
-        let layout = native_whitespace_line("A    B", crate::WhiteSpace::Preserve);
+        let layout = native_whitespace_line("A    B", crate::style::WhiteSpace::Preserve);
         assert_eq!(
             layout.source().text().code_units(),
             [0x41, 0x20, 0x20, 0x20, 0x20, 0x42]
@@ -2826,7 +2855,7 @@ mod tests {
     fn native_collapsed_gap_rtl_affinities_keep_the_actual_deleted_slot() {
         let layout = native_whitespace_line_with_direction(
             "\u{05d0}  \u{05d1}",
-            crate::WhiteSpace::Collapse,
+            crate::style::WhiteSpace::Collapse,
             ParagraphBaseDirection::RightToLeft,
         );
         let line = &layout.inner.lines[0].finalized;
@@ -2864,7 +2893,7 @@ mod tests {
 
     #[test]
     fn native_collapsed_gap_interior_word_queries_use_real_neighbor_rows() {
-        let layout = native_whitespace_line("A    B", crate::WhiteSpace::Collapse);
+        let layout = native_whitespace_line("A    B", crate::style::WhiteSpace::Collapse);
         assert_eq!(
             layout.source().text().code_units(),
             [0x41, 0x20, 0x20, 0x20, 0x20, 0x42]
@@ -2895,7 +2924,7 @@ mod tests {
 
     fn native_whitespace_soft_lines(
         text: &str,
-        mode: crate::WhiteSpace,
+        mode: crate::style::WhiteSpace,
         split_at: usize,
     ) -> Layout {
         let prepared = native_whitespace_prepared(text, mode, ParagraphBaseDirection::LeftToRight);
@@ -2930,13 +2959,13 @@ mod tests {
                     start: start.clone(),
                     end: end.clone(),
                     participants,
-                    termination: crate::PreparedTermination::Ordinary(termination),
+                    termination: crate::protocol::PreparedTermination::Ordinary(termination),
                     alternative: None,
                     context: LineContext {
-                        alignment_insets: crate::LineAlignmentInsets::ZERO,
-                        formatted_line: crate::FormattedLineContext::default(),
+                        alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                        formatted_line: crate::protocol::FormattedLineContext::default(),
                         base_direction: ParagraphBaseDirection::LeftToRight,
-                        line_box_direction: crate::LineBoxDirection::LeftToRight,
+                        line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
                         orientation: LineOrientation::Horizontal,
                         start: if index == 0 {
                             LineStart::Paragraph
@@ -2963,9 +2992,9 @@ mod tests {
                 .unwrap();
             lines.push(LinePlacement {
                 line: selected
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap(),
                 anchor: LineAnchor {
@@ -2982,7 +3011,7 @@ mod tests {
             coverage: PlacementCoverage::WholeParagraph,
             entries: lines
                 .into_iter()
-                .map(crate::PlacementEntry::Formatted)
+                .map(crate::protocol::PlacementEntry::Formatted)
                 .collect(),
         })
         .unwrap()
@@ -2991,8 +3020,8 @@ mod tests {
     #[test]
     fn native_soft_line_deleted_end_keeps_original_affinity_side_eligibility() {
         for (text, mode, split, space_advance, upstream_x) in [
-            ("A B", crate::WhiteSpace::Preserve, 2, 20.0, 40.0),
-            ("A  B", crate::WhiteSpace::Collapse, 3, 0.0, 20.0),
+            ("A B", crate::style::WhiteSpace::Preserve, 2, 20.0, 40.0),
+            ("A  B", crate::style::WhiteSpace::Collapse, 3, 0.0, 20.0),
         ] {
             let layout = native_whitespace_soft_lines(text, mode, split);
             assert_eq!(
@@ -3013,7 +3042,7 @@ mod tests {
                 .find(|cluster| cluster.source == Range::new(1, 2))
                 .unwrap();
             assert_eq!((space.x, space.advance), (20.0, space_advance));
-            if mode == crate::WhiteSpace::Collapse {
+            if mode == crate::style::WhiteSpace::Collapse {
                 let deleted = first
                     .data
                     .anchors
@@ -3046,7 +3075,7 @@ mod tests {
 
     #[test]
     fn native_deleted_original_endpoints_keep_canonical_raw_affinities() {
-        let layout = native_whitespace_line(" A ", crate::WhiteSpace::Discard);
+        let layout = native_whitespace_line(" A ", crate::style::WhiteSpace::Discard);
         assert!(
             layout
                 .inner
@@ -3099,13 +3128,16 @@ mod tests {
 
     #[test]
     fn native_deleted_start_next_word_keeps_the_original_whitespace_segment() {
-        for mode in [crate::WhiteSpace::Preserve, crate::WhiteSpace::Collapse] {
+        for mode in [
+            crate::style::WhiteSpace::Preserve,
+            crate::style::WhiteSpace::Collapse,
+        ] {
             let layout = native_whitespace_line("A  B", mode);
             assert_eq!(
                 layout.source().text().code_units(),
                 [0x41, 0x20, 0x20, 0x42]
             );
-            if mode == crate::WhiteSpace::Collapse {
+            if mode == crate::style::WhiteSpace::Collapse {
                 assert!(
                     layout
                         .inner
@@ -3137,10 +3169,13 @@ mod tests {
 
     #[test]
     fn native_deleted_leading_previous_word_cannot_move_forward() {
-        for mode in [crate::WhiteSpace::Preserve, crate::WhiteSpace::Discard] {
+        for mode in [
+            crate::style::WhiteSpace::Preserve,
+            crate::style::WhiteSpace::Discard,
+        ] {
             let layout = native_whitespace_line("  B", mode);
             assert_eq!(layout.source().text().code_units(), [0x20, 0x20, 0x42]);
-            if mode == crate::WhiteSpace::Discard {
+            if mode == crate::style::WhiteSpace::Discard {
                 assert!(
                     layout
                         .inner

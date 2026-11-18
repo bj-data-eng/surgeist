@@ -23,8 +23,12 @@
 use super::AHEM;
 use crate::test_fonts::{table, u16_at, u32_at};
 use crate::{
-    Alignment, Direction, Font, Id, LineHeight, Options, Range, Source, Style, System,
-    TextTransform, WhiteSpace,
+    System,
+    id::Id,
+    options::{Alignment, Options},
+    range::Range,
+    source::Source,
+    style::{Direction, Font, LineHeight, Style, TextTransform, WhiteSpace},
 };
 use skrifa::MetadataProvider;
 

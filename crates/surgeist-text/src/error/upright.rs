@@ -1,6 +1,6 @@
 //! Read-only provenance and precise capability failures for upright operations.
 
-use crate::Range;
+use crate::range::Range;
 use icu_properties::{PropertyNamesShort, props::Script};
 
 /// Canonical Unicode ISO15924 script observed during text classification.

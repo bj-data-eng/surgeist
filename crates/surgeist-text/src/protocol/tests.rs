@@ -50,8 +50,11 @@ mod word_separators;
 
 use super::*;
 use crate::{
-    AnalyzedSource, Font, ParagraphStrut, PresentationMappingKind, Source, Style, System,
-    WhiteSpace,
+    System,
+    analyzed::AnalyzedSource,
+    protocol::{paragraph::ParagraphStrut, readback::PresentationMappingKind},
+    source::Source,
+    style::{Font, Style, WhiteSpace},
 };
 
 fn system() -> System {
@@ -74,7 +77,7 @@ fn style() -> Style {
 fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedText {
     let source = Source::new(text);
     let input = ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         paragraph_strut: ParagraphStrut::DefaultFont,
@@ -82,13 +85,13 @@ fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> Prepared
             white_space: whitespace,
             ..style()
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
             source,
-            local: crate::Range::new(0, text.encode_utf16().count()),
-            aggregate: crate::Range::new(0, text.encode_utf16().count()),
+            local: crate::range::Range::new(0, text.encode_utf16().count()),
+            aggregate: crate::range::Range::new(0, text.encode_utf16().count()),
             kind: paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
@@ -98,7 +101,7 @@ fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> Prepared
         anchor_order: if text.is_empty() {
             vec![paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             }]
         } else {
             vec![]
@@ -109,10 +112,10 @@ fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> Prepared
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             ),
             PreparationOptions::default(),
         )
@@ -132,7 +135,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         incoming: None,
         start,
         end: termination.view().boundary(),
-        termination: crate::PreparedTermination::Ordinary(termination),
+        termination: crate::protocol::PreparedTermination::Ordinary(termination),
         alternative: None,
         participants: prepared.participants().collect(),
         atomics: vec![],
@@ -140,16 +143,16 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
-            alignment_insets: crate::LineAlignmentInsets::ZERO,
-            formatted_line: crate::FormattedLineContext::default(),
+            alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+            formatted_line: crate::protocol::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::LeftToRight,
-            line_box_direction: crate::LineBoxDirection::LeftToRight,
+            line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
             orientation: LineOrientation::Horizontal,
             start: LineStart::Paragraph,
             end: LineEnd::Paragraph,
             available_inline: Some(200.0),
             indent: 0.0,
-            alignment: crate::Alignment::Left,
+            alignment: crate::options::Alignment::Left,
             tabs: TabContext::NoTabs,
 
             spacing: SpacingPolicy::Spaces,
@@ -161,11 +164,11 @@ fn place(
     line: FinalizedLine,
     x: f64,
     y: f64,
-) -> crate::Result<crate::Layout> {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+) -> crate::Result<crate::layout::Layout> {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: x,
@@ -191,12 +194,12 @@ fn prepared_selected_finalized_placed_share_actual_resources_and_fractional_anch
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), 1);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                 slot: slots[0].clone(),
                 amount: 0.25,
             }]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 60.25);
@@ -218,7 +221,7 @@ fn prepared_selected_finalized_placed_share_actual_resources_and_fractional_anch
     let layout = place(prepared.clone(), line.clone(), 100.25, 200.5).unwrap();
     assert_eq!(
         layout.run_views().next().unwrap().origin(),
-        crate::Point::new(100.25, 200.5)
+        crate::geometry::Point::new(100.25, 200.5)
     );
     assert_eq!(layout.source().text().code_units(), &[65, 32, 65]);
     assert_eq!(line.prepared_text(), prepared);
@@ -249,9 +252,9 @@ fn selection_refuses_foreign_and_incomplete_captures_and_spacing_custody() {
     assert!(matches!(
         reason(
             &a_selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::Complete(vec![]),
-                    scopes: crate::ScopeAllocations::None
+                    scopes: crate::protocol::ScopeAllocations::None
                 })
                 .unwrap_err()
         ),
@@ -261,12 +264,12 @@ fn selection_refuses_foreign_and_incomplete_captures_and_spacing_custody() {
     assert_eq!(
         reason(
             &a_selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                         slot,
                         amount: 1.0
                     }]),
-                    scopes: crate::ScopeAllocations::None
+                    scopes: crate::protocol::ScopeAllocations::None
                 })
                 .unwrap_err()
         ),
@@ -276,7 +279,7 @@ fn selection_refuses_foreign_and_incomplete_captures_and_spacing_custody() {
     assert!(matches!(
         reason(
             &a_selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::Complete(vec![
                         SpacingAllocation {
                             slot: slot.clone(),
@@ -284,7 +287,7 @@ fn selection_refuses_foreign_and_incomplete_captures_and_spacing_custody() {
                         },
                         SpacingAllocation { slot, amount: 2.0 }
                     ]),
-                    scopes: crate::ScopeAllocations::None
+                    scopes: crate::protocol::ScopeAllocations::None
                 })
                 .unwrap_err()
         ),
@@ -299,9 +302,9 @@ fn explicit_placement_retains_exact_preparation_and_rejects_foreign_lines() {
     let line = a
         .select(request(&a))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(matches!(
@@ -324,9 +327,9 @@ fn composed_whitespace_executes_correspondence_and_phase_catalogue_is_truthful()
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 60.0);
@@ -339,17 +342,17 @@ fn composed_whitespace_executes_correspondence_and_phase_catalogue_is_truthful()
             .any(|mapping| mapping.kind() == PresentationMappingKind::Deleted)
     );
     for feature in [
-        crate::TextStyleFeature::WhiteSpaceCollapse,
-        crate::TextStyleFeature::WhiteSpaceDiscard,
-        crate::TextStyleFeature::WhiteSpacePreserveSpaces,
+        crate::style_support::TextStyleFeature::WhiteSpaceCollapse,
+        crate::style_support::TextStyleFeature::WhiteSpaceDiscard,
+        crate::style_support::TextStyleFeature::WhiteSpacePreserveSpaces,
     ] {
         assert_eq!(
-            feature.support(crate::TextStylePhase::ProcessedParagraph),
-            crate::TextStyleSupport::Supported
+            feature.support(crate::style_support::TextStylePhase::ProcessedParagraph),
+            crate::style_support::TextStyleSupport::Supported
         );
         assert!(matches!(
-            feature.support(crate::TextStylePhase::Standalone),
-            crate::TextStyleSupport::Unsupported(_)
+            feature.support(crate::style_support::TextStylePhase::Standalone),
+            crate::style_support::TextStyleSupport::Unsupported(_)
         ));
     }
 }
@@ -369,9 +372,9 @@ fn font_advance_tab_is_the_actual_retained_glyph_not_a_space_approximation() {
     let line = p
         .select(native)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 60.0);
@@ -393,9 +396,9 @@ fn font_advance_tab_is_the_actual_retained_glyph_not_a_space_approximation() {
     let line = tab
         .select(native)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 20.0);
@@ -408,7 +411,7 @@ fn native_capture_requires_its_complete_line_front_before_any_cache_publication(
     let p = prepared(&mut system, "A", WhiteSpace::Preserve);
     let before = system.stats();
     let error = system
-        .layout_analyzed(&p.analyzed_source(), crate::Options::default())
+        .layout_analyzed(&p.analyzed_source(), crate::options::Options::default())
         .unwrap_err();
     assert_eq!(
         reason(&error),
@@ -419,20 +422,20 @@ fn native_capture_requires_its_complete_line_front_before_any_cache_publication(
         .layout(
             Source::new("A"),
             style(),
-            crate::Options {
+            crate::options::Options {
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
-    assert_eq!(raw.metrics().size(), crate::Size::new(20.0, 20.0));
+    assert_eq!(raw.metrics().size(), crate::geometry::Size::new(20.0, 20.0));
 }
 
 fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
     let mut system = system();
     let mut source = Source::new("A");
     source.span(
-        crate::Range::new(0, 1),
+        crate::range::Range::new(0, 1),
         Style {
             size: 30.0,
             ..style()
@@ -440,21 +443,21 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
     );
     let analysis = AnalyzedSource::from_paragraph(
         ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: Style {
                 size: 10.0,
                 ..style()
             },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             paragraph_strut: policy,
             base_direction: ParagraphBaseDirection::LeftToRight,
             origins: vec![paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: crate::Range::new(0, 1),
-                aggregate: crate::Range::new(0, 1),
+                local: crate::range::Range::new(0, 1),
+                aggregate: crate::range::Range::new(0, 1),
                 kind: paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
@@ -466,10 +469,10 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
             replacements: vec![],
             anchor_order: vec![paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Control(0),
-                affinity: crate::Affinity::Before,
+                affinity: crate::layout::Affinity::Before,
             }],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let p = system
@@ -500,10 +503,10 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: if policy == ParagraphStrut::AllocatedContributions {
                         Some(ControlStrut {
@@ -526,7 +529,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         incoming: None,
         start: p.boundary_views().next().unwrap().handle(),
         end,
-        termination: crate::PreparedTermination::Ordinary(termination),
+        termination: crate::protocol::PreparedTermination::Ordinary(termination),
         alternative: None,
         participants,
         atomics: vec![],
@@ -545,9 +548,9 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
 fn allocated_empty_line_keeps_explicit_zero_without_borrowing_body_font_metrics() {
     let selected = selected_empty_control(ParagraphStrut::AllocatedContributions);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().line_height, 0.0);
@@ -559,22 +562,22 @@ fn allocated_empty_line_keeps_explicit_zero_without_borrowing_body_font_metrics(
 fn default_empty_line_uses_the_captured_base_font_instead_of_overriding_body_span() {
     let selected = selected_empty_control(ParagraphStrut::DefaultFont);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().line_height, 10.0);
     assert_eq!(line.feedback().baseline, 8.0);
     assert_eq!(line.run_views().next().unwrap().font_size(), 10.0);
     let request = selected.request();
-    let placed = crate::Layout::from_finalized_lines(PlacementRequest {
+    let placed = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: line.prepared_text(),
         coverage: PlacementCoverage::Range {
             start: request.start.clone(),
             end: request.end.clone(),
         },
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -604,39 +607,39 @@ fn raw_out_of_flow_crlf_anchor_keeps_the_published_scalar_line_and_rectangle() {
             "\r\n",
             1,
             vec![
-                crate::Range::new(0, 1),
-                crate::Range::new(1, 2),
-                crate::Range::new(2, 2),
+                crate::range::Range::new(0, 1),
+                crate::range::Range::new(1, 2),
+                crate::range::Range::new(2, 2),
             ],
         ),
         (
             "A\r\nB",
             2,
             vec![
-                crate::Range::new(0, 2),
-                crate::Range::new(2, 3),
-                crate::Range::new(3, 4),
+                crate::range::Range::new(0, 2),
+                crate::range::Range::new(2, 3),
+                crate::range::Range::new(3, 4),
             ],
         ),
     ] {
         let mut source = Source::new(text);
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(51),
-            crate::InlineBoxKind::OutOfFlow,
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(51),
+            crate::source::InlineBoxKind::OutOfFlow,
             anchor,
-            crate::Size::new(3.0, 4.0),
+            crate::geometry::Size::new(3.0, 4.0),
         ));
         let layout = system
             .layout(
                 source,
                 Style {
                     size: 10.0,
-                    line_height: crate::LineHeight::FontSizeRelative(1.0),
+                    line_height: crate::style::LineHeight::FontSizeRelative(1.0),
                     ..style()
                 },
-                crate::Options {
+                crate::options::Options {
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -651,14 +654,17 @@ fn raw_out_of_flow_crlf_anchor_keeps_the_published_scalar_line_and_rectangle() {
         let boxes = layout.inline_boxes();
         assert_eq!(boxes.len(), 1);
         assert_eq!(boxes[0].line(), 1);
-        assert_eq!(boxes[0].rect(), crate::Rect::new(0.0, 14.0, 3.0, 4.0));
+        assert_eq!(
+            boxes[0].rect(),
+            crate::geometry::Rect::new(0.0, 14.0, 3.0, 4.0)
+        );
         assert_eq!(layout.source().boxes()[0].index(), anchor);
     }
 }
 
 #[test]
 fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
-    fn logical_glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(crate::Range, u32)> {
+    fn logical_glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(crate::range::Range, u32)> {
         let mut glyphs = Vec::new();
         for run in line.run_views() {
             assert_eq!(run.face().bytes(), fixture);
@@ -681,21 +687,21 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     let source = Source::new("\u{628}\u{628}\u{628}");
     let analyzed = AnalyzedSource::from_paragraph(
         ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: Style {
-                word_break: crate::WordBreak::BreakAll,
+                word_break: crate::style::WordBreak::BreakAll,
                 ..style()
             },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::RightToLeft,
             paragraph_strut: ParagraphStrut::DefaultFont,
             origins: vec![paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: crate::Range::new(0, 3),
-                aggregate: crate::Range::new(0, 3),
+                local: crate::range::Range::new(0, 3),
+                aggregate: crate::range::Range::new(0, 3),
                 kind: paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
@@ -704,31 +710,31 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
             replacements: vec![],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
         analyzed.graphemes().collect::<Vec<_>>(),
         [
-            crate::Range::new(0, 1),
-            crate::Range::new(1, 2),
-            crate::Range::new(2, 3)
+            crate::range::Range::new(0, 1),
+            crate::range::Range::new(1, 2),
+            crate::range::Range::new(2, 3)
         ]
     );
-    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word);
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
     drop(system);
     let mut whole_request = request(&prepared);
     whole_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    whole_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    whole_request.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let whole = prepared
         .select(whole_request.clone())
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // arabic_ahem's literal Beh forms are isol35/init100/medi277/fina82.
@@ -737,9 +743,9 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     assert_eq!(
         logical_glyphs(&whole, &fixture),
         [
-            (crate::Range::new(0, 1), 100),
-            (crate::Range::new(1, 2), 277),
-            (crate::Range::new(2, 3), 82),
+            (crate::range::Range::new(0, 1), 100),
+            (crate::range::Range::new(1, 2), 277),
+            (crate::range::Range::new(2, 3), 82),
         ]
     );
     let soft = prepared
@@ -747,7 +753,7 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
         .find(|offer| {
             offer.kind() == PreparedBreakKind::Allowed
                 && offer.boundary().view().source_before()
-                    == crate::SourcePosition::try_new(analyzed.source().text(), 1).unwrap()
+                    == crate::range::SourcePosition::try_new(analyzed.source().text(), 1).unwrap()
         })
         .unwrap()
         .handle();
@@ -757,16 +763,16 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     assert!(offset > 0 && offset < participants.len());
     let mut first_request = whole_request.clone();
     first_request.end = cut.clone();
-    first_request.termination = crate::PreparedTermination::Ordinary(soft);
+    first_request.termination = crate::protocol::PreparedTermination::Ordinary(soft);
     first_request.participants = participants[..offset].to_vec();
     first_request.context.end = LineEnd::Soft;
     first_request.context.available_inline = Some(20.0);
     let first = prepared
         .select(first_request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let mut continuation_request = whole_request;
@@ -777,9 +783,9 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     let continuation = prepared
         .select(continuation_request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(first.selected_line().request().context.end, LineEnd::Soft);
@@ -797,10 +803,10 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
             logical_glyphs(&continuation, &fixture)
         ],
         [
-            vec![(crate::Range::new(0, 1), 100)],
+            vec![(crate::range::Range::new(0, 1), 100)],
             vec![
-                (crate::Range::new(1, 2), 277),
-                (crate::Range::new(2, 3), 82)
+                (crate::range::Range::new(1, 2), 277),
+                (crate::range::Range::new(2, 3), 82)
             ]
         ]
     );

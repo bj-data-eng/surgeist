@@ -24,7 +24,7 @@ pub(super) fn metric_premises(system: &System, bytes: &[u8]) {
         .registered_font_faces()
         .find(|face| face.bytes() == bytes)
         .unwrap();
-    let instance = crate::EffectiveFontInstance::qualify(face.face(), 10.0, &[]).unwrap();
+    let instance = crate::font::EffectiveFontInstance::qualify(face.face(), 10.0, &[]).unwrap();
     let metrics = instance.metrics(face.catalogue_identity()).unwrap();
     assert_eq!(metrics.units_per_em(), 1000);
     assert_eq!((metrics.ascent(), metrics.descent()), (8.0, -2.0));
@@ -32,12 +32,12 @@ pub(super) fn metric_premises(system: &System, bytes: &[u8]) {
     if sfnt::u16_at(os2, 62) & 128 == 0 {
         assert_eq!(
             metrics.line_metric_source(),
-            crate::FontLineMetricSource::Hhea
+            crate::font::FontLineMetricSource::Hhea
         );
     } else {
         assert_eq!(
             metrics.line_metric_source(),
-            crate::FontLineMetricSource::Os2Typographic
+            crate::font::FontLineMetricSource::Os2Typographic
         );
         assert_eq!(sfnt::u16_at(os2, 68), 800);
         assert_eq!(
@@ -188,7 +188,7 @@ pub(super) fn ordinary_control(system: &mut System, orientation: LineOrientation
             },
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             origins: vec![ParagraphOrigin {
