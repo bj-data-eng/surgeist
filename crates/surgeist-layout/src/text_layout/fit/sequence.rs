@@ -19,7 +19,6 @@ pub(super) struct SequenceLineSearch<'a> {
     pub(super) rejected_choices: &'a [CandidateKey],
     pub(super) goal: Option<LineQualityGoal>,
     pub(super) constrained: bool,
-    #[cfg(test)]
     pub(super) scope: SequenceScope,
 }
 
@@ -351,7 +350,6 @@ where
             walk,
             rejected_choices,
             goal,
-            #[cfg(test)]
             scope,
             ..
         } = search;
@@ -384,12 +382,13 @@ where
                 goal,
                 ..ScopedChoices::default()
             };
+            let visit_meter = scope.meter(&input.meter);
+            let mut visit_work = visit_meter.tally(LayoutWork::OpportunityVisit);
             let mut candidate_work = input.meter.tally(LayoutWork::Candidate);
             for (index, (end, opportunity, kind, alternatives)) in
                 opportunities.iter().enumerate().skip(first)
             {
-                #[cfg(test)]
-                balance::observe_work(scope, true);
+                visit_work.one();
                 if *end < start || (*end == start && *kind != PreparedBreakKind::ParagraphEnd) {
                     continue;
                 }

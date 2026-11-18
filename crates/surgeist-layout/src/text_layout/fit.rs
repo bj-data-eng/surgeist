@@ -5,6 +5,7 @@ use super::boxes::{
 };
 use super::formatted::FormattedTailSnapshot;
 pub(crate) use super::roles::{RoleBasis, RoleUse, RoleUseRows};
+use crate::accounting::LayoutWork;
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
 use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
 use crate::{TextAlign, TextAlignLast, TextJustification};
@@ -2585,6 +2586,21 @@ struct SequenceScope {
     opportunity_end: usize,
 }
 
+impl SequenceScope {
+    /// The meter that receives the work of a run over this scope: a forced-break group has its
+    /// own attribution, every other scope charges `meter` directly.
+    fn meter<'a>(
+        &self,
+        meter: &'a crate::accounting::Meter,
+    ) -> std::borrow::Cow<'a, crate::accounting::Meter> {
+        if self.stop_at_forced {
+            meter.group((self.opportunity_start, self.opportunity_end))
+        } else {
+            std::borrow::Cow::Borrowed(meter)
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ScopeExhaustion {
     NoAdmissibleCandidate,
@@ -2631,8 +2647,9 @@ where
         scope: SequenceScope,
         result: &mut Vec<FittedLine>,
     ) -> Result<SequenceOutcome, FitError> {
-        #[cfg(test)]
-        balance::observe_work(scope, false);
+        scope
+            .meter(&self.input.meter)
+            .charge(LayoutWork::SequenceRun, 1);
         let input = &self.input;
         let environment = &mut self.environment;
         let opportunities = &self.opportunities[scope.opportunity_start..scope.opportunity_end];
@@ -2680,7 +2697,6 @@ where
                         rejected_choices,
                         goal,
                         constrained,
-                        #[cfg(test)]
                         scope,
                     },
                 )?;
