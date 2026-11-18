@@ -37,6 +37,11 @@ pub(crate) enum StagedEffect<Node, S: LayoutScalar> {
     NativeReset {
         family: usize,
     },
+    /// A formatter family's native runs, but not its completion, were removed
+    /// to be accepted again from a float probe.
+    NativeRunsDrop {
+        family: usize,
+    },
     NativeRun {
         node: Node,
         run: NativePublication<S>,
@@ -77,6 +82,7 @@ impl<Node: Copy, S: LayoutScalar> StagedEffect<Node, S> {
                 },
             },
             Self::NativeReset { family } => Self::NativeReset { family: *family },
+            Self::NativeRunsDrop { family } => Self::NativeRunsDrop { family: *family },
             Self::NativeRun { node, run } => Self::NativeRun {
                 node: *node,
                 run: run.try_clone().ok()?,
@@ -93,8 +99,13 @@ impl<Node: Copy, S: LayoutScalar> StagedEffect<Node, S> {
 pub(crate) type StagedEffects<Node, S> = Arc<[StagedEffect<Node, S>]>;
 
 /// What a capture stands in for. A reused preparation of a subgrid wrapper may
-/// have been staged amid other computations of the same nodes; a reused
-/// request is replayed where its own recomputation would have run.
+/// have been staged amid other computations of the same nodes, so a text
+/// placement inside it, written last by whichever computation of its node ran
+/// last, cannot be reused. A reused request is replayed where its own
+/// recomputation would have run, after the first pass and before any other
+/// computation of its subtree. Text placement is keyed by the container it
+/// places and replaced in place, so the request's recomputation writes the
+/// same keys with the same values, and its text effects need no poison.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CaptureKind {
     Preparation,
@@ -133,18 +144,23 @@ impl<Node: Copy, S: LayoutScalar> EffectLog<Node, S> {
         !self.broken && self.captures.iter().any(|capture| !capture.incomplete)
     }
 
-    /// Records a write that could be copied, or leaves every open capture
-    /// incomplete when it could not.
-    pub(super) fn record(&mut self, effect: Option<StagedEffect<Node, S>>) {
-        let Some(effect) = effect else {
-            self.poison(None);
-            return;
-        };
+    /// Records a write.
+    pub(super) fn record(&mut self, effect: StagedEffect<Node, S>) {
         if self.effects.try_reserve(1).is_err() {
-            self.poison(None);
+            self.poison_all();
             return;
         }
         self.effects.push(effect);
+    }
+
+    /// Leaves every open capture incomplete: a write could not be recorded.
+    pub(super) fn poison_all(&mut self) {
+        self.poison(None);
+    }
+
+    /// Whether no capture is open.
+    pub(super) fn is_idle(&self) -> bool {
+        self.open == 0
     }
 
     /// Leaves the open captures of `kind`, or of every kind, incomplete: the
@@ -173,34 +189,39 @@ impl<Node: Copy, S: LayoutScalar> EffectLog<Node, S> {
         self.effects.len()
     }
 
-    /// Closes the innermost capture, returning its writes, or `None` when the
-    /// capture is incomplete.
-    pub(super) fn end(&mut self, start: usize) -> Option<StagedEffects<Node, S>> {
+    /// Closes the innermost capture and returns its writes, which are no
+    /// longer in the log, and whether the capture is complete. The caller
+    /// returns the writes the enclosing captures need with `restore`.
+    pub(super) fn finish(&mut self, start: usize) -> (Vec<StagedEffect<Node, S>>, bool) {
         self.open -= 1;
-        let captured = if self.broken {
-            None
-        } else {
-            let capture = self.captures.pop()?;
-            if capture.incomplete {
-                None
-            } else {
-                let mut writes = Vec::new();
-                writes
-                    .try_reserve_exact(self.effects.len() - start)
-                    .ok()
-                    .and_then(|()| {
-                        for effect in &self.effects[start..] {
-                            writes.push(effect.try_clone()?);
-                        }
-                        Some(Arc::from(writes))
-                    })
-            }
-        };
+        let complete = !self.broken
+            && self
+                .captures
+                .pop()
+                .is_some_and(|capture| !capture.incomplete);
+        let writes = self.effects.split_off(start);
         if self.open == 0 {
             self.broken = false;
             self.captures.clear();
             self.effects.clear();
         }
-        captured
+        (writes, complete)
+    }
+
+    /// Returns the writes of a closed capture to the log, for the captures
+    /// that enclose it.
+    pub(super) fn restore(&mut self, writes: &[StagedEffect<Node, S>]) {
+        if self.open == 0 || !self.recording() {
+            return;
+        }
+        for write in writes {
+            match write.try_clone() {
+                Some(copy) => self.record(copy),
+                None => {
+                    self.poison_all();
+                    return;
+                }
+            }
+        }
     }
 }

@@ -328,8 +328,12 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let result = self.drive_staged_requests(request, &mut pending, &mut staged);
         result.map_err(|mut stop| {
             while let Some(mut trial) = staged.pop() {
+                trial
+                    .session
+                    .close_context_captures(&mut trial.pending.grids);
                 stop = trial.session.unwind_blocks(trial.pending.blocks, stop);
             }
+            self.close_context_captures(&mut pending.grids);
             self.unwind_blocks(pending.blocks, stop)
         })
     }
@@ -592,6 +596,19 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
             ControlFlow::Continue(source) => Ok(ControlFlow::Break(RequestProgress::SourceFloat(
                 Box::new(source),
             ))),
+        }
+    }
+
+    /// Closes the effect captures of the contextual Grid requests a failure
+    /// left suspended, innermost first. They have no writes to replay.
+    fn close_context_captures(
+        &mut self,
+        grids: &mut Vec<GridRequest<'input, Tree::Node, Tree::Scalar>>,
+    ) {
+        while let Some(grid) = grids.pop() {
+            if let GridCompletion::Context { effects_start } = grid.completion {
+                self.end_effect_capture(effects_start);
+            }
         }
     }
 
