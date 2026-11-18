@@ -81,6 +81,7 @@ pub(super) fn collect_flex_lines<Node, S: LayoutScalar>(
     items: &[CollectedFlexItem<Node, S>],
     constants: &Constants<S>,
     round: FlexLineCollectionRound,
+    meter: &crate::accounting::Meter,
 ) -> Result<Vec<FlexLine<S>>, WrappingScopeError>
 where
     Node: Copy,
@@ -131,7 +132,9 @@ where
     while start < items.len() {
         let mut line_main_size = S::ZERO;
         let mut end = start;
-        let mut frontier = preferences.as_ref().map(EdgePreferences::frontier);
+        let mut frontier = preferences
+            .as_ref()
+            .map(|preferences| preferences.frontier(meter));
 
         while end < items.len() {
             if end > start && forced_boundary(items, end) {

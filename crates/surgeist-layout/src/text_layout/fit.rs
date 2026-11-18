@@ -1086,7 +1086,12 @@ struct ScopedChoices {
 }
 
 impl ScopedChoices {
-    fn consider(&mut self, classify: &WrappingClassifier<'_>, candidate: EvaluatedCandidate) {
+    fn consider(
+        &mut self,
+        classify: &WrappingClassifier<'_>,
+        candidate: EvaluatedCandidate,
+        meter: &crate::accounting::Meter,
+    ) {
         if self.error.is_some() {
             return;
         }
@@ -1096,7 +1101,7 @@ impl ScopedChoices {
             .ok_or(FitError::InvalidGeometry)
             .and_then(|boxes| classify.classify(boxes))
             .and_then(|class| {
-                let frontier = self.frontier.get_or_insert_with(|| class.frontier());
+                let frontier = self.frontier.get_or_insert_with(|| class.frontier(meter));
                 if let Some(goal) = self.goal {
                     candidate
                         .quality_key(goal)
@@ -1408,7 +1413,7 @@ where
                 let class =
                     resolver.classify(trial.boxes.as_ref().ok_or(FitError::InvalidGeometry)?)?;
                 frontier
-                    .get_or_insert_with(|| class.frontier())
+                    .get_or_insert_with(|| class.frontier(&input.meter))
                     .consider(class, trial)?;
             }
             return frontier

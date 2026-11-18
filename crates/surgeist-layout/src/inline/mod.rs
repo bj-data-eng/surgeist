@@ -2103,7 +2103,7 @@ fn select_scope_inline_line<S: LayoutScalar, BandError>(
                 if goal.is_some() { frontier.consider_ranked(wrapping.class(next.receipt().next_cursor.source)?, next, prefer)?; }
                 else { frontier.consider(wrapping.class(next.receipt().next_cursor.source)?, next)?; }
             } else if let Some(prior) = first.take() {
-                let mut next_frontier = wrapping.frontier();
+                let mut next_frontier = wrapping.frontier(run.meter);
                 if goal.is_some() {
                     next_frontier.consider_ranked(wrapping.class(prior.receipt().next_cursor.source)?, prior, prefer)?;
                     next_frontier.consider_ranked(wrapping.class(next.receipt().next_cursor.source)?, next, prefer)?;

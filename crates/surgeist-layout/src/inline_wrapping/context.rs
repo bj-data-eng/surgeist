@@ -1367,11 +1367,12 @@ impl NumericWrapping {
             .ok_or(WrappingScopeError::UnsupportedIncidence)?
             .clone()
     }
-    pub(crate) fn frontier<T>(&self) -> PreferenceFrontier<T> {
+    pub(crate) fn frontier<T>(&self, meter: &crate::accounting::Meter) -> PreferenceFrontier<T> {
         PreferenceFrontier {
             ancestry: Arc::clone(&self.ancestry),
             entries: FrontierEntries::Inside(BTreeMap::new()),
             serial: 0,
+            meter: meter.clone(),
         }
     }
 }

@@ -1103,7 +1103,7 @@ fn mixed_inside_edge<S: LayoutScalar>() {
             [2, 0, 1],
             [2, 1, 0],
         ] {
-            let mut frontier = wrapping.frontier();
+            let mut frontier = wrapping.frontier(&crate::accounting::Meter::new());
             for candidate in order {
                 frontier
                     .consider(wrapping.class(cuts[candidate]).unwrap(), candidate)
@@ -1112,7 +1112,7 @@ fn mixed_inside_edge<S: LayoutScalar>() {
             assert_eq!(frontier.into_preferred(), Some(2));
         }
         for order in [[0, 1], [1, 0]] {
-            let mut frontier = wrapping.frontier();
+            let mut frontier = wrapping.frontier(&crate::accounting::Meter::new());
             for candidate in order {
                 frontier
                     .consider(wrapping.class(cuts[candidate]).unwrap(), candidate)

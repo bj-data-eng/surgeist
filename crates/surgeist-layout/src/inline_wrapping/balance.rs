@@ -409,7 +409,7 @@ mod tests {
     fn goal_rank_never_overrides_dominance_and_auto_keeps_its_normal_ties() {
         let preferences = EdgePreferences::new(2);
         let closer = |a: &(f64, &str), b: &(f64, &str)| a.0.total_cmp(&b.0);
-        let mut frontier = preferences.frontier();
+        let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
         frontier
             .consider_ranked(
                 preferences.class(&[0, 1]).unwrap(),
@@ -428,7 +428,7 @@ mod tests {
             frontier.into_preferred_ranked(closer).unwrap().1,
             "dominates"
         );
-        let mut frontier = preferences.frontier();
+        let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
         frontier
             .consider(preferences.class(&[0]).unwrap(), "early")
             .unwrap();
@@ -443,7 +443,7 @@ mod tests {
         let preferences = EdgePreferences::new(2);
         let closer = |a: &(f64, &str), b: &(f64, &str)| a.0.total_cmp(&b.0);
         for edges in [&[][..], &[0][..]] {
-            let mut frontier = preferences.frontier();
+            let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
             frontier
                 .consider_ranked(preferences.class(edges).unwrap(), (1.0, "near"), closer)
                 .unwrap();
@@ -456,7 +456,7 @@ mod tests {
                 .unwrap();
             assert_eq!(frontier.into_preferred_ranked(closer).unwrap().1, "near");
         }
-        let mut frontier = preferences.frontier();
+        let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
         frontier
             .consider_ranked(
                 preferences.class(&[0]).unwrap(),
@@ -471,7 +471,7 @@ mod tests {
             frontier.into_preferred_ranked(closer).unwrap().1,
             "early-near"
         );
-        let mut frontier = preferences.frontier();
+        let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
         frontier
             .consider_ranked(preferences.class(&[0]).unwrap(), (1.0, "early-tie"), closer)
             .unwrap();

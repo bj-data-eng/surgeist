@@ -468,6 +468,7 @@ where
                         scoped.consider(
                             wrapping.expect("comparison has a scope loan"),
                             candidate.clone(),
+                            &input.meter,
                         );
                     }
                     if (choice.is_none()
@@ -720,6 +721,7 @@ where
                             scoped.consider(
                                 wrapping.expect("comparison has a scope loan"),
                                 trial.clone(),
+                                &input.meter,
                             );
                         }
                         if purpose == ConditionalPurpose::MinContent {

@@ -13,7 +13,7 @@ fn strict_subset_winner_survives_every_discovery_permutation() {
         [2, 0, 1],
         [2, 1, 0],
     ] {
-        let mut frontier = preferences.frontier();
+        let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
         for candidate in permutation {
             frontier
                 .consider(
@@ -31,7 +31,7 @@ fn strict_subset_winner_survives_every_discovery_permutation() {
 fn incomparable_constraints_keep_the_consumers_normal_receipt_preference() {
     let preferences = EdgePreferences::new(4);
     for order in [[0, 1], [1, 0]] {
-        let mut frontier = preferences.frontier();
+        let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
         for candidate in order {
             // Independent box-edge occurrences. A smaller declaration count
             // does not outrank a candidate with a different violated edge.
@@ -47,7 +47,7 @@ fn incomparable_constraints_keep_the_consumers_normal_receipt_preference() {
 #[test]
 fn equivalent_sets_keep_normal_ties_and_foreign_constraint_custody_is_rejected() {
     let preferences = EdgePreferences::new(2);
-    let mut frontier = preferences.frontier();
+    let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
     frontier
         .consider(preferences.class(&[1, 0, 1]).unwrap(), "earlier")
         .unwrap();
@@ -55,7 +55,7 @@ fn equivalent_sets_keep_normal_ties_and_foreign_constraint_custody_is_rejected()
         .consider(preferences.class(&[0, 1]).unwrap(), "normal-preferred")
         .unwrap();
     assert_eq!(frontier.into_preferred(), Some("normal-preferred"));
-    let mut frontier = preferences.frontier();
+    let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
     let foreign = EdgePreferences::new(2);
     assert_eq!(
         frontier.consider(foreign.class(&[0]).unwrap(), 0),
@@ -70,7 +70,7 @@ fn equivalent_sets_keep_normal_ties_and_foreign_constraint_custody_is_rejected()
 #[test]
 fn disjoint_then_overlapping_constraints_keep_dominance_and_normal_order() {
     let preferences = EdgePreferences::new(3);
-    let mut frontier = preferences.frontier();
+    let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
     for (edges, receipt) in [
         (vec![0], "first singleton"),
         (vec![1], "later singleton"),
@@ -84,7 +84,7 @@ fn disjoint_then_overlapping_constraints_keep_dominance_and_normal_order() {
     // dominates the other, so their normal latest receipt still wins.
     assert_eq!(frontier.into_preferred(), Some("later singleton"));
 
-    let mut frontier = preferences.frontier();
+    let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
     for (edges, receipt) in [
         (vec![0, 1], "original superset"),
         (vec![2], "disjoint singleton"),
@@ -106,7 +106,7 @@ fn disjoint_then_overlapping_constraints_keep_dominance_and_normal_order() {
 #[test]
 fn empty_constraint_set_dominates_disjoint_receipts_and_later_fresh_edges() {
     let preferences = EdgePreferences::new(3);
-    let mut frontier = preferences.frontier();
+    let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
     for (edges, receipt) in [
         (vec![0], "first"),
         (vec![1], "second"),
@@ -137,7 +137,7 @@ fn ranked_equivalents_after_disjoint_receipts_preserve_better_worse_and_latest_t
         (4, "better equivalent"),
         (5, "latest exact tie"),
     ] {
-        let mut frontier = preferences.frontier();
+        let mut frontier = preferences.frontier(&crate::accounting::Meter::new());
         for &(edge, rank, receipt) in &offers[..count] {
             frontier
                 .consider_ranked(
@@ -168,7 +168,7 @@ fn mixed_disjoint_scopes_keep_foreign_rejection_and_real_empty_ancestor_dominanc
         edges: edges.to_vec(),
     };
     for add_ancestor in [false, true] {
-        let mut frontier = class(None, &[]).frontier();
+        let mut frontier = class(None, &[]).frontier(&crate::accounting::Meter::new());
         frontier
             .consider(class(Some(1), &[0]), "first sibling")
             .unwrap();
