@@ -161,3 +161,6 @@ fn settle(account: CssAccount<'_>, work: OperationWork) -> Result<(), CssomError
         .charge(CssFront::Cssom, &changes[..length])
         .map_err(CssomError::Accounting)
 }
+
+#[cfg(test)]
+mod tests;
