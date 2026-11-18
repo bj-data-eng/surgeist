@@ -1,7 +1,7 @@
 //! Authored tracking at actual TCU boundaries, with no spacing at line edges.
 //! CSS Text4 §8.2: adjacent half contributions sum to their average.
 use super::*;
-use crate::{Id, LineHeight, Range, test_fonts as sfnt};
+use crate::{id::Id, range::Range, style::LineHeight, test_fonts as sfnt};
 use skrifa::{
     GlyphId, MetadataProvider,
     instance::{LocationRef, Size as FontSize},
@@ -85,16 +85,16 @@ fn prepare(bytes: &[u8], source: &Source, style: Style, graphemes: &[Range]) -> 
                 source: source.clone(),
                 base_style: style,
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: extent,
                     aggregate: extent,
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -102,10 +102,10 @@ fn prepare(bytes: &[u8], source: &Source, style: Style, graphemes: &[Range]) -> 
                 replacements: vec![],
                 anchor_order: vec![],
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analyzed.graphemes().collect::<Vec<_>>(), graphemes);
     assert_eq!(analyzed.source(), source);
@@ -120,7 +120,7 @@ fn prepare(bytes: &[u8], source: &Source, style: Style, graphemes: &[Range]) -> 
     assert_eq!(prepared.orientation(), LineOrientation::Horizontal);
     assert_eq!(
         prepared.terminal_edge(),
-        crate::ParagraphTerminalEdge::BlockEnd
+        crate::protocol::ParagraphTerminalEdge::BlockEnd
     );
     let origins = prepared.origin_views().collect::<Vec<_>>();
     assert_eq!(origins.len(), 1);
@@ -136,9 +136,9 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
     request.context.spacing = SpacingPolicy::None;
     let selected = prepared.select(request).unwrap();
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.selected_line(), selected);

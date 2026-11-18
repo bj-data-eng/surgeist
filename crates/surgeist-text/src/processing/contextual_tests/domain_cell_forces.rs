@@ -5,7 +5,41 @@
 
 use crate::engine::analysis::wrapping::Event;
 use crate::protocol::paragraph::SemanticAnchorItem;
-use crate::*;
+use crate::{
+    System,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    font::{
+        FontBaseline, FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance,
+        FontBaselineScript, FontLineMetricSource,
+    },
+    geometry::{GlyphBasis, Point, Rect, Size},
+    id::Id,
+    layout::{Affinity, Layout},
+    options::Alignment,
+    processing::{
+        CapturedComputedLineBoundaryTarget, CapturedFlowEvent, ComputedLineBoundaryInput,
+        ProcessedSource, ScopeAlignmentLimits, ScopeFontReference, ScopeRole, SourceBoxSide,
+        SourceProcessingConnection, SourceProcessingEvent, SourceProcessingScope,
+        SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        AtomicAllocation, AtomicLineAllocation, AtomicPlacement, FinalizedLine,
+        FormattedLineContext, LineAlignmentInsets, LineAllocations, LineAnchor, LineBoxDirection,
+        LineContext, LineEnd, LineOrientation, LinePlacement, LineSelectionRequest, LineStart,
+        ParagraphBaseDirection, PlacementCoverage, PlacementEntry, PlacementRequest,
+        PreparationOptions, PreparedAtomic, PreparedParticipant, PreparedTermination, PreparedText,
+        ScopeAllocations, SelectedLine, SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphControl,
+            ParagraphControlKind, ParagraphOriginKind,
+        },
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind},
+    style::{TextCombineUpright, TextTransform, WhiteSpace, Wrap},
+    supplied_line::BidiLevel,
+    text::Text,
+};
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]

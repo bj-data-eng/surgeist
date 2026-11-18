@@ -1,5 +1,8 @@
 use super::*;
-use crate::{CaseTransform, LineHeight, Range, TextTransform};
+use crate::{
+    range::Range,
+    style::{CaseTransform, LineHeight, TextTransform},
+};
 
 fn width_style(transform: TextTransform, white_space: WhiteSpace) -> Style {
     Style {
@@ -8,19 +11,23 @@ fn width_style(transform: TextTransform, white_space: WhiteSpace) -> Style {
         line_height: LineHeight::Absolute(10.0),
         white_space,
         text_transform: transform,
-        overflow_wrap: crate::OverflowWrap::Anywhere,
+        overflow_wrap: crate::style::OverflowWrap::Anywhere,
         ..Style::default()
     }
 }
 
 fn capture(source: Source, style: Style) -> PreparedText {
-    capture_with_breaks(source, style, crate::DocumentSegmentBreaks::LineFeedDefault)
+    capture_with_breaks(
+        source,
+        style,
+        crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+    )
 }
 
 fn capture_with_breaks(
     source: Source,
     style: Style,
-    segment_breaks: crate::DocumentSegmentBreaks,
+    segment_breaks: crate::processing::DocumentSegmentBreaks,
 ) -> PreparedText {
     let len = source.text().len();
     let analyzed = AnalyzedSource::from_paragraph(
@@ -28,7 +35,7 @@ fn capture_with_breaks(
             source: source.clone(),
             base_style: style,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             segment_breaks,
             base_direction: ParagraphBaseDirection::LeftToRight,
@@ -45,7 +52,7 @@ fn capture_with_breaks(
             replacements: vec![],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = System::default();
@@ -57,7 +64,7 @@ fn capture_with_breaks(
         .unwrap();
     system
         .prepare(
-            &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -69,14 +76,14 @@ fn preserved_document_delimiter_maps_one_blank_unit_but_retains_both_original_un
     let p = capture_with_breaks(
         source.clone(),
         width_style(
-            TextTransform::Set(crate::TextTransformSet::none().with_full_width(true)),
+            TextTransform::Set(crate::style::TextTransformSet::none().with_full_width(true)),
             WhiteSpace::PreserveSpaces,
         ),
-        crate::DocumentSegmentBreaks::Defined(vec![Range::new(1, 3)]),
+        crate::processing::DocumentSegmentBreaks::Defined(vec![Range::new(1, 3)]),
     );
     assert_eq!(
         p.analyzed_source().processed_source().processed_text(),
-        &crate::Text::from("A A")
+        &crate::text::Text::from("A A")
     );
     assert_eq!(p.analyzed_source().inner.projection.text, "Ａ\u{3000}Ａ");
     let middle = &p.analyzed_source().inner.projection.atoms[1];
@@ -101,11 +108,15 @@ fn preserved_document_delimiter_maps_one_blank_unit_but_retains_both_original_un
     let positions: Vec<_> = placed.positions().collect();
     let before = positions
         .iter()
-        .find(|p| p.source_cursor() == crate::Cursor::new(1, crate::Affinity::After))
+        .find(|p| {
+            p.source_cursor() == crate::layout::Cursor::new(1, crate::layout::Affinity::After)
+        })
         .unwrap();
     let after = positions
         .iter()
-        .find(|p| p.source_cursor() == crate::Cursor::new(3, crate::Affinity::Before))
+        .find(|p| {
+            p.source_cursor() == crate::layout::Cursor::new(3, crate::layout::Affinity::Before)
+        })
         .unwrap();
     let selected = placed.position_selection(before, after).unwrap();
     assert_eq!(selected.source_text().code_units(), &[0x0d, 0x0a]);
@@ -117,9 +128,9 @@ fn preserved_document_delimiter_maps_one_blank_unit_but_retains_both_original_un
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -136,7 +147,7 @@ fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32)> {
 
 #[test]
 fn width_uses_actual_target_fonts_metrics_and_canonical_shaping_after_raw_mapping() {
-    let width_set = crate::TextTransformSet::none().with_full_width(true);
+    let width_set = crate::style::TextTransformSet::none().with_full_width(true);
     let width = TextTransform::Set(width_set);
     for (input, transform, semantic, expected, advance) in [
         ("A", TextTransform::none(), "A", vec![(35, 10.0)], 10.0),
@@ -199,7 +210,7 @@ fn width_uses_actual_target_fonts_metrics_and_canonical_shaping_after_raw_mappin
 
 #[test]
 fn actual_preserved_space_range_and_exact_selection_use_blank_twenty_pixel_target() {
-    let width = TextTransform::Set(crate::TextTransformSet::none().with_full_width(true));
+    let width = TextTransform::Set(crate::style::TextTransformSet::none().with_full_width(true));
     for (mode, expected, advance) in [
         (
             WhiteSpace::Collapse,
@@ -226,11 +237,15 @@ fn actual_preserved_space_range_and_exact_selection_use_blank_twenty_pixel_targe
         let positions: Vec<_> = placed.positions().collect();
         let before = positions
             .iter()
-            .find(|p| p.source_cursor() == crate::Cursor::new(1, crate::Affinity::After))
+            .find(|p| {
+                p.source_cursor() == crate::layout::Cursor::new(1, crate::layout::Affinity::After)
+            })
             .unwrap();
         let after = positions
             .iter()
-            .find(|p| p.source_cursor() == crate::Cursor::new(2, crate::Affinity::Before))
+            .find(|p| {
+                p.source_cursor() == crate::layout::Cursor::new(2, crate::layout::Affinity::Before)
+            })
             .unwrap();
         let selection = placed.position_selection(before, after).unwrap();
         assert_eq!(selection.source_text().code_units(), &[0x20]);
@@ -259,19 +274,19 @@ fn width_style_hashing_distinguishes_warm_and_fresh_raw_layout_results() {
         crate::test_fonts::FONT_LIMITS,
     )
     .unwrap();
-    let source = Source::identified("A A", crate::Id::from_u64(6321), 2);
+    let source = Source::identified("A A", crate::id::Id::from_u64(6321), 2);
     for (enabled, expected, advance) in [
         (false, vec![(35, 10.0), (3, 5.0), (35, 10.0)], 25.0),
         (true, vec![(36, 20.0), (1, 20.0), (36, 20.0)], 60.0),
         (false, vec![(35, 10.0), (3, 5.0), (35, 10.0)], 25.0),
     ] {
         let style = width_style(
-            TextTransform::Set(crate::TextTransformSet::none().with_full_width(enabled)),
+            TextTransform::Set(crate::style::TextTransformSet::none().with_full_width(enabled)),
             WhiteSpace::Preserve,
         );
-        let options = crate::Options {
+        let options = crate::options::Options {
             quantize: false,
-            ..crate::Options::default()
+            ..crate::options::Options::default()
         };
         let actual = warm.layout(source.clone(), style.clone(), options).unwrap();
         let mut fresh = System::default();
@@ -282,7 +297,7 @@ fn width_style_hashing_distinguishes_warm_and_fresh_raw_layout_results() {
             )
             .unwrap();
         let other = fresh.layout(source.clone(), style, options).unwrap();
-        let observe = |layout: &crate::Layout| {
+        let observe = |layout: &crate::layout::Layout| {
             layout
                 .run_views()
                 .flat_map(|run| {
@@ -326,7 +341,7 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -339,7 +354,7 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
     let wide = capture(
         Source::new("AA"),
         width_style(
-            TextTransform::Set(crate::TextTransformSet::none().with_full_width(true)),
+            TextTransform::Set(crate::style::TextTransformSet::none().with_full_width(true)),
             WhiteSpace::Preserve,
         ),
     );
@@ -361,9 +376,9 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
     let finalized = wide
         .select(first)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&finalized), [(36, 20.0)]);
@@ -376,20 +391,28 @@ fn width_accessibility_keeps_original_source_and_actual_twenty_pixel_geometry() 
     let p = capture(
         Source::new("A"),
         width_style(
-            TextTransform::Set(crate::TextTransformSet::none().with_full_width(true)),
+            TextTransform::Set(crate::style::TextTransformSet::none().with_full_width(true)),
             WhiteSpace::Preserve,
         ),
     );
     let line = whole(&p);
     assert_eq!(glyphs(&line), [(36, 20.0)]);
     let placed = place(p, line, 0.0, 8.0).unwrap();
-    let mut state = crate::Accessibility::new(21);
+    let mut state = crate::accessibility::Accessibility::new(21);
     let parent = 1001_u64.into();
     let update = placed
-        .accessibility_update(&mut state, parent, parent, crate::Point::new(0.0, 0.0))
+        .accessibility_update(
+            &mut state,
+            parent,
+            parent,
+            crate::geometry::Point::new(0.0, 0.0),
+        )
         .unwrap();
     let at = placed
-        .access_position(&state, crate::Cursor::new(0, crate::Affinity::After))
+        .access_position(
+            &state,
+            crate::layout::Cursor::new(0, crate::layout::Affinity::After),
+        )
         .unwrap()
         .unwrap();
     let node = &update

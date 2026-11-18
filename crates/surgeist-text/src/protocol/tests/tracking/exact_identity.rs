@@ -1,6 +1,9 @@
 //! Exact character allocations remain semantic custody when geometry agrees.
 use super::*;
-use crate::{OverflowWrap, Point, Rect};
+use crate::{
+    geometry::{Point, Rect},
+    style::OverflowWrap,
+};
 
 struct Prefix {
     prepared: PreparedText,
@@ -48,7 +51,7 @@ fn prefix() -> Prefix {
     value.context.end = LineEnd::Soft;
     value.context.available_inline = Some(40.0);
     value.context.spacing = SpacingPolicy::InterCharacter;
-    value.context.alignment = crate::Alignment::Start;
+    value.context.alignment = crate::options::Alignment::Start;
     let selected = prepared.select(value).unwrap();
     let slots = selected.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
@@ -56,9 +59,9 @@ fn prefix() -> Prefix {
     boundary_custody(&selected, 0, 0.0);
     assert!(matches!(slot.target(), SpacingSlotTarget::Boundary { .. }));
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
@@ -94,9 +97,9 @@ fn amounts() -> (f64, f64) {
 fn allocated(prefix: &Prefix, amount: f64) -> FinalizedLine {
     let natural = prefix
         .selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let line = natural
@@ -126,14 +129,14 @@ fn allocated(prefix: &Prefix, amount: f64) -> FinalizedLine {
     line
 }
 
-fn placed(prefix: &Prefix, line: FinalizedLine) -> crate::Layout {
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+fn placed(prefix: &Prefix, line: FinalizedLine) -> crate::layout::Layout {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prefix.prepared.clone(),
         coverage: PlacementCoverage::Range {
             start: prefix.start.clone(),
             end: prefix.offer.view().boundary(),
         },
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 100.25,
@@ -210,7 +213,7 @@ fn rounded_equal_character_replacements_keep_exact_framed_conditional_identity()
                 &prefix.offer,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(frame),
+                crate::protocol::ConditionalLineContext::Finalized(frame),
             )
             .unwrap();
         search.begin(&[]).unwrap();

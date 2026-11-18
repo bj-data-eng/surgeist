@@ -4,8 +4,14 @@ use crate::engine::AnalyzedCore;
 use crate::protocol::paragraph::FlowOriginKey;
 use crate::transform::{combined::CombinedOutput, relation::OriginalPiece};
 use crate::{
-    CapturedEventPosition, CapturedParagraph, CapturedScope, CompleteTextNodeContribution,
-    ParagraphBaseDirection, ParagraphOriginKind, Range, Source, TextCombineUpright,
+    processing::{CapturedEventPosition, CapturedParagraph, CapturedScope},
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{CompleteTextNodeContribution, ParagraphOriginKind},
+    },
+    range::Range,
+    source::Source,
+    style::TextCombineUpright,
 };
 use std::sync::Arc;
 
@@ -57,8 +63,8 @@ impl<'a> AnalyzedCombinedCell<'a> {
     }
     /// Actual outer source-cell level, independent of painted inner atoms.
     #[must_use]
-    pub fn outer_bidi_level(&self) -> crate::BidiLevel {
-        crate::BidiLevel::try_new(self.core.analysis.cell_levels[self.index])
+    pub fn outer_bidi_level(&self) -> crate::supplied_line::BidiLevel {
+        crate::supplied_line::BidiLevel::try_new(self.core.analysis.cell_levels[self.index])
             .expect("resolved source-cell level")
     }
     /// Canonical non-width EGCs before fixed-partition replay and inner edges.
@@ -91,11 +97,15 @@ impl<'a> AnalyzedCombinedCell<'a> {
     }
     /// Resolved ordinary inner levels, including selected-line L1, for exactly
     /// the used code-point sequence. These are distinct from outer cell bidi.
-    pub fn inner_bidi_levels(&self) -> impl ExactSizeIterator<Item = crate::BidiLevel> + 'a {
+    pub fn inner_bidi_levels(
+        &self,
+    ) -> impl ExactSizeIterator<Item = crate::supplied_line::BidiLevel> + 'a {
         self.output.plan.used[self.group()]
             .levels
             .iter()
-            .map(|&level| crate::BidiLevel::try_new(level).expect("resolved source level"))
+            .map(|&level| {
+                crate::supplied_line::BidiLevel::try_new(level).expect("resolved source level")
+            })
     }
     /// Query-local original custody, including selected parts removed by inner
     /// edges or emitted as semantic zero SPACE. Neither hulls nor paint prove it.

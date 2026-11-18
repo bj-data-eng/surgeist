@@ -35,7 +35,11 @@ use parley_data::Properties;
 
 use super::{bidi::BidiResolver, resolve::AnalyzedStyleRun};
 use crate::protocol::paragraph::{ParagraphContext, SemanticAnchorItem};
-use crate::{InlineBox, InlineBoxKind, Result, projection::SourceProjection};
+use crate::{
+    Result,
+    projection::SourceProjection,
+    source::{InlineBox, InlineBoxKind},
+};
 
 #[derive(Default)]
 pub(crate) struct AnalysisDataSources;
@@ -218,7 +222,7 @@ pub(crate) fn analyze(
     styles: &[AnalyzedStyleRun],
     boxes: &[InlineBox],
     paragraph: &ParagraphContext,
-    typography: crate::AnalysisTypography,
+    typography: crate::analyzed::AnalysisTypography,
     bidi_scope: BidiScope<'_>,
 ) -> Result<(Analysis, Vec<Range<usize>>, direction::DirectionBody)> {
     let sources = AnalysisDataSources;
@@ -245,7 +249,7 @@ pub(crate) fn analyze(
                 .wrap
         };
         let before_at = match row.definition {
-            crate::ParagraphBoundaryDefinition::Connection(i) => paragraph
+            crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(i) => paragraph
                 .connection_ends
                 .as_ref()
                 .map_or(at, |ends| ends[i].0),
@@ -455,7 +459,7 @@ pub(crate) fn analyze(
     }
     if cursor != owners.len() {
         return Err(crate::protocol::protocol_error(
-            crate::ProtocolError::InvalidLineDirectionQuery,
+            crate::protocol::ProtocolError::InvalidLineDirectionQuery,
         ));
     }
     let direction = direction::DirectionBody::new(
@@ -509,8 +513,8 @@ pub(crate) fn analyze(
     }
     for (anchor, &at) in paragraph.anchor_order.iter().zip(&positions) {
         let inherited = match anchor.affinity {
-            crate::Affinity::Before => at.checked_sub(1).and_then(|i| levels.get(i)),
-            crate::Affinity::After => levels.get(at),
+            crate::layout::Affinity::Before => at.checked_sub(1).and_then(|i| levels.get(i)),
+            crate::layout::Affinity::After => levels.get(at),
         }
         .copied()
         .unwrap_or(base_level);
@@ -571,7 +575,7 @@ pub(crate) fn analyze(
 // and participating semantic controls. B is retained as a structural delimiter;
 // L-class projection never changes the original character's rendering role.
 pub(crate) fn used_bidi_class(
-    typography: crate::AnalysisTypography,
+    typography: crate::analyzed::AnalysisTypography,
     original: BidiClass,
 ) -> BidiClass {
     if typography.is_upright() && original != BidiClass::ParagraphSeparator {
@@ -654,7 +658,7 @@ pub(crate) fn project_anchor_atom(
         .atoms
         .get(index)
         .is_some_and(|atom| atom.source.start < source)
-        && anchor.affinity == crate::Affinity::After
+        && anchor.affinity == crate::layout::Affinity::After
     {
         index += 1;
     }
@@ -683,8 +687,8 @@ pub(crate) fn project_anchor_atom(
         Ok(_) => index,
         Err(next) => {
             let stop = match anchor.affinity {
-                crate::Affinity::Before => projection.graphemes[next.saturating_sub(1)],
-                crate::Affinity::After => projection.graphemes[next],
+                crate::layout::Affinity::Before => projection.graphemes[next.saturating_sub(1)],
+                crate::layout::Affinity::After => projection.graphemes[next],
             };
             projection
                 .atoms
@@ -717,15 +721,19 @@ pub(crate) fn contributes_to_shaping(category: GeneralCategory, script: Script) 
 mod tests {
     use super::*;
 
-    fn bidi_analysis(text: &str, base: Option<crate::ParagraphBaseDirection>) -> Analysis {
-        let source = crate::Source::new(text);
+    fn bidi_analysis(
+        text: &str,
+        base: Option<crate::protocol::ParagraphBaseDirection>,
+    ) -> Analysis {
+        let source = crate::source::Source::new(text);
         let projection = SourceProjection::new(&source).expect("actual source projection");
         let styles = [AnalyzedStyleRun {
-            owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(
+            owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::range::Range::new(
                 0,
                 source.text().len(),
             )),
-            style: crate::ValidatedStyle::try_from(crate::Style::default()).expect("default style"),
+            style: crate::style::ValidatedStyle::try_from(crate::style::Style::default())
+                .expect("default style"),
         }];
         let mut paragraph = crate::protocol::paragraph::ParagraphData::standalone(&source);
         paragraph.base_direction = base;
@@ -734,7 +742,7 @@ mod tests {
             &styles,
             &[],
             &paragraph,
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
             BidiScope::Indication,
         )
         .expect("actual bidi analysis")
@@ -743,7 +751,7 @@ mod tests {
 
     #[test]
     fn every_b_terminated_body_keeps_its_own_neutral_context_and_owner_levels() {
-        use crate::ParagraphBaseDirection::RightToLeft;
+        use crate::protocol::ParagraphBaseDirection::RightToLeft;
         for (text, expected) in [
             ("", &[][..]),
             ("\n", &[1][..]),
@@ -771,13 +779,13 @@ mod tests {
             assert_eq!(analysis.base_level, expected_base, "{text:?}");
             assert_eq!(analysis.levels.len(), text.chars().count(), "{text:?}");
         }
-        let analyzed = crate::AnalyzedSource::new(
-            crate::Source::new("א\n.A"),
-            crate::Style::default(),
-            crate::AnalysisTypography::HorizontalComposition,
+        let analyzed = crate::analyzed::AnalyzedSource::new(
+            crate::source::Source::new("א\n.A"),
+            crate::style::Style::default(),
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .expect("raw public analysis");
-        assert_eq!(analyzed.direction(), crate::Direction::RightToLeft);
+        assert_eq!(analyzed.direction(), crate::style::Direction::RightToLeft);
         assert_eq!(analyzed.inner.analysis.levels, [1, 1, 1, 2]);
     }
 
@@ -799,11 +807,12 @@ mod tests {
     #[test]
     fn original_surrogate_and_literal_replacement_choose_distinct_bidi_bases() {
         for (cp, expected) in [(0xd800, 0), (0xfffd, 1)] {
-            let source = crate::Source::new(crate::Text::from_code_units(vec![cp, 0x05d0]));
-            let analyzed = crate::AnalyzedSource::new(
+            let source =
+                crate::source::Source::new(crate::text::Text::from_code_units(vec![cp, 0x05d0]));
+            let analyzed = crate::analyzed::AnalyzedSource::new(
                 source,
-                crate::Style::default(),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::style::Style::default(),
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .expect("original-property analysis");
             assert_eq!(analyzed.inner.analysis.base_level, expected);
@@ -813,20 +822,23 @@ mod tests {
 
     #[test]
     fn segmentation_projection_does_not_supply_original_bidi_or_scalar_identity() {
-        let source = crate::Source::new(crate::Text::from_code_units(vec![
+        let source = crate::source::Source::new(crate::text::Text::from_code_units(vec![
             0xd800, 0x0301, 0xdc00, 0x05d0,
         ]));
         let projection = SourceProjection::new(&source).expect("original units are retained");
         let styles = [AnalyzedStyleRun {
-            owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(0, 4)),
-            style: crate::ValidatedStyle::try_from(crate::Style::default()).expect("default style"),
+            owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::range::Range::new(
+                0, 4,
+            )),
+            style: crate::style::ValidatedStyle::try_from(crate::style::Style::default())
+                .expect("default style"),
         }];
         let (analysis, _, direction) = analyze(
             &projection,
             &styles,
             &[],
             &crate::protocol::paragraph::ParagraphData::standalone(&source),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
             BidiScope::Indication,
         )
         .expect("original analysis");

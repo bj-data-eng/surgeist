@@ -798,7 +798,7 @@ impl PolicyContext {
             super::inline_box::context_identity(&request.controls, &request.boundary_context)
         })
     }
-    fn scopes(&self) -> &[crate::ScopeFrameAllocation] {
+    fn scopes(&self) -> &[crate::protocol::ScopeFrameAllocation] {
         self.frame
             .as_ref()
             .map_or(&[], |frame| frame.scope_allocations())

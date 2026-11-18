@@ -3,7 +3,34 @@
 //! The uncaptured removal case characterizes existing incident/copy semantics.
 
 use crate::processing::DeletionCause;
-use crate::*;
+use crate::{
+    ErrorDetail,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    geometry::Point,
+    id::Id,
+    layout::{Affinity, Layout},
+    options::Alignment,
+    processing::{
+        ProcessedSource, SourceProcessingConnection, SourceProcessingEvent,
+        SourceProcessingJointFlow, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        FinalizedLine, FormattedLineContext, LineAlignmentInsets, LineAllocations, LineAnchor,
+        LineBoxDirection, LineContext, LineEnd, LineOrientation, LinePlacement,
+        LineSelectionRequest, LineStart, NonFormattedLinePlacement, ParagraphBaseDirection,
+        PlacementCoverage, PlacementEntry, PlacementRequest, PreparationOptions,
+        PreparedParticipant, PreparedSourceSegment, PreparedTermination, PreparedText,
+        ScopeAllocations, SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{ParagraphConnectionKind, ParagraphStrut},
+        readback::PresentationMappingKind,
+    },
+    range::Range,
+    range_fragments::SourceRangeFragmentError,
+    source::Source,
+    style::{CaseTransform, TextCombineUpright, TextTransform, TextTransformSet, WhiteSpace, Wrap},
+    text::Text,
+};
 use std::sync::Arc;
 
 fn captured_parent() -> Arc<ProcessedSource> {

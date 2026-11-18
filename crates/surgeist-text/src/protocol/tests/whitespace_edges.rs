@@ -1,6 +1,9 @@
 //! Actual whitespace edge alignment, with original source and font custody.
 use super::*;
-use crate::{Affinity, Cursor, Range};
+use crate::{
+    layout::{Affinity, Cursor},
+    range::Range,
+};
 use skrifa::MetadataProvider;
 
 mod additional_edges;
@@ -16,7 +19,7 @@ fn prepare(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedT
     let source = Source::new(text);
     let end = source.text().len();
     let input = ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         source: source.clone(),
         base_style: Style {
             size: 10.0,
@@ -24,7 +27,7 @@ fn prepare(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedT
             ..style()
         },
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
@@ -45,10 +48,10 @@ fn prepare(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedT
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             ),
             PreparationOptions::default(),
         )
@@ -76,14 +79,14 @@ fn centered(
         PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
         _ => unreachable!(),
     };
-    r.termination = crate::PreparedTermination::Ordinary(ending);
+    r.termination = crate::protocol::PreparedTermination::Ordinary(ending);
     r.context.available_inline = Some(40.0);
-    r.context.alignment = crate::Alignment::Center;
+    r.context.alignment = crate::options::Alignment::Center;
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -121,15 +124,15 @@ fn glyphs(line: &FinalizedLine, before: usize) -> Vec<(Range, u32, f32, f64)> {
     rows
 }
 
-fn custody(p: &PreparedText, lines: Vec<FinalizedLine>, original: &[u16]) -> crate::Layout {
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+fn custody(p: &PreparedText, lines: Vec<FinalizedLine>, original: &[u16]) -> crate::layout::Layout {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: lines
             .into_iter()
             .enumerate()
             .map(|(i, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,

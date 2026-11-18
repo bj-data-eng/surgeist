@@ -1,6 +1,6 @@
 //! Real Wbr effective instances survive selected overlay and reused catalogues.
 use super::*;
-use crate::{FinalizedFragmentOwner, Id, WordSpaceTransform};
+use crate::{id::Id, protocol::readback::FinalizedFragmentOwner, style::WordSpaceTransform};
 
 fn input(
     source: Source,
@@ -16,9 +16,9 @@ fn input(
         source: source.clone(),
         base_style: base_style.clone(),
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
@@ -51,7 +51,7 @@ fn input(
                 } else {
                     index
                 }),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             })
             .collect(),
     }
@@ -67,9 +67,12 @@ fn catalogue() -> System {
 }
 fn analyzed(value: ParagraphInput) -> AnalyzedSource {
     crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            value,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     )
 }
 fn prepare(s: &mut System, a: &AnalyzedSource) -> PreparedText {
@@ -91,15 +94,15 @@ fn observations(line: &FinalizedLine) -> Vec<(u32, f32, f32)> {
 fn whole(p: &PreparedText) -> FinalizedLine {
     finish(p, selected_request(p, start(p), end(p), None, false)).unwrap()
 }
-fn complete(p: &PreparedText, lines: Vec<FinalizedLine>) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn complete(p: &PreparedText, lines: Vec<FinalizedLine>) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: lines
             .into_iter()
             .enumerate()
             .map(|(i, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -124,10 +127,10 @@ fn selected_source_indication_overlay_retains_real_wbr_twenty_pixel_instance_and
     );
     // The generated separator leaves the real short word A-SHY-A. Its native
     // initial 5/2/2 minima suppress the cut, so explicitly admit 2/1/1 here.
-    capture.base_style.hyphenate_limit_chars = crate::HyphenateLimitChars {
-        total: crate::HyphenationMinimum::Count(2),
-        before: crate::HyphenationMinimum::Count(1),
-        after: crate::HyphenationMinimum::Count(1),
+    capture.base_style.hyphenate_limit_chars = crate::hyphenation::HyphenateLimitChars {
+        total: crate::hyphenation::HyphenationMinimum::Count(2),
+        before: crate::hyphenation::HyphenationMinimum::Count(1),
+        after: crate::hyphenation::HyphenationMinimum::Count(1),
     };
     let a = analyzed(capture);
     let p = prepare(&mut catalogue(), &a);
@@ -146,7 +149,7 @@ fn selected_source_indication_overlay_retains_real_wbr_twenty_pixel_instance_and
         Some(counts(1, 1))
     );
     assert!(
-        matches!(chosen.view().definition(),crate::PreparedAlternativeDefinition::Source {source,..} if source==Range::new(2,3))
+        matches!(chosen.view().definition(),crate::protocol::readback::PreparedAlternativeDefinition::Source {source,..} if source==Range::new(2,3))
     );
     let first = finish(
         &p,
@@ -358,9 +361,9 @@ fn unexpanded_wbr_keeps_split_origin_capture_order_and_original_typography_separ
     }];
     capture.boundary_policies = vec![paragraph::ParagraphBoundaryPolicy {
         definition: paragraph::ParagraphBoundaryDefinition::Connection(0),
-        preceding_wrap: crate::Wrap::Word,
-        following_wrap: crate::Wrap::Word,
-        ancestor_wrap: crate::Wrap::Word,
+        preceding_wrap: crate::style::Wrap::Word,
+        following_wrap: crate::style::Wrap::Word,
+        ancestor_wrap: crate::style::Wrap::Word,
     }];
     let a = analyzed(capture);
     assert_eq!(a.inner.projection.text, "A\u{3099}");

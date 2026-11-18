@@ -1,5 +1,8 @@
 use super::*;
-use crate::{LineHeight, Range, WordSpaceTransform};
+use crate::{
+    range::Range,
+    style::{LineHeight, WordSpaceTransform},
+};
 
 fn separator_style(operation: WordSpaceTransform, mode: WhiteSpace) -> Style {
     Style {
@@ -28,9 +31,9 @@ fn capture(source: Source, style: Style) -> PreparedText {
             source: source.clone(),
             base_style: style,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             origins: vec![paragraph::ParagraphOrigin {
                 text_node: None,
@@ -45,12 +48,12 @@ fn capture(source: Source, style: Style) -> PreparedText {
             boundary_policies: vec![],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     catalogue()
         .prepare(
-            &crate::test_wrapping::bind_missing(&a, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(&a, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -58,9 +61,9 @@ fn capture(source: Source, style: Style) -> PreparedText {
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -97,11 +100,15 @@ fn separator_targets_use_real_metrics_ranges_and_original_extraction() {
         let positions: Vec<_> = placed.positions().collect();
         let before = positions
             .iter()
-            .find(|p| p.source_cursor() == crate::Cursor::new(1, crate::Affinity::After))
+            .find(|p| {
+                p.source_cursor() == crate::layout::Cursor::new(1, crate::layout::Affinity::After)
+            })
             .unwrap();
         let after = positions
             .iter()
-            .find(|p| p.source_cursor() == crate::Cursor::new(2, crate::Affinity::Before))
+            .find(|p| {
+                p.source_cursor() == crate::layout::Cursor::new(2, crate::layout::Affinity::Before)
+            })
             .unwrap();
         let selected = placed.position_selection(before, after).unwrap();
         assert_eq!(selected.source_text().code_units(), [0x200b]);
@@ -130,8 +137,8 @@ fn every_phase_i_mode_retains_generated_full_width_blank_metrics_without_coalesc
         let p = capture(
             Source::new("A\u{200b}\u{200b}A"),
             Style {
-                text_transform: crate::TextTransform::Set(
-                    crate::TextTransformSet::none().with_full_width(true),
+                text_transform: crate::style::TextTransform::Set(
+                    crate::style::TextTransformSet::none().with_full_width(true),
                 ),
                 ..separator_style(WordSpaceTransform::Space, mode)
             },
@@ -149,7 +156,7 @@ fn every_phase_i_mode_retains_generated_full_width_blank_metrics_without_coalesc
 #[test]
 fn separator_style_cache_identity_distinguishes_warm_and_fresh_raw_results() {
     let mut warm = catalogue();
-    let source = Source::identified("A\u{200b}A", crate::Id::from_u64(6311), 3);
+    let source = Source::identified("A\u{200b}A", crate::id::Id::from_u64(6311), 3);
     for (operation, advance) in [
         (WordSpaceTransform::None, 20.0),
         (WordSpaceTransform::Space, 25.0),
@@ -157,13 +164,13 @@ fn separator_style_cache_identity_distinguishes_warm_and_fresh_raw_results() {
         (WordSpaceTransform::None, 20.0),
     ] {
         let style = separator_style(operation, WhiteSpace::Preserve);
-        let options = crate::Options {
+        let options = crate::options::Options {
             quantize: false,
-            ..crate::Options::default()
+            ..crate::options::Options::default()
         };
         let actual = warm.layout(source.clone(), style.clone(), options).unwrap();
         let fresh = catalogue().layout(source.clone(), style, options).unwrap();
-        let observe = |l: &crate::Layout| {
+        let observe = |l: &crate::layout::Layout| {
             l.run_views()
                 .flat_map(|r| {
                     r.glyphs()
@@ -203,10 +210,15 @@ fn separator_accessibility_uses_original_zwsp_and_actual_generated_geometry() {
     let line = whole(&p);
     assert_eq!(line.feedback().advance, 25.0);
     let placed = place(p, line, 0.0, 8.0).unwrap();
-    let mut state = crate::Accessibility::new(63);
+    let mut state = crate::accessibility::Accessibility::new(63);
     let parent = 1001_u64.into();
     let update = placed
-        .accessibility_update(&mut state, parent, parent, crate::Point::new(0.0, 0.0))
+        .accessibility_update(
+            &mut state,
+            parent,
+            parent,
+            crate::geometry::Point::new(0.0, 0.0),
+        )
         .unwrap();
     let descriptors: Vec<_> = update
         .nodes
@@ -265,12 +277,12 @@ fn generated_discard_separators_keep_ordinary_trailing_advance_and_original_zwsp
             "\u{ff21}\u{3000}",
         ),
     ] {
-        let source = Source::identified("A\u{200b}", crate::Id::from_u64(7402), 8);
+        let source = Source::identified("A\u{200b}", crate::id::Id::from_u64(7402), 8);
         let p = capture(
             source.clone(),
             Style {
-                text_transform: crate::TextTransform::Set(
-                    crate::TextTransformSet::none().with_full_width(full_width),
+                text_transform: crate::style::TextTransform::Set(
+                    crate::style::TextTransformSet::none().with_full_width(full_width),
                 ),
                 ..separator_style(operation, WhiteSpace::Discard)
             },
@@ -288,9 +300,9 @@ fn generated_discard_separators_keep_ordinary_trailing_advance_and_original_zwsp
         let line = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let letter_advance = if full_width { 20.0 } else { 10.0 };
@@ -320,7 +332,7 @@ fn generated_discard_separators_keep_ordinary_trailing_advance_and_original_zwsp
         }
         assert!(
             line.edge_units()
-                .all(|unit| unit.disposition() == crate::LineEdgeDisposition::Ordinary)
+                .all(|unit| unit.disposition() == crate::protocol::LineEdgeDisposition::Ordinary)
         );
         let original_rows: Vec<_> = line
             .run_views()

@@ -26,7 +26,7 @@ impl FamilyData {
                 // controls at the same UTF-16 position remain distinct.
                 if start == other_start || close == other_close || b < end {
                     return Err(crate::protocol::inline_box::invalid(
-                        crate::InlineBoxEdgeError::InvalidPair,
+                        crate::protocol::InlineBoxEdgeError::InvalidPair,
                     ));
                 }
                 break;

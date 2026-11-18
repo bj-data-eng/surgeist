@@ -2,8 +2,12 @@
 //! These baselines shape separate original sources with TextTransform::none().
 
 use crate::{
-    Alignment, Direction, Font, Id, LineHeight, Options, Range, Source, Style, System,
-    TextTransform, WhiteSpace,
+    System,
+    id::Id,
+    options::{Alignment, Options},
+    range::Range,
+    source::Source,
+    style::{Direction, Font, LineHeight, Style, TextTransform, WhiteSpace},
 };
 use skrifa::MetadataProvider;
 

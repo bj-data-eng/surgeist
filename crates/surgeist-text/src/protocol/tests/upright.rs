@@ -5,8 +5,14 @@
 //! baseline and vertical-glyph determinations define the font-coordinate policy.
 use super::*;
 use crate::{
-    AnalysisTypography, Direction, Id, LineBoxDirection, LineHeight, Point, Range, Rect, Size,
-    baseline_test_fonts as base, test_fonts as sfnt, vertical_test_fonts as vertical,
+    analyzed::AnalysisTypography,
+    baseline_test_fonts as base,
+    geometry::{Point, Rect, Size},
+    id::Id,
+    protocol::LineBoxDirection,
+    range::Range,
+    style::{Direction, LineHeight},
+    test_fonts as sfnt, vertical_test_fonts as vertical,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -112,17 +118,17 @@ fn qualified_native_upright_reaches_placed_geometry() {
             ParagraphInput {
                 source: source.clone(),
                 base_style: style.clone(),
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: Range::new(0, 1),
                     aggregate: Range::new(0, 1),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -133,7 +139,7 @@ fn qualified_native_upright_reaches_placed_geometry() {
             typography,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analysis.typography(), typography);
     assert_eq!(analysis.direction(), Direction::LeftToRight);
@@ -167,12 +173,12 @@ fn qualified_native_upright_reaches_placed_geometry() {
     let cross = instance
         .upright_metrics(
             &catalogue,
-            crate::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+            crate::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
         )
         .unwrap();
     assert_eq!(
         cross.reference(),
-        crate::UprightMetricReference::FontDesignX
+        crate::font::UprightMetricReference::FontDesignX
     );
     assert_eq!(
         (
@@ -209,14 +215,14 @@ fn qualified_native_upright_reaches_placed_geometry() {
     selected_request.context.line_box_direction = LineBoxDirection::LeftToRight;
     selected_request.context.available_inline = None;
     selected_request.context.indent = 0.0;
-    selected_request.context.alignment = crate::Alignment::Start;
+    selected_request.context.alignment = crate::options::Alignment::Start;
     selected_request.context.spacing = SpacingPolicy::None;
     let line = prepared
         .select(selected_request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // Scale design units once by 10/1000. Central = (0+1200)/2 = 600;
@@ -237,10 +243,10 @@ fn qualified_native_upright_reaches_placed_geometry() {
             .collect::<Vec<_>>(),
         [(58, -6.0, 9.0, 12.0, 0.0, Range::new(0, 1))]
     );
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line: line.clone(),
             anchor: LineAnchor {
                 inline_origin: 20.0,

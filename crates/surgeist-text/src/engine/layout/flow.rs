@@ -8,8 +8,10 @@ use crate::protocol::{
     selection::{self, LineMetricPolicy},
 };
 use crate::{
-    FlowObservation, FlowObservationRequest, PreparedFlowSegment, PreparedText, ProtocolError,
     Result,
+    protocol::{
+        FlowObservation, FlowObservationRequest, PreparedFlowSegment, PreparedText, ProtocolError,
+    },
 };
 
 pub(crate) fn observe(
@@ -18,7 +20,7 @@ pub(crate) fn observe(
     request: &FlowObservationRequest,
     profile: LineMetricPolicy,
     scratch: &mut ShapeContext,
-    allowance: Option<crate::ScopeAlignmentAllowance>,
+    allowance: Option<crate::protocol::ScopeAlignmentAllowance>,
 ) -> Result<FlowObservation> {
     let participants: Vec<_> = segment.participants().collect();
     let start = segment.start();

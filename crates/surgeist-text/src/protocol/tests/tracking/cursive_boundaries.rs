@@ -1,7 +1,9 @@
 //! Actual Arabic letters and punctuation distinguish tracking from justification.
 use super::fixtures::allocations;
 use super::*;
-use crate::{SpacingBoundaryGeometry, SpacingSlotGeometry, SpacingSlotOwner, SpacingSlotTarget};
+use crate::protocol::{
+    SpacingBoundaryGeometry, SpacingSlotGeometry, SpacingSlotOwner, SpacingSlotTarget,
+};
 use icu_properties::{
     CodePointMapData,
     props::{GeneralCategory, JoiningType, Script},
@@ -109,16 +111,16 @@ fn prepare(bytes: &[u8], source: &Source, first: f64) -> PreparedText {
         source: source.clone(),
         base_style: arabic(first),
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::RightToLeft,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: extent,
             aggregate: extent,
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -127,13 +129,16 @@ fn prepare(bytes: &[u8], source: &Source, first: f64) -> PreparedText {
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     assert_eq!(analyzed.source(), source);
     assert_eq!(analyzed.style().locale.as_deref(), Some("ar"));
-    assert_eq!(analyzed.direction(), crate::Direction::RightToLeft);
+    assert_eq!(analyzed.direction(), crate::style::Direction::RightToLeft);
     assert_eq!(
         analyzed.graphemes().collect::<Vec<_>>(),
         [Range::new(0, 1), Range::new(1, 2)]
@@ -154,7 +159,7 @@ fn prepare(bytes: &[u8], source: &Source, first: f64) -> PreparedText {
 fn select(prepared: &PreparedText, method: SpacingPolicy) -> SelectedLine {
     let mut value = request(prepared);
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    value.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     value.context.available_inline = None;
     value.context.spacing = method;
     prepared.select(value).unwrap()
@@ -251,9 +256,9 @@ fn same_script_joining_and_nonjoining_arabic_letters_have_no_tracking_or_extra_c
         let control_source = source(text, 0.0);
         let control_prepared = prepare(&bytes, &control_source, 0.0);
         let control = select(&control_prepared, SpacingPolicy::None)
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let expected_raw = [
@@ -271,18 +276,18 @@ fn same_script_joining_and_nonjoining_arabic_letters_have_no_tracking_or_extra_c
         assert_eq!(prepared.analyzed_source().style().letter_spacing, 4.0);
         assert_eq!(source.spans()[0].style().letter_spacing, 8.0);
         let authored = select(&prepared, SpacingPolicy::None)
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(sorted_raw(&authored, &bytes), expected_raw);
         assert_eq!(authored.feedback().advance, 20.0);
         assert_eq!(source_paints(&authored), source_paints(&control));
         let line = select(&prepared, SpacingPolicy::InterCharacter)
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(sorted_raw(&line, &bytes), expected_raw);
@@ -316,9 +321,9 @@ fn arabic_punctuation_keeps_authored_tracking_but_has_no_default_cursive_justifi
     let control_source = source("\u{60d}\u{621}", 0.0);
     let control_prepared = prepare(&bytes, &control_source, 0.0);
     let control = select(&control_prepared, SpacingPolicy::None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let expected_raw = [
@@ -334,9 +339,9 @@ fn arabic_punctuation_keeps_authored_tracking_but_has_no_default_cursive_justifi
     let source = source("\u{60d}\u{621}", 8.0);
     let prepared = prepare(&bytes, &source, 4.0);
     let authored = select(&prepared, SpacingPolicy::None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(sorted_raw(&authored, &bytes), expected_raw);
@@ -346,9 +351,9 @@ fn arabic_punctuation_keeps_authored_tracking_but_has_no_default_cursive_justifi
         [(Range::new(0, 1), 16.0), (Range::new(1, 2), 0.0)]
     );
     let line = select(&prepared, SpacingPolicy::InterCharacter)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(sorted_raw(&line, &bytes), expected_raw);

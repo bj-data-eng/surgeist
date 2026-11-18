@@ -1,31 +1,39 @@
-use crate::{AnalyzedSource, CaseTransform, Range, Source, Style, Text, TextTransform, WhiteSpace};
+use crate::{
+    analyzed::AnalyzedSource,
+    range::Range,
+    source::Source,
+    style::{CaseTransform, Style, TextTransform, WhiteSpace},
+    text::Text,
+};
 
 fn style() -> Style {
     Style {
-        text_transform: TextTransform::Set(crate::TextTransformSet::none().with_full_width(true)),
+        text_transform: TextTransform::Set(
+            crate::style::TextTransformSet::none().with_full_width(true),
+        ),
         ..Style::default()
     }
 }
 
-fn input(source: Source, white_space: WhiteSpace) -> crate::ParagraphInput {
+fn input(source: Source, white_space: WhiteSpace) -> crate::protocol::ParagraphInput {
     let len = source.text().len();
-    crate::ParagraphInput {
+    crate::protocol::ParagraphInput {
         source: source.clone(),
         base_style: Style {
             white_space,
             ..style()
         },
-        paragraph_strut: crate::ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: crate::ParagraphBaseDirection::LeftToRight,
-        origins: vec![crate::ParagraphOrigin {
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -38,7 +46,7 @@ fn input(source: Source, white_space: WhiteSpace) -> crate::ParagraphInput {
 fn paragraph(source: Source, white_space: WhiteSpace) -> AnalyzedSource {
     AnalyzedSource::from_paragraph(
         input(source, white_space),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap()
 }
@@ -47,51 +55,57 @@ fn paragraph(source: Source, white_space: WhiteSpace) -> AnalyzedSource {
 fn width_and_neutral_component_styles_preserve_connected_origin_mark_and_oof_custody() {
     let mut source = Source::new("AｶﾞA");
     source.span(Range::new(3, 4), Style::default());
-    source.inline_box(crate::InlineBox::new(
-        crate::Id::from_u64(6322),
-        crate::InlineBoxKind::OutOfFlow,
+    source.inline_box(crate::source::InlineBox::new(
+        crate::id::Id::from_u64(6322),
+        crate::source::InlineBoxKind::OutOfFlow,
         3,
-        crate::Size::new(0.0, 0.0),
+        crate::geometry::Size::new(0.0, 0.0),
     ));
     let mut i = input(source.clone(), WhiteSpace::Preserve);
     i.origins = [(0, 1), (1, 2), (2, 3), (3, 3), (3, 4)]
         .into_iter()
-        .map(|(start, end)| crate::ParagraphOrigin {
+        .map(|(start, end)| crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: Range::new(start, end),
             aggregate: Range::new(start, end),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         })
         .collect();
     i.connections = [1, 2, 3, 3]
         .into_iter()
-        .map(|at| crate::ParagraphConnection {
+        .map(|at| crate::protocol::paragraph::ParagraphConnection {
             at,
-            kind: crate::ParagraphConnectionKind::Continuous,
+            kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
         })
         .collect();
     i.boundary_policies = (0..4)
-        .map(|index| crate::ParagraphBoundaryPolicy {
-            definition: crate::ParagraphBoundaryDefinition::Connection(index),
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
-        })
+        .map(
+            |index| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                    index,
+                ),
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
+            },
+        )
         .collect();
     i.anchor_order = vec![
-        crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::EmptyOrigin(3),
-            affinity: crate::Affinity::After,
+        crate::protocol::paragraph::ParagraphAnchor {
+            item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(3),
+            affinity: crate::layout::Affinity::After,
         },
-        crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::Atomic(0),
-            affinity: crate::Affinity::After,
+        crate::protocol::paragraph::ParagraphAnchor {
+            item: crate::protocol::paragraph::ParagraphAnchorItem::Atomic(0),
+            affinity: crate::layout::Affinity::After,
         },
     ];
-    let analyzed =
-        AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        i,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.inner.projection.text, "Ａカ\u{3099}A");
     assert_eq!(analyzed.inner.analysis.graphemes, [0..1, 1..3, 3..4]);
     let map = &analyzed.inner.transform;
@@ -141,7 +155,7 @@ fn every_raw_wide_narrow_record_executes_once_in_its_declared_direction() {
         let result = AnalyzedSource::new(
             source.clone(),
             style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(result.inner.projection.atoms[0].code_point, output);
@@ -169,7 +183,7 @@ fn raw_width_is_not_recursive_compatibility_or_canonical_normalization() {
         let analyzed = AnalyzedSource::new(
             Source::new(input),
             style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
@@ -179,7 +193,7 @@ fn raw_width_is_not_recursive_compatibility_or_canonical_normalization() {
     let analyzed = AnalyzedSource::new(
         opaque.clone(),
         style(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -210,14 +224,14 @@ fn actual_case_then_width_then_kana_keep_each_original_emission_owner() {
             source.clone(),
             Style {
                 text_transform: TextTransform::Set(
-                    crate::TextTransformSet::none()
+                    crate::style::TextTransformSet::none()
                         .with_case(case)
                         .with_full_width(width)
                         .with_full_size_kana(kana),
                 ),
                 ..Style::default()
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
@@ -247,7 +261,7 @@ fn actual_case_then_width_then_kana_keep_each_original_emission_owner() {
         AnalyzedSource::new(
             source,
             style(),
-            crate::AnalysisTypography::HorizontalComposition
+            crate::analyzed::AnalysisTypography::HorizontalComposition
         )
         .unwrap()
         .inner
@@ -256,19 +270,22 @@ fn actual_case_then_width_then_kana_keep_each_original_emission_owner() {
         "ＡBＣ"
     );
     for phase in [
-        crate::TextStylePhase::Standalone,
-        crate::TextStylePhase::ProcessedParagraph,
+        crate::style_support::TextStylePhase::Standalone,
+        crate::style_support::TextStylePhase::ProcessedParagraph,
     ] {
         assert_eq!(
-            crate::TextStyleFeature::FullWidth.support(phase),
-            crate::TextStyleSupport::Supported
+            crate::style_support::TextStyleFeature::FullWidth.support(phase),
+            crate::style_support::TextStyleSupport::Supported
         );
     }
-    assert!(crate::TextStyleFeature::ALL.contains(&crate::TextStyleFeature::FullWidth));
-    assert!(!crate::TextTransformSet::none().full_width());
+    assert!(
+        crate::style_support::TextStyleFeature::ALL
+            .contains(&crate::style_support::TextStyleFeature::FullWidth)
+    );
+    assert!(!crate::style::TextTransformSet::none().full_width());
     assert_eq!(
         TextTransform::Set(
-            crate::TextTransformSet::none()
+            crate::style::TextTransformSet::none()
                 .with_full_width(true)
                 .with_full_width(false)
         ),
@@ -300,7 +317,7 @@ fn only_executed_preserved_space_maps_and_raw_identity_remains_a_distinct_profil
     let raw = AnalyzedSource::new(
         Source::new(" A "),
         style(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(raw.processed_source().processed_text(), &Text::from(" A "));
@@ -330,13 +347,13 @@ fn source_local_processing_lends_real_preservation_to_the_transform_owner() {
         (WhiteSpace::Discard, "ABC", "ＡＢＣ"),
     ] {
         let source = Source::new("A B\tC");
-        let executed = crate::process_source_whitespace(
+        let executed = crate::processing::process_source_whitespace(
             source.clone(),
             Style {
                 white_space: mode,
                 ..style()
             },
-            crate::DocumentSegmentBreaks::LineFeedDefault,
+            crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         )
         .unwrap();
         assert_eq!(executed.processed_text(), &Text::from(processed));
@@ -346,7 +363,7 @@ fn source_local_processing_lends_real_preservation_to_the_transform_owner() {
         let input =
             crate::projection::SourceProjection::from_processed(&executed, &paragraph).unwrap();
         let validated =
-            crate::ValidatedStyle::for_processed(executed.base_style().clone()).unwrap();
+            crate::style::ValidatedStyle::for_processed(executed.base_style().clone()).unwrap();
         let mut styles =
             crate::engine::resolve::analyze_styles(&source, &[], &validated, &paragraph);
         let actual = super::super::apply(input, &mut styles, &executed, &paragraph)

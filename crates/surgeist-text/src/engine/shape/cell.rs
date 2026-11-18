@@ -21,7 +21,7 @@ pub(super) fn horizontal_input<'a>(input: &ShapingInput<'a>) -> ShapingInput<'a>
         separator_geometry: input.separator_geometry,
         characters: None,
         profile: crate::engine::upright::ShapingProfile::Horizontal,
-        baseline_reference: Some(crate::FontBaseline::Alphabetic),
+        baseline_reference: Some(crate::font::FontBaseline::Alphabetic),
         projection: input.projection,
         analysis: input.analysis,
         styles: input.styles,
@@ -33,7 +33,9 @@ pub(super) fn horizontal_input<'a>(input: &ShapingInput<'a>) -> ShapingInput<'a>
 }
 
 fn unsupported() -> Error {
-    crate::transform::combined::refused(crate::TextCombineError::UnsupportedCellPreparation)
+    crate::transform::combined::refused(
+        crate::transform::TextCombineError::UnsupportedCellPreparation,
+    )
 }
 
 /// Bounded native capability. Empty provider input is established from actual
@@ -52,8 +54,8 @@ pub(super) fn admit(analyzed: &AnalyzedData) -> Result<()> {
                         let kind = &analyzed.paragraph.controls[control].kind;
                         if matches!(
                             kind,
-                            crate::ParagraphControlKind::InlineBoundaryStart
-                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                         ) {
                             return Err(unsupported());
                         }
@@ -79,7 +81,7 @@ struct Input {
     events: IndexRange<usize>,
     scope_relations: Option<IndexRange<usize>>,
     provider_dispatched: bool,
-    direction: crate::ParagraphBaseDirection,
+    direction: crate::protocol::ParagraphBaseDirection,
 }
 
 pub(super) struct Inputs<'a> {
@@ -795,7 +797,8 @@ fn normal_payload(
     for group in &groups {
         account::work(ledger, 1)?;
         let cluster = &output.clusters[group.start];
-        let level = crate::BidiLevel::try_new(cluster.level).map_err(|_| unsupported())?;
+        let level =
+            crate::supplied_line::BidiLevel::try_new(cluster.level).map_err(|_| unsupported())?;
         maximum = maximum.max(level.get());
         if level.is_rtl() {
             minimum_odd = Some(minimum_odd.map_or(level.get(), |old| old.min(level.get())));
@@ -803,9 +806,9 @@ fn normal_payload(
         account::push(
             ledger,
             &mut slots,
-            crate::SuppliedInlineParticipant::Text {
+            crate::supplied_line::SuppliedInlineParticipant::Text {
                 level,
-                edge: crate::InlineWhitespaceEdge::Preserve,
+                edge: crate::supplied_line::InlineWhitespaceEdge::Preserve,
             },
         )?;
     }
@@ -815,8 +818,8 @@ fn normal_payload(
     // fourth per-level term covers partition endpoints; this is a bound, not
     // an executed-visit trace. No new permutation algorithm is introduced.
     let overflow = || {
-        scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-            kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+        scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
+            kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
         })
     };
     let passes = minimum_odd.map_or(0, |minimum| usize::from(maximum - minimum) + 1);
@@ -828,7 +831,7 @@ fn normal_payload(
         ledger,
         slots.len().checked_mul(factor).ok_or_else(overflow)?,
     )?;
-    crate::SuppliedLine::new(&slots)
+    crate::supplied_line::SuppliedLine::new(&slots)
         .reorder_into(&mut order)
         .map_err(|_| unsupported())?;
     let mut ranks = if execution.is_empty() {
@@ -865,7 +868,7 @@ fn normal_payload(
         let mut progress = 0.0;
         for n in 0..order.len() {
             account::work(ledger, 1)?;
-            let local = if input.direction == crate::ParagraphBaseDirection::RightToLeft {
+            let local = if input.direction == crate::protocol::ParagraphBaseDirection::RightToLeft {
                 order[order.len() - 1 - n]
             } else {
                 order[n]
@@ -905,7 +908,7 @@ fn normal_payload(
                 }
             }
         }
-        if input.direction == crate::ParagraphBaseDirection::RightToLeft {
+        if input.direction == crate::protocol::ParagraphBaseDirection::RightToLeft {
             for span in &mut tabs {
                 account::work(ledger, 1)?;
                 span.before = grid.add("cell RTL tab before", progress, -span.before)?;

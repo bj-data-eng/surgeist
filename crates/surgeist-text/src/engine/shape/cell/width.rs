@@ -160,7 +160,7 @@ impl Observation<'_> {
         }
         if let WidthObservationCoverage::Unqualified(path) = receipt.coverage() {
             return Err(crate::transform::combined::refused(
-                crate::TextCombineError::UnqualifiedWidthObservation {
+                crate::transform::TextCombineError::UnqualifiedWidthObservation {
                     scope: self.scope,
                     source: self.source,
                     feature: self.feature,
@@ -270,8 +270,8 @@ impl Observation<'_> {
     }
 }
 fn work_overflow() -> Error {
-    scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+    scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
+        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
     })
 }
 

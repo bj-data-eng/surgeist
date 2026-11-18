@@ -1,6 +1,11 @@
 //! Nonformatted placement eligibility, coverage and source custody.
 use super::*;
-use crate::{Affinity, Cursor, Hit, LineHeight, Range, SourceProcessingEvent as E};
+use crate::{
+    layout::{Affinity, Cursor, Hit},
+    processing::SourceProcessingEvent as E,
+    range::Range,
+    style::LineHeight,
+};
 use std::sync::Arc;
 
 fn nf_style(mode: WhiteSpace) -> Style {
@@ -8,14 +13,14 @@ fn nf_style(mode: WhiteSpace) -> Style {
         size: 10.0,
         line_height: LineHeight::Absolute(10.0),
         white_space: mode,
-        wrap: crate::Wrap::Word,
-        hyphens: crate::Hyphens::None,
-        word_break: crate::WordBreak::Normal,
-        word_space_transform: crate::WordSpaceTransform::None,
+        wrap: crate::style::Wrap::Word,
+        hyphens: crate::hyphenation::Hyphens::None,
+        word_break: crate::style::WordBreak::Normal,
+        word_space_transform: crate::style::WordSpaceTransform::None,
         ..style()
     }
 }
-fn nf_input(raw: &str, mode: WhiteSpace) -> crate::ContextualSourceInput {
+fn nf_input(raw: &str, mode: WhiteSpace) -> crate::processing::ContextualSourceInput {
     let source = Source::new(raw);
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     let origins = if raw.is_empty() {
@@ -25,56 +30,56 @@ fn nf_input(raw: &str, mode: WhiteSpace) -> crate::ContextualSourceInput {
             origin: 0,
             affinity: Affinity::After,
         });
-        vec![crate::ParagraphOrigin {
+        vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: Range::new(0, raw.encode_utf16().count()),
             aggregate: Range::new(0, raw.encode_utf16().count()),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }]
     };
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
-    crate::ContextualSourceInput {
+    crate::processing::ContextualSourceInput {
         joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: crate::SourceProcessingEnvelope::Complete,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: crate::processing::SourceProcessingEnvelope::Complete,
         origins,
         controls: vec![],
         connections: vec![],
         boundary_policies: vec![],
         replacements: vec![],
         computed_line_boundaries: vec![],
-        scopes: vec![crate::SourceProcessingScope::Block {
+        scopes: vec![crate::processing::SourceProcessingScope::Block {
             writing_axis: None,
             horizontal_inner_direction: None,
             font_reference: None,
-            topology: crate::SourceProcessingTopology::Complete,
+            topology: crate::processing::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: nf_style(mode),
             used_direction: ParagraphBaseDirection::LeftToRight,
         }],
-        paragraphs: vec![crate::SourceProcessingParagraph {
+        paragraphs: vec![crate::processing::SourceProcessingParagraph {
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
         }],
         events,
     }
 }
-fn nf_prepare(value: crate::ContextualSourceInput) -> PreparedText {
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+fn nf_prepare(value: crate::processing::ContextualSourceInput) -> PreparedText {
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let a = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = a
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
-        .map(|r| crate::WrappingPolicy {
+        .map(|r| crate::wrapping::WrappingPolicy {
             relation: r.handle(),
-            ancestor_wrap: crate::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         })
         .collect();
     let a = a.with_wrapping_policies(policies).unwrap();
@@ -125,9 +130,9 @@ fn nf_line(
     r.line_box_struts = vec![nf_allocation()];
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -144,15 +149,19 @@ fn nf_whole(p: &PreparedText) -> FinalizedLine {
         LineEnd::Paragraph,
     )
 }
-fn nf_place(p: &PreparedText, line: FinalizedLine, coverage: PlacementCoverage) -> crate::Layout {
+fn nf_place(
+    p: &PreparedText,
+    line: FinalizedLine,
+    coverage: PlacementCoverage,
+) -> crate::layout::Layout {
     let capability = line.nonformatted().unwrap();
     assert_eq!(capability.finalized_line().feedback().line_height, 20.0);
-    crate::Layout::from_finalized_lines(PlacementRequest {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage,
         entries: vec![PlacementEntry::NonFormatted(NonFormattedLinePlacement {
             line: capability,
-            origin: crate::Point::new(7.0, 11.0),
+            origin: crate::geometry::Point::new(7.0, 11.0),
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
         })],
@@ -181,15 +190,24 @@ fn all_nonformatted_empty_and_removed_paragraphs_keep_nominal_metrics_without_ge
         );
         assert!(layout.lines().is_empty());
         assert_eq!(layout.metrics().line_count(), 0);
-        assert_eq!(layout.metrics().size(), crate::Size::new(0.0, 0.0));
-        assert_eq!(layout.bounds(), crate::Rect::new(0.0, 0.0, 0.0, 0.0));
+        assert_eq!(
+            layout.metrics().size(),
+            crate::geometry::Size::new(0.0, 0.0)
+        );
+        assert_eq!(
+            layout.bounds(),
+            crate::geometry::Rect::new(0.0, 0.0, 0.0, 0.0)
+        );
         assert_eq!(layout.metrics().first_baseline(), None);
         assert_eq!(layout.metrics().last_baseline(), None);
         assert_eq!(layout.positions().count(), 0);
-        assert_eq!(layout.hit(crate::Point::new(7.0, 11.0)), Hit::None);
+        assert_eq!(
+            layout.hit(crate::geometry::Point::new(7.0, 11.0)),
+            Hit::None
+        );
         let retained = layout.nonformatted_lines().collect::<Vec<_>>();
         assert_eq!(retained.len(), 1);
-        assert_eq!(retained[0].origin, crate::Point::new(7.0, 11.0));
+        assert_eq!(retained[0].origin, crate::geometry::Point::new(7.0, 11.0));
         assert_eq!(
             retained[0].line.finalized_line().feedback().line_height,
             20.0
@@ -248,9 +266,9 @@ fn all_nonformatted_empty_and_removed_paragraphs_keep_nominal_metrics_without_ge
 #[test]
 fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
     let mut forced = nf_input("", WhiteSpace::Collapse);
-    forced.controls = vec![crate::ParagraphControl {
+    forced.controls = vec![crate::protocol::paragraph::ParagraphControl {
         at: 0,
-        kind: crate::ParagraphControlKind::ForcedBreak,
+        kind: crate::protocol::paragraph::ParagraphControlKind::ForcedBreak,
     }];
     forced.events.insert(
         2,
@@ -281,11 +299,11 @@ fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
         &ProtocolError::NonFormattedInFlowContent
     );
     let mut input = nf_input("", WhiteSpace::Collapse);
-    input.source.inline_box(crate::InlineBox::new(
-        crate::Id::from_u64(659905),
-        crate::InlineBoxKind::InFlow,
+    input.source.inline_box(crate::source::InlineBox::new(
+        crate::id::Id::from_u64(659905),
+        crate::source::InlineBoxKind::InFlow,
         0,
-        crate::Size::new(0.0, 0.0),
+        crate::geometry::Size::new(0.0, 0.0),
     ));
     input.events.insert(
         2,
@@ -295,16 +313,18 @@ fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
         },
     );
     input.boundary_policies = [
-        crate::ParagraphBoundaryDefinition::AtomicBefore(0),
-        crate::ParagraphBoundaryDefinition::AtomicAfter(0),
+        crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+        crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
     ]
     .into_iter()
-    .map(|definition| crate::ParagraphBoundaryPolicy {
-        definition,
-        preceding_wrap: crate::Wrap::Word,
-        following_wrap: crate::Wrap::Word,
-        ancestor_wrap: crate::Wrap::Word,
-    })
+    .map(
+        |definition| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+            definition,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
+        },
+    )
     .collect();
     let p = nf_prepare(input);
     let mut r = request(&p);
@@ -314,7 +334,7 @@ fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
         .map(|a| AtomicAllocation {
             occurrence: a.handle(),
             allocation: AtomicLineAllocation::InFlow {
-                fit: crate::AtomicFitAllocation::NativeOccupied,
+                fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                 flow: AtomicFlowAllocation {
                     advance: 0.0,
                     normal_border_inline_size: 0.0,
@@ -324,8 +344,8 @@ fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
                     occupied_end: 0.0,
                 },
                 box_geometry: AtomicBoxAllocation {
-                    border: crate::Rect::new(0.0, 0.0, 0.0, 0.0),
-                    content: crate::Rect::new(0.0, 0.0, 0.0, 0.0),
+                    border: crate::geometry::Rect::new(0.0, 0.0, 0.0, 0.0),
+                    content: crate::geometry::Rect::new(0.0, 0.0, 0.0, 0.0),
                     baseline: 0.0,
                 },
                 alignment: LineBoxAlignment::Baseline,
@@ -335,9 +355,9 @@ fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 0.0);
@@ -354,32 +374,32 @@ fn removed_middle_soft_receipt_preserves_original_selection_between_real_visual_
     let source = input.source.clone();
     input.origins = [Range::new(0, 1), Range::new(1, 3), Range::new(3, 4)]
         .into_iter()
-        .map(|range| crate::ParagraphOrigin {
+        .map(|range| crate::protocol::paragraph::ParagraphOrigin {
             source: source.clone(),
             local: range,
             aggregate: range,
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             text_node: None,
         })
         .collect();
     input.connections = (0..2)
-        .map(|i| crate::SourceProcessingConnection {
+        .map(|i| crate::processing::SourceProcessingConnection {
             before_origin: i,
             after_origin: i + 1,
-            kind: crate::ParagraphConnectionKind::Continuous,
+            kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
         })
         .collect();
     input.boundary_policies = (0..2)
-        .map(|i| crate::ParagraphBoundaryPolicy {
-            definition: crate::ParagraphBoundaryDefinition::Connection(i),
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+        .map(|i| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+            definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(i),
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         })
         .collect();
-    input.controls = vec![crate::ParagraphControl {
+    input.controls = vec![crate::protocol::paragraph::ParagraphControl {
         at: 1,
-        kind: crate::ParagraphControlKind::Wbr {
+        kind: crate::protocol::paragraph::ParagraphControlKind::Wbr {
             style: Box::new(nf_style(WhiteSpace::Collapse)),
         },
     }];
@@ -418,7 +438,7 @@ fn removed_middle_soft_receipt_preserves_original_selection_between_real_visual_
     let control = p.control_views().next().unwrap().handle();
     assert!(matches!(
         control.view().kind(),
-        crate::ParagraphControlKind::Wbr { .. }
+        crate::protocol::paragraph::ParagraphControlKind::Wbr { .. }
     ));
     let wbr_index = p
         .participants()
@@ -488,11 +508,11 @@ fn removed_middle_soft_receipt_preserves_original_selection_between_real_visual_
     assert!(matches!(
         outside.detail(),
         Some(crate::ErrorDetail::SourceRangeFragments {
-            reason: crate::SourceRangeFragmentError::OutsidePlacement { aggregate }
+            reason: crate::range_fragments::SourceRangeFragmentError::OutsidePlacement { aggregate }
         }) if *aggregate == Range::new(0, 1)
     ));
     let retained = spaces.nonformatted().unwrap();
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: vec![
@@ -507,7 +527,7 @@ fn removed_middle_soft_receipt_preserves_original_selection_between_real_visual_
             }),
             PlacementEntry::NonFormatted(NonFormattedLinePlacement {
                 line: retained,
-                origin: crate::Point::new(0.0, 20.0),
+                origin: crate::geometry::Point::new(0.0, 20.0),
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
             }),
@@ -627,18 +647,18 @@ fn explicit_placement_key_tracks_alignment_and_replays_semantic_requests() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let layout = place(p.clone(), line.clone(), 7.0, 11.0).unwrap();
         (line, layout)
     };
-    let (start_line, start) = finalize_and_place(crate::Alignment::Start);
-    let (start_replay_line, start_replay) = finalize_and_place(crate::Alignment::Start);
-    let (end_line, end) = finalize_and_place(crate::Alignment::End);
-    let (end_replay_line, end_replay) = finalize_and_place(crate::Alignment::End);
+    let (start_line, start) = finalize_and_place(crate::options::Alignment::Start);
+    let (start_replay_line, start_replay) = finalize_and_place(crate::options::Alignment::Start);
+    let (end_line, end) = finalize_and_place(crate::options::Alignment::End);
+    let (end_replay_line, end_replay) = finalize_and_place(crate::options::Alignment::End);
     assert_eq!(
         start_line.selected_line().request(),
         start_replay_line.selected_line().request()
@@ -648,7 +668,7 @@ fn explicit_placement_key_tracks_alignment_and_replays_semantic_requests() {
         end_replay_line.selected_line().request()
     );
     let mut end_request = end_line.selected_line().request().clone();
-    end_request.context.alignment = crate::Alignment::Start;
+    end_request.context.alignment = crate::options::Alignment::Start;
     assert_eq!(&end_request, start_line.selected_line().request());
     for (line, layout, expected_x) in [
         (&start_line, &start, 7.0),

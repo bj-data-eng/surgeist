@@ -5,18 +5,18 @@ fn with_forced_control(text: &str, at: usize) -> PreparedText {
     let source = Source::new(text);
     let analysis = AnalyzedSource::from_paragraph(
         ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: style(),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
             origins: vec![paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
-                local: crate::Range::new(0, text.encode_utf16().count()),
-                aggregate: crate::Range::new(0, text.encode_utf16().count()),
+                local: crate::range::Range::new(0, text.encode_utf16().count()),
+                aggregate: crate::range::Range::new(0, text.encode_utf16().count()),
                 kind: paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
@@ -28,10 +28,10 @@ fn with_forced_control(text: &str, at: usize) -> PreparedText {
             replacements: vec![],
             anchor_order: vec![paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Control(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             }],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     system
@@ -59,10 +59,10 @@ fn selected_request(
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -80,7 +80,7 @@ fn selected_request(
         PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
         _ => unreachable!(),
     };
-    value.termination = crate::PreparedTermination::Ordinary(termination);
+    value.termination = crate::protocol::PreparedTermination::Ordinary(termination);
     value
 }
 
@@ -111,9 +111,9 @@ fn finalized_forced(p: &PreparedText) -> FinalizedLine {
         opportunity(p, PreparedBreakKind::Forced),
     ))
     .unwrap()
-    .finalize(crate::LineAllocations {
+    .finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
     .unwrap()
 }
@@ -122,15 +122,15 @@ fn placed_lines(
     p: PreparedText,
     coverage: PlacementCoverage,
     lines: Vec<FinalizedLine>,
-) -> crate::Result<crate::Layout> {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+) -> crate::Result<crate::layout::Layout> {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage,
         entries: lines
             .into_iter()
             .enumerate()
             .map(|(index, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     anchor: LineAnchor {
                         inline_origin: 0.0,
                         baseline: 16.0 + index as f64 * 20.0,
@@ -216,9 +216,9 @@ fn consumed_terminal_forced_boundary_accepts_a_real_empty_paragraph_end_line() {
                 opportunity(&p, PreparedBreakKind::ParagraphEnd),
             ))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert!(last.selected_line().request().participants.is_empty());
@@ -239,21 +239,21 @@ fn authored_forced_break_stops_rtl_receiver_neutral_context() {
         let source = Source::new("A.A");
         let analyzed = AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: source.clone(),
                 base_style: Style {
                     white_space: WhiteSpace::Preserve,
                     ..style()
                 },
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::RightToLeft,
                 paragraph_strut: ParagraphStrut::DefaultFont,
                 origins: vec![paragraph::ParagraphOrigin {
                     text_node: None,
                     source,
-                    local: crate::Range::new(0, 3),
-                    aggregate: crate::Range::new(0, 3),
+                    local: crate::range::Range::new(0, 3),
+                    aggregate: crate::range::Range::new(0, 3),
                     kind: paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: Vec::new(),
@@ -269,12 +269,12 @@ fn authored_forced_break_stops_rtl_receiver_neutral_context() {
                 anchor_order: forced
                     .then_some(paragraph::ParagraphAnchor {
                         item: paragraph::ParagraphAnchorItem::Control(0),
-                        affinity: crate::Affinity::After,
+                        affinity: crate::layout::Affinity::After,
                     })
                     .into_iter()
                     .collect(),
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         system()
@@ -313,12 +313,12 @@ fn authored_forced_break_stops_rtl_receiver_neutral_context() {
         let finish = |start, ending| {
             let mut request = selected_request(&p, start, ending);
             request.context.base_direction = ParagraphBaseDirection::RightToLeft;
-            request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+            request.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
             p.select(request)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap()
         };
@@ -345,9 +345,9 @@ fn authored_forced_break_stops_rtl_receiver_neutral_context() {
         assert_eq!(
             glyphs,
             [
-                (crate::Range::new(0, 1), 35, 20.0),
-                (crate::Range::new(1, 2), 16, 20.0),
-                (crate::Range::new(2, 3), 35, 20.0),
+                (crate::range::Range::new(0, 1), 35, 20.0),
+                (crate::range::Range::new(1, 2), 16, 20.0),
+                (crate::range::Range::new(2, 3), 35, 20.0),
             ]
         );
         let placed = placed_lines(p, PlacementCoverage::WholeParagraph, lines).unwrap();
@@ -359,9 +359,12 @@ fn authored_forced_break_stops_rtl_receiver_neutral_context() {
                 .map(|line| line.range())
                 .collect::<Vec<_>>(),
             if forced {
-                vec![crate::Range::new(0, 1), crate::Range::new(1, 3)]
+                vec![
+                    crate::range::Range::new(0, 1),
+                    crate::range::Range::new(1, 3),
+                ]
             } else {
-                vec![crate::Range::new(0, 3)]
+                vec![crate::range::Range::new(0, 3)]
             }
         );
         // Pinned Writing Modes4 §2.4 (bidi-algo/HL1) keeps base RTL but
@@ -374,9 +377,9 @@ fn authored_forced_break_stops_rtl_receiver_neutral_context() {
         assert_eq!(
             levels,
             [
-                (crate::Range::new(0, 1), 2),
-                (crate::Range::new(1, 2), if forced { 1 } else { 2 }),
-                (crate::Range::new(2, 3), 2),
+                (crate::range::Range::new(0, 1), 2),
+                (crate::range::Range::new(1, 2), if forced { 1 } else { 2 }),
+                (crate::range::Range::new(2, 3), 2),
             ],
             "authored ForcedBreak = {forced}"
         );

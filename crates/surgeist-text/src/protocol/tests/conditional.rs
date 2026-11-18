@@ -1,18 +1,21 @@
 use super::*;
-use crate::{OverflowWrap, Range, Wrap};
+use crate::{
+    range::Range,
+    style::{OverflowWrap, Wrap},
+};
 
 fn input(text: &str, overflow_wrap: OverflowWrap) -> ParagraphInput {
     let source = Source::new(text);
     let length = source.text().len();
     ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
             overflow_wrap,
             ..style()
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
@@ -32,14 +35,16 @@ fn input(text: &str, overflow_wrap: OverflowWrap) -> ParagraphInput {
 
 fn prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
     let ancestor_wrap = input.base_style.wrap;
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     // These fixtures explicitly describe one flat containing box. The producer
     // binds that actual fact to Text's processed pairs, without deriving them.
     let policies = analyzed
         .wrapping_relations()
-        .map(|relation| crate::WrappingPolicy {
+        .map(|relation| crate::wrapping::WrappingPolicy {
             relation: relation.handle(),
             ancestor_wrap,
         })
@@ -75,7 +80,7 @@ fn offers(
             &first_after(prepared, &start),
             purpose,
             &[],
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -108,10 +113,10 @@ fn selection(
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -205,9 +210,9 @@ fn conditional_capabilities_preserve_query_identity_and_do_not_claim_fit() {
     let line = prepared
         .select(selection(&prepared, &first[0]))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // Eligibility is not fit: this actual20px glyph was selected for a1px span.
@@ -281,7 +286,7 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
                     &end,
                     ConditionalPurpose::Overflow,
                     &[],
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -301,7 +306,7 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
                     &first,
                     ConditionalPurpose::Overflow,
                     &[],
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -336,9 +341,9 @@ fn conditional_cuts_reshape_optional_ligatures_with_the_retained_instance() {
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&whole), [(Range::new(0, 2), 58)]);
@@ -349,9 +354,9 @@ fn conditional_cuts_reshape_optional_ligatures_with_the_retained_instance() {
     let line = prepared
         .select(selection(&prepared, &cuts[0]))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&line), [(Range::new(0, 1), 35)]);
@@ -375,13 +380,13 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let prepared = prepare(&mut system, value);
     let mut control = request(&prepared);
     control.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    control.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    control.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let whole = prepared
         .select(control)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -396,13 +401,13 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     assert_eq!(sources(&cuts), [1, 2]);
     let mut first_request = selection(&prepared, &cuts[0]);
     first_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    first_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    first_request.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let first = prepared
         .select(first_request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&first), [(Range::new(0, 1), 100)]);
@@ -417,7 +422,7 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
             &first_after(&prepared, &second_start),
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -425,13 +430,13 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     assert_eq!(sources(&second_cuts), [2]);
     let mut second_request = selection(&prepared, &second_cuts[0]);
     second_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    second_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    second_request.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let second = prepared
         .select(second_request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&second), [(Range::new(1, 2), 277)]);
@@ -440,13 +445,13 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     last_request.participants = prepared.participants().skip(2).collect();
     last_request.context.start = LineStart::Continuation;
     last_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    last_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    last_request.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let last = prepared
         .select(last_request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&last), [(Range::new(2, 3), 82)]);
@@ -477,7 +482,7 @@ fn conditional_termination_cannot_select_failed_ordinary_replacement() {
                 source: Range::new(2, 3),
             },
             3,
-            vec![crate::Text::from("-")],
+            vec![crate::text::Text::from("-")],
         )
         .unwrap(),
     );
@@ -497,9 +502,9 @@ fn conditional_termination_cannot_select_failed_ordinary_replacement() {
     let selected = prepared.select(selection(&prepared, &cuts[0])).unwrap();
     assert!(selected.request().alternative.is_none());
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&line), [(Range::new(0, 1), 35)]);
@@ -512,14 +517,14 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
     let mut system = system();
     let raw = AnalyzedSource::from_paragraph(
         input("AAA", OverflowWrap::Anywhere),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let old_identity = raw.identity();
     let old_graphemes: Vec<_> = raw.graphemes().collect();
     let policies: Vec<_> = raw
         .wrapping_relations()
-        .map(|view| crate::WrappingPolicy {
+        .map(|view| crate::wrapping::WrappingPolicy {
             relation: view.handle(),
             ancestor_wrap: Wrap::Word,
         })
@@ -546,7 +551,7 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
         .with_wrapping_policies(
             bound
                 .wrapping_relations()
-                .map(|view| crate::WrappingPolicy {
+                .map(|view| crate::wrapping::WrappingPolicy {
                     relation: view.handle(),
                     ancestor_wrap: Wrap::None,
                 })
@@ -567,9 +572,9 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
         prepared
             .select(selection(&prepared, &prior[0]))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -588,17 +593,17 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
     let old_line = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let new_line = other
         .select(request(&other))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let old_layout = place(prepared.clone(), old_line, 0.0, 16.0).unwrap();
@@ -626,20 +631,20 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
 fn bound_wrapping_keeps_source_only_ax_content_and_separate_context_custody() {
     let raw = AnalyzedSource::from_paragraph(
         input("AAA", OverflowWrap::Anywhere),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let policies = raw
         .wrapping_relations()
-        .map(|view| crate::WrappingPolicy {
+        .map(|view| crate::wrapping::WrappingPolicy {
             relation: view.handle(),
             ancestor_wrap: Wrap::Word,
         })
         .collect();
     let bound = raw.with_wrapping_policies(policies).unwrap();
     let parent = accesskit::NodeId(100);
-    let mut old_state = crate::Accessibility::new(200);
-    let mut new_state = crate::Accessibility::new(200);
+    let mut old_state = crate::accessibility::Accessibility::new(200);
+    let mut new_state = crate::accessibility::Accessibility::new(200);
     let old_update = raw
         .accessibility_update(&mut old_state, parent, parent)
         .unwrap();
@@ -662,7 +667,7 @@ fn bound_wrapping_keeps_source_only_ax_content_and_separate_context_custody() {
             .collect::<String>(),
         "AAA"
     );
-    let cursor = crate::Cursor::new(1, crate::Affinity::After);
+    let cursor = crate::layout::Cursor::new(1, crate::layout::Affinity::After);
     assert!(raw.access_position(&old_state, cursor).unwrap().is_some());
     assert_eq!(
         bound
@@ -680,7 +685,7 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
     let mut system = system();
     let raw = AnalyzedSource::from_paragraph(
         input("AAA", OverflowWrap::Anywhere),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system.prepare(&raw, PreparationOptions::default()).unwrap();
@@ -697,7 +702,7 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
                     &first_after(&prepared, &start),
                     ConditionalPurpose::Overflow,
                     &[],
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -710,9 +715,9 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
         prepared
             .select(request(&prepared))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -721,7 +726,7 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
     );
     let raw = AnalyzedSource::from_paragraph(
         input("A\nA", OverflowWrap::Normal),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system.prepare(&raw, PreparationOptions::default()).unwrap();
@@ -735,7 +740,7 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
     assert!(offers(&prepared, ConditionalPurpose::Overflow).is_empty());
     let raw = AnalyzedSource::from_paragraph(
         input("A A", OverflowWrap::Normal),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert!(matches!(
@@ -748,9 +753,11 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
     ));
     let mut collapsed = input("A A", OverflowWrap::Normal);
     collapsed.base_style.white_space = WhiteSpace::Collapse;
-    let raw =
-        AnalyzedSource::from_paragraph(collapsed, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let raw = AnalyzedSource::from_paragraph(
+        collapsed,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert!(system.prepare(&raw, PreparationOptions::default()).is_ok());
 }
 
@@ -775,10 +782,10 @@ fn ordinary_receipt(
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -802,9 +809,9 @@ fn ordinary_receipt(
     prepared
         .select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -821,7 +828,7 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
     let phantom = ordinary_receipt(&prepared, start.clone(), first, None);
     assert!(
         !phantom
-            .prefix_at(&crate::TextSeam::AfterParticipant(
+            .prefix_at(&crate::protocol::prefix::TextSeam::AfterParticipant(
                 phantom
                     .selected_line()
                     .request()
@@ -842,8 +849,10 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
             None,
             &ceiling,
             ConditionalPurpose::Overflow,
-            &[crate::ConditionalDisposition::Phantom(phantom.clone())],
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            &[crate::protocol::ConditionalDisposition::Phantom(
+                phantom.clone(),
+            )],
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -852,9 +861,9 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
     let first = prepared
         .select(selection(&prepared, &cuts[0]))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(first.selected_line().request().start, start);
@@ -866,11 +875,11 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
             .any(|(range, _)| *range == Range::new(1, 2))
     );
     let continuation = ordinary_receipt(&prepared, cuts[0].boundary(), ceiling, None);
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: vec![
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: first,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -879,7 +888,7 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
             }),
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: continuation,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -921,7 +930,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     value.anchor_order = (0..2)
         .map(|index| ParagraphAnchor {
             item: ParagraphAnchorItem::Control(index),
-            affinity: crate::Affinity::Before,
+            affinity: crate::layout::Affinity::Before,
         })
         .collect();
     let prepared = prepare(&mut system, value);
@@ -946,7 +955,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             ceiling,
             ConditionalPurpose::Overflow,
             &phantom_dispositions(&receipts),
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -964,7 +973,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                 ceiling,
                 ConditionalPurpose::Overflow,
                 &phantom_dispositions(&receipts.clone()),
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -978,9 +987,9 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             prepared
                 .select(value)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap()
         })
@@ -997,7 +1006,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                 ceiling,
                 ConditionalPurpose::Overflow,
                 &phantom_dispositions(&other_trials),
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -1028,7 +1037,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                         ceiling,
                         ConditionalPurpose::Overflow,
                         &phantom_dispositions(&bad),
-                        crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                        crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                     )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
@@ -1059,7 +1068,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                     ceiling,
                     ConditionalPurpose::MinContent,
                     &phantom_dispositions(&receipts),
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -1077,9 +1086,9 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             prepared
                 .select(value)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap()
         })
@@ -1094,7 +1103,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             ceiling,
             ConditionalPurpose::MinContent,
             &phantom_dispositions(&minimum_receipts),
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -1103,9 +1112,9 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     let minimum_line = prepared
         .select(selection(&prepared, &minimum[0]))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(minimum_line.feedback().advance, 20.0);
@@ -1162,9 +1171,18 @@ fn retained_zero_or_signed_text_cannot_be_a_phantom_receipt() {
                 [Range::new(index, index + 1)]
             );
         }
-        assert_eq!(cells[0].disposition(), crate::LineEdgeDisposition::Ordinary);
-        assert_eq!(cells[1].disposition(), crate::LineEdgeDisposition::Ordinary);
-        assert_eq!(cells[2].disposition(), crate::LineEdgeDisposition::Removed);
+        assert_eq!(
+            cells[0].disposition(),
+            crate::protocol::LineEdgeDisposition::Ordinary
+        );
+        assert_eq!(
+            cells[1].disposition(),
+            crate::protocol::LineEdgeDisposition::Ordinary
+        );
+        assert_eq!(
+            cells[2].disposition(),
+            crate::protocol::LineEdgeDisposition::Removed
+        );
         assert!(receipt.has_in_flow_content());
         assert_eq!(receipt.feedback().advance, advance);
         assert!(matches!(
@@ -1178,8 +1196,8 @@ fn retained_zero_or_signed_text_cannot_be_a_phantom_receipt() {
                         None,
                         &ceiling,
                         ConditionalPurpose::Overflow,
-                        &[crate::ConditionalDisposition::Phantom(receipt)],
-                        crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                        &[crate::protocol::ConditionalDisposition::Phantom(receipt)],
+                        crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                     )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
@@ -1207,7 +1225,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
     });
     value.anchor_order.push(ParagraphAnchor {
         item: ParagraphAnchorItem::Control(0),
-        affinity: crate::Affinity::Before,
+        affinity: crate::layout::Affinity::Before,
     });
     value.replacements = vec![
         ParagraphReplacement::resolved_native_logical_before(
@@ -1216,7 +1234,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
                 origin: None,
             },
             3,
-            vec![crate::Text::from(""), crate::Text::from("A")],
+            vec![crate::text::Text::from(""), crate::text::Text::from("A")],
         )
         .unwrap(),
     ];
@@ -1226,7 +1244,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
         reason(
             &AnalyzedSource::from_paragraph(
                 invalid,
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             )
             .unwrap_err()
         ),
@@ -1283,7 +1301,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
                     &inventory[2],
                     ConditionalPurpose::Overflow,
                     &phantom_dispositions(&receipts),
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -1309,7 +1327,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
                     &inventory[2],
                     ConditionalPurpose::Overflow,
                     &phantom_dispositions(&receipts),
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -1329,11 +1347,11 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
     let mut system = system();
     let mut value = input("AB", OverflowWrap::Anywhere);
     for occurrence in 0..2 {
-        value.source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(100 + occurrence),
-            crate::InlineBoxKind::OutOfFlow,
+        value.source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(100 + occurrence),
+            crate::source::InlineBoxKind::OutOfFlow,
             1,
-            crate::Size::new(10.0, 10.0),
+            crate::geometry::Size::new(10.0, 10.0),
         ));
     }
     value.origins = [("A", 0, 1), ("", 1, 1), ("", 1, 1), ("B", 1, 2)]
@@ -1378,24 +1396,26 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
     ]
     .map(|item| ParagraphAnchor {
         item,
-        affinity: crate::Affinity::Before,
+        affinity: crate::layout::Affinity::Before,
     })
     .to_vec();
-    let raw =
-        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let raw = AnalyzedSource::from_paragraph(
+        value,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let relation = raw.wrapping_relations().next().unwrap();
     assert_eq!(raw.wrapping_relations().len(), 1);
     assert_eq!(
         relation.before(),
-        crate::WrappingNeighbor::Text {
+        crate::wrapping::WrappingNeighbor::Text {
             origin: 0,
             local: Range::new(0, 1)
         }
     );
     assert_eq!(
         relation.after(),
-        crate::WrappingNeighbor::Text {
+        crate::wrapping::WrappingNeighbor::Text {
             origin: 3,
             local: Range::new(0, 1)
         }
@@ -1403,7 +1423,7 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
     assert_eq!(relation.ancestor_wrap(), None);
     for (ancestor_wrap, count) in [(Wrap::Word, 7), (Wrap::None, 0)] {
         let bound = raw
-            .with_wrapping_policies(vec![crate::WrappingPolicy {
+            .with_wrapping_policies(vec![crate::wrapping::WrappingPolicy {
                 relation: relation.handle(),
                 ancestor_wrap,
             }])
@@ -1423,9 +1443,9 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
             assert_eq!(selected.request().participants.len(), index + 1);
             assert_eq!(
                 selected
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None
+                        scopes: crate::protocol::ScopeAllocations::None
                     })
                     .unwrap()
                     .feedback()
@@ -1470,27 +1490,29 @@ fn deleted_bridge_relations_keep_real_original_endpoints_and_logical_before_styl
             ancestor_wrap,
         })
         .collect();
-    let raw =
-        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let raw = AnalyzedSource::from_paragraph(
+        value,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let view = raw.wrapping_relations().next().unwrap();
     assert_eq!(
         view.before(),
-        crate::WrappingNeighbor::Text {
+        crate::wrapping::WrappingNeighbor::Text {
             origin: 0,
             local: Range::new(0, 1)
         }
     );
     assert_eq!(
         view.after(),
-        crate::WrappingNeighbor::Text {
+        crate::wrapping::WrappingNeighbor::Text {
             origin: 2,
             local: Range::new(0, 1)
         }
     );
     assert!(view.ancestor_wrap().is_none());
     let bound = raw
-        .with_wrapping_policies(vec![crate::WrappingPolicy {
+        .with_wrapping_policies(vec![crate::wrapping::WrappingPolicy {
             relation: view.handle(),
             ancestor_wrap: Wrap::Word,
         }])
@@ -1539,20 +1561,20 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
                 source: Range::new(3, 4),
             },
             4,
-            vec![crate::Text::from("-")],
+            vec![crate::text::Text::from("-")],
         )
         .unwrap(),
     );
     let prepared = prepare(&mut system, value);
     let mut whole_request = request(&prepared);
     whole_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    whole_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    whole_request.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let whole = prepared
         .select(whole_request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(glyphs(&whole).contains(&(Range::new(1, 2), 100)));
@@ -1567,15 +1589,15 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     trial.termination = PreparedTermination::Ordinary(first.handle());
     trial.alternative = Some(alternative);
     trial.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    trial.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    trial.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     trial.context.end = LineEnd::Soft;
     trial.context.available_inline = Some(20.0);
     let trial = prepared
         .select(trial)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(trial.feedback().advance > 20.0);
@@ -1584,13 +1606,13 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     assert_eq!(sources(&cuts), [1, 2, 3]);
     let mut selected = selection(&prepared, &cuts[1]);
     selected.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    selected.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    selected.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let line = prepared
         .select(selected)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -1618,13 +1640,13 @@ fn conditional_provider_and_numeric_refusals_leave_prior_actual_results_valid() 
     let prepared = prepare(&mut system, value);
     let mut whole_request = request(&prepared);
     whole_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    whole_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    whole_request.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let whole = prepared
         .select(whole_request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let prior = glyphs(&whole);
@@ -1637,12 +1659,12 @@ fn conditional_provider_and_numeric_refusals_leave_prior_actual_results_valid() 
         .unwrap();
     let mut value = selection(&prepared, cut);
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    value.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     let error = prepared.select(value.clone()).unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&crate::ErrorDetail::ShapingRefused {
-            reason: crate::ShapingRefusalReason::ContextLimit
+            reason: crate::error::ShapingRefusalReason::ContextLimit
         })
     );
     value.context.available_inline = Some(f64::NAN);
@@ -1668,7 +1690,7 @@ fn raw_analysis_keeps_its_ordinary_model_without_additional_native_cuts() {
                 overflow_wrap,
                 ..style()
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let prepared = system.prepare(&raw, PreparationOptions::default()).unwrap();
@@ -1706,7 +1728,7 @@ fn raw_analysis_keeps_its_ordinary_model_without_additional_native_cuts() {
                         &first_after(&prepared, &start),
                         ConditionalPurpose::MinContent,
                         &[],
-                        crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                        crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                     )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
@@ -1723,11 +1745,19 @@ fn raw_analysis_keeps_its_ordinary_model_without_additional_native_cuts() {
 #[test]
 fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() {
     use crate::{
-        Affinity, ContextualSourceInput, DocumentSegmentBreaks, Id, InlineBox, InlineBoxKind,
-        ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
-        ParagraphOrigin, ParagraphOriginKind, Size, SourceProcessingConnection,
-        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-        SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+        geometry::Size,
+        id::Id,
+        layout::Affinity,
+        processing::{
+            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
+            SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+            SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+        },
+        protocol::paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind,
+        },
+        source::{InlineBox, InlineBoxKind},
     };
     let mut source = Source::new("AIB");
     source.inline_box(InlineBox::new(
@@ -1770,8 +1800,8 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::SourceProcessingTopology::Unknown,
-                used_direction: crate::ParagraphBaseDirection::LeftToRight,
+                topology: crate::processing::SourceProcessingTopology::Unknown,
+                used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: Style {
                     overflow_wrap: OverflowWrap::Anywhere,
@@ -1782,8 +1812,8 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::SourceProcessingTopology::Unknown,
-                used_direction: crate::ParagraphBaseDirection::LeftToRight,
+                topology: crate::processing::SourceProcessingTopology::Unknown,
+                used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(),
                 atomic: 0,
@@ -1827,7 +1857,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
     let processed = std::sync::Arc::new(process_contextual_source(capture).unwrap());
     let parent = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = system();
@@ -1850,9 +1880,9 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
     let first = prepared
         .select(selection(&prepared, &cuts[1]))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(first.selected_line().request().participants.len(), 2);
@@ -1864,13 +1894,13 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         None,
     );
     assert_eq!(glyphs(&continuation), [(Range::new(2, 3), 36)]);
-    let continuation = crate::Layout::from_finalized_lines(PlacementRequest {
+    let continuation = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::Range {
             start: cuts[1].boundary(),
             end: prepared.boundary_views().last().unwrap().handle(),
         },
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line: continuation,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -1888,9 +1918,14 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
 #[test]
 fn conditional_eligibility_is_not_created_by_atomic_or_control_occurrences() {
     use crate::{
-        Affinity, Id, InlineBox, InlineBoxKind, ParagraphAnchor, ParagraphAnchorItem,
-        ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphControl,
-        ParagraphControlKind, Size,
+        geometry::Size,
+        id::Id,
+        layout::Affinity,
+        protocol::paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy, ParagraphControl, ParagraphControlKind,
+        },
+        source::{InlineBox, InlineBoxKind},
     };
     let mut system = system();
     for kind in [InlineBoxKind::InFlow, InlineBoxKind::OutOfFlow] {
@@ -1976,11 +2011,11 @@ fn conditional_eligibility_is_not_created_by_atomic_or_control_occurrences() {
     );
 }
 
-fn phantom_dispositions(lines: &[FinalizedLine]) -> Vec<crate::ConditionalDisposition> {
+fn phantom_dispositions(lines: &[FinalizedLine]) -> Vec<crate::protocol::ConditionalDisposition> {
     lines
         .iter()
         .cloned()
-        .map(crate::ConditionalDisposition::Phantom)
+        .map(crate::protocol::ConditionalDisposition::Phantom)
         .collect()
 }
 
@@ -1989,9 +2024,9 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     let mut system = system();
     let mut value = input("as\u{ad}sociate", OverflowWrap::Anywhere);
     value.base_style.size = 10.0;
-    value.base_style.hyphens = crate::Hyphens::Manual;
+    value.base_style.hyphens = crate::hyphenation::Hyphens::Manual;
     value.base_style.hyphenate_character =
-        crate::HyphenateCharacter::String(crate::Text::from("A"));
+        crate::hyphenation::HyphenateCharacter::String(crate::text::Text::from("A"));
     let p = prepare(&mut system, value);
     let start = p.boundary_views().next().unwrap().handle();
     let manual = p
@@ -2012,9 +2047,9 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     let first = p
         .select(trial.clone())
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(first.feedback().advance, 30.0);
@@ -2034,7 +2069,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2051,7 +2086,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
             &ceiling,
             ConditionalPurpose::Overflow,
             std::slice::from_ref(&disposition),
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -2069,9 +2104,9 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     let line = p
         .select(selected)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 70.0);
@@ -2079,9 +2114,9 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     let second = p
         .select(trial)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -2095,7 +2130,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[ConditionalDisposition::ConsumerHyphenationPolicy(second)],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2111,7 +2146,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 std::slice::from_ref(&disposition),
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2127,7 +2162,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[disposition.clone(), disposition],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2140,9 +2175,9 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
     let mut system = system();
     let mut value = input("as\u{ad}sociate", OverflowWrap::Anywhere);
     value.base_style.size = 10.0;
-    value.base_style.hyphens = crate::Hyphens::Manual;
+    value.base_style.hyphens = crate::hyphenation::Hyphens::Manual;
     value.base_style.hyphenate_character =
-        crate::HyphenateCharacter::String(crate::Text::from("A"));
+        crate::hyphenation::HyphenateCharacter::String(crate::text::Text::from("A"));
     let p = prepare(&mut system, value.clone());
     let foreign = prepare(&mut system, value);
     let start = p.boundary_views().next().unwrap().handle();
@@ -2179,9 +2214,9 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
         r.context.available_inline = Some(width);
         p.select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap()
     };
@@ -2195,7 +2230,7 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2213,9 +2248,9 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
     let ordinary = p
         .select(ordinary)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(
@@ -2240,9 +2275,9 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
     let line = plain
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(line.has_in_flow_content());
@@ -2262,7 +2297,7 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
                 &end,
                 ConditionalPurpose::Overflow,
                 &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2276,7 +2311,7 @@ fn unrelated_auto_phrase_owners_do_not_change_a_normal_intervals_authority() {
     for phrase_first in [false, true] {
         let mut value = input("AAAAA\nBBBBB", OverflowWrap::Anywhere);
         let mut phrase = value.base_style.clone();
-        phrase.word_break = crate::WordBreak::AutoPhrase;
+        phrase.word_break = crate::style::WordBreak::AutoPhrase;
         value.source.span(
             if phrase_first {
                 Range::new(0, 5)
@@ -2304,12 +2339,12 @@ fn unrelated_auto_phrase_owners_do_not_change_a_normal_intervals_authority() {
                 &normal_ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .expect("only actual interval owners require AutoPhrase finite stages");
         assert!(search.phrase_portions().is_empty());
         let batch = search.begin(&[]).unwrap();
-        assert_eq!(batch.stage(), crate::ConditionalStage::Arbitrary);
+        assert_eq!(batch.stage(), crate::protocol::ConditionalStage::Arbitrary);
         assert_eq!(
             sources(batch.opportunities()),
             if phrase_first {
@@ -2329,7 +2364,7 @@ fn unrelated_auto_phrase_owners_do_not_change_a_normal_intervals_authority() {
                     &first_after(&p, &affected_start),
                     ConditionalPurpose::Overflow,
                     &[],
-                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                    crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .is_err(),
             "the actual AutoPhrase interval still requires its finite frame"

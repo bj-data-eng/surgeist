@@ -3,23 +3,35 @@
 use std::sync::Arc;
 
 use crate::{
-    Affinity, Alignment, AnalysisTypography, AnalyzedSource, ContextualSourceInput,
-    DocumentSegmentBreaks, FinalizedFragmentView, FinalizedGlyphView, FinalizedLine,
-    FinalizedRunView, FormattedLineContext, LineAlignmentInsets, LineAllocations, LineBoxDirection,
-    LineContext, LineEdgeUnitView, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
-    ParagraphBaseDirection, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
-    ParagraphTabReference, ParagraphTerminalEdge, PreparationOptions, PreparedBreakKind,
-    PreparedTermination, PreparedText, ProcessedSource, ProtocolError, Range, Result,
-    ScopeAlignmentLimits, ScopeAllocations, ScopeFontReference, SelectedMappingView, Source,
-    SourceIdentity, SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-    SourceProcessingScope, SourceProcessingTopology, SourceWritingAxis, SpacingAllocations,
-    SpacingPolicy, Style, TabContext, TabPreparation, Text, TextCombineUpright, WhiteSpaceTrim,
-    Wrap, WrappingPolicy,
+    Result,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    layout::Affinity,
+    options::Alignment,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, ProcessedSource, ScopeAlignmentLimits,
+        ScopeFontReference, SourceProcessingEnvelope, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+        SourceWritingAxis, WhiteSpaceTrim,
+    },
     protocol::{
-        paragraph::ParagraphData,
+        FinalizedLine, FormattedLineContext, LineAlignmentInsets, LineAllocations,
+        LineBoxDirection, LineContext, LineEdgeUnitView, LineEnd, LineOrientation,
+        LineSelectionRequest, LineStart, ParagraphBaseDirection, ParagraphTerminalEdge,
+        PreparationOptions, PreparedBreakKind, PreparedTermination, PreparedText, ProtocolError,
+        ScopeAllocations, SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{ParagraphData, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
         protocol_error,
+        readback::{
+            FinalizedFragmentView, FinalizedGlyphView, FinalizedRunView, SelectedMappingView,
+        },
         selection::{LineMetricPolicy, select_with_scratch},
     },
+    range::Range,
+    source::{Source, SourceIdentity},
+    style::{Style, TextCombineUpright, Wrap},
+    tabs::{ParagraphTabReference, TabPreparation},
+    text::Text,
+    wrapping::WrappingPolicy,
 };
 
 use super::{analysis::storage, shape::ShapeContext};
@@ -82,7 +94,7 @@ impl FinalizedLeaderPattern {
 
     /// Finalized unit geometry in local coordinates, including advance and baseline.
     #[must_use]
-    pub fn metrics(&self) -> crate::LineFeedback {
+    pub fn metrics(&self) -> crate::protocol::LineFeedback {
         self.line.feedback()
     }
 
@@ -139,7 +151,7 @@ impl LeaderRunView<'_> {
 
     /// Executed physical glyph frame with local x=0 on the shared baseline
     /// at physical (0, 0), including any combined cell transform.
-    pub fn glyph_frame(&self) -> Result<crate::GlyphFrame> {
+    pub fn glyph_frame(&self) -> Result<crate::geometry::GlyphFrame> {
         self.run.pattern_glyph_frame()
     }
 
@@ -169,7 +181,7 @@ impl LeaderClusterView<'_> {
 
     /// Actual cell geometry and source disposition, including glyphless cells.
     #[must_use]
-    pub fn cell(&self) -> Option<crate::FinalizedCellView<'_>> {
+    pub fn cell(&self) -> Option<crate::protocol::readback::FinalizedCellView<'_>> {
         self.edge.cell()
     }
 
@@ -181,18 +193,18 @@ impl LeaderClusterView<'_> {
 
     /// Allocated metric bounds, independent of glyph ink.
     #[must_use]
-    pub fn bounds(&self) -> crate::Rect {
+    pub fn bounds(&self) -> crate::geometry::Rect {
         self.edge.bounds()
     }
 
     /// Position in the transformed presentation.
     #[must_use]
-    pub fn presentation_range(&self) -> crate::PresentationRange {
+    pub fn presentation_range(&self) -> crate::protocol::PresentationRange {
         self.edge.presentation_range()
     }
 
     /// Nonempty original UTF-16 pieces associated with this contribution.
-    pub fn source_pieces(&self) -> impl Iterator<Item = crate::Range> + '_ {
+    pub fn source_pieces(&self) -> impl Iterator<Item = crate::range::Range> + '_ {
         self.edge.source_pieces()
     }
 }
@@ -301,7 +313,7 @@ fn analyze_combination(source: Source, input: LeaderPatternInput) -> Result<Anal
             SourceProcessingEvent::ExitScope(0),
         ],
     };
-    let processed = Arc::new(crate::processing::process_leader_capture(
+    let processed = Arc::new(crate::processing::contextual::process_leader_capture(
         capture,
         input.tab_reference.as_ref(),
     )?);
@@ -371,7 +383,11 @@ pub(crate) fn finalize(
 mod tests {
     use super::*;
     use crate::{
-        Font, Id, PresentationMappingKind, SourceRevision, TabSize, WhiteSpace,
+        id::Id,
+        protocol::readback::PresentationMappingKind,
+        source::SourceRevision,
+        style::{Font, WhiteSpace},
+        tabs::TabSize,
         test_fonts::{AHEM, FONT_LIMITS},
     };
 
@@ -534,8 +550,9 @@ mod tests {
     fn reads_each_expanded_cluster_with_its_own_geometry_and_shared_source() {
         let mut system = system();
         let mut request = input(LeaderPattern::Literal("ß".into()), WhiteSpace::Collapse);
-        request.style.text_transform = crate::TextTransform::Set(
-            crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+        request.style.text_transform = crate::style::TextTransform::Set(
+            crate::style::TextTransformSet::none()
+                .with_case(crate::style::CaseTransform::Uppercase),
         );
         let pattern = system.prepare_leader_pattern(request).unwrap();
         assert_eq!(pattern.metrics().advance, 40.0);
@@ -565,8 +582,9 @@ mod tests {
             LeaderPattern::Literal("a\r\n b".into()),
             WhiteSpace::Collapse,
         );
-        request.style.text_transform = crate::TextTransform::Set(
-            crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+        request.style.text_transform = crate::style::TextTransform::Set(
+            crate::style::TextTransformSet::none()
+                .with_case(crate::style::CaseTransform::Uppercase),
         );
         request.style.word_spacing = 4.0;
         let pattern = system.prepare_leader_pattern(request).unwrap();
@@ -584,8 +602,8 @@ mod tests {
         let request = input(LeaderPattern::Literal("12".into()), WhiteSpace::Collapse);
         let ordinary = system.prepare_leader_pattern(request.clone()).unwrap();
         for combination in [
-            crate::TextCombineUpright::All,
-            crate::TextCombineUpright::Digits(crate::TextCombineUprightDigits::Two),
+            crate::style::TextCombineUpright::All,
+            crate::style::TextCombineUpright::Digits(crate::style::TextCombineUprightDigits::Two),
         ] {
             let mut request = request.clone();
             request.style.text_combine_upright = combination;
@@ -615,19 +633,19 @@ mod tests {
         let (axis, baseline) = if orientation == LineOrientation::Vertical {
             request.typography = AnalysisTypography::Mixed;
             (
-                crate::FontBaselineAxis::VerticalX,
-                crate::FontBaseline::Central,
+                crate::font::FontBaselineAxis::VerticalX,
+                crate::font::FontBaseline::Central,
             )
         } else {
             (
-                crate::FontBaselineAxis::HorizontalY,
-                crate::FontBaseline::Alphabetic,
+                crate::font::FontBaselineAxis::HorizontalY,
+                crate::font::FontBaseline::Alphabetic,
             )
         };
         request.combination = Some(LeaderCombinationContext {
             horizontal_inner_direction: ParagraphBaseDirection::LeftToRight,
             font_reference: ScopeFontReference {
-                script: crate::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+                script: crate::font::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
                 axis,
                 baseline,
             },
@@ -642,7 +660,7 @@ mod tests {
         system
             .register_fonts(crate::vertical_test_fonts::native(), FONT_LIMITS)
             .unwrap();
-        let digits = TextCombineUpright::Digits(crate::TextCombineUprightDigits::Two);
+        let digits = TextCombineUpright::Digits(crate::style::TextCombineUprightDigits::Two);
         for orientation in [
             LineOrientation::Vertical,
             LineOrientation::SidewaysCounterclockwise,
@@ -659,27 +677,30 @@ mod tests {
             let cell = cluster.cell().unwrap();
             assert_eq!(cell.source_cell().mode(), digits);
             assert!(cell.source_cell().used_code_points().eq([49, 50]));
-            assert_eq!(cell.square().size, crate::Size::new(20.0, 20.0));
+            assert_eq!(cell.square().size, crate::geometry::Size::new(20.0, 20.0));
             let frame = run.glyph_frame().unwrap();
-            assert_eq!(frame.outline_x(), crate::Point::new(0.5, 0.0));
-            assert_eq!(frame.outline_y(), crate::Point::new(0.0, 1.0));
-            assert_eq!(frame.pen_direction(), crate::Point::new(1.0, 0.0));
-            let placed = crate::Layout::from_finalized_lines(crate::PlacementRequest {
-                prepared: PreparedText {
-                    inner: Arc::clone(&pattern.line.inner.selected.prepared),
-                },
-                coverage: crate::PlacementCoverage::WholeParagraph,
-                entries: vec![crate::PlacementEntry::Formatted(crate::LinePlacement {
-                    line: pattern.line.clone(),
-                    anchor: crate::LineAnchor {
-                        inline_origin: 0.0,
-                        baseline: 0.0,
+            assert_eq!(frame.outline_x(), crate::geometry::Point::new(0.5, 0.0));
+            assert_eq!(frame.outline_y(), crate::geometry::Point::new(0.0, 1.0));
+            assert_eq!(frame.pen_direction(), crate::geometry::Point::new(1.0, 0.0));
+            let placed =
+                crate::layout::Layout::from_finalized_lines(crate::protocol::PlacementRequest {
+                    prepared: PreparedText {
+                        inner: Arc::clone(&pattern.line.inner.selected.prepared),
                     },
-                    orientation,
-                    atomics: Vec::new(),
-                })],
-            })
-            .unwrap();
+                    coverage: crate::protocol::PlacementCoverage::WholeParagraph,
+                    entries: vec![crate::protocol::PlacementEntry::Formatted(
+                        crate::protocol::LinePlacement {
+                            line: pattern.line.clone(),
+                            anchor: crate::protocol::LineAnchor {
+                                inline_origin: 0.0,
+                                baseline: 0.0,
+                            },
+                            orientation,
+                            atomics: Vec::new(),
+                        },
+                    )],
+                })
+                .unwrap();
             assert_eq!(frame, placed.run_views().next().unwrap().glyph_frame());
             assert_eq!(run.glyphs().len(), 2);
             for ((glyph, painted), original) in
@@ -778,9 +799,9 @@ mod tests {
     fn punctuation_at_pattern_edges_retains_its_complete_advance() {
         let mut system = system();
         let mut request = input(LeaderPattern::Literal("\"A.".into()), WhiteSpace::Collapse);
-        request.style.hanging_punctuation = crate::HangingPunctuation::new(
+        request.style.hanging_punctuation = crate::style::HangingPunctuation::new(
             true,
-            Some(crate::HangingPunctuationEnd::ForceEnd),
+            Some(crate::style::HangingPunctuationEnd::ForceEnd),
             false,
         );
         let pattern = system.prepare_leader_pattern(request).unwrap();
@@ -948,7 +969,7 @@ mod tests {
         let original_run = original.run_views().next().unwrap();
         assert_eq!(
             original_run.run().glyph_basis(),
-            crate::GlyphBasis::Counterclockwise
+            crate::geometry::GlyphBasis::Counterclockwise
         );
         assert_eq!(
             original_run.run().effective_instance().unwrap().font_size(),

@@ -1,7 +1,13 @@
 //! Horizontal movement through control-only formatted lines.
 //! Existing Horizontal public APIs only; no Sideways implementation dependency.
 use super::*;
-use crate::{Affinity, Cursor, Id, LineHeight, Movement, Range, Rect};
+use crate::{
+    geometry::Rect,
+    id::Id,
+    layout::{Affinity, Cursor, Movement},
+    range::Range,
+    style::LineHeight,
+};
 use skrifa::{
     GlyphId, MetadataProvider,
     instance::{LocationRef, Size},
@@ -32,43 +38,46 @@ fn horizontal_next_line_refuses_an_ambiguous_real_control_only_target() {
                 white_space: WhiteSpace::Preserve,
                 ..Style::default()
             },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![crate::ParagraphOrigin {
+            origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: Range::new(0, 2),
                 aggregate: Range::new(0, 2),
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             }],
             controls: (0..2)
-                .map(|_| crate::ParagraphControl {
+                .map(|_| crate::protocol::paragraph::ParagraphControl {
                     at: 1,
-                    kind: crate::ParagraphControlKind::ForcedBreak,
+                    kind: crate::protocol::paragraph::ParagraphControlKind::ForcedBreak,
                 })
                 .collect(),
             connections: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             anchor_order: (0..2)
-                .map(|control| crate::ParagraphAnchor {
-                    item: crate::ParagraphAnchorItem::Control(control),
+                .map(|control| crate::protocol::paragraph::ParagraphAnchor {
+                    item: crate::protocol::paragraph::ParagraphAnchorItem::Control(control),
                     affinity: Affinity::After,
                 })
                 .collect(),
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let a = crate::test_wrapping::bind_missing(&a, crate::Wrap::Word);
+    let a = crate::test_wrapping::bind_missing(&a, crate::style::Wrap::Word);
     let p = s.prepare(&a, PreparationOptions::default()).unwrap();
     let controls = p
         .control_views()
         .map(|c| {
-            assert_eq!(c.kind(), &crate::ParagraphControlKind::ForcedBreak);
+            assert_eq!(
+                c.kind(),
+                &crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
+            );
             assert_eq!(c.source_position().get(), 1);
             c.handle()
         })
@@ -112,12 +121,12 @@ fn horizontal_next_line_refuses_an_ambiguous_real_control_only_target() {
         };
         r.context.available_inline = None;
         r.context.spacing = SpacingPolicy::None;
-        r.termination = crate::PreparedTermination::Ordinary(end);
+        r.termination = crate::protocol::PreparedTermination::Ordinary(end);
         p.select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap()
     };
@@ -170,13 +179,13 @@ fn horizontal_next_line_refuses_an_ambiguous_real_control_only_target() {
     assert_eq!(ids(&first), [35]);
     assert!(ids(&middle).is_empty());
     assert_eq!(ids(&last), [36]);
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: [(first, 100.0), (middle, 120.0), (last, 140.0)]
             .into_iter()
             .map(|(line, baseline)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 20.0,

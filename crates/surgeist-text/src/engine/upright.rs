@@ -4,11 +4,19 @@ use std::{collections::BTreeSet, ops::Range as AtomRange};
 
 use super::{AnalyzedData, PreparedData, ShapingInput, analysis, resolve::AnalyzedStyleRun};
 use crate::{
-    DecorationKind, DecorationOffset, DecorationThickness, Error, ErrorCode, ErrorDetail,
-    LineOrientation, Range, Result, TextStyleOwner, UprightContent, UprightContentPiece,
-    UprightDecorationRole, UprightPresentation,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::{
+        TextStyleOwner, UprightContent, UprightContentPiece, UprightDecorationRole,
+        UprightPresentation,
+    },
+    layout::DecorationKind,
     projection::SourceProjection,
-    protocol::prepared::{PresentationUnit, PresentationUnitKind, SelectedPresentation},
+    protocol::{
+        LineOrientation,
+        prepared::{PresentationUnit, PresentationUnitKind, SelectedPresentation},
+    },
+    range::Range,
+    style::{DecorationOffset, DecorationThickness},
 };
 
 pub(crate) enum ShapingProfile<'a> {
@@ -180,7 +188,7 @@ pub(crate) fn units(
     if orientation != LineOrientation::Vertical {
         return Ok(Vec::new());
     }
-    if analyzed.typography == crate::AnalysisTypography::Mixed {
+    if analyzed.typography == crate::analyzed::AnalysisTypography::Mixed {
         let barriers = projection.barrier_atoms.iter().copied().collect();
         return analysis::upright::mixed_units(
             projection,
@@ -218,14 +226,14 @@ pub(crate) fn units(
 pub(crate) fn original_profile<'a>(
     orientation: LineOrientation,
     units: &'a [analysis::upright::VerticalUnit],
-    typography: crate::AnalysisTypography,
+    typography: crate::analyzed::AnalysisTypography,
     owners: &'a [AnalyzedStyleRun],
 ) -> ShapingProfile<'a> {
     match orientation {
         LineOrientation::Horizontal => ShapingProfile::Horizontal,
         LineOrientation::SidewaysClockwise => ShapingProfile::SidewaysClockwise,
         LineOrientation::SidewaysCounterclockwise => ShapingProfile::SidewaysCounterclockwise,
-        LineOrientation::Vertical if typography == crate::AnalysisTypography::Mixed => {
+        LineOrientation::Vertical if typography == crate::analyzed::AnalysisTypography::Mixed => {
             ShapingProfile::Mixed {
                 units,
                 owners,
@@ -248,7 +256,7 @@ pub(crate) fn selected_profile<'a>(
         LineOrientation::SidewaysClockwise => ShapingProfile::SidewaysClockwise,
         LineOrientation::SidewaysCounterclockwise => ShapingProfile::SidewaysCounterclockwise,
         LineOrientation::Vertical
-            if prepared.analyzed.typography == crate::AnalysisTypography::Mixed =>
+            if prepared.analyzed.typography == crate::analyzed::AnalysisTypography::Mixed =>
         {
             ShapingProfile::Mixed {
                 units: &presentation.vertical_units,
@@ -355,8 +363,8 @@ fn admit_decorations(style: &AnalyzedStyleRun) -> Result<()> {
 }
 
 fn admit_decoration_values(
-    underline: crate::Decoration,
-    strikethrough: crate::Decoration,
+    underline: crate::style::Decoration,
+    strikethrough: crate::style::Decoration,
     owner: TextStyleOwner,
 ) -> Result<()> {
     for (decoration, kind) in [

@@ -159,7 +159,7 @@ impl<'a> BoundaryFacts<'a> {
     pub(crate) fn execute(
         self,
         pen: f64,
-        phase: crate::TextNumericPhase,
+        phase: crate::error::TextNumericPhase,
     ) -> Result<super::inline_box::EdgeExecution> {
         let Some(edge) = self.allocation() else {
             return Ok(super::inline_box::EdgeExecution {
@@ -585,7 +585,7 @@ pub(crate) fn resolve(
                 ..
             }) => {
                 data.analyzed.processed.source().boxes()[atomic].kind()
-                    == crate::InlineBoxKind::InFlow
+                    == crate::source::InlineBoxKind::InFlow
             }
             _ => false,
         };

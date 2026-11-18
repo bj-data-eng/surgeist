@@ -1,8 +1,14 @@
 //! Actual component metrics preserve shared provider shaping across height spans.
 use super::*;
 use crate::{
-    LineHeight, ParagraphConnection, ParagraphConnectionKind, ParagraphOrigin, ParagraphOriginKind,
-    ParagraphTerminalEdge, Range,
+    protocol::{
+        ParagraphTerminalEdge,
+        paragraph::{
+            ParagraphConnection, ParagraphConnectionKind, ParagraphOrigin, ParagraphOriginKind,
+        },
+    },
+    range::Range,
+    style::LineHeight,
 };
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 fn height(value: LineHeight) -> Style {
@@ -30,7 +36,7 @@ fn prepare_source(bytes: &[u8], source: Source, base_style: Style, cuts: &[usize
         source: source.clone(),
         base_style,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: cuts
             .windows(2)
@@ -51,20 +57,27 @@ fn prepare_source(bytes: &[u8], source: Source, base_style: Style, cuts: &[usize
             .collect(),
         controls: vec![],
         boundary_policies: (0..cuts.len() - 2)
-            .map(|index| crate::ParagraphBoundaryPolicy {
-                definition: crate::ParagraphBoundaryDefinition::Connection(index),
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
-            })
+            .map(
+                |index| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                    definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                        index,
+                    ),
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
+                },
+            )
             .collect(),
         replacements: vec![],
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     system
         .prepare(&analyzed, PreparationOptions::default())
@@ -73,9 +86,9 @@ fn prepare_source(bytes: &[u8], source: Source, base_style: Style, cuts: &[usize
 fn finalize(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -234,9 +247,9 @@ fn raw_profiles_keep_their_rounding_policy_with_span_owned_height_maximum() {
                 .layout(
                     source.clone(),
                     height(LineHeight::Absolute(10.0)),
-                    crate::Options {
+                    crate::options::Options {
                         quantize,
-                        ..crate::Options::default()
+                        ..crate::options::Options::default()
                     },
                 )
                 .unwrap();
@@ -284,9 +297,9 @@ fn short_continuation_does_not_inherit_an_unselected_tall_component() {
     let suffix = p
         .select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -306,7 +319,7 @@ fn short_continuation_does_not_inherit_an_unselected_tall_component() {
             .collect::<Vec<_>>(),
         [(
             Some(Range::new(2, 3)),
-            Some(crate::Rect::new(0.0, 0.0, 10.0, 10.0))
+            Some(crate::geometry::Rect::new(0.0, 0.0, 10.0, 10.0))
         )]
     );
 }

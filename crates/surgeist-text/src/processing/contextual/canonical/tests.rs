@@ -1,5 +1,21 @@
 use super::*;
-use crate::{SourceProcessingEvent as E, *};
+use crate::{
+    analyzed::AnalyzedSource,
+    layout::Affinity,
+    processing::{
+        ComputedLineBoundaryInput, ContextualSourceInput, DocumentSegmentBreaks, ProcessedSource,
+        SourceBoxSide, SourceProcessingEnvelope, SourceProcessingEvent as E,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::Style,
+};
 
 fn processed(forced: bool) -> Arc<ProcessedSource> {
     let source = Source::new("A");
@@ -146,7 +162,7 @@ fn census_counts_computed_admission_facts_before_local_index_and_only_once() {
     assert!(captured.capture.canonical.0.lock().unwrap().is_some());
     let analyzed = AnalyzedSource::from_processed_paragraph(
         source.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert!(analyzed.inner.scope_cuts.get().is_none());

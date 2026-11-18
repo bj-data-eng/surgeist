@@ -6,7 +6,7 @@ fn real_lines(
     at: usize,
     breaks: usize,
     anchors: &[(f64, f64)],
-) -> (crate::Layout, Vec<FinalizedLine>) {
+) -> (crate::layout::Layout, Vec<FinalizedLine>) {
     let mut s = system();
     let bytes = s.registered_font_faces().next().unwrap().bytes().to_vec();
     let font = skrifa::FontRef::new(&bytes).unwrap();
@@ -30,43 +30,46 @@ fn real_lines(
                 white_space: WhiteSpace::Preserve,
                 ..Style::default()
             },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            origins: vec![crate::ParagraphOrigin {
+            origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source,
                 local: Range::new(0, len),
                 aggregate: Range::new(0, len),
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             }],
             controls: (0..breaks)
-                .map(|_| crate::ParagraphControl {
+                .map(|_| crate::protocol::paragraph::ParagraphControl {
                     at,
-                    kind: crate::ParagraphControlKind::ForcedBreak,
+                    kind: crate::protocol::paragraph::ParagraphControlKind::ForcedBreak,
                 })
                 .collect(),
             connections: vec![],
             boundary_policies: vec![],
             replacements: vec![],
             anchor_order: (0..breaks)
-                .map(|control| crate::ParagraphAnchor {
-                    item: crate::ParagraphAnchorItem::Control(control),
+                .map(|control| crate::protocol::paragraph::ParagraphAnchor {
+                    item: crate::protocol::paragraph::ParagraphAnchorItem::Control(control),
                     affinity: Affinity::After,
                 })
                 .collect(),
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let a = crate::test_wrapping::bind_missing(&a, crate::Wrap::Word);
+    let a = crate::test_wrapping::bind_missing(&a, crate::style::Wrap::Word);
     let p = s.prepare(&a, PreparationOptions::default()).unwrap();
     let controls = p
         .control_views()
         .map(|c| {
-            assert_eq!(c.kind(), &crate::ParagraphControlKind::ForcedBreak);
+            assert_eq!(
+                c.kind(),
+                &crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
+            );
             assert_eq!(c.source_position().get(), at);
             c.handle()
         })
@@ -117,13 +120,13 @@ fn real_lines(
         };
         r.context.available_inline = None;
         r.context.spacing = SpacingPolicy::None;
-        r.termination = crate::PreparedTermination::Ordinary(offer);
+        r.termination = crate::protocol::PreparedTermination::Ordinary(offer);
         let line = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(line.feedback().line_height, 10.0);
@@ -153,14 +156,14 @@ fn real_lines(
         rows.push(line);
     }
     assert_eq!(rows.len(), anchors.len());
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
         entries: rows
             .iter()
             .zip(anchors)
             .map(|(line, &(inline_origin, baseline))| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line: line.clone(),
                     anchor: LineAnchor {
                         inline_origin,

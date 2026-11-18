@@ -1,5 +1,11 @@
 use crate::{
-    AnalyzedSource, DocumentSegmentBreaks, Font, Options, Range, Source, Style, System, WhiteSpace,
+    System,
+    analyzed::AnalyzedSource,
+    options::Options,
+    processing::DocumentSegmentBreaks,
+    range::Range,
+    source::Source,
+    style::{Font, Style, WhiteSpace},
 };
 
 fn style() -> Style {
@@ -21,7 +27,7 @@ fn system(font: Option<Vec<u8>>) -> System {
     system
 }
 
-fn layout(system: &mut System, value: &str) -> crate::Layout {
+fn layout(system: &mut System, value: &str) -> crate::layout::Layout {
     system
         .layout(
             Source::new(value),
@@ -90,7 +96,7 @@ fn original_host_boundaries_and_control_mark_presentation_grapheme_are_distinct(
     let analyzed = AnalyzedSource::new(
         Source::new("\u{1}\u{301}"),
         style(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -117,7 +123,7 @@ fn original_host_boundaries_and_control_mark_presentation_grapheme_are_distinct(
     let font = crate::shaping_test_fonts::mark_ahem();
     let mut system = system(Some(font.clone()));
     let prepared = system
-        .prepare(&analyzed, crate::PreparationOptions::default())
+        .prepare(&analyzed, crate::protocol::PreparationOptions::default())
         .unwrap();
     assert_eq!(
         prepared
@@ -191,7 +197,7 @@ fn control_symbols_interrupt_cursive_joining_without_replacing_source() {
     assert_eq!(separated.source().text().code_units(), [0x628, 1, 0x628]);
     assert_eq!(
         separated.analyzed_source().direction(),
-        crate::Direction::RightToLeft
+        crate::style::Direction::RightToLeft
     );
 }
 
@@ -248,14 +254,14 @@ fn intrinsic_font_cannot_supply_a_requested_default_font_strut() {
     let analyzed = AnalyzedSource::new(
         Source::new("\u{1}"),
         style(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = system(None);
     let identity = system.font_catalogue_identity().clone();
     assert_eq!(
         system
-            .prepare(&analyzed, crate::PreparationOptions::default())
+            .prepare(&analyzed, crate::protocol::PreparationOptions::default())
             .unwrap_err()
             .code,
         crate::ErrorCode::NoUsableFontFace
@@ -269,7 +275,7 @@ fn intrinsic_font_cannot_supply_a_requested_default_font_strut() {
 fn actual_declared_control_delimiter_is_processed_before_symbol_presentation() {
     let source = Source::new("A\u{b}B\u{b}");
     let processed = std::sync::Arc::new(
-        crate::process_source_whitespace(
+        crate::processing::process_source_whitespace(
             source,
             style(),
             DocumentSegmentBreaks::Defined(vec![Range::new(1, 2)]),

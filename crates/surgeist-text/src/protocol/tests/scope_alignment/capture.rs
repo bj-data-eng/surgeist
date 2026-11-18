@@ -1,5 +1,24 @@
 //! Admission starts at the real immutable capture, before fonts or preparation.
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    font::{FontBaseline, FontBaselineAxis, FontBaselineScript},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentBoundary, ScopeAlignmentError,
+        ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference, ScopeRole,
+        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+        SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style, WhiteSpace},
+};
 use std::sync::Arc;
 
 pub(super) fn reference() -> ScopeFontReference {

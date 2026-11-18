@@ -155,18 +155,18 @@ fn automatic_font_decorations_rebase_once_while_absolute_offsets_use_the_shared_
         }
         for absolute in [false, true] {
             let underline = if absolute {
-                crate::Decoration::solid()
-                    .with_offset(crate::DecorationOffset::try_absolute(-2.0).unwrap())
-                    .with_thickness(crate::DecorationThickness::try_absolute(1.0).unwrap())
+                crate::style::Decoration::solid()
+                    .with_offset(crate::style::DecorationOffset::try_absolute(-2.0).unwrap())
+                    .with_thickness(crate::style::DecorationThickness::try_absolute(1.0).unwrap())
             } else {
-                crate::Decoration::solid()
+                crate::style::Decoration::solid()
             };
             let strike = if absolute {
-                crate::Decoration::solid()
-                    .with_offset(crate::DecorationOffset::try_absolute(3.0).unwrap())
-                    .with_thickness(crate::DecorationThickness::try_absolute(1.0).unwrap())
+                crate::style::Decoration::solid()
+                    .with_offset(crate::style::DecorationOffset::try_absolute(3.0).unwrap())
+                    .with_thickness(crate::style::DecorationThickness::try_absolute(1.0).unwrap())
             } else {
-                crate::Decoration::solid()
+                crate::style::Decoration::solid()
             };
             let input = analyzed(
                 Source::new("A"),

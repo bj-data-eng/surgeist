@@ -1,10 +1,20 @@
 use crate::{
-    Alignment, AnalyzedSource, ControlAllocation, DocumentSegmentBreaks, Font, LineContext,
-    LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
-    ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement,
-    ParagraphReplacementDefinition, ParagraphStrut, PreparationOptions, PreparedBreakKind,
-    PreparedParticipant, PreparedTermination, Range, Source, SpacingAllocations, SpacingPolicy,
-    Style, System, TabContext, Wrap,
+    System,
+    analyzed::AnalyzedSource,
+    options::Alignment,
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        ControlAllocation, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
+        ParagraphBaseDirection, ParagraphInput, PreparationOptions, PreparedBreakKind,
+        PreparedParticipant, PreparedTermination, SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{
+            ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement,
+            ParagraphReplacementDefinition, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{Font, Style, Wrap},
 };
 
 fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
@@ -25,7 +35,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
     }
     let analyzed = AnalyzedSource::from_paragraph(
         ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: style,
@@ -55,7 +65,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
             ],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
@@ -84,10 +94,10 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -110,10 +120,10 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
-            alignment_insets: crate::LineAlignmentInsets::ZERO,
-            formatted_line: crate::FormattedLineContext::default(),
+            alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+            formatted_line: crate::protocol::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::RightToLeft,
-            line_box_direction: crate::LineBoxDirection::RightToLeft,
+            line_box_direction: crate::protocol::LineBoxDirection::RightToLeft,
             orientation: LineOrientation::Horizontal,
             start: LineStart::Paragraph,
             end: LineEnd::Soft,
@@ -129,9 +139,9 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let mut glyphs = Vec::new();

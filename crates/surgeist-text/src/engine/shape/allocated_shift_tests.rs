@@ -1,13 +1,22 @@
 //! Functional qualification of actual allocated shifts; standalone metadata is not used.
 use super::*;
 use crate::{
-    AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
-    AtomicPlacement, BaselineShift, ControlAllocation, ControlStrut, ErrorDetail, GlyphBasis, Id,
-    InlineBoundaryAllocation, InlineBox, InlineBoxKind, Layout, LineAnchor, LineBoxAlignment,
-    LineBoxStrut, LinePlacement, LineStrut, ParagraphAnchor, ParagraphAnchorItem,
-    ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphControl, ParagraphControlKind,
-    PlacementCoverage, PlacementEntry, PlacementRequest, Rect, Size as PhysicalSize,
-    TextNumericError, TextNumericPhase,
+    ErrorDetail,
+    error::{TextNumericError, TextNumericPhase},
+    geometry::{GlyphBasis, Rect, Size as PhysicalSize},
+    id::Id,
+    layout::Layout,
+    protocol::{
+        AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+        AtomicPlacement, ControlAllocation, ControlStrut, InlineBoundaryAllocation, LineAnchor,
+        LineBoxAlignment, LineBoxStrut, LinePlacement, LineStrut, PlacementCoverage,
+        PlacementEntry, PlacementRequest,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy, ParagraphControl, ParagraphControlKind,
+        },
+    },
+    source::{BaselineShift, InlineBox, InlineBoxKind},
 };
 use skrifa::raw::TableProvider;
 
@@ -90,7 +99,7 @@ fn fixture(row: Row, frame: u8, scale: f32, text: &str) -> (System, PreparedText
         &source,
         Style {
             size: 1.0,
-            line_height: crate::LineHeight::Absolute(1.0),
+            line_height: crate::style::LineHeight::Absolute(1.0),
             ..own(0.0)
         },
         LTR,
@@ -145,7 +154,7 @@ fn fixture(row: Row, frame: u8, scale: f32, text: &str) -> (System, PreparedText
         Wrap::Word,
     );
     let mut system = system(AHEM);
-    let options = PreparationOptions::try_new(scale, crate::TabPreparation::FontAdvance)
+    let options = PreparationOptions::try_new(scale, crate::tabs::TabPreparation::FontAdvance)
         .unwrap()
         .with_orientation(orientation(frame));
     let p = system.prepare(&analyzed, options).unwrap();
@@ -169,7 +178,7 @@ fn allocated(
             r.atomics = vec![AtomicAllocation {
                 occurrence: p.atomic_views().next().unwrap().handle(),
                 allocation: AtomicLineAllocation::InFlow {
-                    fit: crate::AtomicFitAllocation::NativeOccupied,
+                    fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 6.0,
                         normal_border_inline_size: 6.0,
@@ -293,9 +302,9 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                 let ordinary = p
                     .select(allocated(&p, row, LineBoxAlignment::Baseline, true))
                     .unwrap()
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 let raw = raw_packets(&ordinary, AHEM);
@@ -334,9 +343,9 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                     let calls = provider_calls();
                     assert!(calls > 0);
                     let line = selected
-                        .finalize(crate::LineAllocations {
+                        .finalize(crate::protocol::LineAllocations {
                             spacing: SpacingAllocations::None,
-                            scopes: crate::ScopeAllocations::None,
+                            scopes: crate::protocol::ScopeAllocations::None,
                         })
                         .unwrap();
                     assert_eq!(provider_calls(), calls);
@@ -360,9 +369,9 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                         }
                     }
                     let again = selected
-                        .finalize(crate::LineAllocations {
+                        .finalize(crate::protocol::LineAllocations {
                             spacing: SpacingAllocations::None,
-                            scopes: crate::ScopeAllocations::None,
+                            scopes: crate::protocol::ScopeAllocations::None,
                         })
                         .unwrap();
                     let restored = line.with_spacing(SpacingAllocations::None).unwrap();
@@ -373,19 +382,23 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                     let layout = place(&p, line, delta, 100.0).unwrap();
                     assert_eq!(layout.source().text().code_units(), [88]);
                     let selection = layout
-                        .selection(crate::Selection::new(
-                            crate::Cursor::new(0, Affinity::After),
-                            crate::Cursor::new(1, Affinity::Before),
+                        .selection(crate::layout::Selection::new(
+                            crate::layout::Cursor::new(0, Affinity::After),
+                            crate::layout::Cursor::new(1, Affinity::Before),
                         ))
                         .unwrap();
                     assert_eq!(selection.rects().len(), 1);
                     let start = layout
                         .positions()
-                        .find(|p| p.source_cursor() == crate::Cursor::new(0, Affinity::After))
+                        .find(|p| {
+                            p.source_cursor() == crate::layout::Cursor::new(0, Affinity::After)
+                        })
                         .unwrap();
                     let end = layout
                         .positions()
-                        .find(|p| p.source_cursor() == crate::Cursor::new(1, Affinity::Before))
+                        .find(|p| {
+                            p.source_cursor() == crate::layout::Cursor::new(1, Affinity::Before)
+                        })
                         .unwrap();
                     assert_eq!(
                         layout
@@ -399,10 +412,10 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                         let parent = accesskit::NodeId(1574000);
                         let update = layout
                             .accessibility_update(
-                                &mut crate::Accessibility::new(10),
+                                &mut crate::accessibility::Accessibility::new(10),
                                 parent,
                                 parent,
-                                crate::Point::default(),
+                                crate::geometry::Point::default(),
                             )
                             .unwrap();
                         let text = update
@@ -437,9 +450,9 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                 drop(system);
                 let calls = provider_calls();
                 let replay = selected
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 assert_eq!(provider_calls(), calls);
@@ -463,9 +476,9 @@ fn allocated_shift_without_parent_strut_preserves_one_sided_bounds_and_absence()
             let line = p
                 .select(r)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             // Only child[-6-delta,4-delta] exists; neither baseline zero nor a
@@ -523,9 +536,9 @@ fn allocated_shift_arithmetic_and_physical_loss_refuse_without_changing_prior_ou
         let good = p
             .select(allocated(&p, row, shift(3.0), true))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let raw = raw_packets(&good, AHEM);
@@ -533,9 +546,9 @@ fn allocated_shift_arithmetic_and_physical_loss_refuse_without_changing_prior_ou
         for delta in [f64::from_bits(1), 1e308, -1e308] {
             let selected = p.select(allocated(&p, row, shift(delta), true)).unwrap();
             let error = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap_err();
             assert!(
@@ -555,9 +568,9 @@ fn allocated_shift_arithmetic_and_physical_loss_refuse_without_changing_prior_ou
         let line = p
             .select(allocated(&p, row, shift(1.0), true))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let error = place(&p, line, 1.0, 1e16).unwrap_err();
@@ -580,9 +593,9 @@ fn allocated_shift_arithmetic_and_physical_loss_refuse_without_changing_prior_ou
             }
             let selected = p.select(r).unwrap();
             let error = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap_err();
             assert!(
@@ -616,9 +629,9 @@ fn allocated_shift_keeps_provider_and_source_basis_through_positive_spacing_repl
     assert!(calls > 0);
     assert_eq!(selected.spacing_slots().len(), 1);
     let original = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let raw = raw_packets(&original, AHEM);
@@ -670,17 +683,17 @@ fn allocated_shift_keeps_foreign_occurrence_checks_and_detects_extent_overflow()
         let kind = match row {
             Row::Atomic => {
                 r.atomics[0].occurrence = foreign.atomic_views().next().unwrap().handle();
-                crate::ProtocolHandleKind::Atomic
+                crate::protocol::ProtocolHandleKind::Atomic
             }
             Row::Control => {
                 r.controls[0].occurrence = foreign.control_views().next().unwrap().handle();
-                crate::ProtocolHandleKind::Control
+                crate::protocol::ProtocolHandleKind::Control
             }
             Row::Additional => unreachable!(),
         };
         let error = p.select(r).unwrap_err();
         assert!(
-            matches!(error.detail(),Some(ErrorDetail::InvalidTextProtocol{reason:crate::ProtocolError::ForeignPreparation{kind:actual,..}}) if *actual==kind),
+            matches!(error.detail(),Some(ErrorDetail::InvalidTextProtocol{reason:crate::protocol::ProtocolError::ForeignPreparation{kind:actual,..}}) if *actual==kind),
             "{error:?}"
         );
     }
@@ -692,9 +705,9 @@ fn allocated_shift_keeps_foreign_occurrence_checks_and_detects_extent_overflow()
     };
     let selected = p.select(r).unwrap();
     let error = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap_err();
     assert!(
@@ -727,9 +740,9 @@ fn allocated_shift_default_font_parent_is_real_and_local_atomic_baseline_is_pres
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // Raw Ahem10 gives an actual DefaultFont8/2 parent, not the unused
@@ -745,9 +758,9 @@ fn allocated_shift_default_font_parent_is_real_and_local_atomic_baseline_is_pres
     let line = empty
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // A supplied zero parent is an actual contribution, unlike absence:
@@ -763,9 +776,9 @@ fn allocated_shift_default_font_parent_is_real_and_local_atomic_baseline_is_pres
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let slot = line.atomic_slots().next().unwrap();

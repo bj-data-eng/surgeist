@@ -5,7 +5,26 @@
 //! at size10, each contribution is9 and period's raw x offset is-1. This is
 //! a font/provider fixture contract, not a hanging-punctuation implementation.
 
-use crate::*;
+use crate::{
+    Result, System,
+    analyzed::AnalyzedSource,
+    id::Id,
+    layout::{Affinity, Cursor, Layout},
+    options::Alignment,
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        FinalizedLine, LineAnchor, LineBoxDirection, LineContext, LineEdgeDisposition,
+        LineEdgeOwner, LineEnd, LineOrientation, LinePlacement, LineSelectionRequest, LineStart,
+        ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PlacementCoverage,
+        PlacementRequest, PreparationOptions, PreparedBreakKind, PreparedParticipant,
+        PreparedTermination, PreparedText, SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style, Wrap},
+    text::Text,
+};
 use skrifa::{
     GlyphId, MetadataProvider,
     instance::{LocationRef, Size as FontSize},
@@ -81,9 +100,11 @@ fn prepare(kerning: bool) -> PreparedText {
         replacements: vec![],
         anchor_order: vec![],
     };
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::None);
     let mut system = System::default();
     // Original and derivative coexist. Every later face observation must be
@@ -120,8 +141,8 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: LineBoxDirection::LeftToRight,
                 orientation: LineOrientation::Horizontal,
@@ -135,9 +156,9 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
             },
         })
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -268,7 +289,7 @@ fn kerned_period_keeps_parent_source_carets_at_the_logical_pen() {
         let layout = Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,

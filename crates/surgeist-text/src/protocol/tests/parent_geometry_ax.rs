@@ -14,7 +14,7 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     );
     assert_eq!(
         prepared.analyzed_source().source().text(),
-        &crate::Text::from("ABB")
+        &crate::text::Text::from("ABB")
     );
     assert_eq!(
         prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
@@ -31,23 +31,23 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     let c = cs.captured_control().unwrap().scope();
     assert_eq!(c.parent(), Some(p.clone()));
     let domain = p.parent().unwrap();
-    assert_eq!(domain.role(), crate::ScopeRole::Domain);
+    assert_eq!(domain.role(), crate::processing::ScopeRole::Domain);
     assert_eq!(p.entry_control(), ps.captured_control());
     assert_eq!(p.exit_control(), pe.captured_control());
     assert_eq!(c.entry_control(), cs.captured_control());
     assert_eq!(c.exit_control(), ce.captured_control());
     let p_context = prepared
         .inline_box_edge_context(
-            crate::InlineBoxSource::captured(p.clone()),
-            crate::InlineBoxSource::captured(domain),
-            crate::LineEdgeSide::Start,
+            crate::protocol::InlineBoxSource::captured(p.clone()),
+            crate::protocol::InlineBoxSource::captured(domain),
+            crate::protocol::LineEdgeSide::Start,
         )
         .unwrap();
     let c_context = prepared
         .inline_box_edge_context(
-            crate::InlineBoxSource::captured(c),
-            crate::InlineBoxSource::captured(p),
-            crate::LineEdgeSide::End,
+            crate::protocol::InlineBoxSource::captured(c),
+            crate::protocol::InlineBoxSource::captured(p),
+            crate::protocol::LineEdgeSide::End,
         )
         .unwrap();
     // The physical used parent facts are B LTR for P, actual P RTL for C.
@@ -64,9 +64,9 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     .map(|(control, advance, context)| ControlAllocation {
         occurrence: control.clone(),
         strut: None,
-        boundary: Some(crate::InlineBoundaryAllocation::box_edge(
+        boundary: Some(crate::protocol::InlineBoundaryAllocation::box_edge(
             context,
-            crate::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
+            crate::protocol::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
         )),
     })
     .collect();
@@ -74,9 +74,9 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     let line = prepared
         .select(input)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -101,7 +101,7 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
                             .glyph_outline(g.id(), run.face().catalogue_identity())
                             .unwrap()
                             .bounds(),
-                        Some(crate::Rect::new(0.0, -8.0, 10.0, 10.0))
+                        Some(crate::geometry::Rect::new(0.0, -8.0, 10.0, 10.0))
                     );
                     (
                         g.range(),
@@ -124,10 +124,15 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
         ]
     );
     let layout = place(prepared, line, 3.0, 12.0).unwrap();
-    let mut state = crate::Accessibility::new(10);
+    let mut state = crate::accessibility::Accessibility::new(10);
     let parent = NodeId(1000);
     let update = layout
-        .accessibility_update(&mut state, parent, parent, crate::Point::new(100.0, 200.0))
+        .accessibility_update(
+            &mut state,
+            parent,
+            parent,
+            crate::geometry::Point::new(100.0, 200.0),
+        )
         .unwrap();
     let paragraph = &update.nodes.iter().find(|(id, _)| *id == parent).unwrap().1;
     assert_eq!(paragraph.role(), Role::Paragraph);
@@ -185,7 +190,7 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
         }
         for affinity in [Affinity::Before, Affinity::After] {
             let error = layout
-                .access_position(&state, crate::Cursor::new(index, affinity))
+                .access_position(&state, crate::layout::Cursor::new(index, affinity))
                 .expect_err("a source Cursor cannot choose distinct captured endpoint occurrences");
             assert_eq!(
                 error.detail(),
@@ -197,11 +202,11 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     }
     // The ordinary final B has no competing control occurrence at either end.
     assert_eq!(units.len(), 3);
-    let final_start = crate::Cursor::new(2, Affinity::After);
-    let final_end = crate::Cursor::new(3, Affinity::Before);
+    let final_start = crate::layout::Cursor::new(2, Affinity::After);
+    let final_end = crate::layout::Cursor::new(3, Affinity::Before);
     assert_eq!(
         layout
-            .access_position(&state, crate::Cursor::new(2, Affinity::Before))
+            .access_position(&state, crate::layout::Cursor::new(2, Affinity::Before))
             .unwrap(),
         Some(units[1].1)
     );
@@ -215,7 +220,10 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     );
     assert_eq!(
         layout
-            .access_selection(&state, crate::Selection::new(final_start, final_end))
+            .access_selection(
+                &state,
+                crate::layout::Selection::new(final_start, final_end)
+            )
             .unwrap(),
         Some(TextSelection {
             anchor: units[2].0,
@@ -224,7 +232,10 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     );
     assert_eq!(
         layout
-            .access_selection(&state, crate::Selection::new(final_end, final_start))
+            .access_selection(
+                &state,
+                crate::layout::Selection::new(final_end, final_start)
+            )
             .unwrap(),
         Some(TextSelection {
             anchor: units[2].1,
@@ -233,20 +244,20 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     );
     for (anchor, focus, index, affinity) in [
         (
-            crate::Cursor::new(0, Affinity::After),
+            crate::layout::Cursor::new(0, Affinity::After),
             final_end,
             0,
             Affinity::After,
         ),
         (
             final_start,
-            crate::Cursor::new(1, Affinity::Before),
+            crate::layout::Cursor::new(1, Affinity::Before),
             1,
             Affinity::Before,
         ),
     ] {
         let error = layout
-            .access_selection(&state, crate::Selection::new(anchor, focus))
+            .access_selection(&state, crate::layout::Selection::new(anchor, focus))
             .expect_err("AX source selection preserves actual endpoint-occurrence ambiguity");
         assert_eq!(
             error.detail(),

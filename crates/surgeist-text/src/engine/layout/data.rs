@@ -8,7 +8,11 @@
 
 use std::{ops::Range as IndexRange, sync::Arc};
 
-use crate::{FontData, FontSynthesis, Range, Rect};
+use crate::{
+    font::{FontData, FontSynthesis},
+    geometry::Rect,
+    range::Range,
+};
 
 use super::super::{PlacedLine, PreparedData, analysis::Boundary};
 
@@ -112,7 +116,7 @@ pub(crate) struct PreparedRun {
     pub(crate) level: u8,
     pub(crate) atoms: IndexRange<usize>,
     /// Actual outline axes, independent of the placed line's inline frame.
-    pub(crate) glyph_basis: crate::GlyphBasis,
+    pub(crate) glyph_basis: crate::geometry::GlyphBasis,
     pub(crate) metrics: RunMetrics,
 }
 
@@ -406,7 +410,7 @@ pub(crate) struct FinalizedCell {
     /// Exact working Cell contribution after finalization restores/reapplies spacing.
     pub(crate) advance: f64,
     pub(crate) under: IndexRange<f64>,
-    pub(crate) scope_displacement: crate::BaselineShift,
+    pub(crate) scope_displacement: crate::source::BaselineShift,
     pub(crate) level: u8,
     pub(crate) frame: Option<CellFrame>,
     pub(crate) transform: Option<CellTransform>,
@@ -429,8 +433,8 @@ pub(crate) struct FinalizedGlyph {
 pub(crate) struct SpacingDisplacement {
     /// Coordinate frame of the executed pair; outer Cell tracking is Line.
     pub(crate) frame: FinalizedRunFrame,
-    pub(crate) before: crate::Point,
-    pub(crate) after: crate::Point,
+    pub(crate) before: crate::geometry::Point,
+    pub(crate) after: crate::geometry::Point,
     pub(crate) amount: f64,
 }
 
@@ -446,7 +450,7 @@ pub(crate) struct FinalizedCluster {
     pub(crate) logical_adjustments: [f64; 3],
     /// Actual provider membership retained independently of operation-specific units.
     pub(crate) provider_atoms: IndexRange<usize>,
-    pub(crate) disposition: crate::SpacingSlotDisposition,
+    pub(crate) disposition: crate::protocol::SpacingSlotDisposition,
     pub(crate) source: Range,
     pub(crate) presentation: Range,
     pub(crate) content: ClusterContent,
@@ -463,8 +467,8 @@ pub(crate) struct FinalizedCluster {
 pub(crate) struct FinalizedBox {
     pub(crate) occurrence: usize,
     pub(crate) atomic: crate::protocol::PreparedAtomic,
-    pub(crate) slot: crate::Point,
-    pub(crate) scope_displacement: crate::BaselineShift,
+    pub(crate) slot: crate::geometry::Point,
+    pub(crate) scope_displacement: crate::source::BaselineShift,
     pub(crate) geometry: FinalizedBoxGeometry,
     pub(crate) following_gap: f64,
 }
@@ -473,12 +477,12 @@ pub(crate) struct FinalizedBox {
 pub(crate) enum FinalizedBoxGeometry {
     InFlow {
         flow: crate::protocol::AtomicFlowAllocation,
-        fit: crate::AtomicFitAllocation,
+        fit: crate::protocol::AtomicFitAllocation,
         box_geometry: crate::protocol::AtomicBoxAllocation,
         alignment: crate::protocol::LineBoxAlignment,
         // Finalization checks the translated border once. Its size remains the
         // visual border size above; retaining that extent again is redundant.
-        border_origin: crate::Point,
+        border_origin: crate::geometry::Point,
     },
     OutOfFlow,
 }
@@ -508,8 +512,8 @@ pub(crate) enum FinalizedVisualItem {
 pub(crate) struct FinalizedAnchor {
     pub(crate) reference: Option<f64>,
     pub(crate) unit: usize,
-    pub(crate) slot: crate::Point,
-    pub(crate) scope_displacement: crate::BaselineShift,
+    pub(crate) slot: crate::geometry::Point,
+    pub(crate) scope_displacement: crate::source::BaselineShift,
     pub(crate) level: u8,
     pub(crate) geometry: AnchorGeometry,
 }
@@ -561,8 +565,8 @@ pub(crate) struct FinalizedSpacingSlot {
     pub(crate) cluster: usize,
     pub(crate) edge: Option<usize>,
     pub(crate) members: Vec<usize>,
-    pub(crate) geometry: crate::SpacingSlotGeometry,
-    pub(crate) stretchability: crate::SpacingStretchability,
+    pub(crate) geometry: crate::protocol::SpacingSlotGeometry,
+    pub(crate) stretchability: crate::protocol::SpacingStretchability,
     pub(crate) traversal_order: usize,
     pub(crate) authored: f64,
     pub(crate) letter: f64,
@@ -575,10 +579,10 @@ pub(crate) struct FinalizedSpacingSlot {
 pub(crate) struct FinalizedLineData {
     /// Preserved unallocated source-cell sizing policy, relative to a reference.
     pub(crate) scope_cell_band: Option<(f64, f64)>,
-    pub(crate) scope_allocations: Vec<crate::ScopeFrameAllocation>,
-    pub(crate) scope_retention: Option<crate::ScopeAlignmentRetention>,
-    pub(crate) scope_usage: Option<crate::ScopeAlignmentUsage>,
-    pub(crate) measurements: Option<crate::LineMeasurements>,
+    pub(crate) scope_allocations: Vec<crate::protocol::ScopeFrameAllocation>,
+    pub(crate) scope_retention: Option<crate::protocol::ScopeAlignmentRetention>,
+    pub(crate) scope_usage: Option<crate::processing::ScopeAlignmentUsage>,
+    pub(crate) measurements: Option<crate::protocol::LineMeasurements>,
     pub(crate) font_runs: Vec<PreparedRun>,
     pub(crate) runs: Vec<FinalizedRun>,
     /// Logical cluster order; each row records its actual visual position.
@@ -696,7 +700,7 @@ pub(crate) struct PlacedLayout {
     pub(crate) receipts: Vec<Arc<super::super::FinalizedLine>>,
     /// Selected-event cut for each visible line in that full sequence.
     pub(crate) line_cuts: Vec<usize>,
-    pub(crate) nonformatted: Vec<(usize, crate::NonFormattedLinePlacement)>,
+    pub(crate) nonformatted: Vec<(usize, crate::protocol::NonFormattedLinePlacement)>,
     pub(crate) bounds: Rect,
     pub(crate) coverage: crate::protocol::placement::PlacedCoverage,
     pub(crate) width: f64,

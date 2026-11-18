@@ -3,14 +3,18 @@ use super::*;
 use crate::protocol::prepared::presentation::Attachment;
 use crate::protocol::prepared::{PresentationUnitKind, SelectedRelationEvent};
 
-fn unit_at(p: &PreparedText, source: Range) -> crate::PreparedUnit {
+fn unit_at(p: &PreparedText, source: Range) -> crate::protocol::PreparedUnit {
     let mut found = p.unit_views().filter(|unit| unit.source_range() == source);
     let unit = found.next().unwrap().handle();
     assert!(found.next().is_none());
     unit
 }
 
-fn original_inside(p: &PreparedText, scope: &crate::CapturedScope, source: Range) -> bool {
+fn original_inside(
+    p: &PreparedText,
+    scope: &crate::processing::CapturedScope,
+    source: Range,
+) -> bool {
     // These two authored originals are disjoint and cover the actual raw
     // paragraph. Find that issued original, then use its authentic EVENT --
     // neither an insertion offset nor a range hull establishes box ownership.
@@ -26,10 +30,10 @@ fn original_inside(p: &PreparedText, scope: &crate::CapturedScope, source: Range
 
 fn receipt(
     p: &PreparedText,
-    line: &crate::SelectedLine,
+    line: &crate::protocol::SelectedLine,
     before: bool,
-    alternative: &crate::PreparedAlternative,
-) -> (crate::PresentationRange, Range) {
+    alternative: &crate::protocol::PreparedAlternative,
+) -> (crate::protocol::PresentationRange, Range) {
     let presentation = &line.inner.presentation;
     assert_eq!(presentation.domains.len(), 1);
     let domain = &presentation.domains[0];
@@ -49,7 +53,9 @@ fn receipt(
     let host_unit = unit_at(p, host);
     assert_eq!(
         p.participants().nth(participant),
-        Some(crate::PreparedParticipant::Text(host_unit.clone()))
+        Some(crate::protocol::PreparedParticipant::Text(
+            host_unit.clone()
+        ))
     );
     let atom = atom.expect("these hosts are actual source scalars");
     assert_eq!(p.inner.analyzed.projection.atoms[atom].source, host);
@@ -92,7 +98,7 @@ fn receipt(
         unit.atoms.clone().collect::<Vec<_>>()
     );
     (
-        crate::PresentationRange {
+        crate::protocol::PresentationRange {
             start: unit.presentation.start,
             end: unit.presentation.end,
         },
@@ -101,9 +107,13 @@ fn receipt(
 }
 
 fn selected_indications(
-    line: &crate::SelectedLine,
-    owner: &crate::InlineBoxSource,
-) -> Vec<(crate::InlineBoxFragment, crate::PresentationRange, Range)> {
+    line: &crate::protocol::SelectedLine,
+    owner: &crate::protocol::InlineBoxSource,
+) -> Vec<(
+    crate::protocol::InlineBoxFragment,
+    crate::protocol::PresentationRange,
+    Range,
+)> {
     line.inline_box_pieces()
         .unwrap()
         .filter(|piece| &piece.owner() == owner)
@@ -128,8 +138,12 @@ fn selected_indications(
 
 fn finalized_indications(
     line: &FinalizedLine,
-    owner: &crate::InlineBoxSource,
-) -> Vec<(crate::InlineBoxFragment, crate::PresentationRange, Range)> {
+    owner: &crate::protocol::InlineBoxSource,
+) -> Vec<(
+    crate::protocol::InlineBoxFragment,
+    crate::protocol::PresentationRange,
+    Range,
+)> {
     line.inline_box_pieces()
         .unwrap()
         .filter(|piece| &piece.owner() == owner)
@@ -152,11 +166,11 @@ fn finalized_indications(
         .collect()
 }
 
-fn finish_selected(selected: crate::SelectedLine) -> FinalizedLine {
+fn finish_selected(selected: crate::protocol::SelectedLine) -> FinalizedLine {
     selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -182,8 +196,11 @@ fn attached_indications(scope_start: usize) {
     let processed = captured("XX\u{ad}XXX", scope_start, style, false);
     let scope = processed.captured_scope(1).unwrap();
     assert_eq!(scope.domain_topology(), SourceProcessingTopology::Complete);
-    assert_eq!(scope.parent().unwrap().role(), crate::ScopeRole::Domain);
-    let owner = crate::InlineBoxSource::captured(scope.clone());
+    assert_eq!(
+        scope.parent().unwrap().role(),
+        crate::processing::ScopeRole::Domain
+    );
+    let owner = crate::protocol::InlineBoxSource::captured(scope.clone());
     let p = prepare(&mut system_with(&bytes), &processed);
     assert_eq!(
         p.analyzed_source().source().text().code_units(),

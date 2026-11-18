@@ -28,33 +28,35 @@ fn separated(
         source: source.clone(),
         base_style: style,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: [Range::new(0, at), Range::new(at, end)]
             .into_iter()
-            .map(|range| crate::ParagraphOrigin {
+            .map(|range| crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: range,
                 aggregate: range,
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
-        connections: vec![crate::ParagraphConnection {
+        connections: vec![crate::protocol::paragraph::ParagraphConnection {
             at,
-            kind: crate::ParagraphConnectionKind::Disconnected,
+            kind: crate::protocol::paragraph::ParagraphConnectionKind::Disconnected,
         }],
         controls: vec![],
         replacements: vec![],
         anchor_order: vec![],
         boundary_policies: vec![],
     };
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
-    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word);
     system.prepare(&analyzed, PreparationOptions::default())
 }
 
@@ -70,8 +72,8 @@ fn source_with_barrier(text: &str, barrier: Barrier, at: usize) -> Source {
     source
 }
 
-fn owner_piece(barrier: Barrier, range: Range) -> crate::SpacingPiece {
-    crate::SpacingPiece::Source {
+fn owner_piece(barrier: Barrier, range: Range) -> crate::error::SpacingPiece {
+    crate::error::SpacingPiece::Source {
         origin: usize::from(matches!(barrier, Barrier::Disconnected)),
         local: range,
         aggregate: range,
@@ -140,8 +142,8 @@ fn qualifies_components(barrier: Barrier) {
     .unwrap_err();
     mark_profile_error(
         &error,
-        crate::SpacingStage::Selection,
-        crate::SpacingOperation::InterCharacterBasis,
+        crate::error::SpacingStage::Selection,
+        crate::error::SpacingOperation::InterCharacterBasis,
         &[owner_piece(barrier, Range::new(1, 2))],
         std::slice::from_ref(&(1..2)),
         0.0,
@@ -222,8 +224,8 @@ fn qualifies_components(barrier: Barrier) {
         .unwrap_err();
         mark_profile_error(
             &error,
-            crate::SpacingStage::Selection,
-            crate::SpacingOperation::InterCharacterBasis,
+            crate::error::SpacingStage::Selection,
+            crate::error::SpacingOperation::InterCharacterBasis,
             &mark_pieces,
             &provider_atoms,
             0.0,
@@ -232,8 +234,8 @@ fn qualifies_components(barrier: Barrier) {
         let error = separated(&mut system, &source, own(4.0), barrier, at).unwrap_err();
         mark_profile_error(
             &error,
-            crate::SpacingStage::Preparation,
-            crate::SpacingOperation::AuthoredTracking,
+            crate::error::SpacingStage::Preparation,
+            crate::error::SpacingOperation::AuthoredTracking,
             &mark_pieces,
             &provider_atoms,
             4.0,

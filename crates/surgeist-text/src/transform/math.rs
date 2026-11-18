@@ -1,6 +1,6 @@
 //! Exact MathML Core C.1 operation; complete original-node eligibility is
 //! independent of the actual surviving Phase-I codepoint being mapped.
-use crate::Text;
+use crate::text::Text;
 
 pub(super) fn map(cp: u32) -> Option<u32> {
     let mappings = super::math_data::MAPPINGS;

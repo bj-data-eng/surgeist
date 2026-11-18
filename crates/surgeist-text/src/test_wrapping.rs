@@ -1,7 +1,9 @@
 //! Explicit producer facts for owning fixtures with a known containing context.
 
 /// Returns the segment only for a fixture with one structural section.
-pub(crate) fn only_source_segment(prepared: &crate::PreparedText) -> crate::PreparedSourceSegment {
+pub(crate) fn only_source_segment(
+    prepared: &crate::protocol::PreparedText,
+) -> crate::protocol::PreparedSourceSegment {
     let mut segments = prepared.source_segments();
     let segment = segments.next().expect("fixture has a source segment");
     assert!(
@@ -12,14 +14,14 @@ pub(crate) fn only_source_segment(prepared: &crate::PreparedText) -> crate::Prep
 }
 
 pub(crate) fn bind_missing(
-    analyzed: &crate::AnalyzedSource,
-    ancestor_wrap: crate::Wrap,
-) -> crate::AnalyzedSource {
+    analyzed: &crate::analyzed::AnalyzedSource,
+    ancestor_wrap: crate::style::Wrap,
+) -> crate::analyzed::AnalyzedSource {
     assert!(analyzed.inner.paragraph.base_direction.is_some());
     let policies = analyzed
         .wrapping_relations()
         .filter(|view| view.ancestor_wrap().is_none())
-        .map(|view| crate::WrappingPolicy {
+        .map(|view| crate::wrapping::WrappingPolicy {
             relation: view.handle(),
             ancestor_wrap,
         })
@@ -30,15 +32,15 @@ pub(crate) fn bind_missing(
 /// Owning legacy fixtures explicitly model neutral inline endpoints, including
 /// endpoints outside their selected line. Supply only facts actually demanded.
 pub(crate) fn select_neutral(
-    prepared: &crate::PreparedText,
-    mut request: crate::LineSelectionRequest,
-) -> crate::Result<crate::SelectedLine> {
+    prepared: &crate::protocol::PreparedText,
+    mut request: crate::protocol::LineSelectionRequest,
+) -> crate::Result<crate::protocol::SelectedLine> {
     while let Some(occurrence) = prepared.boundary_context_demand(&request)? {
         request
             .boundary_context
-            .push(crate::InlineBoundaryContextAllocation {
+            .push(crate::protocol::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
+                boundary: crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
             });
     }
     prepared.select(request)

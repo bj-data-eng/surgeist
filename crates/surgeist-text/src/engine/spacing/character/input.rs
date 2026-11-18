@@ -149,7 +149,7 @@ impl<'a> Input<'a> {
     fn with_cell_style<T>(
         self,
         binding: usize,
-        f: impl FnOnce(&crate::Style) -> Result<T>,
+        f: impl FnOnce(&crate::style::Style) -> Result<T>,
     ) -> Result<T> {
         let output = self
             .analyzed()
@@ -163,14 +163,14 @@ impl<'a> Input<'a> {
             .scope_topology
             .as_ref()
             .expect("prepared cell has authenticated capture");
-        let captured = crate::CapturedScope {
+        let captured = crate::processing::CapturedScope {
             capture: std::sync::Arc::clone(&topology.capture),
             index: scope,
         };
         let style = captured.style().ok_or_else(|| {
-            crate::engine::scope_alignment::refusal(crate::ScopeAlignmentError::MissingStyle {
-                scope,
-            })
+            crate::engine::scope_alignment::refusal(
+                crate::processing::ScopeAlignmentError::MissingStyle { scope },
+            )
         })?;
         f(style)
     }
@@ -191,7 +191,7 @@ impl<'a> Input<'a> {
         self,
         binding: usize,
         ledger: &mut Ledger,
-    ) -> Result<Vec<crate::SpacingPiece>> {
+    ) -> Result<Vec<crate::error::SpacingPiece>> {
         let output = self
             .analyzed()
             .combination
@@ -203,7 +203,7 @@ impl<'a> Input<'a> {
             account::work(ledger, 1)?;
             for piece in &part.pieces {
                 account::work(ledger, 1)?;
-                let value = crate::SpacingPiece::Source {
+                let value = crate::error::SpacingPiece::Source {
                     origin: self
                         .analyzed()
                         .paragraph

@@ -3,8 +3,13 @@
 //! makes substitution, attachment and loss of complete-unit context observable.
 use super::*;
 use crate::{
-    AnalysisTypography, Direction, LineBoxDirection, LineHeight, Point, Range, Rect,
-    baseline_test_fonts as base, test_fonts as sfnt, vertical_test_fonts as vertical,
+    analyzed::AnalysisTypography,
+    baseline_test_fonts as base,
+    geometry::{Point, Rect},
+    protocol::LineBoxDirection,
+    range::Range,
+    style::{Direction, LineHeight},
+    test_fonts as sfnt, vertical_test_fonts as vertical,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -285,17 +290,17 @@ fn composed_line(
             ParagraphInput {
                 source: source.clone(),
                 base_style: style,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: direction,
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: Range::new(0, len),
                     aggregate: Range::new(0, len),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -306,7 +311,7 @@ fn composed_line(
             typography,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analysis.typography(), typography);
     assert_eq!(analysis.source(), &source);
@@ -326,15 +331,15 @@ fn composed_line(
         ParagraphBaseDirection::LeftToRight => LineBoxDirection::LeftToRight,
         ParagraphBaseDirection::RightToLeft => LineBoxDirection::RightToLeft,
     };
-    input.context.alignment = crate::Alignment::Start;
+    input.context.alignment = crate::options::Alignment::Start;
     input.context.available_inline = None;
     input.context.spacing = SpacingPolicy::None;
     let line = prepared
         .select(input)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     (prepared, line)
@@ -380,11 +385,11 @@ fn source_glyphs(line: &FinalizedLine) -> Vec<(Range, u32)> {
     glyphs
 }
 
-fn place_upright(prepared: PreparedText, line: FinalizedLine) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn place_upright(prepared: PreparedText, line: FinalizedLine) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 20.0,

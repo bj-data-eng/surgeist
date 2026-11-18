@@ -126,9 +126,9 @@ fn justification_spends_only_the_real_reduced_capacity_on_authenticated_space_sl
                 r.context.spacing = SpacingPolicy::Spaces;
                 let selected = p.select(r).unwrap();
                 let unexpanded = selected
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 assert_eq!(unexpanded.measurements().alignment().advance(), natural);
@@ -139,19 +139,19 @@ fn justification_spends_only_the_real_reduced_capacity_on_authenticated_space_sl
                         .pieces()
                         .map(|piece| piece.owner())
                         .collect::<Vec<_>>(),
-                    [crate::SpacingSlotOwner::Source {
+                    [crate::protocol::SpacingSlotOwner::Source {
                         origin: p.origin_views().next().unwrap().handle(),
                         local: space_range,
                         aggregate: space_range,
                     }]
                 );
                 let expanded = selected
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                             slot: slots[0].clone(),
                             amount,
                         }]),
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 assert_eq!(expanded.selected_line(), selected);
@@ -292,7 +292,7 @@ fn frame_identity_is_semantic_but_conditional_candidates_may_use_their_actual_fr
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(frame),
+                crate::protocol::ConditionalLineContext::Finalized(frame),
             )
             .unwrap()
     };
@@ -424,7 +424,7 @@ fn real_atomic_and_positive_endpoint_allocations_follow_the_same_alignment_trans
             })
             .collect(),
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
@@ -436,7 +436,7 @@ fn real_atomic_and_positive_endpoint_allocations_follow_the_same_alignment_trans
     let controls = p.control_views().map(|c| c.handle()).collect::<Vec<_>>();
     assert_eq!(controls.len(), 2);
     let allocation = AtomicLineAllocation::InFlow {
-        fit: crate::AtomicFitAllocation::NativeOccupied,
+        fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 20.0,
             normal_border_inline_size: 20.0,

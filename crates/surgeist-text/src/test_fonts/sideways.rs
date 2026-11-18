@@ -5,8 +5,14 @@
 use super::{AHEM, cmap, layout_table, single_substitution};
 use crate::test_fonts::{replace_tables, table, u16_at, u32_at};
 use crate::{
-    Alignment, AnalyzedSource, Direction, Font, Id, LineHeight, Options, PreparationOptions, Range,
-    Source, Style, System,
+    System,
+    analyzed::AnalyzedSource,
+    id::Id,
+    options::{Alignment, Options},
+    protocol::PreparationOptions,
+    range::Range,
+    source::Source,
+    style::{Direction, Font, LineHeight, Style},
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -234,7 +240,7 @@ fn shape(value: &str, features: &[&str], expected_id: u32, expected_level: u8) {
             line_height: LineHeight::Absolute(10.0),
             ..Style::default()
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(

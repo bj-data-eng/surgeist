@@ -1,6 +1,10 @@
 //! Functional tests of new owner-issued measurements and terminal capture.
 use super::*;
-use crate::{Affinity, Cursor, Layout, ParagraphTerminalEdge as Terminal, Range};
+use crate::{
+    layout::{Affinity, Cursor, Layout},
+    protocol::ParagraphTerminalEdge as Terminal,
+    range::Range,
+};
 
 fn input(text: &str, terminal: Terminal, mode: WhiteSpace) -> ParagraphInput {
     let source = Source::new(text);
@@ -13,7 +17,7 @@ fn input(text: &str, terminal: Terminal, mode: WhiteSpace) -> ParagraphInput {
             white_space: mode,
             ..style()
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         tab_reference: None,
@@ -37,10 +41,10 @@ fn prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             ),
             PreparationOptions::default(),
         )
@@ -50,9 +54,9 @@ fn line(p: &PreparedText, width: Option<f64>, indent: f64) -> crate::Result<Fina
     let mut r = request(p);
     r.context.available_inline = width;
     r.context.indent = indent;
-    p.select(r)?.finalize(crate::LineAllocations {
+    p.select(r)?.finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
 }
 
@@ -66,7 +70,7 @@ fn actual_terminal_role_is_consumed_only_by_nonzero_eligible_preserved_edge() {
     assert_eq!(p.terminal_edge(), Terminal::Unknown);
     assert_eq!(
         reason(&line(&p, Some(40.0), 0.0).unwrap_err()),
-        &ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
+        &ProtocolError::MissingPhaseTwoContext(crate::protocol::PhaseTwoContext::TerminalBlockEdge)
     );
     let p = prepare(
         &mut system,
@@ -87,7 +91,7 @@ fn actual_terminal_role_is_consumed_only_by_nonzero_eligible_preserved_edge() {
         assert!(line(&p, Some(40.0), 0.0).is_ok());
     }
     let mut nowrap = input("X ", Terminal::Unknown, WhiteSpace::Preserve);
-    nowrap.base_style.wrap = crate::Wrap::None;
+    nowrap.base_style.wrap = crate::style::Wrap::None;
     let p = prepare(&mut system, nowrap);
     let actual = line(&p, Some(15.0), 0.0).unwrap();
     assert_eq!(
@@ -135,7 +139,9 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
             if preceding != 0.0 && terminal != Terminal::BlockEnd {
                 let error = result.unwrap_err();
                 let expected = if terminal == Terminal::Unknown {
-                    ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
+                    ProtocolError::MissingPhaseTwoContext(
+                        crate::protocol::PhaseTwoContext::TerminalBlockEdge,
+                    )
                 } else {
                     ProtocolError::UnsupportedContext {
                         field: ProtocolContextField::CssParagraphBoundary,
@@ -179,7 +185,10 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
                         cell.source_pieces().collect::<Vec<_>>(),
                         [Range::new(index, index + 1)]
                     );
-                    assert_ne!(cell.disposition(), crate::LineEdgeDisposition::Removed);
+                    assert_ne!(
+                        cell.disposition(),
+                        crate::protocol::LineEdgeDisposition::Removed
+                    );
                 }
                 assert_eq!(actual.feedback().advance, 10.0 + preceding);
                 assert_eq!(
@@ -198,8 +207,8 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
                 if preceding != 0.0 {
                     assert_eq!(
                         actual.edge_units().nth(1).unwrap().disposition(),
-                        crate::LineEdgeDisposition::Unconditional {
-                            side: crate::LineEdgeSide::End,
+                        crate::protocol::LineEdgeDisposition::Unconditional {
+                            side: crate::protocol::LineEdgeSide::End,
                             terminal: false
                         }
                     );
@@ -225,8 +234,8 @@ fn only_consumed_hanging_frames_require_checked_capacity_precision() {
     assert!(matches!(
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
-            phase: crate::TextNumericPhase::Finalization,
-            category: crate::TextNumericError::NonZeroLost,
+            phase: crate::error::TextNumericPhase::Finalization,
+            category: crate::error::TextNumericError::NonZeroLost,
             field: "Phase II available indentation",
             ..
         })
@@ -264,16 +273,20 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
         let mut r = request(&p);
         r.context.base_direction = direction;
         r.context.line_box_direction = match direction {
-            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+            crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                crate::protocol::LineBoxDirection::LeftToRight
+            }
+            crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                crate::protocol::LineBoxDirection::RightToLeft
+            }
         };
         r.context.available_inline = Some(15.0);
-        r.context.alignment = crate::Alignment::Center;
+        r.context.alignment = crate::options::Alignment::Center;
         let selected = p.select(r).unwrap();
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(natural.feedback().advance, 20.0);
@@ -285,7 +298,7 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
                 .pieces()
                 .map(|piece| piece.owner())
                 .collect::<Vec<_>>(),
-            [crate::SpacingSlotOwner::Source {
+            [crate::protocol::SpacingSlotOwner::Source {
                 origin: selected
                     .prepared_text()
                     .origin_views()
@@ -297,12 +310,12 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
             }]
         );
         let actual = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                     slot: slots[0].clone(),
                     amount: -10.0,
                 }]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -316,11 +329,11 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
         let edge = actual.edge_units().last().unwrap();
         assert_eq!(
             edge.disposition(),
-            crate::LineEdgeDisposition::Conditional {
+            crate::protocol::LineEdgeDisposition::Conditional {
                 side: if direction == ParagraphBaseDirection::LeftToRight {
-                    crate::LineEdgeSide::End
+                    crate::protocol::LineEdgeSide::End
                 } else {
-                    crate::LineEdgeSide::Start
+                    crate::protocol::LineEdgeSide::Start
                 },
                 eligible: true
             }
@@ -348,7 +361,7 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
         let layout = Layout::from_finalized_lines(PlacementRequest {
             prepared: p,
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: actual,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -368,7 +381,7 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
         let pieces: Vec<_> = units[0]
             .pieces()
             .map(|piece| {
-                let crate::SourceRangeGeometry::Line(piece) = piece else {
+                let crate::range_fragments::SourceRangeGeometry::Line(piece) = piece else {
                     panic!("ordinary Range fixture must retain Line geometry");
                 };
                 piece
@@ -413,8 +426,8 @@ fn measurements_borrow_exact_final_owner_and_separate_all_purposes_and_indent() 
     assert_eq!(rows.len(), 2);
     assert_eq!(
         rows[1].disposition(),
-        crate::LineEdgeDisposition::Conditional {
-            side: crate::LineEdgeSide::End,
+        crate::protocol::LineEdgeDisposition::Conditional {
+            side: crate::protocol::LineEdgeSide::End,
             eligible: true
         }
     );
@@ -434,7 +447,7 @@ fn measurements_borrow_exact_final_owner_and_separate_all_purposes_and_indent() 
     let owners: Vec<_> = rows[1].owners().collect();
     assert!(matches!(
         &owners[..],
-        [crate::LineEdgeOwner::Participant(
+        [crate::protocol::LineEdgeOwner::Participant(
             PreparedParticipant::Text(_)
         )]
     ));
@@ -484,8 +497,8 @@ fn partial_terminal_group_exclusion_is_distinct_from_physical_overlap() {
     assert_eq!(rows.len(), 3);
     assert_eq!(
         rows[1].disposition(),
-        crate::LineEdgeDisposition::Unconditional {
-            side: crate::LineEdgeSide::End,
+        crate::protocol::LineEdgeDisposition::Unconditional {
+            side: crate::protocol::LineEdgeSide::End,
             terminal: true
         }
     );
@@ -559,7 +572,7 @@ fn preserve_spaces_uses_its_real_processed_space_without_inventing_a_forced_end(
         let layout = Layout::from_finalized_lines(PlacementRequest {
             prepared: p,
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: actual,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -610,9 +623,9 @@ fn omitted_soft_space_inside_wide_frame_has_no_physical_outward_overlap() {
     let actual = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -634,7 +647,7 @@ fn omitted_soft_space_inside_wide_frame_has_no_physical_outward_overlap() {
     );
     assert_eq!(
         edge.bounds(),
-        crate::Rect::new(
+        crate::geometry::Rect::new(
             10.0,
             actual.metric_bounds().origin.y,
             10.0,
@@ -642,7 +655,9 @@ fn omitted_soft_space_inside_wide_frame_has_no_physical_outward_overlap() {
         )
     );
     let owners: Vec<_> = edge.owners().collect();
-    let [crate::LineEdgeOwner::Participant(PreparedParticipant::Text(unit))] = &owners[..] else {
+    let [crate::protocol::LineEdgeOwner::Participant(PreparedParticipant::Text(unit))] =
+        &owners[..]
+    else {
         panic!("actual text owner");
     };
     let origins: Vec<_> = unit.view().origins().map(|o| o.origin()).collect();
@@ -654,17 +669,17 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
     let mut system = system();
     for replacement in [" ", "\t"] {
         let mut native = input("XX\u{ad}YYY", Terminal::BlockEnd, WhiteSpace::Preserve);
-        native.base_style.tab_size = crate::TabSize::spaces(4.0).unwrap();
+        native.base_style.tab_size = crate::tabs::TabSize::spaces(4.0).unwrap();
         native.tab_reference = Some(
-            crate::ParagraphTabReference::new(
+            crate::tabs::ParagraphTabReference::new(
                 native.base_style.clone(),
                 ParagraphBaseDirection::LeftToRight,
             )
             .unwrap(),
         );
         native.replacements.push(
-            crate::ParagraphReplacement::resolved_native_logical_before(
-                crate::ParagraphReplacementDefinition::Source {
+            crate::protocol::paragraph::ParagraphReplacement::resolved_native_logical_before(
+                crate::protocol::paragraph::ParagraphReplacementDefinition::Source {
                     origin: 0,
                     source: Range::new(2, 3),
                 },
@@ -676,15 +691,15 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
         let analyzed = crate::test_wrapping::bind_missing(
             &AnalyzedSource::from_paragraph(
                 native,
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap(),
-            crate::Wrap::Word,
+            crate::style::Wrap::Word,
         );
         let p = system
             .prepare(
                 &analyzed,
-                PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops).unwrap(),
+                PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::CssStops).unwrap(),
             )
             .unwrap();
         let alternative = p.alternative_views().next().unwrap().handle();
@@ -704,9 +719,9 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
         let line = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let advance = if replacement == " " { 10.0 } else { 20.0 };
@@ -726,20 +741,22 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
         assert!(row.source_pieces().next().is_none());
         assert_eq!(
             row.owners().collect::<Vec<_>>(),
-            [crate::LineEdgeOwner::Alternative(alternative.clone())]
+            [crate::protocol::LineEdgeOwner::Alternative(
+                alternative.clone()
+            )]
         );
         assert!(
-            matches!(alternative.view().definition(), crate::PreparedAlternativeDefinition::Source { source, .. } if source == Range::new(2, 3))
+            matches!(alternative.view().definition(), crate::protocol::readback::PreparedAlternativeDefinition::Source { source, .. } if source == Range::new(2, 3))
         );
         let original = p.origin_views().next().unwrap().handle();
         let baseline = line.feedback().baseline;
-        let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+        let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: p.clone(),
             coverage: PlacementCoverage::Range {
                 start: p.boundary_views().next().unwrap().handle(),
                 end,
             },
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -764,7 +781,7 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             units[0]
                 .pieces()
                 .map(|p| {
-                    let crate::SourceRangeGeometry::Line(p) = p else {
+                    let crate::range_fragments::SourceRangeGeometry::Line(p) = p else {
                         panic!("ordinary Range fixture must retain Line geometry");
                     };
                     p.advance_edges()
@@ -787,8 +804,12 @@ fn zero_preserved_selection(
     let mut r = request(&p);
     r.context.base_direction = direction;
     r.context.line_box_direction = match direction {
-        crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-        crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        crate::protocol::ParagraphBaseDirection::LeftToRight => {
+            crate::protocol::LineBoxDirection::LeftToRight
+        }
+        crate::protocol::ParagraphBaseDirection::RightToLeft => {
+            crate::protocol::LineBoxDirection::RightToLeft
+        }
     };
     r.context.available_inline = Some(15.0);
     p.select(r).unwrap()
@@ -805,9 +826,9 @@ fn unallocated_zero_terminal_is_neutral_but_known_block_retains_classification()
         let selected =
             zero_preserved_selection(&mut system, terminal, ParagraphBaseDirection::LeftToRight);
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -825,7 +846,7 @@ fn unallocated_zero_terminal_is_neutral_but_known_block_retains_classification()
                 .pieces()
                 .map(|piece| piece.owner())
                 .collect::<Vec<_>>(),
-            [crate::SpacingSlotOwner::Source {
+            [crate::protocol::SpacingSlotOwner::Source {
                 origin: selected
                     .prepared_text()
                     .origin_views()
@@ -841,19 +862,19 @@ fn unallocated_zero_terminal_is_neutral_but_known_block_retains_classification()
         if terminal != Terminal::BlockEnd {
             assert_eq!(
                 edge.disposition(),
-                crate::LineEdgeDisposition::UnconsumedTerminal {
-                    side: crate::LineEdgeSide::End
+                crate::protocol::LineEdgeDisposition::UnconsumedTerminal {
+                    side: crate::protocol::LineEdgeSide::End
                 }
             );
         }
         if terminal == Terminal::BlockEnd {
             let allocated = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                         slot: slots[0].clone(),
                         amount: 10.0,
                     }]),
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(
@@ -874,8 +895,8 @@ fn unallocated_zero_terminal_is_neutral_but_known_block_retains_classification()
             );
             assert_eq!(
                 allocated.edge_units().next().unwrap().disposition(),
-                crate::LineEdgeDisposition::Conditional {
-                    side: crate::LineEdgeSide::End,
+                crate::protocol::LineEdgeDisposition::Conditional {
+                    side: crate::protocol::LineEdgeSide::End,
                     eligible: false
                 }
             );
@@ -891,16 +912,16 @@ fn expanded_zero_terminal_error(
     let mut system = system();
     let selected = zero_preserved_selection(&mut system, terminal, direction);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 0.0);
     let slot = selected.spacing_slots().next().unwrap();
     assert_eq!(
         slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
-        [crate::SpacingSlotOwner::Source {
+        [crate::protocol::SpacingSlotOwner::Source {
             origin: selected
                 .prepared_text()
                 .origin_views()
@@ -912,9 +933,9 @@ fn expanded_zero_terminal_error(
         }]
     );
     selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(vec![SpacingAllocation { slot, amount }]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .expect_err("expanded preserved source consumes actual terminal authority")
 }
@@ -932,7 +953,9 @@ fn expanding_unknown_zero_preserved_edge_requires_terminal_authority() {
                     amount,
                     direction
                 )),
-                &ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
+                &ProtocolError::MissingPhaseTwoContext(
+                    crate::protocol::PhaseTwoContext::TerminalBlockEdge
+                )
             );
         }
     }
@@ -979,9 +1002,9 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
         let p = prepare(&mut system, captured);
         let selected = p.select(request(&p)).unwrap();
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -996,7 +1019,7 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
         for (slot, range) in slots.iter().zip([Range::new(1, 2), Range::new(2, 3)]) {
             assert_eq!(
                 slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
-                [crate::SpacingSlotOwner::Source {
+                [crate::protocol::SpacingSlotOwner::Source {
                     origin: selected
                         .prepared_text()
                         .origin_views()
@@ -1009,7 +1032,7 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
             );
         }
         let unchanged = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::Complete(
                     slots
                         .iter()
@@ -1019,11 +1042,11 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
                         })
                         .collect(),
                 ),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(unchanged.feedback().advance, 10.0);
-        let expanded = selected.finalize(crate::LineAllocations {
+        let expanded = selected.finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(vec![
                 SpacingAllocation {
                     slot: slots[0].clone(),
@@ -1034,7 +1057,7 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
                     amount: 0.0,
                 },
             ]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         });
         if terminal == Terminal::BlockEnd {
             let expanded = expanded.unwrap();
@@ -1052,7 +1075,9 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
             let error =
                 expanded.expect_err("earlier allocated group consumes deferred terminal authority");
             let expected = if terminal == Terminal::Unknown {
-                ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
+                ProtocolError::MissingPhaseTwoContext(
+                    crate::protocol::PhaseTwoContext::TerminalBlockEdge,
+                )
             } else {
                 ProtocolError::UnsupportedContext {
                     field: ProtocolContextField::CssParagraphBoundary,
@@ -1077,7 +1102,7 @@ fn allocation_outside_deferred_terminal_dependencies_remains_admitted() {
         for (slot, range) in slots.iter().zip([Range::new(0, 1), Range::new(2, 3)]) {
             assert_eq!(
                 slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
-                [crate::SpacingSlotOwner::Source {
+                [crate::protocol::SpacingSlotOwner::Source {
                     origin: selected
                         .prepared_text()
                         .origin_views()
@@ -1090,7 +1115,7 @@ fn allocation_outside_deferred_terminal_dependencies_remains_admitted() {
             );
         }
         let actual = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::Complete(vec![
                     SpacingAllocation {
                         slot: slots[0].clone(),
@@ -1101,7 +1126,7 @@ fn allocation_outside_deferred_terminal_dependencies_remains_admitted() {
                         amount: 0.0,
                     },
                 ]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -1116,8 +1141,8 @@ fn allocation_outside_deferred_terminal_dependencies_remains_admitted() {
         );
         assert_eq!(
             actual.edge_units().last().unwrap().disposition(),
-            crate::LineEdgeDisposition::UnconsumedTerminal {
-                side: crate::LineEdgeSide::End
+            crate::protocol::LineEdgeDisposition::UnconsumedTerminal {
+                side: crate::protocol::LineEdgeSide::End
             }
         );
     }
@@ -1139,15 +1164,15 @@ fn cancellation_between_deferred_rows_cannot_hide_terminal_dependence() {
         let p = prepare(&mut system, captured);
         let selected = p.select(request(&p)).unwrap();
         let retained = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 2);
         let error = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::Complete(vec![
                     SpacingAllocation {
                         slot: slots[0].clone(),
@@ -1158,11 +1183,13 @@ fn cancellation_between_deferred_rows_cannot_hide_terminal_dependence() {
                         amount: -10.0,
                     },
                 ]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .expect_err("net zero allocations still change exact terminal dependencies");
         let expected = if terminal == Terminal::Unknown {
-            ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
+            ProtocolError::MissingPhaseTwoContext(
+                crate::protocol::PhaseTwoContext::TerminalBlockEdge,
+            )
         } else {
             ProtocolError::UnsupportedContext {
                 field: ProtocolContextField::CssParagraphBoundary,
@@ -1175,7 +1202,7 @@ fn cancellation_between_deferred_rows_cannot_hide_terminal_dependence() {
                 .edge_units()
                 .filter(|row| matches!(
                     row.disposition(),
-                    crate::LineEdgeDisposition::UnconsumedTerminal { .. }
+                    crate::protocol::LineEdgeDisposition::UnconsumedTerminal { .. }
                 ))
                 .count(),
             2
@@ -1218,9 +1245,9 @@ fn forced_zero_point_outside_frame_cannot_make_preceding_group_terminal() {
     r.termination = PreparedTermination::Ordinary(ending);
     let selected = p.select(r).unwrap();
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -1233,33 +1260,33 @@ fn forced_zero_point_outside_frame_cannot_make_preceding_group_terminal() {
     );
     assert_eq!(
         natural.edge_units().nth(1).unwrap().disposition(),
-        crate::LineEdgeDisposition::Unconditional {
-            side: crate::LineEdgeSide::End,
+        crate::protocol::LineEdgeDisposition::Unconditional {
+            side: crate::protocol::LineEdgeSide::End,
             terminal: false
         }
     );
     assert_eq!(
         natural.edge_units().nth(2).unwrap().disposition(),
-        crate::LineEdgeDisposition::Conditional {
-            side: crate::LineEdgeSide::End,
+        crate::protocol::LineEdgeDisposition::Conditional {
+            side: crate::protocol::LineEdgeSide::End,
             eligible: false
         }
     );
     let slots: Vec<_> = selected.spacing_slots().collect();
     let actual = selected
-        .finalize(crate::LineAllocations { spacing: SpacingAllocations::Complete(
+        .finalize(crate::protocol::LineAllocations { spacing: SpacingAllocations::Complete(
             slots
                 .iter()
                 .map(|slot| SpacingAllocation {
                     slot: slot.clone(),
-                    amount: if slot.pieces().any(|piece| matches!(piece.owner(), crate::SpacingSlotOwner::Source { aggregate, .. } if aggregate == Range::new(2, 3))) {
+                    amount: if slot.pieces().any(|piece| matches!(piece.owner(), crate::protocol::SpacingSlotOwner::Source { aggregate, .. } if aggregate == Range::new(2, 3))) {
                         10.0
                     } else {
                         0.0
                     },
                 })
                 .collect(),
-        ), scopes: crate::ScopeAllocations::None })
+        ), scopes: crate::protocol::ScopeAllocations::None })
         .unwrap();
     assert_eq!(
         (
@@ -1294,11 +1321,11 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
         let mut captured = input(" ", Terminal::Unknown, WhiteSpace::Preserve);
         captured.base_direction = direction;
         captured.base_style.word_spacing = -10.0;
-        captured.source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(91),
-            crate::InlineBoxKind::InFlow,
+        captured.source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(91),
+            crate::source::InlineBoxKind::InFlow,
             0,
-            crate::Size::new(10.0, 10.0),
+            crate::geometry::Size::new(10.0, 10.0),
         ));
         captured.anchor_order.push(paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Atomic(0),
@@ -1312,24 +1339,28 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
                 .boundary_policies
                 .push(paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
                 });
         }
         let p = prepare(&mut system, captured);
         let mut r = request(&p);
         r.context.base_direction = direction;
         r.context.line_box_direction = match direction {
-            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+            crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                crate::protocol::LineBoxDirection::LeftToRight
+            }
+            crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                crate::protocol::LineBoxDirection::RightToLeft
+            }
         };
         r.atomics = p
             .atomic_views()
             .map(|atomic| AtomicAllocation {
                 occurrence: atomic.handle(),
                 allocation: AtomicLineAllocation::InFlow {
-                    fit: crate::AtomicFitAllocation::NativeOccupied,
+                    fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 10.0,
                         normal_border_inline_size: 10.0,
@@ -1339,8 +1370,8 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
                         occupied_end: 10.0,
                     },
                     box_geometry: AtomicBoxAllocation {
-                        border: crate::Rect::new(0.0, -8.0, 10.0, 10.0),
-                        content: crate::Rect::new(0.0, -8.0, 10.0, 10.0),
+                        border: crate::geometry::Rect::new(0.0, -8.0, 10.0, 10.0),
+                        content: crate::geometry::Rect::new(0.0, -8.0, 10.0, 10.0),
                         baseline: 0.0,
                     },
                     alignment: LineBoxAlignment::Baseline,
@@ -1349,9 +1380,9 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
             .collect();
         let selected = p.select(r).unwrap();
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -1363,25 +1394,27 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
         );
         let slot = selected.spacing_slots().next().unwrap();
         let error = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                     slot: slot.clone(),
                     amount: 10.0,
                 }]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap_err();
         assert_eq!(
             reason(&error),
-            &ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
+            &ProtocolError::MissingPhaseTwoContext(
+                crate::protocol::PhaseTwoContext::TerminalBlockEdge
+            )
         );
         let retry = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                     slot,
                     amount: 0.0,
                 }]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -1423,9 +1456,9 @@ fn soft_zero_preserved_edge_uses_its_break_without_terminal_authority() {
     let selected = p.select(r).unwrap();
     let slot = selected.spacing_slots().next().unwrap();
     let actual = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(vec![SpacingAllocation { slot, amount: 10.0 }]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -1438,8 +1471,8 @@ fn soft_zero_preserved_edge_uses_its_break_without_terminal_authority() {
     );
     assert_eq!(
         actual.edge_units().last().unwrap().disposition(),
-        crate::LineEdgeDisposition::Unconditional {
-            side: crate::LineEdgeSide::End,
+        crate::protocol::LineEdgeDisposition::Unconditional {
+            side: crate::protocol::LineEdgeSide::End,
             terminal: true
         }
     );

@@ -419,7 +419,7 @@ fn horizontal_absence_synthesizes_zero_but_consumed_malformed_base_retains_its_e
             .baseline(system.font_catalogue_identity(), AXIS, ALPHA)
             .unwrap();
         assert!(
-            matches!(raw.outcome(), FontBaselineOutcome::Available(value) if value.coordinate() == 0.0 && value.provenance() == FontBaselineProvenance::HorizontalAlphabeticZero && value.absence() == Some(crate::FontBaselineAbsence::BaseTable))
+            matches!(raw.outcome(), FontBaselineOutcome::Available(value) if value.coordinate() == 0.0 && value.provenance() == FontBaselineProvenance::HorizontalAlphabeticZero && value.absence() == Some(crate::font::FontBaselineAbsence::BaseTable))
         );
     }
     let bad = sfnt::replace_tables(
@@ -450,8 +450,8 @@ fn horizontal_absence_synthesizes_zero_but_consumed_malformed_base_retains_its_e
     assert_eq!(
         error.detail(),
         Some(&crate::ErrorDetail::FontMetricTable {
-            table: crate::FontMetricTable::Base,
-            reason: crate::FontMetricTableError::BaselineTagOrder
+            table: crate::error::FontMetricTable::Base,
+            reason: crate::error::FontMetricTableError::BaselineTagOrder
         })
     );
     assert_eq!(retained.glyph_runs(), snapshot);
@@ -505,16 +505,16 @@ fn requested_reference_pairs_preserve_raw_defaults_upright_central_and_orientati
                 source: source.clone(),
                 base_style: own_style(),
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source,
                     local: Range::new(0, 1),
                     aggregate: Range::new(0, 1),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -522,20 +522,20 @@ fn requested_reference_pairs_preserve_raw_defaults_upright_central_and_orientati
                 replacements: vec![],
                 anchor_order: vec![],
             },
-            crate::AnalysisTypography::Upright {
+            crate::analyzed::AnalysisTypography::Upright {
                 computed_direction: ParagraphBaseDirection::RightToLeft,
             },
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(
         upright.typography(),
-        crate::AnalysisTypography::Upright {
+        crate::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::RightToLeft
         }
     );
-    assert_eq!(upright.direction(), crate::Direction::LeftToRight);
+    assert_eq!(upright.direction(), crate::style::Direction::LeftToRight);
     let options = PreparationOptions::default().with_orientation(LineOrientation::Vertical);
     for request in [
         options,

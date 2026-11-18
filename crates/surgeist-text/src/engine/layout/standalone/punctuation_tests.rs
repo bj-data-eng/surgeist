@@ -1,7 +1,12 @@
 //! Real raw chooser coverage; expected advances are Ahem's retained full em.
 use crate::{
-    Font, HangingPunctuation, HangingPunctuationEnd, HyphenateCharacter, HyphenationPlacement,
-    Hyphens, NativeHyphenationConvention, Options, Range, Source, Style, System, Text,
+    System,
+    hyphenation::{HyphenateCharacter, HyphenationPlacement, Hyphens, NativeHyphenationConvention},
+    options::Options,
+    range::Range,
+    source::Source,
+    style::{Font, HangingPunctuation, HangingPunctuationEnd, Style},
+    text::Text,
 };
 
 fn system() -> (System, Style) {
@@ -283,7 +288,7 @@ fn raw_automatic_priority_measures_the_whole_receiving_manual_partition() {
                 .unwrap()
                 .view()
                 .definition(),
-            crate::PreparedAlternativeDefinition::Automatic { .. }
+            crate::protocol::readback::PreparedAlternativeDefinition::Automatic { .. }
         ));
         assert_eq!(output.inner.lines[1].finalized.data.metrics.advance, 60.0);
     }

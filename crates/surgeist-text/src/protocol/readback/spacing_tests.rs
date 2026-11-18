@@ -1,5 +1,31 @@
 //! Independent Ahem10 expectations over the actual native phase owners.
-use crate::*;
+use crate::{
+    ErrorDetail, System,
+    analyzed::AnalyzedSource,
+    geometry::{Point, Rect, Size},
+    id::Id,
+    layout::Affinity,
+    options::Alignment,
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+        ControlAllocation, FinalizedLine, LineBoxAlignment, LineContext, LineEnd, LineOrientation,
+        LineSelectionRequest, LineStart, ParagraphBaseDirection, ParagraphInput,
+        PreparationOptions, PreparedAlternative, PreparedBreakKind, PreparedParticipant,
+        PreparedText, ProtocolError, SelectedLine, SpacingAllocation, SpacingAllocations,
+        SpacingPolicy, SpacingSlotDisposition, SpacingSlotOwner, TabContext,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+            ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition,
+            ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Font, LineHeight, Style, WhiteSpace, Wrap},
+    text::Text,
+};
 
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -7,7 +33,7 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
     let source = Source::new(text);
     let length = source.text().len();
     ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
@@ -41,10 +67,12 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
 }
 
 fn prepare(input: ParagraphInput) -> PreparedText {
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
-    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word);
     let mut system = System::default();
     system
         .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
@@ -77,7 +105,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
             allocation: match atomic.original_box().kind() {
                 InlineBoxKind::OutOfFlow => AtomicLineAllocation::OutOfFlow,
                 InlineBoxKind::InFlow => AtomicLineAllocation::InFlow {
-                    fit: crate::AtomicFitAllocation::NativeOccupied,
+                    fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 5.0,
                         normal_border_inline_size: 5.0,
@@ -103,10 +131,10 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
             ControlAllocation {
                 boundary: matches!(
                     occurrence.view().kind(),
-                    crate::ParagraphControlKind::InlineBoundaryStart
-                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                    crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                        | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }
@@ -139,17 +167,17 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
                 .participants()
                 .take(termination.view().boundary().view().participant_offset())
                 .collect(),
-            termination: crate::PreparedTermination::Ordinary(termination),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination),
             alternative,
             atomics,
             controls,
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                line_box_direction: crate::LineBoxDirection::LeftToRight,
+                line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
                 orientation: LineOrientation::Horizontal,
                 start: LineStart::Paragraph,
                 end,
@@ -216,7 +244,7 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
             }]
         );
         let pieces = slot.pieces().collect::<Vec<_>>();
-        let crate::SpacingSlotTarget::Separator(spacing_unit) = slot.target() else {
+        let crate::protocol::SpacingSlotTarget::Separator(spacing_unit) = slot.target() else {
             panic!("the existing Spaces target is a complete separator")
         };
         assert_eq!(spacing_unit.pieces().len(), 1);
@@ -224,15 +252,15 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
         assert_eq!(unit.prepared_text(), prepared);
     }
     let first = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let second = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: allocations(&selected, &[0.0, 2.0, 0.0]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(facts(&first), [(EDGE, 0.0), (INNER, 10.0), (EDGE, 0.0)]);
@@ -259,12 +287,12 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
     let foreign = independently_selected.spacing_slots().next().unwrap();
     assert_ne!(foreign, slots[0]);
     let error = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                 slot: foreign,
                 amount: 0.0,
             }]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap_err();
     assert_eq!(
@@ -317,9 +345,9 @@ fn whitespace_only_discard_and_lexical_deletion_have_distinct_slot_inventories()
     let collapsed = select(&prepare(input("   ", WhiteSpace::Collapse)), None);
     assert_eq!(collapsed.spacing_slots().len(), 1);
     let line = collapsed
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(facts(&line), [(EDGE, 0.0)]);
@@ -328,9 +356,9 @@ fn whitespace_only_discard_and_lexical_deletion_have_distinct_slot_inventories()
         (0.0, 0.0)
     );
     let error = collapsed
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: allocations(&collapsed, &[1.0]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap_err();
     assert_eq!(
@@ -343,9 +371,9 @@ fn whitespace_only_discard_and_lexical_deletion_have_distinct_slot_inventories()
     assert_eq!(discarded.spacing_slots().len(), 0);
     assert_eq!(
         discarded
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .spacing_slots()
@@ -359,15 +387,15 @@ fn retained_zero_advance_preserves_trailing_classification_and_original_owner() 
     let prepared = prepare(input(" X ", WhiteSpace::Preserve));
     let selected = select(&prepared, None);
     let first = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let second = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: allocations(&selected, &[0.0, -10.0]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(facts(&first), [(INNER, 10.0), (TRAILING, 10.0)]);
@@ -402,9 +430,9 @@ fn nbsp_and_real_retained_font_tab_do_not_acquire_space_slots() {
     let selected = select(&prepared, None);
     assert_eq!(selected.spacing_slots().len(), 0);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.spacing_slots().len(), 0);
@@ -456,9 +484,9 @@ fn neutral_controls_are_transparent_while_real_inflow_allocations_bound_spaces()
             affinity: Affinity::Before,
         });
         let line = select(&prepare(captured), None)
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -482,9 +510,9 @@ fn neutral_controls_are_transparent_while_real_inflow_allocations_bound_spaces()
         affinity: Affinity::Before,
     });
     let line = select(&prepare(captured), None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(facts(&line), [(TRAILING, 10.0)]);
@@ -530,7 +558,7 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
                 local
             }]
         );
-        let crate::SpacingSlotTarget::Separator(unit) = slot.target() else {
+        let crate::protocol::SpacingSlotTarget::Separator(unit) = slot.target() else {
             panic!("the inserted Spaces target is a complete separator")
         };
         assert_eq!(unit.pieces().len(), 1);
@@ -544,7 +572,7 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
         slots
             .iter()
             .map(|slot| {
-                let crate::SpacingSlotTarget::Separator(unit) = slot.target() else {
+                let crate::protocol::SpacingSlotTarget::Separator(unit) = slot.target() else {
                     panic!("the inserted Spaces target is a complete separator")
                 };
                 unit.pieces()
@@ -558,9 +586,9 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
         [vec![(2, 3)], vec![(4, 5)]]
     );
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(facts(&line), [(INNER, 10.0), (EDGE, 0.0)]);
@@ -595,9 +623,9 @@ fn preserved_trailing_space_is_unchanged_by_a_out_of_flow_occurrence() {
         let selected = select(&prepared, None);
         for (amount, advance, trailing) in [(0.0, 20.0, 10.0), (3.0, 23.0, 13.0)] {
             let line = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: allocations(&selected, &[amount]),
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(facts(&line), [(TRAILING, trailing)]);

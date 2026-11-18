@@ -1,6 +1,9 @@
 //! Immutable operation limits over mixed, multi-receipt placements.
 use super::*;
-use crate::{ScopeAlignmentError, ScopeAlignmentLimitKind, SourceRangeGeometry};
+use crate::{
+    processing::{ScopeAlignmentError, ScopeAlignmentLimitKind},
+    range_fragments::SourceRangeGeometry,
+};
 
 const GENEROUS: ScopeAlignmentLimits =
     ScopeAlignmentLimits::new(1_000_000, 1_000_000, 1_000_000_000, 268_435_456);

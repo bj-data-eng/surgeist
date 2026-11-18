@@ -2,7 +2,47 @@
 //! BASE coordinates and Ahem metrics are authored table facts, not sampled
 //! execution output. This new API is qualified functionally.
 use super::capture::{captured_input, generous, reference, style};
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, Result, System,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    error::{TextNumericError, TextNumericPhase},
+    font::{FontBaseline, FontBaselineOutcome, FontBaselineScript},
+    geometry::{Point, Rect, Size},
+    hyphenation::{HyphenationPlacement, Hyphens, NativeHyphenationConvention},
+    id::Id,
+    layout::{Affinity, Cursor, Layout, Selection},
+    options::Alignment,
+    processing::{
+        ContextualSourceInput, ProcessedSource, ScopeAlignmentBoundary, ScopeAlignmentError,
+        ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeFontReference, ScopeRole,
+        SourceProcessingConnection, SourceProcessingEvent, SourceProcessingJointFlow,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
+        SourceProcessingTopology, process_contextual_source,
+    },
+    protocol::{
+        AtomicAllocation, AtomicBoxAllocation, AtomicFitAllocation, AtomicFlowAllocation,
+        AtomicLineAllocation, ControlAllocation, FinalizedLine, InlineBoundaryAllocation,
+        InlineBoundaryContextAllocation, InlineBoxEdgeComponents, InlineBoxFragmentationError,
+        InlineBoxSource, LineAllocations, LineAnchor, LineBoxAlignment, LineEdgeSide, LineEnd,
+        LineOrientation, LinePlacement, LineSelectionRequest, LineStart, MarginEdgeFitAuthority,
+        ParagraphBaseDirection, PlacementCoverage, PlacementEntry, PlacementRequest,
+        PreparationOptions, PreparedBoundary, PreparedBreakKind, PreparedControl,
+        PreparedOpportunity, PreparedParticipant, PreparedTermination, PreparedText, ProtocolError,
+        ScopeAlignmentAllowance, ScopeAlignmentCensus, ScopeAlignmentCensusInput,
+        ScopeAlignmentProduct, ScopeAlignmentProducts, ScopeAllocation, ScopeAllocations,
+        ScopeMetricContribution, SelectedLine, SelectedScope, SpacingAllocations, SpacingPolicy,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+        scope_alignment_census,
+    },
+    range::Range,
+    source::{BaselineShift, InlineBox, InlineBoxKind, Source},
+    style::{Decoration, DecorationOffset, DecorationThickness, Font, Style, WhiteSpace, Wrap},
+    text::Text,
+};
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
 use std::sync::Arc;
 
@@ -534,7 +574,7 @@ pub(super) fn two_leaves() -> ContextualSourceInput {
         following_wrap: Wrap::Word,
         ancestor_wrap: Wrap::Word,
     }];
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     value.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
@@ -754,7 +794,7 @@ fn a_empty_dormant_inline_does_not_demand_missing_reference_or_unavailable_font(
         None,
         Some(unavailable),
     );
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     value.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),

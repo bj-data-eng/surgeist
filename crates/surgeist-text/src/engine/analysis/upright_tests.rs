@@ -4,15 +4,33 @@ use std::sync::Arc;
 use icu_properties::{CodePointMapData, props::BidiClass};
 
 use crate::{
-    Affinity, AnalysisTypography, AnalyzedSource, CaseTransform, ContextualSourceInput, Direction,
-    DocumentSegmentBreaks, Error, ErrorCode, ErrorDetail, Font, Id, LineHeight, LineOrientation,
-    Options, ParagraphAnchor, ParagraphAnchorItem, ParagraphBaseDirection, ParagraphConnection,
-    ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphInput,
-    ParagraphOrigin, ParagraphOriginKind, ParagraphStrut, ParagraphTerminalEdge,
-    PreparationOptions, ProtocolContextField, ProtocolError, Range, Source,
-    SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-    SourceProcessingScope, SourceProcessingTopology, Style, System, Text, TextTransform,
-    TextTransformSet, WhiteSpace, WhiteSpaceTrim, Wrap, WrappingPolicy, process_contextual_source,
+    Error, ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    id::Id,
+    layout::Affinity,
+    options::Options,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingEnvelope,
+        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        LineOrientation, ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge,
+        PreparationOptions, ProtocolContextField, ProtocolError,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphConnection, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{
+        CaseTransform, Direction, Font, LineHeight, Style, TextTransform, TextTransformSet,
+        WhiteSpace, Wrap,
+    },
+    text::Text,
+    wrapping::WrappingPolicy,
 };
 
 use super::wrapping::Event;
@@ -418,8 +436,9 @@ fn contradictory_captured_used_rtl_refuses_at_both_native_fronts_without_relabel
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::UnsupportedTextStyle {
-            feature: crate::TextStyleFeature::ExplicitTextDirection,
-            reason: crate::UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
+            feature: crate::style_support::TextStyleFeature::ExplicitTextDirection,
+            reason:
+                crate::style_support::UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
         })
     );
     let mut input = native(source("A"));
@@ -434,21 +453,21 @@ fn contradictory_captured_used_rtl_refuses_at_both_native_fronts_without_relabel
 
 #[test]
 fn actual_contextual_computed_edges_cut_used_bodies_without_inserting_source_text() {
-    use crate::{ComputedLineBoundaryInput, SourceBoxSide};
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
+    use crate::processing::{ComputedLineBoundaryInput, SourceBoxSide};
     let original = source("Aא");
     let mut input = contextual(original.clone());
     input.origins = vec![
         origin(&original, Range::new(0, 1)),
         origin(&original, Range::new(1, 2)),
     ];
-    input.connections = vec![crate::SourceProcessingConnection {
+    input.connections = vec![crate::processing::SourceProcessingConnection {
         before_origin: 0,
         after_origin: 1,
         kind: ParagraphConnectionKind::Continuous,
     }];
-    input.boundary_policies = vec![crate::ParagraphBoundaryPolicy {
-        definition: crate::ParagraphBoundaryDefinition::Connection(0),
+    input.boundary_policies = vec![crate::protocol::paragraph::ParagraphBoundaryPolicy {
+        definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(0),
         preceding_wrap: Wrap::Word,
         following_wrap: Wrap::Word,
         ancestor_wrap: Wrap::Word,
@@ -623,8 +642,8 @@ fn continuous_and_disconnected_original_surrogates_do_not_gain_new_correspondenc
         ];
         input.connections = vec![ParagraphConnection { at: 1, kind }];
         if kind == ParagraphConnectionKind::Continuous {
-            input.boundary_policies = vec![crate::ParagraphBoundaryPolicy {
-                definition: crate::ParagraphBoundaryDefinition::Connection(0),
+            input.boundary_policies = vec![crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(0),
                 preceding_wrap: Wrap::Word,
                 following_wrap: Wrap::Word,
                 ancestor_wrap: Wrap::Word,
@@ -867,9 +886,9 @@ fn empty_physical_endpoint_scope_does_not_invent_strong_characters_or_source() {
 
 #[test]
 fn nearest_block_tab_rtl_is_independent_of_actual_ltr_paragraph_authority() {
-    let reference = crate::ParagraphTabReference::new(
+    let reference = crate::tabs::ParagraphTabReference::new(
         Style {
-            tab_size: crate::TabSize::length(24.0).unwrap(),
+            tab_size: crate::tabs::TabSize::length(24.0).unwrap(),
             ..style()
         },
         RTL,
@@ -896,7 +915,7 @@ fn nearest_block_tab_rtl_is_independent_of_actual_ltr_paragraph_authority() {
         unreachable!()
     };
     *used_direction = RTL;
-    base_style.tab_size = crate::TabSize::length(24.0).unwrap();
+    base_style.tab_size = crate::tabs::TabSize::length(24.0).unwrap();
     assert_eq!(input.paragraphs[0].base_direction, LTR);
     let processed = Arc::new(process_contextual_source(input).unwrap());
     let a = AnalyzedSource::from_processed_paragraph(
@@ -909,7 +928,7 @@ fn nearest_block_tab_rtl_is_independent_of_actual_ltr_paragraph_authority() {
     assert_eq!(reference.direction(), RTL);
     assert_eq!(
         reference.style().tab_size,
-        crate::TabSize::length(24.0).unwrap()
+        crate::tabs::TabSize::length(24.0).unwrap()
     );
     assert_eq!(a.inner.paragraph.base_direction, Some(LTR));
     assert_eq!(a.source().text().code_units(), [65, 9, 0x5d0]);

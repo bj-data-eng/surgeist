@@ -413,8 +413,8 @@ fn a_partial_provider_candidate_must_still_report_its_real_tab_precision_failure
         );
     assert!(
         matches!(error.detail(),Some(ErrorDetail::InvalidTextNumeric {
-        field:"tab grid displacement",phase:crate::TextNumericPhase::Preparation,
-        category:crate::TextNumericError::NonZeroLost,value,
+        field:"tab grid displacement",phase:crate::error::TextNumericPhase::Preparation,
+        category:crate::error::TextNumericError::NonZeroLost,value,
     }) if *value == -8.0),
         "unexpected preparation error: {error:?}"
     );

@@ -1,6 +1,31 @@
 //! Canonical direct chains retain global append order and actual signed metrics.
 use super::capture::{generous, reference, style};
-use crate::*;
+use crate::{
+    System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::{Point, Rect},
+    id::Id,
+    layout::{Affinity, Layout},
+    options::Alignment,
+    processing::{
+        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, ScopeAlignmentBoundary,
+        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingParagraph,
+        SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        FinalizedLine, LineAllocations, LineBoxAlignment, LineBoxStrut, LineStrut,
+        ParagraphBaseDirection, PreparationOptions, PreparedText, ScopeAllocation,
+        ScopeAllocations, ScopeMetricContribution, SelectedLine, SelectedScope, SpacingAllocations,
+        SpacingPolicy,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{BaselineShift, Source},
+    style::Wrap,
+};
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
 use std::sync::Arc;
 
@@ -39,7 +64,7 @@ fn chains(
     outer: &CapturedScope,
     inner: &CapturedScope,
 ) {
-    use LineBoxAlignment::Baseline as B;
+    use crate::protocol::LineBoxAlignment::Baseline as B;
     let ancestor = selected_scope(selected, ancestor);
     let outer = selected_scope(selected, outer);
     let inner = selected_scope(selected, inner);
@@ -154,8 +179,8 @@ fn glyphs(layout: &Layout, baselines: [f64; 3]) {
 
 #[test]
 fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_order() {
-    use LineBoxAlignment::Baseline as B;
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
+    use crate::protocol::LineBoxAlignment::Baseline as B;
     let font = skrifa::FontRef::new(AHEM).unwrap();
     assert_eq!(font.head().unwrap().units_per_em(), 1000);
     assert_eq!(

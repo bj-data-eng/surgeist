@@ -4,8 +4,9 @@ use super::{
     EffectiveFontInstance, Field, FontBaselineAbsence, FontBaselineProvenance, FontBaselineScript,
     Phase, Table, TableError, baseline, finite, table, table_error, variation,
 };
-use crate::{CataloguePublication, Error, ErrorCode, ErrorDetail, Result};
+use crate::{Error, ErrorCode, ErrorDetail, Result};
 use skrifa::{FontRef, raw::FontData};
+use surgeist_font::CataloguePublication;
 
 /// Coordinate reference of the used upright em edges and Central value.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

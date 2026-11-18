@@ -243,7 +243,8 @@ pub(crate) fn plan(
         account::work(ledger, 1)?;
         if boundary.authored != 0.0
             || boundary.mean_lost
-            || potential && boundary.geometry != crate::SpacingBoundaryGeometry::ProtectedCursive
+            || potential
+                && boundary.geometry != crate::protocol::SpacingBoundaryGeometry::ProtectedCursive
         {
             for index in [boundary.before, boundary.after] {
                 plan.add(
@@ -573,8 +574,8 @@ fn conditional(
 }
 
 fn work_overflow() -> crate::Error {
-    crate::engine::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+    crate::engine::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
+        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
     })
 }
 

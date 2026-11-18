@@ -4,14 +4,21 @@ mod break_all_hyphenation;
 use crate::protocol::paragraph::*;
 use crate::protocol::*;
 use crate::{
-    Affinity, AnalyzedSource, DocumentSegmentBreaks, Font, Id, InlineBox, InlineBoxKind, Size,
-    Source, Style, System, Text, WhiteSpace,
+    System,
+    analyzed::AnalyzedSource,
+    geometry::Size,
+    id::Id,
+    layout::Affinity,
+    processing::DocumentSegmentBreaks,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Font, Style, WhiteSpace},
+    text::Text,
 };
 
 fn paragraph(source: Source) -> ParagraphInput {
     let len = source.text().len();
     ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
@@ -54,13 +61,16 @@ fn system() -> System {
     system
 }
 
-fn whitespace_preparation(value: &str, mode: WhiteSpace, wrap: crate::Wrap) -> PreparedText {
+fn whitespace_preparation(value: &str, mode: WhiteSpace, wrap: crate::style::Wrap) -> PreparedText {
     let mut input = paragraph(Source::new(value));
     input.base_style.white_space = mode;
     input.base_style.wrap = wrap;
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
         wrap,
     );
     system()
@@ -70,7 +80,7 @@ fn whitespace_preparation(value: &str, mode: WhiteSpace, wrap: crate::Wrap) -> P
 
 #[test]
 fn preserve_breaks_issues_each_forced_delimiter_even_without_soft_wrapping() {
-    for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+    for wrap in [crate::style::Wrap::Word, crate::style::Wrap::None] {
         let prepared = whitespace_preparation("A \t\n\n \tB", WhiteSpace::PreserveBreaks, wrap);
         assert_eq!(
             prepared
@@ -98,7 +108,8 @@ fn break_spaces_issues_after_each_separator_without_splitting_its_grapheme() {
         ("A \u{301}B", vec![]),
         ("A\u{a0}B", vec![]),
     ] {
-        let prepared = whitespace_preparation(value, WhiteSpace::BreakSpaces, crate::Wrap::Word);
+        let prepared =
+            whitespace_preparation(value, WhiteSpace::BreakSpaces, crate::style::Wrap::Word);
         assert_eq!(
             prepared
                 .opportunity_views()
@@ -109,7 +120,8 @@ fn break_spaces_issues_after_each_separator_without_splitting_its_grapheme() {
             "{value:?}"
         );
     }
-    let nowrap = whitespace_preparation("A  \t B", WhiteSpace::BreakSpaces, crate::Wrap::None);
+    let nowrap =
+        whitespace_preparation("A  \t B", WhiteSpace::BreakSpaces, crate::style::Wrap::None);
     assert!(
         !nowrap
             .opportunity_views()
@@ -136,7 +148,8 @@ fn break_spaces_keeps_adopted_glue_joiner_and_typographic_unit_precedence() {
         (" \u{2007}B", vec![1]),
         ("A\u{2007}\u{200b}\u{202f}B", vec![3]),
     ] {
-        let prepared = whitespace_preparation(value, WhiteSpace::BreakSpaces, crate::Wrap::Word);
+        let prepared =
+            whitespace_preparation(value, WhiteSpace::BreakSpaces, crate::style::Wrap::Word);
         assert_eq!(
             prepared
                 .opportunity_views()
@@ -152,8 +165,8 @@ fn break_spaces_keeps_adopted_glue_joiner_and_typographic_unit_precedence() {
 fn native_atomic_preparation(
     text: &str,
     count: usize,
-    local_wrap: crate::Wrap,
-    ancestor_wrap: crate::Wrap,
+    local_wrap: crate::style::Wrap,
+    ancestor_wrap: crate::style::Wrap,
 ) -> PreparedText {
     let mut source = Source::new(text);
     for occurrence in 0..count {
@@ -166,7 +179,7 @@ fn native_atomic_preparation(
     }
     let mut input = paragraph(source);
     input.base_style.wrap = local_wrap;
-    input.base_style.word_break = crate::WordBreak::KeepAll;
+    input.base_style.word_break = crate::style::WordBreak::KeepAll;
     input.anchor_order = (0..count)
         .map(|occurrence| ParagraphAnchor {
             item: ParagraphAnchorItem::Atomic(occurrence),
@@ -187,13 +200,15 @@ fn native_atomic_preparation(
             ancestor_wrap,
         })
         .collect();
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     system()
         .prepare(
             &analyzed,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap()
 }
@@ -221,13 +236,15 @@ fn allowed_atomic_sides(prepared: &PreparedText) -> Vec<[bool; 2]> {
 fn native_atomic_inflow_issues_both_soft_breaks_despite_keep_all_text() {
     // CSS Text 3 §5.1 atomic-compat-wrap: atomic opportunities are independent
     // of the ordinary alphabetic boundary and cannot be suppressed by KeepAll.
-    let prepared = native_atomic_preparation("AB", 1, crate::Wrap::Word, crate::Wrap::Word);
+    let prepared =
+        native_atomic_preparation("AB", 1, crate::style::Wrap::Word, crate::style::Wrap::Word);
     assert_eq!(allowed_atomic_sides(&prepared), [[true, true]]);
 }
 
 #[test]
 fn native_atomic_same_anchor_occurrences_keep_distinct_incident_breaks() {
-    let prepared = native_atomic_preparation("AB", 2, crate::Wrap::Word, crate::Wrap::Word);
+    let prepared =
+        native_atomic_preparation("AB", 2, crate::style::Wrap::Word, crate::style::Wrap::Word);
     let atomics: Vec<_> = prepared.atomic_views().map(|row| row.handle()).collect();
     assert_ne!(atomics[0], atomics[1]);
     assert_eq!(
@@ -246,7 +263,8 @@ fn native_atomic_same_anchor_occurrences_keep_distinct_incident_breaks() {
 
 #[test]
 fn native_atomic_end_of_text_still_issues_each_interior_break() {
-    let prepared = native_atomic_preparation("X", 2, crate::Wrap::Word, crate::Wrap::Word);
+    let prepared =
+        native_atomic_preparation("X", 2, crate::style::Wrap::Word, crate::style::Wrap::Word);
     assert_eq!(
         allowed_atomic_sides(&prepared),
         [[true, true], [true, false]]
@@ -275,18 +293,20 @@ fn native_atomic_out_of_flow_control_creates_no_break_opportunity() {
         Size::new(20.0, 20.0),
     ));
     let mut input = paragraph(source);
-    input.base_style.word_break = crate::WordBreak::KeepAll;
+    input.base_style.word_break = crate::style::WordBreak::KeepAll;
     input.anchor_order = vec![ParagraphAnchor {
         item: ParagraphAnchorItem::Atomic(0),
         affinity: Affinity::Before,
     }];
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system()
         .prepare(
             &analyzed,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap();
     assert_eq!(allowed_atomic_sides(&prepared), [[false, false]]);
@@ -295,8 +315,12 @@ fn native_atomic_out_of_flow_control_creates_no_break_opportunity() {
 #[test]
 fn native_atomic_breaks_override_nbsp_glue_on_either_side() {
     // The named NBSP exception applies on either side of the atomic.
-    let prepared =
-        native_atomic_preparation("\u{a0}\u{a0}", 1, crate::Wrap::Word, crate::Wrap::Word);
+    let prepared = native_atomic_preparation(
+        "\u{a0}\u{a0}",
+        1,
+        crate::style::Wrap::Word,
+        crate::style::Wrap::Word,
+    );
     assert_eq!(allowed_atomic_sides(&prepared), [[true, true]]);
 }
 
@@ -313,7 +337,8 @@ fn native_atomic_breaks_respect_non_nbsp_gl_wj_and_zwj() {
     .into_iter()
     .map(|(text, code_point, class)| {
         assert_eq!(classes.get32(code_point), class);
-        let prepared = native_atomic_preparation(text, 1, crate::Wrap::Word, crate::Wrap::Word);
+        let prepared =
+            native_atomic_preparation(text, 1, crate::style::Wrap::Word, crate::style::Wrap::Word);
         allowed_atomic_sides(&prepared)
     })
     .collect();
@@ -324,8 +349,10 @@ fn native_atomic_breaks_respect_non_nbsp_gl_wj_and_zwj() {
 fn native_atomic_break_permission_comes_from_captured_common_ancestor() {
     // The atomic boundary's owner remains its captured NCA even when the
     // preceding character is SPACE with its own local wrapping permission.
-    let wrapping = native_atomic_preparation(" A", 1, crate::Wrap::None, crate::Wrap::Word);
-    let no_wrapping = native_atomic_preparation(" A", 1, crate::Wrap::Word, crate::Wrap::None);
+    let wrapping =
+        native_atomic_preparation(" A", 1, crate::style::Wrap::None, crate::style::Wrap::Word);
+    let no_wrapping =
+        native_atomic_preparation(" A", 1, crate::style::Wrap::Word, crate::style::Wrap::None);
     assert_eq!(
         [
             allowed_atomic_sides(&wrapping),
@@ -338,14 +365,20 @@ fn native_atomic_break_permission_comes_from_captured_common_ancestor() {
 #[test]
 fn native_atomic_glue_suppression_is_specific_to_the_incident_side() {
     for text in ["A\u{202f}", "A\u{2060}", "A\u{200d}"] {
-        let prepared = native_atomic_preparation(text, 1, crate::Wrap::Word, crate::Wrap::Word);
+        let prepared =
+            native_atomic_preparation(text, 1, crate::style::Wrap::Word, crate::style::Wrap::Word);
         assert_eq!(allowed_atomic_sides(&prepared), [[true, false]], "{text:?}");
     }
 }
 
 #[test]
 fn native_atomic_pair_is_not_adjacent_to_the_following_glue_character() {
-    let prepared = native_atomic_preparation("A\u{202f}", 2, crate::Wrap::Word, crate::Wrap::Word);
+    let prepared = native_atomic_preparation(
+        "A\u{202f}",
+        2,
+        crate::style::Wrap::Word,
+        crate::style::Wrap::Word,
+    );
     assert_eq!(
         allowed_atomic_sides(&prepared),
         [[true, true], [true, false]]
@@ -400,20 +433,21 @@ fn native_atomic_transparent_occurrences_do_not_reintroduce_a_forbidden_break() 
             .into_iter()
             .map(|definition| ParagraphBoundaryPolicy {
                 definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
             })
             .collect();
             let analyzed = AnalyzedSource::from_paragraph(
                 input,
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let prepared = system()
                 .prepare(
                     &analyzed,
-                    PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+                    PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance)
+                        .unwrap(),
                 )
                 .unwrap();
             prepared
@@ -534,22 +568,24 @@ fn atomic_transparent_input(
     .chain((0..input.connections.len()).map(ParagraphBoundaryDefinition::Connection))
     .map(|definition| ParagraphBoundaryPolicy {
         definition,
-        preceding_wrap: crate::Wrap::Word,
-        following_wrap: crate::Wrap::Word,
-        ancestor_wrap: crate::Wrap::Word,
+        preceding_wrap: crate::style::Wrap::Word,
+        following_wrap: crate::style::Wrap::Word,
+        ancestor_wrap: crate::style::Wrap::Word,
     })
     .collect();
     input
 }
 
 fn prepare_opportunity_inventory(input: ParagraphInput) -> Vec<(usize, PreparedBreakKind)> {
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system()
         .prepare(
             &analyzed,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap();
     prepared
@@ -600,7 +636,7 @@ fn native_hard_separator_precedence_keeps_earlier_soft_control_owners() {
     for (kind, expected) in [
         (
             ParagraphControlKind::OptionalBreak {
-                wrap: crate::Wrap::Word,
+                wrap: crate::style::Wrap::Word,
             },
             PreparedBreakKind::Allowed,
         ),
@@ -772,20 +808,22 @@ fn native_atomic_transparent_relation_rejects_disagreeing_captured_ancestors() {
     input.boundary_policies.extend([
         ParagraphBoundaryPolicy {
             definition: ParagraphBoundaryDefinition::AtomicBefore(1),
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::None,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::None,
         },
         ParagraphBoundaryPolicy {
             definition: ParagraphBoundaryDefinition::AtomicAfter(1),
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         },
     ]);
-    let error =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap_err();
+    let error = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&crate::ErrorDetail::InvalidTextProtocol {
@@ -800,8 +838,8 @@ fn native_atomic_collapse_space_permission_is_local_only_before_the_atomic() {
         .into_iter()
         .flat_map(|white_space| {
             [
-                (crate::Wrap::Word, crate::Wrap::None),
-                (crate::Wrap::None, crate::Wrap::Word),
+                (crate::style::Wrap::Word, crate::style::Wrap::None),
+                (crate::style::Wrap::None, crate::style::Wrap::Word),
             ]
             .into_iter()
             .map(move |(local_wrap, ancestor_wrap)| {
@@ -833,13 +871,13 @@ fn native_atomic_collapse_space_permission_is_local_only_before_the_atomic() {
                 .collect();
                 let analyzed = AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap();
                 let prepared = system()
                     .prepare(
                         &analyzed,
-                        PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance)
+                        PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance)
                             .unwrap(),
                     )
                     .unwrap();
@@ -864,8 +902,8 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
         .into_iter()
         .flat_map(|white_space| {
             [
-                (crate::Wrap::Word, crate::Wrap::None),
-                (crate::Wrap::None, crate::Wrap::Word),
+                (crate::style::Wrap::Word, crate::style::Wrap::None),
+                (crate::style::Wrap::None, crate::style::Wrap::Word),
             ]
             .into_iter()
             .map(move |(local_wrap, ancestor_wrap)| {
@@ -900,13 +938,13 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
                 }];
                 let analyzed = AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap();
                 let prepared = system()
                     .prepare(
                         &analyzed,
-                        PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance)
+                        PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance)
                             .unwrap(),
                     )
                     .unwrap();
@@ -922,16 +960,16 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
 
 fn context(end: LineEnd) -> LineContext {
     LineContext {
-        alignment_insets: crate::LineAlignmentInsets::ZERO,
-        formatted_line: crate::FormattedLineContext::default(),
+        alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+        formatted_line: crate::protocol::FormattedLineContext::default(),
         base_direction: ParagraphBaseDirection::LeftToRight,
-        line_box_direction: crate::LineBoxDirection::LeftToRight,
+        line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
         orientation: LineOrientation::Horizontal,
         start: LineStart::Paragraph,
         end,
         available_inline: None,
         indent: 0.0,
-        alignment: crate::Alignment::Start,
+        alignment: crate::options::Alignment::Start,
         tabs: TabContext::NoTabs,
 
         spacing: SpacingPolicy::Spaces,
@@ -957,7 +995,7 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
             start,
             end: termination.view().boundary(),
             participants: prepared.participants().collect(),
-            termination: crate::PreparedTermination::Ordinary(termination),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination),
             alternative: None,
             context: context(LineEnd::Paragraph),
             atomics: Vec::new(),
@@ -970,10 +1008,10 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
                     ControlAllocation {
                         boundary: matches!(
                             occurrence.view().kind(),
-                            crate::ParagraphControlKind::InlineBoundaryStart
-                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                        .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }
@@ -1027,9 +1065,9 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     input.boundary_policies = (0..3)
         .map(|i| ParagraphBoundaryPolicy {
             definition: ParagraphBoundaryDefinition::Connection(i),
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         })
         .collect();
     input.anchor_order = vec![
@@ -1042,9 +1080,11 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
             affinity: Affinity::Before,
         },
     ];
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(
         analyzed.processed_source().processed_text().code_units(),
         [0x41, 0x42]
@@ -1053,7 +1093,7 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     let prepared = system
         .prepare(
             &analyzed,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap();
     let selected = select_whole(&prepared);
@@ -1128,15 +1168,17 @@ fn explicit_transparent_half_pair_affinity_does_not_split_but_inflow_really_does
             .into_iter()
             .map(|definition| ParagraphBoundaryPolicy {
                 definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
             })
             .collect();
         }
-        let analyzed =
-            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-                .unwrap();
+        let analyzed = AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(analyzed.inner.projection.atoms.len(), expected_atoms);
         assert_eq!(
             anchor_atom(
@@ -1178,14 +1220,16 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
         )
         .unwrap(),
     ];
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = system();
     let prepared = system
         .prepare(
             &analyzed,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap();
     let alternative = prepared.alternative_views().next().unwrap().handle();
@@ -1205,7 +1249,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
             start: prepared.boundary_views().next().unwrap().handle(),
             end,
             participants: prepared.participants().take(count).collect(),
-            termination: crate::PreparedTermination::Ordinary(termination),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
             atomics: Vec::new(),
@@ -1218,10 +1262,10 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
                     ControlAllocation {
                         boundary: matches!(
                             occurrence.view().kind(),
-                            crate::ParagraphControlKind::InlineBoundaryStart
-                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                        .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }
@@ -1297,14 +1341,16 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
         )
         .unwrap(),
     ];
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = system();
     let prepared = system
         .prepare(
             &analyzed,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap();
     let alternative = prepared.alternative_views().next().unwrap().handle();
@@ -1325,7 +1371,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
                 .participants()
                 .take(termination.view().boundary().view().participant_offset())
                 .collect(),
-            termination: crate::PreparedTermination::Ordinary(termination),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
             atomics: Vec::new(),
@@ -1338,10 +1384,10 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
                     ControlAllocation {
                         boundary: matches!(
                             occurrence.view().kind(),
-                            crate::ParagraphControlKind::InlineBoundaryStart
-                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                        .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }
@@ -1389,9 +1435,11 @@ fn empty_native_forced_control_keeps_empty_host_and_semantic_atoms() {
         item: ParagraphAnchorItem::Control(0),
         affinity: Affinity::Before,
     }];
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert!(analyzed.inner.host_projection.atoms.is_empty());
     assert!(analyzed.inner.projection.atoms.is_empty());
     assert!(analyzed.processed_source().processed_text().is_empty());
@@ -1405,13 +1453,13 @@ fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
     let raw = AnalyzedSource::new(
         source.clone(),
         paragraph(source.clone()).base_style,
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system
         .prepare(
             &raw,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap();
     assert_eq!(
@@ -1437,9 +1485,11 @@ fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
 
     let mut input = paragraph(source);
     input.segment_breaks = DocumentSegmentBreaks::Defined(vec![Range::new(0, 2)]);
-    let native =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let native = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(
         native.processed_source().processed_text().code_units(),
         [0xa]
@@ -1447,7 +1497,7 @@ fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
     let prepared = system
         .prepare(
             &native,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap();
     assert_eq!(

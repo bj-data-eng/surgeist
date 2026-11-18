@@ -1,11 +1,41 @@
 use super::*;
-use crate::*;
+use crate::{
+    ErrorDetail, System,
+    analyzed::AnalyzedSource,
+    error::{TextNumericError, TextNumericPhase},
+    geometry::{Rect, Size},
+    id::Id,
+    layout::Affinity,
+    options::Alignment,
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+        ControlAllocation, ControlStrut, FinalizedLine, FormattedLineContext,
+        InlineBoundaryAllocation, LineAlignmentInsets, LineBoxAlignment, LineBoxDirection,
+        LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
+        ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PreparationOptions,
+        PreparedAlternative, PreparedBreakKind, PreparedOpportunity, PreparedParticipant,
+        PreparedTermination, PreparedText, ProtocolError, SelectedLine, SpacingAllocations,
+        SpacingPolicy, TabContext,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy, ParagraphConnection, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut,
+        },
+        prefix::TextSeam,
+    },
+    range::{Range, SourcePosition},
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Brush, Direction, Font, LineHeight, Style, WhiteSpace, WordBreak, Wrap},
+    text::Text,
+};
 
 fn prepare(bytes: Vec<u8>, source: &str, style: Style) -> PreparedText {
     let analyzed = AnalyzedSource::new(
         Source::new(source),
         style,
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = System::default();
@@ -40,10 +70,10 @@ fn selected_end(
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -63,12 +93,12 @@ fn selected_end(
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end,
-            termination: crate::PreparedTermination::Ordinary(termination.clone()),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination.clone()),
             participants,
             alternative,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: if prepared.analyzed_source().direction() == Direction::RightToLeft
                 {
                     ParagraphBaseDirection::RightToLeft
@@ -78,9 +108,9 @@ fn selected_end(
                 line_box_direction: if prepared.analyzed_source().direction()
                     == Direction::RightToLeft
                 {
-                    crate::LineBoxDirection::RightToLeft
+                    crate::protocol::LineBoxDirection::RightToLeft
                 } else {
-                    crate::LineBoxDirection::LeftToRight
+                    crate::protocol::LineBoxDirection::LeftToRight
                 },
                 orientation: LineOrientation::Horizontal,
                 start: LineStart::Paragraph,
@@ -110,9 +140,9 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
         .unwrap()
         .handle();
     selected_end(prepared, termination, None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -138,7 +168,7 @@ fn native(
     }
     let analyzed = AnalyzedSource::from_paragraph(
         ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: style,
@@ -158,7 +188,7 @@ fn native(
             replacements,
             anchor_order,
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = System::default();
@@ -168,7 +198,7 @@ fn native(
             crate::test_fonts::FONT_LIMITS,
         )
         .unwrap();
-    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word);
     system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap()
@@ -279,7 +309,7 @@ fn finalized_prefix_provider_groups_survive_actual_resource_instance_and_plan_ca
     let analyzed = AnalyzedSource::new(
         Source::new("AA"),
         style(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let cold = system
@@ -395,7 +425,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
                 },
             ],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
@@ -444,7 +474,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
         .unwrap()
         .handle();
     let allocation = AtomicLineAllocation::InFlow {
-        fit: crate::AtomicFitAllocation::NativeOccupied,
+        fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: -TEXT_ADVANCE,
             normal_border_inline_size: 0.0,
@@ -509,9 +539,9 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
         .unwrap();
     assert_eq!(selected.inner.presentation.analysis.graphemes, [0..1, 1..3]);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -715,9 +745,9 @@ fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
         Some(alternative.clone()),
     );
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let control = prepared.control_views().next().unwrap().handle();
@@ -764,9 +794,9 @@ fn finalized_prefix_break_reshaping_replaces_the_actual_shared_association() {
         .unwrap()
         .handle();
     let line = selected_end(&prepared, termination, None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 12.5);
@@ -899,9 +929,9 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let controls: Vec<_> = prepared
@@ -965,9 +995,9 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
         first_alternative.view().opportunity().unwrap(),
         Some(first_alternative.clone()),
     )
-    .finalize(crate::LineAllocations {
+    .finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
     .unwrap();
     assert_eq!(first.feedback().advance, 25.0);
@@ -989,9 +1019,9 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
     let line = prepared
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let control = PreparedParticipant::Control(prepared.control_views().nth(1).unwrap().handle());
@@ -1018,7 +1048,7 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
 fn finalized_original_prefix_empty_occurrences_inherit_only_actual_preceding_content() {
     let analyzed = AnalyzedSource::from_paragraph(
         ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: Source::new("A"),
             base_style: style(),
@@ -1072,7 +1102,7 @@ fn finalized_original_prefix_empty_occurrences_inherit_only_actual_preceding_con
                 },
             ],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = System::default();
@@ -1131,9 +1161,9 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
         first_alternative.view().opportunity().unwrap(),
         Some(first_alternative.clone()),
     )
-    .finalize(crate::LineAllocations {
+    .finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
     .unwrap();
     assert_eq!(first.feedback().advance, 25.0);
@@ -1154,9 +1184,9 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
     let line = prepared
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let defining=prepared.participants().find(|p|matches!(p,PreparedParticipant::Text(unit) if unit.view().source_range()==Range::new(3,4))).unwrap();
@@ -1226,9 +1256,9 @@ fn finalized_content_is_distinct_from_separator_and_strut_flow_participation() {
         .unwrap()
         .handle();
     let line = selected_end(&prepared, forced, None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(!line.has_in_flow_content());
@@ -1258,9 +1288,9 @@ fn finalized_content_is_distinct_from_separator_and_strut_flow_participation() {
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert!(!line.has_in_flow_content());

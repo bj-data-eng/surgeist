@@ -1,12 +1,18 @@
 //! Computed box edges are early semantic boundaries with original source custody.
 use super::*;
 use crate::{
-    Affinity, CaseTransform, ComputedLineBoundaryInput, ContextualSourceInput,
-    DocumentSegmentBreaks, Id, LineHeight, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
-    ParagraphConnectionKind, ParagraphOrigin, ParagraphOriginKind, SourceBoxSide,
-    SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent as E,
-    SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, TextTransform,
-    TextTransformSet, WhiteSpaceTrim, Wrap,
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ComputedLineBoundaryInput, ContextualSourceInput, DocumentSegmentBreaks, SourceBoxSide,
+        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent as E,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+    },
+    protocol::paragraph::{
+        ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+        ParagraphOrigin, ParagraphOriginKind,
+    },
+    style::{CaseTransform, LineHeight, TextTransform, TextTransformSet, Wrap},
 };
 use std::sync::Arc;
 
@@ -140,10 +146,13 @@ fn font_system() -> System {
     value
 }
 
-fn prepare(system: &mut System, processed: &Arc<crate::ProcessedSource>) -> PreparedText {
+fn prepare(
+    system: &mut System,
+    processed: &Arc<crate::processing::ProcessedSource>,
+) -> PreparedText {
     let analysis = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     system
@@ -180,10 +189,10 @@ fn finish(p: &PreparedText) -> Vec<FinalizedLine> {
                             strut: None,
                             boundary: matches!(
                                 control.view().kind(),
-                                crate::ParagraphControlKind::InlineBoundaryStart
-                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                                crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                            .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         })
                     } else {
                         None
@@ -204,17 +213,17 @@ fn finish(p: &PreparedText) -> Vec<FinalizedLine> {
             while let Some(occurrence) = p.boundary_context_demand(&selected).unwrap() {
                 selected
                     .boundary_context
-                    .push(crate::InlineBoundaryContextAllocation {
+                    .push(crate::protocol::InlineBoundaryContextAllocation {
                         occurrence,
-                        boundary: crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
+                        boundary: crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
                     });
             }
             let line = p
                 .select(selected)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             start = line.selected_line().request().end.clone();
@@ -233,15 +242,15 @@ fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32)> {
         .collect()
 }
 
-fn placed(p: PreparedText, lines: Vec<FinalizedLine>) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn placed(p: PreparedText, lines: Vec<FinalizedLine>) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
         entries: lines
             .into_iter()
             .enumerate()
             .map(|(i, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -279,7 +288,7 @@ fn real_scope_sides_end_lithuanian_casing_context_without_inserting_source_contr
                     .push(ComputedLineBoundaryInput::Scope { scope: 1, side });
             }
             let source = value.source.clone();
-            let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+            let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
             assert_eq!(processed.processed_text().code_units(), [0x69, 0x307]);
             let p = prepare(&mut font_system(), &processed);
             assert_eq!(p.control_views().count(), 0);
@@ -313,12 +322,12 @@ fn computed_scope_cause_has_its_own_canonical_capture_and_prepared_participant()
             scope: 1,
             side: SourceBoxSide::Before,
         });
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     let scope = processed.captured_scope(1).unwrap();
     assert_eq!(
         cause.target(),
-        crate::CapturedComputedLineBoundaryTarget::Scope {
+        crate::processing::CapturedComputedLineBoundaryTarget::Scope {
             scope: scope.clone(),
             side: SourceBoxSide::Before
         }
@@ -368,9 +377,9 @@ fn computed_scope_cause_has_its_own_canonical_capture_and_prepared_participant()
     );
 
     let mut authored = input("AA", &[Range::new(0, 1), Range::new(1, 2)]);
-    authored.controls = vec![crate::ParagraphControl {
+    authored.controls = vec![crate::protocol::paragraph::ParagraphControl {
         at: 1,
-        kind: crate::ParagraphControlKind::ForcedBreak,
+        kind: crate::protocol::paragraph::ParagraphControlKind::ForcedBreak,
     }];
     authored.events.insert(
         3,
@@ -379,12 +388,12 @@ fn computed_scope_cause_has_its_own_canonical_capture_and_prepared_participant()
             affinity: Affinity::After,
         },
     );
-    let authored = Arc::new(crate::process_contextual_source(authored).unwrap());
+    let authored = Arc::new(crate::processing::process_contextual_source(authored).unwrap());
     assert!(authored.captured_computed_line_boundary(0).is_none());
     let p = prepare(&mut font_system(), &authored);
     assert_eq!(
         p.control_views().next().unwrap().kind(),
-        &crate::ParagraphControlKind::ForcedBreak
+        &crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
     );
     assert!(
         p.opportunity_views()
@@ -408,7 +417,7 @@ fn early_scope_force_separates_original_base_and_mark_units() {
                     side: SourceBoxSide::Before,
                 });
         }
-        let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+        let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
         let p = prepare(&mut font_system(), &processed);
         let originals = p
             .origin_views()
@@ -475,7 +484,7 @@ fn mandatory_scope_edge_has_forced_authority_under_no_wrap_and_word_joiner() {
             scope: 1,
             side: SourceBoxSide::Before,
         });
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let p = prepare(&mut font_system(), &processed);
     assert_eq!(
         p.opportunity_views().map(|o| o.kind()).collect::<Vec<_>>(),
@@ -507,19 +516,19 @@ fn mandatory_scope_edge_has_forced_authority_under_no_wrap_and_word_joiner() {
 fn paired() -> ContextualSourceInput {
     let mut value = seam("AA", 1, SourceBoxSide::Before);
     value.controls = vec![
-        crate::ParagraphControl {
+        crate::protocol::paragraph::ParagraphControl {
             at: 1,
-            kind: crate::ParagraphControlKind::InlineBoundaryStart,
+            kind: crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
-        crate::ParagraphControl {
+        crate::protocol::paragraph::ParagraphControl {
             at: 2,
-            kind: crate::ParagraphControlKind::InlineBoundaryEnd,
+            kind: crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
     let SourceProcessingScope::Inline { boundaries, .. } = &mut value.scopes[1] else {
         unreachable!()
     };
-    *boundaries = Some(crate::SourceProcessingScopeBoundaries { start: 0, end: 1 });
+    *boundaries = Some(crate::processing::SourceProcessingScopeBoundaries { start: 0, end: 1 });
     value.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
@@ -552,12 +561,12 @@ fn paired() -> ContextualSourceInput {
 fn a_real_endpoint_force_does_not_replace_authored_control_identity() {
     let mut value = paired();
     value.computed_line_boundaries = vec![ComputedLineBoundaryInput::Endpoint { control: 0 }];
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let captured = processed.captured_control(0).unwrap();
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(
         cause.target(),
-        crate::CapturedComputedLineBoundaryTarget::Endpoint(captured.clone())
+        crate::processing::CapturedComputedLineBoundaryTarget::Endpoint(captured.clone())
     );
     let p = prepare(&mut font_system(), &processed);
     assert_eq!(
@@ -565,8 +574,8 @@ fn a_real_endpoint_force_does_not_replace_authored_control_identity() {
             .map(|v| v.kind().clone())
             .collect::<Vec<_>>(),
         [
-            crate::ParagraphControlKind::InlineBoundaryStart,
-            crate::ParagraphControlKind::InlineBoundaryEnd
+            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart,
+            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
         ]
     );
     let start = p
@@ -607,11 +616,11 @@ fn a_real_endpoint_force_does_not_replace_authored_control_identity() {
 fn a_computed_atomic_edge_retains_actual_occurrence_and_distinct_side() {
     for side in [SourceBoxSide::Before, SourceBoxSide::After] {
         let mut value = input("AA", &[Range::new(0, 1), Range::new(1, 2)]);
-        value.source.inline_box(crate::InlineBox::new(
+        value.source.inline_box(crate::source::InlineBox::new(
             Id::from_u64(7501),
-            crate::InlineBoxKind::InFlow,
+            crate::source::InlineBoxKind::InFlow,
             1,
-            crate::Size::new(10.0, 10.0),
+            crate::geometry::Size::new(10.0, 10.0),
         ));
         value.boundary_policies.extend(
             [
@@ -634,11 +643,11 @@ fn a_computed_atomic_edge_retains_actual_occurrence_and_distinct_side() {
         );
         value.computed_line_boundaries =
             vec![ComputedLineBoundaryInput::Atomic { atomic: 0, side }];
-        let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+        let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
         let cause = processed.captured_computed_line_boundary(0).unwrap();
         assert_eq!(
             cause.target(),
-            crate::CapturedComputedLineBoundaryTarget::Atomic {
+            crate::processing::CapturedComputedLineBoundaryTarget::Atomic {
                 position: processed.captured_atomic(0).unwrap(),
                 side
             }
@@ -678,9 +687,11 @@ fn changed_causes_do_not_contaminate_retained_source_or_preparations() {
         side: SourceBoxSide::Before,
     }];
     let original = clear.source.clone();
-    let no_force = Arc::new(crate::process_contextual_source(clear).unwrap());
-    let with_force = Arc::new(crate::process_contextual_source(forced.clone()).unwrap());
-    let independent_capture = Arc::new(crate::process_contextual_source(forced).unwrap());
+    let no_force = Arc::new(crate::processing::process_contextual_source(clear).unwrap());
+    let with_force =
+        Arc::new(crate::processing::process_contextual_source(forced.clone()).unwrap());
+    let independent_capture =
+        Arc::new(crate::processing::process_contextual_source(forced).unwrap());
     let mut system = font_system();
     let old = prepare(&mut system, &no_force);
     let current = prepare(&mut system, &with_force);
@@ -747,9 +758,9 @@ fn changed_causes_do_not_contaminate_retained_source_or_preparations() {
 fn computed_hard_boundary_resets_an_authentic_embedding_before_receiving_text() {
     for forced in [false, true] {
         let mut value = seam("AAA", 1, SourceBoxSide::Before);
-        value.controls = vec![crate::ParagraphControl {
+        value.controls = vec![crate::protocol::paragraph::ParagraphControl {
             at: 1,
-            kind: crate::ParagraphControlKind::RightToLeftOverride,
+            kind: crate::protocol::paragraph::ParagraphControlKind::RightToLeftOverride,
         }];
         let enter = value
             .events
@@ -769,7 +780,7 @@ fn computed_hard_boundary_resets_an_authentic_embedding_before_receiving_text() 
                 side: SourceBoxSide::Before,
             }];
         }
-        let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+        let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
         let p = prepare(&mut font_system(), &processed);
         // UAX9 P1/X8 ends an explicit override at a paragraph separator. The
         // computed owner is semantic LF; it does not become authored text.
@@ -781,7 +792,7 @@ fn computed_hard_boundary_resets_an_authentic_embedding_before_receiving_text() 
             p.control_views()
                 .map(|c| c.kind().clone())
                 .collect::<Vec<_>>(),
-            [crate::ParagraphControlKind::RightToLeftOverride]
+            [crate::protocol::paragraph::ParagraphControlKind::RightToLeftOverride]
         );
         assert_eq!(
             p.analyzed_source().source().text().code_units(),
@@ -815,7 +826,7 @@ fn distinct_sides_of_a_real_empty_scope_keep_equal_offset_mandatory_progress() {
             side: SourceBoxSide::After,
         },
     ];
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let before = processed.captured_computed_line_boundary(0).unwrap();
     let after = processed.captured_computed_line_boundary(1).unwrap();
     assert_ne!(before, after);
@@ -905,7 +916,7 @@ fn real_exterior_scope_edges_keep_leading_and_terminal_empty_groups() {
             side: SourceBoxSide::After,
         },
     ];
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let p = prepare(&mut font_system(), &processed);
     assert_eq!(
         p.opportunity_views().map(|o| o.kind()).collect::<Vec<_>>(),
@@ -933,10 +944,10 @@ fn real_exterior_scope_edges_keep_leading_and_terminal_empty_groups() {
     );
 }
 
-fn refusal(value: ContextualSourceInput, expected: crate::ComputedLineBoundaryError) {
-    let error = crate::process_contextual_source(value).unwrap_err();
+fn refusal(value: ContextualSourceInput, expected: crate::processing::ComputedLineBoundaryError) {
+    let error = crate::processing::process_contextual_source(value).unwrap_err();
     assert!(
-        matches!(error.detail(),Some(crate::ErrorDetail::SourceProcessing { reason:crate::SourceProcessingError::ComputedLineBoundary { request:0,reason } }) if *reason==expected),
+        matches!(error.detail(),Some(crate::ErrorDetail::SourceProcessing { reason:crate::processing::SourceProcessingError::ComputedLineBoundary { request:0,reason } }) if *reason==expected),
         "{error:?}"
     );
 }
@@ -956,18 +967,24 @@ fn computed_targets_refuse_bounds_wrong_roles_and_uncaptured_paragraph_edges() {
     ] {
         let mut value = input("A", &[Range::new(0, 1)]);
         value.computed_line_boundaries = vec![target];
-        refusal(value, crate::ComputedLineBoundaryError::TargetBounds);
+        refusal(
+            value,
+            crate::processing::ComputedLineBoundaryError::TargetBounds,
+        );
     }
     let mut block = input("A", &[Range::new(0, 1)]);
     block.computed_line_boundaries = vec![ComputedLineBoundaryInput::Scope {
         scope: 0,
         side: SourceBoxSide::Before,
     }];
-    refusal(block, crate::ComputedLineBoundaryError::TargetRole);
+    refusal(
+        block,
+        crate::processing::ComputedLineBoundaryError::TargetRole,
+    );
     let mut control = input("AA", &[Range::new(0, 1), Range::new(1, 2)]);
-    control.controls = vec![crate::ParagraphControl {
+    control.controls = vec![crate::protocol::paragraph::ParagraphControl {
         at: 1,
-        kind: crate::ParagraphControlKind::DiscretionaryBreak {
+        kind: crate::protocol::paragraph::ParagraphControlKind::DiscretionaryBreak {
             style: Box::new(base()),
         },
     }];
@@ -979,7 +996,10 @@ fn computed_targets_refuse_bounds_wrong_roles_and_uncaptured_paragraph_edges() {
         },
     );
     control.computed_line_boundaries = vec![ComputedLineBoundaryInput::Endpoint { control: 0 }];
-    refusal(control, crate::ComputedLineBoundaryError::TargetRole);
+    refusal(
+        control,
+        crate::processing::ComputedLineBoundaryError::TargetRole,
+    );
     let mut outside = input("A", &[Range::new(0, 1)]);
     outside.scopes.push(SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
@@ -996,7 +1016,10 @@ fn computed_targets_refuse_bounds_wrong_roles_and_uncaptured_paragraph_edges() {
         scope: 1,
         side: SourceBoxSide::Before,
     }];
-    refusal(outside, crate::ComputedLineBoundaryError::MissingParagraph);
+    refusal(
+        outside,
+        crate::processing::ComputedLineBoundaryError::MissingParagraph,
+    );
 }
 
 #[test]
@@ -1006,13 +1029,16 @@ fn computed_edges_refuse_surrogate_and_selected_document_delimiter_interiors() {
         scope: 1,
         side: SourceBoxSide::Before,
     }];
-    refusal(scalar, crate::ComputedLineBoundaryError::InsideScalar);
+    refusal(
+        scalar,
+        crate::processing::ComputedLineBoundaryError::InsideScalar,
+    );
     let mut whole = seam("\u{1f600}A", 2, SourceBoxSide::Before);
     whole.computed_line_boundaries = vec![ComputedLineBoundaryInput::Scope {
         scope: 1,
         side: SourceBoxSide::Before,
     }];
-    let accepted = crate::process_contextual_source(whole).unwrap();
+    let accepted = crate::processing::process_contextual_source(whole).unwrap();
     assert_eq!(
         accepted
             .captured_computed_line_boundary(0)
@@ -1031,13 +1057,16 @@ fn computed_edges_refuse_surrogate_and_selected_document_delimiter_interiors() {
         scope: 1,
         side: SourceBoxSide::Before,
     }];
-    refusal(delimiter, crate::ComputedLineBoundaryError::InsideDelimiter);
+    refusal(
+        delimiter,
+        crate::processing::ComputedLineBoundaryError::InsideDelimiter,
+    );
     let mut fallback = seam("A\r\nA", 2, SourceBoxSide::Before);
     fallback.computed_line_boundaries = vec![ComputedLineBoundaryInput::Scope {
         scope: 1,
         side: SourceBoxSide::Before,
     }];
-    let accepted = crate::process_contextual_source(fallback).unwrap();
+    let accepted = crate::processing::process_contextual_source(fallback).unwrap();
     assert_eq!(
         accepted
             .captured_computed_line_boundary(0)
@@ -1066,7 +1095,7 @@ fn authenticated_same_edge_retains_distinct_causes_and_idempotent_literal_duplic
         ComputedLineBoundaryInput::Endpoint { control: 0 },
         scope,
     ];
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let scoped = processed.captured_computed_line_boundary(0).unwrap();
     let endpoint = processed.captured_computed_line_boundary(1).unwrap();
     assert_eq!(
@@ -1105,11 +1134,11 @@ fn out_of_flow_atomic_is_not_an_outer_edge_but_its_own_inline_domain_can_force()
         "AAA",
         &[Range::new(0, 1), Range::new(1, 2), Range::new(2, 3)],
     );
-    value.source.inline_box(crate::InlineBox::new(
+    value.source.inline_box(crate::source::InlineBox::new(
         Id::from_u64(7502),
-        crate::InlineBoxKind::OutOfFlow,
+        crate::source::InlineBoxKind::OutOfFlow,
         1,
-        crate::Size::new(10.0, 10.0),
+        crate::geometry::Size::new(10.0, 10.0),
     ));
     value.scopes.push(SourceProcessingScope::OutOfFlowBlock {
         writing_axis: None,
@@ -1173,12 +1202,15 @@ fn out_of_flow_atomic_is_not_an_outer_edge_but_its_own_inline_domain_can_force()
         atomic: 0,
         side: SourceBoxSide::Before,
     }];
-    refusal(invalid, crate::ComputedLineBoundaryError::TargetRole);
+    refusal(
+        invalid,
+        crate::processing::ComputedLineBoundaryError::TargetRole,
+    );
     value.computed_line_boundaries = vec![ComputedLineBoundaryInput::Scope {
         scope: 2,
         side: SourceBoxSide::Before,
     }];
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(cause.domain(), processed.captured_scope(1).unwrap());
     assert_eq!(cause.paragraph(), processed.captured_paragraph(1).unwrap());
@@ -1191,7 +1223,7 @@ fn out_of_flow_atomic_is_not_an_outer_edge_but_its_own_inline_domain_can_force()
     );
     let child_analysis = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().nth(1).unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let child = system
@@ -1228,7 +1260,7 @@ fn a_removed_only_scope_edge_retains_original_cause_and_translated_processed_pos
         side: SourceBoxSide::After,
     }];
     let source = value.source.clone();
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     assert_eq!(processed.processed_text().code_units(), [0x41]);
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     assert_eq!(cause.source_position().get(), 1);
@@ -1265,7 +1297,7 @@ fn a_removed_only_scope_edge_retains_original_cause_and_translated_processed_pos
 fn computed_forced_edge_stops_opposite_endpoint_context_demand() {
     let mut value = paired();
     value.computed_line_boundaries = vec![ComputedLineBoundaryInput::Endpoint { control: 0 }];
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let p = prepare(&mut font_system(), &processed);
     let force = p
         .opportunity_views()
@@ -1286,9 +1318,9 @@ fn computed_forced_edge_stops_opposite_endpoint_context_demand() {
     let line = p
         .select(selected)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&line), [(35, 10.0)]);
@@ -1325,7 +1357,7 @@ fn computed_forced_receiving_body_stops_preceding_endpoint_context_demand() {
         E::ExitScope(0),
     ];
     value.computed_line_boundaries = vec![ComputedLineBoundaryInput::Endpoint { control: 1 }];
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let p = prepare(&mut font_system(), &processed);
     let force = p
         .opportunity_views()
@@ -1343,9 +1375,9 @@ fn computed_forced_receiving_body_stops_preceding_endpoint_context_demand() {
     let line = p
         .select(selected)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(glyphs(&line), [(35, 10.0)]);
@@ -1378,7 +1410,7 @@ fn computed_forced_terminal_offer_has_cause_but_coincident_paragraph_end_does_no
         scope: 1,
         side: SourceBoxSide::After,
     }];
-    let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let cause = processed.captured_computed_line_boundary(0).unwrap();
     let p = prepare(&mut font_system(), &processed);
     let force = p
@@ -1416,8 +1448,8 @@ fn foreign_computed_participant_is_rejected_even_when_capture_and_anchor_match()
         scope: 1,
         side: SourceBoxSide::Before,
     }];
-    let processed = Arc::new(crate::process_contextual_source(value.clone()).unwrap());
-    let other_capture = Arc::new(crate::process_contextual_source(value).unwrap());
+    let processed = Arc::new(crate::processing::process_contextual_source(value.clone()).unwrap());
+    let other_capture = Arc::new(crate::processing::process_contextual_source(value).unwrap());
     let mut system = font_system();
     let local = prepare(&mut system, &processed);
     let same_capture = prepare(&mut system, &processed);
@@ -1439,9 +1471,9 @@ fn foreign_computed_participant_is_rejected_even_when_capture_and_anchor_match()
         local
             .select(selected.clone())
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -1491,7 +1523,7 @@ fn foreign_computed_participant_is_rejected_even_when_capture_and_anchor_match()
 
 #[test]
 fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
-    use crate::WordSpaceTransform;
+    use crate::style::WordSpaceTransform;
     use skrifa::MetadataProvider;
 
     let bytes = crate::shaping_test_fonts::casing_ahem();
@@ -1521,9 +1553,9 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
             style: None,
             boundaries: None,
         });
-        value.controls = vec![crate::ParagraphControl {
+        value.controls = vec![crate::protocol::paragraph::ParagraphControl {
             at: 3,
-            kind: crate::ParagraphControlKind::Wbr {
+            kind: crate::protocol::paragraph::ParagraphControlKind::Wbr {
                 style: Box::new(Style {
                     word_space_transform: operation,
                     ..base()
@@ -1572,14 +1604,14 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
             E::ExitScope(0),
         ];
         let source = value.source.clone();
-        let processed = Arc::new(crate::process_contextual_source(value).unwrap());
+        let processed = Arc::new(crate::processing::process_contextual_source(value).unwrap());
         assert_eq!(
             processed.processed_text().code_units(),
             [0x41, 0x307, 0x41, 0x41]
         );
         let analysis = AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap_or_else(|error| panic!("forced={forced}, operation={operation:?}: {error:?}"));
         let p = font_system()
@@ -1593,7 +1625,8 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
         assert_eq!(wbr.captured_control(), processed.captured_control(0));
         assert_eq!(wbr.view().source_position().get(), 3);
         let wbr_view = wbr.view();
-        let crate::ParagraphControlKind::Wbr { style } = wbr_view.kind() else {
+        let crate::protocol::paragraph::ParagraphControlKind::Wbr { style } = wbr_view.kind()
+        else {
             unreachable!()
         };
         assert_eq!(style.word_space_transform, operation);
@@ -1658,9 +1691,9 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
             let tail = p
                 .select(tail)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(

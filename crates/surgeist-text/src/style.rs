@@ -1,9 +1,10 @@
 use parlance::{FontFamilyName, FontFeature, FontVariation};
 use parlance::{FontStyle, FontWeight, FontWidth, Language};
 
-use super::{
-    Error, ErrorCode, ErrorDetail, NumericRequirement, Result, TextStyleFeature,
-    UnsupportedTextStyleReason,
+use crate::{
+    Error, ErrorCode, ErrorDetail, Result,
+    error::NumericRequirement,
+    style_support::{TextStyleFeature, UnsupportedTextStyleReason},
 };
 
 /// RGBA brush in text-space terms.
@@ -299,7 +300,7 @@ impl TextCombineUprightDigits {
 pub struct Style {
     /// Native hanging declaration; formatted roles are supplied at line time.
     pub hanging_punctuation: HangingPunctuation,
-    pub tab_size: crate::TabSize,
+    pub tab_size: crate::tabs::TabSize,
     pub font: Font,
     pub size: f32,
     pub line_height: LineHeight,
@@ -324,14 +325,14 @@ pub struct Style {
     pub text_combine_upright: TextCombineUpright,
     pub word_space_transform: WordSpaceTransform,
     /// Defaults to Manual; Auto also permits Text's qualified en-US resource.
-    pub hyphens: crate::Hyphens,
+    pub hyphens: crate::hyphenation::Hyphens,
     /// Computed per-cut native minima, retaining symbolic Auto components.
     /// Raw standalone layout does not consume these count restrictions.
-    pub hyphenate_limit_chars: crate::HyphenateLimitChars,
+    pub hyphenate_limit_chars: crate::hyphenation::HyphenateLimitChars,
     /// Exact indication or native convention/first-available-font resolution.
-    pub hyphenate_character: crate::HyphenateCharacter,
+    pub hyphenate_character: crate::hyphenation::HyphenateCharacter,
     /// Optional producer claim bound to this style's complete actual locale.
-    pub native_hyphenation_convention: Option<crate::NativeHyphenationConvention>,
+    pub native_hyphenation_convention: Option<crate::hyphenation::NativeHyphenationConvention>,
 }
 
 impl Style {
@@ -410,10 +411,10 @@ impl Default for Style {
             text_transform: TextTransform::none(),
             text_combine_upright: TextCombineUpright::None,
             word_space_transform: WordSpaceTransform::None,
-            tab_size: crate::TabSize::default(),
-            hyphens: crate::Hyphens::Manual,
-            hyphenate_limit_chars: crate::HyphenateLimitChars::default(),
-            hyphenate_character: crate::HyphenateCharacter::Auto,
+            tab_size: crate::tabs::TabSize::default(),
+            hyphens: crate::hyphenation::Hyphens::Manual,
+            hyphenate_limit_chars: crate::hyphenation::HyphenateLimitChars::default(),
+            hyphenate_character: crate::hyphenation::HyphenateCharacter::Auto,
             native_hyphenation_convention: None,
         }
     }

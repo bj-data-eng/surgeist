@@ -71,8 +71,8 @@ fn source_system() -> System {
 fn prepare_source(
     system: &mut System,
     raw: &str,
-    word_break: crate::WordBreak,
-    line_break: crate::LineBreak,
+    word_break: crate::style::WordBreak,
+    line_break: crate::style::LineBreak,
 ) -> PreparedText {
     let prepared = capture(
         system,
@@ -80,7 +80,7 @@ fn prepare_source(
         Style {
             word_break,
             line_break,
-            wrap: crate::Wrap::Word,
+            wrap: crate::style::Wrap::Word,
             ..own_style()
         },
         raw.contains('\u{5d0}'),
@@ -129,18 +129,18 @@ fn hebrew_marks_stay_inside_the_letter_tcu_and_glue_joiners_stay_unbreakable() {
         ),
     ] {
         for rule in [
-            crate::WordBreak::Normal,
-            crate::WordBreak::KeepAll,
-            crate::WordBreak::BreakAll,
+            crate::style::WordBreak::Normal,
+            crate::style::WordBreak::KeepAll,
+            crate::style::WordBreak::BreakAll,
         ] {
-            let prepared = prepare_source(&mut system, raw, rule, crate::LineBreak::Strict);
+            let prepared = prepare_source(&mut system, raw, rule, crate::style::LineBreak::Strict);
             assert_eq!(
                 prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
                 graphemes
             );
             assert_eq!(
                 cuts(&prepared),
-                if rule == crate::WordBreak::BreakAll {
+                if rule == crate::style::WordBreak::BreakAll {
                     vec![cut]
                 } else {
                     vec![]
@@ -153,22 +153,22 @@ fn hebrew_marks_stay_inside_the_letter_tcu_and_glue_joiners_stay_unbreakable() {
     // segmentation is not this oracle: every rule must preserve the marked
     // TCU, while BreakAll must additionally offer its following boundary.
     for rule in [
-        crate::WordBreak::Normal,
-        crate::WordBreak::KeepAll,
-        crate::WordBreak::BreakAll,
+        crate::style::WordBreak::Normal,
+        crate::style::WordBreak::KeepAll,
+        crate::style::WordBreak::BreakAll,
     ] {
         let prepared = prepare_source(
             &mut system,
             "\u{e01}\u{e48}\u{e01}",
             rule,
-            crate::LineBreak::Strict,
+            crate::style::LineBreak::Strict,
         );
         assert_eq!(
             prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
             [Range::new(0, 2), Range::new(2, 3)]
         );
         assert!(!cuts(&prepared).contains(&1), "{rule:?}");
-        if rule == crate::WordBreak::BreakAll {
+        if rule == crate::style::WordBreak::BreakAll {
             assert_eq!(cuts(&prepared), [2]);
         }
     }
@@ -184,11 +184,16 @@ fn hebrew_marks_stay_inside_the_letter_tcu_and_glue_joiners_stay_unbreakable() {
         "\u{5d0}!",
     ] {
         for strictness in [
-            crate::LineBreak::Loose,
-            crate::LineBreak::Normal,
-            crate::LineBreak::Strict,
+            crate::style::LineBreak::Loose,
+            crate::style::LineBreak::Normal,
+            crate::style::LineBreak::Strict,
         ] {
-            let prepared = prepare_source(&mut system, raw, crate::WordBreak::BreakAll, strictness);
+            let prepared = prepare_source(
+                &mut system,
+                raw,
+                crate::style::WordBreak::BreakAll,
+                strictness,
+            );
             assert!(cuts(&prepared).is_empty(), "{raw:?} {strictness:?}");
         }
     }
@@ -207,19 +212,20 @@ fn break_all_effective_id_before_unicode_hyphens_is_a_loose_only_opportunity() {
         for hyphen in ['\u{2010}', '\u{2013}'] {
             let raw = format!("{prefix}{hyphen}{prefix}");
             for rule in [
-                crate::WordBreak::Normal,
-                crate::WordBreak::KeepAll,
-                crate::WordBreak::BreakAll,
+                crate::style::WordBreak::Normal,
+                crate::style::WordBreak::KeepAll,
+                crate::style::WordBreak::BreakAll,
             ] {
                 for strictness in [
-                    crate::LineBreak::Loose,
-                    crate::LineBreak::Normal,
-                    crate::LineBreak::Strict,
+                    crate::style::LineBreak::Loose,
+                    crate::style::LineBreak::Normal,
+                    crate::style::LineBreak::Strict,
                 ] {
                     let prepared = prepare_source(&mut system, &raw, rule, strictness);
                     assert_eq!(
                         cuts(&prepared).contains(&1),
-                        rule == crate::WordBreak::BreakAll && strictness == crate::LineBreak::Loose,
+                        rule == crate::style::WordBreak::BreakAll
+                            && strictness == crate::style::LineBreak::Loose,
                         "{raw:?} {rule:?} {strictness:?}"
                     );
                 }
@@ -253,18 +259,18 @@ fn latin_sa_and_general_letter_number_units_keep_source_based_break_all_semantic
         "\u{3041}\u{3041}",
     ] {
         for rule in [
-            crate::WordBreak::Normal,
-            crate::WordBreak::KeepAll,
-            crate::WordBreak::BreakAll,
+            crate::style::WordBreak::Normal,
+            crate::style::WordBreak::KeepAll,
+            crate::style::WordBreak::BreakAll,
         ] {
-            let prepared = prepare_source(&mut system, raw, rule, crate::LineBreak::Strict);
+            let prepared = prepare_source(&mut system, raw, rule, crate::style::LineBreak::Strict);
             assert_eq!(
                 prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
                 [Range::new(0, 1), Range::new(1, 2)]
             );
             assert_eq!(
                 cuts(&prepared),
-                if rule == crate::WordBreak::BreakAll {
+                if rule == crate::style::WordBreak::BreakAll {
                     vec![1]
                 } else {
                     vec![]
@@ -276,23 +282,23 @@ fn latin_sa_and_general_letter_number_units_keep_source_based_break_all_semantic
     let sa = prepare_source(
         &mut system,
         "\u{e01}\u{e01}",
-        crate::WordBreak::BreakAll,
-        crate::LineBreak::Strict,
+        crate::style::WordBreak::BreakAll,
+        crate::style::LineBreak::Strict,
     );
     assert_eq!(cuts(&sa), [1]);
     // ID letters retain Normal's ordinary cut and KeepAll's distinct
     // suppression. This is not a blanket replacement of every policy by ID.
     assert_eq!(classes.get('\u{4e00}'), UnicodeLineBreak::Ideographic);
     for (rule, expected) in [
-        (crate::WordBreak::Normal, vec![1]),
-        (crate::WordBreak::KeepAll, vec![]),
-        (crate::WordBreak::BreakAll, vec![1]),
+        (crate::style::WordBreak::Normal, vec![1]),
+        (crate::style::WordBreak::KeepAll, vec![]),
+        (crate::style::WordBreak::BreakAll, vec![1]),
     ] {
         let prepared = prepare_source(
             &mut system,
             "\u{4e00}\u{4e00}",
             rule,
-            crate::LineBreak::Strict,
+            crate::style::LineBreak::Strict,
         );
         assert_eq!(cuts(&prepared), expected);
     }

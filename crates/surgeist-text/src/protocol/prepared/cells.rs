@@ -4,7 +4,7 @@ use super::{BoundaryData, ParticipantData, PreparedTables};
 use crate::engine::layout::data::{ShapedData, ShapedItem};
 use crate::engine::scope_alignment::accounting::{self as account, Ledger};
 use crate::engine::scope_alignment::census::{AllocationVisitor, AllocationWitness};
-use crate::{Range, Result};
+use crate::{Result, range::Range};
 
 #[derive(Debug)]
 pub(crate) struct CellData {

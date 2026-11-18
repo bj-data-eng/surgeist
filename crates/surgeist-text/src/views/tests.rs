@@ -1,24 +1,27 @@
 use super::*;
 use crate::{
-    Alignment, Decoration, ErrorDetail, Font, Id, Indent, Options, Slant, Source, Style, System,
-    Weight,
+    ErrorDetail, System,
+    id::Id,
+    options::{Alignment, Indent, Options},
+    source::Source,
+    style::{Decoration, Font, Slant, Style, Weight},
 };
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 use crate::test_fonts::{replace_tables, table, variable_ahem};
 
-fn provider_face<'a>(data: &'a crate::FontData) -> FontFace<'a> {
+fn provider_face<'a>(data: &'a crate::font::FontData) -> FontFace<'a> {
     data.face()
 }
 
 fn owned_font(
     bytes: Vec<u8>,
     index: u32,
-    catalogue: &crate::CataloguePublication,
-) -> crate::FontData {
+    catalogue: &surgeist_font::CataloguePublication,
+) -> crate::font::FontData {
     let resource =
         surgeist_font::FontResource::decode(bytes, crate::test_fonts::FONT_LIMITS).unwrap();
-    crate::FontData::from_face(resource.face(index).unwrap(), catalogue.clone())
+    crate::font::FontData::from_face(resource.face(index).unwrap(), catalogue.clone())
 }
 
 fn system(bytes: Vec<u8>) -> System {
@@ -232,10 +235,11 @@ fn actual_allocation_identity_is_not_a_font_id_or_content_comparison() {
     let bytes = crate::test_fonts::two_face_collection(AHEM.to_vec());
     let resource =
         surgeist_font::FontResource::decode(bytes.clone(), crate::test_fonts::FONT_LIMITS).unwrap();
-    let original = crate::FontData::from_face(resource.face(0).unwrap(), catalogue.clone());
+    let original = crate::font::FontData::from_face(resource.face(0).unwrap(), catalogue.clone());
     let same = original.clone();
     let different = owned_font(bytes, 0, catalogue);
-    let other_index = crate::FontData::from_face(resource.face(1).unwrap(), catalogue.clone());
+    let other_index =
+        crate::font::FontData::from_face(resource.face(1).unwrap(), catalogue.clone());
     assert!(provider_face(&original).is_same_face(&provider_face(&same)));
     assert!(!provider_face(&original).is_same_face(&provider_face(&different)));
     assert!(!provider_face(&original).is_same_face(&provider_face(&other_index)));

@@ -39,7 +39,7 @@ pub(crate) struct CompletedTransform {
 pub(crate) fn apply(
     input: SourceProjection,
     styles: &mut Vec<resolve::AnalyzedStyleRun>,
-    processed: &crate::ProcessedSource,
+    processed: &crate::processing::ProcessedSource,
     paragraph: &crate::protocol::paragraph::ParagraphData,
 ) -> Result<CompletedTransform> {
     execute::apply(input, styles, processed, paragraph)

@@ -1,6 +1,9 @@
 //! Actual transformed native lines retain original custody across output cuts.
 use super::*;
-use crate::{CaseTransform, LineHeight, Range, TextTransform};
+use crate::{
+    range::Range,
+    style::{CaseTransform, LineHeight, TextTransform},
+};
 
 fn capture(text: &str, case: CaseTransform, locale: Option<&str>, font: Vec<u8>) -> PreparedText {
     capture_source(Source::new(text), case_style(case, locale), font)
@@ -12,9 +15,9 @@ fn case_style(case: CaseTransform, locale: Option<&str>) -> Style {
         size: 10.0,
         line_height: LineHeight::Absolute(10.0),
         white_space: WhiteSpace::Preserve,
-        overflow_wrap: crate::OverflowWrap::Anywhere,
+        overflow_wrap: crate::style::OverflowWrap::Anywhere,
         locale: locale.map(str::to_owned),
-        text_transform: TextTransform::Set(crate::TextTransformSet::none().with_case(case)),
+        text_transform: TextTransform::Set(crate::style::TextTransformSet::none().with_case(case)),
         ..Style::default()
     }
 }
@@ -26,9 +29,9 @@ fn capture_source(source: Source, base_style: Style, font: Vec<u8>) -> PreparedT
             source: source.clone(),
             base_style,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             origins: vec![paragraph::ParagraphOrigin {
                 text_node: None,
@@ -43,7 +46,7 @@ fn capture_source(source: Source, base_style: Style, font: Vec<u8>) -> PreparedT
             boundary_policies: vec![],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut system = System::default();
@@ -52,7 +55,7 @@ fn capture_source(source: Source, base_style: Style, font: Vec<u8>) -> PreparedT
         .unwrap();
     system
         .prepare(
-            &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -73,7 +76,7 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -91,9 +94,9 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
     let first = p
         .select(first)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let mut second = request(p);
@@ -105,15 +108,15 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
     let second = p
         .select(second)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     (first, second)
 }
 
-fn layout(p: PreparedText, lines: Vec<FinalizedLine>, range: bool) -> crate::Layout {
+fn layout(p: PreparedText, lines: Vec<FinalizedLine>, range: bool) -> crate::layout::Layout {
     let coverage = if range {
         PlacementCoverage::Range {
             start: lines
@@ -128,14 +131,14 @@ fn layout(p: PreparedText, lines: Vec<FinalizedLine>, range: bool) -> crate::Lay
     } else {
         PlacementCoverage::WholeParagraph
     };
-    crate::Layout::from_finalized_lines(PlacementRequest {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage,
         entries: lines
             .into_iter()
             .enumerate()
             .map(|(index, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -159,11 +162,16 @@ fn ids(line: &FinalizedLine) -> Vec<u32> {
 #[test]
 fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
     use crate::{
-        Affinity, ContextualSourceInput, DocumentSegmentBreaks, ParagraphBoundaryDefinition,
-        ParagraphBoundaryPolicy, ParagraphConnectionKind, ParagraphControl, ParagraphControlKind,
-        ParagraphOrigin, ParagraphOriginKind, SourceProcessingConnection, SourceProcessingEnvelope,
-        SourceProcessingEvent as E, SourceProcessingParagraph, SourceProcessingScope,
-        SourceProcessingTopology, WhiteSpaceTrim,
+        layout::Affinity,
+        processing::{
+            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
+            SourceProcessingEnvelope, SourceProcessingEvent as E, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+        },
+        protocol::paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+        },
     };
     use std::sync::Arc;
 
@@ -196,7 +204,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
             E::ExitScope(0),
         ]);
         let processed = Arc::new(
-            crate::process_contextual_source(ContextualSourceInput {
+            crate::processing::process_contextual_source(ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
@@ -228,9 +236,9 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
                 },
                 boundary_policies: vec![ParagraphBoundaryPolicy {
                     definition: ParagraphBoundaryDefinition::Connection(0),
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
                 }],
                 replacements: Vec::new(),
                 scopes: vec![SourceProcessingScope::Block {
@@ -253,7 +261,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
         assert_eq!(processed.processed_text().code_units(), [0x69, 0x307]);
         let analyzed = AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.source().text().code_units(), [0x69, 0x307]);
@@ -293,7 +301,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
             .unwrap();
         let prepared = system
             .prepare(
-                &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+                &crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word),
                 PreparationOptions::default(),
             )
             .unwrap();
@@ -361,9 +369,9 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
             let line = prepared
                 .select(selected)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             start = line.selected_line().request().end.clone();
@@ -475,7 +483,7 @@ fn delayed_iota_receiving_range_retains_only_its_original_component_without_host
             .unwrap_err()
             .detail(),
         Some(crate::ErrorDetail::SourceRangeFragments {
-            reason: crate::SourceRangeFragmentError::OutsidePlacement { .. }
+            reason: crate::range_fragments::SourceRangeFragmentError::OutsidePlacement { .. }
         })
     ));
     let positions: Vec<_> = receiver.positions().collect();
@@ -558,20 +566,20 @@ fn outgoing_wrap_owns_the_actual_removed_dot_and_receiver_starts_after_its_cut()
 fn expansion_preserves_normal_alphabetic_no_break_and_distinct_conditional_permission() {
     for (word_break, overflow, ordinary, conditional) in [
         (
-            crate::WordBreak::Normal,
-            crate::OverflowWrap::Normal,
+            crate::style::WordBreak::Normal,
+            crate::style::OverflowWrap::Normal,
             false,
             false,
         ),
         (
-            crate::WordBreak::BreakAll,
-            crate::OverflowWrap::Normal,
+            crate::style::WordBreak::BreakAll,
+            crate::style::OverflowWrap::Normal,
             true,
             false,
         ),
         (
-            crate::WordBreak::Normal,
-            crate::OverflowWrap::Anywhere,
+            crate::style::WordBreak::Normal,
+            crate::style::OverflowWrap::Anywhere,
             false,
             true,
         ),
@@ -602,7 +610,7 @@ fn expansion_preserves_normal_alphabetic_no_break_and_distinct_conditional_permi
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                crate::protocol::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -690,9 +698,9 @@ fn actual_standalone_casing_and_cache_identity_preserve_each_operation() {
         (CaseTransform::None, vec![134]),
     ] {
         let style = case_style(case, None);
-        let options = crate::Options {
+        let options = crate::options::Options {
             quantize: false,
-            ..crate::Options::default()
+            ..crate::options::Options::default()
         };
         let source = Source::new("ß");
         let warm = system
@@ -700,7 +708,7 @@ fn actual_standalone_casing_and_cache_identity_preserve_each_operation() {
             .unwrap();
         let mut fresh = super::system();
         let cold = fresh.layout(source.clone(), style, options).unwrap();
-        let glyphs = |layout: &crate::Layout| {
+        let glyphs = |layout: &crate::layout::Layout| {
             layout
                 .run_views()
                 .flat_map(|run| run.glyphs().map(|glyph| glyph.id()).collect::<Vec<_>>())
@@ -712,16 +720,19 @@ fn actual_standalone_casing_and_cache_identity_preserve_each_operation() {
         assert_eq!(cold.source(), &source);
     }
     for phase in [
-        crate::TextStylePhase::Standalone,
-        crate::TextStylePhase::ProcessedParagraph,
+        crate::style_support::TextStylePhase::Standalone,
+        crate::style_support::TextStylePhase::ProcessedParagraph,
     ] {
         for feature in [
-            crate::TextStyleFeature::Uppercase,
-            crate::TextStyleFeature::Lowercase,
-            crate::TextStyleFeature::Capitalize,
+            crate::style_support::TextStyleFeature::Uppercase,
+            crate::style_support::TextStyleFeature::Lowercase,
+            crate::style_support::TextStyleFeature::Capitalize,
         ] {
-            assert!(crate::TextStyleFeature::ALL.contains(&feature));
-            assert_eq!(feature.support(phase), crate::TextStyleSupport::Supported);
+            assert!(crate::style_support::TextStyleFeature::ALL.contains(&feature));
+            assert_eq!(
+                feature.support(phase),
+                crate::style_support::TextStyleSupport::Supported
+            );
         }
     }
 }
@@ -738,9 +749,9 @@ fn canonical_greek_title_sequences_use_the_same_real_glyph_without_changing_sour
         let line = p
             .select(request(&p))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         // The fixture's independent None controls qualify both canonical forms
@@ -749,7 +760,7 @@ fn canonical_greek_title_sequences_use_the_same_real_glyph_without_changing_sour
         assert_eq!(line.feedback().advance, 10.0);
         let origin = p.origin_views().next().unwrap().handle();
         let placed = layout(p, vec![line], false);
-        assert_eq!(placed.source().text(), &crate::Text::from(original));
+        assert_eq!(placed.source().text(), &crate::text::Text::from(original));
         for unit in 0..original.encode_utf16().count() {
             assert_eq!(
                 placed
@@ -766,7 +777,7 @@ fn canonical_greek_title_sequences_use_the_same_real_glyph_without_changing_sour
                 .position_selection(positions.first().unwrap(), positions.last().unwrap())
                 .unwrap()
                 .source_text(),
-            &crate::Text::from(original)
+            &crate::text::Text::from(original)
         );
     }
 }
@@ -790,9 +801,9 @@ fn irish_inserted_hyphen_and_mapped_vowel_keep_the_vowel_row_as_their_real_emitt
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 30.0);
@@ -881,13 +892,21 @@ fn receiving_only_greek_accessibility_retains_its_actual_original_component_and_
     );
     let (_, second) = split(&p, 2);
     let receiver = layout(p, vec![second], true);
-    let mut state = crate::Accessibility::new(20);
+    let mut state = crate::accessibility::Accessibility::new(20);
     let parent = 1000_u64.into();
     let update = receiver
-        .accessibility_update(&mut state, parent, parent, crate::Point::new(0.0, 0.0))
+        .accessibility_update(
+            &mut state,
+            parent,
+            parent,
+            crate::geometry::Point::new(0.0, 0.0),
+        )
         .unwrap();
     let at = receiver
-        .access_position(&state, crate::Cursor::new(0, crate::Affinity::After))
+        .access_position(
+            &state,
+            crate::layout::Cursor::new(0, crate::layout::Affinity::After),
+        )
         .unwrap()
         .unwrap();
     let node = &update
@@ -924,7 +943,9 @@ fn actual_casing_after_phase_i_deletion_never_fuses_two_original_opaque_halves()
             .to_u32(),
         35
     );
-    let source = Source::new(crate::Text::from_code_units(vec![0xd800, 0x20, 0xdc00]));
+    let source = Source::new(crate::text::Text::from_code_units(vec![
+        0xd800, 0x20, 0xdc00,
+    ]));
     let p = capture_source(
         source.clone(),
         Style {
@@ -958,9 +979,9 @@ fn actual_casing_after_phase_i_deletion_never_fuses_two_original_opaque_halves()
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(ids(&line), [35, 35]);
@@ -1007,9 +1028,9 @@ fn consecutive_greek_removals_retain_distinct_relation_cuts_and_exact_source() {
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);

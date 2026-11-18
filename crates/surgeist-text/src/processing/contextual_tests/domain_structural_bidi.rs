@@ -3,7 +3,25 @@
 //! raises an LTR paragraph to odd level 1 and overrides subsequent body text.
 //! Raw member markers alone are neither paragraph separators nor resets.
 
-use crate::*;
+use crate::{
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        CapturedDomainDefinition, ContextualSourceInput, ProcessedSource,
+        SourceProcessingConnection, SourceProcessingEvent, SourceProcessingJointFlow,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::WhiteSpace,
+    text::Text,
+};
 use std::sync::Arc;
 
 fn origin_event(origin: usize) -> SourceProcessingEvent {

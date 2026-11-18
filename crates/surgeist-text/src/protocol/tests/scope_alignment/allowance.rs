@@ -1,6 +1,28 @@
 //! Operation allowances bound actual retained inputs, not just new output.
 //! Geometry remains the independently derived Ahem10 +3 scope witness.
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::{Point, Rect},
+    id::Id,
+    layout::{Affinity, Cursor, Layout},
+    options::Alignment,
+    processing::{
+        CapturedScope, ContextualSourceInput, ScopeAlignmentError, ScopeAlignmentLimitKind,
+        ScopeAlignmentLimits, ScopeAlignmentUsage, process_contextual_source,
+    },
+    protocol::{
+        FinalizedLine, LineAllocations, LineAnchor, LineOrientation, LinePlacement,
+        LineSelectionRequest, PlacementCoverage, PlacementEntry, PlacementRequest,
+        PreparationOptions, PreparedText, ScopeAlignmentAllowance, ScopeAlignmentRetention,
+        ScopeAllocation, ScopeAllocations, SelectedLine, SpacingAllocation, SpacingAllocations,
+        SpacingPolicy,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind},
+    },
+    range::Range,
+    source::{BaselineShift, Source},
+    style::Wrap,
+};
 use std::sync::Arc;
 
 const AHEM: &[u8] = include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf");

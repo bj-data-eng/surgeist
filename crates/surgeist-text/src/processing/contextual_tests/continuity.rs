@@ -1,7 +1,28 @@
 //! Existing-callable material source continuity witness. Raw paragraph storage
 //! markers provide neither continuity nor a disconnected relationship.
 
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail,
+    layout::Affinity,
+    processing::{
+        CapturedFlowEvent, ContextualSourceInput, DocumentSegmentBreaks, ProcessedSource,
+        SourceContinuityOperation, SourceProcessingConnection, SourceProcessingError,
+        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source,
+        process_source_whitespace,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphControl,
+            ParagraphControlKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{Style, WhiteSpace},
+    text::Text,
+};
 use std::sync::Arc;
 
 fn input(

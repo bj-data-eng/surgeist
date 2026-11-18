@@ -1,11 +1,11 @@
 //! Components of supplied inline-box incidence in an already resolved visual order.
 //! These local ordinals assert no Source, preparation, glyph or captured authority.
 use crate::engine::scope_alignment::accounting::{self as account, Ledger};
-use crate::{InlineBoxFragmentationError, Result};
+use crate::{Result, protocol::InlineBoxFragmentationError};
 use std::ops::Range;
 
 fn invalid() -> crate::Error {
-    crate::protocol::protocol_error(crate::ProtocolError::InlineBoxFragmentation(
+    crate::protocol::protocol_error(crate::protocol::ProtocolError::InlineBoxFragmentation(
         InlineBoxFragmentationError::InvalidIncidence,
     ))
 }

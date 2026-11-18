@@ -2,7 +2,7 @@
 use super::*;
 use crate::engine::layout::data::{ClusterContent, FinalizedRunFrame};
 use crate::protocol::tests::tracking::fixtures::ligature_font;
-use crate::{SourceRangeCellUnitKind, SourceRangeGeometry};
+use crate::range_fragments::{SourceRangeCellUnitKind, SourceRangeGeometry};
 use skrifa::{GlyphId, MetadataProvider, string::StringId};
 use surgeist_shaper::{
     ComponentCoverage, Direction as ShapeDirection, Feature, FeatureRole, FontRef as ShapeFont,

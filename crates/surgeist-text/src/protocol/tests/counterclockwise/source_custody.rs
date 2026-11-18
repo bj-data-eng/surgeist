@@ -48,17 +48,18 @@ fn signed_spacing_hulls_and_css_tabs_use_one_directed_counterclockwise_frame() {
         );
     }
     let style = Style {
-        tab_size: crate::TabSize::length(40.0).unwrap(),
+        tab_size: crate::tabs::TabSize::length(40.0).unwrap(),
         ..own_style()
     };
     let mut value = paragraph(source("A\tB"), style.clone(), false);
     value.tab_reference = Some(
-        crate::ParagraphTabReference::new(style, ParagraphBaseDirection::LeftToRight).unwrap(),
+        crate::tabs::ParagraphTabReference::new(style, ParagraphBaseDirection::LeftToRight)
+            .unwrap(),
     );
     let p = system
         .prepare(
             &analyze(value),
-            PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops)
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::CssStops)
                 .unwrap()
                 .with_orientation(CCW),
         )
@@ -68,9 +69,9 @@ fn signed_spacing_hulls_and_css_tabs_use_one_directed_counterclockwise_frame() {
     let selected = p.select(r).unwrap();
     let before = system.stats();
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(system.stats(), before);
@@ -96,9 +97,9 @@ fn retained_spacing_resources_replay_without_provider_calls_after_system_drop() 
     assert_eq!(slots.len(), 1);
     let stats = system.stats();
     let plain = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let expanded = plain
@@ -141,7 +142,10 @@ fn retained_spacing_resources_replay_without_provider_calls_after_system_drop() 
 
 #[test]
 fn before_after_and_both_indications_keep_the_selected_source_and_horizontal_feature_default() {
-    use crate::{HyphenationPlacement as P, NativeHyphenationConvention, Text};
+    use crate::{
+        hyphenation::{HyphenationPlacement as P, NativeHyphenationConvention},
+        text::Text,
+    };
     let bytes = crate::shaping_test_fonts::sideways_ahem();
     let mut system = system_with(bytes.clone());
     for (mode, advances) in [
@@ -151,7 +155,7 @@ fn before_after_and_both_indications_keep_the_selected_source_and_horizontal_fea
     ] {
         let style = Style {
             locale: Some("und-Latn".into()),
-            hyphens: crate::Hyphens::Manual,
+            hyphens: crate::hyphenation::Hyphens::Manual,
             native_hyphenation_convention: Some(
                 NativeHyphenationConvention::language_script(
                     "und-Latn",
@@ -178,9 +182,9 @@ fn before_after_and_both_indications_keep_the_selected_source_and_horizontal_fea
         let first = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let mut r = selected_request(&p, offer.view().boundary(), terminal(&p));
@@ -188,9 +192,9 @@ fn before_after_and_both_indications_keep_the_selected_source_and_horizontal_fea
         let second = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -297,11 +301,11 @@ fn supplementary_utf16_and_nonformatted_source_removals_preserve_distinct_custod
             .processed_text()
             .is_empty()
     );
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::NonFormatted(
-            crate::NonFormattedLinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::NonFormatted(
+            crate::protocol::NonFormattedLinePlacement {
                 line: line.nonformatted().unwrap(),
                 origin: Point::new(-7.25, 13.5),
                 orientation: CCW,
@@ -336,11 +340,11 @@ fn profile_foreign_and_numeric_failures_preserve_a_prior_accepted_layout() {
             }
         );
         let mut values = entries(&p, vec![(line.clone(), -7.25, 13.5)]);
-        let crate::PlacementEntry::Formatted(row) = &mut values[0] else {
+        let crate::protocol::PlacementEntry::Formatted(row) = &mut values[0] else {
             unreachable!()
         };
         row.orientation = wrong;
-        let error = crate::Layout::from_finalized_lines(PlacementRequest {
+        let error = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: p.clone(),
             coverage: PlacementCoverage::WholeParagraph,
             entries: values,
@@ -354,7 +358,7 @@ fn profile_foreign_and_numeric_failures_preserve_a_prior_accepted_layout() {
         );
     }
     let other = capture(&mut system, "A", own_style(), false, CCW);
-    let error = crate::Layout::from_finalized_lines(PlacementRequest {
+    let error = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: other,
         coverage: PlacementCoverage::WholeParagraph,
         entries: entries(&p, vec![(line.clone(), -7.25, 13.5)]),
@@ -364,7 +368,7 @@ fn profile_foreign_and_numeric_failures_preserve_a_prior_accepted_layout() {
         reason(&error),
         &ProtocolError::ForeignFinalizedLine { line: 0 }
     );
-    let error = crate::Layout::from_finalized_lines(PlacementRequest {
+    let error = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: entries(&p, vec![(line, f64::INFINITY, 13.5)]),
@@ -373,7 +377,7 @@ fn profile_foreign_and_numeric_failures_preserve_a_prior_accepted_layout() {
     assert!(matches!(
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
-            category: crate::TextNumericError::NonFinite,
+            category: crate::error::TextNumericError::NonFinite,
             ..
         })
     ));
@@ -386,17 +390,17 @@ fn profile_foreign_and_numeric_failures_preserve_a_prior_accepted_layout() {
 fn generated_wbr_space_retains_control_custody_without_inventing_an_original_character() {
     let mut system = system_with(AHEM.to_vec());
     let mut value = paragraph(source("AA"), own_style(), false);
-    value.controls = vec![crate::ParagraphControl {
+    value.controls = vec![crate::protocol::paragraph::ParagraphControl {
         at: 1,
-        kind: crate::ParagraphControlKind::Wbr {
+        kind: crate::protocol::paragraph::ParagraphControlKind::Wbr {
             style: Box::new(Style {
-                word_space_transform: crate::WordSpaceTransform::Space,
+                word_space_transform: crate::style::WordSpaceTransform::Space,
                 ..own_style()
             }),
         },
     }];
-    value.anchor_order = vec![crate::ParagraphAnchor {
-        item: crate::ParagraphAnchorItem::Control(0),
+    value.anchor_order = vec![crate::protocol::paragraph::ParagraphAnchor {
+        item: crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
         affinity: Affinity::After,
     }];
     let p = prepare(&mut system, value, CCW);
@@ -436,7 +440,9 @@ fn generated_wbr_space_retains_control_custody_without_inventing_an_original_cha
     assert!(mappings[0].processed_range().is_empty());
     let fragment = line
         .fragment_views()
-        .find(|f| f.owner() == crate::FinalizedFragmentOwner::Control(control.clone()))
+        .find(|f| {
+            f.owner() == crate::protocol::readback::FinalizedFragmentOwner::Control(control.clone())
+        })
         .unwrap();
     assert!(fragment.origin().is_none());
     assert_eq!(fragment.bounds(), Some(Rect::new(10.0, 0.0, 10.0, 10.0)));

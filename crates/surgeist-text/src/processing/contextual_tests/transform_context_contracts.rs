@@ -2,7 +2,32 @@
 //! Pinned full Unicode casing and native pre-casing separator replacement are
 //! the literal oracles; source continuity never enlarges output coverage.
 
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    error::TextTransformError,
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, ProcessedSource, SourceContinuityOperation,
+        SourceProcessingConnection, SourceProcessingError, SourceProcessingEvent,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphControl,
+            ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{
+        CaseTransform, Style, TextTransform, TextTransformSet, WhiteSpace, WordSpaceTransform,
+    },
+    text::Text,
+};
 use std::sync::Arc;
 
 fn lower() -> TextTransform {

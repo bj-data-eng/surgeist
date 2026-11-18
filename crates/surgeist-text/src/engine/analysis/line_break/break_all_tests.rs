@@ -3,7 +3,7 @@ use super::{
     tests::{graphemes, ordinary_boundaries},
     *,
 };
-use crate::WordBreak;
+use crate::style::WordBreak;
 
 fn cuts(text: &str, word: WordBreak, strictness: LineBreak) -> Vec<usize> {
     ordinary_boundaries(text, word, strictness)
@@ -53,7 +53,7 @@ fn break_all_projection_maps_supplementary_representatives_to_exact_original_byt
         Class::Ideographic
     );
     let text = "\u{10400}אב\u{301}א";
-    let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
+    let projection = SourceProjection::new(&crate::source::Source::new(text)).unwrap();
     let egcs = graphemes(&projection);
     let units = super::super::line_units::LineBreakUnits::new(&projection, None).unwrap();
     let css = BreakAll::new(
@@ -118,7 +118,7 @@ fn only_actual_letter_units_are_promoted_and_already_supported_input_stays_borro
         ("\u{301}אב", vec![false, true, true]),
         ("\u{202f}\u{363}א", vec![false, false, true]),
     ] {
-        let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
+        let projection = SourceProjection::new(&crate::source::Source::new(text)).unwrap();
         let egcs = graphemes(&projection);
         let units = super::super::line_units::LineBreakUnits::new(&projection, None).unwrap();
         let css = BreakAll::new(
@@ -131,7 +131,7 @@ fn only_actual_letter_units_are_promoted_and_already_supported_input_stays_borro
         assert_eq!(css.ideographic, expected);
     }
     let text = "abc123";
-    let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
+    let projection = SourceProjection::new(&crate::source::Source::new(text)).unwrap();
     let egcs = graphemes(&projection);
     let units = super::super::line_units::LineBreakUnits::new(&projection, None).unwrap();
     let css = BreakAll::new(

@@ -1,76 +1,77 @@
 //! Original enclosing edges are not clipped to paragraph sentinels.
 
 use super::*;
-use crate::{CapturedScopeIncidence as R, SourceProcessingEvent as E};
+use crate::{processing::SourceProcessingEvent as E, protocol::CapturedScopeIncidence as R};
 
 #[test]
 fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside() {
     let source = Source::new("AB");
-    let processed = crate::process_contextual_source(crate::ContextualSourceInput {
-        joint_flows: Vec::new(),
-        scope_alignment_limits: None,
-        source: source.clone(),
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        envelope: crate::SourceProcessingEnvelope::Complete,
-        scopes: vec![
-            crate::SourceProcessingScope::Block {
-                writing_axis: None,
-                horizontal_inner_direction: None,
-                font_reference: None,
-                topology: crate::SourceProcessingTopology::Complete,
-                trim: Default::default(),
-                base_style: style(),
-                used_direction: ParagraphBaseDirection::LeftToRight,
-            },
-            crate::SourceProcessingScope::Inline {
-                horizontal_inner_direction: None,
-                alignment_boundary: None,
-                font_reference: None,
-                trim: Default::default(),
-                style: None,
-                boundaries: None,
-            },
-        ],
-        paragraphs: (0..2)
-            .map(|_| crate::SourceProcessingParagraph {
-                base_direction: ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: ParagraphStrut::DefaultFont,
-            })
-            .collect(),
-        origins: (0..2)
-            .map(|i| crate::ParagraphOrigin {
-                text_node: None,
-                source: source.clone(),
-                local: crate::Range::new(i, i + 1),
-                aggregate: crate::Range::new(i, i + 1),
-                kind: crate::ParagraphOriginKind::Authored,
-            })
-            .collect(),
-        controls: vec![],
-        connections: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        computed_line_boundaries: vec![],
-        events: vec![
-            E::EnterScope(0),
-            E::EnterScope(1),
-            E::EnterParagraph(0),
-            E::Origin {
-                origin: 0,
-                affinity: crate::Affinity::After,
-            },
-            E::ExitParagraph(0),
-            E::ExitScope(1),
-            E::EnterParagraph(1),
-            E::Origin {
-                origin: 1,
-                affinity: crate::Affinity::After,
-            },
-            E::ExitParagraph(1),
-            E::ExitScope(0),
-        ],
-    })
-    .unwrap();
+    let processed =
+        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
+            source: source.clone(),
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: crate::processing::SourceProcessingEnvelope::Complete,
+            scopes: vec![
+                crate::processing::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
+                    topology: crate::processing::SourceProcessingTopology::Complete,
+                    trim: Default::default(),
+                    base_style: style(),
+                    used_direction: ParagraphBaseDirection::LeftToRight,
+                },
+                crate::processing::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
+                    trim: Default::default(),
+                    style: None,
+                    boundaries: None,
+                },
+            ],
+            paragraphs: (0..2)
+                .map(|_| crate::processing::SourceProcessingParagraph {
+                    base_direction: ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: ParagraphStrut::DefaultFont,
+                })
+                .collect(),
+            origins: (0..2)
+                .map(|i| crate::protocol::paragraph::ParagraphOrigin {
+                    text_node: None,
+                    source: source.clone(),
+                    local: crate::range::Range::new(i, i + 1),
+                    aggregate: crate::range::Range::new(i, i + 1),
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
+                })
+                .collect(),
+            controls: vec![],
+            connections: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            computed_line_boundaries: vec![],
+            events: vec![
+                E::EnterScope(0),
+                E::EnterScope(1),
+                E::EnterParagraph(0),
+                E::Origin {
+                    origin: 0,
+                    affinity: crate::layout::Affinity::After,
+                },
+                E::ExitParagraph(0),
+                E::ExitScope(1),
+                E::EnterParagraph(1),
+                E::Origin {
+                    origin: 1,
+                    affinity: crate::layout::Affinity::After,
+                },
+                E::ExitParagraph(1),
+                E::ExitScope(0),
+            ],
+        })
+        .unwrap();
     let processed = std::sync::Arc::new(processed);
     let scope = processed.captured_scope(1).unwrap();
     let mut fonts = system();
@@ -81,7 +82,7 @@ fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside
                 .prepare(
                     &AnalyzedSource::from_processed_paragraph(
                         p,
-                        crate::AnalysisTypography::HorizontalComposition,
+                        crate::analyzed::AnalysisTypography::HorizontalComposition,
                     )
                     .unwrap(),
                     PreparationOptions::default(),

@@ -1,5 +1,40 @@
 use super::*;
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail, System,
+    analyzed::AnalyzedSource,
+    error::{SpacingOperation, SpacingPiece, SpacingStage, TextNumericError, TextNumericPhase},
+    geometry::{Rect, Size},
+    id::Id,
+    layout::{Affinity, Layout},
+    options::Alignment,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, SourceProcessingConnection,
+        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+        SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        AtomicAllocation, AtomicLineAllocation, AtomicPlacement, ControlAllocation, FinalizedLine,
+        LineAnchor, LineContext, LineEnd, LineOrientation, LinePlacement, LineSelectionRequest,
+        LineStart, LineStrut, ParagraphBaseDirection, ParagraphInput, PlacementCoverage,
+        PlacementRequest, PreparationOptions, PreparedAlternative, PreparedBoundary,
+        PreparedBreakKind, PreparedOpportunity, PreparedParticipant, PreparedText, ProtocolError,
+        SpacingAllocation, SpacingAllocations, SpacingPolicy, TabContext,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy, ParagraphConnection, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut,
+        },
+        readback::FinalizedFragmentOwner,
+    },
+    range::Range,
+    range_fragments::{
+        SourceRangeFragmentError, SourceRangeFragments, SourceRangeGeometry, SourceRangePiece,
+    },
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Direction, Font, LineHeight, Style, WhiteSpace, Wrap},
+    text::Text,
+};
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 fn style(size: f32) -> Style {
     Style {
@@ -22,7 +57,7 @@ fn input(
     direction: ParagraphBaseDirection,
 ) -> ParagraphInput {
     ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: style,
@@ -65,10 +100,10 @@ fn prepare(input: ParagraphInput, bytes: Vec<u8>) -> PreparedText {
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             ),
             PreparationOptions::default(),
         )
@@ -94,10 +129,10 @@ fn select(
                     ControlAllocation {
                         boundary: matches!(
                             occurrence.view().kind(),
-                            crate::ParagraphControlKind::InlineBoundaryStart
-                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                        .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }
@@ -115,7 +150,7 @@ fn select(
             incoming: None,
             start,
             end,
-            termination: crate::PreparedTermination::Ordinary(termination.clone()),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination.clone()),
             alternative,
             participants: parts.clone(),
             atomics: parts
@@ -137,8 +172,8 @@ fn select(
                     line_extent: 20.0,
                 }),
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: if prepared.analyzed_source().direction() == Direction::RightToLeft
                 {
                     ParagraphBaseDirection::RightToLeft
@@ -148,9 +183,9 @@ fn select(
                 line_box_direction: if prepared.analyzed_source().direction()
                     == Direction::RightToLeft
                 {
-                    crate::LineBoxDirection::RightToLeft
+                    crate::protocol::LineBoxDirection::RightToLeft
                 } else {
-                    crate::LineBoxDirection::LeftToRight
+                    crate::protocol::LineBoxDirection::LeftToRight
                 },
                 orientation: LineOrientation::Horizontal,
                 start: if from == 0 {
@@ -172,9 +207,9 @@ fn select(
             },
         })
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -203,7 +238,7 @@ fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
                 baseline: 8.0,
             })
             .collect();
-        lines.push(crate::PlacementEntry::Formatted(LinePlacement {
+        lines.push(crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: x,
@@ -622,7 +657,7 @@ fn rtl_pdi_keeps_post_l1_l2_x_and_original_local_origin_offsets() {
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
         entries: vec![
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: first,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -631,7 +666,7 @@ fn rtl_pdi_keeps_post_l1_l2_x_and_original_local_origin_offsets() {
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
             }),
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: second,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -685,7 +720,7 @@ fn own_formatting_font_survives_catalogue_replacement_and_system_drop() {
             &[0, 3],
             ParagraphBaseDirection::LeftToRight,
         ),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut fonts = system(AHEM.to_vec());
@@ -726,7 +761,7 @@ fn wholly_removed_original_needs_no_fabricated_font_and_newline_modes_stay_disti
         .prepare(
             &AnalyzedSource::from_paragraph(
                 capture,
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap(),
             PreparationOptions::default(),
@@ -828,7 +863,7 @@ fn partial_placement_rejects_outside_original_even_when_origin_covers_both_lines
             start,
             end: forced.view().boundary(),
         },
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -928,7 +963,7 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
             prepared: p,
             coverage: PlacementCoverage::WholeParagraph,
             entries: vec![
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line: first,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -937,7 +972,7 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
                 }),
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line: second,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -1033,8 +1068,8 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::SourceProcessingTopology::Unknown,
-                used_direction: crate::ParagraphBaseDirection::LeftToRight,
+                topology: crate::processing::SourceProcessingTopology::Unknown,
+                used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(10.0),
             },
@@ -1042,8 +1077,8 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::SourceProcessingTopology::Unknown,
-                used_direction: crate::ParagraphBaseDirection::LeftToRight,
+                topology: crate::processing::SourceProcessingTopology::Unknown,
+                used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(20.0),
                 atomic: 0,
@@ -1090,7 +1125,7 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         .prepare(
             &AnalyzedSource::from_processed_paragraph(
                 processed.paragraphs().next().unwrap(),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap(),
             PreparationOptions::default(),
@@ -1121,7 +1156,7 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         .prepare(
             &AnalyzedSource::from_processed_paragraph(
                 processed.paragraphs().nth(1).unwrap(),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap(),
             PreparationOptions::default(),
@@ -1179,7 +1214,7 @@ fn place_alternative_pair(
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
         entries: vec![
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: first,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -1188,7 +1223,7 @@ fn place_alternative_pair(
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
             }),
-            crate::PlacementEntry::Formatted(LinePlacement {
+            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line: second,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -1388,9 +1423,12 @@ fn source_less_breaks_and_control_alternatives_with_incidental_origins_do_not_ac
 
 fn shared_ccmp_refuses_material_authored_spacing(value: ParagraphInput, bytes: Vec<u8>) {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            value,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     let error = system(bytes)
         .prepare(&analyzed, PreparationOptions::default())
@@ -1588,15 +1626,15 @@ fn ccmp_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
         .map(|slot| SpacingAllocation { slot, amount: 4.0 })
         .collect();
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(allocations),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let l = Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,

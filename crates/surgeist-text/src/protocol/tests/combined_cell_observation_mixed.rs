@@ -48,7 +48,7 @@ fn ordinary(layout: &Layout, origin: &PreparedOrigin, fixture: &Fixture) {
             selected.push((intersection.local_range(), intersection.aggregate_range()));
         }
         for piece in unit.pieces() {
-            let crate::SourceRangeGeometry::Line(piece) = piece else {
+            let crate::range_fragments::SourceRangeGeometry::Line(piece) = piece else {
                 panic!("ordinary Range fixture must retain Line geometry");
             };
             let instance = piece.effective_instance();

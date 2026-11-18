@@ -133,7 +133,8 @@ fn check(case: Case) {
     );
     assert_eq!(unit.fragments().count(), 1);
     assert_eq!(unit.pieces().len(), 1);
-    let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+    let crate::range_fragments::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap()
+    else {
         panic!("ordinary Range fixture must retain Line geometry");
     };
     assert_eq!(piece.cluster_indices().collect::<Vec<_>>(), [0]);

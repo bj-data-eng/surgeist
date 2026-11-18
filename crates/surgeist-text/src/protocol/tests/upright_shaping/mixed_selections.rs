@@ -1,13 +1,24 @@
 //! Actual computed box cuts and generated indications retain Mixed source roles.
 use super::*;
 use crate::{
-    Affinity, ComputedLineBoundaryInput, ContextualSourceInput, Decoration, DecorationKind,
-    DocumentSegmentBreaks, ErrorDetail, FinalizedFragmentOwner, HyphenationPlacement, Hyphens,
-    NativeHyphenationConvention, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
-    ParagraphConnectionKind, ParagraphOrigin, ParagraphOriginKind, SourceBoxSide,
-    SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent as E,
-    SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, Text,
-    TextStyleOwner, UprightDecorationRole, WhiteSpaceTrim, Wrap,
+    ErrorDetail,
+    error::{TextStyleOwner, UprightDecorationRole},
+    hyphenation::{HyphenationPlacement, Hyphens, NativeHyphenationConvention},
+    layout::{Affinity, DecorationKind},
+    processing::{
+        ComputedLineBoundaryInput, ContextualSourceInput, DocumentSegmentBreaks, SourceBoxSide,
+        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingEvent as E,
+        SourceProcessingParagraph, SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+    },
+    protocol::{
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+            ParagraphOrigin, ParagraphOriginKind,
+        },
+        readback::FinalizedFragmentOwner,
+    },
+    style::{Decoration, Wrap},
+    text::Text,
 };
 use std::sync::Arc;
 
@@ -23,7 +34,12 @@ fn own() -> Style {
 
 // A real inline scope starts at `at`. Source processing alone issues the
 // computed boundary; the tests never construct a cut, cause or participant.
-fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::ProcessedSource> {
+fn captured(
+    text: &str,
+    at: usize,
+    style: Style,
+    force: bool,
+) -> Arc<crate::processing::ProcessedSource> {
     let source = Source::new(text);
     let ranges = [Range::new(0, at), Range::new(at, source.text().len())];
     let input = ContextualSourceInput {
@@ -104,9 +120,12 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
             E::ExitScope(0),
         ],
     };
-    Arc::new(crate::process_contextual_source(input).unwrap())
+    Arc::new(crate::processing::process_contextual_source(input).unwrap())
 }
-fn prepare(system: &mut System, processed: &Arc<crate::ProcessedSource>) -> PreparedText {
+fn prepare(
+    system: &mut System,
+    processed: &Arc<crate::processing::ProcessedSource>,
+) -> PreparedText {
     let analyzed = AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
         AnalysisTypography::Mixed,
@@ -146,7 +165,7 @@ fn ending(
         _ => LineEnd::Soft,
     };
     value.context.available_inline = None;
-    value.context.alignment = crate::Alignment::Start;
+    value.context.alignment = crate::options::Alignment::Start;
     value.context.spacing = SpacingPolicy::None;
     value
 }
@@ -156,15 +175,15 @@ fn terminal(p: &PreparedText) -> PreparedOpportunity {
         .unwrap()
         .handle()
 }
-fn place(p: &PreparedText, lines: Vec<FinalizedLine>) -> crate::Result<crate::Layout> {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn place(p: &PreparedText, lines: Vec<FinalizedLine>) -> crate::Result<crate::layout::Layout> {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: lines
             .into_iter()
             .enumerate()
             .map(|(index, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 20.0,
@@ -198,7 +217,7 @@ fn mixed_real_computed_scope_cut_retains_cause_and_each_selected_native_basis() 
     assert_eq!(cause.source_position().get(), 1);
     assert_eq!(
         cause.target(),
-        crate::CapturedComputedLineBoundaryTarget::Scope {
+        crate::processing::CapturedComputedLineBoundaryTarget::Scope {
             scope: processed.captured_scope(1).unwrap(),
             side: SourceBoxSide::Before,
         }
@@ -229,17 +248,17 @@ fn mixed_real_computed_scope_cut_retains_cause_and_each_selected_native_basis() 
             forced.handle(),
         ))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let second = p
         .select(ending(&p, forced.boundary(), terminal(&p)))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -320,9 +339,9 @@ fn mixed_real_before_after_both_indications_derive_roles_from_generated_source()
                     terminal(&p),
                 ))
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(whole.feedback().advance, 50.0);
@@ -342,11 +361,9 @@ fn mixed_real_before_after_both_indications_derive_roles_from_generated_source()
                     ))
                     .collect::<Vec<_>>()
             );
-            assert!(
-                !whole
-                    .mapping_views()
-                    .any(|m| m.kind() == crate::PresentationMappingKind::Replacement)
-            );
+            assert!(!whole.mapping_views().any(
+                |m| m.kind() == crate::protocol::readback::PresentationMappingKind::Replacement
+            ));
             assert!(
                 whole
                     .run_views()
@@ -374,9 +391,9 @@ fn mixed_real_before_after_both_indications_derive_roles_from_generated_source()
             let first = p
                 .select(r)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             let before = mode != HyphenationPlacement::LogicalAfter;
@@ -387,9 +404,9 @@ fn mixed_real_before_after_both_indications_derive_roles_from_generated_source()
             let second = p
                 .select(r)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert!(second.hyphenation_continuation().is_none());
@@ -524,9 +541,9 @@ fn mixed_real_computed_empty_cut_uses_its_selected_metric_only_decoration_owner(
             terminal(&p),
         ))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -569,19 +586,19 @@ fn mixed_real_computed_empty_cut_uses_its_selected_metric_only_decoration_owner(
             offer.handle(),
         ))
         .and_then(|selected| {
-            selected.finalize(crate::LineAllocations {
+            selected.finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
         })
         .and_then(|line| {
-            crate::Layout::from_finalized_lines(PlacementRequest {
+            crate::layout::Layout::from_finalized_lines(PlacementRequest {
                 prepared: p.clone(),
                 coverage: PlacementCoverage::Range {
                     start: line.selected_line().request().start.clone(),
                     end: line.selected_line().request().end.clone(),
                 },
-                entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+                entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 20.0,

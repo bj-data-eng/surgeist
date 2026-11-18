@@ -1,6 +1,11 @@
-use super::{
-    Id, InlineBox, InlineBoxKind, Range, Result, Size, Source, SourcePosition, SourceRange, Span,
-    Style, Text,
+use crate::{
+    Result,
+    geometry::Size,
+    id::Id,
+    range::{Range, SourcePosition, SourceRange},
+    source::{InlineBox, InlineBoxKind, Source, Span},
+    style::Style,
+    text::Text,
 };
 
 pub fn source(children: impl FnOnce(&mut Composer)) -> Source {

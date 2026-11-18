@@ -6,7 +6,7 @@ use std::ops::Range as IndexRange;
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
 use crate::processing::lexical_inventory::LexicalDeletion;
 use crate::protocol::paragraph::{FlowOriginKey, ParagraphContext, SemanticAnchorItem};
-use crate::{Range, Source};
+use crate::{range::Range, source::Source};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OriginalPiece {

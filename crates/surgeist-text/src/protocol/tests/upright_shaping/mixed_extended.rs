@@ -1,11 +1,15 @@
 //! Additional real-source Mixed qualification; linked after the core freeze.
 use super::*;
 #[cfg(feature = "text-accessibility")]
-use crate::{Affinity, Cursor};
+use crate::layout::{Affinity, Cursor};
 use crate::{
-    Decoration, DecorationKind, DecorationOffset, DecorationThickness, ErrorDetail,
-    FontMetricTable, FontMetricTableError, TextStyleOwner, UprightDecorationRole,
-    UprightScriptFailure,
+    ErrorDetail,
+    error::{
+        FontMetricTable, FontMetricTableError, TextStyleOwner, UprightDecorationRole,
+        UprightScriptFailure,
+    },
+    layout::DecorationKind,
+    style::{Decoration, DecorationOffset, DecorationThickness},
 };
 use icu_properties::{
     props::{BidiClass, BidiMirroringGlyph, BidiPairedBracketType, GeneralCategory, Script},
@@ -38,26 +42,26 @@ fn prepare_source_with_strut(
     let value = ParagraphInput {
         source: source.clone(),
         base_style: style,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source,
             local: extent,
             aggregate: extent,
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
         boundary_policies: vec![],
         replacements: vec![],
         anchor_order: if extent.is_empty() {
-            vec![crate::ParagraphAnchor {
-                affinity: crate::Affinity::Before,
-                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
+            vec![crate::protocol::paragraph::ParagraphAnchor {
+                affinity: crate::layout::Affinity::Before,
+                item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
             }]
         } else {
             vec![]
@@ -65,7 +69,7 @@ fn prepare_source_with_strut(
     };
     let analyzed = crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_paragraph(value, AnalysisTypography::Mixed)?,
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     system.prepare(
         &analyzed,
@@ -82,9 +86,9 @@ fn finish(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -627,7 +631,11 @@ fn mixed_accessibility_keeps_source_and_vertical_cell_extents_separate_from_outl
     let layout = place_upright(prepared, line);
     let parent = accesskit::NodeId(1000);
     let logical = analyzed
-        .accessibility_update(&mut crate::Accessibility::new(10), parent, parent)
+        .accessibility_update(
+            &mut crate::accessibility::Accessibility::new(10),
+            parent,
+            parent,
+        )
         .unwrap();
     assert_eq!(
         logical
@@ -643,7 +651,7 @@ fn mixed_accessibility_keeps_source_and_vertical_cell_extents_separate_from_outl
             .iter()
             .all(|(_, node)| node.bounds().is_none())
     );
-    let mut state = crate::Accessibility::new(20);
+    let mut state = crate::accessibility::Accessibility::new(20);
     let placed = layout
         .accessibility_update(&mut state, parent, parent, Point::default())
         .unwrap();
@@ -677,14 +685,18 @@ fn mixed_accessibility_keeps_source_and_vertical_cell_extents_separate_from_outl
     );
 }
 
-fn place_with_style(bytes: &[u8], source: Source, own: Style) -> crate::Result<crate::Layout> {
+fn place_with_style(
+    bytes: &[u8],
+    source: Source,
+    own: Style,
+) -> crate::Result<crate::layout::Layout> {
     let prepared = prepare_source(&mut system_with(bytes), source, own)?;
     place_prepared(prepared, None)
 }
 fn place_prepared(
     prepared: PreparedText,
-    strut: Option<crate::LineStrut>,
-) -> crate::Result<crate::Layout> {
+    strut: Option<crate::protocol::LineStrut>,
+) -> crate::Result<crate::layout::Layout> {
     let mut value = request(&prepared);
     value.line_strut = strut;
     value.context.orientation = LineOrientation::Vertical;
@@ -692,14 +704,16 @@ fn place_prepared(
     value.context.line_box_direction = LineBoxDirection::LeftToRight;
     value.context.available_inline = None;
     value.context.spacing = SpacingPolicy::None;
-    let line = prepared.select(value)?.finalize(crate::LineAllocations {
-        spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
-    })?;
-    crate::Layout::from_finalized_lines(PlacementRequest {
+    let line = prepared
+        .select(value)?
+        .finalize(crate::protocol::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
+        })?;
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 20.0,
@@ -779,7 +793,7 @@ fn mixed_removed_source_fallback_does_not_invent_a_decoration_demand() {
     .unwrap();
     let layout = place_prepared(
         prepared,
-        Some(crate::LineStrut {
+        Some(crate::protocol::LineStrut {
             baseline: 6.0,
             line_extent: 12.0,
         }),

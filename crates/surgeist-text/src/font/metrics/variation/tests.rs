@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    FontData as Resource, System,
+    System,
+    font::FontData as Resource,
     test_fonts::{replace_tables, table, variable_ahem},
 };
 

@@ -97,7 +97,7 @@ impl InnerInput {
             Self::Anchor(order) => match source.anchor_order[order].item {
                 SemanticAnchorItem::Control(control) => {
                     let kind = &source.controls[control].kind;
-                    if *kind == crate::ParagraphControlKind::ForcedBreak {
+                    if *kind == crate::protocol::paragraph::ParagraphControlKind::ForcedBreak {
                         Some((BidiClass::BoundaryNeutral, None))
                     } else {
                         kind.code_point().map(|cp| {
@@ -123,7 +123,7 @@ fn inner_levels(
     parts: &[Part],
     inputs: &[InnerInput],
     source: &context::SourceContext<'_>,
-    direction: crate::ParagraphBaseDirection,
+    direction: crate::protocol::ParagraphBaseDirection,
 ) -> Result<Vec<u8>> {
     let entries = context::collect_rows(inputs.iter().filter_map(|&input| {
         input
@@ -260,8 +260,8 @@ pub(super) fn complete(canonical: &mut Canonical<'_>, plan: &mut CombinedSourceP
             );
             context::push(
                 &mut slots,
-                crate::SuppliedInlineParticipant::Text {
-                    level: crate::BidiLevel::try_new(levels[position])
+                crate::supplied_line::SuppliedInlineParticipant::Text {
+                    level: crate::supplied_line::BidiLevel::try_new(levels[position])
                         .map_err(|_| context::capacity())?,
                     edge,
                 },
@@ -270,7 +270,7 @@ pub(super) fn complete(canonical: &mut Canonical<'_>, plan: &mut CombinedSourceP
         }
         drop(levels);
         drop(ids);
-        let edges = crate::SuppliedLine::new(&slots).edges();
+        let edges = crate::supplied_line::SuppliedLine::new(&slots).edges();
         for (slot, &part) in slot_parts.iter().enumerate() {
             if edges.is_discarded(slot) == Some(true) {
                 plan.visible[part] = false;

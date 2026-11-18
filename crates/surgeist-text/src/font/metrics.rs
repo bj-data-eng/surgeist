@@ -17,10 +17,13 @@ use skrifa::{
 };
 
 use crate::{
-    CataloguePublication, Error, ErrorCode, ErrorDetail, FontMetricField as Field,
-    FontMetricNumericError as Numeric, FontMetricPhase as Phase, FontMetricTable as Table,
-    FontMetricTableError as TableError, Result,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::{
+        FontMetricField as Field, FontMetricNumericError as Numeric, FontMetricPhase as Phase,
+        FontMetricTable as Table, FontMetricTableError as TableError,
+    },
 };
+use surgeist_font::CataloguePublication;
 
 use super::EffectiveFontInstance;
 

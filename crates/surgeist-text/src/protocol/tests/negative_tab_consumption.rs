@@ -25,7 +25,7 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
     let mut system = system();
     let own = Style {
         white_space: WhiteSpace::Preserve,
-        tab_size: crate::TabSize::spaces(4.0).unwrap(),
+        tab_size: crate::tabs::TabSize::spaces(4.0).unwrap(),
         ..style()
     };
     let p = css_capture(
@@ -52,9 +52,9 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), 1);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 96.0);
@@ -66,12 +66,12 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
         (-1.0, 92.0, 44.0, 72.0, 5.0),
     ] {
         let line = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                     slot: slots[0].clone(),
                     amount,
                 }]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(line.feedback().advance, total);
@@ -84,20 +84,23 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
                 (37, 20.0, c)
             ]
         );
-        for (range, advance) in [(crate::Range::new(2, 3), b), (crate::Range::new(4, 5), c)] {
+        for (range, advance) in [
+            (crate::range::Range::new(2, 3), b),
+            (crate::range::Range::new(4, 5), c),
+        ] {
             let tab = p.participants().find(|part| matches!(part, PreparedParticipant::Text(u) if u.view().source_range()==range)).unwrap();
             assert_eq!(
-                line.prefix_at(&crate::TextSeam::AfterParticipant(tab))
+                line.prefix_at(&crate::protocol::prefix::TextSeam::AfterParticipant(tab))
                     .unwrap()
                     .advance(),
                 advance
             );
         }
         let origin = p.origin_views().next().unwrap().handle();
-        let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+        let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: p.clone(),
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -109,7 +112,7 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
         })
         .unwrap();
         let fragments = layout
-            .source_range_fragments(&origin, crate::Range::new(2, 3))
+            .source_range_fragments(&origin, crate::range::Range::new(2, 3))
             .unwrap();
         let units: Vec<_> = fragments.units().collect();
         assert_eq!(units.len(), 1);
@@ -121,7 +124,10 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
         );
         assert_eq!(
             layout
-                .cursor(crate::Cursor::new(3, crate::Affinity::Before))
+                .cursor(crate::layout::Cursor::new(
+                    3,
+                    crate::layout::Affinity::Before
+                ))
                 .unwrap()
                 .rect()
                 .origin
@@ -145,18 +151,20 @@ fn selected_negative_replacement_tabs_keep_each_real_before_after_emission() {
 
 fn check_negative_replacement_tabs(tabs: TabContext) {
     for placement in [
-        crate::HyphenationPlacement::LogicalBefore,
-        crate::HyphenationPlacement::LogicalAfter,
-        crate::HyphenationPlacement::BothSides,
+        crate::hyphenation::HyphenationPlacement::LogicalBefore,
+        crate::hyphenation::HyphenationPlacement::LogicalAfter,
+        crate::hyphenation::HyphenationPlacement::BothSides,
     ] {
         let mut system = system();
         let own = Style {
             white_space: WhiteSpace::Preserve,
-            tab_size: crate::TabSize::spaces(4.0).unwrap(),
-            hyphenate_character: crate::HyphenateCharacter::String(crate::Text::from("\t")),
+            tab_size: crate::tabs::TabSize::spaces(4.0).unwrap(),
+            hyphenate_character: crate::hyphenation::HyphenateCharacter::String(
+                crate::text::Text::from("\t"),
+            ),
             locale: Some("en-Latn".into()),
             native_hyphenation_convention: Some(
-                crate::NativeHyphenationConvention::language_script(
+                crate::hyphenation::NativeHyphenationConvention::language_script(
                     "en-Latn",
                     "Latn",
                     "\t".into(),
@@ -200,9 +208,9 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
         let first = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let mut r = request(&p);
@@ -215,13 +223,13 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
         let second = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
-        let before = placement != crate::HyphenationPlacement::LogicalAfter;
-        let after = placement != crate::HyphenationPlacement::LogicalBefore;
+        let before = placement != crate::hyphenation::HyphenationPlacement::LogicalAfter;
+        let after = placement != crate::hyphenation::HyphenationPlacement::LogicalBefore;
         assert_eq!(first.feedback().advance, if before { 48.0 } else { 40.0 });
         assert_eq!(second.feedback().advance, if after { 68.0 } else { 60.0 });
         assert_eq!(first.hyphenation_continuation().is_some(), after);
@@ -235,11 +243,11 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
             [37, 37, 37]
         );
         let origin = p.origin_views().next().unwrap().handle();
-        let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+        let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: p.clone(),
             coverage: PlacementCoverage::WholeParagraph,
             entries: vec![
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line: first,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -248,7 +256,7 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
                 }),
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line: second,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -261,7 +269,7 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
         })
         .unwrap();
         let fragments = layout
-            .source_range_fragments(&origin, crate::Range::new(2, 3))
+            .source_range_fragments(&origin, crate::range::Range::new(2, 3))
             .unwrap();
         let units: Vec<_> = fragments.units().collect();
         assert_eq!(units.len(), usize::from(before) + usize::from(after));
@@ -298,7 +306,7 @@ fn negative_tab_consumes_an_atomic_pen_only_when_a_later_tab_needs_it() {
     let mut prepare = |text: &str| {
         let own = Style {
             white_space: WhiteSpace::Preserve,
-            tab_size: crate::TabSize::spaces(4.0).unwrap(),
+            tab_size: crate::tabs::TabSize::spaces(4.0).unwrap(),
             ..style()
         };
         let mut input = captured(
@@ -310,15 +318,15 @@ fn negative_tab_consumes_an_atomic_pen_only_when_a_later_tab_needs_it() {
             }),
             ParagraphBaseDirection::LeftToRight,
         );
-        input.source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(72),
-            crate::InlineBoxKind::InFlow,
+        input.source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(72),
+            crate::source::InlineBoxKind::InFlow,
             1,
-            crate::Size::new(2.0_f64.powi(60), 10.0),
+            crate::geometry::Size::new(2.0_f64.powi(60), 10.0),
         ));
         input.anchor_order.push(paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Atomic(0),
-            affinity: crate::Affinity::Before,
+            affinity: crate::layout::Affinity::Before,
         });
         for definition in [
             paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
@@ -328,9 +336,9 @@ fn negative_tab_consumes_an_atomic_pen_only_when_a_later_tab_needs_it() {
                 .boundary_policies
                 .push(paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
                 });
         }
         css_capture(&mut system, input, 1.0).unwrap()
@@ -345,7 +353,9 @@ fn negative_tab_consumes_an_atomic_pen_only_when_a_later_tab_needs_it() {
         .unwrap();
     assert_eq!(
         retained
-            .prefix_at(&crate::TextSeam::BeforeParticipant(atomic))
+            .prefix_at(&crate::protocol::prefix::TextSeam::BeforeParticipant(
+                atomic
+            ))
             .unwrap()
             .advance(),
         8.0
@@ -356,7 +366,7 @@ fn negative_tab_consumes_an_atomic_pen_only_when_a_later_tab_needs_it() {
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
             field: "tab traversal pen",
-            category: crate::TextNumericError::NonZeroLost,
+            category: crate::error::TextNumericError::NonZeroLost,
             ..
         })
     ));
@@ -409,12 +419,12 @@ fn negative_period_uses_block_direction_but_progresses_in_paragraph_direction() 
     ] {
         let own = Style {
             white_space: WhiteSpace::Preserve,
-            tab_size: crate::TabSize::spaces(4.0).unwrap(),
+            tab_size: crate::tabs::TabSize::spaces(4.0).unwrap(),
             ..style()
         };
         let mut input = captured("\t", own, None, paragraph_direction);
         input.tab_reference = Some(
-            crate::ParagraphTabReference::new(
+            crate::tabs::ParagraphTabReference::new(
                 Style {
                     word_spacing: -23.0,
                     ..style()

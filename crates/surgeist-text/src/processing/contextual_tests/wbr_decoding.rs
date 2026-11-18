@@ -96,7 +96,7 @@ fn none_wbr_keeps_two_original_units_through_public_preparation_and_placement() 
     let view = processed.paragraphs().next().unwrap();
     let analyzed = AnalyzedSource::from_processed_paragraph(
         view.clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -225,7 +225,7 @@ fn ordinary_origin_inline_and_out_of_flow_seams_keep_an_intact_scalar() {
         let view = processed.paragraphs().next().unwrap();
         let analyzed = AnalyzedSource::from_processed_paragraph(
             view.clone(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.graphemes().collect::<Vec<_>>(), [Range::new(0, 2)]);
@@ -252,7 +252,7 @@ fn none_wbr_preserves_exact_ax_refusal_for_isolated_original_units() {
     let view = processed.paragraphs().next().unwrap();
     let analyzed = AnalyzedSource::from_processed_paragraph(
         view.clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut state = Accessibility::new(10);

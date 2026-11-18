@@ -511,7 +511,7 @@ impl PreparedText {
         &self,
         segment: &PreparedFlowSegment,
         request: &FlowObservationRequest,
-        allowance: crate::ScopeAlignmentAllowance,
+        allowance: crate::protocol::ScopeAlignmentAllowance,
     ) -> Result<FlowObservation> {
         crate::engine::layout::flow::observe(
             self,
@@ -614,15 +614,15 @@ mod tests {
                 crate::test_fonts::FONT_LIMITS,
             )
             .unwrap();
-        let analyzed = crate::AnalyzedSource::new(
-            crate::Source::new(text),
-            crate::Style {
-                font: crate::Font::new().family("Ahem"),
+        let analyzed = crate::analyzed::AnalyzedSource::new(
+            crate::source::Source::new(text),
+            crate::style::Style {
+                font: crate::style::Font::new().family("Ahem"),
                 size: 10.0,
-                hanging_punctuation: crate::HangingPunctuation::new(true, None, true),
-                ..crate::Style::default()
+                hanging_punctuation: crate::style::HangingPunctuation::new(true, None, true),
+                ..crate::style::Style::default()
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         system
@@ -643,7 +643,7 @@ mod tests {
         };
         FlowObservationRequest {
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
                 formatted_line: FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: LineBoxDirection::LeftToRight,
@@ -656,7 +656,7 @@ mod tests {
                 end,
                 available_inline: Some(100.0),
                 indent: 0.0,
-                alignment: crate::Alignment::Start,
+                alignment: crate::options::Alignment::Start,
                 tabs: TabContext::NoTabs,
                 spacing: SpacingPolicy::None,
             },
@@ -794,16 +794,16 @@ mod tests {
                 crate::test_fonts::FONT_LIMITS,
             )
             .unwrap();
-        let analyzed = crate::AnalyzedSource::new(
-            crate::Source::new("AAAAA"),
-            crate::Style {
-                font: crate::Font::new().family("Ahem"),
+        let analyzed = crate::analyzed::AnalyzedSource::new(
+            crate::source::Source::new("AAAAA"),
+            crate::style::Style {
+                font: crate::style::Font::new().family("Ahem"),
                 size: 10.0,
                 locale: Some("ja".into()),
-                word_break: crate::WordBreak::AutoPhrase,
-                ..crate::Style::default()
+                word_break: crate::style::WordBreak::AutoPhrase,
+                ..crate::style::Style::default()
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let prepared = system
@@ -828,7 +828,7 @@ mod tests {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
                 formatted_line: FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: LineBoxDirection::LeftToRight,
@@ -837,7 +837,7 @@ mod tests {
                 end: LineEnd::Paragraph,
                 available_inline: Some(1.0),
                 indent: 0.0,
-                alignment: crate::Alignment::Start,
+                alignment: crate::options::Alignment::Start,
                 tabs: TabContext::NoTabs,
                 spacing: SpacingPolicy::None,
             },
@@ -845,9 +845,9 @@ mod tests {
         let frame = prepared
             .select(trial)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert!(frame.measurements().fit().advance() > 1.0);
@@ -861,7 +861,7 @@ mod tests {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(&frame),
+                crate::protocol::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         let portions = query.phrase_portions();

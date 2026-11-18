@@ -1,7 +1,18 @@
 //! Qualification of supplied combination mode/context facts only. These
 //! captures make no claim about combination analysis, shaping, or rendering.
 
-use crate::*;
+use crate::{
+    layout::Affinity,
+    processing::{
+        CapturedDomainDefinition, ContextualSourceInput, SourceProcessingEvent,
+        SourceProcessingScope, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::ParagraphBaseDirection,
+    range::Range,
+    source::InlineBoxKind,
+    style::{Style, TextCombineUpright, TextCombineUprightDigits, ValidatedStyle, WhiteSpace},
+    text::Text,
+};
 use std::sync::Arc;
 
 fn mode_style(mode: TextCombineUpright) -> Style {

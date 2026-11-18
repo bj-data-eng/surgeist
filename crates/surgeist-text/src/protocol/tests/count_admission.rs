@@ -1,6 +1,33 @@
 //! Native counting uses the actual processed word and mixed-sequence custody.
 use super::*;
-use crate::*;
+use crate::{
+    analyzed::AnalyzedSource,
+    geometry::Size,
+    hyphenation::{HyphenationPlacement, NativeHyphenationConvention},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
+        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+        SourceProcessingScope, WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        AtomicAllocation, AtomicLineAllocation, ParagraphBaseDirection, ParagraphInput,
+        ParagraphTerminalEdge, PreparationOptions, PreparedBreakKind, PreparedParticipant,
+        PreparedText, SpacingAllocations,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy, ParagraphConnection, ParagraphConnectionKind,
+            ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
+            ParagraphStrut,
+        },
+        readback::PreparedAlternativeDefinition,
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Font, Style, WhiteSpace, Wrap},
+    text::Text,
+};
 
 fn input(text: &str) -> ParagraphInput {
     let source = Source::new(text);
@@ -54,9 +81,11 @@ fn prepare(mut input: ParagraphInput) -> PreparedText {
             ancestor_wrap: Wrap::Word,
         })
         .collect();
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     system()
         .prepare(&analyzed, PreparationOptions::default())
@@ -115,9 +144,9 @@ fn connected_origins_and_effective_instances_share_one_word_but_disconnections_d
         let whole = p
             .select(request(&p))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(whole.feedback().advance, 70.0);
@@ -226,9 +255,9 @@ fn suppressed_native_points_do_not_resolve_unused_indication_resources_or_placem
         let whole = p
             .select(request(&p))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -301,7 +330,7 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: crate::SourceProcessingTopology::Unknown,
+                    topology: crate::processing::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
                     base_style: style(),
@@ -310,7 +339,7 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: crate::SourceProcessingTopology::Unknown,
+                    topology: crate::processing::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
                     base_style: style(),
@@ -355,7 +384,7 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
         let processed = Arc::new(process_contextual_source(capture).unwrap());
         let parent = AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let p = system()
@@ -383,9 +412,9 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
         let whole = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -426,9 +455,11 @@ fn one_lexical_word_survives_a_real_registered_face_change() {
         },
     );
     value.origins[0].source = value.source.clone();
-    let analyzed =
-        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        value,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let mut owner = system();
     owner
@@ -441,9 +472,9 @@ fn one_lexical_word_survives_a_real_registered_face_change() {
     let whole = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(whole.feedback().advance, 100.0);

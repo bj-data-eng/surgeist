@@ -56,7 +56,7 @@ fn connected_body() -> (Arc<ProcessedSource>, AnalyzedSource) {
         paragraphs: vec![1, 0],
         facts_owner: 1,
     }];
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     value.events = vec![
         E::EnterScope(0),
         E::EnterParagraph(1),

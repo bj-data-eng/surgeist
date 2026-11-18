@@ -8,8 +8,10 @@ use crate::protocol::paragraph::{
     ParagraphData, SemanticAnchor, SemanticAnchorItem,
 };
 use crate::{
-    AnalysisTypography, AnalyzedDomain, AnalyzedSource, CapturedJointFlow, ProcessedSource, Range,
     Result,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    processing::{CapturedJointFlow, ProcessedSource},
+    range::Range,
 };
 use std::sync::Arc;
 
@@ -29,7 +31,7 @@ pub(crate) fn missing_joint(first: usize, last: usize, source: Range) -> crate::
         "indivisible source content needs actual joint output authority",
     )
     .with_detail(crate::ErrorDetail::SourceProcessing {
-        reason: crate::SourceProcessingError::MissingJointAnalysisAuthority {
+        reason: crate::processing::SourceProcessingError::MissingJointAnalysisAuthority {
             first_paragraph: first,
             last_paragraph: last,
             source,
@@ -194,7 +196,7 @@ pub(crate) fn analyze(
         let local = lower.content.connections.len();
         context::push(
             &mut lower.content.connections,
-            crate::ParagraphConnection {
+            crate::protocol::paragraph::ParagraphConnection {
                 at: edge.at,
                 kind: edge.kind,
             },
@@ -282,11 +284,12 @@ pub(crate) fn analyze(
             domain_style: facts.domain_style.clone(),
         };
         if typography.is_upright()
-            && paragraph.base_direction == Some(crate::ParagraphBaseDirection::RightToLeft)
+            && paragraph.base_direction
+                == Some(crate::protocol::ParagraphBaseDirection::RightToLeft)
         {
             return Err(crate::protocol::protocol_error(
-                crate::ProtocolError::MismatchedContext {
-                    field: crate::ProtocolContextField::BaseDirection,
+                crate::protocol::ProtocolError::MismatchedContext {
+                    field: crate::protocol::ProtocolContextField::BaseDirection,
                 },
             ));
         }
@@ -333,7 +336,7 @@ pub(crate) fn analyze(
             &mut targets[output].styles,
             crate::engine::resolve::AnalyzedStyleRun {
                 owner: row.owner,
-                style: crate::ValidatedStyle::for_processed(row.style.authored().clone())?,
+                style: crate::style::ValidatedStyle::for_processed(row.style.authored().clone())?,
             },
         )?;
     }
@@ -371,7 +374,7 @@ pub(crate) fn analyze(
     }
     Ok(AnalyzedDomain {
         processed: Arc::clone(&processed),
-        domain: crate::CapturedScope {
+        domain: crate::processing::CapturedScope {
             capture: Arc::clone(&capture),
             index: capture.domain_scopes[domain],
         },

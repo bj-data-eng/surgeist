@@ -292,7 +292,9 @@ pub(super) fn fragments(
             native_spans.sort_unstable();
             for &index in &by_cell[cell_index] {
                 let cluster = &data.clusters[index];
-                if cluster.disposition == crate::SpacingSlotDisposition::DiscardedAtLineEdge {
+                if cluster.disposition
+                    == crate::protocol::SpacingSlotDisposition::DiscardedAtLineEdge
+                {
                     continue;
                 }
                 let provider = match cluster.content {
@@ -323,7 +325,7 @@ pub(super) fn fragments(
                     cluster,
                     placed.orientation,
                     Some(placed),
-                    crate::TextNumericPhase::Accessibility,
+                    crate::error::TextNumericPhase::Accessibility,
                 )?;
                 let bounds = crate::engine::layout::data::cell_geometry::placed_cluster_rect(
                     placed, cluster,
@@ -349,7 +351,7 @@ pub(super) fn fragments(
                             bounds,
                             line: line_index,
                             rtl,
-                            orientation: crate::LineOrientation::Horizontal,
+                            orientation: crate::protocol::LineOrientation::Horizontal,
                             word: false,
                             metadata: font,
                         },

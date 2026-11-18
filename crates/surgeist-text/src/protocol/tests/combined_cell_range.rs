@@ -140,7 +140,7 @@ fn ordinary_control(bytes: &[u8]) {
             },
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             origins: vec![ParagraphOrigin {

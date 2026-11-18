@@ -3,7 +3,9 @@
 //! the oracles. These new functional cases claim no preimplementation RED.
 use super::fixtures::{allocations, ligature_font, select_method};
 use super::*;
-use crate::{SpacingBoundaryGeometry, SpacingSlotGeometry, SpacingSlotOwner, SpacingSlotTarget};
+use crate::protocol::{
+    SpacingBoundaryGeometry, SpacingSlotGeometry, SpacingSlotOwner, SpacingSlotTarget,
+};
 use icu_properties::{
     CodePointMapData,
     props::{GeneralCategory, JoiningType, Script},
@@ -12,8 +14,8 @@ use icu_properties::{
 
 const THREE: [Range; 3] = [Range::new(0, 1), Range::new(1, 2), Range::new(2, 3)];
 
-fn source_piece(range: Range) -> crate::SpacingPiece {
-    crate::SpacingPiece::Source {
+fn source_piece(range: Range) -> crate::error::SpacingPiece {
+    crate::error::SpacingPiece::Source {
         origin: 0,
         local: range,
         aggregate: range,
@@ -27,16 +29,16 @@ fn try_prepare(bytes: &[u8], source: &Source, style: Style) -> crate::Result<Pre
             source: source.clone(),
             base_style: style,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
-            origins: vec![crate::ParagraphOrigin {
+            origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: extent,
                 aggregate: extent,
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             }],
             connections: vec![],
             controls: vec![],
@@ -44,10 +46,10 @@ fn try_prepare(bytes: &[u8], source: &Source, style: Style) -> crate::Result<Pre
             replacements: vec![],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word);
     let mut system = System::default();
     system
         .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
@@ -116,8 +118,8 @@ fn cross_unit_cursive_font() -> Vec<u8> {
 
 fn attachment_refusal(
     error: &crate::Error,
-    stage: crate::SpacingStage,
-    operation: crate::SpacingOperation,
+    stage: crate::error::SpacingStage,
+    operation: crate::error::SpacingOperation,
 ) {
     assert_eq!(error.code, crate::ErrorCode::LayoutFailed);
     let Some(crate::ErrorDetail::UnsupportedSpacing {
@@ -134,7 +136,10 @@ fn attachment_refusal(
     };
     assert_eq!(*actual_stage, stage);
     assert_eq!(*actual_operation, operation);
-    assert_eq!(*reason, crate::SpacingFailureReason::CrossUnitConstraint);
+    assert_eq!(
+        *reason,
+        crate::error::SpacingFailureReason::CrossUnitConstraint
+    );
     assert_eq!(
         pieces.as_ref(),
         [source_piece(THREE[0]), source_piece(THREE[1])]
@@ -147,7 +152,7 @@ fn attachment_refusal(
     assert_eq!(constraints.len(), 1);
     assert_eq!(
         constraints[0].kind,
-        crate::SpacingConstraintKind::CursiveAttachment
+        crate::error::SpacingConstraintKind::CursiveAttachment
     );
     assert_eq!(constraints[0].run, 0);
     assert_eq!(constraints[0].components.as_ref(), [0..1, 1..2]);
@@ -176,9 +181,9 @@ fn actual_cross_egc_gpos_attachment_accepts_zero_refuses_material_and_keeps_outs
     );
     let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(raw(&natural, &bytes), expected);
@@ -204,8 +209,8 @@ fn actual_cross_egc_gpos_attachment_accepts_zero_refuses_material_and_keeps_outs
         .unwrap_err();
     attachment_refusal(
         &error,
-        crate::SpacingStage::SelectedShaping,
-        crate::SpacingOperation::InterCharacterAllocation,
+        crate::error::SpacingStage::SelectedShaping,
+        crate::error::SpacingOperation::InterCharacterAllocation,
     );
     let outside = natural
         .with_spacing(allocations(&selected, &[0.0, 4.0]))
@@ -220,8 +225,8 @@ fn actual_cross_egc_gpos_attachment_accepts_zero_refuses_material_and_keeps_outs
     let error = try_prepare(&bytes, &source, own(4.0)).unwrap_err();
     attachment_refusal(
         &error,
-        crate::SpacingStage::Preparation,
-        crate::SpacingOperation::AuthoredTracking,
+        crate::error::SpacingStage::Preparation,
+        crate::error::SpacingOperation::AuthoredTracking,
     );
     // Authored movement only outside the attachment succeeds as well: A0/B0
     // has zero mean, B0/C8 has4. A failed material operation cannot mutate it.
@@ -238,7 +243,12 @@ fn actual_cross_egc_gpos_attachment_accepts_zero_refuses_material_and_keeps_outs
     assert_eq!(natural.feedback().advance, 22.0);
 }
 
-fn endpoint(unit: &crate::SpacingUnit, prepared: &PreparedText, extent: Range, tracking: f64) {
+fn endpoint(
+    unit: &crate::protocol::SpacingUnit,
+    prepared: &PreparedText,
+    extent: Range,
+    tracking: f64,
+) {
     assert_eq!(unit.letter_spacing_before(), tracking);
     assert_eq!(unit.letter_spacing_after(), tracking);
     assert_eq!(
@@ -276,9 +286,9 @@ fn required_multi_egc_ligature_keeps_each_full_tracking_endpoint_for_the_outside
         endpoint(&visual_after, &prepared, THREE[after.0], after.1);
     }
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let expected = [
@@ -383,9 +393,9 @@ fn adjacent_material_boundary_masks_optional_ligation_across_a_neighboring_zero_
             let prepared = prepare(&bytes, &explicit_source, explicit, &THREE);
             let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
             let natural = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(raw(&natural, &bytes), ligated);
@@ -429,12 +439,12 @@ fn adjacent_material_boundary_masks_optional_ligation_across_a_neighboring_zero_
             };
             assert_eq!(
                 *reason,
-                crate::SpacingFailureReason::PreservedOptionalLigature
+                crate::error::SpacingFailureReason::PreservedOptionalLigature
             );
-            assert_eq!(*stage, crate::SpacingStage::SelectedShaping);
+            assert_eq!(*stage, crate::error::SpacingStage::SelectedShaping);
             assert_eq!(
                 *operation,
-                crate::SpacingOperation::InterCharacterAllocation
+                crate::error::SpacingOperation::InterCharacterAllocation
             );
             assert_eq!(pieces.as_ref(), pair.map(source_piece));
             assert_eq!(
@@ -445,7 +455,10 @@ fn adjacent_material_boundary_masks_optional_ligation_across_a_neighboring_zero_
                 [pair[0].start, pair[1].start]
             );
             assert_eq!(constraints.len(), 1);
-            assert_eq!(constraints[0].kind, crate::SpacingConstraintKind::Ligature);
+            assert_eq!(
+                constraints[0].kind,
+                crate::error::SpacingConstraintKind::Ligature
+            );
             assert_eq!(
                 constraints[0]
                     .components
@@ -663,9 +676,9 @@ fn qualify_joining_profile(cp: u32, script: Script, tag: [u8; 4], rtl: bool) {
         if rtl { 12.0 } else { 8.0 },
     );
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let rows = natural.spacing_slots().collect::<Vec<_>>();

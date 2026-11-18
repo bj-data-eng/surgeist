@@ -1,11 +1,20 @@
 //! Computed native minima: actual word counts and actual governing cut styles.
 use super::*;
 use crate::{
-    HyphenateCharacter, HyphenateLimitChars, HyphenationCounts, HyphenationError,
-    HyphenationMinimum::{Auto, Count},
-    HyphenationPlacement, HyphenationProvenance, Hyphens, NativeHyphenationConvention,
-    ParagraphAnchor, ParagraphAnchorItem, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
-    ParagraphOriginKind, ParagraphTerminalEdge, Range, Text,
+    hyphenation::{
+        HyphenateCharacter, HyphenateLimitChars, HyphenationError,
+        HyphenationMinimum::{Auto, Count},
+        HyphenationPlacement, Hyphens, NativeHyphenationConvention,
+    },
+    protocol::{
+        HyphenationCounts, HyphenationProvenance, ParagraphTerminalEdge,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphControl, ParagraphControlKind,
+            ParagraphOrigin, ParagraphOriginKind,
+        },
+    },
+    range::Range,
+    text::Text,
 };
 
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -28,7 +37,7 @@ fn input(source: Source, base_style: Style) -> ParagraphInput {
     ParagraphInput {
         source: source.clone(),
         base_style,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         terminal_edge: ParagraphTerminalEdge::BlockEnd,
@@ -49,8 +58,11 @@ fn input(source: Source, base_style: Style) -> ParagraphInput {
 }
 fn capture(system: &mut System, input: ParagraphInput) -> crate::Result<PreparedText> {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)?,
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )?,
+        crate::style::Wrap::Word,
     );
     system.prepare(&analyzed, PreparationOptions::default())
 }
@@ -72,10 +84,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
             ControlAllocation {
                 boundary: matches!(
                     occurrence.view().kind(),
-                    crate::ParagraphControlKind::InlineBoundaryStart
-                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                    crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                        | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }
@@ -83,9 +95,9 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         .collect();
     p.select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -111,10 +123,10 @@ fn selected(p: &PreparedText, offer: PreparedOpportunity) -> FinalizedLine {
             ControlAllocation {
                 boundary: matches!(
                     occurrence.view().kind(),
-                    crate::ParagraphControlKind::InlineBoundaryStart
-                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                    crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                        | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }
@@ -122,9 +134,9 @@ fn selected(p: &PreparedText, offer: PreparedOpportunity) -> FinalizedLine {
         .collect();
     p.select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -143,7 +155,7 @@ fn control(value: &mut ParagraphInput, at: usize, style: Style) {
     });
     value.anchor_order.push(ParagraphAnchor {
         item: ParagraphAnchorItem::Control(0),
-        affinity: crate::Affinity::After,
+        affinity: crate::layout::Affinity::After,
     });
 }
 #[test]
@@ -283,7 +295,7 @@ fn zero_and_maximum_counts_are_valid_values_without_creating_words_or_allocating
         limits(1, usize::MAX, usize::MAX),
     ] {
         let authored = own(minimum);
-        let validated = crate::ValidatedStyle::try_from(authored.clone()).unwrap();
+        let validated = crate::style::ValidatedStyle::try_from(authored.clone()).unwrap();
         assert_eq!(validated.authored().hyphenate_limit_chars, minimum);
         let p = prepare("ab\u{ad}cde", minimum);
         assert!(cuts(&p).is_empty());
@@ -506,9 +518,9 @@ fn automatic_points_use_their_own_preceding_styles_and_keep_rejected_shy_identit
         let measured = p
             .select(value)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(measured.feedback().advance, 90.0);
@@ -517,10 +529,10 @@ fn automatic_points_use_their_own_preceding_styles_and_keep_rejected_shy_identit
             .layout(
                 raw_source,
                 base,
-                crate::Options {
+                crate::options::Options {
                     width: Some(80.0),
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -548,7 +560,7 @@ fn native_direct_analysis_consumes_custom_limits_while_raw_remains_unconstrained
         let analyzed = AnalyzedSource::new(
             source.clone(),
             style.clone(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let native = system
@@ -558,10 +570,10 @@ fn native_direct_analysis_consumes_custom_limits_while_raw_remains_unconstrained
         let raw = system
             .layout_analyzed(
                 &analyzed,
-                crate::Options {
+                crate::options::Options {
                     width: Some(60.0),
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -582,9 +594,10 @@ fn native_direct_analysis_consumes_custom_limits_while_raw_remains_unconstrained
 #[test]
 fn symbolic_minima_participate_in_base_and_span_keys_and_foreign_preparations_do_not_alias() {
     let mut system = system();
-    let source = Source::identified("ab\u{ad}cd", crate::Id::from_u64(6604), 1);
-    let options = crate::ValidatedOptions::try_from(crate::Options::default()).unwrap();
-    let validated = crate::ValidatedSource::try_from(source.clone()).unwrap();
+    let source = Source::identified("ab\u{ad}cd", crate::id::Id::from_u64(6604), 1);
+    let options =
+        crate::options::ValidatedOptions::try_from(crate::options::Options::default()).unwrap();
+    let validated = crate::source::ValidatedSource::try_from(source.clone()).unwrap();
     let mut keys = std::collections::HashSet::new();
     for minimum in [
         HyphenateLimitChars::default(),
@@ -593,10 +606,10 @@ fn symbolic_minima_participate_in_base_and_span_keys_and_foreign_preparations_do
         limits(5, 3, 2),
         limits(5, 2, 3),
     ] {
-        let style = crate::ValidatedStyle::try_from(own(minimum)).unwrap();
+        let style = crate::style::ValidatedStyle::try_from(own(minimum)).unwrap();
         assert_eq!(style.authored().hyphenate_limit_chars, minimum);
         keys.insert(
-            crate::Key::from_validated(
+            crate::cache::Key::from_validated(
                 &validated,
                 &style,
                 options,
@@ -606,8 +619,8 @@ fn symbolic_minima_participate_in_base_and_span_keys_and_foreign_preparations_do
         );
     }
     assert_eq!(keys.len(), 5);
-    let default = crate::ValidatedStyle::try_from(own_default()).unwrap();
-    let plain = crate::Key::from_validated(
+    let default = crate::style::ValidatedStyle::try_from(own_default()).unwrap();
+    let plain = crate::cache::Key::from_validated(
         &validated,
         &default,
         options,
@@ -615,10 +628,10 @@ fn symbolic_minima_participate_in_base_and_span_keys_and_foreign_preparations_do
     );
     let mut changed = source.clone();
     changed.span(Range::new(2, 3), own(limits(5, 2, 2)));
-    let changed = crate::ValidatedSource::try_from(changed).unwrap();
+    let changed = crate::source::ValidatedSource::try_from(changed).unwrap();
     assert_ne!(
         plain.styles(),
-        crate::Key::from_validated(
+        crate::cache::Key::from_validated(
             &changed,
             &default,
             options,

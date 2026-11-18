@@ -1,6 +1,10 @@
 //! Exact supplied spacing remains semantic custody when binary64 geometry agrees.
 use super::*;
-use crate::{LineHeight, OverflowWrap, Point, Range, Rect};
+use crate::{
+    geometry::{Point, Rect},
+    range::Range,
+    style::{LineHeight, OverflowWrap},
+};
 use skrifa::{
     GlyphId, MetadataProvider,
     instance::{LocationRef, Size as FontSize},
@@ -43,10 +47,10 @@ fn prefix() -> Prefix {
             word_spacing: 0.0,
             ..Style::default()
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
@@ -62,9 +66,12 @@ fn prefix() -> Prefix {
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
@@ -90,14 +97,14 @@ fn prefix() -> Prefix {
     value.context.end = LineEnd::Soft;
     value.context.available_inline = Some(40.0);
     value.context.spacing = SpacingPolicy::Spaces;
-    value.context.alignment = crate::Alignment::Start;
+    value.context.alignment = crate::options::Alignment::Start;
     let selected = prepared.select(value).unwrap();
     let slots = selected.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
     let slot = slots[0].clone();
     assert_eq!(
         slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
-        [crate::SpacingSlotOwner::Source {
+        [crate::protocol::SpacingSlotOwner::Source {
             origin: prepared.origin_views().next().unwrap().handle(),
             local: Range::new(1, 2),
             aggregate: Range::new(1, 2),
@@ -105,9 +112,9 @@ fn prefix() -> Prefix {
     );
     assert_eq!(slot.selected_line(), selected);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
@@ -154,12 +161,12 @@ fn raw_glyphs(line: &FinalizedLine) -> Vec<(Range, u32, f64, f32, f32, f32)> {
 fn allocated(prefix: &Prefix, amount: f64) -> FinalizedLine {
     let line = prefix
         .selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                 slot: prefix.slot.clone(),
                 amount,
             }]),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.prepared_text(), prefix.prepared);
@@ -207,14 +214,14 @@ fn amounts() -> (f64, f64) {
     (one, next)
 }
 
-fn placed_prefix(prefix: &Prefix, line: FinalizedLine) -> crate::Layout {
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+fn placed_prefix(prefix: &Prefix, line: FinalizedLine) -> crate::layout::Layout {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prefix.prepared.clone(),
         coverage: PlacementCoverage::Range {
             start: prefix.start.clone(),
             end: prefix.offer.view().boundary(),
         },
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 100.25,
@@ -314,7 +321,7 @@ fn framed_conditional_search_retains_exact_spacing_amounts_when_geometry_rounds_
                 &prefix.offer,
                 ConditionalPurpose::Overflow,
                 &[],
-                crate::ConditionalLineContext::Finalized(frame),
+                crate::protocol::ConditionalLineContext::Finalized(frame),
             )
             .unwrap();
         search.begin(&[]).unwrap();

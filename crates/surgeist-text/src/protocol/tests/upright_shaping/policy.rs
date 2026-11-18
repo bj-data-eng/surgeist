@@ -81,7 +81,7 @@ fn analysis(
     source: Source,
     base_style: Style,
     strut: ParagraphStrut,
-    tab_reference: Option<crate::ParagraphTabReference>,
+    tab_reference: Option<crate::tabs::ParagraphTabReference>,
 ) -> AnalyzedSource {
     let len = source.text().len();
     let analyzed = crate::test_wrapping::bind_missing(
@@ -89,26 +89,26 @@ fn analysis(
             ParagraphInput {
                 source: source.clone(),
                 base_style,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: strut,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: Range::new(0, len),
                     aggregate: Range::new(0, len),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
                 boundary_policies: vec![],
                 replacements: vec![],
                 anchor_order: if len == 0 {
-                    vec![crate::ParagraphAnchor {
-                        item: crate::ParagraphAnchorItem::EmptyOrigin(0),
-                        affinity: crate::Affinity::After,
+                    vec![crate::protocol::paragraph::ParagraphAnchor {
+                        item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
+                        affinity: crate::layout::Affinity::After,
                     }]
                 } else {
                     vec![]
@@ -119,7 +119,7 @@ fn analysis(
             },
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analyzed.source(), &source);
     assert_eq!(analyzed.direction(), Direction::LeftToRight);
@@ -139,15 +139,15 @@ fn finish(prepared: &PreparedText, tabs: TabContext) -> FinalizedLine {
     input.context.base_direction = ParagraphBaseDirection::LeftToRight;
     input.context.line_box_direction = LineBoxDirection::LeftToRight;
     input.context.available_inline = None;
-    input.context.alignment = crate::Alignment::Start;
+    input.context.alignment = crate::options::Alignment::Start;
     input.context.spacing = SpacingPolicy::None;
     input.context.tabs = tabs;
     prepared
         .select(input)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -381,7 +381,7 @@ fn actual_width_precedence_controls_shaping_and_intrinsic_gate_does_not_fallback
     assert!(matches!(
         error.detail(),
         Some(crate::ErrorDetail::UprightScript {
-            reason: crate::UprightScriptFailure::UnresolvedContext { .. },
+            reason: crate::error::UprightScriptFailure::UnresolvedContext { .. },
             ..
         })
     ));
@@ -509,7 +509,7 @@ fn public_metrics_relative_uses_signed_native_gap_without_moving_cell_origins() 
     )
     .unwrap_err();
     assert!(
-        matches!(error.detail(),Some(crate::ErrorDetail::InvalidTextNumeric { field: "upright normal extent", phase: crate::TextNumericPhase::Preparation, category: crate::TextNumericError::OutOfRange, value }) if *value == -1.0)
+        matches!(error.detail(),Some(crate::ErrorDetail::InvalidTextNumeric { field: "upright normal extent", phase: crate::error::TextNumericPhase::Preparation, category: crate::error::TextNumericError::OutOfRange, value }) if *value == -1.0)
     );
 }
 
@@ -562,13 +562,13 @@ fn explicit_zero_atom_heights_do_not_demand_gap_but_actual_glyph_tables_remain_s
     for (tag, table, reason) in [
         (
             *b"vhea",
-            crate::FontMetricTable::Vhea,
-            crate::FontMetricTableError::Malformed,
+            crate::error::FontMetricTable::Vhea,
+            crate::error::FontMetricTableError::Malformed,
         ),
         (
             *b"MVAR",
-            crate::FontMetricTable::Mvar,
-            crate::FontMetricTableError::VariationWithoutAxes,
+            crate::error::FontMetricTable::Mvar,
+            crate::error::FontMetricTableError::VariationWithoutAxes,
         ),
     ] {
         let bytes = sfnt::replace_tables(&good, vec![(tag, vec![0])]);
@@ -707,11 +707,12 @@ fn actual_default_body_and_captured_tab_fonts_keep_independent_metrics() {
                 .all(|r| r.face().bytes() == body)
         );
     }
-    own.tab_size = crate::TabSize::spaces(2.0).unwrap();
+    own.tab_size = crate::tabs::TabSize::spaces(2.0).unwrap();
     let mut block = style(None, LineHeight::Absolute(12.0));
     block.size = 20.0;
     let reference =
-        crate::ParagraphTabReference::new(block, ParagraphBaseDirection::RightToLeft).unwrap();
+        crate::tabs::ParagraphTabReference::new(block, ParagraphBaseDirection::RightToLeft)
+            .unwrap();
     let captured = analysis(
         Source::new("X\tX"),
         own,
@@ -721,7 +722,7 @@ fn actual_default_body_and_captured_tab_fonts_keep_independent_metrics() {
     let p = system
         .prepare(
             &captured,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops)
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::CssStops)
                 .unwrap()
                 .with_orientation(LineOrientation::Vertical),
         )

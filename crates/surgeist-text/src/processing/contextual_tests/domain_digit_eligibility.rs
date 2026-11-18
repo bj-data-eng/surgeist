@@ -3,7 +3,24 @@
 //! rejects overlong maximal runs and retains pre-fullwidth ASCII identity.
 //! The capability guard observes cell PRESENCE, not exact grouping or payload.
 
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ProcessedSource, SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, SourceWritingAxis, process_contextual_source,
+    },
+    protocol::{ParagraphBaseDirection, PreparationOptions, paragraph::ParagraphStrut},
+    range::Range,
+    source::Source,
+    style::{
+        TextCombineUpright, TextCombineUprightDigits, TextTransform, TextTransformSet, WhiteSpace,
+    },
+    text::Text,
+    transform::TextCombineError,
+};
 use std::sync::Arc;
 
 fn capture(text: &str, limit: TextCombineUprightDigits, fullwidth: bool) -> Arc<ProcessedSource> {

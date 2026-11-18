@@ -2,9 +2,13 @@
 
 use super::{PreparedRun, ResolvedStyle, RunMetricBasis, RunMetrics, RunRequest, logical_multiply};
 use crate::{
-    EffectiveFontInstance, Error, ErrorCode, ErrorDetail, FontBaselineScript, LineHeight, Result,
-    TextNumericError, TextNumericPhase, UprightContent, UprightMetricReference,
-    VerticalOriginReferenceReason, VerticalPositionStage, VerticalShapingContextReason,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::{
+        TextNumericError, TextNumericPhase, UprightContent, VerticalOriginReferenceReason,
+        VerticalPositionStage, VerticalShapingContextReason,
+    },
+    font::{EffectiveFontInstance, FontBaselineScript, UprightMetricReference},
+    style::LineHeight,
 };
 
 pub(super) fn line_height(
@@ -70,7 +74,7 @@ pub(super) fn resolved_run(
         level: request.level,
         script: request.script,
         atoms: request.atoms.clone(),
-        glyph_basis: crate::GlyphBasis::Unrotated,
+        glyph_basis: crate::geometry::GlyphBasis::Unrotated,
         metrics: RunMetrics {
             ascent,
             descent,
@@ -155,7 +159,7 @@ impl Operation<'_, '_> {
     pub(super) fn shape_with_instance(
         self,
         instance: &EffectiveFontInstance<'_>,
-        catalogue: &crate::CataloguePublication,
+        catalogue: &surgeist_font::CataloguePublication,
         script: icu_properties::props::Script,
         content: impl FnOnce() -> UprightContent,
         buffer: surgeist_shaper::UnicodeBuffer,
@@ -305,7 +309,10 @@ fn provider_error(
 #[cfg(test)]
 mod tests {
     use super::normal_extent;
-    use crate::{ErrorCode, ErrorDetail, TextNumericError, TextNumericPhase};
+    use crate::{
+        ErrorCode, ErrorDetail,
+        error::{TextNumericError, TextNumericPhase},
+    };
 
     #[test]
     fn signed_vertical_gap_changes_normal_extent_without_moving_em_sides() {

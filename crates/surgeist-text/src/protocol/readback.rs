@@ -15,10 +15,19 @@ use crate::engine::{
     layout::data::{FinalizedFragmentData, FinalizedGlyph, FinalizedRun, PreparedRun},
 };
 use crate::{
-    BidiLevel, Brush, CapturedControl, CapturedEventPosition, CapturedParagraph, CapturedScope,
-    EffectiveFontInstance, FontFace, InlineBox, Point, ProcessedPosition, ProcessedRange, Range,
-    Rect, Result, ScopeRole, Source, SourcePosition, SourceProcessingEvent, Text, TextNumericError,
-    TextNumericPhase,
+    Result,
+    error::{TextNumericError, TextNumericPhase},
+    font::{EffectiveFontInstance, FontFace},
+    geometry::{Point, Rect},
+    processing::{
+        CapturedControl, CapturedEventPosition, CapturedParagraph, CapturedScope,
+        ProcessedPosition, ProcessedRange, ScopeRole, SourceProcessingEvent,
+    },
+    range::{Range, SourcePosition},
+    source::{InlineBox, Source},
+    style::Brush,
+    supplied_line::BidiLevel,
+    text::Text,
 };
 
 use super::{
@@ -41,16 +50,18 @@ fn spacing_piece(
 ) -> super::SpacingSlotPiece {
     let prepared = &selected.prepared;
     let owner = match piece.owner {
-        crate::SpacingPiece::Atomic { occurrence } => SpacingSlotOwner::Atomic(PreparedAtomic {
-            prepared: Arc::clone(prepared),
-            index: prepared
-                .tables
-                .atomics
-                .iter()
-                .position(|a| a.occurrence == occurrence)
-                .expect("actual atomic inventory"),
-        }),
-        crate::SpacingPiece::Source {
+        crate::error::SpacingPiece::Atomic { occurrence } => {
+            SpacingSlotOwner::Atomic(PreparedAtomic {
+                prepared: Arc::clone(prepared),
+                index: prepared
+                    .tables
+                    .atomics
+                    .iter()
+                    .position(|a| a.occurrence == occurrence)
+                    .expect("actual atomic inventory"),
+            })
+        }
+        crate::error::SpacingPiece::Source {
             origin,
             local,
             aggregate,
@@ -62,7 +73,7 @@ fn spacing_piece(
             local,
             aggregate,
         },
-        crate::SpacingPiece::Alternative {
+        crate::error::SpacingPiece::Alternative {
             alternative, local, ..
         } => SpacingSlotOwner::Alternative {
             alternative: PreparedAlternative {
@@ -71,11 +82,13 @@ fn spacing_piece(
             },
             local,
         },
-        crate::SpacingPiece::Control { occurrence } => SpacingSlotOwner::Control(PreparedControl {
-            prepared: Arc::clone(prepared),
-            index: control_index(prepared, occurrence),
-        }),
-        crate::SpacingPiece::VirtualSeparator { occurrence } => {
+        crate::error::SpacingPiece::Control { occurrence } => {
+            SpacingSlotOwner::Control(PreparedControl {
+                prepared: Arc::clone(prepared),
+                index: control_index(prepared, occurrence),
+            })
+        }
+        crate::error::SpacingPiece::VirtualSeparator { occurrence } => {
             SpacingSlotOwner::VirtualSeparator(PreparedVirtualSeparator {
                 prepared: Arc::clone(prepared),
                 index: occurrence,
@@ -278,8 +291,8 @@ impl PreparedCellView<'_> {
 
     /// The actual completed Source operation that issued this cell.
     #[must_use]
-    pub fn source_cell(&self) -> crate::AnalyzedCombinedCell<'_> {
-        crate::AnalyzedCombinedCell {
+    pub fn source_cell(&self) -> crate::analyzed::AnalyzedCombinedCell<'_> {
+        crate::analyzed::AnalyzedCombinedCell {
             core: &self.prepared.analyzed.core,
             output: self
                 .prepared
@@ -407,7 +420,7 @@ impl PreparedScopeView<'_> {
         self.handle().captured_scope().role()
     }
     #[must_use]
-    pub fn style(&self) -> &crate::Style {
+    pub fn style(&self) -> &crate::style::Style {
         self.capture_fact()
             .style
             .as_ref()
@@ -567,13 +580,13 @@ impl PreparedText {
 
     /// Actual Raw/Joint output authority, including metadata-only outputs.
     #[must_use]
-    pub fn captured_owner(&self) -> Option<crate::CapturedAnalysisOwner<'_>> {
+    pub fn captured_owner(&self) -> Option<crate::analyzed::CapturedAnalysisOwner<'_>> {
         self.inner
             .analyzed
             .paragraph
             .scope_topology
             .as_ref()
-            .map(|topology| crate::CapturedAnalysisOwner {
+            .map(|topology| crate::analyzed::CapturedAnalysisOwner {
                 owner: &topology.owner,
             })
     }
@@ -1502,7 +1515,7 @@ pub struct FinalizedControlView<'a> {
     prepared: &'a Arc<PreparedData>,
     occurrence: usize,
     slot: Point,
-    scope_displacement: crate::BaselineShift,
+    scope_displacement: crate::source::BaselineShift,
     level: u8,
     geometry: crate::engine::layout::data::AnchorGeometry,
 }
@@ -1517,7 +1530,7 @@ impl fmt::Debug for FinalizedControlView<'_> {
 impl FinalizedControlView<'_> {
     /// Actual inherited contribution applied to this occurrence. Escaped
     /// Top/Bottom control leaves retain zero inherited contribution.
-    pub const fn scope_displacement(&self) -> crate::BaselineShift {
+    pub const fn scope_displacement(&self) -> crate::source::BaselineShift {
         self.scope_displacement
     }
     #[must_use]
@@ -1717,7 +1730,7 @@ impl FinalizedCellView<'_> {
     }
 
     #[must_use]
-    pub fn source_cell(&self) -> crate::AnalyzedCombinedCell<'_> {
+    pub fn source_cell(&self) -> crate::analyzed::AnalyzedCombinedCell<'_> {
         self.line.inner.source_cell(self.index)
     }
 
@@ -1739,7 +1752,7 @@ impl FinalizedCellView<'_> {
     }
 
     #[must_use]
-    pub fn scope_displacement(&self) -> crate::BaselineShift {
+    pub fn scope_displacement(&self) -> crate::source::BaselineShift {
         self.data().scope_displacement
     }
 
@@ -1760,7 +1773,7 @@ impl FinalizedRunView<'_> {
         self.run.glyphs.clone()
     }
 
-    pub(crate) fn pattern_glyph_frame(&self) -> Result<crate::GlyphFrame> {
+    pub(crate) fn pattern_glyph_frame(&self) -> Result<crate::geometry::GlyphFrame> {
         let placement = crate::engine::PlacedLine {
             finalized: Arc::clone(&self.line.inner),
             anchor: Point::new(0.0, 0.0),
@@ -1790,7 +1803,7 @@ impl FinalizedRunView<'_> {
     /// counterclockwise basis independently of the containing cell frame.
     /// The finalized pen follows the inline axis separately from raw offsets.
     #[must_use]
-    pub fn glyph_basis(&self) -> crate::GlyphBasis {
+    pub fn glyph_basis(&self) -> crate::geometry::GlyphBasis {
         self.shaped.glyph_basis
     }
 
@@ -1997,7 +2010,7 @@ impl PreparedComputedLineBoundaryView<'_> {
     /// Computed causes at this one effective mandatory incidence.
     pub fn causes(
         &self,
-    ) -> impl ExactSizeIterator<Item = crate::CapturedComputedLineBoundary> + '_ {
+    ) -> impl ExactSizeIterator<Item = crate::processing::CapturedComputedLineBoundary> + '_ {
         let analyzed = &self.prepared.analyzed;
         let topology = analyzed
             .paragraph
@@ -2007,7 +2020,7 @@ impl PreparedComputedLineBoundaryView<'_> {
         analyzed.paragraph.computed_boundaries[self.data().occurrence]
             .causes
             .iter()
-            .map(|&index| crate::CapturedComputedLineBoundary {
+            .map(|&index| crate::processing::CapturedComputedLineBoundary {
                 capture: Arc::clone(&topology.capture),
                 index,
             })
@@ -2051,7 +2064,11 @@ impl PreparedOpportunityView<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Font, LineHeight, Options, Style, System};
+    use crate::{
+        System,
+        options::Options,
+        style::{Font, LineHeight, Style},
+    };
 
     const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -2172,9 +2189,9 @@ mod tests {
             .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
             .unwrap();
         let source = Source::new("A");
-        let analysis = crate::AnalyzedSource::from_paragraph(
+        let analysis = crate::analyzed::AnalyzedSource::from_paragraph(
             ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: source.clone(),
                 base_style: Style {
@@ -2183,7 +2200,7 @@ mod tests {
                     line_height: LineHeight::FontSizeRelative(2.0),
                     ..Style::default()
                 },
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
                 origins: vec![
@@ -2211,10 +2228,10 @@ mod tests {
                 replacements: vec![],
                 anchor_order: vec![ParagraphAnchor {
                     item: ParagraphAnchorItem::EmptyOrigin(1),
-                    affinity: crate::Affinity::After,
+                    affinity: crate::layout::Affinity::After,
                 }],
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let prepared = system
@@ -2235,19 +2252,19 @@ mod tests {
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: termination.view().boundary(),
                 participants: prepared.participants().collect(),
-                termination: crate::PreparedTermination::Ordinary(termination),
+                termination: crate::protocol::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
-                    alignment_insets: crate::LineAlignmentInsets::ZERO,
-                    formatted_line: crate::FormattedLineContext::default(),
+                    alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                    formatted_line: crate::protocol::FormattedLineContext::default(),
                     base_direction: ParagraphBaseDirection::LeftToRight,
-                    line_box_direction: crate::LineBoxDirection::LeftToRight,
+                    line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
                     available_inline: None,
                     indent: 0.0,
-                    alignment: crate::Alignment::Start,
+                    alignment: crate::options::Alignment::Start,
                     tabs: TabContext::NoTabs,
 
                     spacing: SpacingPolicy::None,
@@ -2259,9 +2276,9 @@ mod tests {
             })
             .unwrap();
         let line = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(line.feedback().baseline, 26.0);
@@ -2273,10 +2290,10 @@ mod tests {
         assert_eq!(empty.local_range(), Some(Range::new(0, 0)));
         assert_eq!(empty.aggregate_range(), Some(Range::new(1, 1)));
         assert_eq!(empty.bounds(), Some(Rect::new(20.0, 26.0, 0.0, 0.0)));
-        let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+        let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 7.5,
@@ -2289,7 +2306,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             layout
-                .cursor(crate::Cursor::new(1, crate::Affinity::Before))
+                .cursor(crate::layout::Cursor::new(
+                    1,
+                    crate::layout::Affinity::Before
+                ))
                 .unwrap()
                 .rect(),
             Rect::new(27.5, 44.25, 1.0, 40.0)
@@ -2301,7 +2321,7 @@ mod tests {
         );
         #[cfg(feature = "text-accessibility")]
         {
-            let mut state = crate::Accessibility::new(10);
+            let mut state = crate::accessibility::Accessibility::new(10);
             let parent = accesskit::NodeId(1000);
             let update = layout
                 .accessibility_update(&mut state, parent, parent, Point::default())

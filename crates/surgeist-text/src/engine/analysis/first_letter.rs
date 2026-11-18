@@ -3,8 +3,8 @@ use icu_properties::props::{GeneralCategory, GeneralCategoryGroup};
 
 use super::unit_properties;
 use crate::{
-    Error, ErrorCode, Range, Result, Source, Text, engine::OriginalAtom,
-    projection::SourceProjection,
+    Error, ErrorCode, Result, engine::OriginalAtom, projection::SourceProjection, range::Range,
+    source::Source, text::Text,
 };
 
 /// The adjacent UTF-16 ranges selected from an eligible line head.

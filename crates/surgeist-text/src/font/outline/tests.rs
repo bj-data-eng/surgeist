@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    FontData, System,
+    System,
+    font::FontData,
     test_fonts::{
         remove_tables, replace_tables, table, u16_at, variable_ahem, variable_ahem_with_tuple,
     },

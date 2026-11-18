@@ -11,14 +11,14 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
     let mut s = system_with(bytes.clone());
     let mut value = input(source("AB"), own_style(), false);
     value.controls = (0..2)
-        .map(|_| crate::ParagraphControl {
+        .map(|_| crate::protocol::paragraph::ParagraphControl {
             at: 1,
-            kind: crate::ParagraphControlKind::ForcedBreak,
+            kind: crate::protocol::paragraph::ParagraphControlKind::ForcedBreak,
         })
         .collect();
     value.anchor_order = (0..2)
-        .map(|control| crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::Control(control),
+        .map(|control| crate::protocol::paragraph::ParagraphAnchor {
+            item: crate::protocol::paragraph::ParagraphAnchorItem::Control(control),
             affinity: Affinity::After,
         })
         .collect();
@@ -33,7 +33,10 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
     let controls = p
         .control_views()
         .map(|c| {
-            assert_eq!(c.kind(), &crate::ParagraphControlKind::ForcedBreak);
+            assert_eq!(
+                c.kind(),
+                &crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
+            );
             assert_eq!(c.source_position().get(), 1);
             c.handle()
         })
@@ -54,9 +57,9 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
     let first = p
         .select(selected_request(&p, start(&p), forces[0].clone()))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let middle = p
@@ -66,9 +69,9 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
             forces[1].clone(),
         ))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let last = p
@@ -78,9 +81,9 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
             terminal(&p),
         ))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(

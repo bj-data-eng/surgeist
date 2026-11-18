@@ -2,7 +2,20 @@
 //! fixtures. Phrase segmentation itself is documented in the font provenance;
 //! these tests do not infer a linguistic expectation from Text's implementation.
 
-use crate::*;
+use crate::{
+    Result, System,
+    analyzed::AnalyzedSource,
+    id::Id,
+    options::Options,
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PreparationOptions,
+        paragraph::{ParagraphOrigin, ParagraphOriginKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style, Wrap},
+};
 use skrifa::{
     GlyphId, MetadataProvider,
     instance::{LocationRef, Size as FontSize},
@@ -98,7 +111,7 @@ fn phrase_font_native_preparation_retains_each_source_unit_and_real_instance() {
         };
         let analyzed = AnalyzedSource::from_paragraph(
             request,
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::None);

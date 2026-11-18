@@ -2,7 +2,27 @@
 //! are new; expectations come from source/joint authority, Unicode Final_Sigma,
 //! and the indivisibility of the completed i + U+0307 grapheme.
 
-use crate::*;
+use crate::{
+    ErrorCode, ErrorDetail,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    error::TextTransformError,
+    id::Id,
+    layout::Affinity,
+    processing::{
+        ContextualSourceInput, ProcessedParagraph, ProcessedSource, SourceContinuityOperation,
+        SourceProcessingConnection, SourceProcessingError, SourceProcessingEvent,
+        SourceProcessingJointFlow, SourceProcessingParagraph, SourceProcessingScope,
+        process_contextual_source,
+    },
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{ParagraphBoundaryDefinition, ParagraphConnectionKind, ParagraphStrut},
+    },
+    range::Range,
+    source::Source,
+    style::{CaseTransform, Style, TextTransform, TextTransformSet, WhiteSpace},
+    text::Text,
+};
 use std::sync::Arc;
 
 fn lowercase() -> TextTransform {

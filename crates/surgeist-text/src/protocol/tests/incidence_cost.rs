@@ -1,12 +1,12 @@
 //! Real paragraphs share capture facts while retaining local executed cuts.
 
 use super::*;
-use crate::{CapturedScopeIncidence as R, SourceProcessingEvent as E};
+use crate::{processing::SourceProcessingEvent as E, protocol::CapturedScopeIncidence as R};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-fn inline() -> crate::SourceProcessingScope {
-    crate::SourceProcessingScope::Inline {
+fn inline() -> crate::processing::SourceProcessingScope {
+    crate::processing::SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
@@ -19,18 +19,21 @@ fn inline() -> crate::SourceProcessingScope {
 // Each paragraph has identical body/support: L owns "A ", R owns "B".
 // An outer inline begins before EnterParagraph and ends after ExitParagraph.
 // Padding consists of empty scopes in the LAST paragraph only.
-fn capture(paragraph_count: usize, padding_scopes: usize) -> Arc<crate::ProcessedSource> {
+fn capture(
+    paragraph_count: usize,
+    padding_scopes: usize,
+) -> Arc<crate::processing::ProcessedSource> {
     assert!(paragraph_count >= 2);
     let source = Source::new("A B".repeat(paragraph_count));
-    let mut scopes = vec![crate::SourceProcessingScope::Block {
+    let mut scopes = vec![crate::processing::SourceProcessingScope::Block {
         writing_axis: None,
         horizontal_inner_direction: None,
         font_reference: None,
-        topology: crate::SourceProcessingTopology::Complete,
+        topology: crate::processing::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: Style {
             white_space: WhiteSpace::Preserve,
-            wrap: crate::Wrap::Word,
+            wrap: crate::style::Wrap::Word,
             ..style()
         },
         used_direction: ParagraphBaseDirection::LeftToRight,
@@ -45,18 +48,18 @@ fn capture(paragraph_count: usize, padding_scopes: usize) -> Arc<crate::Processe
         let first = 2 * p;
         let outer = 1 + 3 * p;
         for (a, b) in [(3 * p, 3 * p + 2), (3 * p + 2, 3 * p + 3)] {
-            origins.push(crate::ParagraphOrigin {
+            origins.push(crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
-                local: crate::Range::new(a, b),
-                aggregate: crate::Range::new(a, b),
-                kind: crate::ParagraphOriginKind::Authored,
+                local: crate::range::Range::new(a, b),
+                aggregate: crate::range::Range::new(a, b),
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             });
         }
-        connections.push(crate::SourceProcessingConnection {
+        connections.push(crate::processing::SourceProcessingConnection {
             before_origin: first,
             after_origin: first + 1,
-            kind: crate::ParagraphConnectionKind::Continuous,
+            kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
         });
         events.extend([E::EnterScope(outer), E::EnterParagraph(p)]);
         if p + 1 == paragraph_count {
@@ -68,14 +71,14 @@ fn capture(paragraph_count: usize, padding_scopes: usize) -> Arc<crate::Processe
             E::EnterScope(outer + 1),
             E::Origin {
                 origin: first,
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             },
             E::ExitScope(outer + 1),
             E::Connection(p),
             E::EnterScope(outer + 2),
             E::Origin {
                 origin: first + 1,
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             },
             E::ExitScope(outer + 2),
             E::ExitParagraph(p),
@@ -84,28 +87,30 @@ fn capture(paragraph_count: usize, padding_scopes: usize) -> Arc<crate::Processe
     }
     events.push(E::ExitScope(0));
     Arc::new(
-        crate::process_contextual_source(crate::ContextualSourceInput {
+        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: crate::SourceProcessingEnvelope::Complete,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: crate::processing::SourceProcessingEnvelope::Complete,
             origins,
             connections,
             controls: vec![],
             boundary_policies: (0..paragraph_count)
-                .map(|p| crate::ParagraphBoundaryPolicy {
-                    definition: crate::ParagraphBoundaryDefinition::Connection(p),
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
+                .map(|p| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                    definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                        p,
+                    ),
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes,
             paragraphs: (0..paragraph_count)
-                .map(|_| crate::SourceProcessingParagraph {
+                .map(|_| crate::processing::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     paragraph_strut: ParagraphStrut::DefaultFont,
                 })
@@ -118,7 +123,7 @@ fn capture(paragraph_count: usize, padding_scopes: usize) -> Arc<crate::Processe
 
 fn prepare(
     fonts: &mut System,
-    capture: &Arc<crate::ProcessedSource>,
+    capture: &Arc<crate::processing::ProcessedSource>,
     count: usize,
 ) -> Vec<(AnalyzedSource, PreparedText)> {
     capture
@@ -128,15 +133,15 @@ fn prepare(
             assert!(Arc::ptr_eq(p.processed_source(), capture));
             let a = AnalyzedSource::from_processed_paragraph(
                 p,
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let policies = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())
-                .map(|r| crate::WrappingPolicy {
+                .map(|r| crate::wrapping::WrappingPolicy {
                     relation: r.handle(),
-                    ancestor_wrap: crate::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
                 })
                 .collect();
             let a = a.with_wrapping_policies(policies).unwrap();
@@ -164,7 +169,11 @@ fn soft(p: &PreparedText, paragraph: usize) -> PreparedBoundary {
         .boundary()
 }
 
-fn query(capture: &Arc<crate::ProcessedSource>, p: &PreparedText, paragraph: usize) -> Duration {
+fn query(
+    capture: &Arc<crate::processing::ProcessedSource>,
+    p: &PreparedText,
+    paragraph: usize,
+) -> Duration {
     let b = soft(p, paragraph);
     let source_segment = p.source_segments().next().unwrap();
     let started = Instant::now();

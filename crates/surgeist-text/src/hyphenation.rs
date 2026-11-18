@@ -1,6 +1,6 @@
 //! Native hyphenation policy and indication inputs with bounded en-US resources.
 
-use crate::{Error, ErrorCode, ErrorDetail, Result, Text};
+use crate::{Error, ErrorCode, ErrorDetail, Result, text::Text};
 
 /// Whether authored and resource-qualified automatic hyphenation points may be used.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

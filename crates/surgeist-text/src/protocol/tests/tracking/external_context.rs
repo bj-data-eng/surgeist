@@ -150,16 +150,16 @@ fn analyzed(source: &Source, tracking: f64) -> AnalyzedSource {
         source: source.clone(),
         base_style: own(tracking),
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::RightToLeft,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: extent,
             aggregate: extent,
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -168,26 +168,31 @@ fn analyzed(source: &Source, tracking: f64) -> AnalyzedSource {
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            value,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     assert_eq!(analyzed.source(), source);
     assert!(analyzed.style().locale.is_none());
-    assert_eq!(analyzed.direction(), crate::Direction::RightToLeft);
+    assert_eq!(analyzed.direction(), crate::style::Direction::RightToLeft);
     analyzed
 }
 
 fn execute(prepared: &PreparedText) -> crate::Result<FinalizedLine> {
     let mut value = request(prepared);
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    value.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     value.context.available_inline = None;
     value.context.spacing = SpacingPolicy::None;
-    prepared.select(value)?.finalize(crate::LineAllocations {
-        spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
-    })
+    prepared
+        .select(value)?
+        .finalize(crate::protocol::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
+        })
 }
 
 #[test]

@@ -13,8 +13,14 @@ use super::{
     SourceWritingAxis,
 };
 use crate::{
-    ParagraphBaseDirection, ParagraphBoundaryPolicy, ParagraphConnectionKind, ParagraphControlKind,
-    ParagraphStrut, SourcePosition, Style, TextCombineUpright,
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryPolicy, ParagraphConnectionKind, ParagraphControlKind, ParagraphStrut,
+        },
+    },
+    range::SourcePosition,
+    style::{Style, TextCombineUpright},
 };
 
 macro_rules! captured_handle {
@@ -719,7 +725,7 @@ impl CapturedComputedLineBoundary {
     }
 }
 
-impl crate::ProcessedSource {
+impl crate::processing::ProcessedSource {
     /// Actual source relationship, independently of joint analysis authority.
     #[must_use]
     pub fn captured_connection(&self, input_ordinal: usize) -> Option<CapturedConnection> {

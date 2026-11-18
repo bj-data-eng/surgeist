@@ -3,13 +3,19 @@ use super::*;
 #[path = "positioned/supplemental.rs"]
 mod supplemental;
 use crate::{
-    Affinity, FontBaselineScript, Id, InlineBox, InlineBoxKind, Layout, ParagraphAnchor,
-    ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphOrigin,
-    ParagraphOriginKind, Size as PhysicalSize,
+    font::FontBaselineScript,
+    geometry::Size as PhysicalSize,
+    id::Id,
+    layout::{Affinity, Layout},
+    protocol::paragraph::{
+        ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
+        ParagraphOrigin, ParagraphOriginKind,
+    },
+    source::{InlineBox, InlineBoxKind},
 };
 
 const BOX: Id = Id::from_u64(1_554_001);
-const STRUT: crate::LineStrut = crate::LineStrut {
+const STRUT: crate::protocol::LineStrut = crate::protocol::LineStrut {
     baseline: 8.0,
     line_extent: 10.0,
 };
@@ -31,13 +37,13 @@ fn input(positioned: bool) -> ParagraphInput {
             size: 4.0,
             line_height: LineHeight::Absolute(4.0),
             white_space: WhiteSpace::Preserve,
-            wrap: crate::Wrap::Word,
+            wrap: crate::style::Wrap::Word,
             ..Style::default()
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![ParagraphOrigin {
             text_node: None,
@@ -68,9 +74,9 @@ fn input(positioned: bool) -> ParagraphInput {
         .into_iter()
         .map(|definition| ParagraphBoundaryPolicy {
             definition,
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         })
         .collect(),
     }
@@ -79,7 +85,7 @@ fn input(positioned: bool) -> ParagraphInput {
 fn analyze(input: ParagraphInput, typography: AnalysisTypography) -> AnalyzedSource {
     crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_paragraph(input, typography).unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     )
 }
 
@@ -87,7 +93,7 @@ fn finish(prepared: &PreparedText) -> FinalizedLine {
     let mut request = request(prepared);
     request.context.orientation = LineOrientation::Vertical;
     request.context.available_inline = Some(8.0);
-    request.context.alignment = crate::Alignment::Start;
+    request.context.alignment = crate::options::Alignment::Start;
     request.context.spacing = SpacingPolicy::None;
     request.line_strut = Some(STRUT);
     request.atomics = prepared
@@ -100,9 +106,9 @@ fn finish(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -261,13 +267,13 @@ fn native_positioned_atomic_keeps_independent_physical_geometry_without_flow_con
     assert_eq!(layout.inline_boxes()[0].kind(), InlineBoxKind::OutOfFlow);
     assert_eq!(
         layout.hit(Point::new(310.0, 510.0)),
-        crate::Hit::InlineBox(BOX)
+        crate::layout::Hit::InlineBox(BOX)
     );
     let glyphs = layout
         .glyph_runs()
         .into_iter()
         .flat_map(|run| {
-            assert_eq!(run.glyph_basis(), crate::GlyphBasis::Unrotated);
+            assert_eq!(run.glyph_basis(), crate::geometry::GlyphBasis::Unrotated);
             run.glyphs()
                 .iter()
                 .map(|g| {

@@ -76,19 +76,22 @@ fn css_tabs(text: &str, style: Style) -> AnalyzedSource {
                 source: source.clone(),
                 base_style: style.clone(),
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: Some(
-                    crate::ParagraphTabReference::new(style, ParagraphBaseDirection::LeftToRight)
-                        .unwrap(),
+                    crate::tabs::ParagraphTabReference::new(
+                        style,
+                        ParagraphBaseDirection::LeftToRight,
+                    )
+                    .unwrap(),
                 ),
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source,
                     local: Range::new(0, len),
                     aggregate: Range::new(0, len),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -96,10 +99,10 @@ fn css_tabs(text: &str, style: Style) -> AnalyzedSource {
                 replacements: vec![],
                 anchor_order: vec![],
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     )
 }
 
@@ -110,7 +113,7 @@ fn actual_css_tab_reference_keeps_latin_metrics_and_does_not_merge_distinct_scri
         let input = css_tabs(
             text,
             Style {
-                tab_size: crate::TabSize::spaces(4.0).unwrap(),
+                tab_size: crate::tabs::TabSize::spaces(4.0).unwrap(),
                 ..own_style()
             },
         );
@@ -121,7 +124,7 @@ fn actual_css_tab_reference_keeps_latin_metrics_and_does_not_merge_distinct_scri
             let prepared = system
                 .prepare(
                     &input,
-                    PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops)
+                    PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::CssStops)
                         .unwrap()
                         .with_orientation(orientation)
                         .with_baseline_reference(ALPHA),
@@ -134,9 +137,9 @@ fn actual_css_tab_reference_keeps_latin_metrics_and_does_not_merge_distinct_scri
             let line = prepared
                 .select(selection)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             let only_tab = text == "\t";
@@ -227,7 +230,7 @@ fn selected_request(
     } else {
         LineEnd::Soft
     };
-    selection.termination = crate::PreparedTermination::Ordinary(offer);
+    selection.termination = crate::protocol::PreparedTermination::Ordinary(offer);
     selection
 }
 
@@ -240,18 +243,18 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         source.clone(),
         Style {
             locale: Some("und-Latn".into()),
-            hyphens: crate::Hyphens::Manual,
-            hyphenate_limit_chars: crate::HyphenateLimitChars {
-                total: crate::HyphenationMinimum::Count(4),
-                before: crate::HyphenationMinimum::Count(2),
-                after: crate::HyphenationMinimum::Count(2),
+            hyphens: crate::hyphenation::Hyphens::Manual,
+            hyphenate_limit_chars: crate::hyphenation::HyphenateLimitChars {
+                total: crate::hyphenation::HyphenationMinimum::Count(4),
+                before: crate::hyphenation::HyphenationMinimum::Count(2),
+                after: crate::hyphenation::HyphenationMinimum::Count(2),
             },
             native_hyphenation_convention: Some(
-                crate::NativeHyphenationConvention::language_script(
+                crate::hyphenation::NativeHyphenationConvention::language_script(
                     "und-Latn",
                     "Latn",
-                    crate::Text::from("\u{3a5}"),
-                    crate::HyphenationPlacement::LogicalBefore,
+                    crate::text::Text::from("\u{3a5}"),
+                    crate::hyphenation::HyphenationPlacement::LogicalBefore,
                 )
                 .unwrap(),
             ),
@@ -261,7 +264,7 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
     let auto_input = analyzed(
         source.clone(),
         Style {
-            hyphenate_limit_chars: crate::HyphenateLimitChars::default(),
+            hyphenate_limit_chars: crate::hyphenation::HyphenateLimitChars::default(),
             ..input.style().clone()
         },
     );
@@ -285,7 +288,7 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
             .unwrap();
         assert_eq!(
             denied_cut.counts(),
-            Some(crate::HyphenationCounts {
+            Some(crate::protocol::HyphenationCounts {
                 total: 4,
                 before: 2,
                 after: 2
@@ -293,7 +296,7 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         );
         assert_eq!(
             denied_cut.style().hyphenate_limit_chars,
-            crate::HyphenateLimitChars::default()
+            crate::hyphenation::HyphenateLimitChars::default()
         );
         assert!(denied_cut.opportunity().is_none());
         let prepared = system
@@ -310,7 +313,7 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
             .unwrap();
         assert_eq!(
             cut.counts(),
-            Some(crate::HyphenationCounts {
+            Some(crate::protocol::HyphenationCounts {
                 total: 4,
                 before: 2,
                 after: 2
@@ -318,10 +321,10 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         );
         assert_eq!(
             cut.style().hyphenate_limit_chars,
-            crate::HyphenateLimitChars {
-                total: crate::HyphenationMinimum::Count(4),
-                before: crate::HyphenationMinimum::Count(2),
-                after: crate::HyphenationMinimum::Count(2),
+            crate::hyphenation::HyphenateLimitChars {
+                total: crate::hyphenation::HyphenationMinimum::Count(4),
+                before: crate::hyphenation::HyphenationMinimum::Count(2),
+                after: crate::hyphenation::HyphenationMinimum::Count(2),
             }
         );
         let offer = cut
@@ -336,9 +339,9 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         let first = prepared
             .select(prefix)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let terminal = prepared
@@ -351,9 +354,9 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         let second = prepared
             .select(suffix)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -383,7 +386,7 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
                 .collect::<Vec<_>>(),
             [35, 35, 277]
         );
-        let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+        let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: prepared.clone(),
             coverage: PlacementCoverage::WholeParagraph,
             entries: [
@@ -406,7 +409,7 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
             ]
             .into_iter()
             .map(|(line, baseline)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 20.0,
@@ -482,7 +485,7 @@ fn accessibility_uses_named_line_geometry_and_preserves_original_character_posit
                 100.0
             },
         );
-        let mut state = crate::Accessibility::default();
+        let mut state = crate::accessibility::Accessibility::default();
         let parent = accesskit::NodeId(1561032);
         let update = layout
             .accessibility_update(&mut state, parent, parent, Point::default())

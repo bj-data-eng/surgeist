@@ -2,7 +2,9 @@
 use super::*;
 use crate::protocol::readback::FinalizedControlView;
 use crate::protocol::selection::SelectedData;
-use crate::{FinalizedLine, PreparedControl, PreparedParticipant, PresentationRange, SelectedLine};
+use crate::protocol::{
+    FinalizedLine, PreparedControl, PreparedParticipant, PresentationRange, SelectedLine,
+};
 
 /// Stable identity retains its actual prepared family, not a line/glyph ordinal.
 #[derive(Clone)]
@@ -89,7 +91,7 @@ impl InlineBoxPieceMember<'_> {
             .participant
             .map(|p| &self.selected.request.participants[p])
     }
-    pub fn unit_source_range(&self) -> crate::Range {
+    pub fn unit_source_range(&self) -> crate::range::Range {
         self.selected.presentation.units[self.unit].source
     }
     pub fn presentation_range(&self) -> PresentationRange {
@@ -300,14 +302,14 @@ impl PlacedInlineBoxPiece<'_> {
             index: self.index,
         }
     }
-    pub fn anchor(&self) -> crate::Point {
+    pub fn anchor(&self) -> crate::geometry::Point {
         self.line.anchor
     }
-    pub fn orientation(&self) -> crate::LineOrientation {
+    pub fn orientation(&self) -> crate::protocol::LineOrientation {
         self.line.orientation
     }
 }
-impl crate::Layout {
+impl crate::layout::Layout {
     pub fn inline_box_pieces(&self) -> impl Iterator<Item = PlacedInlineBoxPiece<'_>> {
         self.inner
             .lines

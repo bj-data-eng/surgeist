@@ -74,7 +74,7 @@ impl Attachment {
                     && matches!(self, Self::After { .. })
                     && analyzed.processed.source().boxes()[tables.atomics[*i].occurrence]
                         .kind()
-                        == crate::InlineBoxKind::InFlow =>
+                        == crate::source::InlineBoxKind::InFlow =>
             {
                 let occurrence = tables.atomics[*i].occurrence;
                 Ok((
@@ -114,7 +114,9 @@ impl Attachment {
             .find(|u| u.participant.and_then(|p| p.checked_add(start)) == Some(participant))
             .map(|u| u.line_level)
             .ok_or_else(|| {
-                crate::hyphenation::error(crate::HyphenationError::MissingReceivingBidiAuthority)
+                crate::hyphenation::error(
+                    crate::hyphenation::HyphenationError::MissingReceivingBidiAuthority,
+                )
             })
     }
 }
@@ -154,7 +156,7 @@ pub(super) fn before_attachment(
                 }
                 ParticipantData::Atomic(i) => {
                     if analyzed.processed.source().boxes()[tables.atomics[i].occurrence].kind()
-                        == crate::InlineBoxKind::InFlow
+                        == crate::source::InlineBoxKind::InFlow
                     {
                         return Err(composition_error());
                     }
@@ -194,7 +196,7 @@ pub(super) fn local_levels(
     analysis: &mut Analysis,
     atoms: IndexRange<usize>,
     base: u8,
-    typography: crate::AnalysisTypography,
+    typography: crate::analyzed::AnalysisTypography,
 ) -> crate::Result<()> {
     if atoms.clone().any(|i| {
         projection.atoms[i].code_point != 9
@@ -204,7 +206,7 @@ pub(super) fn local_levels(
             ) || crate::engine::analysis::is_hard_separator(projection.atoms[i].code_point))
     }) {
         return Err(crate::hyphenation::error(
-            crate::HyphenationError::UnsupportedIndicationSeparator,
+            crate::hyphenation::HyphenationError::UnsupportedIndicationSeparator,
         ));
     }
     let mut bidi = BidiResolver::new();
@@ -308,7 +310,7 @@ impl Output {
         let processed = prepared
             .analyzed
             .processed
-            .project(row.insertion_anchor, crate::Affinity::After);
+            .project(row.insertion_anchor, crate::layout::Affinity::After);
         let capture = |level, bidi_class, local| UnitCapture {
             source: Range::new(row.insertion_anchor, row.insertion_anchor),
             processed: Range::new(processed, processed),
@@ -399,7 +401,9 @@ pub(crate) fn semantic(
                 )
             })
             .ok_or_else(|| {
-                crate::hyphenation::error(crate::HyphenationError::MissingReceivingBidiAuthority)
+                crate::hyphenation::error(
+                    crate::hyphenation::HyphenationError::MissingReceivingBidiAuthority,
+                )
             })?;
         let receiver = &output.output.units[receiver_index];
         let outer = receiver.line_level;
@@ -609,15 +613,17 @@ pub(super) fn select(
         prepared.options.orientation(),
     )?;
     let profile = match prepared.options.orientation() {
-        crate::LineOrientation::Horizontal => crate::engine::upright::ShapingProfile::Horizontal,
-        crate::LineOrientation::SidewaysClockwise => {
+        crate::protocol::LineOrientation::Horizontal => {
+            crate::engine::upright::ShapingProfile::Horizontal
+        }
+        crate::protocol::LineOrientation::SidewaysClockwise => {
             crate::engine::upright::ShapingProfile::SidewaysClockwise
         }
-        crate::LineOrientation::SidewaysCounterclockwise => {
+        crate::protocol::LineOrientation::SidewaysCounterclockwise => {
             crate::engine::upright::ShapingProfile::SidewaysCounterclockwise
         }
-        crate::LineOrientation::Vertical
-            if prepared.analyzed.typography == crate::AnalysisTypography::Mixed =>
+        crate::protocol::LineOrientation::Vertical
+            if prepared.analyzed.typography == crate::analyzed::AnalysisTypography::Mixed =>
         {
             crate::engine::upright::ShapingProfile::Mixed {
                 owners: &prepared.analyzed.styles,
@@ -625,10 +631,12 @@ pub(super) fn select(
                 provenance,
             }
         }
-        crate::LineOrientation::Vertical => crate::engine::upright::ShapingProfile::Upright {
-            units: &upright_units,
-            provenance,
-        },
+        crate::protocol::LineOrientation::Vertical => {
+            crate::engine::upright::ShapingProfile::Upright {
+                units: &upright_units,
+                provenance,
+            }
+        }
     };
     let assignments = if domains.is_empty() {
         crate::engine::shape::retain_original_fonts(prepared, &projection, &originals)?
@@ -662,7 +670,7 @@ fn selected_correspondence(
     let end = tables.boundaries[request.end.index];
     let relation_end = if prepared.analyzed.paragraph.scope_topology.is_none()
         && end.participant == tables.participants.len()
-        && request.context.end == crate::LineEnd::Paragraph
+        && request.context.end == crate::protocol::LineEnd::Paragraph
     {
         prepared.analyzed.transform.events().len()
     } else {
@@ -850,7 +858,7 @@ fn selected_relation(
 fn reset_originals(
     units: &mut [PresentationUnit],
     infos: &[(CharInfo, usize)],
-    boxes: &[crate::InlineBox],
+    boxes: &[crate::source::InlineBox],
     base: u8,
 ) {
     let originals: Vec<_> = units
@@ -905,7 +913,8 @@ fn reorder(
     let mut maximum = 0;
     for value in levels {
         account::work(ledger, 1)?;
-        let level = crate::BidiLevel::try_new(value).map_err(|_| composition_error())?;
+        let level =
+            crate::supplied_line::BidiLevel::try_new(value).map_err(|_| composition_error())?;
         maximum = maximum.max(value);
         if value & 1 != 0 {
             min_odd = Some(min_odd.map_or(value, |n| n.min(value)));
@@ -913,7 +922,7 @@ fn reorder(
         account::push(
             ledger,
             &mut participants,
-            crate::SuppliedInlineParticipant::Boundary { level },
+            crate::supplied_line::SuppliedInlineParticipant::Boundary { level },
         )?;
     }
     let mut output = account::filled(ledger, participants.len(), 0)?;
@@ -922,12 +931,14 @@ fn reorder(
         .len()
         .checked_mul(passes * 4 + 3)
         .ok_or_else(|| {
-            crate::engine::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                kind: crate::ScopeAlignmentLimitKind::StructuralWork,
-            })
+            crate::engine::scope_alignment::refusal(
+                crate::processing::ScopeAlignmentError::Overflow {
+                    kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                },
+            )
         })?;
     account::work(ledger, work)?;
-    crate::SuppliedLine::new(&participants)
+    crate::supplied_line::SuppliedLine::new(&participants)
         .reorder_into(&mut output)
         .map_err(|_| composition_error())?;
     account::drop_vec(ledger, participants)?;
@@ -935,19 +946,21 @@ fn reorder(
 }
 
 pub(super) fn composition_error() -> crate::Error {
-    crate::hyphenation::error(crate::HyphenationError::UnsupportedIndicationComposition)
+    crate::hyphenation::error(
+        crate::hyphenation::HyphenationError::UnsupportedIndicationComposition,
+    )
 }
 /// An OOF occurrence retains source/placement custody but has no L2
 /// flow item. Its inherited observation level cannot split participating runs.
-fn is_out_of_flow(unit: &PresentationUnit, boxes: &[crate::InlineBox]) -> bool {
-    matches!(unit.kind, PresentationUnitKind::Atomic { occurrence } if boxes[occurrence].kind() == crate::InlineBoxKind::OutOfFlow)
+fn is_out_of_flow(unit: &PresentationUnit, boxes: &[crate::source::InlineBox]) -> bool {
+    matches!(unit.kind, PresentationUnitKind::Atomic { occurrence } if boxes[occurrence].kind() == crate::source::InlineBoxKind::OutOfFlow)
 }
 /// Hierarchy is two independent applications of the existing L2 owner. Local
 /// levels never enter the original paragraph's level array or embedding stack.
 pub(crate) fn unit_order(
     units: &[PresentationUnit],
     domains: &[IndicationDomain],
-    boxes: &[crate::InlineBox],
+    boxes: &[crate::source::InlineBox],
     ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
 ) -> crate::Result<Vec<usize>> {
     use crate::engine::scope_alignment::accounting as account;
@@ -1035,7 +1048,7 @@ fn prove_graphemes(
     units: &[PresentationUnit],
     domains: &[IndicationDomain],
     analysis: &Analysis,
-    boxes: &[crate::InlineBox],
+    boxes: &[crate::source::InlineBox],
 ) -> crate::Result<()> {
     let order = unit_order(units, domains, boxes, &mut None)?;
     let mut rank = vec![0; units.len()];
@@ -1078,7 +1091,7 @@ pub(crate) fn order_presentation(
     } else {
         if ledger.is_none() {
             return Err(crate::engine::scope_alignment::refusal(
-                crate::ScopeAlignmentError::LimitsRequired,
+                crate::processing::ScopeAlignmentError::LimitsRequired,
             ));
         }
         ledger

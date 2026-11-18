@@ -20,7 +20,9 @@ use crate::engine::{
     resolve::ResolvedStyleRun,
 };
 use crate::style::OrdinaryWordBreak;
-use crate::{Range, projection::SourceProjection, transform::relation::GeneratedSeparatorOwner};
+use crate::{
+    projection::SourceProjection, range::Range, transform::relation::GeneratedSeparatorOwner,
+};
 
 use super::paragraph::{ParagraphControlKind, SemanticAnchor, SemanticAnchorItem};
 
@@ -108,7 +110,7 @@ pub(crate) struct AtomicData {
     pub(crate) source: usize,
     pub(crate) processed: usize,
     pub(crate) level: u8,
-    pub(crate) affinity: crate::Affinity,
+    pub(crate) affinity: crate::layout::Affinity,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -144,7 +146,7 @@ pub(crate) struct BoundaryData {
     pub(crate) source_after: usize,
     /// Actual collapsed-follower gate at this cut. Transparent custody retains
     /// it; a new influencing participant ends that side's local authority.
-    pub(crate) collapsed_space_wrap: Option<crate::Wrap>,
+    pub(crate) collapsed_space_wrap: Option<crate::style::Wrap>,
     /// Exact old chooser endpoint, only when a real preliminary item boundary.
     pub(crate) preliminary_item: Option<usize>,
 }
@@ -176,8 +178,8 @@ pub(crate) struct SuppressedOpportunityData {
 pub(crate) struct AlternativeData {
     /// Actual structural owner assigned before any equal-cut frontier alias.
     pub(crate) source_segment: Option<usize>,
-    pub(crate) text: crate::Text,
-    pub(crate) placement: crate::HyphenationPlacement,
+    pub(crate) text: crate::text::Text,
+    pub(crate) placement: crate::hyphenation::HyphenationPlacement,
     pub(crate) resolution: IndicationResolution,
     pub(crate) style: usize,
     pub(crate) opportunity: Option<usize>,
@@ -221,7 +223,7 @@ impl AlternativeDefinition {
 pub(crate) enum IndicationResolution {
     Specified,
     Convention,
-    Primary(crate::FontData),
+    Primary(crate::font::FontData),
     ResolvedNative,
 }
 
@@ -436,7 +438,7 @@ pub(crate) fn prepare_tables(
                 source: control.at,
                 processed: analyzed
                     .processed
-                    .project(control.at, crate::Affinity::After),
+                    .project(control.at, crate::layout::Affinity::After),
                 level: analyzed.analysis.control_levels[occurrence],
             });
         }
@@ -454,7 +456,7 @@ pub(crate) fn prepare_tables(
         relation_cut: 0,
         processed: analyzed
             .processed
-            .project(owned_source, crate::Affinity::Before),
+            .project(owned_source, crate::layout::Affinity::Before),
         source_before: owned_source,
         source_after: owned_source,
         collapsed_space_wrap: None,
@@ -470,7 +472,7 @@ pub(crate) fn prepare_tables(
         let processed_at = projection.atoms.get(atom).map_or(
             analyzed.processed.project(
                 paragraph.extent(&analyzed.processed).end,
-                crate::Affinity::After,
+                crate::layout::Affinity::After,
             ),
             |value| value.processed.start,
         );
@@ -574,7 +576,7 @@ pub(crate) fn prepare_tables(
                 item: SemanticAnchorItem::Atomic(occurrence),
                 affinity,
             }) => {
-                if source.boxes()[occurrence].kind() == crate::InlineBoxKind::InFlow {
+                if source.boxes()[occurrence].kind() == crate::source::InlineBoxKind::InFlow {
                     collapsed_space_wrap = None;
                 }
                 let row = tables.atomics.len();
@@ -651,7 +653,7 @@ pub(crate) fn prepare_tables(
             || {
                 analyzed.processed.project(
                     paragraph.extent(&analyzed.processed).end,
-                    crate::Affinity::After,
+                    crate::layout::Affinity::After,
                 )
             },
             |value| value.processed.start,
@@ -885,10 +887,10 @@ fn issue_opportunities(
                     .is_some_and(|counts| counts.admits(authored.hyphenate_limit_chars));
             let eligible = count_admitted
                 && !before_hard
-                && authored.hyphens != crate::Hyphens::None
+                && authored.hyphens != crate::hyphenation::Hyphens::None
                 && authored.effective_breaking().word != OrdinaryWordBreak::BreakAll
-                && authored.line_break != crate::LineBreak::Anywhere
-                && authored.wrap == crate::Wrap::Word
+                && authored.line_break != crate::style::LineBreak::Anywhere
+                && authored.wrap == crate::style::Wrap::Word
                 && (control.is_some() || wrapping_allowed(analyzed, boundary)?);
             if eligible {
                 let supplied = groups.get(&definition.owner()).copied();
@@ -970,10 +972,10 @@ fn issue_opportunities(
             || matches!(
                 control,
                 Some(ParagraphControlKind::OptionalBreak {
-                    wrap: crate::Wrap::Word
+                    wrap: crate::style::Wrap::Word
                 })
             )
-            || matches!(control, Some(ParagraphControlKind::Wbr {style}) if style.wrap==crate::Wrap::Word
+            || matches!(control, Some(ParagraphControlKind::Wbr {style}) if style.wrap==crate::style::Wrap::Word
             )
         {
             Some(PreparedBreakKind::Allowed)
@@ -1137,7 +1139,7 @@ fn suppressed_phrase(
                 .style
                 .authored()
                 .line_break
-                == crate::LineBreak::Anywhere
+                == crate::style::LineBreak::Anywhere
         })
     {
         return Ok(None);
@@ -1210,24 +1212,22 @@ fn soft_boundary(
     let mut participant = tables.boundaries[index].participant;
     let source_participant = tables.boundaries[index].source_participant;
     let owner = analyzed.logical.cuts[source_participant];
-    let seams = if analyzed
-        .paragraph
-        .connections
-        .iter()
-        .any(|row| row.kind == crate::ParagraphConnectionKind::Disconnected)
-    {
-        let source_context = crate::transform::context::SourceContext::exact(
-            &analyzed.processed,
-            &analyzed.paragraph,
-        )?;
-        crate::transform::separators::connection_seams(
-            &analyzed.projection,
-            &analyzed.logical.events,
-            &source_context,
-        )?
-    } else {
-        Vec::new()
-    };
+    let seams =
+        if analyzed.paragraph.connections.iter().any(|row| {
+            row.kind == crate::protocol::paragraph::ParagraphConnectionKind::Disconnected
+        }) {
+            let source_context = crate::transform::context::SourceContext::exact(
+                &analyzed.processed,
+                &analyzed.paragraph,
+            )?;
+            crate::transform::separators::connection_seams(
+                &analyzed.projection,
+                &analyzed.logical.events,
+                &source_context,
+            )?
+        } else {
+            Vec::new()
+        };
     let section = super::segments::preceding_section(analyzed, source_participant)
         .map(|index| &analyzed.sections[index]);
     let mut lower = section.map_or(0, |section| section.participants.start);
@@ -1307,7 +1307,7 @@ fn captured_endpoint(analyzed: &AnalyzedData, occurrence: usize) -> bool {
     let Some(topology) = &analyzed.paragraph.scope_topology else {
         return false;
     };
-    let crate::SourceProcessingEvent::Control { control, .. } =
+    let crate::processing::SourceProcessingEvent::Control { control, .. } =
         topology.capture.events[topology.control_orders[occurrence]].event
     else {
         return false;
@@ -1358,7 +1358,7 @@ fn break_spaces_opportunity(
             .style
             .authored()
             .white_space
-            != crate::WhiteSpace::BreakSpaces
+            != crate::style::WhiteSpace::BreakSpaces
     {
         return false;
     }
@@ -1443,7 +1443,9 @@ fn automatic_cut(
         .origin_intersections(&analyzed.processed, source)
         .filter(|row| !row.aggregate.is_empty())
         .last()
-        .ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::InvalidResourceMapping))?
+        .ok_or_else(|| {
+            crate::hyphenation::error(crate::hyphenation::HyphenationError::InvalidResourceMapping)
+        })?
         .origin;
     let counts = analyzed.words.at(boundary.atom);
     let index = tables.hyphenation_cuts.len();
@@ -1460,10 +1462,10 @@ fn automatic_cut(
     let count_admitted = tables.profile == crate::engine::PreparationProfile::Standalone
         || counts.is_some_and(|value| value.admits(authored.hyphenate_limit_chars));
     if !count_admitted
-        || authored.hyphens != crate::Hyphens::Auto
+        || authored.hyphens != crate::hyphenation::Hyphens::Auto
         || authored.effective_breaking().word == OrdinaryWordBreak::BreakAll
-        || authored.line_break == crate::LineBreak::Anywhere
-        || authored.wrap != crate::Wrap::Word
+        || authored.line_break == crate::style::LineBreak::Anywhere
+        || authored.wrap != crate::style::Wrap::Word
         || analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]]
             .before_hard_separator
     {
@@ -1519,55 +1521,55 @@ fn ordinary_after_source_shy(
     if analyzed.paragraph.base_direction.is_some() {
         native_permission(analyzed, boundary)
     } else {
-        Ok(following.wrap == crate::Wrap::Word)
+        Ok(following.wrap == crate::style::Wrap::Word)
     }
 }
 
 fn used_placement(
-    style: &crate::Style,
+    style: &crate::style::Style,
     resolution: &IndicationResolution,
-) -> crate::HyphenationPlacement {
+) -> crate::hyphenation::HyphenationPlacement {
     if matches!(resolution, IndicationResolution::ResolvedNative) {
-        crate::HyphenationPlacement::LogicalBefore
+        crate::hyphenation::HyphenationPlacement::LogicalBefore
     } else {
-        style
-            .native_hyphenation_convention
-            .as_ref()
-            .map_or(crate::HyphenationPlacement::LogicalBefore, |value| {
-                value.placement()
-            })
+        style.native_hyphenation_convention.as_ref().map_or(
+            crate::hyphenation::HyphenationPlacement::LogicalBefore,
+            |value| value.placement(),
+        )
     }
 }
 
 fn indication(
     catalogue: &mut surgeist_font::FontCatalogue,
     styles: &[ResolvedStyleRun],
-    authored: &crate::Style,
+    authored: &crate::style::Style,
     style: usize,
     supplied: Option<&super::paragraph::ParagraphReplacement>,
-) -> crate::Result<(Vec<crate::Text>, IndicationResolution)> {
+) -> crate::Result<(Vec<crate::text::Text>, IndicationResolution)> {
     let result = if let Some(super::paragraph::ReplacementPresentation::ResolvedNative(texts)) =
         supplied.map(|row| &row.presentation)
     {
         (texts.clone(), IndicationResolution::ResolvedNative)
     } else {
         let (text, resolution) = match &authored.hyphenate_character {
-            crate::HyphenateCharacter::String(text) => {
+            crate::hyphenation::HyphenateCharacter::String(text) => {
                 (text.clone(), IndicationResolution::Specified)
             }
-            crate::HyphenateCharacter::Auto => match &authored.native_hyphenation_convention {
-                Some(convention) => (
-                    convention.automatic_text().clone(),
-                    IndicationResolution::Convention,
-                ),
-                None => {
-                    let (text, primary) = crate::engine::shape::automatic_hyphen(
-                        catalogue.query(),
-                        &styles[style].style,
-                    )?;
-                    (text, IndicationResolution::Primary(primary))
+            crate::hyphenation::HyphenateCharacter::Auto => {
+                match &authored.native_hyphenation_convention {
+                    Some(convention) => (
+                        convention.automatic_text().clone(),
+                        IndicationResolution::Convention,
+                    ),
+                    None => {
+                        let (text, primary) = crate::engine::shape::automatic_hyphen(
+                            catalogue.query(),
+                            &styles[style].style,
+                        )?;
+                        (text, IndicationResolution::Primary(primary))
+                    }
                 }
-            },
+            }
         };
         (vec![text], resolution)
     };
@@ -1581,7 +1583,7 @@ fn native_permission(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate:
         return Ok(false);
     }
     analyzed.wrapping[relation]
-        .map(|wrap| wrap == crate::Wrap::Word)
+        .map(|wrap| wrap == crate::style::Wrap::Word)
         .ok_or_else(|| {
             super::protocol_error(super::ProtocolError::MissingWrappingPolicy { relation })
         })
@@ -1627,7 +1629,7 @@ fn ordinary_text_opportunity(
             .style
             .authored()
             .line_break
-            == crate::LineBreak::Anywhere
+            == crate::style::LineBreak::Anywhere
     });
     let lexical_fallback = analyzed.analysis.infos[after].0.lexical_fallback_before();
     if !anywhere && !lexical_fallback {
@@ -1660,7 +1662,9 @@ fn atomic_permission(
             Some(crate::engine::analysis::wrapping::Influence::Atomic { .. }),
         ) => boundary
             .collapsed_space_wrap
-            .map_or(relation.space_permits, |wrap| wrap == crate::Wrap::Word),
+            .map_or(relation.space_permits, |wrap| {
+                wrap == crate::style::Wrap::Word
+            }),
         _ => relation.space_permits,
     };
     if local_space_permits {
@@ -1707,9 +1711,9 @@ pub(crate) fn conditional_boundaries(
                     .authored();
                 matches!(
                     (style.effective_breaking().overflow, purpose),
-                    (crate::OverflowWrap::Anywhere, _)
+                    (crate::style::OverflowWrap::Anywhere, _)
                         | (
-                            crate::OverflowWrap::BreakWord,
+                            crate::style::OverflowWrap::BreakWord,
                             super::ConditionalPurpose::Overflow
                         )
                 )
@@ -1749,9 +1753,9 @@ pub(crate) fn conditional_boundaries(
             .authored();
         if !matches!(
             (style.effective_breaking().overflow, purpose),
-            (crate::OverflowWrap::Anywhere, _)
+            (crate::style::OverflowWrap::Anywhere, _)
                 | (
-                    crate::OverflowWrap::BreakWord,
+                    crate::style::OverflowWrap::BreakWord,
                     super::ConditionalPurpose::Overflow
                 )
         ) {
@@ -1822,8 +1826,8 @@ fn standalone_opportunity(
             let style = &analyzed.styles[analyzed.analysis.infos[atom].1]
                 .style
                 .authored();
-            style.wrap == crate::Wrap::Word
-                && style.effective_breaking().overflow != crate::OverflowWrap::Normal
+            style.wrap == crate::style::Wrap::Word
+                && style.effective_breaking().overflow != crate::style::OverflowWrap::Normal
         }),
         _ => false,
     })
@@ -1833,7 +1837,7 @@ fn wrapping_allowed(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::
     if analyzed.paragraph.base_direction.is_some()
         && let Some(wrap) = boundary.collapsed_space_wrap
     {
-        return Ok(wrap == crate::Wrap::Word);
+        return Ok(wrap == crate::style::Wrap::Word);
     }
     if let Some(previous) = boundary.atom.checked_sub(1)
         && matches!(analyzed.projection.atoms[previous].code_point, 0x20 | 0xad)
@@ -1848,10 +1852,10 @@ fn wrapping_allowed(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::
                 .style
                 .authored()
                 .wrap
-                == crate::Wrap::Word);
+                == crate::style::Wrap::Word);
         }
         if let Some(wrap) = disappearing_space_wrap(analyzed, previous) {
-            return Ok(wrap == crate::Wrap::Word);
+            return Ok(wrap == crate::style::Wrap::Word);
         }
     }
     if analyzed.paragraph.base_direction.is_some() {
@@ -1866,12 +1870,12 @@ fn wrapping_allowed(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::
                 .get(boundary.atom)
                 .map_or(0, |info| info.1),
         )
-        .is_some_and(|run| run.style.authored().wrap == crate::Wrap::Word))
+        .is_some_and(|run| run.style.authored().wrap == crate::style::Wrap::Word))
 }
 
 /// Retain the executed lexical cause rather than treating every deleted source
 /// range as a disappeared SPACE or borrowing the preceding processed atom.
-fn collapsed_follower_wrap(analyzed: &AnalyzedData, source: Range) -> Option<crate::Wrap> {
+fn collapsed_follower_wrap(analyzed: &AnalyzedData, source: Range) -> Option<crate::style::Wrap> {
     let operations = analyzed.processed.operations();
     let piece =
         operations.get(operations.partition_point(|piece| piece.source.end <= source.start))?;
@@ -1896,7 +1900,7 @@ fn collapsed_follower_wrap(analyzed: &AnalyzedData, source: Range) -> Option<cra
 /// The containing style owns a native SPACE opportunity only when that SPACE
 /// actually disappears at the selected break. Preserved SPACE boundaries use
 /// captured NCA permission instead.
-fn disappearing_space_wrap(analyzed: &AnalyzedData, atom: usize) -> Option<crate::Wrap> {
+fn disappearing_space_wrap(analyzed: &AnalyzedData, atom: usize) -> Option<crate::style::Wrap> {
     let style = analyzed.styles[analyzed.analysis.infos[atom].1]
         .style
         .authored();
@@ -1912,9 +1916,9 @@ pub(crate) fn prepare_indications(
     styles: &[ResolvedStyleRun],
     tables: &PreparedTables,
     scratch: &mut crate::engine::shape::ShapeContext,
-    options: crate::PreparationOptions,
+    options: crate::protocol::PreparationOptions,
 ) -> crate::Result<Vec<PreparedIndication>> {
-    let css_tabs = options.tabs() == crate::TabPreparation::CssStops;
+    let css_tabs = options.tabs() == crate::tabs::TabPreparation::CssStops;
     let orientation = options.orientation();
     let baseline_reference = options.resolved_baseline_reference();
     let mut alternatives = Vec::with_capacity(tables.alternatives.len());
@@ -2025,17 +2029,17 @@ pub(crate) fn prepare_indications(
                 orientation,
             )?;
             let shaping_profile = || match orientation {
-                crate::LineOrientation::Horizontal => {
+                crate::protocol::LineOrientation::Horizontal => {
                     crate::engine::upright::ShapingProfile::Horizontal
                 }
-                crate::LineOrientation::SidewaysClockwise => {
+                crate::protocol::LineOrientation::SidewaysClockwise => {
                     crate::engine::upright::ShapingProfile::SidewaysClockwise
                 }
-                crate::LineOrientation::SidewaysCounterclockwise => {
+                crate::protocol::LineOrientation::SidewaysCounterclockwise => {
                     crate::engine::upright::ShapingProfile::SidewaysCounterclockwise
                 }
-                crate::LineOrientation::Vertical
-                    if analyzed.typography == crate::AnalysisTypography::Mixed =>
+                crate::protocol::LineOrientation::Vertical
+                    if analyzed.typography == crate::analyzed::AnalysisTypography::Mixed =>
                 {
                     crate::engine::upright::ShapingProfile::Mixed {
                         owners: &analyzed.styles,
@@ -2049,7 +2053,7 @@ pub(crate) fn prepare_indications(
                         },
                     }
                 }
-                crate::LineOrientation::Vertical => {
+                crate::protocol::LineOrientation::Vertical => {
                     crate::engine::upright::ShapingProfile::Upright {
                         units: &upright_units,
                         provenance: crate::engine::upright::UprightProvenance::Alternative {
@@ -2126,7 +2130,9 @@ pub(crate) fn prepare_indications(
             })
         };
         let mut captured = capture_side(!row.placement.includes_before())?;
-        if row.placement == crate::HyphenationPlacement::BothSides && !row.text.is_empty() {
+        if row.placement == crate::hyphenation::HyphenationPlacement::BothSides
+            && !row.text.is_empty()
+        {
             // One exact chosen Text supplies both emissions. Only its raw
             // scalar/style metadata is shared; each seam executes its
             // own full matching profiles, with both possible receiving parities.
@@ -2184,7 +2190,7 @@ fn replacement_projection(
     };
     let processed_anchor = analyzed
         .processed
-        .project(replacement.insertion_anchor, crate::Affinity::After);
+        .project(replacement.insertion_anchor, crate::layout::Affinity::After);
     let mut atoms = original.atoms[..start].to_vec();
     let inserted_start = atoms.len();
     let mut unit: usize = 0;

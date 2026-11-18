@@ -22,25 +22,25 @@ fn input(source: &Source, own: Style, cuts: &[usize]) -> ParagraphInput {
         source: source.clone(),
         base_style: own,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: cuts
             .windows(2)
-            .map(|pair| crate::ParagraphOrigin {
+            .map(|pair| crate::protocol::paragraph::ParagraphOrigin {
                 text_node: None,
                 source: source.clone(),
                 local: Range::new(pair[0], pair[1]),
                 aggregate: Range::new(pair[0], pair[1]),
-                kind: crate::ParagraphOriginKind::Authored,
+                kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
             })
             .collect(),
         connections: cuts[1..cuts.len() - 1]
             .iter()
-            .map(|&at| crate::ParagraphConnection {
+            .map(|&at| crate::protocol::paragraph::ParagraphConnection {
                 at,
-                kind: crate::ParagraphConnectionKind::Continuous,
+                kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
             })
             .collect(),
         controls: vec![],
@@ -55,15 +55,15 @@ fn analyze(value: ParagraphInput, orientation: LineOrientation) -> AnalyzedSourc
         &AnalyzedSource::from_paragraph(
             value,
             if orientation == LineOrientation::Vertical {
-                crate::AnalysisTypography::Upright {
+                crate::analyzed::AnalysisTypography::Upright {
                     computed_direction: ParagraphBaseDirection::RightToLeft,
                 }
             } else {
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             },
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     )
 }
 
@@ -78,7 +78,7 @@ fn prepared(
         // The actual common Block supplies the wrapping facts for these
         // connected storage occurrences. Their Connection event is physical
         // chronology inside the EGC, not a shaping or character boundary.
-        use crate::SourceProcessingEvent as E;
+        use crate::processing::SourceProcessingEvent as E;
         let wrap = own.wrap;
         let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
         for origin in 0..cuts.len() - 1 {
@@ -92,33 +92,33 @@ fn prepared(
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let processed = std::sync::Arc::new(
-            crate::process_contextual_source(crate::ContextualSourceInput {
+            crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
                 joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-                envelope: crate::SourceProcessingEnvelope::Complete,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: crate::processing::SourceProcessingEnvelope::Complete,
                 origins: cuts
                     .windows(2)
-                    .map(|pair| crate::ParagraphOrigin {
+                    .map(|pair| crate::protocol::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: source.clone(),
                         local: Range::new(pair[0], pair[1]),
                         aggregate: Range::new(pair[0], pair[1]),
-                        kind: crate::ParagraphOriginKind::Authored,
+                        kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                     })
                     .collect(),
                 connections: (0..cuts.len() - 2)
-                    .map(|before_origin| crate::SourceProcessingConnection {
+                    .map(|before_origin| crate::processing::SourceProcessingConnection {
                         before_origin,
                         after_origin: before_origin + 1,
-                        kind: crate::ParagraphConnectionKind::Continuous,
+                        kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
                     })
                     .collect(),
                 controls: vec![],
                 boundary_policies: (0..cuts.len() - 2)
-                    .map(|connection| crate::ParagraphBoundaryPolicy {
-                        definition: crate::ParagraphBoundaryDefinition::Connection(connection),
+                    .map(|connection| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                        definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(connection),
                         preceding_wrap: wrap,
                         following_wrap: wrap,
                         ancestor_wrap: wrap,
@@ -126,16 +126,16 @@ fn prepared(
                     .collect(),
                 replacements: vec![],
                 computed_line_boundaries: vec![],
-                scopes: vec![crate::SourceProcessingScope::Block {
+                scopes: vec![crate::processing::SourceProcessingScope::Block {
                     writing_axis: None,
                     horizontal_inner_direction: None,
                     font_reference: None,
-                    topology: crate::SourceProcessingTopology::Complete,
+                    topology: crate::processing::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: own,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 }],
-                paragraphs: vec![crate::SourceProcessingParagraph {
+                paragraphs: vec![crate::processing::SourceProcessingParagraph {
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     paragraph_strut: ParagraphStrut::DefaultFont,
                 }],
@@ -147,11 +147,11 @@ fn prepared(
             &AnalyzedSource::from_processed_paragraph(
                 processed.paragraphs().next().unwrap(),
                 if orientation == LineOrientation::Vertical {
-                    crate::AnalysisTypography::Upright {
+                    crate::analyzed::AnalysisTypography::Upright {
                         computed_direction: ParagraphBaseDirection::RightToLeft,
                     }
                 } else {
-                    crate::AnalysisTypography::HorizontalComposition
+                    crate::analyzed::AnalysisTypography::HorizontalComposition
                 },
             )
             .unwrap(),
@@ -202,11 +202,11 @@ fn place_at(
     prepared: &PreparedText,
     line: &FinalizedLine,
     inline: f64,
-) -> crate::Result<crate::Layout> {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+) -> crate::Result<crate::layout::Layout> {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line: line.clone(),
             anchor: LineAnchor {
                 inline_origin: inline,
@@ -466,18 +466,18 @@ fn native_spaces_allocation_remains_trailing_while_authored_spacing_uses_its_own
             let slots = selected.spacing_slots().collect::<Vec<_>>();
             assert_eq!(slots.len(), 1);
             let natural = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             let line = selected
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
                         slot: slots[0].clone(),
                         amount: 6.0,
                     }]),
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             assert_eq!(raw(&line), raw(&natural));
@@ -544,11 +544,11 @@ fn an_author_forced_cross_unit_provider_group_is_preserved_inactive_and_refuses_
         else {
             panic!("expected actual group diagnostic: {error:?}")
         };
-        assert_eq!(*stage, crate::SpacingStage::Preparation);
-        assert_eq!(*operation, crate::SpacingOperation::AuthoredWord);
+        assert_eq!(*stage, crate::error::SpacingStage::Preparation);
+        assert_eq!(*operation, crate::error::SpacingOperation::AuthoredWord);
         assert_eq!(
             pieces.as_ref(),
-            [crate::SpacingPiece::Source {
+            [crate::error::SpacingPiece::Source {
                 origin: 0,
                 local: Range::new(1, 2),
                 aggregate: Range::new(1, 2)
@@ -576,7 +576,7 @@ fn a_local_nonzero_separator_half_must_survive_its_actual_physical_inline_coordi
         let error = place_at(&p, &line, 1e16).unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
         assert!(
-            matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric { phase: crate::TextNumericPhase::Placement, category: crate::TextNumericError::NonZeroLost, value, .. }) if *value == 0.5),
+            matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric { phase: crate::error::TextNumericPhase::Placement, category: crate::error::TextNumericError::NonZeroLost, value, .. }) if *value == 0.5),
             "{error:?}"
         );
         assert_eq!(retained.glyph_runs(), glyphs);
@@ -627,14 +627,14 @@ fn a_required_half_cannot_disappear_in_the_finalized_local_provider_pen() {
     let error = demanded
         .select(selection)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap_err();
     assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
     assert!(
-        matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric { phase: crate::TextNumericPhase::Finalization, category: crate::TextNumericError::NonZeroLost, value, .. }) if *value == 2.0),
+        matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric { phase: crate::error::TextNumericPhase::Finalization, category: crate::error::TextNumericError::NonZeroLost, value, .. }) if *value == 2.0),
         "{error:?}"
     );
     assert_eq!(paints(&finalize(&control)), [0.0, advance]);
@@ -672,18 +672,18 @@ fn hypothetical_block_space_uses_the_same_intrinsic_zero_gate_without_inventing_
             );
             let mut system = super::system(&bytes, ' ', zero, native_zero);
             let own = Style {
-                tab_size: crate::TabSize::spaces(4.0).unwrap(),
+                tab_size: crate::tabs::TabSize::spaces(4.0).unwrap(),
                 ..style(4.0)
             };
             let mut value = input(&source, own.clone(), &[0, 3]);
             value.tab_reference = Some(
-                crate::ParagraphTabReference::new(own, ParagraphBaseDirection::LeftToRight)
+                crate::tabs::ParagraphTabReference::new(own, ParagraphBaseDirection::LeftToRight)
                     .unwrap(),
             );
             let p = system
                 .prepare(
                     &analyze(value, orientation),
-                    PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops)
+                    PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::CssStops)
                         .unwrap()
                         .with_orientation(orientation),
                 )
@@ -696,9 +696,9 @@ fn hypothetical_block_space_uses_the_same_intrinsic_zero_gate_without_inventing_
             let line = p
                 .select(selection)
                 .unwrap()
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             // Positive block SPACE10 plus authored4 gives a56px grid and
@@ -736,7 +736,7 @@ fn indication_prefix(prepared: &PreparedText) -> FinalizedLine {
         .unwrap();
     assert_eq!(
         cut.counts(),
-        Some(crate::HyphenationCounts {
+        Some(crate::protocol::HyphenationCounts {
             total: 10,
             before: 5,
             after: 5
@@ -756,14 +756,14 @@ fn indication_prefix(prepared: &PreparedText) -> FinalizedLine {
         .participants()
         .take(selection.end.view().participant_offset())
         .collect();
-    selection.termination = crate::PreparedTermination::Ordinary(offer);
+    selection.termination = crate::protocol::PreparedTermination::Ordinary(offer);
     selection.alternative = Some(alternative);
     prepared
         .select(selection)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -775,8 +775,10 @@ fn an_actual_selected_indication_gets_authored_spacing_from_its_own_complete_sep
     let source = Source::identified("AAAAA\u{ad}AAAAA", Id::from_u64(1564016), 2);
     for orientation in FRAMES {
         let own = Style {
-            hyphens: crate::Hyphens::Manual,
-            hyphenate_character: crate::HyphenateCharacter::String(crate::Text::from("\u{1361}")),
+            hyphens: crate::hyphenation::Hyphens::Manual,
+            hyphenate_character: crate::hyphenation::HyphenateCharacter::String(
+                crate::text::Text::from("\u{1361}"),
+            ),
             ..style(0.0)
         };
         let control = prepared(&mut system, &source, own.clone(), orientation, &[0, 11]);

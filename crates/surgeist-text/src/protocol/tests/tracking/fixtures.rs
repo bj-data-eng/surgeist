@@ -1,6 +1,9 @@
 //! Private actual-font and public-operation helpers for character spacing.
 use super::*;
-use crate::{Affinity, Cursor, Rect, Selection};
+use crate::{
+    geometry::Rect,
+    layout::{Affinity, Cursor, Selection},
+};
 
 pub(super) fn select_method(prepared: &PreparedText, method: SpacingPolicy) -> SelectedLine {
     let mut value = request(prepared);
@@ -101,10 +104,10 @@ pub(super) fn assert_cells(
 ) {
     assert_eq!(edges.len(), source.text().len() + 1);
     let total = *edges.last().unwrap();
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 20.0,

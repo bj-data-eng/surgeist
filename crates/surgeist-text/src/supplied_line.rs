@@ -382,7 +382,7 @@ mod tests {
     }
     #[test]
     fn l2_preserves_all_mixed_slots_and_top_resolved_level() {
-        use InlineWhitespaceEdge::Preserve;
+        use crate::supplied_line::InlineWhitespaceEdge::Preserve;
         assert_eq!(
             order(&[0, 1, 2, 2, 1, 0].map(|level| text(level, Preserve))),
             [0, 4, 2, 3, 1, 5]
@@ -451,7 +451,7 @@ mod tests {
     }
     #[test]
     fn edge_policies_stop_at_preserved_text_atomic_and_boundary_slots() {
-        use InlineWhitespaceEdge::*;
+        use crate::supplied_line::InlineWhitespaceEdge::*;
         for barrier in [
             text(0, Preserve),
             SuppliedInlineParticipant::Atomic {

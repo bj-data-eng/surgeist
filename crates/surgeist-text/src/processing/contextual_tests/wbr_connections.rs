@@ -61,7 +61,7 @@ fn analyze(p: ContextualSourceInput) -> AnalyzedSource {
     let p = Arc::new(process_contextual_source(p).unwrap());
     AnalyzedSource::from_processed_paragraph(
         p.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap()
 }
@@ -120,7 +120,7 @@ fn direct_positive_missing_side_refuses_even_with_a_nearest_lf_but_none_does_not
     for (text, at) in [("A\u{3099}", 1), ("A\nB", 2)] {
         let none = AnalyzedSource::from_paragraph(
             direct(WordSpaceTransform::None, text, at),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -133,7 +133,7 @@ fn direct_positive_missing_side_refuses_even_with_a_nearest_lf_but_none_does_not
         ] {
             let error = AnalyzedSource::from_paragraph(
                 direct(operation, text, at),
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap_err();
             assert_eq!(error.code, ErrorCode::UnsupportedFeature);
@@ -152,11 +152,14 @@ fn direct_positive_missing_side_refuses_even_with_a_nearest_lf_but_none_does_not
     let mut p = direct(WordSpaceTransform::Space, "ABCD", 2);
     p.controls[0].at = 3;
     assert_eq!(
-        AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap()
-            .inner
-            .projection
-            .text,
+        AnalyzedSource::from_paragraph(
+            p,
+            crate::analyzed::AnalysisTypography::HorizontalComposition
+        )
+        .unwrap()
+        .inner
+        .projection
+        .text,
         "ABC D"
     );
 }

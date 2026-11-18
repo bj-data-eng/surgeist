@@ -1,4 +1,25 @@
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail,
+    analyzed::AnalyzedSource,
+    error::TextTransformError,
+    layout::Affinity,
+    processing::{DocumentSegmentBreaks, process_source_whitespace},
+    protocol::{
+        ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge,
+        paragraph::{
+            CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
+            ParagraphConnectionKind, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::Source,
+    style::{CaseTransform, Style, TextTransform, TextTransformSet, WhiteSpace, Wrap},
+    style_support::{
+        TextStyleFeature, TextStylePhase, TextStyleSupport, UnsupportedTextStyleReason,
+    },
+    text::Text,
+};
 
 fn style() -> Style {
     Style {
@@ -78,7 +99,7 @@ fn every_raw_c1_pair_executes_with_actual_supplementary_output_and_original_cust
         let source = Source::new(char::from_u32(pair[0]).unwrap().to_string());
         let result = AnalyzedSource::from_paragraph(
             input(source.clone()),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(result.inner.projection.atoms.len(), 1);
@@ -133,8 +154,11 @@ fn complete_original_content_not_origin_size_kind_or_resource_identity_owns_elig
             })
             .to_vec();
         connection_policies(&mut i);
-        let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+        let a = AnalyzedSource::from_paragraph(
+            i,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             a.inner.projection.text,
             if separate { "𝑐𝑜𝑠" } else { "cos" }
@@ -155,7 +179,7 @@ fn complete_original_content_not_origin_size_kind_or_resource_identity_owns_elig
     for text in ["1", "∞", "𝑐", "c\u{301}", "c\u{fe0f}", "", "\u{1d400}"] {
         let a = AnalyzedSource::from_paragraph(
             input(Source::new(text)),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(a.inner.projection.text, text);
@@ -163,7 +187,7 @@ fn complete_original_content_not_origin_size_kind_or_resource_identity_owns_elig
     let opaque = Text::from_code_units(vec![0xd800, 0xfffd, 0xdc00]);
     let a = AnalyzedSource::from_paragraph(
         input(Source::new(opaque.clone())),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(a.source().text(), &opaque);
@@ -195,16 +219,21 @@ fn node_ranges_and_exact_correspondence_are_validated_even_without_math_demand()
     assert_eq!(half.range(), Range::new(1, 2));
     let mut low = input(Source::new(Text::from_code_units(vec![0xdc00])));
     low.origins[0].text_node = Some(half);
-    let actual =
-        AnalyzedSource::from_paragraph(low, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let actual = AnalyzedSource::from_paragraph(
+        low,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(actual.inner.projection.atoms[0].code_point, 0xdc00);
 
     let mut i = input(Source::new("c"));
     i.base_style.text_transform = TextTransform::none();
     i.origins[0].text_node = Some(node("A", Range::new(0, 1)));
-    let e = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-        .unwrap_err();
+    let e = AnalyzedSource::from_paragraph(
+        i,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidTextProtocol);
     assert_eq!(
         reason(&e),
@@ -221,16 +250,18 @@ fn demand_uses_only_winning_aggregate_styles_and_precedes_real_discard() {
         reason(
             &AnalyzedSource::from_paragraph(
                 discarded.clone(),
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             )
             .unwrap_err()
         ),
         &TextTransformError::MissingTextNodeContext { origin: 0 }
     );
     discarded.origins[0].text_node = Some(node(" ", Range::new(0, 1)));
-    let actual =
-        AnalyzedSource::from_paragraph(discarded, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let actual = AnalyzedSource::from_paragraph(
+        discarded,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert!(actual.inner.projection.atoms.is_empty());
     assert_eq!(actual.source().text(), &Text::from(" "));
 
@@ -238,8 +269,11 @@ fn demand_uses_only_winning_aggregate_styles_and_precedes_real_discard() {
         let mut i = input(Source::new(" c "));
         i.base_style.white_space = whitespace;
         i.origins[0].text_node = None;
-        let e = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap_err();
+        let e = AnalyzedSource::from_paragraph(
+            i,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap_err();
         assert_eq!(
             reason(&e),
             &TextTransformError::MissingTextNodeContext { origin: 0 }
@@ -254,8 +288,11 @@ fn demand_uses_only_winning_aggregate_styles_and_precedes_real_discard() {
     let mut i = input(aggregate);
     i.origins[0].source = resource;
     i.origins[0].text_node = None;
-    let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-        .unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        i,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.inner.projection.text, "c");
     let mut i = input(Source::new("c"));
     i.base_style = Style::default();
@@ -263,8 +300,11 @@ fn demand_uses_only_winning_aggregate_styles_and_precedes_real_discard() {
     i.origins[0].text_node = None;
     assert_eq!(
         reason(
-            &AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-                .unwrap_err()
+            &AnalyzedSource::from_paragraph(
+                i,
+                crate::analyzed::AnalysisTypography::HorizontalComposition
+            )
+            .unwrap_err()
         ),
         &TextTransformError::MissingTextNodeContext { origin: 0 }
     );
@@ -274,8 +314,11 @@ fn demand_uses_only_winning_aggregate_styles_and_precedes_real_discard() {
 fn original_eligibility_and_actual_surviving_phase_i_value_are_distinct() {
     let mut i = input(Source::new(" c "));
     i.base_style.white_space = WhiteSpace::Discard;
-    let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-        .unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        i,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.processed_source().processed_text(), &Text::from("c"));
     assert_eq!(a.inner.projection.text, "c");
     for whitespace in [
@@ -286,8 +329,11 @@ fn original_eligibility_and_actual_surviving_phase_i_value_are_distinct() {
         let mut i = input(Source::new("c"));
         i.base_style.white_space = whitespace;
         i.segment_breaks = DocumentSegmentBreaks::Defined(vec![Range::new(0, 1)]);
-        let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+        let a = AnalyzedSource::from_paragraph(
+            i,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             a.inner.projection.text,
             match whitespace {
@@ -302,13 +348,21 @@ fn original_eligibility_and_actual_surviving_phase_i_value_are_distinct() {
     let mut i = input(Source::new(""));
     i.origins[0].text_node = None;
     assert!(
-        AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition).is_ok()
+        AnalyzedSource::from_paragraph(
+            i,
+            crate::analyzed::AnalysisTypography::HorizontalComposition
+        )
+        .is_ok()
     );
     let mut i = input(Source::new(""));
     i.origins.clear();
     i.anchor_order.clear();
     assert!(
-        AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition).is_ok()
+        AnalyzedSource::from_paragraph(
+            i,
+            crate::analyzed::AnalysisTypography::HorizontalComposition
+        )
+        .is_ok()
     );
 }
 
@@ -329,7 +383,7 @@ fn raw_capability_refuses_math_including_empty_and_set_hashes_remain_distinct() 
         let e = AnalyzedSource::new(
             Source::new(text),
             style(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap_err();
         assert!(matches!(
@@ -399,7 +453,10 @@ fn math_rows_leave_original_casing_context_available_to_neighboring_sets() {
         kind: ParagraphConnectionKind::Continuous,
     }];
     connection_policies(&mut i);
-    let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
-        .unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        i,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.inner.projection.text, "𝛰ς");
 }

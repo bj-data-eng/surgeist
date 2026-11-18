@@ -1,7 +1,10 @@
 //! Authored spacing, InterWord replay and real selected line edges in Mixed.
 //! Text3 §§7.1/7.2 and Text4 §4.3/§8.1, with native predecessor-owned cells.
 use super::*;
-use crate::{Affinity, Cursor, SelectedLine, Selection, SpacingAllocation, SpacingSlotOwner};
+use crate::{
+    layout::{Affinity, Cursor, Selection},
+    protocol::{SelectedLine, SpacingAllocation, SpacingSlotOwner},
+};
 
 type Raw = (Range, GlyphBasis, u32, f64, f64, f64);
 fn raw(line: &FinalizedLine, bytes: &[u8]) -> Vec<Raw> {
@@ -29,17 +32,17 @@ fn prepare(system: &mut System, source: &Source, base_style: Style) -> PreparedT
     let value = ParagraphInput {
         source: source.clone(),
         base_style,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: extent,
             aggregate: extent,
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -49,7 +52,7 @@ fn prepare(system: &mut System, source: &Source, base_style: Style) -> PreparedT
     };
     let analyzed = crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_paragraph(value, AnalysisTypography::Mixed).unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analyzed.direction(), Direction::LeftToRight);
     system
@@ -65,7 +68,7 @@ fn selected(prepared: &PreparedText, method: SpacingPolicy) -> SelectedLine {
     value.context.base_direction = ParagraphBaseDirection::LeftToRight;
     value.context.line_box_direction = LineBoxDirection::LeftToRight;
     value.context.available_inline = None;
-    value.context.alignment = crate::Alignment::Start;
+    value.context.alignment = crate::options::Alignment::Start;
     value.context.spacing = method;
     prepared.select(value).unwrap()
 }
@@ -115,7 +118,7 @@ fn separator(selected: &SelectedLine, prepared: &PreparedText, extent: Range) {
     let slot = selected.spacing_slots().next().unwrap();
     assert!(matches!(
         slot.target(),
-        crate::SpacingSlotTarget::Separator(_)
+        crate::protocol::SpacingSlotTarget::Separator(_)
     ));
     assert_eq!(
         slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
@@ -143,20 +146,20 @@ fn mixed_authored_endpoint_means_and_ic_replacements_retain_raw_axes_and_shared_
     let ordinary_source = Source::new("X一X");
     let ordinary = prepare(&mut system, &ordinary_source, own(0.0, 0.0));
     let control = selected(&ordinary, SpacingPolicy::None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(control.feedback().advance, 32.0);
-    let mut source = Source::identified("X一X", crate::Id::from_u64(1570060), 1);
+    let mut source = Source::identified("X一X", crate::id::Id::from_u64(1570060), 1);
     source.span(Range::new(1, 2), own(8.0, 0.0));
     let prepared = prepare(&mut system, &source, own(4.0, 0.0));
     let basis = selected(&prepared, SpacingPolicy::InterCharacter);
     let slots = basis.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 2);
     for (slot, full) in slots.iter().zip([(4.0, 8.0), (8.0, 4.0)]) {
-        let crate::SpacingSlotTarget::Boundary {
+        let crate::protocol::SpacingSlotTarget::Boundary {
             visual_before,
             visual_after,
         } = slot.target()
@@ -172,9 +175,9 @@ fn mixed_authored_endpoint_means_and_ic_replacements_retain_raw_axes_and_shared_
         );
     }
     let natural = basis
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // Raw32 plus6+6. Outer4/2 halves are absent, including at the R edges.
@@ -220,13 +223,13 @@ fn mixed_word_and_letter_spacing_add_to_interword_halves_without_changing_provid
         native(&bytes, " ", false, surgeist_shaper::script::LATIN, &[]),
         [(3, 0, 10.0, 0.0, 0.0)]
     );
-    let source = Source::identified("X 一", crate::Id::from_u64(1570061), 1);
+    let source = Source::identified("X 一", crate::id::Id::from_u64(1570061), 1);
     let mut system = system_with(&bytes);
     let ordinary = prepare(&mut system, &source, own(0.0, 0.0));
     let control = selected(&ordinary, SpacingPolicy::None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(control.feedback().advance, 32.0);
@@ -234,9 +237,9 @@ fn mixed_word_and_letter_spacing_add_to_interword_halves_without_changing_provid
     let basis = selected(&prepared, SpacingPolicy::InterWord);
     separator(&basis, &prepared, Range::new(1, 2));
     let natural = basis
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // Raw32 + two tracking4 boundaries + word6; half3 shifts SPACE paint.
@@ -255,7 +258,7 @@ fn mixed_word_and_letter_spacing_add_to_interword_halves_without_changing_provid
         let row = line.spacing_slots().next().unwrap();
         assert_eq!(
             row.geometry,
-            crate::SpacingSlotGeometry::Independent {
+            crate::protocol::SpacingSlotGeometry::Independent {
                 intrinsic_advance: 10.0
             }
         );
@@ -276,13 +279,13 @@ fn mixed_word_and_letter_spacing_add_to_interword_halves_without_changing_provid
 fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_space() {
     let bytes = mixed_fonts::fixture(true);
     premises(&bytes, true);
-    let source = Source::identified("X一 X", crate::Id::from_u64(1570062), 1);
+    let source = Source::identified("X一 X", crate::id::Id::from_u64(1570062), 1);
     let mut system = system_with(&bytes);
     let prepared = prepare(&mut system, &source, own(4.0, 6.0));
     let whole = selected(&prepared, SpacingPolicy::None)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(whole.feedback().advance, 60.0);
@@ -300,7 +303,7 @@ fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_s
     first.context.line_box_direction = LineBoxDirection::LeftToRight;
     first.context.end = LineEnd::Soft;
     first.context.available_inline = Some(60.0);
-    first.context.alignment = crate::Alignment::Center;
+    first.context.alignment = crate::options::Alignment::Center;
     first.context.spacing = SpacingPolicy::InterWord;
     first.end = offer.view().boundary();
     first.participants = prepared
@@ -311,9 +314,9 @@ fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_s
     let basis = prepared.select(first).unwrap();
     separator(&basis, &prepared, Range::new(2, 3));
     let natural = basis
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 46.0);
@@ -346,14 +349,14 @@ fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_s
     receiver.context.line_box_direction = LineBoxDirection::LeftToRight;
     receiver.context.start = LineStart::Continuation;
     receiver.context.available_inline = Some(60.0);
-    receiver.context.alignment = crate::Alignment::Center;
+    receiver.context.alignment = crate::options::Alignment::Center;
     receiver.context.spacing = SpacingPolicy::None;
     let second = prepared
         .select(receiver)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(second.feedback().advance, 10.0);
@@ -361,14 +364,14 @@ fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_s
     // Exactly one4px boundary disappeared at the cut:46+10 vs60.
     assert_eq!(natural.feedback().advance + second.feedback().advance, 56.0);
     for first in [natural, expanded, restored] {
-        let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+        let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared: prepared.clone(),
             coverage: PlacementCoverage::WholeParagraph,
             entries: [first, second.clone()]
                 .into_iter()
                 .enumerate()
                 .map(|(index, line)| {
-                    crate::PlacementEntry::Formatted(LinePlacement {
+                    crate::protocol::PlacementEntry::Formatted(LinePlacement {
                         line,
                         anchor: LineAnchor {
                             inline_origin: 20.0,

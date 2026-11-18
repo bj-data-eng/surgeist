@@ -3,11 +3,28 @@ use std::collections::BTreeSet;
 pub(crate) mod contextual;
 pub(crate) mod lexical;
 pub(crate) mod lexical_inventory;
-pub use contextual::*;
+pub use contextual::{
+    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedConnection,
+    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
+    CapturedJointFlow, CapturedParagraph, CapturedScope, CapturedScopeIntersection,
+    ComputedLineBoundaryError, ComputedLineBoundaryInput, ContextualSourceInput,
+    ProcessedParagraph, ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind,
+    ScopeAlignmentLimits, ScopeAlignmentUsage, ScopeFontReference, ScopeRole, SourceBoxSide,
+    SourceContinuityOperation, SourceProcessingConnection, SourceProcessingConnectionError,
+    SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
+    SourceProcessingJointFlow, SourceProcessingJointFlowError, SourceProcessingParagraph,
+    SourceProcessingScope, SourceProcessingScopeBoundaries, SourceProcessingTopology,
+    SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+};
 
 use crate::{
-    Affinity, DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, InlineBox, InlineBoxKind,
-    ProcessingCapacityError, Range, Result, Source, SourcePosition, Span, Style, Text, WhiteSpace,
+    Error, ErrorCode, ErrorDetail, Result,
+    error::{DocumentSegmentBreakError, ProcessingCapacityError},
+    layout::Affinity,
+    range::{Range, SourcePosition},
+    source::{InlineBox, InlineBoxKind, Source, Span},
+    style::{Style, WhiteSpace},
+    text::Text,
 };
 
 /// Actual document-language delimiter classification in original source units.
@@ -238,7 +255,7 @@ fn process_with_boundaries(
     paragraph: Option<&crate::protocol::paragraph::ParagraphData>,
     leader_pattern: bool,
 ) -> Result<ProcessedSource> {
-    crate::source_model::validate_structure(&source)?;
+    crate::source::validate_structure(&source)?;
     validate_delimiters(&source, &segment_breaks)?;
     let mut box_order = Vec::new();
     reserve(&mut box_order, source.boxes().len())?;
@@ -299,7 +316,7 @@ fn process_with_boundaries(
 
 /// The existing standalone front's actual untransformed correspondence.
 pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSource> {
-    crate::source_model::validate_structure(&source)?;
+    crate::source::validate_structure(&source)?;
     let mut box_order = Vec::new();
     reserve(&mut box_order, source.boxes().len())?;
     box_order.extend(0..source.boxes().len());
@@ -932,7 +949,7 @@ fn effective_modes(source: &Source, base: &Style) -> Result<Vec<EffectiveInterva
 fn admit_text_node(
     source: &Source,
     range: Range,
-    node: Option<&crate::CompleteTextNodeContribution>,
+    node: Option<&crate::protocol::paragraph::CompleteTextNodeContribution>,
     origin: usize,
     base: &Style,
     modes: &[EffectiveInterval],
@@ -949,7 +966,7 @@ fn admit_text_node(
                 .span
                 .map_or(base, |i| source.spans()[i].style())
                 .text_transform
-                == crate::TextTransform::MathAuto
+                == crate::style::TextTransform::MathAuto
         })
     {
         return Err(Error::new(
@@ -957,7 +974,7 @@ fn admit_text_node(
             "math-auto requires complete original Text-node context",
         )
         .with_detail(ErrorDetail::TextTransform {
-            reason: crate::TextTransformError::MissingTextNodeContext { origin },
+            reason: crate::error::TextTransformError::MissingTextNodeContext { origin },
         }));
     }
     Ok(())

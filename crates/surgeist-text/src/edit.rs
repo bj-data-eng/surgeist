@@ -1,5 +1,8 @@
-use super::{
-    Error, ErrorCode, ErrorDetail, Range, Result, Source, SourceRange, SourceRevision, Text, range,
+use crate::{
+    Error, ErrorCode, ErrorDetail, Result, range,
+    range::{Range, SourceRange},
+    source::{Source, SourceRevision},
+    text::Text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -19,8 +19,9 @@ use super::{
     unit_properties,
 };
 use crate::{
-    LineBreak, engine::resolve::AnalyzedStyleRun, projection::SourceProjection,
-    style::OrdinaryWordBreak,
+    engine::resolve::AnalyzedStyleRun,
+    projection::SourceProjection,
+    style::{LineBreak, OrdinaryWordBreak},
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -666,7 +667,7 @@ fn independent_ending(
     if !matches!(before.code_point, 0x20 | 0x09)
         || !matches!(
             style.white_space,
-            crate::WhiteSpace::Preserve | crate::WhiteSpace::PreserveSpaces
+            crate::style::WhiteSpace::Preserve | crate::style::WhiteSpace::PreserveSpaces
         )
         || matches!(after.code_point, 0x20 | 0x09)
         || opening.last() == Some(&true)
@@ -865,20 +866,20 @@ mod tests {
 
     pub(super) fn ordinary_boundaries(
         text: &str,
-        word_break: crate::WordBreak,
+        word_break: crate::style::WordBreak,
         line_break: LineBreak,
     ) -> Vec<Boundary> {
-        let source = crate::Source::new(text);
+        let source = crate::source::Source::new(text);
         let projection = SourceProjection::new(&source).unwrap();
         let styles = vec![AnalyzedStyleRun {
-            owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(
+            owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::range::Range::new(
                 0,
                 source.text().len(),
             )),
-            style: crate::ValidatedStyle::try_from(crate::Style {
+            style: crate::style::ValidatedStyle::try_from(crate::style::Style {
                 word_break,
                 line_break,
-                ..crate::Style::default()
+                ..crate::style::Style::default()
             })
             .unwrap(),
         }];
@@ -950,10 +951,10 @@ mod tests {
     #[test]
     fn ordinary_baseline_cannot_restore_sa_run_end_before_strict_small_kana() {
         for word_break in [
-            crate::WordBreak::Normal,
-            crate::WordBreak::KeepAll,
-            crate::WordBreak::BreakWord,
-            crate::WordBreak::Manual,
+            crate::style::WordBreak::Normal,
+            crate::style::WordBreak::KeepAll,
+            crate::style::WordBreak::BreakWord,
+            crate::style::WordBreak::Manual,
         ] {
             for strictness in [LineBreak::Auto, LineBreak::Normal, LineBreak::Strict] {
                 assert_ne!(
@@ -974,10 +975,10 @@ mod tests {
         // UAX55 LB23/28/29 retain alphabetic/numeric words; LB14 retains
         // opening context across spaces. LB18's unrelated SPACE cut survives.
         for word_break in [
-            crate::WordBreak::Normal,
-            crate::WordBreak::KeepAll,
-            crate::WordBreak::BreakWord,
-            crate::WordBreak::Manual,
+            crate::style::WordBreak::Normal,
+            crate::style::WordBreak::KeepAll,
+            crate::style::WordBreak::BreakWord,
+            crate::style::WordBreak::Manual,
         ] {
             for (text, expected) in [
                 ("กก12", vec![]),
@@ -1020,11 +1021,11 @@ mod tests {
         // SA Mn resolves to CM, so LB9 retains GL despite ICU's early Loose
         // return for the named iteration mark, including BreakAll's ID mode.
         for word_break in [
-            crate::WordBreak::Normal,
-            crate::WordBreak::KeepAll,
-            crate::WordBreak::BreakWord,
-            crate::WordBreak::Manual,
-            crate::WordBreak::BreakAll,
+            crate::style::WordBreak::Normal,
+            crate::style::WordBreak::KeepAll,
+            crate::style::WordBreak::BreakWord,
+            crate::style::WordBreak::Manual,
+            crate::style::WordBreak::BreakAll,
         ] {
             assert_ne!(
                 ordinary_boundaries(&text, word_break, LineBreak::Loose)[3],
@@ -1043,14 +1044,14 @@ mod tests {
             // LB9 excludes prior SP; LB8a does not prohibit before ZWJ.
             ("กก \u{200d}ก", 3, true),
         ] {
-            let source = crate::Source::new(text);
+            let source = crate::source::Source::new(text);
             let projection = SourceProjection::new(&source).unwrap();
             let styles = vec![AnalyzedStyleRun {
-                owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(
-                    0,
-                    source.text().len(),
-                )),
-                style: crate::ValidatedStyle::try_from(crate::Style::default()).unwrap(),
+                owner: crate::engine::resolve::AnalyzedStyleOwner::Source(
+                    crate::range::Range::new(0, source.text().len()),
+                ),
+                style: crate::style::ValidatedStyle::try_from(crate::style::Style::default())
+                    .unwrap(),
             }];
             let offsets: Vec<_> = projection
                 .segmentation
@@ -1094,14 +1095,14 @@ mod tests {
             ("a )", 2, false),
             ("a  b", 2, false),
         ] {
-            let source = crate::Source::new(text);
+            let source = crate::source::Source::new(text);
             let projection = SourceProjection::new(&source).unwrap();
             let styles = vec![AnalyzedStyleRun {
-                owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(
-                    0,
-                    source.text().len(),
-                )),
-                style: crate::ValidatedStyle::try_from(crate::Style::default()).unwrap(),
+                owner: crate::engine::resolve::AnalyzedStyleOwner::Source(
+                    crate::range::Range::new(0, source.text().len()),
+                ),
+                style: crate::style::ValidatedStyle::try_from(crate::style::Style::default())
+                    .unwrap(),
             }];
             let offsets: Vec<_> = projection
                 .segmentation

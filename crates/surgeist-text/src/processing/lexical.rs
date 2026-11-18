@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 mod continuity;
-use crate::SourceContinuityOperation;
+use crate::processing::SourceContinuityOperation;
 use continuity::{Adjacency, Edge, ExteriorContinuity, Frontier, Neighbor};
 
 use icu_properties::{CodePointMapData, CodePointSetData, props};
@@ -145,7 +145,7 @@ pub(super) enum ValidatedProcessingRequest<'a> {
         context: &'a super::contextual::ProcessingContext,
         capture: &'a Arc<super::contextual::ScopeCapture>,
         modes: &'a [EffectiveInterval],
-        origins: &'a [crate::ParagraphOrigin],
+        origins: &'a [crate::protocol::paragraph::ParagraphOrigin],
         provided: &'a [Option<usize>],
     },
 }
@@ -636,7 +636,7 @@ fn execute_contextual(
     context: &super::contextual::ProcessingContext,
     capture: &Arc<super::contextual::ScopeCapture>,
     modes: &[EffectiveInterval],
-    origins: &[crate::ParagraphOrigin],
+    origins: &[crate::protocol::paragraph::ParagraphOrigin],
     provided: &[Option<usize>],
 ) -> Result<LexicalOutput> {
     let mut frontiers = Vec::new();
@@ -712,7 +712,9 @@ fn execute_contextual(
             .origins
             .get(origin)
             .map(|(_, domain)| *domain)
-            .ok_or_else(|| super::contextual::invalid(crate::SourceProcessingError::Domain))?;
+            .ok_or_else(|| {
+                super::contextual::invalid(crate::processing::SourceProcessingError::Domain)
+            })?;
     }
     // All zero-extent actions precede the next original contribution. Their
     // stream order remains significant even at identical source offsets.

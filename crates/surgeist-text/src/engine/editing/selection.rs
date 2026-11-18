@@ -7,7 +7,11 @@
 use super::super::layout::data::{FinalizedVisualItem, PlacedLayout};
 use super::cursor::{admit, geometry};
 use crate::protocol::LineEnd;
-use crate::{Affinity, Cursor, Rect, Result, Selection, SelectionGeometry, SelectionRect};
+use crate::{
+    Result,
+    geometry::Rect,
+    layout::{Affinity, Cursor, Selection, SelectionGeometry, SelectionRect},
+};
 
 pub(crate) fn selection(layout: &PlacedLayout, value: Selection) -> Result<SelectionGeometry> {
     crate::range::validate(
@@ -40,7 +44,7 @@ pub(crate) fn selection(layout: &PlacedLayout, value: Selection) -> Result<Selec
 
 pub(super) fn between(
     layout: &PlacedLayout,
-    range: crate::Range,
+    range: crate::range::Range,
     start_line: usize,
     end_line: usize,
 ) -> Result<SelectionGeometry> {
@@ -86,7 +90,7 @@ pub(super) fn between(
                                 }
                                 | crate::protocol::prepared::AlternativeDefinition::Automatic {
                                     ..
-                                } => crate::Range::new(anchor, anchor),
+                                } => crate::range::Range::new(anchor, anchor),
                             };
                                 overlaps(cluster.presentation, piece.presentation)
                                     && (overlaps(defining, range) || range.contains(anchor))
@@ -272,7 +276,7 @@ pub(super) fn with_membership(
     Ok(SelectionGeometry::new(output))
 }
 
-fn overlaps(a: crate::Range, b: crate::Range) -> bool {
+fn overlaps(a: crate::range::Range, b: crate::range::Range) -> bool {
     a.start < b.end && b.start < a.end
 }
 
@@ -289,8 +293,8 @@ fn push_local(
     if !start.is_finite() || !end.is_finite() {
         return Err(crate::error::text_numeric_error(
             "selected source rectangle",
-            crate::TextNumericPhase::Placement,
-            crate::TextNumericError::NonFinite,
+            crate::error::TextNumericPhase::Placement,
+            crate::error::TextNumericError::NonFinite,
             end,
         ));
     }
@@ -307,8 +311,8 @@ fn push_local(
             if !value.is_finite() {
                 return Err(crate::error::text_numeric_error(
                     field,
-                    crate::TextNumericPhase::Placement,
-                    crate::TextNumericError::NonFinite,
+                    crate::error::TextNumericPhase::Placement,
+                    crate::error::TextNumericError::NonFinite,
                     value,
                 ));
             }

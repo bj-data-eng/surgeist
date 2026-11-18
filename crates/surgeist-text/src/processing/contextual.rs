@@ -4,10 +4,21 @@ use crate::protocol::paragraph::{
     OriginData, OriginSource, ParagraphData, SemanticAnchor, SemanticAnchorItem,
 };
 use crate::{
-    Affinity, AnalyzedSource, InlineBoxKind, ParagraphBaseDirection, ParagraphBoundaryDefinition,
-    ParagraphBoundaryPolicy, ParagraphConnection, ParagraphConnectionKind, ParagraphControl,
-    ParagraphControlKind, ParagraphOrigin, ParagraphReplacement, ParagraphReplacementDefinition,
-    ParagraphStrut, ParagraphTabReference, Range, Result, Source, Style,
+    Result,
+    analyzed::AnalyzedSource,
+    layout::Affinity,
+    protocol::{
+        ParagraphBaseDirection,
+        paragraph::{
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
+            ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+            ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{InlineBoxKind, Source},
+    style::Style,
+    tabs::ParagraphTabReference,
 };
 use std::sync::Arc;
 
@@ -21,7 +32,11 @@ pub use alignment::{
     ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
     ScopeAlignmentUsage, ScopeFontReference,
 };
-pub use capture::*;
+pub use capture::{
+    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedConnection,
+    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
+    CapturedJointFlow, CapturedParagraph, CapturedScope, CapturedScopeIntersection, ScopeRole,
+};
 pub use computed::{ComputedLineBoundaryError, ComputedLineBoundaryInput, SourceBoxSide};
 pub use connection::SourceProcessingConnectionError;
 pub use joint_flow::{SourceProcessingJointFlow, SourceProcessingJointFlowError};
@@ -593,7 +608,7 @@ impl AnalyzedSource {
     /// nearest-block tab reference remains a separate authority.
     pub fn from_processed_paragraph(
         paragraph: ProcessedParagraph,
-        typography: crate::AnalysisTypography,
+        typography: crate::analyzed::AnalysisTypography,
     ) -> Result<Self> {
         let data = paragraph.data().clone();
         Ok(Self::from_inner(crate::engine::analyze_paragraph(
@@ -691,7 +706,7 @@ fn process_capture(
     if input.envelope != SourceProcessingEnvelope::Complete {
         return Err(invalid(SourceProcessingError::IncompleteExterior));
     }
-    crate::source_model::validate_structure(&input.source)?;
+    crate::source::validate_structure(&input.source)?;
     super::validate_delimiters(&input.source, &input.segment_breaks)?;
     let scope_alignment =
         alignment::ScopeAlignmentCapture::capture(&input.scopes, input.scope_alignment_limits)?;
@@ -785,7 +800,7 @@ fn process_capture(
     };
     for scope in &topology.scopes {
         if let Some(style) = &scope.style {
-            crate::ValidatedStyle::for_processed(style.clone())?;
+            crate::style::ValidatedStyle::for_processed(style.clone())?;
         }
     }
     let mut control_orders = vec![usize::MAX; input.controls.len()];
@@ -1412,9 +1427,9 @@ fn process_capture(
                         .collect(),
                 }),
                 terminal_edge: if terminal && !context.leader_pattern {
-                    crate::ParagraphTerminalEdge::BlockEnd
+                    crate::protocol::ParagraphTerminalEdge::BlockEnd
                 } else {
-                    crate::ParagraphTerminalEdge::NonBlockBoundary
+                    crate::protocol::ParagraphTerminalEdge::NonBlockBoundary
                 },
                 base_direction: Some(input.paragraphs[index].base_direction),
                 paragraph_strut: input.paragraphs[index].paragraph_strut,
@@ -1470,7 +1485,7 @@ fn process_capture(
         source: input.source,
         base_style: context.domains[0].style.clone(),
         segment_breaks: input.segment_breaks,
-        processed: crate::Text::from_code_units(units),
+        processed: crate::text::Text::from_code_units(units),
         leader_pattern: context.leader_pattern,
         map,
         box_order,

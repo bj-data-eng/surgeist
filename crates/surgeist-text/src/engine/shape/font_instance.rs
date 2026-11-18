@@ -111,8 +111,8 @@ pub(crate) fn scope_font(
 }
 
 fn work_overflow() -> Error {
-    super::super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+    super::super::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
+        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
     })
 }
 

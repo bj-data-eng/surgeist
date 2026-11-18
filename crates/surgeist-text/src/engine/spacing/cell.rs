@@ -169,9 +169,11 @@ impl CellWordExecution {
         account::work(ledger, self.units.len())?;
         let visits = self.units.iter().try_fold(self.units.len(), |n, unit| {
             n.checked_add(unit.components.len()).ok_or_else(|| {
-                super::super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                    kind: crate::ScopeAlignmentLimitKind::StructuralWork,
-                })
+                super::super::scope_alignment::refusal(
+                    crate::processing::ScopeAlignmentError::Overflow {
+                        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
+                    },
+                )
             })
         })?;
         account::work(ledger, visits)?;

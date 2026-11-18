@@ -2,8 +2,11 @@
 use super::*;
 use crate::protocol::measurements::{EdgeRow, EdgeRows, OuterEdge};
 use crate::{
-    FormattedLineUsage, HangingPunctuationEnd, InlineMeasure, LineEdgeDisposition as Edge,
-    LineEdgeSide as Side, LineMeasurements,
+    protocol::{
+        FormattedLineUsage, InlineMeasure, LineEdgeDisposition as Edge, LineEdgeSide as Side,
+        LineMeasurements,
+    },
+    style::HangingPunctuationEnd,
 };
 
 mod punctuation;
@@ -25,9 +28,9 @@ pub(super) struct AllocatedMeasurements {
     formatted_usage: FormattedLineUsage,
     pub(super) alignment: InlineMeasure,
     fit: InlineMeasure,
-    margin_fit: crate::MarginEdgeFit,
-    margin_minimum: crate::MarginEdgeFit,
-    margin_maximum: crate::MarginEdgeFit,
+    margin_fit: crate::protocol::MarginEdgeFit,
+    margin_minimum: crate::protocol::MarginEdgeFit,
+    margin_maximum: crate::protocol::MarginEdgeFit,
     minimum: InlineMeasure,
     maximum: InlineMeasure,
     edges: AllocatedEdges,
@@ -99,7 +102,7 @@ pub(super) struct Natural {
     causes: Vec<Cause>,
     removed: Vec<bool>,
     raw_trim: Vec<bool>,
-    deferred: Vec<Option<(crate::SpacingDeferredCause, Side)>>,
+    deferred: Vec<Option<(crate::protocol::SpacingDeferredCause, Side)>>,
     usage: FormattedLineUsage,
     capacity: Option<Option<f64>>,
     positions: Vec<(f64, f64)>,
@@ -111,7 +114,7 @@ struct Cause {
     effects: [bool; 4],
     conditional: bool,
     eligible: bool,
-    punctuation: Option<crate::PresentationRange>,
+    punctuation: Option<crate::protocol::PresentationRange>,
     first: bool,
 }
 
@@ -136,7 +139,7 @@ fn positions(
     selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &OrdinalMap<&AtomicAllocation>,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    order: &crate::supplied_line::SuppliedVisualOrder<'_, '_>,
     ledger: &mut Ledger,
 ) -> Result<(Vec<(f64, f64)>, f64)> {
     account::work(ledger, shaped.items.len())?;
@@ -249,7 +252,7 @@ fn raw_trailing(
             ShapedItem::Anchor { unit } => {
                 if crate::protocol::boundary::facts(selected.presentation_input(), unit)
                     .allocation()
-                    .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
+                    .is_some_and(crate::protocol::InlineBoundaryAllocation::blocks_hanging)
                 {
                     break;
                 }
@@ -274,9 +277,9 @@ fn role(selected: &SelectedData, first: bool, usage: &mut FormattedLineUsage) ->
     })
     .ok_or_else(|| {
         protocol_error(ProtocolError::MissingPhaseTwoContext(if first {
-            crate::PhaseTwoContext::FirstFormattedLine
+            crate::protocol::PhaseTwoContext::FirstFormattedLine
         } else {
-            crate::PhaseTwoContext::LastFormattedLine
+            crate::protocol::PhaseTwoContext::LastFormattedLine
         }))
     })
 }
@@ -285,7 +288,7 @@ pub(super) fn natural(
     selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &OrdinalMap<&AtomicAllocation>,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    order: &crate::supplied_line::SuppliedVisualOrder<'_, '_>,
     dispositions: &[SpacingSlotDisposition],
     ledger: &mut Ledger,
 ) -> Result<Natural> {
@@ -363,7 +366,7 @@ pub(super) fn natural(
             visual.reverse()
         }
         let mut terminal = [true; 4];
-        let mut deferred: Option<crate::SpacingDeferredCause> = None;
+        let mut deferred: Option<crate::protocol::SpacingDeferredCause> = None;
         let mut quota = false;
         let mut handled = account::filled(ledger, units.len(), false)?;
         for &ordinal in &visual {
@@ -371,7 +374,7 @@ pub(super) fn natural(
                 ShapedItem::Anchor { unit } => {
                     if crate::protocol::boundary::facts(selected.presentation_input(), unit)
                         .allocation()
-                        .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
+                        .is_some_and(crate::protocol::InlineBoundaryAllocation::blocks_hanging)
                     {
                         break;
                     }
@@ -491,13 +494,13 @@ pub(super) fn natural(
                 .authored();
             if matches!(
                 style.white_space,
-                crate::WhiteSpace::Discard | crate::WhiteSpace::BreakSpaces
+                crate::style::WhiteSpace::Discard | crate::style::WhiteSpace::BreakSpaces
             ) {
                 break;
             }
             let conditional = if style.white_space.collapses_spaces() {
                 false
-            } else if style.wrap == crate::Wrap::None {
+            } else if style.wrap == crate::style::Wrap::None {
                 break;
             } else {
                 match selected.request.context.end {
@@ -505,15 +508,16 @@ pub(super) fn natural(
                     LineEnd::Forced => true,
                     LineEnd::Paragraph => {
                         match selected.prepared.analyzed.paragraph.terminal_edge {
-                            crate::ParagraphTerminalEdge::BlockEnd => true,
-                            crate::ParagraphTerminalEdge::Unknown => {
-                                deferred =
-                                    Some(crate::SpacingDeferredCause::MissingTerminalBlockEdge);
+                            crate::protocol::ParagraphTerminalEdge::BlockEnd => true,
+                            crate::protocol::ParagraphTerminalEdge::Unknown => {
+                                deferred = Some(
+                                    crate::protocol::SpacingDeferredCause::MissingTerminalBlockEdge,
+                                );
                                 false
                             }
-                            crate::ParagraphTerminalEdge::NonBlockBoundary => {
+                            crate::protocol::ParagraphTerminalEdge::NonBlockBoundary => {
                                 deferred =
-                                    Some(crate::SpacingDeferredCause::NonBlockParagraphBoundary);
+                                    Some(crate::protocol::SpacingDeferredCause::NonBlockParagraphBoundary);
                                 false
                             }
                         }
@@ -651,7 +655,7 @@ struct Baseline {
 /// The actual order and its selected-only BoxEdge authority. Context-only
 /// declarations do not produce a plan; zero-valued selected BoxEdges do.
 pub(super) struct MeasurementOrder<'order, 'source, 'scratch> {
-    pub(super) order: &'order crate::SuppliedVisualOrder<'source, 'scratch>,
+    pub(super) order: &'order crate::supplied_line::SuppliedVisualOrder<'source, 'scratch>,
     pub(super) box_edges: Option<&'order crate::protocol::inline_box::execution::ExecutionPlan>,
 }
 
@@ -659,7 +663,7 @@ pub(super) struct MeasurementOrder<'order, 'source, 'scratch> {
 /// Exclusion purposes vary; none may restore the selection's former traversal.
 struct MeasurementExecution<'positions, 'source, 'scratch> {
     positions: &'positions [(f64, f64)],
-    order: &'positions crate::SuppliedVisualOrder<'source, 'scratch>,
+    order: &'positions crate::supplied_line::SuppliedVisualOrder<'source, 'scratch>,
     box_edges: Option<&'positions crate::protocol::inline_box::execution::ExecutionPlan>,
 }
 fn measure(
@@ -670,7 +674,7 @@ fn measure(
     exclusions: &[Exclusion],
     baseline: Baseline,
     ledger: &mut Ledger,
-) -> Result<(InlineMeasure, crate::MarginEdgeFit)> {
+) -> Result<(InlineMeasure, crate::protocol::MarginEdgeFit)> {
     let positions = execution.positions;
     let canonical_box_flow =
         execution.box_edges.is_some() && selected.metric_policy == LineMetricPolicy::Native;
@@ -726,7 +730,8 @@ fn measure(
                 }
                 ShapedItem::InlineBox { occurrence, .. } => {
                     let (flow, _, _, fit) = inflow_allocation(atomics[&occurrence])?;
-                    css_composed |= matches!(fit, crate::AtomicFitAllocation::CssMarginBox(_));
+                    css_composed |=
+                        matches!(fit, crate::protocol::AtomicFitAllocation::CssMarginBox(_));
                     if baseline.raw_advance.is_some() {
                         0.0
                     } else {
@@ -807,7 +812,9 @@ fn measure(
                     flow.occupied_end,
                 )?;
                 include(&mut bounds, left, right);
-                if css_composed && matches!(fit, crate::AtomicFitAllocation::NativeOccupied) {
+                if css_composed
+                    && matches!(fit, crate::protocol::AtomicFitAllocation::NativeOccupied)
+                {
                     include(&mut opaque, left, right);
                 }
                 super::super::super::spacing::character::atomic_advance(
@@ -876,9 +883,9 @@ fn measure(
         occupied_end,
     };
     let admission = if css_composed {
-        crate::MarginEdgeFit::css(fit_flow, opaque)?
+        crate::protocol::MarginEdgeFit::css(fit_flow, opaque)?
     } else {
-        crate::MarginEdgeFit::native(raw)?
+        crate::protocol::MarginEdgeFit::native(raw)?
     };
     Ok((raw, admission))
 }
@@ -888,11 +895,11 @@ fn measure(
 pub(super) fn spacing_responses(
     selected: &SelectedData,
     shaped: &ShapedData,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    order: &crate::supplied_line::SuppliedVisualOrder<'_, '_>,
     natural: &Natural,
     ledger: &mut Ledger,
-) -> Result<Vec<(crate::SpacingStretchability, usize)>> {
-    use crate::SpacingStretchability as Response;
+) -> Result<Vec<(crate::protocol::SpacingStretchability, usize)>> {
+    use crate::protocol::SpacingStretchability as Response;
     let mut exclusions = account::filled(ledger, shaped.clusters.len(), Exclusion::default())?;
     for (i, exclusion) in exclusions.iter_mut().enumerate() {
         exclusion.flow = natural.removed[i] || natural.raw_trim[i];

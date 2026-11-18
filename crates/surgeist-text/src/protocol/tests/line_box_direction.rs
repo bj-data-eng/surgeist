@@ -7,7 +7,36 @@ mod alignment_frame;
 mod post_expansion_overflow;
 
 use super::*;
-use crate::*;
+use crate::{
+    ErrorDetail, System,
+    analyzed::AnalyzedSource,
+    error::{TextNumericError, TextNumericPhase},
+    geometry::{Rect, Size},
+    id::Id,
+    layout::{Affinity, Cursor, Layout, Selection},
+    options::{Alignment, Indent, Options},
+    processing::DocumentSegmentBreaks,
+    protocol::{
+        AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+        AtomicPlacement, ConditionalPurpose, ControlAllocation, ControlStrut, FinalizedLine,
+        InlineBoundaryAllocation, InlineMeasure, LineAlignmentInsets, LineAnchor, LineBoxAlignment,
+        LineBoxDirection, LineEdgeDisposition, LineEdgeSide, LineEnd, LineOrientation,
+        LinePlacement, LineSelectionRequest, LineStart, ParagraphBaseDirection, ParagraphInput,
+        ParagraphTerminalEdge, PlacementCoverage, PlacementEntry, PlacementRequest,
+        PreparationOptions, PreparedBreakKind, PreparedTermination, PreparedText,
+        ProtocolContextField, ProtocolError, SpacingAllocation, SpacingAllocations, SpacingPolicy,
+        TabContext,
+        paragraph::{
+            ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition,
+            ParagraphBoundaryPolicy, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+            ParagraphOriginKind, ParagraphStrut,
+        },
+    },
+    range::Range,
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{Direction, Font, LineHeight, OverflowWrap, Style, WhiteSpace, Wrap},
+    tabs::{ParagraphTabReference, TabPreparation, TabSize},
+};
 
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const BOXES: [LineBoxDirection; 2] = [LineBoxDirection::LeftToRight, LineBoxDirection::RightToLeft];
@@ -57,7 +86,7 @@ fn capture(
             replacements: vec![],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
@@ -101,9 +130,9 @@ fn context(
 fn finish(p: &PreparedText, request: LineSelectionRequest) -> FinalizedLine {
     p.select(request)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -415,7 +444,7 @@ fn conditional_prefix_can_resolve_opposite_to_its_failed_ordinary_frame_and_keep
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&ordinary),
+            crate::protocol::ConditionalLineContext::Finalized(&ordinary),
         )
         .unwrap();
     let other = p
@@ -428,7 +457,7 @@ fn conditional_prefix_can_resolve_opposite_to_its_failed_ordinary_frame_and_keep
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            crate::ConditionalLineContext::Finalized(&other_frame),
+            crate::protocol::ConditionalLineContext::Finalized(&other_frame),
         )
         .unwrap();
     assert_ne!(

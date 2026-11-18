@@ -1,5 +1,13 @@
 //! Independent used-reference observations from real registered font tables.
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    error::{FontMetricTable, FontMetricTableError},
+    font::{
+        FontBaseline, FontBaselineAbsence, FontBaselineAxis, FontBaselineOutcome,
+        FontBaselineProvenance, FontBaselineScript, FontData, FontOutlineCapability,
+        FontOutlineError, UprightFontMetrics, UprightMetricProvenance, UprightMetricReference,
+    },
+};
 use crate::{baseline_test_fonts as base, test_fonts as sfnt, vertical_test_fonts as vertical};
 use skrifa::{MetadataProvider, raw::TableProvider};
 

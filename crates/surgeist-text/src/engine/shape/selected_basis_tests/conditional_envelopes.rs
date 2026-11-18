@@ -58,9 +58,9 @@ fn every_final_material_endpoint_was_covered(selected: &SelectedLine) {
             .unwrap();
         if matches!(
             movement,
-            crate::SpacingBoundaryGeometry::ProtectedRequired
-                | crate::SpacingBoundaryGeometry::ProtectedCursive
-        ) || boundary.geometry == crate::SpacingBoundaryGeometry::ProtectedCursive
+            crate::protocol::SpacingBoundaryGeometry::ProtectedRequired
+                | crate::protocol::SpacingBoundaryGeometry::ProtectedCursive
+        ) || boundary.geometry == crate::protocol::SpacingBoundaryGeometry::ProtectedCursive
         {
             continue;
         }
@@ -100,9 +100,9 @@ fn select_counted(
 fn finalize_retained(selected: &SelectedLine, calls: usize) -> FinalizedLine {
     let coverage = coverage_signature(selected);
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_calls(calls);
@@ -941,9 +941,9 @@ fn a_real_disconnection_keeps_an_unrelated_neutral_component_outside_conditional
             kind: ParagraphOriginKind::Authored,
         })
         .collect();
-    value.connections = vec![crate::ParagraphConnection {
+    value.connections = vec![crate::protocol::paragraph::ParagraphConnection {
         at: 3,
-        kind: crate::ParagraphConnectionKind::Disconnected,
+        kind: crate::protocol::paragraph::ParagraphConnectionKind::Disconnected,
     }];
     let mut system = system(&bytes);
     let prepared = prepare(&mut system, value, LineOrientation::Horizontal);

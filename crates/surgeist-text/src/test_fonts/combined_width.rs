@@ -348,7 +348,13 @@ mod tests {
 
     #[test]
     fn renamed_family_is_selected_by_real_registered_only_text_shaping() {
-        use crate::{Font, Id, LineHeight, Options, Source, Style, System, WhiteSpace, Wrap};
+        use crate::{
+            System,
+            id::Id,
+            options::Options,
+            source::Source,
+            style::{Font, LineHeight, Style, WhiteSpace, Wrap},
+        };
         let bytes = combined_width_ahem();
         let mut system = System::default();
         system

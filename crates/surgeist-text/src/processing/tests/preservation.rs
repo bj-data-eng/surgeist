@@ -103,21 +103,21 @@ fn new_modes_keep_raw_standalone_admission_explicit() {
     for (mode, feature) in [
         (
             WhiteSpace::PreserveBreaks,
-            crate::TextStyleFeature::WhiteSpacePreserveBreaks,
+            crate::style_support::TextStyleFeature::WhiteSpacePreserveBreaks,
         ),
         (
             WhiteSpace::BreakSpaces,
-            crate::TextStyleFeature::WhiteSpaceBreakSpaces,
+            crate::style_support::TextStyleFeature::WhiteSpaceBreakSpaces,
         ),
     ] {
         assert_eq!(
-            feature.support(crate::TextStylePhase::ProcessedParagraph),
-            crate::TextStyleSupport::Supported
+            feature.support(crate::style_support::TextStylePhase::ProcessedParagraph),
+            crate::style_support::TextStyleSupport::Supported
         );
         assert_eq!(
-            feature.support(crate::TextStylePhase::Standalone),
-            crate::TextStyleSupport::Unsupported(
-                crate::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
+            feature.support(crate::style_support::TextStylePhase::Standalone),
+            crate::style_support::TextStyleSupport::Unsupported(
+                crate::style_support::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
             )
         );
         let mut system = crate::System::default();
@@ -128,14 +128,15 @@ fn new_modes_keep_raw_standalone_admission_explicit() {
                     white_space: mode,
                     ..Style::default()
                 },
-                crate::Options::default(),
+                crate::options::Options::default(),
             )
             .unwrap_err();
         assert_eq!(
             error.detail(),
             Some(&ErrorDetail::UnsupportedTextStyle {
                 feature,
-                reason: crate::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
+                reason:
+                    crate::style_support::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
             })
         );
     }
@@ -565,14 +566,14 @@ fn exact_units_and_discard_regressions_hold_under_both_explicit_affinities() {
                 white_space: WhiteSpace::PreserveSpaces,
                 ..Style::default()
             },
-            crate::Options::default(),
+            crate::options::Options::default(),
         )
         .unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::UnsupportedTextStyle {
-            feature: crate::TextStyleFeature::WhiteSpacePreserveSpaces,
-            reason: crate::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
+            feature: crate::style_support::TextStyleFeature::WhiteSpacePreserveSpaces,
+            reason: crate::style_support::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
         })
     );
 }

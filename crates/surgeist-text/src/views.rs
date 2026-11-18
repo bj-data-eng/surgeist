@@ -5,8 +5,12 @@ use crate::engine::{
     layout::data::{FinalizedRun, PreparedRun},
 };
 use crate::{
-    Brush, DecorationKind, DecorationOffset, DecorationRun, DecorationThickness,
-    EffectiveFontInstance, FontFace, Layout, Point, Range, Rect, Result,
+    Result,
+    font::{EffectiveFontInstance, FontFace},
+    geometry::{Point, Rect},
+    layout::{DecorationKind, DecorationRun, Layout},
+    range::Range,
+    style::{Brush, DecorationOffset, DecorationThickness},
 };
 
 /// One paint-order run borrowed from the immutable committed layout.
@@ -57,8 +61,8 @@ impl Layout {
                 if !value.is_finite() {
                     return Err(crate::error::text_numeric_error(
                         field,
-                        crate::TextNumericPhase::Placement,
-                        crate::TextNumericError::NonFinite,
+                        crate::error::TextNumericPhase::Placement,
+                        crate::error::TextNumericError::NonFinite,
                         value,
                     ));
                 }
@@ -82,12 +86,12 @@ impl RunView<'_> {
     }
     /// Admitted line basis. The inline pen axis is separate from glyph axes.
     #[must_use]
-    pub const fn orientation(&self) -> crate::LineOrientation {
+    pub const fn orientation(&self) -> crate::protocol::LineOrientation {
         self.placed.orientation
     }
     /// Actual outline axes retained by this run's shaping operation.
     #[must_use]
-    pub const fn glyph_basis(&self) -> crate::GlyphBasis {
+    pub const fn glyph_basis(&self) -> crate::geometry::GlyphBasis {
         self.shaped.glyph_basis
     }
     /// Actual shaped-run ordinal within this finalized line.
@@ -119,7 +123,7 @@ impl RunView<'_> {
     }
     /// Executed glyph frame, including actual cell compression and pen axes.
     #[must_use]
-    pub fn glyph_frame(&self) -> crate::GlyphFrame {
+    pub fn glyph_frame(&self) -> crate::geometry::GlyphFrame {
         crate::layout::run_glyph_frame(self.placed, self.run, self.shaped)
     }
     /// Actual physical font-design origin. Use [`Self::glyph_frame`] for raw
@@ -147,19 +151,19 @@ impl RunView<'_> {
     /// font and paint origin.
     pub fn baseline(
         &self,
-        expected: &crate::CataloguePublication,
-        axis: crate::FontBaselineAxis,
-        name: crate::FontBaseline,
-    ) -> Result<crate::FontBaselineMeasurement<'_>> {
+        expected: &surgeist_font::CataloguePublication,
+        axis: crate::font::FontBaselineAxis,
+        name: crate::font::FontBaseline,
+    ) -> Result<crate::font::FontBaselineMeasurement<'_>> {
         let script =
-            crate::FontBaselineScript::from_script(self.shaped.script).ok_or_else(|| {
+            crate::font::FontBaselineScript::from_script(self.shaped.script).ok_or_else(|| {
                 crate::Error::new(
                     crate::ErrorCode::InvalidFontMetrics,
                     "unavailable actual baseline script",
                 )
                 .with_detail(crate::ErrorDetail::FontMetricTable {
-                    table: crate::FontMetricTable::Base,
-                    reason: crate::FontMetricTableError::BaselineScriptUnavailable,
+                    table: crate::error::FontMetricTable::Base,
+                    reason: crate::error::FontMetricTableError::BaselineScriptUnavailable,
                 })
             })?;
         self.effective_instance()?
@@ -220,7 +224,8 @@ impl GlyphPlacement {
 
 fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
     if run.run.glyphs.is_empty()
-        && run.layout.inner.prepared.analyzed.typography == crate::AnalysisTypography::Mixed
+        && run.layout.inner.prepared.analyzed.typography
+            == crate::analyzed::AnalysisTypography::Mixed
         && !crate::engine::layout::metric_only_decoration_demand(
             run.shaped,
             &run.placed.finalized.selected.basis.shaped,
@@ -271,7 +276,7 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
         } else {
             0.0
         };
-        let rect = if run.orientation() == crate::LineOrientation::Horizontal {
+        let rect = if run.orientation() == crate::protocol::LineOrientation::Horizontal {
             let alignment_origin = crate::layout::line_point(
                 run.placed,
                 Point::new(
@@ -306,8 +311,8 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
         Some(DecorationRun::new(
             rect,
             match decoration.brush() {
-                crate::DecorationBrush::TextColor => style.brush,
-                crate::DecorationBrush::Color(brush) => brush,
+                crate::style::DecorationBrush::TextColor => style.brush,
+                crate::style::DecorationBrush::Color(brush) => brush,
             },
             kind,
         ))

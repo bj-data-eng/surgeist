@@ -7,7 +7,7 @@ use super::{
     FinalizedLine, FlowObservationRequest, LineSelectionRequest, PreparedFlowSegment, PreparedText,
     SelectedLine,
 };
-use crate::ScopeAlignmentUsage;
+use crate::processing::ScopeAlignmentUsage;
 
 /// Executed census costs after traversal scratch has been discarded.
 /// Borrowed retained rows remain in usage; only newly materialized census rows

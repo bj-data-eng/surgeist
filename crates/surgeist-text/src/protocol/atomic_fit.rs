@@ -1,6 +1,9 @@
 //! Explicit fitting authority for one actual in-flow atomic allocation.
 use super::AtomicFlowAllocation;
-use crate::{Result, TextNumericError, TextNumericPhase};
+use crate::{
+    Result,
+    error::{TextNumericError, TextNumericPhase},
+};
 
 /// The operation that determines this atomic's line-fit contribution.
 /// Native occupied geometry never acquires CSS margin semantics by inference.

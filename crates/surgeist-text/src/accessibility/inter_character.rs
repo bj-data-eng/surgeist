@@ -1,7 +1,26 @@
 //! Actual allocated native lines project the same predecessor-owned cells to AX.
 //! Independent Ahem10 arithmetic: three10px advances + two(4+2)px gaps =42;
 //! cell widths16/16/10, horizontal cross8/2, nominal upright cross5/5.
-use crate::*;
+#[cfg(feature = "text-accessibility")]
+use crate::accessibility::Accessibility;
+use crate::{
+    ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::{Point, Rect},
+    id::Id,
+    layout::{Affinity, Cursor, Layout, Selection},
+    options::Alignment,
+    protocol::{
+        FinalizedLine, FormattedLineContext, LineAlignmentInsets, LineAnchor, LineBoxDirection,
+        LineContext, LineEnd, LineOrientation, LinePlacement, LineSelectionRequest, LineStart,
+        ParagraphBaseDirection, PlacementCoverage, PlacementEntry, PlacementRequest,
+        PreparationOptions, PreparedBreakKind, PreparedTermination, PreparedText, ProtocolError,
+        SelectedLine, SpacingAllocation, SpacingAllocations, SpacingPolicy, TabContext,
+    },
+    range::Range,
+    source::Source,
+    style::{Font, LineHeight, Style},
+};
 use accesskit::{NodeId, Role, TextDirection};
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -294,18 +313,18 @@ fn projected(layout: &Layout, orientation: LineOrientation, gap: f64) {
 fn qualifies(orientation: LineOrientation) {
     let (control_prepared, control_selected) = selected(orientation, 0.0);
     let control = control_selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(control.feedback().advance, 30.0);
     projected(&place(&control_prepared, control), orientation, 0.0);
     let (prepared, selected) = selected(orientation, 4.0);
     let natural = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 38.0);

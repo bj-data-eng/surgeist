@@ -1,10 +1,16 @@
 //! Actual upright capability refusals before preparation can publish a packet.
 use super::*;
 use crate::{
-    Affinity, Decoration, DecorationKind, DecorationOffset, DecorationThickness, Error, ErrorCode,
-    ErrorDetail, FontMetricTable, FontMetricTableError, Id, InlineBox, InlineBoxKind,
-    ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
-    ParagraphControl, ParagraphControlKind, TextStyleOwner, UprightDecorationRole,
+    Error, ErrorCode, ErrorDetail,
+    error::{FontMetricTable, FontMetricTableError, TextStyleOwner, UprightDecorationRole},
+    id::Id,
+    layout::{Affinity, DecorationKind},
+    protocol::paragraph::{
+        ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
+        ParagraphControl, ParagraphControlKind,
+    },
+    source::{InlineBox, InlineBoxKind},
+    style::{Decoration, DecorationOffset, DecorationThickness},
 };
 
 fn style() -> Style {
@@ -22,17 +28,17 @@ fn paragraph(source: Source, base_style: Style) -> ParagraphInput {
     ParagraphInput {
         source: source.clone(),
         base_style,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -46,7 +52,7 @@ fn analyze(input: ParagraphInput, typography: AnalysisTypography) -> AnalyzedSou
     let source = input.source.clone();
     let analyzed = crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_paragraph(input, typography).unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     assert_eq!(analyzed.source(), &source);
     assert_eq!(analyzed.typography(), typography);
@@ -115,19 +121,19 @@ fn actual_in_flow_and_positioned_atomics_retain_supplied_occurrence_order() {
         Id::from_u64(1544011),
         InlineBoxKind::OutOfFlow,
         1,
-        crate::Size::new(9.0, 7.0),
+        crate::geometry::Size::new(9.0, 7.0),
     ));
     source.inline_box(InlineBox::new(
         Id::from_u64(1544012),
         InlineBoxKind::InFlow,
         1,
-        crate::Size::new(11.0, 13.0),
+        crate::geometry::Size::new(11.0, 13.0),
     ));
     source.inline_box(InlineBox::new(
         Id::from_u64(1544013),
         InlineBoxKind::OutOfFlow,
         1,
-        crate::Size::new(13.0, 15.0),
+        crate::geometry::Size::new(13.0, 15.0),
     ));
     assert_eq!(source.boxes()[1].id(), Id::from_u64(1544012));
     assert_eq!(source.boxes()[1].kind(), InlineBoxKind::InFlow);
@@ -151,9 +157,9 @@ fn actual_in_flow_and_positioned_atomics_retain_supplied_occurrence_order() {
         })
         .map(|definition| ParagraphBoundaryPolicy {
             definition,
-            preceding_wrap: crate::Wrap::Word,
-            following_wrap: crate::Wrap::Word,
-            ancestor_wrap: crate::Wrap::Word,
+            preceding_wrap: crate::style::Wrap::Word,
+            following_wrap: crate::style::Wrap::Word,
+            ancestor_wrap: crate::style::Wrap::Word,
         })
         .collect();
     let h_analysis = analyze(input.clone(), AnalysisTypography::HorizontalComposition);
@@ -238,7 +244,9 @@ fn control_input(own: Style) -> ParagraphInput {
             at: 3,
             kind: ParagraphControlKind::DiscretionaryBreak {
                 style: Box::new(Style {
-                    hyphenate_character: crate::HyphenateCharacter::String(crate::Text::from("X")),
+                    hyphenate_character: crate::hyphenation::HyphenateCharacter::String(
+                        crate::text::Text::from("X"),
+                    ),
                     ..own
                 }),
             },

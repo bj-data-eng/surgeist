@@ -1,5 +1,52 @@
 //! CSS Text 4 §4.2 / Appendix B and exact original-piece domain oracles.
-use crate::*;
+#[cfg(feature = "text-accessibility")]
+use crate::accessibility::Accessibility;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedDomain, AnalyzedSource},
+    edit::Edit,
+    error::{ShapingBoundary, TextTransformError},
+    font::{FontBaseline, FontBaselineAxis, FontBaselineScript},
+    geometry::{GlyphBasis, Point, Rect, Size},
+    id::Id,
+    layout::{Affinity, Cursor, Layout, Movement, Selection},
+    options::Alignment,
+    processing::{
+        CapturedScope, ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem,
+        ProcessedParagraph, ProcessedSource, ScopeAlignmentLimits, ScopeFontReference,
+        SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingError,
+        SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingScopeBoundaries, SourceProcessingTopology, SourceWritingAxis,
+        WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+        AtomicPlacement, ControlAllocation, FinalizedLine, FormattedLineContext,
+        InlineBoundaryAllocation, InlineBoxSource, LineAlignmentInsets, LineAllocations,
+        LineAnchor, LineBoxAlignment, LineBoxDirection, LineContext, LineEdgeSide, LineEnd,
+        LineOrientation, LinePlacement, LineSelectionRequest, LineStart, ParagraphBaseDirection,
+        ParagraphInput, ParagraphTerminalEdge, PlacementCoverage, PlacementEntry, PlacementRequest,
+        PreparationOptions, PreparedBreakKind, PreparedControl, PreparedParticipant,
+        PreparedTermination, PreparedText, ProtocolError, ScopeAllocations, SpacingAllocations,
+        SpacingPolicy, TabContext,
+        paragraph::{
+            CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,
+            ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
+            ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+            ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition,
+            ParagraphStrut,
+        },
+        prefix::TextSeam,
+        readback::PresentationMappingKind,
+    },
+    range::{Range, SourcePosition},
+    source::{InlineBox, InlineBoxKind, Source},
+    style::{
+        CaseTransform, Direction, Font, LineHeight, Style, TextCombineUpright, TextTransform,
+        TextTransformSet, WhiteSpace, WordSpaceTransform, Wrap,
+    },
+    text::Text,
+};
 use std::sync::Arc;
 
 mod cell_endpoints;
@@ -86,7 +133,7 @@ fn full_width_parent_projection_keeps_real_child_holes_and_each_domain_style() {
             unreachable!()
         };
         base_style.text_transform =
-            TextTransform::Set(crate::TextTransformSet::none().with_full_width(true));
+            TextTransform::Set(crate::style::TextTransformSet::none().with_full_width(true));
         let result = Arc::new(process_contextual_source(capture).unwrap());
         let views: Vec<_> = result.paragraphs().collect();
         assert_eq!(
@@ -99,12 +146,12 @@ fn full_width_parent_projection_keeps_real_child_holes_and_each_domain_style() {
         );
         let parent = AnalyzedSource::from_processed_paragraph(
             views[0].clone(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let child = AnalyzedSource::from_processed_paragraph(
             views[1].clone(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -219,7 +266,7 @@ fn input(text: impl Into<Text>, mode: WhiteSpace) -> ContextualSourceInput {
             horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
-            used_direction: crate::ParagraphBaseDirection::LeftToRight,
+            used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
             base_style: style(mode, 10.0),
         }],
@@ -268,7 +315,7 @@ fn prepare(system: &mut System, view: ProcessedParagraph) -> PreparedText {
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_processed_paragraph(
                     view,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
                 Wrap::Word,
@@ -290,7 +337,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
             allocation: match atomic.original_box().kind() {
                 InlineBoxKind::OutOfFlow => AtomicLineAllocation::OutOfFlow,
                 InlineBoxKind::InFlow => AtomicLineAllocation::InFlow {
-                    fit: crate::AtomicFitAllocation::NativeOccupied,
+                    fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 5.0,
                         normal_border_inline_size: 5.0,
@@ -316,10 +363,10 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
             ControlAllocation {
                 boundary: matches!(
                     occurrence.view().kind(),
-                    crate::ParagraphControlKind::InlineBoundaryStart
-                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                    crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                        | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }
@@ -338,7 +385,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination: crate::PreparedTermination::Ordinary(termination),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics,
@@ -346,15 +393,15 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
-                    crate::ParagraphBaseDirection::LeftToRight => {
-                        crate::LineBoxDirection::LeftToRight
+                    crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                        crate::protocol::LineBoxDirection::LeftToRight
                     }
-                    crate::ParagraphBaseDirection::RightToLeft => {
-                        crate::LineBoxDirection::RightToLeft
+                    crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                        crate::protocol::LineBoxDirection::RightToLeft
                     }
                 },
                 orientation: LineOrientation::Horizontal,
@@ -370,9 +417,9 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
         })
         .unwrap();
     selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -409,7 +456,7 @@ fn placed(prepared: PreparedText) -> Layout {
     Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -432,7 +479,7 @@ fn block_inner_trim_keeps_indentation_while_inline_inner_trim_removes_it() {
                 horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
-                used_direction: crate::ParagraphBaseDirection::LeftToRight,
+                used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim {
                     discard_inner: true,
                     ..Default::default()
@@ -585,7 +632,7 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
         Id::from_u64(7),
         kind,
         3,
-        crate::Size::new(5.0, 10.0),
+        crate::geometry::Size::new(5.0, 10.0),
     ));
     capture.origins = vec![
         origin(&capture.source, Range::new(0, 3)),
@@ -610,7 +657,7 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
             horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
-            used_direction: crate::ParagraphBaseDirection::LeftToRight,
+            used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WhiteSpace::Preserve, 20.0),
             atomic: 0,
@@ -621,7 +668,7 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
             horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
-            used_direction: crate::ParagraphBaseDirection::LeftToRight,
+            used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WhiteSpace::Preserve, 20.0),
             atomic: 0,
@@ -685,12 +732,12 @@ fn issued_parent_views_exclude_internal_domains_and_keep_actual_parent_atomics()
         );
         let parent = AnalyzedSource::from_processed_paragraph(
             views[0].clone(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let child = AnalyzedSource::from_processed_paragraph(
             views[1].clone(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(parent.style().size, 10.0);
@@ -836,7 +883,7 @@ fn trim_does_not_fuse_removed_original_surrogate_neighbors() {
     assert_eq!(result.processed_text().code_units(), [0xd800, 0xdc00]);
     let analyzed = AnalyzedSource::from_processed_paragraph(
         result.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -858,7 +905,7 @@ fn trim_does_not_fuse_removed_original_surrogate_neighbors() {
     );
     let analyzed = AnalyzedSource::from_processed_paragraph(
         pair.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.inner.projection.atoms[0].source, Range::new(0, 2));
@@ -1010,7 +1057,7 @@ fn same_offset_nested_empty_scopes_and_consecutive_controls_retain_actual_order_
     let result = Arc::new(process_contextual_source(capture.clone()).unwrap());
     let analyzed = AnalyzedSource::from_processed_paragraph(
         result.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.direction(), Direction::RightToLeft);
@@ -1066,7 +1113,7 @@ fn empty_internal_domain_keeps_its_captured_font_and_direction() {
         horizontal_inner_direction: None,
         font_reference: None,
         topology: SourceProcessingTopology::Unknown,
-        used_direction: crate::ParagraphBaseDirection::LeftToRight,
+        used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
         trim: WhiteSpaceTrim::default(),
         base_style: style(WhiteSpace::Preserve, 20.0),
         atomic: 0,
@@ -1143,7 +1190,7 @@ fn connected_original_pair_crosses_origin_boundary_but_not_an_internal_hole() {
     let result = Arc::new(process_contextual_source(capture).unwrap());
     let analyzed = AnalyzedSource::from_processed_paragraph(
         result.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.inner.projection.atoms.len(), 1);
@@ -1164,7 +1211,7 @@ fn connected_original_pair_crosses_origin_boundary_but_not_an_internal_hole() {
     let result = Arc::new(process_contextual_source(capture).unwrap());
     let analyzed = AnalyzedSource::from_processed_paragraph(
         result.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert!(
@@ -1211,7 +1258,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination: crate::PreparedTermination::Ordinary(termination),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             participants: prepared.participants().take(3).collect(),
             atomics: vec![],
@@ -1219,10 +1266,10 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                line_box_direction: crate::LineBoxDirection::LeftToRight,
+                line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
                 orientation: LineOrientation::Horizontal,
                 start: LineStart::Paragraph,
                 end: LineEnd::Soft,
@@ -1236,9 +1283,9 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
         })
         .unwrap();
     let finalized = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -1308,12 +1355,12 @@ fn source_and_geometric_accessibility_share_issued_piece_coverage() {
     let views: Vec<_> = result.paragraphs().collect();
     let parent = AnalyzedSource::from_processed_paragraph(
         views[0].clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let child = AnalyzedSource::from_processed_paragraph(
         views[1].clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let parent = crate::test_wrapping::bind_missing(&parent, Wrap::Word);
@@ -1448,7 +1495,7 @@ fn actual_inline_trim_scope_survives_block_in_inline_paragraph_cuts_once() {
                 horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
-                used_direction: crate::ParagraphBaseDirection::LeftToRight,
+                used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(WhiteSpace::Preserve, 20.0),
             },
@@ -1664,7 +1711,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
-            termination: crate::PreparedTermination::Ordinary(termination),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().take(count).collect(),
             atomics: vec![],
@@ -1672,10 +1719,10 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                line_box_direction: crate::LineBoxDirection::LeftToRight,
+                line_box_direction: crate::protocol::LineBoxDirection::LeftToRight,
                 orientation: LineOrientation::Horizontal,
                 start: LineStart::Paragraph,
                 end: LineEnd::Soft,
@@ -1689,9 +1736,9 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
         })
         .unwrap();
     let finalized = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(finalized.feedback().advance, 10.0);
@@ -1713,7 +1760,7 @@ fn block_exterior_trim_crosses_its_own_boundary_and_stops_at_a_forced_control() 
             horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
-            used_direction: crate::ParagraphBaseDirection::LeftToRight,
+            used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim {
                 discard_before: true,
                 discard_after: true,
@@ -1876,12 +1923,12 @@ fn original_domain_edges_allow_actual_span_boundaries_between_unconnected_surrog
     let views: Vec<_> = result.paragraphs().collect();
     let parent = AnalyzedSource::from_processed_paragraph(
         views[0].clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let child = AnalyzedSource::from_processed_paragraph(
         views[1].clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -1918,19 +1965,19 @@ fn contextual_parent_preparation_does_not_scale_unowned_child_span_styles() {
     let views: Vec<_> = result.paragraphs().collect();
     let parent = AnalyzedSource::from_processed_paragraph(
         views[0].clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let child = AnalyzedSource::from_processed_paragraph(
         views[1].clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let mut fonts = system();
     let parent = fonts
         .prepare(
             &parent,
-            PreparationOptions::try_new(2.0, crate::TabPreparation::FontAdvance).unwrap(),
+            PreparationOptions::try_new(2.0, crate::tabs::TabPreparation::FontAdvance).unwrap(),
         )
         .unwrap();
     assert_eq!(line(&parent).feedback().line_height, 20.0);
@@ -1938,7 +1985,7 @@ fn contextual_parent_preparation_does_not_scale_unowned_child_span_styles() {
         fonts
             .prepare(
                 &child,
-                PreparationOptions::try_new(2.0, crate::TabPreparation::FontAdvance).unwrap()
+                PreparationOptions::try_new(2.0, crate::tabs::TabPreparation::FontAdvance).unwrap()
             )
             .unwrap_err()
             .code,
@@ -1958,7 +2005,7 @@ fn empty_domain_at_nonzero_original_offset_has_source_and_placed_accessibility()
         horizontal_inner_direction: None,
         font_reference: None,
         topology: SourceProcessingTopology::Unknown,
-        used_direction: crate::ParagraphBaseDirection::LeftToRight,
+        used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
         trim: WhiteSpaceTrim::default(),
         base_style: style(WhiteSpace::Preserve, 20.0),
     });
@@ -1987,7 +2034,7 @@ fn empty_domain_at_nonzero_original_offset_has_source_and_placed_accessibility()
     let view = result.paragraphs().nth(1).unwrap();
     let analyzed = AnalyzedSource::from_processed_paragraph(
         view,
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let parent = accesskit::NodeId(100);
@@ -2063,7 +2110,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
             incoming: None,
             start: prepared.boundary_views().nth(2).unwrap().handle(),
             end: termination.view().boundary(),
-            termination: crate::PreparedTermination::Ordinary(termination),
+            termination: crate::protocol::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().skip(2).collect(),
             atomics: vec![],
@@ -2071,15 +2118,15 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
-                alignment_insets: crate::LineAlignmentInsets::ZERO,
-                formatted_line: crate::FormattedLineContext::default(),
+                alignment_insets: crate::protocol::LineAlignmentInsets::ZERO,
+                formatted_line: crate::protocol::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
-                    crate::ParagraphBaseDirection::LeftToRight => {
-                        crate::LineBoxDirection::LeftToRight
+                    crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                        crate::protocol::LineBoxDirection::LeftToRight
                     }
-                    crate::ParagraphBaseDirection::RightToLeft => {
-                        crate::LineBoxDirection::RightToLeft
+                    crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                        crate::protocol::LineBoxDirection::RightToLeft
                     }
                 },
                 orientation: LineOrientation::Horizontal,
@@ -2095,9 +2142,9 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
         })
         .unwrap();
     selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -2137,7 +2184,7 @@ fn boundaries_retain_both_original_incident_endpoints_across_a_child_hole() {
             start: prepared.boundary_views().nth(2).unwrap().handle(),
             end: prepared.boundary_views().last().unwrap().handle(),
         },
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line: right,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -2177,7 +2224,7 @@ fn geometric_accessibility_keeps_both_owned_pieces_of_a_cross_hole_ligature() {
     let result = Arc::new(process_contextual_source(capture).unwrap());
     let analyzed = AnalyzedSource::from_processed_paragraph(
         result.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let id = accesskit::NodeId(100);
@@ -2348,7 +2395,7 @@ fn empty_and_control_endpoints_after_a_child_remain_parent_occurrences() {
         assert_eq!(view.source_range(), Range::new(0, 2));
         let analyzed = AnalyzedSource::from_processed_paragraph(
             view,
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.inner.host_projection.byte(2).0, 1);
@@ -2452,7 +2499,7 @@ fn consecutive_child_holes(empty: bool, control: bool) -> ContextualSourceInput 
             horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
-            used_direction: crate::ParagraphBaseDirection::LeftToRight,
+            used_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WhiteSpace::Preserve, 20.0),
             atomic,
@@ -2736,7 +2783,7 @@ fn authentic_middle_hole_points_do_not_claim_foreign_span_scalar_boundaries() {
     let views: Vec<_> = result.paragraphs().collect();
     let parent = AnalyzedSource::from_processed_paragraph(
         views[0].clone(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -2758,7 +2805,7 @@ fn authentic_middle_hole_points_do_not_claim_foreign_span_scalar_boundaries() {
     for (view, unit) in views.into_iter().skip(1).zip([0xd800, 0xdc00]) {
         let child = AnalyzedSource::from_processed_paragraph(
             view,
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(

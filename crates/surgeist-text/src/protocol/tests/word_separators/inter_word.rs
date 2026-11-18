@@ -1,6 +1,6 @@
 //! Functional qualification of native InterWord and immutable spacing reuse.
 use super::*;
-use crate::{
+use crate::protocol::{
     SpacingDeferredCause as Deferred, SpacingSlotGeometry as Geometry, SpacingSlotOwner,
     SpacingStretchability as Stretch,
 };
@@ -16,7 +16,11 @@ fn own(word_spacing: f64) -> Style {
     }
 }
 
-fn input(source: &Source, style: Style, terminal: crate::ParagraphTerminalEdge) -> ParagraphInput {
+fn input(
+    source: &Source,
+    style: Style,
+    terminal: crate::protocol::ParagraphTerminalEdge,
+) -> ParagraphInput {
     let len = source.text().len();
     ParagraphInput {
         source: source.clone(),
@@ -24,22 +28,22 @@ fn input(source: &Source, style: Style, terminal: crate::ParagraphTerminalEdge) 
         paragraph_strut: ParagraphStrut::DefaultFont,
         terminal_edge: terminal,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
         boundary_policies: vec![],
         replacements: vec![],
         anchor_order: if len == 0 {
-            vec![crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
+            vec![crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
                 affinity: Affinity::After,
             }]
         } else {
@@ -57,15 +61,15 @@ fn prepare_input(
         &AnalyzedSource::from_paragraph(
             value,
             if orientation == LineOrientation::Vertical {
-                crate::AnalysisTypography::Upright {
+                crate::analyzed::AnalysisTypography::Upright {
                     computed_direction: ParagraphBaseDirection::RightToLeft,
                 }
             } else {
-                crate::AnalysisTypography::HorizontalComposition
+                crate::analyzed::AnalysisTypography::HorizontalComposition
             },
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     system
         .prepare(
@@ -110,7 +114,7 @@ fn feedback(line: &FinalizedLine, intrinsic: f64, authored: f64, allocation: f64
     assert_eq!(row.advance, advance);
     assert!(matches!(
         row.disposition,
-        crate::SpacingSlotDisposition::Retained { .. }
+        crate::protocol::SpacingSlotDisposition::Retained { .. }
     ));
 }
 
@@ -141,7 +145,7 @@ fn real_interword_adds_authored_and_allocated_halves_and_replaces_an_immutable_n
         let slots = selected.spacing_slots().collect::<Vec<_>>();
         assert_eq!(slots.len(), 1);
         assert_eq!(slots[0].selected_line(), selected);
-        let crate::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
+        let crate::protocol::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
             panic!("InterWord targets this actual separator unit")
         };
         assert_eq!(
@@ -165,9 +169,9 @@ fn real_interword_adds_authored_and_allocated_halves_and_replaces_an_immutable_n
                 .all(|participant| selected.request().participants.contains(participant))
         );
         let natural = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(natural.feedback().advance, 34.0);
@@ -208,9 +212,9 @@ fn real_interword_adds_authored_and_allocated_halves_and_replaces_an_immutable_n
         assert_eq!(paints(&replaced), [0.0, 13.0, 26.0]);
         feedback(&replaced, 10.0, 4.0, 2.0, 16.0);
         let fresh = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: amounts(&selected, &[2.0]),
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(raw(&replaced), raw(&fresh));
@@ -238,9 +242,9 @@ fn intrinsic_zero_is_not_authored_cancellation_and_only_the_latter_can_expand() 
         let prepared = super::prepare(&mut system, &source, orientation, 4.0);
         let selection = selected(&prepared);
         let natural = selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         let body = if native_zero { 12.0 } else { 10.0 };
@@ -265,9 +269,9 @@ fn intrinsic_zero_is_not_authored_cancellation_and_only_the_latter_can_expand() 
         let prepared = super::prepare(&mut system, &source, orientation, -10.0);
         let selection = selected(&prepared);
         let natural = selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         feedback(&natural, 10.0, -10.0, 0.0, 0.0);
@@ -291,9 +295,9 @@ fn complete_allocation_custody_and_numeric_refusals_leave_the_same_basis_retryab
     let selection = selected(&prepared);
     let other_selection = selected(&prepared);
     let natural = selection
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -334,16 +338,16 @@ fn complete_allocation_custody_and_numeric_refusals_leave_the_same_basis_retryab
         &ProtocolError::ForeignSelectedLine
     );
     for (amount, category) in [
-        (f64::NAN, crate::TextNumericError::NonFinite),
-        (f64::INFINITY, crate::TextNumericError::NonFinite),
-        (-1.0, crate::TextNumericError::OutOfRange),
+        (f64::NAN, crate::error::TextNumericError::NonFinite),
+        (f64::INFINITY, crate::error::TextNumericError::NonFinite),
+        (-1.0, crate::error::TextNumericError::OutOfRange),
     ] {
         let error = natural
             .with_spacing(amounts(&selection, &[amount]))
             .unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
         assert!(
-            matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric { phase: crate::TextNumericPhase::Finalization, category: actual, .. }) if *actual == category),
+            matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric { phase: crate::error::TextNumericPhase::Finalization, category: actual, .. }) if *actual == category),
             "{error:?}"
         );
     }
@@ -379,14 +383,18 @@ fn natural_shared_provider_geometry_stays_usable_until_a_real_interword_allocati
         style.font = style.font.feature("\"ccmp\" 1");
         let prepared = prepare_input(
             &mut system,
-            input(&source, style, crate::ParagraphTerminalEdge::BlockEnd),
+            input(
+                &source,
+                style,
+                crate::protocol::ParagraphTerminalEdge::BlockEnd,
+            ),
             orientation,
         );
         let selection = selected(&prepared);
         let natural = selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -416,11 +424,14 @@ fn natural_shared_provider_geometry_stays_usable_until_a_real_interword_allocati
         else {
             panic!("expected precise provider-group refusal: {error:?}")
         };
-        assert_eq!(*stage, crate::SpacingStage::SelectedShaping);
-        assert_eq!(*operation, crate::SpacingOperation::InterWordAllocation);
+        assert_eq!(*stage, crate::error::SpacingStage::SelectedShaping);
+        assert_eq!(
+            *operation,
+            crate::error::SpacingOperation::InterWordAllocation
+        );
         assert_eq!(
             pieces.as_ref(),
-            [crate::SpacingPiece::Source {
+            [crate::error::SpacingPiece::Source {
                 origin: 0,
                 local: Range::new(1, 2),
                 aggregate: Range::new(1, 2)
@@ -441,14 +452,14 @@ fn cancelled_terminal_candidates_keep_closed_deferred_causes_until_spacing_makes
     let source = Source::identified(" ", Id::from_u64(1564023), 1);
     for (terminal, cause) in [
         (
-            crate::ParagraphTerminalEdge::Unknown,
+            crate::protocol::ParagraphTerminalEdge::Unknown,
             Some(Deferred::MissingTerminalBlockEdge),
         ),
         (
-            crate::ParagraphTerminalEdge::NonBlockBoundary,
+            crate::protocol::ParagraphTerminalEdge::NonBlockBoundary,
             Some(Deferred::NonBlockParagraphBoundary),
         ),
-        (crate::ParagraphTerminalEdge::BlockEnd, None),
+        (crate::protocol::ParagraphTerminalEdge::BlockEnd, None),
     ] {
         let prepared = prepare_input(
             &mut system,
@@ -461,9 +472,9 @@ fn cancelled_terminal_candidates_keep_closed_deferred_causes_until_spacing_makes
         request.context.available_inline = Some(15.0);
         let selection = prepared.select(request).unwrap();
         let natural = selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         feedback(&natural, 10.0, -10.0, 0.0, 0.0);
@@ -481,7 +492,7 @@ fn cancelled_terminal_candidates_keep_closed_deferred_causes_until_spacing_makes
                 reason(&error),
                 &match cause {
                     Deferred::MissingTerminalBlockEdge => ProtocolError::MissingPhaseTwoContext(
-                        crate::PhaseTwoContext::TerminalBlockEdge
+                        crate::protocol::PhaseTwoContext::TerminalBlockEdge
                     ),
                     Deferred::NonBlockParagraphBoundary => ProtocolError::UnsupportedContext {
                         field: ProtocolContextField::CssParagraphBoundary
@@ -504,7 +515,7 @@ fn cancelled_terminal_candidates_keep_closed_deferred_causes_until_spacing_makes
 }
 
 fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
-    use crate::SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     for origin in 0..cuts.len() - 1 {
         if origin != 0 {
@@ -518,50 +529,57 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let wrap = style.wrap;
     let processed = std::sync::Arc::new(
-        crate::process_contextual_source(crate::ContextualSourceInput {
+        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: crate::SourceProcessingEnvelope::Complete,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: crate::processing::SourceProcessingEnvelope::Complete,
             origins: cuts
                 .windows(2)
-                .map(|pair| crate::ParagraphOrigin {
+                .map(|pair| crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: Range::new(pair[0], pair[1]),
                     aggregate: Range::new(pair[0], pair[1]),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 })
                 .collect(),
             connections: (0..cuts.len() - 2)
-                .map(|before_origin| crate::SourceProcessingConnection {
-                    before_origin,
-                    after_origin: before_origin + 1,
-                    kind: crate::ParagraphConnectionKind::Continuous,
-                })
+                .map(
+                    |before_origin| crate::processing::SourceProcessingConnection {
+                        before_origin,
+                        after_origin: before_origin + 1,
+                        kind: crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+                    },
+                )
                 .collect(),
             boundary_policies: (0..cuts.len() - 2)
-                .map(|connection| crate::ParagraphBoundaryPolicy {
-                    definition: crate::ParagraphBoundaryDefinition::Connection(connection),
-                    preceding_wrap: wrap,
-                    following_wrap: wrap,
-                    ancestor_wrap: wrap,
-                })
+                .map(
+                    |connection| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                        definition:
+                            crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(
+                                connection,
+                            ),
+                        preceding_wrap: wrap,
+                        following_wrap: wrap,
+                        ancestor_wrap: wrap,
+                    },
+                )
                 .collect(),
             controls: vec![],
             replacements: vec![],
             computed_line_boundaries: vec![],
-            scopes: vec![crate::SourceProcessingScope::Block {
+            scopes: vec![crate::processing::SourceProcessingScope::Block {
                 writing_axis: None,
                 horizontal_inner_direction: None,
                 font_reference: None,
-                topology: crate::SourceProcessingTopology::Complete,
+                topology: crate::processing::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
                 used_direction: ParagraphBaseDirection::LeftToRight,
             }],
-            paragraphs: vec![crate::SourceProcessingParagraph {
+            paragraphs: vec![crate::processing::SourceProcessingParagraph {
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
             }],
@@ -572,7 +590,7 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
     crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
         wrap,
@@ -626,7 +644,7 @@ fn a_complete_marked_candidate_keeps_both_real_source_origin_pieces_and_moves_ev
     let selection = selected(&prepared);
     let slots = selection.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
-    let crate::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
+    let crate::protocol::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
         panic!("split origins retain one complete InterWord separator")
     };
     assert_eq!(
@@ -661,9 +679,9 @@ fn a_complete_marked_candidate_keeps_both_real_source_origin_pieces_and_moves_ev
         );
     }
     let natural = selection
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(
@@ -690,13 +708,19 @@ fn selected_supplementary_indication_slots_keep_alternative_local_custody_and_or
     let mut system = super::system(&bytes, '\u{10100}', false, false);
     let source = Source::identified("AAAAA\u{ad}AAAAA", Id::from_u64(1564025), 2);
     let style = Style {
-        hyphens: crate::Hyphens::Manual,
-        hyphenate_character: crate::HyphenateCharacter::String(crate::Text::from("\u{10100}")),
+        hyphens: crate::hyphenation::Hyphens::Manual,
+        hyphenate_character: crate::hyphenation::HyphenateCharacter::String(
+            crate::text::Text::from("\u{10100}"),
+        ),
         ..own(4.0)
     };
     let prepared = prepare_input(
         &mut system,
-        input(&source, style, crate::ParagraphTerminalEdge::BlockEnd),
+        input(
+            &source,
+            style,
+            crate::protocol::ParagraphTerminalEdge::BlockEnd,
+        ),
         LineOrientation::Horizontal,
     );
     let cut = prepared
@@ -705,7 +729,7 @@ fn selected_supplementary_indication_slots_keep_alternative_local_custody_and_or
         .unwrap();
     assert_eq!(
         cut.counts(),
-        Some(crate::HyphenationCounts {
+        Some(crate::protocol::HyphenationCounts {
             total: 10,
             before: 5,
             after: 5
@@ -724,7 +748,7 @@ fn selected_supplementary_indication_slots_keep_alternative_local_custody_and_or
         .participants()
         .take(request.end.view().participant_offset())
         .collect();
-    request.termination = crate::PreparedTermination::Ordinary(offer);
+    request.termination = crate::protocol::PreparedTermination::Ordinary(offer);
     request.alternative = Some(alternative.clone());
     let selection = prepared.select(request).unwrap();
     let slots = selection.spacing_slots().collect::<Vec<_>>();
@@ -740,7 +764,7 @@ fn selected_supplementary_indication_slots_keep_alternative_local_custody_and_or
     };
     assert_eq!(actual, alternative);
     assert_eq!(local, Range::new(0, 2));
-    let crate::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
+    let crate::protocol::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
         panic!("the indication retains its complete supplementary separator")
     };
     assert_eq!(unit.pieces().len(), 1);
@@ -750,9 +774,9 @@ fn selected_supplementary_indication_slots_keep_alternative_local_custody_and_or
         2
     );
     let natural = selection
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 64.0);
@@ -775,18 +799,22 @@ fn a_real_expanded_wbr_keeps_a_control_piece_without_fabricating_an_authored_spa
     let bytes = mapped(' ', false);
     let mut system = super::system(&bytes, ' ', false, false);
     let source = Source::identified("AA", Id::from_u64(1564026), 1);
-    let mut value = input(&source, own(0.0), crate::ParagraphTerminalEdge::BlockEnd);
-    value.controls = vec![crate::ParagraphControl {
+    let mut value = input(
+        &source,
+        own(0.0),
+        crate::protocol::ParagraphTerminalEdge::BlockEnd,
+    );
+    value.controls = vec![crate::protocol::paragraph::ParagraphControl {
         at: 1,
-        kind: crate::ParagraphControlKind::Wbr {
+        kind: crate::protocol::paragraph::ParagraphControlKind::Wbr {
             style: Box::new(Style {
-                word_space_transform: crate::WordSpaceTransform::Space,
+                word_space_transform: crate::style::WordSpaceTransform::Space,
                 ..own(4.0)
             }),
         },
     }];
-    value.anchor_order = vec![crate::ParagraphAnchor {
-        item: crate::ParagraphAnchorItem::Control(0),
+    value.anchor_order = vec![crate::protocol::paragraph::ParagraphAnchor {
+        item: crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
         affinity: Affinity::After,
     }];
     let prepared = prepare_input(&mut system, value, LineOrientation::Horizontal);
@@ -805,9 +833,9 @@ fn a_real_expanded_wbr_keeps_a_control_piece_without_fabricating_an_authored_spa
         (1, 2)
     );
     let natural = selection
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 34.0);
@@ -847,7 +875,7 @@ fn a_published_phrase_separator_keeps_its_actual_virtual_owner_through_interword
         &source,
         Style {
             locale: Some("ja".into()),
-            word_space_transform: crate::WordSpaceTransform::SpaceAutoPhrase,
+            word_space_transform: crate::style::WordSpaceTransform::SpaceAutoPhrase,
             ..own(4.0)
         },
         &[0, 8],
@@ -880,9 +908,9 @@ fn a_published_phrase_separator_keeps_its_actual_virtual_owner_through_interword
         (3, 4)
     );
     let natural = selection
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 94.0);
@@ -913,12 +941,16 @@ fn preserved_terminal_space_excludes_expansion_from_alignment_in_both_paragraph_
             ParagraphBaseDirection::RightToLeft,
         ] {
             let mut system = super::system(&bytes, ' ', false, false);
-            let mut captured = input(&source, own(0.0), crate::ParagraphTerminalEdge::BlockEnd);
+            let mut captured = input(
+                &source,
+                own(0.0),
+                crate::protocol::ParagraphTerminalEdge::BlockEnd,
+            );
             captured.base_direction = direction;
             let prepared = prepare_input(&mut system, captured, orientation);
             assert_eq!(
                 prepared.terminal_edge(),
-                crate::ParagraphTerminalEdge::BlockEnd
+                crate::protocol::ParagraphTerminalEdge::BlockEnd
             );
             // A is strong LTR: an RTL paragraph resolves A to level2 and its
             // trailing SPACE to the actual paragraph level1, rather than
@@ -939,11 +971,15 @@ fn preserved_terminal_space_excludes_expansion_from_alignment_in_both_paragraph_
             request.context.orientation = orientation;
             request.context.base_direction = direction;
             request.context.line_box_direction = match direction {
-                ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-                ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+                ParagraphBaseDirection::LeftToRight => {
+                    crate::protocol::LineBoxDirection::LeftToRight
+                }
+                ParagraphBaseDirection::RightToLeft => {
+                    crate::protocol::LineBoxDirection::RightToLeft
+                }
             };
             request.context.available_inline = Some(15.0);
-            request.context.alignment = crate::Alignment::Center;
+            request.context.alignment = crate::options::Alignment::Center;
             request.context.spacing = SpacingPolicy::InterWord;
             let selection = prepared.select(request).unwrap();
             let slots = selection.spacing_slots().collect::<Vec<_>>();
@@ -955,9 +991,9 @@ fn preserved_terminal_space_excludes_expansion_from_alignment_in_both_paragraph_
                 Range::new(1, 2),
             );
             let natural = selection
-                .finalize(crate::LineAllocations {
+                .finalize(crate::protocol::LineAllocations {
                     spacing: SpacingAllocations::None,
-                    scopes: crate::ScopeAllocations::None,
+                    scopes: crate::protocol::ScopeAllocations::None,
                 })
                 .unwrap();
             feedback(&natural, 10.0, 0.0, 0.0, 10.0);
@@ -984,11 +1020,11 @@ fn preserved_terminal_space_excludes_expansion_from_alignment_in_both_paragraph_
                     .unwrap();
                 assert_eq!(
                     edge.disposition(),
-                    crate::LineEdgeDisposition::Conditional {
+                    crate::protocol::LineEdgeDisposition::Conditional {
                         side: if direction == ParagraphBaseDirection::LeftToRight {
-                            crate::LineEdgeSide::End
+                            crate::protocol::LineEdgeSide::End
                         } else {
-                            crate::LineEdgeSide::Start
+                            crate::protocol::LineEdgeSide::Start
                         },
                         eligible: true
                     }
@@ -1018,9 +1054,9 @@ fn allocation_only_half_underflow_reports_finalization_and_preserves_the_retaine
     let prepared = super::prepare(&mut system, &source, LineOrientation::Horizontal, 0.0);
     let selection = selected(&prepared);
     let natural = selection
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     feedback(&natural, 10.0, 0.0, 0.0, 10.0);
@@ -1050,8 +1086,8 @@ fn allocation_only_half_underflow_reports_finalization_and_preserves_the_retaine
             error.detail(),
             Some(crate::ErrorDetail::InvalidTextNumeric {
                 field: "word spacing half",
-                phase: crate::TextNumericPhase::Finalization,
-                category: crate::TextNumericError::NonZeroLost,
+                phase: crate::error::TextNumericPhase::Finalization,
+                category: crate::error::TextNumericError::NonZeroLost,
                 value,
             }) if *value == allocation
         ),

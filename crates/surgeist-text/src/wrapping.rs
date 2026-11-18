@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{AnalyzedSource, Range, Wrap, engine::AnalyzedData};
+use crate::{analyzed::AnalyzedSource, engine::AnalyzedData, range::Range, style::Wrap};
 
 /// Readback provenance for an actual influencing occurrence. Numeric observations
 /// cannot construct a relation capability or assert native ancestor permission.
@@ -102,7 +102,7 @@ impl AnalyzedSource {
     /// unbound pairs remain explicit and fail only when an operation needs them.
     /// A handle issued by another context, even one sharing this core, is foreign.
     pub fn with_wrapping_policies(&self, policies: Vec<WrappingPolicy>) -> crate::Result<Self> {
-        use crate::{ProtocolError, protocol::protocol_error};
+        use crate::protocol::{ProtocolError, protocol_error};
         if self.inner.paragraph.base_direction.is_none() {
             return Err(protocol_error(ProtocolError::UnsupportedWrappingAnalysis));
         }

@@ -17,26 +17,26 @@ fn capture(source: Source, style: Style, rtl: bool, forced: bool) -> AnalyzedSou
                 source: source.clone(),
                 base_style: style,
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: if rtl {
                     ParagraphBaseDirection::RightToLeft
                 } else {
                     ParagraphBaseDirection::LeftToRight
                 },
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source,
                     local: Range::new(0, len),
                     aggregate: Range::new(0, len),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: if forced {
-                    vec![crate::ParagraphControl {
+                    vec![crate::protocol::paragraph::ParagraphControl {
                         at: 0,
-                        kind: crate::ParagraphControlKind::ForcedBreak,
+                        kind: crate::protocol::paragraph::ParagraphControlKind::ForcedBreak,
                     }]
                 } else {
                     vec![]
@@ -44,18 +44,18 @@ fn capture(source: Source, style: Style, rtl: bool, forced: bool) -> AnalyzedSou
                 boundary_policies: vec![],
                 replacements: vec![],
                 anchor_order: if forced {
-                    vec![crate::ParagraphAnchor {
-                        item: crate::ParagraphAnchorItem::Control(0),
+                    vec![crate::protocol::paragraph::ParagraphAnchor {
+                        item: crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
                         affinity: Affinity::Before,
                     }]
                 } else {
                     vec![]
                 },
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     )
 }
 
@@ -122,7 +122,7 @@ fn actual_captured_rtl_keeps_odd_level_source_order_and_carets_in_both_named_fra
     let mut system = registered(bytes);
     let source = Source::identified("\u{5d0}\u{5d0}", Id::from_u64(1561040), 7);
     let input = capture(source.clone(), own_style(), true, false);
-    assert_eq!(input.direction(), crate::Direction::RightToLeft);
+    assert_eq!(input.direction(), crate::style::Direction::RightToLeft);
     for orientation in [
         LineOrientation::Horizontal,
         LineOrientation::SidewaysClockwise,
@@ -145,15 +145,15 @@ fn actual_captured_rtl_keeps_odd_level_source_order_and_carets_in_both_named_fra
         let mut selection = request(&prepared);
         selection.context.orientation = orientation;
         selection.context.base_direction = ParagraphBaseDirection::RightToLeft;
-        selection.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+        selection.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
         selection.context.available_inline = Some(20.0);
         selection.context.spacing = SpacingPolicy::None;
         let line = prepared
             .select(selection)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -252,7 +252,7 @@ fn placement(prepared: &PreparedText, line: &FinalizedLine, baseline: f64) -> Pl
     PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line: line.clone(),
             anchor: LineAnchor {
                 inline_origin: 20.0,
@@ -289,9 +289,9 @@ fn actual_decoration_overflow_refuses_placement_without_changing_a_retained_name
             Source::identified("A", Id::from_u64(1561041), 2),
             Style {
                 line_height: LineHeight::Absolute(1e308),
-                underline: crate::Decoration::solid()
-                    .with_offset(crate::DecorationOffset::try_absolute(offset).unwrap())
-                    .with_thickness(crate::DecorationThickness::try_absolute(1.0).unwrap()),
+                underline: crate::style::Decoration::solid()
+                    .with_offset(crate::style::DecorationOffset::try_absolute(offset).unwrap())
+                    .with_thickness(crate::style::DecorationThickness::try_absolute(1.0).unwrap()),
                 ..own_style()
             },
         );
@@ -310,7 +310,7 @@ fn actual_decoration_overflow_refuses_placement_without_changing_a_retained_name
             (5e307, 1e308)
         );
         let retained =
-            crate::Layout::from_finalized_lines(placement(&prepared, &line, 0.0)).unwrap();
+            crate::layout::Layout::from_finalized_lines(placement(&prepared, &line, 0.0)).unwrap();
         let glyphs = retained.glyph_runs();
         let decorations = retained
             .decoration_views()
@@ -325,14 +325,14 @@ fn actual_decoration_overflow_refuses_placement_without_changing_a_retained_name
                 Rect::new(f64::MAX, 20.0, 1.0, 10.0)
             }
         );
-        let error =
-            crate::Layout::from_finalized_lines(placement(&prepared, &line, 9e307)).unwrap_err();
+        let error = crate::layout::Layout::from_finalized_lines(placement(&prepared, &line, 9e307))
+            .unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
         assert!(
             matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric {
             field,
-            phase: crate::TextNumericPhase::Placement,
-            category: crate::TextNumericError::NonFinite,
+            phase: crate::error::TextNumericPhase::Placement,
+            category: crate::error::TextNumericError::NonFinite,
             ..
         }) if *field == if orientation == LineOrientation::Horizontal { "decoration y" } else { "decoration x" }),
             "{error:?}"
@@ -392,9 +392,9 @@ fn an_actual_nonzero_font_displacement_cannot_vanish_in_an_enormous_native_line(
         selection.context.spacing = SpacingPolicy::None;
         let selected = huge.select(selection).unwrap();
         let error = selected
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
@@ -402,8 +402,8 @@ fn an_actual_nonzero_font_displacement_cannot_vanish_in_an_enormous_native_line(
             error.detail(),
             Some(&crate::ErrorDetail::InvalidTextNumeric {
                 field: "paint font origin",
-                phase: crate::TextNumericPhase::Finalization,
-                category: crate::TextNumericError::NonZeroLost,
+                phase: crate::error::TextNumericPhase::Finalization,
+                category: crate::error::TextNumericError::NonZeroLost,
                 value: 1.0,
             })
         );
@@ -440,7 +440,7 @@ fn signed_native_font_struts_do_not_relax_supplied_line_or_control_strut_contain
         selection.context.orientation = orientation;
         selection.context.end = LineEnd::Forced;
         selection.end = forced.view().boundary();
-        selection.termination = crate::PreparedTermination::Ordinary(forced);
+        selection.termination = crate::protocol::PreparedTermination::Ordinary(forced);
         selection.participants = prepared
             .participants()
             .take(selection.end.view().participant_offset())
@@ -459,7 +459,7 @@ fn signed_native_font_struts_do_not_relax_supplied_line_or_control_strut_contain
             .unwrap();
         assert_eq!(
             control.view().kind(),
-            &crate::ParagraphControlKind::ForcedBreak
+            &crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
         );
         selection.controls = vec![ControlAllocation {
             occurrence: control.clone(),
@@ -469,9 +469,9 @@ fn signed_native_font_struts_do_not_relax_supplied_line_or_control_strut_contain
         let native = prepared
             .select(selection.clone())
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(
@@ -480,7 +480,7 @@ fn signed_native_font_struts_do_not_relax_supplied_line_or_control_strut_contain
         );
         for baseline in [-1.0, 11.0] {
             let mut external = selection.clone();
-            external.line_strut = Some(crate::LineStrut {
+            external.line_strut = Some(crate::protocol::LineStrut {
                 baseline,
                 line_extent: 10.0,
             });

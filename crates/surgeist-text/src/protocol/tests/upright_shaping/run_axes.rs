@@ -3,7 +3,7 @@
 //! distinct vert/vrtr forms make the physical-origin expectations independent.
 
 use super::*;
-use crate::GlyphBasis;
+use crate::geometry::GlyphBasis;
 
 #[test]
 fn native_run_axes_and_glyph_origins_survive_all_readback_forms() {
@@ -132,10 +132,10 @@ fn native_run_axes_and_glyph_origins_survive_all_readback_forms() {
             finalized,
             [(Range::new(0, 1), 0.0), (Range::new(1, 2), advance)]
         );
-        let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+        let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+            entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 20.0,

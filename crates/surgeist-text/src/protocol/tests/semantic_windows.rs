@@ -1,6 +1,9 @@
 //! Public semantic-window requirements, independent of fitting geometry.
 use super::*;
-use crate::{Range, SemanticAtomicAllocation, SemanticControlAllocation, SemanticWindowRequest};
+use crate::{
+    protocol::{SemanticAtomicAllocation, SemanticControlAllocation, SemanticWindowRequest},
+    range::Range,
+};
 
 fn input(text: &str, white_space: WhiteSpace) -> ParagraphInput {
     let source = Source::new(text);
@@ -14,7 +17,7 @@ fn input(text: &str, white_space: WhiteSpace) -> ParagraphInput {
         terminal_edge: ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
@@ -30,7 +33,7 @@ fn input(text: &str, white_space: WhiteSpace) -> ParagraphInput {
         anchor_order: if length == 0 {
             vec![paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             }]
         } else {
             vec![]
@@ -43,10 +46,10 @@ fn capture(system: &mut System, input: ParagraphInput) -> PreparedText {
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             ),
             PreparationOptions::default(),
         )
@@ -65,13 +68,13 @@ fn window(p: &PreparedText) -> SemanticWindowRequest {
             PreparedParticipant::Control(occurrence) => {
                 let endpoint = matches!(
                     occurrence.view().kind(),
-                    crate::ParagraphControlKind::InlineBoundaryStart
-                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                    crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                        | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 );
                 result.controls.push(SemanticControlAllocation {
                     occurrence,
                     boundary: endpoint
-                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                        .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 });
             }
             _ => {}
@@ -79,29 +82,29 @@ fn window(p: &PreparedText) -> SemanticWindowRequest {
     }
     result
 }
-fn window_reason(failure: &crate::SemanticWindowFailure) -> &ProtocolError {
+fn window_reason(failure: &crate::protocol::SemanticWindowFailure) -> &ProtocolError {
     reason(failure.error())
 }
 
 fn bounded(text: &str) -> PreparedText {
-    use crate::SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     let mut value = input(text, WhiteSpace::Preserve);
     let length = text.encode_utf16().count();
     value.controls = vec![
         paragraph::ParagraphControl {
             at: 0,
-            kind: crate::ParagraphControlKind::InlineBoundaryStart,
+            kind: crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
         paragraph::ParagraphControl {
             at: length,
-            kind: crate::ParagraphControlKind::InlineBoundaryEnd,
+            kind: crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
     let captured = std::sync::Arc::new(
-        crate::process_contextual_source(crate::ContextualSourceInput {
+        crate::processing::process_contextual_source(crate::processing::ContextualSourceInput {
             source: value.source,
             segment_breaks: value.segment_breaks,
-            envelope: crate::SourceProcessingEnvelope::Complete,
+            envelope: crate::processing::SourceProcessingEnvelope::Complete,
             origins: value.origins,
             controls: value.controls,
             connections: vec![],
@@ -109,19 +112,19 @@ fn bounded(text: &str) -> PreparedText {
             replacements: vec![],
             computed_line_boundaries: vec![],
             joint_flows: vec![],
-            scope_alignment_limits: Some(crate::ScopeAlignmentLimits::new(
+            scope_alignment_limits: Some(crate::processing::ScopeAlignmentLimits::new(
                 100_000, 4096, 10_000_000, 67_108_864,
             )),
-            scopes: vec![crate::SourceProcessingScope::Block {
-                topology: crate::SourceProcessingTopology::Complete,
-                trim: crate::WhiteSpaceTrim::default(),
+            scopes: vec![crate::processing::SourceProcessingScope::Block {
+                topology: crate::processing::SourceProcessingTopology::Complete,
+                trim: crate::processing::WhiteSpaceTrim::default(),
                 base_style: value.base_style,
                 used_direction: ParagraphBaseDirection::LeftToRight,
-                writing_axis: Some(crate::SourceWritingAxis::Horizontal),
+                writing_axis: Some(crate::processing::SourceWritingAxis::Horizontal),
                 horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
                 font_reference: None,
             }],
-            paragraphs: vec![crate::SourceProcessingParagraph {
+            paragraphs: vec![crate::processing::SourceProcessingParagraph {
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
             }],
@@ -130,15 +133,15 @@ fn bounded(text: &str) -> PreparedText {
                 E::EnterParagraph(0),
                 E::Control {
                     control: 0,
-                    affinity: crate::Affinity::After,
+                    affinity: crate::layout::Affinity::After,
                 },
                 E::Origin {
                     origin: 0,
-                    affinity: crate::Affinity::After,
+                    affinity: crate::layout::Affinity::After,
                 },
                 E::Control {
                     control: 1,
-                    affinity: crate::Affinity::After,
+                    affinity: crate::layout::Affinity::After,
                 },
                 E::ExitParagraph(0),
                 E::ExitScope(0),
@@ -148,12 +151,12 @@ fn bounded(text: &str) -> PreparedText {
     );
     let analyzed = AnalyzedSource::from_processed_paragraph(
         captured.paragraphs().next().unwrap(),
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     system()
         .prepare(
-            &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -187,7 +190,7 @@ fn transaction_limits_count_discarded_branches_and_preserve_input_on_failure() {
         .semantic_window_with_scope_allowance(&r, ScopeAlignmentAllowance::new(limit, 67_108_864))
         .unwrap_err();
     assert!(
-        matches!(failed.error().detail(), Some(crate::ErrorDetail::ScopeAlignment { reason: crate::ScopeAlignmentError::Limit { kind: crate::ScopeAlignmentLimitKind::Records, required, limit: actual } }) if *required == usage.records() && *actual == limit)
+        matches!(failed.error().detail(), Some(crate::ErrorDetail::ScopeAlignment { reason: crate::processing::ScopeAlignmentError::Limit { kind: crate::processing::ScopeAlignmentLimitKind::Records, required, limit: actual } }) if *required == usage.records() && *actual == limit)
     );
     let failed_usage = failed.scope_alignment_usage().unwrap();
     assert_eq!(failed_usage.records(), limit);
@@ -235,14 +238,14 @@ fn live_proof_census_deduplicates_clones_and_rejects_foreign_family() {
     let proof = p.semantic_window(&r).unwrap();
     let clone = proof.clone();
     let products = [
-        crate::ScopeAlignmentProduct::SemanticWindow(&proof),
-        crate::ScopeAlignmentProduct::SemanticWindow(&clone),
+        crate::protocol::ScopeAlignmentProduct::SemanticWindow(&proof),
+        crate::protocol::ScopeAlignmentProduct::SemanticWindow(&clone),
     ];
-    let census = crate::scope_alignment_census(
-        crate::ScopeAlignmentCensusInput::Product(crate::ScopeAlignmentProduct::SemanticWindow(
-            &proof,
-        )),
-        crate::ScopeAlignmentProducts::Mixed(&products),
+    let census = crate::protocol::scope_alignment_census(
+        crate::protocol::ScopeAlignmentCensusInput::Product(
+            crate::protocol::ScopeAlignmentProduct::SemanticWindow(&proof),
+        ),
+        crate::protocol::ScopeAlignmentProducts::Mixed(&products),
         ScopeAlignmentAllowance::new(100_000, 67_108_864),
     )
     .unwrap();
@@ -268,7 +271,9 @@ fn live_proof_census_deduplicates_clones_and_rejects_foreign_family() {
     bad.inline_boxes = Some(family);
     assert_eq!(
         window_reason(&p.semantic_window(&bad).unwrap_err()),
-        &ProtocolError::InlineBoxFragmentation(crate::InlineBoxFragmentationError::ForeignFamily)
+        &ProtocolError::InlineBoxFragmentation(
+            crate::protocol::InlineBoxFragmentationError::ForeignFamily
+        )
     );
     assert!(proof.matches(&window(&p)));
 }
@@ -311,9 +316,9 @@ fn original_content_and_edge_whitespace_are_semantic_not_advance_tests() {
         let actual = p
             .select(request(&p))
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(actual.has_in_flow_content(), expected);
@@ -364,17 +369,17 @@ fn mandatory_equal_source_ends_are_distinct_and_resumption_does_not_repeat_force
     value.controls = vec![
         paragraph::ParagraphControl {
             at: 0,
-            kind: crate::ParagraphControlKind::ForcedBreak,
+            kind: crate::protocol::paragraph::ParagraphControlKind::ForcedBreak,
         },
         paragraph::ParagraphControl {
             at: 0,
-            kind: crate::ParagraphControlKind::ForcedBreak,
+            kind: crate::protocol::paragraph::ParagraphControlKind::ForcedBreak,
         },
     ];
     value.anchor_order = (0..2)
         .map(|i| paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Control(i),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         })
         .collect();
     let p = capture(&mut system(), value);
@@ -428,18 +433,18 @@ fn mandatory_equal_source_ends_are_distinct_and_resumption_does_not_repeat_force
 #[test]
 fn zero_size_atomic_roles_and_missing_or_foreign_occurrences_are_preserved() {
     for (kind, expected) in [
-        (crate::InlineBoxKind::InFlow, true),
-        (crate::InlineBoxKind::OutOfFlow, false),
+        (crate::source::InlineBoxKind::InFlow, true),
+        (crate::source::InlineBoxKind::OutOfFlow, false),
     ] {
         let mut value = input("", WhiteSpace::Collapse);
         let mut source = value.source.clone();
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(21630),
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(21630),
             kind,
             0,
-            crate::Size::new(0.0, 0.0),
+            crate::geometry::Size::new(0.0, 0.0),
         ));
-        if kind == crate::InlineBoxKind::InFlow {
+        if kind == crate::source::InlineBoxKind::InFlow {
             value.boundary_policies = [
                 paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
                 paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
@@ -447,9 +452,9 @@ fn zero_size_atomic_roles_and_missing_or_foreign_occurrences_are_preserved() {
             .into_iter()
             .map(|definition| paragraph::ParagraphBoundaryPolicy {
                 definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
+                preceding_wrap: crate::style::Wrap::Word,
+                following_wrap: crate::style::Wrap::Word,
+                ancestor_wrap: crate::style::Wrap::Word,
             })
             .collect();
         }
@@ -459,7 +464,7 @@ fn zero_size_atomic_roles_and_missing_or_foreign_occurrences_are_preserved() {
             0,
             paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Atomic(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             },
         );
         let twin = capture(&mut system(), value.clone());
@@ -469,9 +474,9 @@ fn zero_size_atomic_roles_and_missing_or_foreign_occurrences_are_preserved() {
         let proof = p.semantic_window(&r).unwrap();
         assert_eq!(proof.request().atomics[0].kind, kind);
         r.atomics[0].kind = if expected {
-            crate::InlineBoxKind::OutOfFlow
+            crate::source::InlineBoxKind::OutOfFlow
         } else {
-            crate::InlineBoxKind::InFlow
+            crate::source::InlineBoxKind::InFlow
         };
         assert!(matches!(
             window_reason(&p.semantic_window(&r).unwrap_err()),
@@ -499,11 +504,11 @@ fn ordinary_and_latent_automatic_alternatives_keep_their_owned_source_cuts() {
     for auto_phrase in [false, true] {
         let mut value = input("associate", WhiteSpace::Collapse);
         value.base_style.locale = Some("en-US".into());
-        value.base_style.hyphens = crate::Hyphens::Auto;
+        value.base_style.hyphens = crate::hyphenation::Hyphens::Auto;
         value.base_style.word_break = if auto_phrase {
-            crate::WordBreak::AutoPhrase
+            crate::style::WordBreak::AutoPhrase
         } else {
-            crate::WordBreak::Normal
+            crate::style::WordBreak::Normal
         };
         let p = capture(&mut system(), value);
         let proof = p.semantic_window(&window(&p)).unwrap();
@@ -526,7 +531,7 @@ fn ordinary_and_latent_automatic_alternatives_keep_their_owned_source_cuts() {
         for alternative in proof.conditionals() {
             assert!(matches!(
                 alternative.alternative().view().definition(),
-                crate::PreparedAlternativeDefinition::Automatic { .. }
+                crate::protocol::readback::PreparedAlternativeDefinition::Automatic { .. }
             ));
             assert!(alternative.before_has_in_flow_content());
             assert_eq!(alternative.partition(), 0);
@@ -540,24 +545,25 @@ fn actual_boundary_participation_is_bound_without_metric_struts() {
     value.controls = vec![
         paragraph::ParagraphControl {
             at: 0,
-            kind: crate::ParagraphControlKind::InlineBoundaryStart,
+            kind: crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart,
         },
         paragraph::ParagraphControl {
             at: 0,
-            kind: crate::ParagraphControlKind::InlineBoundaryEnd,
+            kind: crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd,
         },
     ];
     value
         .anchor_order
         .extend((0..2).map(|i| paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Control(i),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         }));
     let p = capture(&mut system(), value);
     let mut r = window(&p);
     let neutral = p.semantic_window(&r).unwrap();
     assert!(!neutral.partitions()[0].has_in_flow_content());
-    r.controls[0].boundary = Some(crate::InlineBoundaryAllocation::contribution(1.0).unwrap());
+    r.controls[0].boundary =
+        Some(crate::protocol::InlineBoundaryAllocation::contribution(1.0).unwrap());
     let participating = p.semantic_window(&r).unwrap();
     assert!(participating.partitions()[0].has_in_flow_content());
     assert!(!neutral.matches(&r));
@@ -578,33 +584,33 @@ fn semantic_observation_defers_the_actual_terminal_metric_refusal() {
     let error = p
         .select(request(&p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap_err();
     assert_eq!(
         reason(&error),
-        &ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
+        &ProtocolError::MissingPhaseTwoContext(crate::protocol::PhaseTwoContext::TerminalBlockEdge)
     );
 }
 
 #[test]
 fn issued_shy_and_resumed_after_spelling_keep_source_provenance() {
     let mut value = input("ab\u{ad}cde", WhiteSpace::Collapse);
-    value.base_style.hyphens = crate::Hyphens::Manual;
+    value.base_style.hyphens = crate::hyphenation::Hyphens::Manual;
     value.base_style.locale = Some("und-Latn".into());
-    value.base_style.hyphenate_limit_chars = crate::HyphenateLimitChars {
-        total: crate::HyphenationMinimum::Count(0),
-        before: crate::HyphenationMinimum::Count(0),
-        after: crate::HyphenationMinimum::Count(0),
+    value.base_style.hyphenate_limit_chars = crate::hyphenation::HyphenateLimitChars {
+        total: crate::hyphenation::HyphenationMinimum::Count(0),
+        before: crate::hyphenation::HyphenationMinimum::Count(0),
+        after: crate::hyphenation::HyphenationMinimum::Count(0),
     };
     value.base_style.native_hyphenation_convention = Some(
-        crate::NativeHyphenationConvention::language_script(
+        crate::hyphenation::NativeHyphenationConvention::language_script(
             "und-Latn",
             "Latn",
-            crate::Text::from("-"),
-            crate::HyphenationPlacement::BothSides,
+            crate::text::Text::from("-"),
+            crate::hyphenation::HyphenationPlacement::BothSides,
         )
         .unwrap(),
     );
@@ -635,9 +641,9 @@ fn issued_shy_and_resumed_after_spelling_keep_source_provenance() {
     let line = p
         .select(selected)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let mut resumed = r;

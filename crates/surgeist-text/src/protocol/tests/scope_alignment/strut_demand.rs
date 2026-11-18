@@ -1,7 +1,26 @@
 //! Actual allocated numeric rows demand frames by ancestry, not by glyph presence.
 //! Empty unclassified boxes retain source custody without acquiring font facts.
 use super::capture::{reference, style};
-use crate::*;
+use crate::{
+    Error, ErrorCode, ErrorDetail, System,
+    analyzed::{AnalysisTypography, AnalyzedSource},
+    geometry::{Point, Rect},
+    id::Id,
+    layout::{Affinity, Layout},
+    options::Alignment,
+    processing::{
+        CapturedScope, ScopeAlignmentBoundary, ScopeAlignmentError, SourceProcessingScope,
+        WhiteSpaceTrim, process_contextual_source,
+    },
+    protocol::{
+        FinalizedLine, LineAllocations, LineBoxAlignment, LineBoxStrut, LineSelectionRequest,
+        LineStrut, PreparationOptions, PreparedText, ScopeAllocation, ScopeAllocations,
+        SelectedLine, SpacingAllocations, SpacingPolicy, paragraph::ParagraphOriginKind,
+    },
+    range::Range,
+    source::BaselineShift,
+    style::Wrap,
+};
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
 use std::sync::Arc;
 
@@ -42,7 +61,7 @@ fn font_premises() {
 }
 
 fn fixture(relation: Relation) -> Fixture {
-    use SourceProcessingEvent as E;
+    use crate::processing::SourceProcessingEvent as E;
     let mut input = super::prepared::two_leaves();
     // Inline.Style supplies a font context; the body is independently authored.
     input.source.span(Range::new(0, 2), style(10.0, 10.0));

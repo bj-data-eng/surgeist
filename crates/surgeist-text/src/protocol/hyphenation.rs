@@ -7,8 +7,8 @@ use super::{
 };
 use crate::engine::analysis::hyphenation::{CutCounts, en_us};
 use crate::{
-    Range,
     engine::{AnalyzedData, PreparedData},
+    range::Range,
 };
 
 /// The actual resource qualification of a complete processed lexical word.
@@ -98,12 +98,14 @@ pub(crate) fn words(analyzed: &AnalyzedData) -> crate::Result<Vec<WordData>> {
                     })
                 })
                 .ok_or_else(|| {
-                    crate::hyphenation::error(crate::HyphenationError::ResourceLengthOverflow)
+                    crate::hyphenation::error(
+                        crate::hyphenation::HyphenationError::ResourceLengthOverflow,
+                    )
                 })?;
             let mut query = String::new();
-            query
-                .try_reserve_exact(query_length)
-                .map_err(|_| crate::hyphenation::error(crate::HyphenationError::ResourceStorage))?;
+            query.try_reserve_exact(query_length).map_err(|_| {
+                crate::hyphenation::error(crate::hyphenation::HyphenationError::ResourceStorage)
+            })?;
             let mut endpoints = vec![(0, word.atoms.start)];
             let mut resource = HyphenationResource::EnUs2005;
             for atom in word.atoms.clone() {
@@ -134,15 +136,15 @@ pub(crate) fn words(analyzed: &AnalyzedData) -> crate::Result<Vec<WordData>> {
                     let observed = en_us::observe(&query).map_err(|error| {
                         crate::hyphenation::error(match error {
                             en_us::ObservationError::LengthOverflow => {
-                                crate::HyphenationError::ResourceLengthOverflow
+                                crate::hyphenation::HyphenationError::ResourceLengthOverflow
                             }
                             en_us::ObservationError::Storage(_) => {
-                                crate::HyphenationError::ResourceStorage
+                                crate::hyphenation::HyphenationError::ResourceStorage
                             }
                             en_us::ObservationError::InvalidProviderSlice { .. }
                             | en_us::ObservationError::IncompleteProvider { .. }
                             | en_us::ObservationError::InvalidCut { .. } => {
-                                crate::HyphenationError::InvalidResourceMapping
+                                crate::hyphenation::HyphenationError::InvalidResourceMapping
                             }
                         })
                     })?;
@@ -153,7 +155,7 @@ pub(crate) fn words(analyzed: &AnalyzedData) -> crate::Result<Vec<WordData>> {
                         })
                     {
                         return Err(crate::hyphenation::error(
-                            crate::HyphenationError::InvalidResourceMapping,
+                            crate::hyphenation::HyphenationError::InvalidResourceMapping,
                         ));
                     }
                     provenance = Some(observed.provenance().into());
@@ -201,7 +203,7 @@ impl HyphenationSourcePieceView<'_> {
         self.row.local
     }
     #[must_use]
-    pub fn processed_range(&self) -> crate::ProcessedRange {
+    pub fn processed_range(&self) -> crate::processing::ProcessedRange {
         self.prepared
             .analyzed
             .processed
@@ -357,7 +359,7 @@ impl PreparedHyphenationCutView<'_> {
         self.data().counts.map(Into::into)
     }
     #[must_use]
-    pub fn style(&self) -> &crate::Style {
+    pub fn style(&self) -> &crate::style::Style {
         self.prepared.analyzed.styles[self.data().style]
             .style
             .authored()

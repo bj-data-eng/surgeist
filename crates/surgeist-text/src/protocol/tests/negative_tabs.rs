@@ -1,6 +1,11 @@
 //! Existing-callable positive qualification for spacing-derived negative CSS tabs.
 use super::*;
-use crate::{LineHeight, PlaintextItem, Range, TabPreparation, TabSize};
+use crate::{
+    processing::PlaintextItem,
+    range::Range,
+    style::LineHeight,
+    tabs::{TabPreparation, TabSize},
+};
 use skrifa::MetadataProvider;
 
 const AHEM: &[u8] = include_bytes!(concat!(
@@ -24,17 +29,17 @@ fn input(
     block: Option<Style>,
     direction: ParagraphBaseDirection,
 ) -> ParagraphInput {
-    let source = Source::identified(text, crate::Id::from_u64(64091), 6);
+    let source = Source::identified(text, crate::id::Id::from_u64(64091), 6);
     let length = source.text().len();
     ParagraphInput {
         source: source.clone(),
         base_style: own,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: direction,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: block
-            .map(|style| crate::ParagraphTabReference::new(style, direction).unwrap()),
+            .map(|style| crate::tabs::ParagraphTabReference::new(style, direction).unwrap()),
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
             source,
@@ -52,8 +57,11 @@ fn input(
 
 fn prepare(value: ParagraphInput, demand: TabPreparation) -> crate::Result<PreparedText> {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)?,
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            value,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )?,
+        crate::style::Wrap::Word,
     );
     let mut s = System::default();
     s.register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
@@ -64,24 +72,25 @@ fn prepare(value: ParagraphInput, demand: TabPreparation) -> crate::Result<Prepa
 fn finish(p: &PreparedText, origin: Option<f64>, indent: f64) -> crate::Result<FinalizedLine> {
     let mut r = request(p);
     r.context.tabs = TabContext::CssStops { origin };
-    r.context.base_direction = if p.analyzed_source().direction() == crate::Direction::RightToLeft {
-        ParagraphBaseDirection::RightToLeft
-    } else {
-        ParagraphBaseDirection::LeftToRight
-    };
-    r.context.line_box_direction =
-        if p.analyzed_source().direction() == crate::Direction::RightToLeft {
-            crate::LineBoxDirection::RightToLeft
+    r.context.base_direction =
+        if p.analyzed_source().direction() == crate::style::Direction::RightToLeft {
+            ParagraphBaseDirection::RightToLeft
         } else {
-            crate::LineBoxDirection::LeftToRight
+            ParagraphBaseDirection::LeftToRight
+        };
+    r.context.line_box_direction =
+        if p.analyzed_source().direction() == crate::style::Direction::RightToLeft {
+            crate::protocol::LineBoxDirection::RightToLeft
+        } else {
+            crate::protocol::LineBoxDirection::LeftToRight
         };
     r.context.indent = indent;
     r.context.available_inline = None;
-    r.context.alignment = crate::Alignment::Left;
+    r.context.alignment = crate::options::Alignment::Left;
     r.context.spacing = SpacingPolicy::None;
-    p.select(r)?.finalize(crate::LineAllocations {
+    p.select(r)?.finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
 }
 
@@ -107,9 +116,9 @@ fn qualify_font_and_signed_space() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(line.feedback().advance, 19.0); // (20 - 21) + 20
@@ -189,7 +198,7 @@ fn assert_source_and_geometry(p: &PreparedText, line: FinalizedLine, advance: f6
     let plaintext: Vec<_> = p
         .analyzed_source()
         .processed_source()
-        .plaintext_items(crate::Affinity::Before)
+        .plaintext_items(crate::layout::Affinity::Before)
         .flat_map(|item| match item {
             PlaintextItem::Text(text) => text.code_units().to_vec(),
             PlaintextItem::InlineBox(_) => panic!("no boxes"),
@@ -199,13 +208,13 @@ fn assert_source_and_geometry(p: &PreparedText, line: FinalizedLine, advance: f6
     let origin = p.origin_views().next().unwrap().handle();
     assert_eq!(
         origin.view().source().id(),
-        Some(crate::Id::from_u64(64091))
+        Some(crate::id::Id::from_u64(64091))
     );
     assert_eq!(origin.view().source().revision(), 6);
-    let layout = crate::Layout::from_finalized_lines(PlacementRequest {
+    let layout = crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 11.0,
@@ -230,12 +239,18 @@ fn assert_source_and_geometry(p: &PreparedText, line: FinalizedLine, advance: f6
     );
     assert!(
         layout
-            .cursor(crate::Cursor::new(0, crate::Affinity::After))
+            .cursor(crate::layout::Cursor::new(
+                0,
+                crate::layout::Affinity::After
+            ))
             .is_ok()
     );
     assert!(
         layout
-            .cursor(crate::Cursor::new(1, crate::Affinity::Before))
+            .cursor(crate::layout::Cursor::new(
+                1,
+                crate::layout::Affinity::Before
+            ))
             .is_ok()
     );
 }
@@ -316,7 +331,7 @@ fn positive_and_spacing_derived_zero_controls_keep_distinct_resource_demands() {
     );
     assert_eq!(zero.analyzed_source().source().text().code_units(), [9]);
     assert!(
-        line.prefix_at(&crate::TextSeam::AfterParticipant(
+        line.prefix_at(&crate::protocol::prefix::TextSeam::AfterParticipant(
             zero.participants().next().unwrap()
         ))
         .unwrap()
@@ -330,7 +345,7 @@ fn authored_zero_and_negative_specified_syntax_remain_different_from_negative_us
         TabSize::spaces(-1.0).unwrap_err().detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
             field: "tab size",
-            category: crate::TextNumericError::OutOfRange,
+            category: crate::error::TextNumericError::OutOfRange,
             ..
         })
     ));
@@ -338,7 +353,7 @@ fn authored_zero_and_negative_specified_syntax_remain_different_from_negative_us
         TabSize::length(-1.0).unwrap_err().detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
             field: "tab size",
-            category: crate::TextNumericError::OutOfRange,
+            category: crate::error::TextNumericError::OutOfRange,
             ..
         })
     ));
@@ -365,15 +380,15 @@ fn negative_nonzero_period_needs_real_phase_and_refusal_leaves_retained_output_u
     assert_eq!(retained.feedback().advance, 8.0);
     assert!(matches!(
         reason(&finish(&p, None, 0.0).unwrap_err()),
-        ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TabOrigin)
+        ProtocolError::MissingPhaseTwoContext(crate::protocol::PhaseTwoContext::TabOrigin)
     ));
     let error = finish(&p, Some(f64::NAN), 0.0).unwrap_err();
     assert!(matches!(
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
             field: "tab origin",
-            phase: crate::TextNumericPhase::Selection,
-            category: crate::TextNumericError::NonFinite,
+            phase: crate::error::TextNumericPhase::Selection,
+            category: crate::error::TextNumericError::NonFinite,
             ..
         })
     ));
@@ -394,8 +409,8 @@ fn negative_grid_cannot_round_away_a_real_origin_in_the_single_threshold_bump() 
     assert!(matches!(
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextNumeric {
-            phase: crate::TextNumericPhase::Finalization,
-            category: crate::TextNumericError::NonZeroLost,
+            phase: crate::error::TextNumericPhase::Finalization,
+            category: crate::error::TextNumericError::NonZeroLost,
             ..
         })
     ));

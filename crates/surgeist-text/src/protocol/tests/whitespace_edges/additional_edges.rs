@@ -18,11 +18,11 @@ fn prepare_direction(
 ) -> PreparedText {
     let end = source.text().len();
     let input = ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         source: source.clone(),
         base_style,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: direction,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
@@ -43,10 +43,10 @@ fn prepare_direction(
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             ),
             PreparationOptions::default(),
         )
@@ -58,12 +58,12 @@ fn select(
     start: PreparedBoundary,
     ending: PreparedOpportunity,
     width: f64,
-    alignment: crate::Alignment,
+    alignment: crate::options::Alignment,
 ) -> FinalizedLine {
     selected(p, start, ending, width, alignment)
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -73,18 +73,18 @@ fn selected(
     start: PreparedBoundary,
     ending: PreparedOpportunity,
     width: f64,
-    alignment: crate::Alignment,
+    alignment: crate::options::Alignment,
 ) -> SelectedLine {
     let mut r = request(p);
     r.context.base_direction = match p.analyzed_source().direction() {
-        crate::Direction::LeftToRight => ParagraphBaseDirection::LeftToRight,
-        crate::Direction::RightToLeft => ParagraphBaseDirection::RightToLeft,
-        crate::Direction::Auto => panic!("analysis returns a resolved base direction"),
+        crate::style::Direction::LeftToRight => ParagraphBaseDirection::LeftToRight,
+        crate::style::Direction::RightToLeft => ParagraphBaseDirection::RightToLeft,
+        crate::style::Direction::Auto => panic!("analysis returns a resolved base direction"),
     };
     r.context.line_box_direction = match p.analyzed_source().direction() {
-        crate::Direction::LeftToRight => crate::LineBoxDirection::LeftToRight,
-        crate::Direction::RightToLeft => crate::LineBoxDirection::RightToLeft,
-        crate::Direction::Auto => panic!("analysis returns a resolved base direction"),
+        crate::style::Direction::LeftToRight => crate::protocol::LineBoxDirection::LeftToRight,
+        crate::style::Direction::RightToLeft => crate::protocol::LineBoxDirection::RightToLeft,
+        crate::style::Direction::Auto => panic!("analysis returns a resolved base direction"),
     };
     r.start = start;
     r.end = ending.view().boundary();
@@ -102,7 +102,7 @@ fn selected(
         PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
         _ => unreachable!(),
     };
-    r.termination = crate::PreparedTermination::Ordinary(ending);
+    r.termination = crate::protocol::PreparedTermination::Ordinary(ending);
     r.context.available_inline = Some(width);
     r.context.alignment = alignment;
     p.select(r).unwrap()
@@ -125,7 +125,7 @@ fn continuation(p: &PreparedText, start: PreparedBoundary, width: f64) -> Finali
         start,
         ending(p, PreparedBreakKind::ParagraphEnd),
         width,
-        crate::Alignment::Center,
+        crate::options::Alignment::Center,
     )
 }
 
@@ -136,7 +136,13 @@ fn soft_preserved_space_reports_unconditional_hanging_without_losing_source() {
     let p = prepare(&mut system, "X Y", WhiteSpace::Preserve);
     let soft = ending(&p, PreparedBreakKind::Allowed);
     assert_eq!(soft.view().boundary().view().source_after().get(), 2);
-    let line = select(&p, first(&p), soft.clone(), 40.0, crate::Alignment::Center);
+    let line = select(
+        &p,
+        first(&p),
+        soft.clone(),
+        40.0,
+        crate::options::Alignment::Center,
+    );
     assert_eq!(line.feedback().advance, 20.0);
     assert_eq!(
         glyphs(&line, 2),
@@ -163,7 +169,7 @@ fn forced_preserved_space_hangs_only_its_actual_overflow() {
         first(&p),
         forced.clone(),
         15.0,
-        crate::Alignment::Center,
+        crate::options::Alignment::Center,
     );
     assert_eq!(line.feedback().advance, 20.0);
     let actual = glyphs(&line, 2);
@@ -293,7 +299,7 @@ fn negative_preserved_space_contribution_is_not_absolute_hanging() {
         first(&p),
         forced.clone(),
         20.0,
-        crate::Alignment::Center,
+        crate::options::Alignment::Center,
     );
     assert_eq!(line.feedback().advance, 8.0);
     let rows = glyphs(&line, 2);
@@ -342,8 +348,8 @@ fn earlier_unconditional_separator_depends_on_following_conditional_sequence() {
     let forced = ending(&p, PreparedBreakKind::Forced);
     let mut observations = vec![];
     for (width, alignment) in [
-        (40.0, crate::Alignment::Center),
-        (15.0, crate::Alignment::Left),
+        (40.0, crate::options::Alignment::Center),
+        (15.0, crate::options::Alignment::Left),
     ] {
         let line = select(&p, first(&p), forced.clone(), width, alignment);
         assert_eq!(line.feedback().advance, 30.0);
@@ -373,7 +379,7 @@ fn allocated(selected: &SelectedLine, amounts: &[f64]) -> FinalizedLine {
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), amounts.len());
     selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::Complete(
                 slots
                     .into_iter()
@@ -381,7 +387,7 @@ fn allocated(selected: &SelectedLine, amounts: &[f64]) -> FinalizedLine {
                     .map(|(slot, &amount)| SpacingAllocation { slot, amount })
                     .collect(),
             ),
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -397,12 +403,12 @@ fn allocated_conditional_space_remeasures_signed_exclusion_in_natural_frame() {
         first(&p),
         forced.clone(),
         15.0,
-        crate::Alignment::Center,
+        crate::options::Alignment::Center,
     );
     let natural = selection
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
@@ -443,12 +449,18 @@ fn naturally_fitting_conditional_space_does_not_become_eligible_after_expansion(
     let mut system = system();
     let p = prepare(&mut system, "X \nY", WhiteSpace::Preserve);
     let forced = ending(&p, PreparedBreakKind::Forced);
-    let selection = selected(&p, first(&p), forced.clone(), 40.0, crate::Alignment::Left);
+    let selection = selected(
+        &p,
+        first(&p),
+        forced.clone(),
+        40.0,
+        crate::options::Alignment::Left,
+    );
     assert_eq!(
         selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -477,7 +489,13 @@ fn upstream_allocation_moves_eligible_conditional_space_before_exclusion() {
     let mut system = system();
     let p = prepare(&mut system, "X X \nY", WhiteSpace::Preserve);
     let forced = ending(&p, PreparedBreakKind::Forced);
-    let selection = selected(&p, first(&p), forced.clone(), 35.0, crate::Alignment::Left);
+    let selection = selected(
+        &p,
+        first(&p),
+        forced.clone(),
+        35.0,
+        crate::options::Alignment::Left,
+    );
     let slots = selection.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 2);
     for (slot, range) in slots.iter().zip([Range::new(1, 2), Range::new(3, 4)]) {
@@ -492,7 +510,7 @@ fn upstream_allocation_moves_eligible_conditional_space_before_exclusion() {
         );
         assert_eq!(
             slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
-            [crate::SpacingSlotOwner::Source {
+            [crate::protocol::SpacingSlotOwner::Source {
                 origin: p.origin_views().next().unwrap().handle(),
                 local: range,
                 aggregate: range,
@@ -501,9 +519,9 @@ fn upstream_allocation_moves_eligible_conditional_space_before_exclusion() {
     }
     assert_eq!(
         selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -540,12 +558,18 @@ fn natural_terminal_group_stays_fixed_through_reverse_conditional_advance() {
     );
     let p = prepare_source(&mut system, source, base);
     let forced = ending(&p, PreparedBreakKind::Forced);
-    let selection = selected(&p, first(&p), forced.clone(), 15.0, crate::Alignment::Left);
+    let selection = selected(
+        &p,
+        first(&p),
+        forced.clone(),
+        15.0,
+        crate::options::Alignment::Left,
+    );
     assert_eq!(
         selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -588,13 +612,13 @@ fn rtl_allocated_conditional_space_reports_the_physical_start_edge() {
         first(&p),
         forced.clone(),
         15.0,
-        crate::Alignment::Center,
+        crate::options::Alignment::Center,
     );
     assert_eq!(
         selection
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None
+                scopes: crate::protocol::ScopeAllocations::None
             })
             .unwrap()
             .feedback()
@@ -642,7 +666,7 @@ fn partly_hanging_conditional_space_leaves_preceding_separator_terminal() {
         first(&p),
         forced.clone(),
         25.0,
-        crate::Alignment::Center,
+        crate::options::Alignment::Center,
     );
     assert_eq!(line.feedback().advance, 30.0);
     let rows = glyphs(&line, 3);
@@ -698,7 +722,7 @@ fn fitting_zero_advance_conditional_space_keeps_preceding_separator_nonterminal(
         first(&p),
         forced.clone(),
         40.0,
-        crate::Alignment::Center,
+        crate::options::Alignment::Center,
     );
     assert_eq!(line.feedback().advance, 20.0);
     let rows = glyphs(&line, 3);
@@ -732,13 +756,13 @@ fn ordinary_start_alignment_uses_actual_geometry_without_hanging_capacity() {
     let mut r = request(&p);
     r.context.available_inline = Some(1e308);
     r.context.indent = 1.0;
-    r.context.alignment = crate::Alignment::Start;
+    r.context.alignment = crate::options::Alignment::Start;
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .expect("ordinary start-aligned text consumes no hanging edge");
     assert_eq!(line.feedback().advance, 10.0);
@@ -761,12 +785,12 @@ fn conditional_space_allocation_to_zero_preserves_source_and_alignment() {
         first(&p),
         forced.clone(),
         15.0,
-        crate::Alignment::Center,
+        crate::options::Alignment::Center,
     );
     let natural = selection
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
@@ -792,7 +816,7 @@ fn conditional_space_allocation_to_zero_preserves_source_and_alignment() {
 }
 
 fn prepared_discard_separator(
-    terminal_edge: crate::ParagraphTerminalEdge,
+    terminal_edge: crate::protocol::ParagraphTerminalEdge,
 ) -> (Vec<u8>, PreparedText) {
     let bytes = crate::shaping_test_fonts::width_ahem();
     let font = skrifa::FontRef::new(&bytes).unwrap();
@@ -809,7 +833,7 @@ fn prepared_discard_separator(
     system
         .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
         .unwrap();
-    let source = Source::identified("A\u{3000}", crate::Id::from_u64(7401), 7);
+    let source = Source::identified("A\u{3000}", crate::id::Id::from_u64(7401), 7);
     let input = ParagraphInput {
         terminal_edge,
         source: source.clone(),
@@ -819,7 +843,7 @@ fn prepared_discard_separator(
             ..style()
         },
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
@@ -835,11 +859,13 @@ fn prepared_discard_separator(
         replacements: vec![],
         anchor_order: vec![],
     };
-    let analyzed =
-        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap();
+    let analyzed = AnalyzedSource::from_paragraph(
+        input,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.source().text().code_units(), [0x41, 0x3000]);
-    assert_eq!(analyzed.source().id(), Some(crate::Id::from_u64(7401)));
+    assert_eq!(analyzed.source().id(), Some(crate::id::Id::from_u64(7401)));
     assert_eq!(analyzed.source().revision(), 7);
     assert_eq!(
         analyzed.processed_source().processed_text().code_units(),
@@ -847,7 +873,7 @@ fn prepared_discard_separator(
     );
     let prepared = system
         .prepare(
-            &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(&analyzed, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap();
@@ -882,7 +908,7 @@ fn discard_separator_custody(p: &PreparedText, line: &FinalizedLine, bytes: &[u8
     );
     assert_eq!(line.feedback().advance, 30.0);
     let layout = custody(p, vec![line.clone()], &[0x41, 0x3000]);
-    assert_eq!(layout.source().id(), Some(crate::Id::from_u64(7401)));
+    assert_eq!(layout.source().id(), Some(crate::id::Id::from_u64(7401)));
     assert_eq!(layout.source().revision(), 7);
 }
 
@@ -891,13 +917,13 @@ fn discard_surviving_separator_keeps_ordinary_advance_at_block_end() {
     // Adopted #74 policy: Discard gives surviving characters ordinary advance,
     // without whitespace-rule hanging. Actual A10 + U3000(20) therefore occupies
     // 0..30 even when the available width is only10.
-    let (bytes, p) = prepared_discard_separator(crate::ParagraphTerminalEdge::BlockEnd);
+    let (bytes, p) = prepared_discard_separator(crate::protocol::ParagraphTerminalEdge::BlockEnd);
     let line = select(
         &p,
         first(&p),
         ending(&p, PreparedBreakKind::ParagraphEnd),
         10.0,
-        crate::Alignment::Left,
+        crate::options::Alignment::Left,
     );
     discard_separator_custody(&p, &line, &bytes);
     let fit = line.measurements().fit();
@@ -915,13 +941,13 @@ fn discard_surviving_separator_keeps_ordinary_advance_at_block_end() {
 
 #[test]
 fn discard_surviving_separator_needs_no_hanging_terminal_or_available_edge() {
-    let (bytes, p) = prepared_discard_separator(crate::ParagraphTerminalEdge::Unknown);
+    let (bytes, p) = prepared_discard_separator(crate::protocol::ParagraphTerminalEdge::Unknown);
     let mut r = request(&p);
     r.context.available_inline = None;
     let line = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations { spacing: SpacingAllocations::None, scopes: crate::ScopeAllocations::None })
+        .finalize(crate::protocol::LineAllocations { spacing: SpacingAllocations::None, scopes: crate::protocol::ScopeAllocations::None })
         .expect("ordinary Discard advance needs neither terminal-block nor available-edge hanging context");
     discard_separator_custody(&p, &line, &bytes);
     let fit = line.measurements().fit();
@@ -941,7 +967,7 @@ fn discard_edge_capture(
     source: Source,
     base_style: Style,
     direction: ParagraphBaseDirection,
-    terminal_edge: crate::ParagraphTerminalEdge,
+    terminal_edge: crate::protocol::ParagraphTerminalEdge,
     forced_at: Option<usize>,
 ) -> PreparedText {
     let end = source.text().len();
@@ -951,7 +977,7 @@ fn discard_edge_capture(
         base_direction: direction,
         terminal_edge,
         tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
@@ -971,7 +997,7 @@ fn discard_edge_capture(
             .into_iter()
             .map(|_| paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Control(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             })
             .collect(),
         connections: vec![],
@@ -990,10 +1016,10 @@ fn discard_edge_capture(
             &crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             ),
             PreparationOptions::default(),
         )
@@ -1023,7 +1049,7 @@ fn ordinary_discard_measurements(line: &FinalizedLine, advance: f64) {
     }
     assert!(
         line.edge_units()
-            .all(|unit| unit.disposition() == crate::LineEdgeDisposition::Ordinary)
+            .all(|unit| unit.disposition() == crate::protocol::LineEdgeDisposition::Ordinary)
     );
 }
 
@@ -1033,13 +1059,13 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
         ParagraphBaseDirection::LeftToRight,
         ParagraphBaseDirection::RightToLeft,
     ] {
-        for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+        for wrap in [crate::style::Wrap::Word, crate::style::Wrap::None] {
             for (kind, text, forced) in [
                 (PreparedBreakKind::Allowed, "A\u{3000}A", None),
                 (PreparedBreakKind::Forced, "A\u{3000}A", Some(2)),
                 (PreparedBreakKind::ParagraphEnd, "A\u{3000}", None),
             ] {
-                if kind == PreparedBreakKind::Allowed && wrap == crate::Wrap::None {
+                if kind == PreparedBreakKind::Allowed && wrap == crate::style::Wrap::None {
                     continue; // No soft endpoint is issued for nowrap.
                 }
                 let source = Source::new(text);
@@ -1052,7 +1078,7 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                         ..style()
                     },
                     direction,
-                    crate::ParagraphTerminalEdge::BlockEnd,
+                    crate::protocol::ParagraphTerminalEdge::BlockEnd,
                     forced,
                 );
                 let stop = ending(&p, kind);
@@ -1072,10 +1098,10 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                             ControlAllocation {
                                 boundary: matches!(
                                     occurrence.view().kind(),
-                                    crate::ParagraphControlKind::InlineBoundaryStart
-                                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                                    crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                        | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                                 )
-                                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                                .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                                 occurrence,
                                 strut: None,
                             }
@@ -1083,14 +1109,14 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                         _ => None,
                     })
                     .collect();
-                r.termination = crate::PreparedTermination::Ordinary(stop.clone());
+                r.termination = crate::protocol::PreparedTermination::Ordinary(stop.clone());
                 r.context.base_direction = direction;
                 r.context.line_box_direction = match direction {
-                    crate::ParagraphBaseDirection::LeftToRight => {
-                        crate::LineBoxDirection::LeftToRight
+                    crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                        crate::protocol::LineBoxDirection::LeftToRight
                     }
-                    crate::ParagraphBaseDirection::RightToLeft => {
-                        crate::LineBoxDirection::RightToLeft
+                    crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                        crate::protocol::LineBoxDirection::RightToLeft
                     }
                 };
                 r.context.end = match kind {
@@ -1103,9 +1129,9 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                 let line = p
                     .select(r)
                     .unwrap()
-                    .finalize(crate::LineAllocations {
+                    .finalize(crate::protocol::LineAllocations {
                         spacing: SpacingAllocations::None,
-                        scopes: crate::ScopeAllocations::None,
+                        scopes: crate::protocol::ScopeAllocations::None,
                     })
                     .unwrap();
                 ordinary_discard_measurements(&line, 30.0);
@@ -1132,17 +1158,17 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                         stop.view().boundary(),
                         ending(&p, PreparedBreakKind::ParagraphEnd),
                         10.0,
-                        crate::Alignment::Left,
+                        crate::options::Alignment::Left,
                     ));
                 }
-                let placed = crate::Layout::from_finalized_lines(PlacementRequest {
+                let placed = crate::layout::Layout::from_finalized_lines(PlacementRequest {
                     prepared: p,
                     coverage: PlacementCoverage::WholeParagraph,
                     entries: lines
                         .into_iter()
                         .enumerate()
                         .map(|(index, line)| {
-                            crate::PlacementEntry::Formatted(LinePlacement {
+                            crate::protocol::PlacementEntry::Formatted(LinePlacement {
                                 line,
                                 anchor: LineAnchor {
                                     inline_origin: 0.0,
@@ -1167,11 +1193,11 @@ fn discard_surviving_separator_consumes_no_terminal_or_available_context_in_both
         ParagraphBaseDirection::LeftToRight,
         ParagraphBaseDirection::RightToLeft,
     ] {
-        for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+        for wrap in [crate::style::Wrap::Word, crate::style::Wrap::None] {
             for terminal in [
-                crate::ParagraphTerminalEdge::Unknown,
-                crate::ParagraphTerminalEdge::NonBlockBoundary,
-                crate::ParagraphTerminalEdge::BlockEnd,
+                crate::protocol::ParagraphTerminalEdge::Unknown,
+                crate::protocol::ParagraphTerminalEdge::NonBlockBoundary,
+                crate::protocol::ParagraphTerminalEdge::BlockEnd,
             ] {
                 let p = discard_edge_capture(
                     Source::new("A\u{3000}"),
@@ -1189,20 +1215,20 @@ fn discard_surviving_separator_consumes_no_terminal_or_available_context_in_both
                     let mut r = request(&p);
                     r.context.base_direction = direction;
                     r.context.line_box_direction = match direction {
-                        crate::ParagraphBaseDirection::LeftToRight => {
-                            crate::LineBoxDirection::LeftToRight
+                        crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                            crate::protocol::LineBoxDirection::LeftToRight
                         }
-                        crate::ParagraphBaseDirection::RightToLeft => {
-                            crate::LineBoxDirection::RightToLeft
+                        crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                            crate::protocol::LineBoxDirection::RightToLeft
                         }
                     };
                     r.context.available_inline = width;
                     let line = p
                         .select(r)
                         .unwrap()
-                        .finalize(crate::LineAllocations {
+                        .finalize(crate::protocol::LineAllocations {
                             spacing: SpacingAllocations::None,
-                            scopes: crate::ScopeAllocations::None,
+                            scopes: crate::protocol::ScopeAllocations::None,
                         })
                         .unwrap();
                     ordinary_discard_measurements(&line, 30.0);
@@ -1240,7 +1266,7 @@ fn discard_ordinary_edge_blocks_hanging_from_preceding_mixed_whitespace_modes() 
                 source,
                 base,
                 direction,
-                crate::ParagraphTerminalEdge::BlockEnd,
+                crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 None,
             );
             let line = select(
@@ -1248,7 +1274,7 @@ fn discard_ordinary_edge_blocks_hanging_from_preceding_mixed_whitespace_modes() 
                 first(&p),
                 ending(&p, PreparedBreakKind::ParagraphEnd),
                 10.0,
-                crate::Alignment::Left,
+                crate::options::Alignment::Left,
             );
             ordinary_discard_measurements(&line, 50.0);
         }
@@ -1271,7 +1297,7 @@ fn discard_ordinary_edge_blocks_hanging_from_preceding_mixed_whitespace_modes() 
             source,
             base,
             direction,
-            crate::ParagraphTerminalEdge::BlockEnd,
+            crate::protocol::ParagraphTerminalEdge::BlockEnd,
             None,
         );
         let line = select(
@@ -1279,7 +1305,7 @@ fn discard_ordinary_edge_blocks_hanging_from_preceding_mixed_whitespace_modes() 
             first(&p),
             ending(&p, PreparedBreakKind::ParagraphEnd),
             10.0,
-            crate::Alignment::Left,
+            crate::options::Alignment::Left,
         );
         assert_eq!(line.feedback().advance, 50.0);
         let expected_hanging = if direction == ParagraphBaseDirection::RightToLeft {

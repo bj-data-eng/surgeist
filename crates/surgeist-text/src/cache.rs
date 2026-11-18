@@ -1,11 +1,16 @@
 use std::hash::{Hash, Hasher};
 
-use super::{
-    Brush, CataloguePublication, Decoration, DecorationBrush, DecorationOffset,
-    DecorationThickness, Font, Id, Indent, InlineBox, LineHeight, Options, Size, Slant, Source,
-    SourceRevision, Style, ValidatedOptions, ValidatedSource, ValidatedStyle, VerticalAlign,
-    Weight, Width,
+use crate::{
+    geometry::Size,
+    id::Id,
+    options::{Indent, Options, ValidatedOptions},
+    source::{InlineBox, Source, SourceRevision, ValidatedSource, VerticalAlign},
+    style::{
+        Brush, Decoration, DecorationBrush, DecorationOffset, DecorationThickness, Font,
+        LineHeight, Slant, Style, ValidatedStyle, Weight, Width,
+    },
 };
+use surgeist_font::CataloguePublication;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Stats {
@@ -121,7 +126,7 @@ impl Key {
         }
     }
 
-    pub(crate) fn from_placement(request: &crate::PlacementRequest) -> Self {
+    pub(crate) fn from_placement(request: &crate::protocol::PlacementRequest) -> Self {
         let analyzed = &request.prepared.inner.analyzed;
         let source = analyzed.processed.source();
         let style = analyzed.paragraph.base_style(&analyzed.processed);
@@ -132,11 +137,15 @@ impl Key {
             basis: RequestBasisKey::ExplicitPlacement {
                 prepared: request.prepared.clone(),
                 coverage: match &request.coverage {
-                    crate::PlacementCoverage::WholeParagraph => ExplicitCoverageKey::Whole,
-                    crate::PlacementCoverage::Range { start, end } => ExplicitCoverageKey::Range {
-                        start: start.clone(),
-                        end: end.clone(),
-                    },
+                    crate::protocol::PlacementCoverage::WholeParagraph => {
+                        ExplicitCoverageKey::Whole
+                    }
+                    crate::protocol::PlacementCoverage::Range { start, end } => {
+                        ExplicitCoverageKey::Range {
+                            start: start.clone(),
+                            end: end.clone(),
+                        }
+                    }
                 },
                 lines: request.entries.iter().map(explicit_entry_key).collect(),
             },
@@ -164,7 +173,7 @@ enum RequestBasisKey {
         width: Option<OrderedF64>,
     },
     ExplicitPlacement {
-        prepared: crate::PreparedText,
+        prepared: crate::protocol::PreparedText,
         coverage: ExplicitCoverageKey,
         lines: Vec<ExplicitLineKey>,
     },
@@ -173,15 +182,15 @@ enum RequestBasisKey {
 enum ExplicitCoverageKey {
     Whole,
     Range {
-        start: crate::PreparedBoundary,
-        end: crate::PreparedBoundary,
+        start: crate::protocol::PreparedBoundary,
+        end: crate::protocol::PreparedBoundary,
     },
 }
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ExplicitLineKey {
     line: ExplicitReceiptKey,
     anchor: [OrderedF64; 2],
-    orientation: crate::LineOrientation,
+    orientation: crate::protocol::LineOrientation,
     atomics: Vec<ExplicitAtomicKey>,
 }
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -191,17 +200,17 @@ enum ExplicitReceiptKey {
 }
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ExplicitFinalizationKey {
-    start: crate::PreparedBoundary,
-    end: crate::PreparedBoundary,
-    termination: crate::PreparedTermination,
-    incoming: Option<crate::HyphenationContinuation>,
-    alternative: Option<crate::PreparedAlternative>,
-    alignment: crate::Alignment,
+    start: crate::protocol::PreparedBoundary,
+    end: crate::protocol::PreparedBoundary,
+    termination: crate::protocol::PreparedTermination,
+    incoming: Option<crate::protocol::HyphenationContinuation>,
+    alternative: Option<crate::protocol::PreparedAlternative>,
+    alignment: crate::options::Alignment,
     context: Vec<u64>,
     spacing: Vec<OrderedF64>,
     profile: u8,
 }
-fn explicit_finalization_key(line: &crate::FinalizedLine) -> ExplicitFinalizationKey {
+fn explicit_finalization_key(line: &crate::protocol::FinalizedLine) -> ExplicitFinalizationKey {
     let request = &line.inner.selected.request;
     ExplicitFinalizationKey {
         start: request.start.clone(),
@@ -223,9 +232,9 @@ fn explicit_finalization_key(line: &crate::FinalizedLine) -> ExplicitFinalizatio
     }
 }
 
-fn explicit_entry_key(entry: &crate::PlacementEntry) -> ExplicitLineKey {
+fn explicit_entry_key(entry: &crate::protocol::PlacementEntry) -> ExplicitLineKey {
     let (line, anchor, orientation, atomics) = match entry {
-        crate::PlacementEntry::Formatted(placement) => (
+        crate::protocol::PlacementEntry::Formatted(placement) => (
             ExplicitReceiptKey::Formatted(explicit_finalization_key(&placement.line)),
             [
                 OrderedF64(placement.anchor.inline_origin),
@@ -234,7 +243,7 @@ fn explicit_entry_key(entry: &crate::PlacementEntry) -> ExplicitLineKey {
             placement.orientation,
             &placement.atomics,
         ),
-        crate::PlacementEntry::NonFormatted(placement) => (
+        crate::protocol::PlacementEntry::NonFormatted(placement) => (
             ExplicitReceiptKey::NonFormatted(explicit_finalization_key(
                 placement.line.finalized_line(),
             )),
@@ -264,12 +273,12 @@ fn explicit_entry_key(entry: &crate::PlacementEntry) -> ExplicitLineKey {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ExplicitAtomicKey {
-    occurrence: crate::PreparedAtomic,
+    occurrence: crate::protocol::PreparedAtomic,
     border: [OrderedF64; 4],
     content: [OrderedF64; 4],
     baseline: OrderedF64,
 }
-fn rect_key(rect: crate::Rect) -> [OrderedF64; 4] {
+fn rect_key(rect: crate::geometry::Rect) -> [OrderedF64; 4] {
     [
         OrderedF64(rect.origin.x),
         OrderedF64(rect.origin.y),

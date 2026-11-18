@@ -10,10 +10,17 @@ mod wbr_evidence;
 #[path = "width_indications.rs"]
 mod width_indications;
 use super::*;
-use crate::TextSeam;
+use crate::protocol::prefix::TextSeam;
 use crate::{
-    HyphenateCharacter, HyphenationCounts, HyphenationError, HyphenationPlacement, Hyphens,
-    LineHeight, NativeHyphenationConvention, Range, SourceRangeFragmentError, Text,
+    hyphenation::{
+        HyphenateCharacter, HyphenationError, HyphenationPlacement, Hyphens,
+        NativeHyphenationConvention,
+    },
+    protocol::HyphenationCounts,
+    range::Range,
+    range_fragments::SourceRangeFragmentError,
+    style::LineHeight,
+    text::Text,
 };
 use skrifa::MetadataProvider;
 
@@ -45,16 +52,16 @@ fn capture(source: Source, base_style: Style, bytes: &[u8]) -> PreparedText {
     let anchor_order = (0..source.boxes().len())
         .map(|occurrence| paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Atomic(occurrence),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         })
         .collect();
     let input = ParagraphInput {
         source: source.clone(),
         base_style,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
@@ -73,9 +80,12 @@ fn capture(source: Source, base_style: Style, bytes: &[u8]) -> PreparedText {
 }
 fn capture_input(input: ParagraphInput, bytes: &[u8]) -> PreparedText {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     let mut system = System::default();
     system
@@ -137,10 +147,10 @@ fn selected_request(
                     ControlAllocation {
                         boundary: matches!(
                             occurrence.view().kind(),
-                            crate::ParagraphControlKind::InlineBoundaryStart
-                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                            crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                        .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }
@@ -165,17 +175,17 @@ fn selected_request(
     r
 }
 fn finish(p: &PreparedText, r: LineSelectionRequest) -> crate::Result<FinalizedLine> {
-    p.select(r)?.finalize(crate::LineAllocations {
+    p.select(r)?.finalize(crate::protocol::LineAllocations {
         spacing: SpacingAllocations::None,
-        scopes: crate::ScopeAllocations::None,
+        scopes: crate::protocol::ScopeAllocations::None,
     })
 }
 fn place_lines(
     p: &PreparedText,
     coverage: PlacementCoverage,
     lines: Vec<FinalizedLine>,
-) -> crate::Result<crate::Layout> {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+) -> crate::Result<crate::layout::Layout> {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage,
         entries: lines
@@ -189,18 +199,19 @@ fn place_lines(
                         assert_eq!(slot.allocation, AtomicLineAllocation::OutOfFlow);
                         assert_eq!(
                             slot.occurrence.view().original_box().size(),
-                            crate::Size::new(0.0, 0.0)
+                            crate::geometry::Size::new(0.0, 0.0)
                         );
-                        let point = crate::Point::new(slot.origin.x, baseline + slot.origin.y);
+                        let point =
+                            crate::geometry::Point::new(slot.origin.x, baseline + slot.origin.y);
                         AtomicPlacement {
                             occurrence: slot.occurrence,
-                            border: crate::Rect::new(point.x, point.y, 0.0, 0.0),
-                            content: crate::Rect::new(point.x, point.y, 0.0, 0.0),
+                            border: crate::geometry::Rect::new(point.x, point.y, 0.0, 0.0),
+                            content: crate::geometry::Rect::new(point.x, point.y, 0.0, 0.0),
                             baseline: point.y,
                         }
                     })
                     .collect();
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -275,7 +286,7 @@ fn counts(before: usize, after: usize) -> HyphenationCounts {
 }
 fn plain_pair() -> (PreparedText, FinalizedLine, FinalizedLine) {
     let p = capture(
-        Source::identified("AB\u{ad}CDE", crate::Id::from_u64(66190), 4),
+        Source::identified("AB\u{ad}CDE", crate::id::Id::from_u64(66190), 4),
         own_style("A", HyphenationPlacement::LogicalAfter),
         AHEM,
     );
@@ -381,7 +392,7 @@ fn exact_whole_pair_and_partial_ranges_keep_source_query_coverage_separate_from_
     assert!(units[0].hyphenation_cuts().next().is_none());
     assert_eq!(
         units[0].pieces().map(|v| v.rect()).collect::<Vec<_>>(),
-        [crate::Rect::new(0.0, 10.0, 10.0, 10.0)]
+        [crate::geometry::Rect::new(0.0, 10.0, 10.0, 10.0)]
     );
     let receiver = place_lines(
         &p,
@@ -408,7 +419,7 @@ fn exact_whole_pair_and_partial_ranges_keep_source_query_coverage_separate_from_
         c.units()
             .flat_map(|unit| unit.pieces().map(|v| v.rect()).collect::<Vec<_>>())
             .collect::<Vec<_>>(),
-        [crate::Rect::new(10.0, 0.0, 10.0, 10.0)]
+        [crate::geometry::Rect::new(10.0, 0.0, 10.0, 10.0)]
     );
     let ending = place_lines(
         &p,
@@ -866,10 +877,10 @@ fn full_receiving_level_and_real_formatting_receiver_remain_distinct_from_local_
             ParagraphInput {
                 source: source.clone(),
                 base_style: style,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: paragraph_direction,
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 origins: vec![paragraph::ParagraphOrigin {
                     text_node: None,
@@ -890,8 +901,12 @@ fn full_receiving_level_and_real_formatting_receiver_remain_distinct_from_local_
         let mut first = selected_request(&p, start(&p), offer.clone(), None, true);
         first.context.base_direction = paragraph_direction;
         first.context.line_box_direction = match paragraph_direction {
-            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+            crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                crate::protocol::LineBoxDirection::LeftToRight
+            }
+            crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                crate::protocol::LineBoxDirection::RightToLeft
+            }
         };
         let first = finish(&p, first).unwrap();
         let mut next = selected_request(
@@ -903,8 +918,12 @@ fn full_receiving_level_and_real_formatting_receiver_remain_distinct_from_local_
         );
         next.context.base_direction = paragraph_direction;
         next.context.line_box_direction = match paragraph_direction {
-            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+            crate::protocol::ParagraphBaseDirection::LeftToRight => {
+                crate::protocol::LineBoxDirection::LeftToRight
+            }
+            crate::protocol::ParagraphBaseDirection::RightToLeft => {
+                crate::protocol::LineBoxDirection::RightToLeft
+            }
         };
         let line = finish(&p, next).unwrap();
         assert_eq!(line.feedback().advance, 40.0);
@@ -1004,10 +1023,10 @@ fn source_less_control_retains_its_actual_size_and_empty_after_has_no_pending_em
             ParagraphInput {
                 source: source.clone(),
                 base_style: own_style("X", HyphenationPlacement::LogicalBefore),
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 origins: vec![paragraph::ParagraphOrigin {
                     text_node: None,
@@ -1027,7 +1046,7 @@ fn source_less_control_retains_its_actual_size_and_empty_after_has_no_pending_em
                 }],
                 anchor_order: vec![paragraph::ParagraphAnchor {
                     item: paragraph::ParagraphAnchorItem::Control(0),
-                    affinity: crate::Affinity::After,
+                    affinity: crate::layout::Affinity::After,
                 }],
             },
             AHEM,
@@ -1198,10 +1217,10 @@ fn indication_hard_separators_refuse_while_actual_tabs_keep_the_chosen_operation
             let input = ParagraphInput {
                 source: source.clone(),
                 base_style: own_style(&text, placement),
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 origins: vec![paragraph::ParagraphOrigin {
                     text_node: None,
@@ -1219,10 +1238,10 @@ fn indication_hard_separators_refuse_while_actual_tabs_keep_the_chosen_operation
             let analyzed = crate::test_wrapping::bind_missing(
                 &AnalyzedSource::from_paragraph(
                     input,
-                    crate::AnalysisTypography::HorizontalComposition,
+                    crate::analyzed::AnalysisTypography::HorizontalComposition,
                 )
                 .unwrap(),
-                crate::Wrap::Word,
+                crate::style::Wrap::Word,
             );
             let mut system = System::default();
             system
@@ -1280,19 +1299,20 @@ fn incoming_css_tab_is_glyph_free_and_retains_its_real_source_anchor() {
     let source = Source::new("AB\u{ad}CDE");
     let style = Style {
         white_space: WhiteSpace::Preserve,
-        tab_size: crate::TabSize::spaces(2.0).unwrap(),
+        tab_size: crate::tabs::TabSize::spaces(2.0).unwrap(),
         ..own_style("\t", HyphenationPlacement::LogicalAfter)
     };
     let input = ParagraphInput {
         source: source.clone(),
         base_style: style.clone(),
         tab_reference: Some(
-            crate::ParagraphTabReference::new(style, ParagraphBaseDirection::LeftToRight).unwrap(),
+            crate::tabs::ParagraphTabReference::new(style, ParagraphBaseDirection::LeftToRight)
+                .unwrap(),
         ),
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         origins: vec![paragraph::ParagraphOrigin {
             text_node: None,
             source,
@@ -1307,9 +1327,12 @@ fn incoming_css_tab_is_glyph_free_and_retains_its_real_source_anchor() {
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     let mut system = System::default();
     system
@@ -1318,7 +1341,7 @@ fn incoming_css_tab_is_glyph_free_and_retains_its_real_source_anchor() {
     let p = system
         .prepare(
             &analyzed,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops).unwrap(),
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::CssStops).unwrap(),
         )
         .unwrap();
     let offer = cut(&p, 3, counts(2, 3));
@@ -1380,11 +1403,11 @@ fn incoming_css_tab_is_glyph_free_and_retains_its_real_source_anchor() {
 fn transparent_oof_keeps_the_actual_after_prefix_and_receiving_source_custody() {
     for at in [3, 6] {
         let mut source = Source::new("AB\u{ad}CDE");
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(91223),
-            crate::InlineBoxKind::OutOfFlow,
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(91223),
+            crate::source::InlineBoxKind::OutOfFlow,
             at,
-            crate::Size::new(0.0, 0.0),
+            crate::geometry::Size::new(0.0, 0.0),
         ));
         let p = capture(
             source,
@@ -1470,44 +1493,44 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
     let mut observed = Vec::new();
     for with_oof in [false, true] {
         let mut source = Source::new("A");
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(91300),
-            crate::InlineBoxKind::InFlow,
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(91300),
+            crate::source::InlineBoxKind::InFlow,
             1,
-            crate::Size::new(10.0, 10.0),
+            crate::geometry::Size::new(10.0, 10.0),
         ));
         if with_oof {
-            source.inline_box(crate::InlineBox::new(
-                crate::Id::from_u64(91301),
-                crate::InlineBoxKind::OutOfFlow,
+            source.inline_box(crate::source::InlineBox::new(
+                crate::id::Id::from_u64(91301),
+                crate::source::InlineBoxKind::OutOfFlow,
                 1,
-                crate::Size::new(0.0, 0.0),
+                crate::geometry::Size::new(0.0, 0.0),
             ));
         }
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(91302),
-            crate::InlineBoxKind::InFlow,
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(91302),
+            crate::source::InlineBoxKind::InFlow,
             1,
-            crate::Size::new(20.0, 10.0),
+            crate::geometry::Size::new(20.0, 10.0),
         ));
         let last = if with_oof { 2 } else { 1 };
         let mut anchors = vec![paragraph::ParagraphAnchor {
             item: paragraph::ParagraphAnchorItem::Control(0),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         }];
         anchors.extend(
             (0..source.boxes().len()).map(|i| paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Atomic(i),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             }),
         );
         let input = ParagraphInput {
             source: source.clone(),
             base_style: style(),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![paragraph::ParagraphOrigin {
                 text_node: None,
@@ -1531,9 +1554,9 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
                 })
                 .map(|definition| paragraph::ParagraphBoundaryPolicy {
                     definition,
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
+                    preceding_wrap: crate::style::Wrap::Word,
+                    following_wrap: crate::style::Wrap::Word,
+                    ancestor_wrap: crate::style::Wrap::Word,
                 })
                 .collect(),
             replacements: vec![],
@@ -1543,10 +1566,10 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
         let analyzed = crate::test_wrapping::bind_missing(
             &AnalyzedSource::from_paragraph(
                 input,
-                crate::AnalysisTypography::HorizontalComposition,
+                crate::analyzed::AnalysisTypography::HorizontalComposition,
             )
             .unwrap(),
-            crate::Wrap::Word,
+            crate::style::Wrap::Word,
         );
         let p = system
             .prepare(&analyzed, PreparationOptions::default())
@@ -1569,10 +1592,10 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
                         ControlAllocation {
                             boundary: matches!(
                                 occurrence.view().kind(),
-                                crate::ParagraphControlKind::InlineBoundaryStart
-                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                                crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                            .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }
@@ -1587,29 +1610,30 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
             .iter()
             .filter_map(|v| {
                 if let PreparedParticipant::Atomic(a) = v {
-                    let allocation =
-                        if a.view().original_box().kind() == crate::InlineBoxKind::OutOfFlow {
-                            AtomicLineAllocation::OutOfFlow
-                        } else {
-                            let width = a.view().original_box().size().width;
-                            AtomicLineAllocation::InFlow {
-                                fit: crate::AtomicFitAllocation::NativeOccupied,
-                                flow: AtomicFlowAllocation {
-                                    advance: width,
-                                    normal_border_inline_size: width,
-                                    before_baseline: 8.0,
-                                    after_baseline: 2.0,
-                                    occupied_start: 0.0,
-                                    occupied_end: width,
-                                },
-                                box_geometry: AtomicBoxAllocation {
-                                    border: crate::Rect::new(0.0, 0.0, width, 10.0),
-                                    content: crate::Rect::new(0.0, 0.0, width, 10.0),
-                                    baseline: 8.0,
-                                },
-                                alignment: LineBoxAlignment::Baseline,
-                            }
-                        };
+                    let allocation = if a.view().original_box().kind()
+                        == crate::source::InlineBoxKind::OutOfFlow
+                    {
+                        AtomicLineAllocation::OutOfFlow
+                    } else {
+                        let width = a.view().original_box().size().width;
+                        AtomicLineAllocation::InFlow {
+                            fit: crate::protocol::AtomicFitAllocation::NativeOccupied,
+                            flow: AtomicFlowAllocation {
+                                advance: width,
+                                normal_border_inline_size: width,
+                                before_baseline: 8.0,
+                                after_baseline: 2.0,
+                                occupied_start: 0.0,
+                                occupied_end: width,
+                            },
+                            box_geometry: AtomicBoxAllocation {
+                                border: crate::geometry::Rect::new(0.0, 0.0, width, 10.0),
+                                content: crate::geometry::Rect::new(0.0, 0.0, width, 10.0),
+                                baseline: 8.0,
+                            },
+                            alignment: LineBoxAlignment::Baseline,
+                        }
+                    };
                     Some(AtomicAllocation {
                         occurrence: a.clone(),
                         allocation,
@@ -1622,9 +1646,9 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(crate::LineAllocations {
+            .finalize(crate::protocol::LineAllocations {
                 spacing: SpacingAllocations::None,
-                scopes: crate::ScopeAllocations::None,
+                scopes: crate::protocol::ScopeAllocations::None,
             })
             .unwrap();
         assert_eq!(line.feedback().advance, 50.0);

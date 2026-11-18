@@ -1,20 +1,28 @@
 //! Functional native policy/group/resource qualification, independent of emitted glyph guesses.
 use super::*;
 use crate::{
-    HyphenateCharacter, HyphenationError, HyphenationPlacement as Placement, Hyphens,
-    NativeHyphenationConvention as Convention, ParagraphControl, ParagraphControlKind,
-    ParagraphReplacement, ParagraphReplacementDefinition as Definition, Range, Text, Wrap,
+    hyphenation::{
+        HyphenateCharacter, HyphenationError, HyphenationPlacement as Placement, Hyphens,
+        NativeHyphenationConvention as Convention,
+    },
+    protocol::paragraph::{
+        ParagraphControl, ParagraphControlKind, ParagraphReplacement,
+        ParagraphReplacementDefinition as Definition,
+    },
+    range::Range,
+    style::Wrap,
+    text::Text,
 };
 
 fn input(text: &str, base_style: Style) -> ParagraphInput {
     let source = Source::new(text);
     let len = source.text().len();
     ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::AllocatedContributions,
         origins: vec![paragraph::ParagraphOrigin {
@@ -29,9 +37,9 @@ fn input(text: &str, base_style: Style) -> ParagraphInput {
         boundary_policies: vec![],
         replacements: vec![],
         anchor_order: if len == 0 {
-            vec![crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: crate::Affinity::Before,
+            vec![crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
+                affinity: crate::layout::Affinity::Before,
             }]
         } else {
             vec![]
@@ -39,8 +47,10 @@ fn input(text: &str, base_style: Style) -> ParagraphInput {
     }
 }
 fn capture(system: &mut System, value: ParagraphInput) -> crate::Result<PreparedText> {
-    let analyzed =
-        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)?;
+    let analyzed = AnalyzedSource::from_paragraph(
+        value,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
+    )?;
     system.prepare(
         &crate::test_wrapping::bind_missing(&analyzed, Wrap::Word),
         PreparationOptions::default(),
@@ -77,10 +87,12 @@ fn control(value: &mut ParagraphInput, own: Style) {
             style: Box::new(own),
         },
     });
-    value.anchor_order.push(crate::ParagraphAnchor {
-        item: crate::ParagraphAnchorItem::Control(0),
-        affinity: crate::Affinity::After,
-    });
+    value
+        .anchor_order
+        .push(crate::protocol::paragraph::ParagraphAnchor {
+            item: crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
+            affinity: crate::layout::Affinity::After,
+        });
 }
 fn finish(p: &PreparedText, alternative: usize) -> FinalizedLine {
     let alt = p.alternative_views().nth(alternative).unwrap();
@@ -101,10 +113,10 @@ fn finish(p: &PreparedText, alternative: usize) -> FinalizedLine {
             ControlAllocation {
                 boundary: matches!(
                     occurrence.view().kind(),
-                    crate::ParagraphControlKind::InlineBoundaryStart
-                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                    crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                        | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }
@@ -112,9 +124,9 @@ fn finish(p: &PreparedText, alternative: usize) -> FinalizedLine {
         .collect();
     p.select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -144,10 +156,11 @@ fn none_suppresses_both_shy_sources_but_preserves_visible_hyphen_and_optional_co
         at: 3,
         kind: ParagraphControlKind::OptionalBreak { wrap: Wrap::Word },
     });
-    v.anchor_order.push(crate::ParagraphAnchor {
-        item: crate::ParagraphAnchorItem::Control(0),
-        affinity: crate::Affinity::After,
-    });
+    v.anchor_order
+        .push(crate::protocol::paragraph::ParagraphAnchor {
+            item: crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
+            affinity: crate::layout::Affinity::After,
+        });
     let p = capture(&mut system, v).unwrap();
     assert!(texts(&p).is_empty());
     let offers: Vec<_> = p
@@ -220,7 +233,7 @@ fn convention_binding_preserves_full_locale_and_canonical_script() {
     assert_eq!(c.locale(), Some("EN_latn_US_x_Foo"));
     assert_eq!(c.script(), "Latn");
     for locale in ["en-Latn-us-x-foo", "EN_LATN_US_X_FOO"] {
-        crate::ValidatedStyle::try_from(Style {
+        crate::style::ValidatedStyle::try_from(Style {
             locale: Some(locale.into()),
             native_hyphenation_convention: Some(c.clone()),
             ..style()
@@ -233,7 +246,7 @@ fn convention_binding_preserves_full_locale_and_canonical_script() {
         Some("en-Latn-US"),
         Some("en-Cyrl-US-x-foo"),
     ] {
-        let e = crate::ValidatedStyle::try_from(Style {
+        let e = crate::style::ValidatedStyle::try_from(Style {
             locale: locale.map(str::to_owned),
             native_hyphenation_convention: Some(c.clone()),
             ..style()
@@ -243,7 +256,7 @@ fn convention_binding_preserves_full_locale_and_canonical_script() {
     }
     let declared =
         Convention::declared_script("Latn", Text::from(""), Placement::LogicalBefore).unwrap();
-    crate::ValidatedStyle::try_from(Style {
+    crate::style::ValidatedStyle::try_from(Style {
         locale: Some("und-Latn".into()),
         native_hyphenation_convention: Some(declared.clone()),
         ..style()
@@ -252,7 +265,7 @@ fn convention_binding_preserves_full_locale_and_canonical_script() {
     for locale in ["en", "und-Cyrl"] {
         assert_eq!(
             reason(
-                &crate::ValidatedStyle::try_from(Style {
+                &crate::style::ValidatedStyle::try_from(Style {
                     locale: Some(locale.into()),
                     native_hyphenation_convention: Some(declared.clone()),
                     ..style()
@@ -440,8 +453,11 @@ fn repeated_owner_groups_and_empty_native_list_are_rejected() {
     ];
     assert!(matches!(
         super::reason(
-            &AnalyzedSource::from_paragraph(v, crate::AnalysisTypography::HorizontalComposition)
-                .unwrap_err()
+            &AnalyzedSource::from_paragraph(
+                v,
+                crate::analyzed::AnalysisTypography::HorizontalComposition
+            )
+            .unwrap_err()
         ),
         ProtocolError::DuplicateReplacement {
             alternative: 1,
@@ -459,8 +475,11 @@ fn repeated_owner_groups_and_empty_native_list_are_rejected() {
     v.replacements = vec![group.clone(), group];
     assert!(matches!(
         super::reason(
-            &AnalyzedSource::from_paragraph(v, crate::AnalysisTypography::HorizontalComposition)
-                .unwrap_err()
+            &AnalyzedSource::from_paragraph(
+                v,
+                crate::analyzed::AnalysisTypography::HorizontalComposition
+            )
+            .unwrap_err()
         ),
         ProtocolError::DuplicateReplacement {
             alternative: 1,
@@ -470,13 +489,13 @@ fn repeated_owner_groups_and_empty_native_list_are_rejected() {
 }
 #[test]
 fn full_hyphenation_facts_change_style_cache_identity() {
-    let source = crate::ValidatedSource::try_from(Source::new("A")).unwrap();
+    let source = crate::source::ValidatedSource::try_from(Source::new("A")).unwrap();
     let system = system();
     let key = |s: Style| {
-        crate::Key::from_validated(
+        crate::cache::Key::from_validated(
             &source,
-            &crate::ValidatedStyle::try_from(s).unwrap(),
-            crate::ValidatedOptions::try_from(crate::Options::default()).unwrap(),
+            &crate::style::ValidatedStyle::try_from(s).unwrap(),
+            crate::options::ValidatedOptions::try_from(crate::options::Options::default()).unwrap(),
             system.font_catalogue_identity(),
         )
     };
@@ -602,10 +621,10 @@ fn specified_text_wins_and_suppressed_points_do_not_consume_known_placement() {
 fn raw_exact_empty_long_and_none_use_actual_finalized_indication_advance() {
     let mut system = system();
     let source = Source::new("X\u{ad}XX");
-    let options = crate::Options {
+    let options = crate::options::Options {
         width: Some(40.0),
         quantize: false,
-        ..crate::Options::default()
+        ..crate::options::Options::default()
     };
     for (text, expected) in [
         ("", vec![20.0, 40.0]),
@@ -627,9 +646,9 @@ fn raw_exact_empty_long_and_none_use_actual_finalized_indication_advance() {
             .layout(
                 source.clone(),
                 own,
-                crate::Options {
+                crate::options::Options {
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -671,10 +690,10 @@ fn raw_candidate_retreat_refinalizes_the_real_earlier_shy_without_losing_continu
                 hyphenate_character: HyphenateCharacter::String(Text::from("X")),
                 ..style()
             },
-            crate::Options {
+            crate::options::Options {
                 width: Some(60.0),
                 quantize: false,
-                ..crate::Options::default()
+                ..crate::options::Options::default()
             },
         )
         .unwrap();
@@ -692,7 +711,7 @@ fn raw_candidate_retreat_refinalizes_the_real_earlier_shy_without_losing_continu
     assert!(!p.metrics().overflow());
 }
 
-fn raw_advances(layout: &crate::Layout) -> Vec<f64> {
+fn raw_advances(layout: &crate::layout::Layout) -> Vec<f64> {
     let mut values = vec![0.0; layout.lines().len()];
     for run in layout.inline_metric_facts().runs() {
         values[run.line()] += run.advance();
@@ -722,14 +741,15 @@ fn incident_empty_origin_cannot_own_a_positive_source_shy_native_group() {
                 at: 0,
                 kind: paragraph::ParagraphConnectionKind::Continuous,
             });
-            v.anchor_order.push(crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: crate::Affinity::Before,
-            });
+            v.anchor_order
+                .push(crate::protocol::paragraph::ParagraphAnchor {
+                    item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(0),
+                    affinity: crate::layout::Affinity::Before,
+                });
         }
         v.boundary_policies = (0..v.connections.len())
-            .map(|i| crate::ParagraphBoundaryPolicy {
-                definition: crate::ParagraphBoundaryDefinition::Connection(i),
+            .map(|i| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(i),
                 preceding_wrap: Wrap::Word,
                 following_wrap: Wrap::Word,
                 ancestor_wrap: Wrap::Word,
@@ -755,7 +775,7 @@ fn incident_empty_origin_cannot_own_a_positive_source_shy_native_group() {
         );
         let origin = p.origin_views().nth(positive).unwrap().handle();
         assert!(p.alternative_views().all(|a| a.definition()
-            == crate::PreparedAlternativeDefinition::Source {
+            == crate::protocol::readback::PreparedAlternativeDefinition::Source {
                 origin: origin.clone(),
                 source: Range::new(2, 3)
             }));
@@ -807,13 +827,13 @@ fn empty_after_shy_input(mode: Hyphens) -> ParagraphInput {
         };
         2
     ];
-    v.anchor_order = vec![crate::ParagraphAnchor {
-        item: crate::ParagraphAnchorItem::EmptyOrigin(1),
-        affinity: crate::Affinity::Before,
+    v.anchor_order = vec![crate::protocol::paragraph::ParagraphAnchor {
+        item: crate::protocol::paragraph::ParagraphAnchorItem::EmptyOrigin(1),
+        affinity: crate::layout::Affinity::Before,
     }];
     v.boundary_policies = (0..v.connections.len())
-        .map(|i| crate::ParagraphBoundaryPolicy {
-            definition: crate::ParagraphBoundaryDefinition::Connection(i),
+        .map(|i| crate::protocol::paragraph::ParagraphBoundaryPolicy {
+            definition: crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(i),
             preceding_wrap: Wrap::Word,
             following_wrap: Wrap::Word,
             ancestor_wrap: Wrap::Word,
@@ -882,9 +902,9 @@ fn manual_cannot_turn_a_shy_into_an_unindicated_break_after_an_empty_origin() {
     let second = p
         .select(r)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     assert_eq!(second.feedback().advance, 60.0);
@@ -905,10 +925,11 @@ fn independent_optional_and_forced_controls_after_a_shy_keep_their_own_ending() 
     ] {
         let mut v = empty_after_shy_input(Hyphens::None);
         v.controls.push(ParagraphControl { at: 3, kind });
-        v.anchor_order.push(crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::Control(0),
-            affinity: crate::Affinity::After,
-        });
+        v.anchor_order
+            .push(crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::Control(0),
+                affinity: crate::layout::Affinity::After,
+            });
         let p = capture(&mut system(), v).unwrap();
         let control = PreparedParticipant::Control(p.control_views().next().unwrap().handle());
         let offers = p
@@ -929,11 +950,11 @@ fn independent_optional_and_forced_controls_after_a_shy_keep_their_own_ending() 
 fn raw_atomic_after_a_shy_keeps_its_independent_none_and_manual_permission() {
     for mode in [Hyphens::None, Hyphens::Manual] {
         let mut source = Source::new("A\u{ad}XX");
-        source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(86072),
-            crate::InlineBoxKind::InFlow,
+        source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(86072),
+            crate::source::InlineBoxKind::InFlow,
             2,
-            crate::Size::new(10.0, 10.0),
+            crate::geometry::Size::new(10.0, 10.0),
         ));
         let p = system()
             .layout(
@@ -943,10 +964,10 @@ fn raw_atomic_after_a_shy_keeps_its_independent_none_and_manual_permission() {
                     hyphenate_character: HyphenateCharacter::String(Text::from("XXX")),
                     ..style()
                 },
-                crate::Options {
+                crate::options::Options {
                     width: Some(40.0),
                     quantize: false,
-                    ..crate::Options::default()
+                    ..crate::options::Options::default()
                 },
             )
             .unwrap();
@@ -969,26 +990,28 @@ fn raw_atomic_after_a_shy_keeps_its_independent_none_and_manual_permission() {
 fn native_atomic_permission_after_empty_shy_custody_stays_independent() {
     for mode in [Hyphens::None, Hyphens::Manual] {
         let mut v = empty_after_shy_input(mode);
-        v.source.inline_box(crate::InlineBox::new(
-            crate::Id::from_u64(86073),
-            crate::InlineBoxKind::InFlow,
+        v.source.inline_box(crate::source::InlineBox::new(
+            crate::id::Id::from_u64(86073),
+            crate::source::InlineBoxKind::InFlow,
             3,
-            crate::Size::new(10.0, 10.0),
+            crate::geometry::Size::new(10.0, 10.0),
         ));
-        v.anchor_order.push(crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::Atomic(0),
-            affinity: crate::Affinity::After,
-        });
-        for definition in [
-            crate::ParagraphBoundaryDefinition::AtomicBefore(0),
-            crate::ParagraphBoundaryDefinition::AtomicAfter(0),
-        ] {
-            v.boundary_policies.push(crate::ParagraphBoundaryPolicy {
-                definition,
-                preceding_wrap: Wrap::Word,
-                following_wrap: Wrap::Word,
-                ancestor_wrap: Wrap::Word,
+        v.anchor_order
+            .push(crate::protocol::paragraph::ParagraphAnchor {
+                item: crate::protocol::paragraph::ParagraphAnchorItem::Atomic(0),
+                affinity: crate::layout::Affinity::After,
             });
+        for definition in [
+            crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicBefore(0),
+            crate::protocol::paragraph::ParagraphBoundaryDefinition::AtomicAfter(0),
+        ] {
+            v.boundary_policies
+                .push(crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                    definition,
+                    preceding_wrap: Wrap::Word,
+                    following_wrap: Wrap::Word,
+                    ancestor_wrap: Wrap::Word,
+                });
         }
         let p = capture(&mut system(), v).unwrap();
         let atomic = PreparedParticipant::Atomic(p.atomic_views().next().unwrap().handle());

@@ -1,7 +1,7 @@
 //! Repeated expansion ancestry and retained semantic-zero source identity.
 use super::super::word_spacing;
 use super::*;
-use crate::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
+use crate::range_fragments::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
 use skrifa::{GlyphId, MetadataProvider};
 
 fn issued_range_origin(

@@ -7,8 +7,11 @@ use parlance::{FontStyle, FontWeight, FontWidth, Language};
 use surgeist_font::{FontCatalogue, FontFamily};
 
 use crate::{
-    Brush, Decoration, Error, ErrorCode, LineHeight, Range, Result, Source, TextNumericError,
-    TextNumericPhase, ValidatedStyle,
+    Error, ErrorCode, Result,
+    error::{TextNumericError, TextNumericPhase},
+    range::Range,
+    source::Source,
+    style::{Brush, Decoration, LineHeight, ValidatedStyle},
 };
 
 #[derive(Clone, Debug)]
@@ -72,7 +75,7 @@ impl AnalyzedStyleRun {
 
 pub(crate) fn analyze_styles(
     source: &Source,
-    spans: &[crate::source_model::ValidatedSpan],
+    spans: &[crate::source::ValidatedSpan],
     default_style: &ValidatedStyle,
     paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Vec<AnalyzedStyleRun> {
@@ -188,7 +191,7 @@ fn resolve_style(
 }
 
 fn resolved_fields(
-    style: &crate::Style,
+    style: &crate::style::Style,
     locale: Option<Language>,
     families: Vec<FontFamily>,
     features: Vec<FontFeature>,
@@ -221,7 +224,7 @@ fn resolved_fields(
 }
 
 fn resolved_font_fields(
-    style: &crate::Style,
+    style: &crate::style::Style,
     locale: Option<Language>,
     families: Vec<FontFamily>,
     variations: Vec<FontVariation>,
@@ -281,7 +284,7 @@ pub(crate) fn font_line_height(
 /// ordinary body resolver above keeps its existing parser and matching policy.
 pub(crate) fn resolve_scope(
     collection: &mut FontCatalogue,
-    style: &crate::Style,
+    style: &crate::style::Style,
     scale: f32,
     budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
 ) -> Result<ResolvedFontStyle> {
@@ -351,8 +354,8 @@ pub(crate) fn resolve_scope(
 }
 
 fn scope_work_overflow() -> Error {
-    super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+    super::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
+        kind: crate::processing::ScopeAlignmentLimitKind::StructuralWork,
     })
 }
 
@@ -376,9 +379,10 @@ fn scope_settings_source(
         return Ok(None);
     }
     budget.work(values.len())?;
-    let kind = crate::ScopeAlignmentLimitKind::PayloadBytes;
-    let overflow =
-        || super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow { kind });
+    let kind = crate::processing::ScopeAlignmentLimitKind::PayloadBytes;
+    let overflow = || {
+        super::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow { kind })
+    };
     let mut len = values
         .len()
         .checked_sub(1)
@@ -422,8 +426,8 @@ pub(crate) fn drop_scope_style(
     let mut total = 0usize;
     for size in [bytes(&style.font_family)?, bytes(&style.font_variations)?] {
         total = total.checked_add(size).ok_or_else(|| {
-            super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                kind: crate::ScopeAlignmentLimitKind::PayloadBytes,
+            super::scope_alignment::refusal(crate::processing::ScopeAlignmentError::Overflow {
+                kind: crate::processing::ScopeAlignmentLimitKind::PayloadBytes,
             })
         })?;
     }
@@ -458,7 +462,7 @@ fn setting_error() -> Error {
 }
 
 fn scaled_decoration(decoration: Decoration, scale: f32) -> Result<Decoration> {
-    use crate::{DecorationOffset, DecorationThickness};
+    use crate::style::{DecorationOffset, DecorationThickness};
     let offset = match decoration.offset() {
         DecorationOffset::Auto => DecorationOffset::Auto,
         DecorationOffset::Absolute(value) => DecorationOffset::try_absolute(scaled_logical(
@@ -558,7 +562,7 @@ pub(crate) fn source_style(styles: &[AnalyzedStyleRun], at: usize) -> usize {
 /// All owned parse/family/setting scratch is admitted before materialization.
 pub(crate) fn resolve_cell_tab_style(
     collection: &mut FontCatalogue,
-    style: &crate::Style,
+    style: &crate::style::Style,
     scale: f32,
     budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
 ) -> Result<ResolvedStyleRun> {

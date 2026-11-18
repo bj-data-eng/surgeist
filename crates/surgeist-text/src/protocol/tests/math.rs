@@ -1,14 +1,17 @@
 use super::*;
-use crate::{CompleteTextNodeContribution, Range, Text, TextTransform};
+use crate::{
+    protocol::paragraph::CompleteTextNodeContribution, range::Range, style::TextTransform,
+    text::Text,
+};
 
 fn style() -> Style {
     Style {
         font: Font::new().family("Ahem"),
         size: 10.0,
-        line_height: crate::LineHeight::Absolute(10.0),
+        line_height: crate::style::LineHeight::Absolute(10.0),
         text_transform: TextTransform::MathAuto,
         white_space: WhiteSpace::Preserve,
-        overflow_wrap: crate::OverflowWrap::Anywhere,
+        overflow_wrap: crate::style::OverflowWrap::Anywhere,
         ..Style::default()
     }
 }
@@ -20,9 +23,9 @@ fn analyzed(text: &str, complete: &str) -> AnalyzedSource {
             source: source.clone(),
             base_style: style(),
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             origins: vec![paragraph::ParagraphOrigin {
                 source,
@@ -40,7 +43,7 @@ fn analyzed(text: &str, complete: &str) -> AnalyzedSource {
             replacements: vec![],
             anchor_order: vec![],
         },
-        crate::AnalysisTypography::HorizontalComposition,
+        crate::analyzed::AnalysisTypography::HorizontalComposition,
     )
     .unwrap()
 }
@@ -57,7 +60,7 @@ fn system() -> System {
 fn prepared(system: &mut System, a: &AnalyzedSource) -> PreparedText {
     system
         .prepare(
-            &crate::test_wrapping::bind_missing(a, crate::Wrap::Word),
+            &crate::test_wrapping::bind_missing(a, crate::style::Wrap::Word),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -65,9 +68,9 @@ fn prepared(system: &mut System, a: &AnalyzedSource) -> PreparedText {
 fn line(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -174,13 +177,21 @@ fn native_math_accessibility_retains_original_character_and_transformed_geometry
     let finalized = line(&p);
     assert_eq!(glyphs(&finalized), [(82, 15.0)]);
     let placed = place(p, finalized, 0.0, 8.0).unwrap();
-    let mut state = crate::Accessibility::new(2163);
+    let mut state = crate::accessibility::Accessibility::new(2163);
     let parent = 1001_u64.into();
     let update = placed
-        .accessibility_update(&mut state, parent, parent, crate::Point::default())
+        .accessibility_update(
+            &mut state,
+            parent,
+            parent,
+            crate::geometry::Point::default(),
+        )
         .unwrap();
     let at = placed
-        .access_position(&state, crate::Cursor::new(0, crate::Affinity::After))
+        .access_position(
+            &state,
+            crate::layout::Cursor::new(0, crate::layout::Affinity::After),
+        )
         .unwrap()
         .unwrap();
     let node = &update
@@ -204,7 +215,11 @@ fn raw_math_refusal_cannot_reuse_a_successful_neutral_standalone_cache_entry() {
     };
     for _ in 0..2 {
         let actual = warm
-            .layout(Source::new("c"), neutral.clone(), crate::Options::default())
+            .layout(
+                Source::new("c"),
+                neutral.clone(),
+                crate::options::Options::default(),
+            )
             .unwrap();
         assert_eq!(
             actual
@@ -217,13 +232,17 @@ fn raw_math_refusal_cannot_reuse_a_successful_neutral_standalone_cache_entry() {
         );
         for text in ["c", ""] {
             let error = warm
-                .layout(Source::new(text), style(), crate::Options::default())
+                .layout(
+                    Source::new(text),
+                    style(),
+                    crate::options::Options::default(),
+                )
                 .unwrap_err();
             assert!(matches!(
                 error.detail(),
                 Some(crate::ErrorDetail::UnsupportedTextStyle {
-                    feature: crate::TextStyleFeature::MathAuto,
-                    reason: crate::UnsupportedTextStyleReason::RequiresCompleteTextNodeContext
+                    feature: crate::style_support::TextStyleFeature::MathAuto,
+                    reason: crate::style_support::UnsupportedTextStyleReason::RequiresCompleteTextNodeContext
                 })
             ));
         }

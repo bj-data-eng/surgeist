@@ -4,8 +4,9 @@ use super::*;
 fn upper(automatic: bool) -> Style {
     let locale = if automatic { "en-US" } else { "und-Latn" };
     Style {
-        text_transform: crate::TextTransform::Set(
-            crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+        text_transform: crate::style::TextTransform::Set(
+            crate::style::TextTransformSet::none()
+                .with_case(crate::style::CaseTransform::Uppercase),
         ),
         hyphens: if automatic {
             Hyphens::Auto
@@ -27,11 +28,11 @@ fn upper(automatic: bool) -> Style {
 }
 
 fn position(
-    layout: &crate::Layout,
+    layout: &crate::layout::Layout,
     x: f64,
     y: f64,
-    affinity: crate::Affinity,
-) -> crate::PlacedPosition {
+    affinity: crate::layout::Affinity,
+) -> crate::layout::PlacedPosition {
     layout
         .positions()
         .filter(|position| {
@@ -109,8 +110,8 @@ fn transformed_source_and_automatic_both_sides_do_not_recase_indications_or_fabr
         for (x, y) in [(if automatic { 40.0 } else { 20.0 }, 0.0), (0.0, 10.0)] {
             let selected = layout
                 .position_selection(
-                    &position(&layout, x, y, crate::Affinity::After),
-                    &position(&layout, x + 10.0, y, crate::Affinity::Before),
+                    &position(&layout, x, y, crate::layout::Affinity::After),
+                    &position(&layout, x + 10.0, y, crate::layout::Affinity::Before),
                 )
                 .unwrap();
             assert_eq!(
@@ -129,10 +130,10 @@ fn transformed_control_both_sides_keeps_emissions_source_less() {
         ParagraphInput {
             source: source.clone(),
             base_style: upper(false),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![paragraph::ParagraphOrigin {
                 text_node: None,
@@ -152,7 +153,7 @@ fn transformed_control_both_sides_keeps_emissions_source_less() {
             }],
             anchor_order: vec![paragraph::ParagraphAnchor {
                 item: paragraph::ParagraphAnchorItem::Control(0),
-                affinity: crate::Affinity::After,
+                affinity: crate::layout::Affinity::After,
             }],
         },
         AHEM,
@@ -160,7 +161,7 @@ fn transformed_control_both_sides_keeps_emissions_source_less() {
     let offer = cut(&p, 2, counts(2, 3));
     assert!(matches!(
         alternative(&offer).view().definition(),
-        crate::PreparedAlternativeDefinition::Control { .. }
+        crate::protocol::readback::PreparedAlternativeDefinition::Control { .. }
     ));
     let first = finish(
         &p,
@@ -193,8 +194,8 @@ fn transformed_control_both_sides_keeps_emissions_source_less() {
     );
     let selected = layout
         .position_selection(
-            &position(&layout, 0.0, 10.0, crate::Affinity::After),
-            &position(&layout, 10.0, 10.0, crate::Affinity::Before),
+            &position(&layout, 0.0, 10.0, crate::layout::Affinity::After),
+            &position(&layout, 10.0, 10.0, crate::layout::Affinity::Before),
         )
         .unwrap();
     assert!(selected.source_text().is_empty());
@@ -248,10 +249,10 @@ fn real_barrier_before_expansion_does_not_split_its_internal_ss_ligature_on_indi
         ParagraphInput {
             source: source.clone(),
             base_style: upper(false),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![
                 paragraph::ParagraphOrigin {
@@ -294,7 +295,7 @@ fn real_barrier_before_expansion_does_not_split_its_internal_ss_ligature_on_indi
         .opportunity()
         .expect("actual word counts admit explicit cut");
     let chosen = alternative(&offer);
-    let crate::PreparedAlternativeDefinition::Source { origin, source } =
+    let crate::protocol::readback::PreparedAlternativeDefinition::Source { origin, source } =
         chosen.view().definition()
     else {
         panic!("actual source SHY definition");

@@ -1,6 +1,9 @@
 //! Already-resolved line-relative content insets inside the outer line box.
 
-use crate::{Result, TextNumericError, TextNumericPhase};
+use crate::{
+    Result,
+    error::{TextNumericError, TextNumericPhase},
+};
 
 /// Alignment-only padding inside the unchanged outer available inline span.
 ///

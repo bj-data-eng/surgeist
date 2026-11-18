@@ -12,7 +12,8 @@ use crate::protocol::{
     prepared::{PreparedIndication, PreparedTables, SelectedMapping},
     selection::SelectedData,
 };
-use crate::{AnalysisTypography, CataloguePublication, InlineBox, Point, Range};
+use crate::{analyzed::AnalysisTypography, geometry::Point, range::Range, source::InlineBox};
+use surgeist_font::CataloguePublication;
 
 pub(crate) mod analysis;
 pub(crate) mod bidi;
@@ -46,7 +47,7 @@ pub(crate) struct OriginalAtom {
 /// Font-independent original-source analysis, retained by every later phase.
 pub(crate) struct AnalyzedData {
     pub(crate) core: Arc<AnalyzedCore>,
-    pub(crate) wrapping: Vec<Option<crate::Wrap>>,
+    pub(crate) wrapping: Vec<Option<crate::style::Wrap>>,
 }
 
 impl std::ops::Deref for AnalyzedData {
@@ -62,7 +63,7 @@ pub(crate) struct AnalyzedCore {
     pub(crate) scope_cuts: std::sync::OnceLock<
         std::result::Result<analysis::scope::ScopeCutIndex, analysis::scope::ScopeIndexCapacity>,
     >,
-    pub(crate) processed: Arc<crate::ProcessedSource>,
+    pub(crate) processed: Arc<crate::processing::ProcessedSource>,
     pub(crate) paragraph: ParagraphContext,
     pub(crate) sections: Vec<analysis::structural::Section>,
     pub(crate) combination: Option<Arc<crate::transform::combined::CombinedOutput>>,
@@ -102,7 +103,7 @@ pub(crate) struct ShapingInput<'a> {
     pub(crate) separator_geometry: bool,
     pub(crate) characters: Option<&'a spacing::character::PlanRequirements>,
     pub(crate) profile: upright::ShapingProfile<'a>,
-    pub(crate) baseline_reference: Option<crate::FontBaseline>,
+    pub(crate) baseline_reference: Option<crate::font::FontBaseline>,
     pub(crate) projection: &'a SourceProjection,
     pub(crate) analysis: &'a analysis::Analysis,
     pub(crate) styles: &'a [resolve::ResolvedStyleRun],
@@ -122,9 +123,9 @@ pub(crate) struct FinalizedLine {
 impl FinalizedLine {
     /// Borrow the actual completed source binding of this finalized Cell row.
     /// The caller supplies an admitted view index or an actual row enumeration.
-    pub(crate) fn source_cell(&self, cell: usize) -> crate::AnalyzedCombinedCell<'_> {
+    pub(crate) fn source_cell(&self, cell: usize) -> crate::analyzed::AnalyzedCombinedCell<'_> {
         let analyzed = &self.selected.prepared.analyzed;
-        crate::AnalyzedCombinedCell {
+        crate::analyzed::AnalyzedCombinedCell {
             core: &analyzed.core,
             output: analyzed
                 .combination
@@ -148,13 +149,13 @@ pub(crate) struct SelectedShape {
 pub(crate) struct PlacedLine {
     pub(crate) finalized: Arc<FinalizedLine>,
     pub(crate) anchor: Point,
-    pub(crate) orientation: crate::LineOrientation,
-    pub(crate) atomics: Vec<crate::AtomicPlacement>,
+    pub(crate) orientation: crate::protocol::LineOrientation,
+    pub(crate) atomics: Vec<crate::protocol::AtomicPlacement>,
 }
 
 pub(crate) fn analyze(
-    source: crate::ValidatedSource,
-    default_style: crate::ValidatedStyle,
+    source: crate::source::ValidatedSource,
+    default_style: crate::style::ValidatedStyle,
     typography: AnalysisTypography,
 ) -> crate::Result<Arc<AnalyzedData>> {
     let paragraph = ParagraphData::standalone(source.source());
@@ -164,7 +165,7 @@ pub(crate) fn analyze(
 }
 
 pub(crate) fn analyze_paragraph(
-    processed: Arc<crate::ProcessedSource>,
+    processed: Arc<crate::processing::ProcessedSource>,
     paragraph: ParagraphData,
     typography: AnalysisTypography,
 ) -> crate::Result<Arc<AnalyzedData>> {
@@ -172,11 +173,11 @@ pub(crate) fn analyze_paragraph(
     // belongs only to the separately retained typography input. The nearest
     // block's tab reference is independent of paragraph bidi.
     if typography.is_upright()
-        && paragraph.base_direction == Some(crate::ParagraphBaseDirection::RightToLeft)
+        && paragraph.base_direction == Some(crate::protocol::ParagraphBaseDirection::RightToLeft)
     {
         return Err(crate::protocol::protocol_error(
-            crate::ProtocolError::MismatchedContext {
-                field: crate::ProtocolContextField::BaseDirection,
+            crate::protocol::ProtocolError::MismatchedContext {
+                field: crate::protocol::ProtocolContextField::BaseDirection,
             },
         ));
     }
@@ -223,19 +224,19 @@ pub(crate) fn analyze_paragraph(
 }
 
 pub(crate) fn admitted_output_styles(
-    processed: &crate::ProcessedSource,
+    processed: &crate::processing::ProcessedSource,
     paragraph: &ParagraphContext,
 ) -> crate::Result<(
-    Vec<crate::source_model::ValidatedSpan>,
-    crate::ValidatedStyle,
+    Vec<crate::source::ValidatedSpan>,
+    crate::style::ValidatedStyle,
 )> {
     if paragraph.base_direction.is_some() {
         Ok((
-            crate::source_model::processed_span_styles(
+            crate::source::processed_span_styles(
                 processed.source(),
                 paragraph.coverage.as_deref(),
             )?,
-            crate::ValidatedStyle::for_processed(
+            crate::style::ValidatedStyle::for_processed(
                 paragraph
                     .domain_style
                     .as_ref()
@@ -245,28 +246,28 @@ pub(crate) fn admitted_output_styles(
         ))
     } else {
         Ok((
-            crate::ValidatedSource::try_from(processed.source().clone())?
+            crate::source::ValidatedSource::try_from(processed.source().clone())?
                 .span_styles()
                 .to_vec(),
-            crate::ValidatedStyle::try_from(processed.base_style().clone())?,
+            crate::style::ValidatedStyle::try_from(processed.base_style().clone())?,
         ))
     }
 }
 
 pub(crate) fn output_style_runs(
-    processed: &crate::ProcessedSource,
+    processed: &crate::processing::ProcessedSource,
     paragraph: &ParagraphContext,
-    spans: &[crate::source_model::ValidatedSpan],
-    default: &crate::ValidatedStyle,
+    spans: &[crate::source::ValidatedSpan],
+    default: &crate::style::ValidatedStyle,
 ) -> crate::Result<Vec<resolve::AnalyzedStyleRun>> {
     let mut styles = resolve::analyze_styles(processed.source(), spans, default, paragraph);
     for (index, control) in paragraph.controls.iter().enumerate() {
-        if let crate::ParagraphControlKind::DiscretionaryBreak { style }
-        | crate::ParagraphControlKind::Wbr { style } = &control.kind
+        if let crate::protocol::paragraph::ParagraphControlKind::DiscretionaryBreak { style }
+        | crate::protocol::paragraph::ParagraphControlKind::Wbr { style } = &control.kind
         {
             styles.push(resolve::AnalyzedStyleRun {
                 owner: resolve::AnalyzedStyleOwner::Control(index),
-                style: crate::ValidatedStyle::for_processed((**style).clone())?,
+                style: crate::style::ValidatedStyle::for_processed((**style).clone())?,
             });
         }
     }
@@ -283,7 +284,7 @@ pub(crate) struct CompletedPresentation {
     pub(crate) combination: Option<Arc<crate::transform::combined::CombinedOutput>>,
 }
 pub(crate) fn complete_analysis(
-    processed: Arc<crate::ProcessedSource>,
+    processed: Arc<crate::processing::ProcessedSource>,
     typography: AnalysisTypography,
     presentation: CompletedPresentation,
 ) -> crate::Result<Arc<AnalyzedData>> {
@@ -351,10 +352,10 @@ pub(crate) fn complete_analysis(
 }
 
 pub(crate) fn analyze_domain(
-    processed: Arc<crate::ProcessedSource>,
-    member: crate::ProcessedParagraph,
+    processed: Arc<crate::processing::ProcessedSource>,
+    member: crate::processing::ProcessedParagraph,
     typography: AnalysisTypography,
-) -> crate::Result<crate::AnalyzedDomain> {
+) -> crate::Result<crate::analyzed::AnalyzedDomain> {
     crate::transform::domain::analyze(processed, member.data(), typography)
 }
 
@@ -381,32 +382,32 @@ pub(crate) fn prepare(
     if has_cells
         && !matches!(
             options.orientation(),
-            crate::LineOrientation::Vertical
-                | crate::LineOrientation::SidewaysClockwise
-                | crate::LineOrientation::SidewaysCounterclockwise
+            crate::protocol::LineOrientation::Vertical
+                | crate::protocol::LineOrientation::SidewaysClockwise
+                | crate::protocol::LineOrientation::SidewaysCounterclockwise
         )
     {
         return Err(crate::transform::combined::refused(
-            crate::TextCombineError::UnsupportedCellPreparation,
+            crate::transform::TextCombineError::UnsupportedCellPreparation,
         ));
     }
 
     if (analyzed.typography.is_upright() || analyzed.typography == AnalysisTypography::Mixed)
-        && options.orientation() != crate::LineOrientation::Vertical
+        && options.orientation() != crate::protocol::LineOrientation::Vertical
     {
         return Err(crate::protocol::protocol_error(
-            crate::ProtocolError::MismatchedContext {
-                field: crate::ProtocolContextField::Orientation,
+            crate::protocol::ProtocolError::MismatchedContext {
+                field: crate::protocol::ProtocolContextField::Orientation,
             },
         ));
     }
-    if options.orientation() == crate::LineOrientation::Vertical
+    if options.orientation() == crate::protocol::LineOrientation::Vertical
         && !analyzed.typography.is_upright()
         && analyzed.typography != AnalysisTypography::Mixed
     {
         return Err(crate::protocol::protocol_error(
-            crate::ProtocolError::UnsupportedContext {
-                field: crate::ProtocolContextField::Orientation,
+            crate::protocol::ProtocolError::UnsupportedContext {
+                field: crate::protocol::ProtocolContextField::Orientation,
             },
         ));
     }
@@ -416,18 +417,18 @@ pub(crate) fn prepare(
             options.requested_baseline_reference()
         ),
         (
-            crate::LineOrientation::Vertical,
-            None | Some(crate::FontBaseline::Central)
+            crate::protocol::LineOrientation::Vertical,
+            None | Some(crate::font::FontBaseline::Central)
         ) | (
-            crate::LineOrientation::Horizontal
-                | crate::LineOrientation::SidewaysClockwise
-                | crate::LineOrientation::SidewaysCounterclockwise,
-            None | Some(crate::FontBaseline::Alphabetic)
+            crate::protocol::LineOrientation::Horizontal
+                | crate::protocol::LineOrientation::SidewaysClockwise
+                | crate::protocol::LineOrientation::SidewaysCounterclockwise,
+            None | Some(crate::font::FontBaseline::Alphabetic)
         )
     ) {
         return Err(crate::protocol::protocol_error(
-            crate::ProtocolError::UnsupportedContext {
-                field: crate::ProtocolContextField::BaselineReference,
+            crate::protocol::ProtocolError::UnsupportedContext {
+                field: crate::protocol::ProtocolContextField::BaselineReference,
             },
         ));
     }
@@ -441,9 +442,10 @@ pub(crate) fn prepare(
     let (mut scope_alignment, mut scope_budget) = scope_alignment::plan(&analyzed)?;
     let mut styles = resolve::resolve(catalogue, &analyzed.styles, options.scale())?;
     let default_style_index = if profile == PreparationProfile::Native
-        && analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont
+        && analyzed.paragraph.paragraph_strut
+            == crate::protocol::paragraph::ParagraphStrut::DefaultFont
     {
-        let base = crate::ValidatedStyle::for_processed(
+        let base = crate::style::ValidatedStyle::for_processed(
             analyzed
                 .paragraph
                 .domain_style
@@ -498,7 +500,7 @@ pub(crate) fn prepare(
             boxes: analyzed.processed.source().boxes(),
             font_catalogue: &font_catalogue,
             paragraph: &analyzed.paragraph,
-            css_tabs: options.tabs() == crate::TabPreparation::CssStops,
+            css_tabs: options.tabs() == crate::tabs::TabPreparation::CssStops,
         },
         scratch,
         &analyzed,
@@ -543,7 +545,7 @@ pub(crate) fn prepare(
                 boxes: analyzed.processed.source().boxes(),
                 font_catalogue: &font_catalogue,
                 paragraph: &analyzed.paragraph,
-                css_tabs: options.tabs() == crate::TabPreparation::CssStops,
+                css_tabs: options.tabs() == crate::tabs::TabPreparation::CssStops,
             },
             index,
             scratch,

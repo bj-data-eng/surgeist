@@ -11,7 +11,7 @@ use skrifa::{
     raw::TableProvider,
 };
 
-fn prepared_pair(system: &mut System, word_break: crate::WordBreak) -> PreparedText {
+fn prepared_pair(system: &mut System, word_break: crate::style::WordBreak) -> PreparedText {
     let prepared = capture(
         system,
         "\u{5d0}\u{5d0}",
@@ -28,7 +28,7 @@ fn prepared_pair(system: &mut System, word_break: crate::WordBreak) -> PreparedT
     );
     assert_eq!(
         prepared.analyzed_source().direction(),
-        crate::Direction::RightToLeft
+        crate::style::Direction::RightToLeft
     );
     assert_eq!(
         prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
@@ -74,7 +74,10 @@ fn break_all_offers_real_hebrew_letter_cut_and_finalizes_two_ordinary_rtl_lines(
         face.unsynthesized_instance(10.0, &[]).unwrap().axis_count(),
         0
     );
-    for rule in [crate::WordBreak::Normal, crate::WordBreak::KeepAll] {
+    for rule in [
+        crate::style::WordBreak::Normal,
+        crate::style::WordBreak::KeepAll,
+    ] {
         let control = prepared_pair(&mut system, rule);
         assert_eq!(
             control
@@ -85,7 +88,7 @@ fn break_all_offers_real_hebrew_letter_cut_and_finalizes_two_ordinary_rtl_lines(
         );
         assert_eq!(whole(&control).feedback().advance, 20.0);
     }
-    let prepared = prepared_pair(&mut system, crate::WordBreak::BreakAll);
+    let prepared = prepared_pair(&mut system, crate::style::WordBreak::BreakAll);
     let cut = prepared
         .opportunity_views()
         .find(|offer| {
@@ -100,9 +103,9 @@ fn break_all_offers_real_hebrew_letter_cut_and_finalizes_two_ordinary_rtl_lines(
     let first = prepared
         .select(prefix)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     let end = terminal(&prepared);
@@ -111,9 +114,9 @@ fn break_all_offers_real_hebrew_letter_cut_and_finalizes_two_ordinary_rtl_lines(
     let second = prepared
         .select(suffix)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     for (line, range) in [(&first, Range::new(0, 1)), (&second, Range::new(1, 2))] {
@@ -193,7 +196,7 @@ fn break_all_offers_real_hebrew_letter_cut_and_finalizes_two_ordinary_rtl_lines(
         Rect::new(78.0, 30.0, 10.0, 1.0)
     );
     for run in layout.run_views() {
-        assert_eq!(run.glyph_basis(), crate::GlyphBasis::Clockwise);
+        assert_eq!(run.glyph_basis(), crate::geometry::GlyphBasis::Clockwise);
         assert_eq!(run.face().bytes(), bytes);
     }
 }

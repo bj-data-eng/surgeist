@@ -195,25 +195,26 @@ fn mixed_css_tab_uses_the_actual_horizontal_scalar_space_resource() {
         white_space: WhiteSpace::Preserve,
         ..Style::default()
     };
-    own.tab_size = crate::TabSize::spaces(2.0).unwrap();
+    own.tab_size = crate::tabs::TabSize::spaces(2.0).unwrap();
     let source = Source::new("X\t一");
     let extent = Range::new(0, source.text().len());
     let value = ParagraphInput {
         source: source.clone(),
         base_style: own.clone(),
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: Some(
-            crate::ParagraphTabReference::new(own, ParagraphBaseDirection::LeftToRight).unwrap(),
+            crate::tabs::ParagraphTabReference::new(own, ParagraphBaseDirection::LeftToRight)
+                .unwrap(),
         ),
-        origins: vec![crate::ParagraphOrigin {
+        origins: vec![crate::protocol::paragraph::ParagraphOrigin {
             text_node: None,
             source: source.clone(),
             local: extent,
             aggregate: extent,
-            kind: crate::ParagraphOriginKind::Authored,
+            kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
         controls: vec![],
@@ -223,13 +224,13 @@ fn mixed_css_tab_uses_the_actual_horizontal_scalar_space_resource() {
     };
     let analyzed = crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_paragraph(value, AnalysisTypography::Mixed).unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     let mut system = system_with(&bytes);
     let prepared = system
         .prepare(
             &analyzed,
-            PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops)
+            PreparationOptions::try_new(1.0, crate::tabs::TabPreparation::CssStops)
                 .unwrap()
                 .with_orientation(LineOrientation::Vertical),
         )
@@ -241,9 +242,9 @@ fn mixed_css_tab_uses_the_actual_horizontal_scalar_space_resource() {
     value.context.tabs = TabContext::CssStops { origin: Some(0.0) };
     let selected = prepared.select(value).unwrap();
     let line = selected
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap();
     // R X10 reaches the next2*SPACE10 stop20, followed by upright Han12.

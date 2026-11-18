@@ -2,7 +2,8 @@
 //! explicitly used Alphabetic reference retains its independent cross frame.
 use super::*;
 use crate::{
-    FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance, baseline_test_fonts as base,
+    baseline_test_fonts as base,
+    font::{FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance},
 };
 
 fn qualify(bytes: &[u8], mappings: &[(char, u32)]) {
@@ -110,16 +111,16 @@ fn prepare_profile(
                     ..Style::default()
                 },
                 paragraph_strut: ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
                 base_direction: direction,
-                origins: vec![crate::ParagraphOrigin {
+                origins: vec![crate::protocol::paragraph::ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
                     local: Range::new(0, 3),
                     aggregate: Range::new(0, 3),
-                    kind: crate::ParagraphOriginKind::Authored,
+                    kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                 }],
                 connections: vec![],
                 controls: vec![],
@@ -127,10 +128,10 @@ fn prepare_profile(
                 replacements: vec![],
                 anchor_order: vec![],
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap(),
-        crate::Wrap::Word,
+        crate::style::Wrap::Word,
     );
     let options = PreparationOptions::default().with_orientation(orientation);
     let options = if alphabetic {
@@ -152,24 +153,24 @@ fn rtl_line(prepared: &PreparedText) -> FinalizedLine {
     let mut selection = request(prepared);
     selection.context.orientation = prepared.orientation();
     selection.context.base_direction = ParagraphBaseDirection::RightToLeft;
-    selection.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    selection.context.line_box_direction = crate::protocol::LineBoxDirection::RightToLeft;
     selection.context.available_inline = None;
     selection.context.spacing = SpacingPolicy::None;
     prepared
         .select(selection)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
 
-fn placed(prepared: &PreparedText, line: FinalizedLine) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn placed(prepared: &PreparedText, line: FinalizedLine) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+        entries: vec![crate::protocol::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 20.0,
@@ -186,7 +187,7 @@ fn placed(prepared: &PreparedText, line: FinalizedLine) -> crate::Layout {
     .unwrap()
 }
 
-fn physical_glyphs(layout: &crate::Layout) -> Vec<(Range, Point)> {
+fn physical_glyphs(layout: &crate::layout::Layout) -> Vec<(Range, Point)> {
     layout
         .glyph_runs()
         .iter()
@@ -221,7 +222,7 @@ fn physical_glyphs(layout: &crate::Layout) -> Vec<(Range, Point)> {
 }
 
 fn assert_custody(
-    layout: &crate::Layout,
+    layout: &crate::layout::Layout,
     prepared: &PreparedText,
     source: &Source,
     inline_carets: [f64; 4],
@@ -398,7 +399,7 @@ fn upright_rtl_source_uses_ltr_cells_and_keeps_the_unrotated_separator_axis() {
     assert_eq!(prepared.baseline_reference(), Some(FontBaseline::Central));
     assert_eq!(
         prepared.analyzed_source().direction(),
-        crate::Direction::LeftToRight
+        crate::style::Direction::LeftToRight
     );
     assert_eq!(
         prepared

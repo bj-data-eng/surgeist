@@ -18,8 +18,11 @@ use skrifa::{
 };
 
 use crate::{
-    Affinity, Alignment, Cursor, Error, ErrorCode, ErrorDetail, Layout, Point, Range, Rect, Result,
-    Selection,
+    Error, ErrorCode, ErrorDetail, Result,
+    geometry::{Point, Rect},
+    layout::{Affinity, Cursor, Layout, Selection},
+    options::Alignment,
+    range::Range,
 };
 
 /// Accessibility bindings for one exact analyzed-source or placed projection.
@@ -169,7 +172,7 @@ struct Fragment {
     bounds: Rect,
     line: usize,
     rtl: bool,
-    orientation: crate::LineOrientation,
+    orientation: crate::protocol::LineOrientation,
     word: bool,
     metadata: Option<Metadata>,
 }
@@ -758,20 +761,20 @@ fn update(
             let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
             if direction {
                 node.set_text_direction(match (first.orientation, first.rtl) {
-                    (crate::LineOrientation::SidewaysCounterclockwise, false) => {
+                    (crate::protocol::LineOrientation::SidewaysCounterclockwise, false) => {
                         TextDirection::BottomToTop
                     }
-                    (crate::LineOrientation::SidewaysCounterclockwise, true) => {
+                    (crate::protocol::LineOrientation::SidewaysCounterclockwise, true) => {
                         TextDirection::TopToBottom
                     }
                     (
-                        crate::LineOrientation::SidewaysClockwise
-                        | crate::LineOrientation::Vertical,
+                        crate::protocol::LineOrientation::SidewaysClockwise
+                        | crate::protocol::LineOrientation::Vertical,
                         false,
                     ) => TextDirection::TopToBottom,
                     (
-                        crate::LineOrientation::SidewaysClockwise
-                        | crate::LineOrientation::Vertical,
+                        crate::protocol::LineOrientation::SidewaysClockwise
+                        | crate::protocol::LineOrientation::Vertical,
                         true,
                     ) => TextDirection::BottomToTop,
                     (_, true) => TextDirection::RightToLeft,
@@ -792,11 +795,12 @@ fn update(
             // pieces remain exact internally; omit optional fields rather than invent precision.
             if descriptor.cell.is_none() && pieces.len() == 1 {
                 node.set_character_positions(vec![0.0]);
-                let inline_span = if first.orientation != crate::LineOrientation::Horizontal {
-                    bounds.size.height
-                } else {
-                    bounds.size.width
-                };
+                let inline_span =
+                    if first.orientation != crate::protocol::LineOrientation::Horizontal {
+                        bounds.size.height
+                    } else {
+                        bounds.size.width
+                    };
                 node.set_character_widths(vec![host_width(inline_span)?]);
             }
             if one_line {
@@ -847,21 +851,21 @@ fn update(
                     })
                 });
             if let Some(alignment) = alignment.filter(|alignment| {
-                layout.orientation() == crate::LineOrientation::Horizontal
+                layout.orientation() == crate::protocol::LineOrientation::Horizontal
                     || matches!(alignment, Alignment::Center | Alignment::Justify)
             }) {
                 // AccessKit has no top/bottom text-align value. Omit that
                 // optional projection for vertical start/end rather than lie.
                 node.set_text_align(match alignment {
                     Alignment::Start => {
-                        if layout.direction() == crate::Direction::RightToLeft {
+                        if layout.direction() == crate::style::Direction::RightToLeft {
                             accesskit::TextAlign::Right
                         } else {
                             accesskit::TextAlign::Left
                         }
                     }
                     Alignment::End => {
-                        if layout.direction() == crate::Direction::RightToLeft {
+                        if layout.direction() == crate::style::Direction::RightToLeft {
                             accesskit::TextAlign::Left
                         } else {
                             accesskit::TextAlign::Right
@@ -1031,7 +1035,7 @@ fn original_host_text(analyzed: &crate::engine::AnalyzedData) -> Result<String> 
 }
 
 fn host_width(value: f64) -> Result<f32> {
-    use crate::{TextNumericError as Numeric, TextNumericPhase as Phase};
+    use crate::error::{TextNumericError as Numeric, TextNumericPhase as Phase};
     let converted = value as f32;
     let category = if !value.is_finite() {
         Some(Numeric::NonFinite)
@@ -1066,8 +1070,8 @@ fn host_rect(rect: Rect, origin: Point) -> Result<accesskit::Rect> {
         if !value.is_finite() {
             return Err(crate::engine::text_numeric_error(
                 "accessibility bounds",
-                crate::TextNumericPhase::Accessibility,
-                crate::TextNumericError::NonFinite,
+                crate::error::TextNumericPhase::Accessibility,
+                crate::error::TextNumericError::NonFinite,
                 value,
             ));
         }
@@ -1101,48 +1105,59 @@ pub(crate) mod tests {
             contributes,
         );
     }
-    use crate::{Id, InlineBox, InlineBoxKind, Options, Size, Source, Style, System, Text};
+    use crate::{
+        System,
+        geometry::Size,
+        id::Id,
+        options::Options,
+        source::{InlineBox, InlineBoxKind, Source},
+        style::Style,
+        text::Text,
+    };
     use std::collections::BTreeSet;
 
     fn captured_surrogate_halves(
-        connection: crate::ParagraphConnectionKind,
-    ) -> crate::AnalyzedSource {
-        crate::AnalyzedSource::from_paragraph(
-            crate::ParagraphInput {
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        connection: crate::protocol::paragraph::ParagraphConnectionKind,
+    ) -> crate::analyzed::AnalyzedSource {
+        crate::analyzed::AnalyzedSource::from_paragraph(
+            crate::protocol::ParagraphInput {
+                terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 source: Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
                 base_style: Style::default(),
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-                base_direction: crate::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
+                segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: crate::protocol::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: crate::protocol::paragraph::ParagraphStrut::AllocatedContributions,
                 origins: vec![
-                    crate::ParagraphOrigin {
+                    crate::protocol::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: Source::new(Text::from_code_units(vec![0xd800])),
                         local: Range::new(0, 1),
                         aggregate: Range::new(0, 1),
-                        kind: crate::ParagraphOriginKind::Authored,
+                        kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                     },
-                    crate::ParagraphOrigin {
+                    crate::protocol::paragraph::ParagraphOrigin {
                         text_node: None,
                         source: Source::new(Text::from_code_units(vec![0xdc00])),
                         local: Range::new(0, 1),
                         aggregate: Range::new(1, 2),
-                        kind: crate::ParagraphOriginKind::Authored,
+                        kind: crate::protocol::paragraph::ParagraphOriginKind::Authored,
                     },
                 ],
-                connections: vec![crate::ParagraphConnection {
+                connections: vec![crate::protocol::paragraph::ParagraphConnection {
                     at: 1,
                     kind: connection,
                 }],
                 controls: vec![],
-                boundary_policies: if connection == crate::ParagraphConnectionKind::Continuous {
-                    vec![crate::ParagraphBoundaryPolicy {
-                        definition: crate::ParagraphBoundaryDefinition::Connection(0),
-                        preceding_wrap: crate::Wrap::Word,
-                        following_wrap: crate::Wrap::Word,
-                        ancestor_wrap: crate::Wrap::Word,
+                boundary_policies: if connection
+                    == crate::protocol::paragraph::ParagraphConnectionKind::Continuous
+                {
+                    vec![crate::protocol::paragraph::ParagraphBoundaryPolicy {
+                        definition:
+                            crate::protocol::paragraph::ParagraphBoundaryDefinition::Connection(0),
+                        preceding_wrap: crate::style::Wrap::Word,
+                        following_wrap: crate::style::Wrap::Word,
+                        ancestor_wrap: crate::style::Wrap::Word,
                     }]
                 } else {
                     vec![]
@@ -1150,15 +1165,19 @@ pub(crate) mod tests {
                 replacements: vec![],
                 anchor_order: vec![],
             },
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap()
     }
 
     #[test]
     fn disconnected_original_surrogate_halves_refuse_ax_atomically_without_fusing_host_text() {
-        let connected = captured_surrogate_halves(crate::ParagraphConnectionKind::Continuous);
-        let disconnected = captured_surrogate_halves(crate::ParagraphConnectionKind::Disconnected);
+        let connected = captured_surrogate_halves(
+            crate::protocol::paragraph::ParagraphConnectionKind::Continuous,
+        );
+        let disconnected = captured_surrogate_halves(
+            crate::protocol::paragraph::ParagraphConnectionKind::Disconnected,
+        );
         assert_eq!(connected.source().text().code_units(), [0xd800, 0xdc00]);
         assert_eq!(disconnected.source().text().code_units(), [0xd800, 0xdc00]);
         assert_eq!(
@@ -1220,10 +1239,10 @@ pub(crate) mod tests {
             repeat.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
             update.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>()
         );
-        let raw = crate::AnalyzedSource::new(
+        let raw = crate::analyzed::AnalyzedSource::new(
             Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
             Style::default(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let raw_update = raw
@@ -1242,10 +1261,10 @@ pub(crate) mod tests {
     #[test]
     fn host_text_uses_exact_original_scalars_and_refuses_isolated_units() {
         let text = Text::from_code_units(vec![0xd83d, 0xde00, 0xfffd, 0x00a6]);
-        let analyzed = crate::AnalyzedSource::new(
+        let analyzed = crate::analyzed::AnalyzedSource::new(
             Source::new(text),
             Style::default(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -1258,10 +1277,10 @@ pub(crate) mod tests {
         ] {
             assert_eq!(
                 original_host_text(
-                    &crate::AnalyzedSource::new(
+                    &crate::analyzed::AnalyzedSource::new(
                         Source::new(Text::from_code_units(units)),
                         Style::default(),
-                        crate::AnalysisTypography::HorizontalComposition
+                        crate::analyzed::AnalysisTypography::HorizontalComposition
                     )
                     .unwrap()
                     .inner
@@ -1288,8 +1307,8 @@ pub(crate) mod tests {
         assert!(matches!(
             host_width(f64::MIN_POSITIVE).unwrap_err().detail(),
             Some(ErrorDetail::InvalidTextNumeric {
-                phase: crate::TextNumericPhase::Accessibility,
-                category: crate::TextNumericError::PositiveLost,
+                phase: crate::error::TextNumericPhase::Accessibility,
+                category: crate::error::TextNumericError::PositiveLost,
                 ..
             })
         ));
@@ -1396,8 +1415,8 @@ pub(crate) mod tests {
                 ..Style::default()
             },
         );
-        let source = crate::ValidatedSource::try_from(source).unwrap();
-        let default = crate::ValidatedStyle::try_from(Style {
+        let source = crate::source::ValidatedSource::try_from(source).unwrap();
+        let default = crate::style::ValidatedStyle::try_from(Style {
             locale: Some("en".into()),
             ..Style::default()
         })

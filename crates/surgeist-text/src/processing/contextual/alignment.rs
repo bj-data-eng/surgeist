@@ -7,7 +7,10 @@ mod operations_tests;
 use std::mem::size_of;
 
 use super::{ScopeCapture, SourceProcessingScope};
-use crate::{FontBaseline, FontBaselineAxis, FontBaselineScript, Result};
+use crate::{
+    Result,
+    font::{FontBaseline, FontBaselineAxis, FontBaselineScript},
+};
 
 /// Effective formatting classification at a captured inline boundary.
 ///

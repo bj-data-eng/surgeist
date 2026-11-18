@@ -379,7 +379,27 @@ pub(crate) fn anchor_exact(core: &AnalyzedCore, order: usize, semantic_atom: usi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::*;
+    use crate::{
+        analyzed::AnalyzedSource,
+        layout::Affinity,
+        processing::{
+            ContextualSourceInput, DocumentSegmentBreaks, SourceProcessingConnection,
+            SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+            SourceProcessingScope, SourceProcessingTopology, WhiteSpaceTrim,
+            process_contextual_source,
+        },
+        protocol::{
+            ParagraphBaseDirection,
+            paragraph::{
+                ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+                ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
+            },
+        },
+        range::Range,
+        source::Source,
+        style::{Style, WhiteSpace, Wrap},
+        text::Text,
+    };
     use std::sync::Arc;
 
     // Each origin is a source contribution; the inline scope begins
@@ -484,7 +504,7 @@ mod tests {
         let processed = Arc::new(process_contextual_source(input).unwrap());
         AnalyzedSource::from_processed_paragraph(
             processed.paragraphs().next().unwrap(),
-            crate::AnalysisTypography::HorizontalComposition,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
         )
         .unwrap()
     }

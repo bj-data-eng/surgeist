@@ -1,6 +1,6 @@
 //! Actual registered-font GPOS across original/computed ownership.
 use super::*;
-use crate::Range;
+use crate::range::Range;
 use paragraph::{
     ParagraphAnchor, ParagraphAnchorItem, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
     ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition,
@@ -9,11 +9,11 @@ use paragraph::{
 fn input(source: Source, direction: ParagraphBaseDirection) -> ParagraphInput {
     let length = source.text().len();
     ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        terminal_edge: crate::protocol::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: style(),
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        segment_breaks: crate::processing::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: direction,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
@@ -32,9 +32,12 @@ fn input(source: Source, direction: ParagraphBaseDirection) -> ParagraphInput {
 }
 fn prepare(input: ParagraphInput, fixture: &[u8]) -> PreparedText {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
-            .unwrap(),
-        crate::Wrap::Word,
+        &AnalyzedSource::from_paragraph(
+            input,
+            crate::analyzed::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
+        crate::style::Wrap::Word,
     );
     let mut system = System::default();
     system
@@ -70,10 +73,10 @@ fn line(
                 ControlAllocation {
                     boundary: matches!(
                         occurrence.view().kind(),
-                        crate::ParagraphControlKind::InlineBoundaryStart
-                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                        crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryStart
+                            | crate::protocol::paragraph::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
+                    .then_some(crate::protocol::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -89,8 +92,12 @@ fn line(
     };
     value.context.base_direction = direction;
     value.context.line_box_direction = match direction {
-        crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
-        crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        crate::protocol::ParagraphBaseDirection::LeftToRight => {
+            crate::protocol::LineBoxDirection::LeftToRight
+        }
+        crate::protocol::ParagraphBaseDirection::RightToLeft => {
+            crate::protocol::LineBoxDirection::RightToLeft
+        }
     };
     value.context.spacing = SpacingPolicy::None;
     value.context.start = if from == 0 {
@@ -106,9 +113,9 @@ fn line(
     prepared
         .select(value)
         .unwrap()
-        .finalize(crate::LineAllocations {
+        .finalize(crate::protocol::LineAllocations {
             spacing: SpacingAllocations::None,
-            scopes: crate::ScopeAllocations::None,
+            scopes: crate::protocol::ScopeAllocations::None,
         })
         .unwrap()
 }
@@ -141,15 +148,19 @@ fn glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(Range, u32, f32)> {
     glyphs.sort_by_key(|(range, _, _)| (range.start, range.end));
     glyphs
 }
-fn placed(prepared: &PreparedText, first: FinalizedLine, second: FinalizedLine) -> crate::Layout {
-    crate::Layout::from_finalized_lines(PlacementRequest {
+fn placed(
+    prepared: &PreparedText,
+    first: FinalizedLine,
+    second: FinalizedLine,
+) -> crate::layout::Layout {
+    crate::layout::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
         entries: [first, second]
             .into_iter()
             .enumerate()
             .map(|(index, line)| {
-                crate::PlacementEntry::Formatted(LinePlacement {
+                crate::protocol::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -181,7 +192,7 @@ fn replaced(
         });
         value.anchor_order.push(ParagraphAnchor {
             item: ParagraphAnchorItem::Control(0),
-            affinity: crate::Affinity::After,
+            affinity: crate::layout::Affinity::After,
         });
         ParagraphReplacementDefinition::Control { control: 0, origin }
     };
@@ -189,7 +200,7 @@ fn replaced(
         ParagraphReplacement::resolved_native_logical_before(
             definition,
             anchor,
-            vec![crate::Text::from(replacement)],
+            vec![crate::text::Text::from(replacement)],
         )
         .unwrap(),
     );
