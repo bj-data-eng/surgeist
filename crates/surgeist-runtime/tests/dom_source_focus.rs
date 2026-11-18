@@ -23,7 +23,29 @@ use surgeist_dom::{
 };
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogFocusingAction};
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{
+        DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
+        DomElementTaskRuntime, DomElementTaskRuntimeError, DomElementTaskRuntimeLimits,
+    },
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt,
+        DomEventDispatcher, DomEventListenerOptions, DomEventRegistryLimits, DomEventTarget,
+        DomEventType, DomToggleEvent,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel,
+        DomSourceExecutionScope,
+    },
+    session::DomSessionLimits,
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventRuntimeLimits,
+        DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceRuntime,
+        DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
+    },
+    style::DomStyleRuntimeLimits,
+};
 #[path = "dom_source_focus/allow_focus.rs"]
 mod allow_focus;
 #[path = "dom_source_focus/empty_popovers.rs"]
@@ -54,7 +76,7 @@ fn session() -> DomSession {
         )
         .unwrap(),
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
@@ -394,7 +416,7 @@ fn unbound_and_external_host_scopes_do_not_infer_absence_or_bind_on_resume() {
     dispatch(&mut native, &event);
     assert!(matches!(
         resume(&mut native, event.operation(), Some(&scope)),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(DomHostedError::Dom(
                 DomError::InvalidSourceOperation
             )))
@@ -447,7 +469,7 @@ fn foreign_and_conflicting_host_permissions_preserve_the_original_operation() {
     );
     assert!(matches!(
         result,
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Binding)
         ))
     ));
@@ -611,7 +633,7 @@ fn disposed_scope_permission_cannot_supply_absence_to_another_live_session() {
     );
     assert!(matches!(
         result,
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Hosted(DomHostedRuntimeError::OwnerDisposed)
         ))
     ));

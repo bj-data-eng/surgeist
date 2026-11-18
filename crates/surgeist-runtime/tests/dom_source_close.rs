@@ -22,7 +22,31 @@ use surgeist_dom::{
 };
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
 use surgeist_html::values::{DocumentString, Namespace};
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{
+        DomElementTask, DomElementTaskEventContext, DomElementTaskProgress,
+        DomElementTaskRunLimits, DomElementTaskRuntime, DomElementTaskRuntimeError,
+        DomElementTaskRuntimeLimits,
+    },
+    event::{
+        DomEventCallback, DomEventCreationObservation, DomEventDispatchLimits,
+        DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
+        DomEventInit, DomEventListenerOptions, DomEventRegistryLimits, DomEventResource,
+        DomEventTarget, DomEventType, DomToggleEvent, NativeDomEvent,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel,
+        HostedRuntime,
+    },
+    session::{DomSessionLimits, DomShutdownOutcome, DomShutdownReason},
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventRuntimeLimits,
+        DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceRuntime,
+        DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -70,7 +94,7 @@ fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeI
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
@@ -1233,7 +1257,7 @@ fn started_close_finishes_late_once_listener_then_reports_exact_retired_read_ope
     drop(context.destruction.take());
     drop(receipt);
     assert!(
-        matches!(resume(&mut session, request.operation()), Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired { operation, subject: actual, action: HtmlDialogAction::ReadOpen }))) if operation == request.operation() && actual == subject)
+        matches!(resume(&mut session, request.operation()), Err(surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired { operation, subject: actual, action: HtmlDialogAction::ReadOpen }))) if operation == request.operation() && actual == subject)
     );
     assert_eq!(
         session

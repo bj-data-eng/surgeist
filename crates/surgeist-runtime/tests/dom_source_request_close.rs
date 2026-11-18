@@ -25,7 +25,28 @@ use surgeist_dom::{
 };
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
 use surgeist_html::values::{DocumentString, Namespace};
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{
+        DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
+        DomElementTaskRuntime, DomElementTaskRuntimeError, DomElementTaskRuntimeLimits,
+    },
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatchReceipt, DomEventDispatcher,
+        DomEventDom, DomEventListenerOptions, DomEventRegistryLimits, DomEventType,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel,
+        HostedRuntime,
+    },
+    session::{DomSessionLimits, DomShutdownOutcome},
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventRuntimeError,
+        DomSourceEventRuntimeLimits, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
+        DomSourceRuntime, DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 #[path = "dom_source_request_close/modal.rs"]
 mod modal;
@@ -76,7 +97,7 @@ fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeI
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
@@ -780,7 +801,7 @@ fn cancel_retirement_finishes_started_path_and_once_before_native_final_reset_fa
         drop(receipt);
         let terminal = resume(&mut session, request.operation());
         assert!(
-            matches!(&terminal, Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+            matches!(&terminal, Err(surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
             operation, subject: actual, action: HtmlDialogAction::SetForceCloseWatcherEnabled(false)
         }))) if *operation == request.operation() && *actual == subject),
             "actual retired Cancel terminal: {terminal:?}"
@@ -1016,7 +1037,7 @@ fn nested_close_retirement_preserves_its_stopped_action_and_settles_original_wat
     drop(receipt);
     let terminal = resume(&mut session, request.operation());
     assert!(
-        matches!(&terminal, Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+        matches!(&terminal, Err(surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
         operation, subject: actual, action: HtmlDialogAction::ReadOpen
     }))) if *operation == request.operation() && *actual == subject),
         "actual nested Close terminal: {terminal:?}"
@@ -1447,7 +1468,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
             meta: None,
             execution_scope: None, style_policy: &mut |_| None, url: None,
         }, &cancel());
-        assert!(matches!(&terminal, Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+        assert!(matches!(&terminal, Err(surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
             operation, subject, action: HtmlDialogAction::SetForceCloseWatcherEnabled(false)
         }))) if *operation == child_request.operation() && *subject == context.child), "actual child terminal: {terminal:?}");
         let actual_parent = dom.pending_source_edit().expect("actual observing parent remains");

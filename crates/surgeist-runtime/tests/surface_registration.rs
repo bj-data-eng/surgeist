@@ -1,8 +1,12 @@
 #![forbid(unsafe_code)]
 
 use surgeist_runtime::{
-    ElementId, ElementPhase, ElementRegistration, RootId, Runtime, SurfaceElementRef,
-    SurfaceErrorCode, SurfaceId, SurfaceLifecycle, SurfaceRoot, UiSurface, WindowId,
+    Runtime,
+    identity::{ElementId, RootId, SurfaceId, WindowId},
+    surface::{
+        ElementPhase, ElementRegistration, SurfaceElementRef, SurfaceErrorCode, SurfaceLifecycle,
+        SurfaceRoot, UiSurface,
+    },
 };
 
 fn root(name: &str, element: ElementId) -> SurfaceRoot {

@@ -24,7 +24,27 @@ use surgeist_dom::{
     style::DomStyleSource,
 };
 use surgeist_html::values::{DocumentString, Namespace};
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{
+        DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
+        DomElementTaskRuntime, DomElementTaskRuntimeLimits,
+    },
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
+        DomEventRegistryLimits, DomEventType,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedSettings, DomHostedTaskKind,
+        DomHostedTaskProgress, DomHostedTaskWait, DomHostedTopLevel, HostedRuntime,
+    },
+    session::DomSessionLimits,
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError,
+        DomSourceServices,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -56,11 +76,11 @@ fn session() -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
-            source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+            source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
@@ -1512,7 +1532,7 @@ fn retiring_document_refuses_fresh_child_before_single_edit_publication() {
             &mut services,
             &cancel(),
         ),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Dom(DomError::HostedSourceUnavailable)
         ))
     ));

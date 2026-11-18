@@ -9,9 +9,13 @@ use surgeist_dom::{
     limits::DomLimits,
 };
 use surgeist_runtime::{
-    ElementId, ElementPhase, ElementRegistration, RootId, Runtime, RuntimeDomHostError,
-    SurfaceDomBindingLimits, SurfaceElementRef, SurfaceErrorCode, SurfaceId, SurfaceLifecycle,
-    SurfaceRef, SurfaceRoot, UiSurface, WindowId,
+    Runtime,
+    host_capture::{RuntimeDomHostError, SurfaceDomBindingLimits},
+    identity::{ElementId, RootId, SurfaceId, WindowId},
+    surface::{
+        ElementPhase, ElementRegistration, SurfaceElementRef, SurfaceErrorCode, SurfaceLifecycle,
+        SurfaceRef, SurfaceRoot, UiSurface,
+    },
 };
 
 fn document() -> (Dom, DocumentId, [NodeId; 2]) {

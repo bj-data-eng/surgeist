@@ -14,7 +14,7 @@ use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
     values::{DocumentString, Namespace},
 };
-use surgeist_runtime::{
+use surgeist_runtime::event::{
     DomEventCallback, DomEventDispatchError, DomEventDispatcher, DomEventDom,
     DomEventListenerOptions, DomEventRegistrationId, DomEventRegistryLimits, DomEventResource,
     DomEventType,

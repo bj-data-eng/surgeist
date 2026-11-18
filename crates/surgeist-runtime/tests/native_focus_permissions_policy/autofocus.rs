@@ -25,7 +25,7 @@ fn fixture(candidates: usize) -> (DomSession, DomHostedTopLevel) {
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
@@ -387,7 +387,7 @@ fn candidate_capacity_refuses_atomic_insertion_and_exact_one_reference_admits() 
             assert!(
                 matches!(
                     result,
-                    Err(surgeist_runtime::DomSourceDriveError::Source(
+                    Err(surgeist_runtime::source::DomSourceDriveError::Source(
                         DomSourceRuntimeError::Dom(DomError::ResourceLimit {
                             resource: DomResource::AutofocusCandidates,
                             limit: 0
@@ -443,7 +443,7 @@ fn unpublished_source_refusal_and_fresh_retry_never_install_partial_candidate_hi
     assert!(
         matches!(
             result,
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
             ))
         ),
@@ -471,7 +471,7 @@ fn unpublished_source_refusal_and_fresh_retry_never_install_partial_candidate_hi
             },
             &AtomicBool::new(true)
         ),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Dom(DomError::Cancelled)
         ))
     ));

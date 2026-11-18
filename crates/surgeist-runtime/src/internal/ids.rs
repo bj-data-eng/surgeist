@@ -127,7 +127,7 @@ impl ResourceGeneration {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-/// A nonzero operation identity issued by a [`ResourceState`](crate::ResourceState).
+/// A nonzero operation identity issued by a [`ResourceState`](crate::resource::ResourceState).
 ///
 /// Resource state owns issuance; callers can inspect this value but cannot construct
 /// one, preventing completion and cancellation calls from inventing an operation.

@@ -19,7 +19,17 @@ use surgeist_dom::{
 };
 use surgeist_html::focus::HtmlFocusingAction;
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    hosted::DomHostedRuntimeLimits,
+    session::DomSessionLimits,
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventRuntimeLimits,
+        DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 fn limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 100_000_000, 64, 1024, 128, 8)
@@ -48,7 +58,7 @@ fn session() -> DomSession {
         )
         .unwrap(),
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
@@ -332,7 +342,7 @@ fn document_element_focus_preserves_exact_pending_request_and_published_reset_ac
     );
     assert!(matches!(
         resume(&mut session, request.operation(), &AtomicBool::new(true)),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Dom(DomError::Cancelled)
         ))
     ));

@@ -11,7 +11,17 @@ use surgeist_dom::{
     source::DomSourceLimits,
 };
 use surgeist_html::values::{DocumentString, Namespace};
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    hosted::{
+        DomHostedDestructionQueued, DomHostedRuntimeLimits, DomHostedTaskProgress,
+        DomHostedTopLevel,
+    },
+    session::DomSessionLimits,
+    source::DomSourceEventRuntimeLimits,
+    style::DomStyleRuntimeLimits,
+};
 
 pub(super) fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -23,7 +33,7 @@ pub(super) fn source_limits() -> DomSourceLimits {
 
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },

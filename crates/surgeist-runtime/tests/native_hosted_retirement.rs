@@ -18,7 +18,27 @@ use surgeist_dom::{
     task::DomElementTaskSourceKind,
 };
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{
+        DomElementTask, DomElementTaskEventContext, DomElementTaskProgress,
+        DomElementTaskRunLimits, DomElementTaskRuntime, DomElementTaskRuntimeError,
+        DomElementTaskRuntimeLimits,
+    },
+    event::{
+        DomEventCallback, DomEventCreationObservation, DomEventDispatchError,
+        DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatcher, DomEventInit,
+        DomEventListenerOptions, DomEventPhase, DomEventRegistryLimits, DomEventResource,
+        DomEventTarget, DomEventTimestampUnavailable, DomEventType, NativeDomEvent,
+    },
+    hosted::{DomHostedRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel},
+    session::DomSessionLimits,
+    source::{
+        DomSourceDriveProgress, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+        DomSourceEventServiceProgress, DomSourceServices, DomSourceUnavailable,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -51,11 +71,11 @@ fn session() -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
-            source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+            source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
                 work: 1_000_000,

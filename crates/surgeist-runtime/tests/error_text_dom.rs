@@ -33,10 +33,15 @@ use surgeist_dom::{
     style::{DomStyleCssomRootError, inline::DomInlineStyleError},
 };
 use surgeist_runtime::{
-    DomConstructedSheetError, DomElementTaskRuntimeError, DomEventDispatchError, DomEventResource,
-    DomHostedRuntimeError, DomSession, DomSessionCreateFailure, DomSourceEventResource,
-    DomSourceEventRuntimeError, DomSourceRuntimeError, DomStyleParsedTerminalError,
-    DomStyleRuntimeError, trusted_types_csp::PolicyListCapacity,
+    DomSession,
+    element_task::DomElementTaskRuntimeError,
+    event::{DomEventDispatchError, DomEventResource},
+    hosted::DomHostedRuntimeError,
+    session::DomSessionCreateFailure,
+    source::{DomSourceEventResource, DomSourceEventRuntimeError, DomSourceRuntimeError},
+    style::parsed::DomStyleParsedTerminalError,
+    style::{DomConstructedSheetError, DomStyleRuntimeError},
+    trusted_types_csp::PolicyListCapacity,
 };
 
 fn flag() -> AtomicBool {
@@ -677,18 +682,19 @@ fn parsed_contribution_settlement_errors_state_the_refusing_owner() {
 
 // End to end: errors returned by public operations.
 
-fn limits() -> surgeist_runtime::DomSessionLimits {
+fn limits() -> surgeist_runtime::session::DomSessionLimits {
     use surgeist_css::source::CssUtf16InputLimits;
     use surgeist_dom::hosted::{DomHostedLimits, DomHostedRecordLimits};
     use surgeist_runtime::{
-        DomElementTaskRuntimeLimits, DomHostedRuntimeLimits, DomStyleRuntimeLimits,
+        element_task::DomElementTaskRuntimeLimits, hosted::DomHostedRuntimeLimits,
+        style::DomStyleRuntimeLimits,
     };
-    surgeist_runtime::DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+    surgeist_runtime::session::DomSessionLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
-        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+        source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
             jobs: 4,
             storage_bytes: 16_000_000,
             work: 1_000_000,
@@ -723,8 +729,8 @@ fn limits() -> surgeist_runtime::DomSessionLimits {
 
 /// The refusal of a session over a fresh DOM with the given limits.
 fn creation_refusal(
-    limits: surgeist_runtime::DomSessionLimits,
-) -> surgeist_runtime::DomSessionCreateError {
+    limits: surgeist_runtime::session::DomSessionLimits,
+) -> surgeist_runtime::session::DomSessionCreateError {
     match DomSession::new(dom().0, limits) {
         Err(error) => error,
         Ok(_) => panic!("the session must be refused"),
@@ -734,7 +740,7 @@ fn creation_refusal(
 /// Checks a session creation refusal: the context of the failure, the context of
 /// the error that returns the DOM, and the exhausted resource from the chain.
 fn assert_refusal(
-    limits: surgeist_runtime::DomSessionLimits,
+    limits: surgeist_runtime::session::DomSessionLimits,
     check: fn(&DomSessionCreateFailure) -> bool,
     context: &str,
     cause: &str,

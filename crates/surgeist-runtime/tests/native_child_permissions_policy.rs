@@ -31,7 +31,17 @@ use surgeist_html_semantics::{
     HtmlBaseAllowed, HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseParseObservation,
     HtmlBaseParseOutcome, HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme,
 };
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    hosted::{DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedSettings, DomHostedTopLevel},
+    session::DomSessionLimits,
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
+        DomSourceUnavailable, DomSourceUrlService,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -55,11 +65,11 @@ fn session() -> DomSession {
         )
         .unwrap(),
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
-            source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+            source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
@@ -588,7 +598,7 @@ fn present_srcdoc_uses_parent_origin_before_truthful_unsupported_navigation_tail
         assert!(
             matches!(
                 result,
-                Err(surgeist_runtime::DomSourceDriveError::Source(
+                Err(surgeist_runtime::source::DomSourceDriveError::Source(
                     DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
                         DomHostedError::UnsupportedProfile
                     ))
@@ -720,7 +730,7 @@ fn insert_with_url(
     observe: &mut dyn FnMut(
         &DomSourceUrlRequest,
         &AtomicBool,
-    ) -> surgeist_runtime::DomSourceUrlObservationResult,
+    ) -> surgeist_runtime::source::DomSourceUrlObservationResult,
 ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     let mut source = session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
@@ -940,7 +950,7 @@ fn prebound_blob_entry_environment_supplies_shared_or_unequal_actual_opaque_orig
         assert!(
             matches!(
                 result,
-                Err(surgeist_runtime::DomSourceDriveError::Source(
+                Err(surgeist_runtime::source::DomSourceDriveError::Source(
                     DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
                         DomHostedError::UnsupportedProfile
                     ))
@@ -1104,7 +1114,7 @@ fn stale_external_revision_refuses_without_default_policy_then_same_source_resum
     );
     assert!(matches!(
         result,
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Dom(DomError::SourceUrlInputsMismatch)
         ))
     ));
@@ -1207,7 +1217,7 @@ fn parent_active_origin_restriction_precedes_srcdoc_and_is_inherited_by_frame() 
             assert!(
                 matches!(
                     result,
-                    Err(surgeist_runtime::DomSourceDriveError::Source(
+                    Err(surgeist_runtime::source::DomSourceDriveError::Source(
                         DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
                             DomHostedError::UnsupportedProfile
                         ))
@@ -1413,7 +1423,7 @@ fn adopted_container_uses_new_document_url_basis_and_rejects_old_document_observ
     assert!(
         matches!(
             result,
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::Dom(DomError::SourceUrlInputsMismatch)
             ))
         ),

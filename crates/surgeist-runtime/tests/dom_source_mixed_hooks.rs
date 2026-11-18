@@ -31,7 +31,27 @@ use surgeist_html_semantics::{
     HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseParseObservation, HtmlBaseParseOutcome,
     HtmlBaseProducerId, HtmlBaseUrlRecord,
 };
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
+        DomEventRegistryLimits, DomEventType,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskKind, DomHostedTaskProgress,
+        DomHostedTopLevel,
+    },
+    session::{DomSessionLimits, DomShutdownOutcome, DomShutdownReason},
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventRuntimeLimits,
+        DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable, DomSourceUrlService,
+    },
+    style::{
+        DomStyleEventContext, DomStyleNetworkingProgress, DomStyleRuntime, DomStyleRuntimeError,
+        DomStyleRuntimeLimits,
+    },
+};
 
 const CSS: &str = "p { color: red }";
 const SRC: &str = "http://[";
@@ -57,7 +77,7 @@ fn hosted_limits(registries: usize, tasks: usize) -> DomHostedRuntimeLimits {
 }
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
@@ -791,7 +811,7 @@ fn mixed_insertion_keeps_published_stylesheet_through_child_url_wait_registry_re
     );
     assert!(matches!(
         fixture.resume_without_url(operation, &AtomicBool::new(true)),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(DomError::Cancelled))
         ))
     ));
@@ -819,7 +839,7 @@ fn mixed_insertion_keeps_published_stylesheet_through_child_url_wait_registry_re
     assert!(
         matches!(
             refused,
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(DomHostedError::Limit {
                     resource: DomHostedResource::Registries,
                     limit: 1,
@@ -928,7 +948,7 @@ fn mixed_removal_reaches_iframe_destruction_admission_before_the_sibling_stylesh
     assert!(
         matches!(
             result,
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Admission)
             ))
         ),
@@ -982,7 +1002,7 @@ fn mixed_removal_reaches_iframe_destruction_admission_before_the_sibling_stylesh
     ));
     assert!(matches!(
         fixture.resume_without_url(pending.operation(), &AtomicBool::new(true)),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(DomError::Cancelled))
         ))
     ));

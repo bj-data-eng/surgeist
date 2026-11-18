@@ -19,11 +19,16 @@ use surgeist_dom::{
     limits::DomLimits,
 };
 use surgeist_runtime::{
-    ElementId, ElementPhase, ElementRegistration, InputProvenance, ProvenanceErrorCode, RootId,
-    Runtime, RuntimeDomHostError, RuntimeQueuePolicy, ServiceId, ServiceInput,
-    SurfaceDomBindingLimits, SurfaceElementRef, SurfaceErrorCode, SurfaceGeneration, SurfaceId,
-    SurfaceRef, SurfaceRoot, TaskInput, TaskIntentAttemptId, TaskIntentId, UiInput, UiSurface,
-    WindowId,
+    Runtime,
+    host_capture::{RuntimeDomHostError, SurfaceDomBindingLimits},
+    identity::{ElementId, RootId, ServiceId, SurfaceGeneration, SurfaceId, WindowId},
+    input::{RuntimeQueuePolicy, ServiceInput, TaskInput, UiInput},
+    provenance::{InputProvenance, ProvenanceErrorCode},
+    surface::{
+        ElementPhase, ElementRegistration, SurfaceElementRef, SurfaceErrorCode, SurfaceRef,
+        SurfaceRoot, UiSurface,
+    },
+    task::{TaskIntentAttemptId, TaskIntentId},
 };
 
 /// Checks one type's table: row order against `index` (an exhaustive match where the type allows one), the exact
@@ -82,7 +87,7 @@ fn surface_ref() -> SurfaceRef {
 
 #[test]
 fn a_rejected_surface_attachment_says_why_the_origin_cannot_carry_it() {
-    assert_send_sync::<surgeist_runtime::ProvenanceError>();
+    assert_send_sync::<surgeist_runtime::provenance::ProvenanceError>();
     let first = surface_ref();
     let second = SurfaceRef::new(SurfaceId::from_u64(4), SurfaceGeneration::from_u64(1));
     let task = task_provenance;

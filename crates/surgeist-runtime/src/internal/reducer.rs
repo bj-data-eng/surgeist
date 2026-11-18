@@ -23,9 +23,7 @@ pub trait Reducer<State, Input> {
 /// provenance selection to its consumer.
 ///
 /// ```
-/// use surgeist_runtime::{
-///     AppEffect, AppScope, InputProvenance, ReducerCommit, ReducerResult,
-/// };
+/// use surgeist_runtime::{coordination::AppScope, effect::AppEffect, provenance::InputProvenance, reducer::{ReducerCommit, ReducerResult}};
 ///
 /// let provenance = InputProvenance::system().with_sequence(9);
 /// let unchanged = ReducerResult::<u8>::unchanged(

@@ -21,7 +21,30 @@ use surgeist_dom::{
 };
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{
+        DomElementTask, DomElementTaskEventContext, DomElementTaskRunLimits, DomElementTaskRuntime,
+        DomElementTaskRuntimeError, DomElementTaskRuntimeLimits,
+    },
+    event::{
+        DomEventCallback, DomEventCallbackError, DomEventDispatchError, DomEventDispatchLimits,
+        DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
+        DomEventListenerFailureKind, DomEventListenerOptions, DomEventRegistryLimits,
+        DomEventResource, DomEventTarget, DomEventTimestampUnavailable, DomEventType,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel,
+    },
+    session::{DomSessionCreateFailure, DomSessionLimits, DomShutdownOutcome},
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventResource,
+        DomSourceEventRuntimeError, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+        DomSourceEventServiceProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceServices,
+        DomSourceUnavailable,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 4)
@@ -43,7 +66,7 @@ fn service_limits() -> DomSourceEventServiceLimits {
 }
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
@@ -1323,7 +1346,7 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
             },
             &cancel
         ),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation)
         ))
     ));
@@ -2693,7 +2716,7 @@ fn uncanceled_beforetoggle_reports_precise_retired_receiver_after_actual_receipt
         )
         .unwrap_err();
     assert!(
-        matches!(error, surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+        matches!(error, surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
         operation, subject: retired, action: HtmlDialogAction::ReadOpen,
     })) if operation == request.operation() && retired == subject)
     );
@@ -3476,7 +3499,7 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
             },
             &cancel
         ),
-        Err(surgeist_runtime::DomSourceDriveError::Source(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(
             DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation)
         ))
     ));

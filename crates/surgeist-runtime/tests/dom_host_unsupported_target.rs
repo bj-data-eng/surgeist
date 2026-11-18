@@ -7,8 +7,10 @@ use surgeist_dom::{
     limits::DomLimits,
 };
 use surgeist_runtime::{
-    ElementId, ElementPhase, ElementRegistration, RootId, Runtime, RuntimeDomHostError,
-    SurfaceDomBindingLimits, SurfaceElementRef, SurfaceId, SurfaceRoot, UiSurface, WindowId,
+    Runtime,
+    host_capture::{RuntimeDomHostError, SurfaceDomBindingLimits},
+    identity::{ElementId, RootId, SurfaceId, WindowId},
+    surface::{ElementPhase, ElementRegistration, SurfaceElementRef, SurfaceRoot, UiSurface},
 };
 
 #[test]

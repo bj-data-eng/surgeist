@@ -247,7 +247,7 @@ pub enum RuntimeQueueErrorCode {
 /// A rejected runtime input that remains available for an exact later retry.
 ///
 /// ```
-/// use surgeist_runtime::{InputProvenance, Runtime, RuntimeQueuePolicy, UiInput};
+/// use surgeist_runtime::{Runtime, input::{RuntimeQueuePolicy, UiInput}, provenance::InputProvenance};
 ///
 /// let mut runtime = Runtime::<(), (), &str>::new_with_queue_policy(
 ///     (),
@@ -319,10 +319,7 @@ impl<T: fmt::Debug> Error for RuntimeQueueError<T> {}
 /// Deterministic owner of application state, registered surfaces, queues, and diagnostics.
 ///
 /// ```
-/// use surgeist_runtime::{
-///     ElementId, ElementPhase, ElementRegistration, RootId, Runtime, SurfacePoint, SurfaceRoot,
-///     SurfaceSize, UiSurface, WindowId, SurfaceId,
-/// };
+/// use surgeist_runtime::{Runtime, identity::{ElementId, RootId, SurfaceId, WindowId}, surface::{ElementPhase, ElementRegistration, SurfacePoint, SurfaceRoot, SurfaceSize, UiSurface}};
 ///
 /// let window_id = WindowId::from_u64(1);
 /// let surface_id = SurfaceId::from_u64(2);
@@ -475,9 +472,7 @@ impl<State, R, Input> Runtime<State, R, Input> {
     /// without publishing any of its state.
     ///
     /// ```
-    /// use surgeist_runtime::{
-    ///     RootId, Runtime, SurfaceErrorCode, SurfaceId, SurfaceRoot, UiSurface, WindowId,
-    /// };
+    /// use surgeist_runtime::{Runtime, identity::{RootId, SurfaceId, WindowId}, surface::{SurfaceErrorCode, SurfaceRoot, UiSurface}};
     ///
     /// let mut runtime = Runtime::<()>::new((), ());
     /// let first = runtime.register_surface(UiSurface::try_new(

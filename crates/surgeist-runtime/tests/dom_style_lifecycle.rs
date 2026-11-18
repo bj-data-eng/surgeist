@@ -15,18 +15,33 @@ use surgeist_dom::{
     style::{DomStyleCssomRoot, DomStyleInlineCspObservation, DomStyleSheet, DomStyleSource},
 };
 use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::DomElementTaskRuntimeLimits,
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventDom,
+        DomEventListenerOptions, DomEventRegistryLimits, DomEventTimestampUnavailable,
+        DomEventType, NativeDomEvent,
+    },
+    hosted::DomHostedRuntimeLimits,
+    session::{DomSessionLimits, DomShutdownOutcome, DomShutdownReason},
+    source::{DomSourceDriveProgress, DomSourceRuntime, DomSourceServices, DomSourceUnavailable},
+    style::{
+        DomStyleEventContext, DomStyleNetworkingProgress, DomStyleNetworkingTaskId,
+        DomStyleRuntime, DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleUnavailable,
+    },
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
-        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+        source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 16_000_000,
             work: 1_000_000,

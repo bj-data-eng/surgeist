@@ -23,7 +23,25 @@ use surgeist_dom::{
 };
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogOperation, HtmlDialogState};
 use surgeist_html::values::Namespace;
-use surgeist_runtime::*;
+use surgeist_runtime::{
+    DomSession,
+    element_task::{DomElementTask, DomElementTaskRuntimeLimits},
+    event::{
+        DomEventCallback, DomEventDispatchLimits, DomEventDispatchReceipt, DomEventDispatcher,
+        DomEventListenerOptions, DomEventRegistryLimits, DomEventTarget, DomEventType,
+    },
+    hosted::{
+        DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel,
+        HostedRuntime,
+    },
+    session::{DomSessionLimits, DomShutdownOutcome},
+    source::{
+        DomSourceDriveError, DomSourceDriveProgress, DomSourceEventRuntimeLimits,
+        DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceRuntimeError,
+        DomSourceServices, DomSourceUnavailable,
+    },
+    style::DomStyleRuntimeLimits,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -65,7 +83,7 @@ fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeI
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
+            authored_events: surgeist_runtime::event::DomEventStorageLimits {
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
             },
@@ -613,7 +631,7 @@ fn callback_adoption_into_inactive_document_keeps_open_and_queue_then_fails_asse
     drop(receipt);
     let terminal = resume(&mut session, request.operation());
     let failure = match terminal {
-        Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+        Err(surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
             DomError::SourceInvariantFailed { operation, failure },
         ))) => {
             assert_eq!(operation, request.operation());
@@ -677,7 +695,7 @@ fn callback_adoption_into_inactive_document_keeps_open_and_queue_then_fails_asse
     assert!(
         matches!(
             replay,
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation)
             ))
         ),
@@ -688,7 +706,7 @@ fn callback_adoption_into_inactive_document_keeps_open_and_queue_then_fails_asse
     assert!(
         matches!(
             next,
-            Err(surgeist_runtime::DomSourceDriveError::Source(
+            Err(surgeist_runtime::source::DomSourceDriveError::Source(
                 DomSourceRuntimeError::Dom(DomError::DialogInvalidState)
             ))
         ),
@@ -824,7 +842,7 @@ fn started_beforetoggle_finishes_late_once_after_actual_receiver_retirement() {
             drop(complete(terminal.unwrap()));
         } else {
             assert!(
-                matches!(&terminal,Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {operation,subject:actual,action:HtmlDialogAction::ReadOpen}))) if *operation==request.operation() && *actual==subject),
+                matches!(&terminal,Err(surgeist_runtime::source::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {operation,subject:actual,action:HtmlDialogAction::ReadOpen}))) if *operation==request.operation() && *actual==subject),
                 "required exact retired receiver read: {terminal:?}"
             );
         }
@@ -1010,7 +1028,7 @@ fn initial_open_inactive_and_disconnected_guards_do_not_dispatch_or_queue() {
         assert!(
             matches!(
                 result,
-                Err(surgeist_runtime::DomSourceDriveError::Source(
+                Err(surgeist_runtime::source::DomSourceDriveError::Source(
                     DomSourceRuntimeError::Dom(DomError::DialogInvalidState)
                 ))
             ),

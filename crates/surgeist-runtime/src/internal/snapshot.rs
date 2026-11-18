@@ -43,11 +43,7 @@ impl CheckedNext for StateVersion {
 /// The kind of rejected snapshot input or transition.
 ///
 /// ```
-/// use surgeist_runtime::{
-///     AppDescriptor, AppId, AppManifest, RootDescriptor, RootId, SnapshotBinding,
-///     SnapshotBindingId, SnapshotEntry, SnapshotErrorCode, SnapshotSourceType, SnapshotValue,
-///     StateVersion,
-/// };
+/// use surgeist_runtime::{identity::{AppId, RootId, StateVersion}, manifest::{AppDescriptor, AppManifest, RootDescriptor}, snapshot::{SnapshotBinding, SnapshotBindingId, SnapshotEntry, SnapshotErrorCode, SnapshotSourceType, SnapshotValue}};
 ///
 /// let manifest = AppManifest::new(AppDescriptor::new(AppId::new("photo.lab"), "1.0")).root(
 ///     RootDescriptor::new(RootId::new("main"))

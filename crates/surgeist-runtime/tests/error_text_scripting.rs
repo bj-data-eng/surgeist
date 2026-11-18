@@ -17,12 +17,13 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use surgeist_dom::{Dom, DomBatch, DomError, limits::DomLimits};
 use surgeist_runtime::{
-    DomEventConstructionError, DomEventDispatchError, DomEventTimestampUnavailable,
-    DomHostedRuntimeError, DomSession,
+    DomSession,
     document_scripting::{
         DocumentGuestEventError, DocumentScriptError, DocumentScriptNativeError,
         EnableDocumentGuestEventsFailure, EnableDocumentScriptFailure, PreparedDocumentScriptHost,
     },
+    event::{DomEventConstructionError, DomEventDispatchError, DomEventTimestampUnavailable},
+    hosted::DomHostedRuntimeError,
 };
 
 /// Checks one type's table: row order against `index` (an exhaustive match where the type allows one), the exact
@@ -309,19 +310,19 @@ fn session() -> DomSession {
     DomSession::new(dom, session_limits()).unwrap()
 }
 
-fn session_limits() -> surgeist_runtime::DomSessionLimits {
+fn session_limits() -> surgeist_runtime::session::DomSessionLimits {
     use surgeist_css::source::CssUtf16InputLimits;
     use surgeist_dom::hosted::{DomHostedLimits, DomHostedRecordLimits};
     use surgeist_runtime::{
-        DomElementTaskRuntimeLimits, DomHostedRuntimeLimits, DomSessionLimits,
-        DomStyleRuntimeLimits,
+        element_task::DomElementTaskRuntimeLimits, hosted::DomHostedRuntimeLimits,
+        session::DomSessionLimits, style::DomStyleRuntimeLimits,
     };
     DomSessionLimits {
-        authored_events: surgeist_runtime::DomEventStorageLimits {
+        authored_events: surgeist_runtime::event::DomEventStorageLimits {
             storage_bytes: 16_000_000,
             work: 1_000_000,
         },
-        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+        source_events: surgeist_runtime::source::DomSourceEventRuntimeLimits {
             jobs: 4,
             storage_bytes: 16_000_000,
             work: 1_000_000,
@@ -424,7 +425,8 @@ fn a_failed_enable_returns_the_unpublished_owner_and_chains_its_cause() {
 fn script_outcome_and_event_errors_state_their_own_context() {
     use surgeist_runtime::document_scripting::DocumentScriptEventError;
     use surgeist_runtime::{
-        DomElementTaskRuntimeError, DomSourceRuntimeError, DomStyleRuntimeError,
+        element_task::DomElementTaskRuntimeError, source::DomSourceRuntimeError,
+        style::DomStyleRuntimeError,
     };
     let native = || DocumentScriptError::Native(DocumentScriptNativeError::Busy);
     check_table(

@@ -28,14 +28,21 @@ use surgeist_dom::{
     meta::DomMetaAtomicError,
 };
 use surgeist_runtime::{
-    AppProxy, DomEventConstructionError, DomEventDispatchError, DomHostedRuntimeError,
-    DomSessionCreateFailure, DomSourceDriveError, DomSourceEventRuntimeError,
-    DomSourceRuntimeError, DomStyleMetaError, DomStyleParsedAdmissionError,
-    DomStyleParsedFrontierError, DomStyleParsedInstallError, DomStyleParsedMetaError,
-    DomStyleParsedMetaOccurrenceError, DomStyleParsedNotificationError, DomStyleParsedPrefixError,
-    DomStyleParsedSheetError, DomStyleParsedSubjectError, DomStyleParsedSuccessorError,
-    DomStyleRootWithdrawalError, DomStyleRuntimeError, InputProvenance, QueuePolicy, TaskInput,
-    TaskIntentAttemptId, TaskIntentId, WakeBridge, WakeError,
+    event::{DomEventConstructionError, DomEventDispatchError},
+    hosted::DomHostedRuntimeError,
+    input::TaskInput,
+    provenance::InputProvenance,
+    proxy::{AppProxy, QueuePolicy, WakeBridge, WakeError},
+    session::DomSessionCreateFailure,
+    source::{DomSourceDriveError, DomSourceEventRuntimeError, DomSourceRuntimeError},
+    style::parsed::{
+        DomStyleParsedAdmissionError, DomStyleParsedFrontierError, DomStyleParsedInstallError,
+        DomStyleParsedMetaError, DomStyleParsedMetaOccurrenceError,
+        DomStyleParsedNotificationError, DomStyleParsedPrefixError, DomStyleParsedSheetError,
+        DomStyleParsedSubjectError, DomStyleParsedSuccessorError,
+    },
+    style::{DomStyleMetaError, DomStyleRootWithdrawalError, DomStyleRuntimeError},
+    task::{TaskIntentAttemptId, TaskIntentId},
     trusted_types_csp::{AttributePolicyError, PolicyListCapacity, PolicyListError},
 };
 
@@ -111,7 +118,7 @@ fn session_creation_failures_name_the_owner_that_refused() {
             ),
             (
                 DomSessionCreateFailure::ElementTasks(
-                    surgeist_runtime::DomElementTaskRuntimeError::Busy,
+                    surgeist_runtime::element_task::DomElementTaskRuntimeError::Busy,
                 ),
                 "session creation was refused by the element-task owner",
             ),
