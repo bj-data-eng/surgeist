@@ -10,6 +10,7 @@ use super::{
     RunMode, Scalar, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf,
     TrackComponentOf, TrackRepeat, TrackSizingOf, Traverse,
 };
+use crate::accounting::LayoutWork;
 use crate::engine::containment::{
     compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
 };
@@ -48,6 +49,20 @@ pub(crate) use observation::{
 };
 mod placement;
 mod subgrid;
+pub(crate) use subgrid::{WrapperResolutionMemo, WrapperResolutions};
+
+/// Whether a test asks every nested subgrid computation to repeat.
+#[cfg(test)]
+fn subgrid_reuse_disabled() -> bool {
+    subgrid_work::reuse_disabled()
+}
+
+#[cfg(not(test))]
+const fn subgrid_reuse_disabled() -> bool {
+    false
+}
+#[cfg(test)]
+pub(crate) mod subgrid_work;
 #[cfg(test)]
 #[path = "../grid_tests.rs"]
 mod tests;
@@ -323,7 +338,7 @@ where
 /// the container needs one, precedes the real run, and every run starts from
 /// the initial scrollbar state with its parent context rebuilt per pass.
 pub(crate) fn begin_grid_context_computation<'input, Tree, M>(
-    _tree: &mut Tree,
+    tree: &mut Tree,
     request: GridContextRequest<'input, Tree::Node, Tree::Scalar>,
 ) -> GridContextStart<'input, Tree::Node, Tree::Scalar, M>
 where
@@ -338,6 +353,8 @@ where
         stage,
         parent_context,
     } = request;
+    tree.meter()
+        .charge(LayoutWork::ContextualGridComputation, 1);
     let contextual_minimum =
         standalone_intrinsic_minimum_phases(&child.projection(), child.inherited_axes());
     let intrinsic_minimum = Size::new(
@@ -346,6 +363,7 @@ where
     );
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let (run_input, boundary, entry) = if intrinsic_axes.width || intrinsic_axes.height {
+        tree.meter().charge(LayoutWork::StandaloneMinimumProbe, 1);
         let available = Size::new(
             intrinsic_minimum
                 .width
@@ -709,6 +727,9 @@ pub(crate) struct GridComputeResult<Node, S: LayoutScalar = Scalar> {
     baseline_groups: GridBaselineGroups<S>,
     effective_gutter: Option<Edges<S>>,
     executed_baselines: Option<ExecutedBaselineInventory<Node, S>>,
+    /// The writes the computation staged, when a contextual request captured
+    /// them for a later reuse.
+    effects: Option<crate::engine::StagedEffects<Node, S>>,
 }
 
 type GridComputeOutcome<Node, S, M> = LayoutResultOf<Node, GridComputeResult<Node, S>, S, M>;
@@ -717,6 +738,15 @@ impl<Node, S: LayoutScalar> GridComputeResult<Node, S> {
     /// The geometry of the computation, without its contextual receipt.
     pub(crate) fn into_output(self) -> ComputeOutputOf<S> {
         self.output
+    }
+
+    /// The receipt with the writes its computation staged.
+    pub(crate) fn with_effects(
+        mut self,
+        effects: Option<crate::engine::StagedEffects<Node, S>>,
+    ) -> Self {
+        self.effects = effects;
+        self
     }
 
     fn from_output(output: ComputeOutputOf<S>) -> Self {
@@ -729,6 +759,7 @@ impl<Node, S: LayoutScalar> GridComputeResult<Node, S> {
             },
             effective_gutter: None,
             executed_baselines: None,
+            effects: None,
         }
     }
 }
@@ -1169,6 +1200,8 @@ fn compute_grid_with_context_source<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    tree.meter()
+        .charge(LayoutWork::ContextualGridComputation, 1);
     let style_input = container;
     let inherited_axes = container.inherited_axes();
     let contextual_minimum =
@@ -1223,6 +1256,7 @@ where
         .with_settled_auto_scrollbars(input.settled_auto_scrollbars())
         .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass())
         .with_baseline_demand_from(input);
+        tree.meter().charge(LayoutWork::StandaloneMinimumProbe, 1);
         let measured = compute_grid_with_scrollbar_settlement(
             tree,
             node,
@@ -2804,6 +2838,7 @@ impl<Node: Copy, S: LayoutScalar> GridPassOutput<'_, Node, S> {
             baseline_groups,
             effective_gutter,
             executed_baselines,
+            effects: None,
         })
     }
 }

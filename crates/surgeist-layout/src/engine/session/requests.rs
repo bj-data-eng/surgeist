@@ -154,7 +154,10 @@ enum GridCompletion<Node, S: LayoutScalar> {
     },
     /// A contextual computation caches and memoizes nothing; its receipt is
     /// the Grid result its parent consumes.
-    Context,
+    Context {
+        /// Where the writes of the computation begin in the session's capture.
+        effects_start: usize,
+    },
 }
 
 struct GridObservationRequest<'input, Node, S: LayoutScalar> {
@@ -325,8 +328,12 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let result = self.drive_staged_requests(request, &mut pending, &mut staged);
         result.map_err(|mut stop| {
             while let Some(mut trial) = staged.pop() {
+                trial
+                    .session
+                    .close_context_captures(&mut trial.pending.grids);
                 stop = trial.session.unwind_blocks(trial.pending.blocks, stop);
             }
+            self.close_context_captures(&mut pending.grids);
             self.unwind_blocks(pending.blocks, stop)
         })
     }
@@ -589,6 +596,19 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
             ControlFlow::Continue(source) => Ok(ControlFlow::Break(RequestProgress::SourceFloat(
                 Box::new(source),
             ))),
+        }
+    }
+
+    /// Closes the effect captures of the contextual Grid requests a failure
+    /// left suspended, innermost first. They have no writes to replay.
+    fn close_context_captures(
+        &mut self,
+        grids: &mut Vec<GridRequest<'input, Tree::Node, Tree::Scalar>>,
+    ) {
+        while let Some(grid) = grids.pop() {
+            if let GridCompletion::Context { effects_start } = grid.completion {
+                self.end_effect_capture(effects_start);
+            }
         }
     }
 
@@ -1107,22 +1127,46 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         pending: &mut SessionPending<'input, Tree>,
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let node = request.node();
-        let mut computation = begin_grid_context_computation(self, request)?;
-        match computation.advance(self)? {
-            ControlFlow::Break(result) => Ok(Request::Complete(CompletedRequest::Context(
-                Box::new(result),
-            ))),
+        let effects_start = self.begin_effect_capture(super::CaptureKind::Request);
+        let started = begin_grid_context_computation(self, request)
+            .and_then(|mut computation| computation.advance(self).map(|step| (computation, step)));
+        let (computation, step) = match started {
+            Ok(started) => started,
+            Err(error) => {
+                // The failed computation leaves no writes to replay.
+                self.end_effect_capture(effects_start);
+                return Err(error.into());
+            }
+        };
+        match step {
+            ControlFlow::Break(result) => {
+                let result = result.with_effects(self.end_effect_capture(effects_start));
+                Ok(Request::Complete(CompletedRequest::Context(Box::new(
+                    result,
+                ))))
+            }
             ControlFlow::Continue(child) => {
-                pending
-                    .grids
-                    .try_reserve(1)
-                    .map_err(|_| reserve_error(node))?;
+                // The capture stays open for the computation to close; a
+                // failure to schedule it closes the capture here.
+                if pending.grids.try_reserve(1).is_err() {
+                    self.end_effect_capture(effects_start);
+                    return Err(reserve_error(node).into());
+                }
                 let mut pending_child = None;
-                let request =
-                    Self::schedule_grid_request(child, &mut pending_child, &mut pending.order)?;
+                let request = match Self::schedule_grid_request(
+                    child,
+                    &mut pending_child,
+                    &mut pending.order,
+                ) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        self.end_effect_capture(effects_start);
+                        return Err(error);
+                    }
+                };
                 pending.grids.push(GridRequest {
                     computation,
-                    completion: GridCompletion::Context,
+                    completion: GridCompletion::Context { effects_start },
                     child: pending_child,
                 });
                 Ok(request)
@@ -1152,9 +1196,12 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                             result.into_output(),
                         )
                     }
-                    GridCompletion::Context => Ok(Request::Complete(CompletedRequest::Context(
-                        Box::new(result),
-                    ))),
+                    GridCompletion::Context { effects_start } => {
+                        let result = result.with_effects(self.end_effect_capture(effects_start));
+                        Ok(Request::Complete(CompletedRequest::Context(Box::new(
+                            result,
+                        ))))
+                    }
                 }
             }
             ControlFlow::Continue(child) => {

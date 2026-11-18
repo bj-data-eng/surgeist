@@ -7921,6 +7921,7 @@ fn grid_child_pending_and_subgrid_inheritance_helpers_accept_non_default_scalar(
     };
     let item = PendingGridItem::<_, f64> {
         executed_baselines: PendingExecutedBaselines::Uncaptured(None),
+        first_request: None,
         node: "child",
         style: grid_item_projection!(&default_input),
         nested_container: None,
@@ -8130,6 +8131,7 @@ fn baseline_test_item<'input>(
         },
         nested_container: None,
         executed_baselines: PendingExecutedBaselines::Uncaptured(None),
+        first_request: None,
         source_index: 0,
         area: GridArea {
             row,
@@ -8953,6 +8955,7 @@ fn axis_baseline_item<'input, S: LayoutScalar>(
         style: default_grid_item_projection(default_input),
         nested_container: None,
         executed_baselines: PendingExecutedBaselines::Uncaptured(None),
+        first_request: None,
         source_index: 0,
         area: GridArea {
             column: 0,

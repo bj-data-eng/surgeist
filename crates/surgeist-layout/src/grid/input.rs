@@ -229,6 +229,14 @@ pub(super) struct GridContainerInput<'input, S: LayoutScalar> {
 }
 
 impl<'input, S: LayoutScalar> GridContainerInput<'input, S> {
+    /// Whether both inputs read the same node input through the same settings.
+    pub(super) fn same_container(&self, other: &Self) -> bool {
+        std::ptr::eq(self.source, other.source)
+            && self.suppressed_intrinsic_minimum == other.suppressed_intrinsic_minimum
+            && self.inherited_axes == other.inherited_axes
+            && self.adopted_lanes_flow == other.adopted_lanes_flow
+    }
+
     #[must_use]
     pub(super) fn from_node(source: &'input NodeInputOf<S>) -> Self {
         Self {

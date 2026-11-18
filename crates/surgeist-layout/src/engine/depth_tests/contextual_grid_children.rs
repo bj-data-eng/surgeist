@@ -1,4 +1,5 @@
 use super::*;
+use crate::accounting::{SubgridWork, TestHost};
 use crate::{
     AlignContent, AlignItems, ComputedOverflow, GridAxisKind, GridLanesFlow, GridPlacement,
     MinSizeOf, Overflow, PreferredSizeOf, ScrollbarWidthOf, SizeContainment, SubgridTrack,
@@ -461,4 +462,368 @@ fn subgrid_chain_leaf_refusal_surfaces_unchanged() {
             assert_chain_failure_surfaces_unchanged::<f64>();
         },
     );
+}
+
+// Work growth of a chain of nested subgrids. A level needs one contextual Grid
+// computation of its subgrid child for placement, which may probe the child's
+// standalone minimum once and refresh its baselines once, so those grow with
+// the depth by at most one level's share. Intrinsic traversal prepares each
+// wrapper once for each distinct combination of axis, sizing stage and parent
+// tracks that the root asks for, and a Grid Lanes level adds the contextual
+// computations of its lane candidates. Each is a fixed number per level: the
+// counts below bound the growth from one depth to the next. None of them may
+// grow with the number of paths through the chain, which would make the growth
+// itself grow with the depth.
+const WRAPPER_PREPARATIONS_PER_LEVEL: usize = 24;
+const CONTEXTUAL_GRIDS_PER_LEVEL: usize = 14;
+const BASELINE_REFRESHES_PER_LEVEL: usize = 1;
+const MINIMUM_PROBES_PER_LEVEL: usize = 2;
+const WORK_DEPTHS: [u32; 4] = [2, 3, 4, 5];
+
+fn assert_subgrid_work_grows_linearly(name: &str, work: &[SubgridWork]) {
+    for (depth, pair) in WORK_DEPTHS.iter().zip(work.windows(2)) {
+        let (lower, upper) = (pair[0], pair[1]);
+        for (what, lower, upper, limit) in [
+            (
+                "wrapper preparations",
+                lower.wrapper_preparations,
+                upper.wrapper_preparations,
+                WRAPPER_PREPARATIONS_PER_LEVEL,
+            ),
+            (
+                "contextual Grid computations",
+                lower.contextual_grids,
+                upper.contextual_grids,
+                CONTEXTUAL_GRIDS_PER_LEVEL,
+            ),
+            (
+                "baseline refreshes",
+                lower.baseline_refreshes,
+                upper.baseline_refreshes,
+                BASELINE_REFRESHES_PER_LEVEL,
+            ),
+            (
+                "standalone-minimum probes",
+                lower.minimum_probes,
+                upper.minimum_probes,
+                MINIMUM_PROBES_PER_LEVEL,
+            ),
+        ] {
+            assert!(
+                upper <= lower + limit,
+                "{name}: {what} grow from {lower} at depth {depth} to {upper} at depth {}, \
+                 more than {limit} for one level",
+                depth + 1,
+            );
+        }
+    }
+}
+
+/// The completed layout of `tree` and the work it reported to a fresh host.
+fn accounted_layout<S: LayoutScalar>(
+    tree: &PublicLayoutTreeOf<S>,
+) -> (crate::CompletedLayoutBatchOf<u32, S>, SubgridWork) {
+    let host = TestHost::new();
+    let batch = crate::engine::compute_layout_invalidated_accounted(
+        tree,
+        0,
+        standalone(),
+        &[],
+        Some(&host.scope()),
+    )
+    .expect("subgrid chain layout");
+    (batch, host.subgrid_work())
+}
+
+fn subgrid_work_of<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> SubgridWork {
+    accounted_layout(tree).1
+}
+
+/// The work of the chain at each of `WORK_DEPTHS`. The thread has a stack that
+/// holds the native recursion of the deepest chain.
+fn subgrid_work_by_depth<S: LayoutScalar>(
+    chain: impl Fn(u32) -> PublicLayoutTreeOf<S> + Send + 'static,
+) -> Vec<SubgridWork> {
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            WORK_DEPTHS
+                .iter()
+                .map(|&depth| subgrid_work_of(&chain(depth)))
+                .collect()
+        })
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
+#[test]
+fn subgrid_grid_chain_work_grows_linearly_with_depth() {
+    for span in [Span::Whole, Span::SecondColumnFirstRow] {
+        assert_subgrid_work_grows_linearly(
+            "Grid chain",
+            &subgrid_work_by_depth(move |depth| subgrid_grid_chain::<f32>(depth, span)),
+        );
+        assert_subgrid_work_grows_linearly(
+            "Grid chain",
+            &subgrid_work_by_depth(move |depth| subgrid_grid_chain::<f64>(depth, span)),
+        );
+    }
+}
+
+#[test]
+fn subgrid_lanes_chain_work_grows_linearly_with_depth() {
+    assert_subgrid_work_grows_linearly(
+        "Grid Lanes chain",
+        &subgrid_work_by_depth(subgrid_lanes_chain::<f32>),
+    );
+    assert_subgrid_work_grows_linearly(
+        "Grid Lanes chain",
+        &subgrid_work_by_depth(subgrid_lanes_chain::<f64>),
+    );
+}
+
+#[test]
+fn one_axis_subgrid_chain_work_grows_linearly_with_depth() {
+    assert_subgrid_work_grows_linearly(
+        "one-axis chain",
+        &subgrid_work_by_depth(standalone_minimum_chain::<f32>),
+    );
+    assert_subgrid_work_grows_linearly(
+        "one-axis chain",
+        &subgrid_work_by_depth(standalone_minimum_chain::<f64>),
+    );
+}
+
+// Intrinsic Grid chain. Node 0 is a 70x70 Grid with two automatic columns and
+// two automatic rows. Nodes 1..=depth are Grid subgrids in both axes, each
+// the only item of its parent and spanning both tracks of each axis. The last
+// subgrid holds two leaves of definite size: `depth + 1` is 30x20 in the first
+// track of each axis and `depth + 2` is 40x50 in the second. The automatic
+// tracks take their sizes from those leaves through every subgrid level.
+fn intrinsic_subgrid_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    intrinsic_subgrid_chain_from(0, depth)
+}
+
+// The same chain with its root numbered `first`, so that the chain can sit
+// below another node.
+fn intrinsic_subgrid_chain_from<S: LayoutScalar>(first: u32, depth: u32) -> PublicLayoutTreeOf<S> {
+    let auto_tracks = || vec![TrackComponentOf::AUTO, TrackComponentOf::AUTO];
+    let last = first + depth;
+    let mut tree = PublicLayoutTreeOf::new().style(
+        first,
+        NodeInputOf {
+            display: Display::Grid,
+            size: px_size(70.0, 70.0),
+            grid_template_columns: auto_tracks(),
+            grid_template_rows: auto_tracks(),
+            ..NodeInputOf::default()
+        },
+    );
+    for node in first + 1..=last {
+        tree = tree
+            .style(
+                node,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_row: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_template_columns: subgrid(),
+                    grid_template_rows: subgrid(),
+                    ..NodeInputOf::default()
+                },
+            )
+            .children(node - 1, [node]);
+    }
+    for (leaf, line, width, height) in [(last + 1, 1, 30.0, 20.0), (last + 2, 2, 40.0, 50.0)] {
+        tree = tree.style(
+            leaf,
+            NodeInputOf {
+                grid_column: GridPlacement::try_line(line).unwrap(),
+                grid_row: GridPlacement::try_line(line).unwrap(),
+                size: px_size(width, height),
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    tree.children(last, [last + 1, last + 2])
+}
+
+// CSS Grid Level 2, section 9: the items of a subgrid take part in the track
+// sizing of the parent grid as if they were its own items. The automatic
+// tracks therefore size to the leaves, 30px and 40px wide, 20px and 50px high,
+// and the root's 70px by 70px box has no free space to distribute. Every
+// subgrid fills its grid area, which is the whole root.
+fn assert_intrinsic_subgrid_chain<S: LayoutScalar>(depth: u32) {
+    let tree = intrinsic_subgrid_chain::<S>(depth);
+    let batch = compute_layout(&tree, 0, standalone()).expect("intrinsic subgrid chain layout");
+    assert_eq!(batch.node_layouts().len(), depth as usize + 3);
+    assert_box(&batch, 0, (0.0, 0.0), (70.0, 70.0));
+    for node in 1..=depth {
+        assert_box(&batch, node, (0.0, 0.0), (70.0, 70.0));
+    }
+    assert_box(&batch, depth + 1, (0.0, 0.0), (30.0, 20.0));
+    assert_box(&batch, depth + 2, (30.0, 20.0), (40.0, 50.0));
+}
+
+#[test]
+fn shallow_intrinsic_subgrid_chain_sizes_tracks_from_its_leaves() {
+    assert_intrinsic_subgrid_chain::<f32>(3);
+    assert_intrinsic_subgrid_chain::<f64>(3);
+}
+
+#[test]
+fn intrinsic_subgrid_chain_work_grows_linearly_with_depth() {
+    // Intrinsic contributions reach the root through every level in a bounded
+    // number of traversals of the chain.
+    assert_subgrid_work_grows_linearly(
+        "intrinsic chain",
+        &subgrid_work_by_depth(intrinsic_subgrid_chain::<f32>),
+    );
+    assert_subgrid_work_grows_linearly(
+        "intrinsic chain",
+        &subgrid_work_by_depth(intrinsic_subgrid_chain::<f64>),
+    );
+}
+
+// Block fragmentation stages block bodies, scope receipts and margin groups that
+// the staged effects do not cover, so a fragmented layout reuses no subgrid
+// computation and lays out as it does with every computation repeated. Only
+// Block boxes fragment, so the chain sits inside a Block that size containment
+// makes atomic, below a Block root.
+#[test]
+fn fragmented_subgrid_chain_reuses_nothing_and_lays_out_the_same() {
+    let nodes = 7;
+    let tree = intrinsic_subgrid_chain_from::<f64>(2, nodes - 5)
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Block,
+                size: px_size(70.0, 70.0),
+                size_containment: crate::SizeContainment::BothAxes,
+                ..NodeInputOf::default()
+            },
+        )
+        .children(0, [1])
+        .children(1, [2]);
+    let layout = || {
+        let host = TestHost::new();
+        let batch = super::scoped_flex::scoped_layout_accounted(&tree, nodes, Some(&host));
+        (format!("{batch:?}"), host.subgrid_work())
+    };
+    let (reused, reused_work) = layout();
+    let (repeated, repeated_work) = crate::grid::subgrid_work::with_subgrid_reuse_disabled(layout);
+    assert!(
+        reused == repeated,
+        "the fragmented layout is the same with reuse"
+    );
+    assert!(
+        reused_work.wrapper_preparations > 0,
+        "the fragmented layout prepares subgrid wrappers: {reused_work:?}"
+    );
+    assert_eq!(
+        reused_work.wrapper_preparations, repeated_work.wrapper_preparations,
+        "a fragmented session reuses no wrapper preparation"
+    );
+}
+
+/// The staged writes replayed by chains of `depths`. Each reuse replays the
+/// writes of its subtree, as few as give the same result, so doubling the depth
+/// at most quadruples them. A log that kept every repeat of a subtree would
+/// multiply them by a power of two for each level.
+fn effects_replayed_by_depth<S: LayoutScalar>(
+    chain: impl Fn(u32) -> PublicLayoutTreeOf<S> + Send + 'static,
+    depths: [u32; 3],
+) -> [usize; 3] {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(move || depths.map(|depth| subgrid_work_of(&chain(depth)).effects_replayed))
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
+#[test]
+fn subgrid_chain_effects_replayed_grow_at_most_quadratically_with_depth() {
+    for [shallow, middle, deep] in [
+        effects_replayed_by_depth(
+            |depth| subgrid_grid_chain::<f64>(depth, Span::Whole),
+            [8, 16, 24],
+        ),
+        effects_replayed_by_depth(intrinsic_subgrid_chain::<f64>, [8, 16, 24]),
+        effects_replayed_by_depth(subgrid_lanes_chain::<f64>, [8, 16, 24]),
+    ] {
+        // Quadratic growth multiplies the count by at most four from depth 8 to 16 and by
+        // about two from 16 to 24; an exponential one, however mild, exceeds one of the two.
+        assert!(
+            middle <= 4 * shallow + 64,
+            "{middle} writes replayed at depth 16 against {shallow} at depth 8"
+        );
+        assert!(
+            deep <= 3 * middle + 64,
+            "{deep} writes replayed at depth 24 against {middle} at depth 16"
+        );
+    }
+}
+
+// The chain with a `display: none` item in every Grid of it. A hidden item stages its geometry
+// during final placement, and a hidden write removes the stores its node staged before it.
+fn hidden_item_subgrid_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    let mut tree = intrinsic_subgrid_chain::<S>(depth);
+    for level in 0..=depth {
+        let hidden = depth + 3 + level;
+        tree = tree.style(
+            hidden,
+            NodeInputOf {
+                display: Display::None,
+                ..NodeInputOf::default()
+            },
+        );
+        let items: Vec<u32> = if level < depth {
+            vec![level + 1, hidden]
+        } else {
+            vec![depth + 1, depth + 2, hidden]
+        };
+        tree = tree.children(level, items);
+    }
+    tree
+}
+
+// A hidden item does not stop a subgrid computation from being reused, so the chain with a
+// hidden item in every Grid prepares as many wrappers as the chain without, and lays out as it
+// does with every computation repeated.
+#[test]
+fn hidden_items_in_a_subgrid_chain_leave_the_reuse_on_and_the_layout_the_same() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(|| {
+            let layout = |tree: &PublicLayoutTreeOf<f64>| {
+                let (batch, work) = accounted_layout(tree);
+                (format!("{batch:?}"), work)
+            };
+            let shallow = hidden_item_subgrid_chain::<f64>(3);
+            let (reused, _) = layout(&shallow);
+            let (repeated, _) =
+                crate::grid::subgrid_work::with_subgrid_reuse_disabled(|| layout(&shallow));
+            assert!(
+                reused == repeated,
+                "the hidden items lay out the same with reuse"
+            );
+            let (_, hidden) = layout(&hidden_item_subgrid_chain::<f64>(10));
+            let (_, plain) = layout(&intrinsic_subgrid_chain::<f64>(10));
+            assert_eq!(
+                hidden.wrapper_preparations, plain.wrapper_preparations,
+                "hidden items add no wrapper preparation: {hidden:?} against {plain:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

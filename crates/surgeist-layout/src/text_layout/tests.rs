@@ -2466,3 +2466,5 @@ mod inter_character;
 
 #[path = "tests/parent_geometry_numeric.rs"]
 mod parent_geometry_numeric;
+#[path = "tests/subgrid_reuse_equivalence.rs"]
+mod subgrid_reuse_equivalence;

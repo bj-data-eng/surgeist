@@ -47,6 +47,20 @@ dimensions! {
         FloatReplayEvent,
         /// One float ledger entry evaluated by a band query.
         FloatLedgerEntry,
+        /// One preparation of a subgrid wrapper for intrinsic traversal: one run of the
+        /// wrapper's nested track resolution.
+        SubgridWrapperPreparation,
+        /// One contextual Grid computation of a subgrid item, standalone-minimum probe runs
+        /// not included.
+        ContextualGridComputation,
+        /// One standalone-minimum probe run of a contextual Grid computation.
+        StandaloneMinimumProbe,
+        /// One post-placement baseline refresh recomputation of a subgrid item.
+        BaselineRefresh,
+        /// One staged write copied into the effect list of a completed capture.
+        EffectCaptured,
+        /// One staged write a reused subgrid computation staged again.
+        EffectReplayed,
     }
 }
 
@@ -307,6 +321,18 @@ impl Meter {
     }
 }
 
+/// The subgrid work counts of a test host, which tests bound by the depth of a subgrid chain.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SubgridWork {
+    pub(crate) wrapper_preparations: usize,
+    pub(crate) contextual_grids: usize,
+    pub(crate) minimum_probes: usize,
+    pub(crate) baseline_refreshes: usize,
+    pub(crate) effects_captured: usize,
+    pub(crate) effects_replayed: usize,
+}
+
 /// A host for tests: an operation of the layout schema and its root scope, whose usage tests
 /// read after a layout call reported into it.
 #[cfg(test)]
@@ -341,6 +367,19 @@ impl TestHost {
             .usage(self.scope)
             .expect("the host scope of a live operation has usage")
             .work(work)
+    }
+
+    /// The subgrid work the host's scope has received.
+    pub(crate) fn subgrid_work(&self) -> SubgridWork {
+        let work = |dimension| usize::try_from(self.work(dimension)).unwrap_or(usize::MAX);
+        SubgridWork {
+            wrapper_preparations: work(LayoutWork::SubgridWrapperPreparation),
+            contextual_grids: work(LayoutWork::ContextualGridComputation),
+            minimum_probes: work(LayoutWork::StandaloneMinimumProbe),
+            baseline_refreshes: work(LayoutWork::BaselineRefresh),
+            effects_captured: work(LayoutWork::EffectCaptured),
+            effects_replayed: work(LayoutWork::EffectReplayed),
+        }
     }
 
     /// The phases the host's scope has seen end, one per reported call.

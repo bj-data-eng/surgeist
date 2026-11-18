@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     AlignItems, AspectRatioOf, BlockFragmentainerOf, FlexDirection, FragmentationBreakKinds,
     FragmentationKind, LayoutBoundRequestOf, LayoutFlowInput, LayoutSourceBasis, MinSizeOf,
-    PageProgression, Point, PreferredSizeOf, WrappingInput, compute_layout_with_flow,
+    PageProgression, Point, PreferredSizeOf, WrappingInput,
 };
 
 /// Lays out `tree` under a one-page block fragmentation request, with a
@@ -10,6 +10,15 @@ use crate::{
 pub(super) fn scoped_layout<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     nodes: u32,
+) -> crate::CompletedLayoutBatchOf<u32, S> {
+    scoped_layout_accounted(tree, nodes, None)
+}
+
+/// The same layout, reporting its work counts to `host` when one is supplied.
+pub(super) fn scoped_layout_accounted<S: LayoutScalar>(
+    tree: &PublicLayoutTreeOf<S>,
+    nodes: u32,
+    host: Option<&crate::accounting::TestHost>,
 ) -> crate::CompletedLayoutBatchOf<u32, S> {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let sizing = SizingRequestOf::new(
@@ -52,7 +61,14 @@ pub(super) fn scoped_layout<S: LayoutScalar>(
         Vec::new(),
     )
     .expect("bound numeric flow");
-    let batch = compute_layout_with_flow(&flow, 0, request).expect("scoped flex chain returns");
+    let batch = crate::engine::compute_layout_with_flow_invalidated_accounted(
+        &flow,
+        0,
+        request,
+        &[],
+        host.map(crate::accounting::TestHost::scope).as_ref(),
+    )
+    .expect("scoped flex chain returns");
     assert_eq!(batch.target_basis(), Some(&target));
     assert_eq!(batch.node_layouts().len(), nodes as usize);
     assert_eq!(batch.fragmentainers().len(), 1);

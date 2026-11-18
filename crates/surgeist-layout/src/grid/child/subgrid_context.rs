@@ -227,9 +227,71 @@ impl<Node, S: LayoutScalar> SubgridParentShare<Node, S> {
     }
 }
 
+impl<Node: Copy + PartialEq, S: LayoutScalar> SubgridParentShare<Node, S> {
+    fn same_minimum_functions(&self, other: &Self) -> bool {
+        self.column_minimum_functions
+            .as_ref()
+            .map(OwnedMinimumTrackFunctions::view)
+            == other
+                .column_minimum_functions
+                .as_ref()
+                .map(OwnedMinimumTrackFunctions::view)
+            && self
+                .row_minimum_functions
+                .as_ref()
+                .map(OwnedMinimumTrackFunctions::view)
+                == other
+                    .row_minimum_functions
+                    .as_ref()
+                    .map(OwnedMinimumTrackFunctions::view)
+    }
+
+    /// Whether the two shares give a child the same parent facts. The baseline
+    /// refresh data of either share is not compared: it only adds to a child's
+    /// context where the refresh has ancestor baseline targets, which the
+    /// caller excludes. A used geometry that a share lacks is the uniform
+    /// geometry of its tracks, as the track inheritance reads it.
+    fn same_parent_facts(&self, other: &Self) -> bool {
+        let uniform =
+            |tracks: &[S], gap: S| UsedGridAxisGeometryOf::new(tracks.to_vec(), Vec::new(), gap);
+        let same_geometry = |first: &Option<UsedGridAxisGeometryOf<S>>,
+                             next: &Option<UsedGridAxisGeometryOf<S>>,
+                             tracks: &[S],
+                             gap: S| {
+            match (first, next) {
+                (None, None) => true,
+                (Some(first), Some(next)) => first == next,
+                (None, Some(next)) => *next == uniform(tracks, gap),
+                (Some(_), None) => false,
+            }
+        };
+        self.parent_baseline_references == other.parent_baseline_references
+            && self.columns == other.columns
+            && self.rows == other.rows
+            && self.same_minimum_functions(other)
+            && self.gap == other.gap
+            && self.named_columns == other.named_columns
+            && self.named_rows == other.named_rows
+            && self.area_facts == other.area_facts
+            && same_geometry(
+                &self.column_geometry,
+                &other.column_geometry,
+                &self.columns,
+                self.gap.inline,
+            )
+            && same_geometry(
+                &self.row_geometry,
+                &other.row_geometry,
+                &self.rows,
+                self.gap.block,
+            )
+    }
+}
+
 /// One subgrid item's loan of its parent placement: the shared parent facts
 /// and the item's own. The borrowed input is rebuilt from it for each
 /// scrollbar pass of the child.
+#[derive(Clone)]
 pub(in crate::grid) struct SubgridItemLoan<'input, Node, S: LayoutScalar> {
     share: std::sync::Arc<SubgridParentShare<Node, S>>,
     item: SubgridItemReport<Node>,
@@ -240,6 +302,92 @@ pub(in crate::grid) struct SubgridItemLoan<'input, Node, S: LayoutScalar> {
     margin: Edges<Option<S>>,
     border: Edges<S>,
     padding: Edges<S>,
+}
+
+/// Every input of one contextual Grid computation of a subgrid item, as its
+/// first request read them. The baseline refresh compares them with its own.
+pub(in crate::grid) struct ContextualFingerprint<'input, Node, S: LayoutScalar> {
+    input: ComputeInputOf<S>,
+    minimum: Size<Option<StandaloneIntrinsicMinimum>>,
+    stage: GridSizingStage,
+    container: GridContainerInput<'input, S>,
+    loan: SubgridItemLoan<'input, Node, S>,
+    /// The writes the computation staged, which a reuse stages again.
+    effects: Option<crate::engine::StagedEffects<Node, S>>,
+}
+
+impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ContextualFingerprint<'input, Node, S> {
+    pub(in crate::grid) fn retain_effects(
+        &mut self,
+        effects: Option<crate::engine::StagedEffects<Node, S>>,
+    ) {
+        self.effects = effects;
+    }
+
+    /// The inputs of `request`, or `None` when its parent context is not a
+    /// loan that can be compared.
+    pub(in crate::grid) fn of(request: &GridContextRequest<'input, Node, S>) -> Option<Self> {
+        let GridParentContextSource::Loan(loan) = &request.parent_context else {
+            return None;
+        };
+        Some(Self {
+            input: request.input,
+            minimum: request.minimum,
+            stage: request.stage,
+            container: request.child,
+            loan: (**loan).clone(),
+            effects: None,
+        })
+    }
+
+    /// Whether `request` computes the same result as the request these inputs
+    /// came from. A contextual Grid computation reads only the fields of its
+    /// request and the parent facts its loan shares, so a request equal in all
+    /// of them returns the same output, baselines and error. They are equal
+    /// when:
+    /// - the child's compute input, stage and container are the same;
+    /// - the standalone-minimum phases the computation resolves are the same:
+    ///   the request's own, completed by the container's;
+    /// - the loan's item report, style, area, content box and margin, border
+    ///   and padding are the same; and
+    /// - the parent facts the loans share are the same: tracks, minimum
+    ///   functions, gap, named lines, area facts, baseline references and used
+    ///   geometry.
+    ///
+    /// The refresh share adds ancestor baseline groups and the parent's
+    /// template-area expansion to the context, and the caller establishes
+    /// that they add nothing for this item.
+    pub(in crate::grid) fn is_reproduced_by(
+        &self,
+        request: &GridContextRequest<'input, Node, S>,
+    ) -> bool {
+        let GridParentContextSource::Loan(next) = &request.parent_context else {
+            return false;
+        };
+        let resolved = |request_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
+                        container: &GridContainerInput<'input, S>| {
+            let contextual = standalone_intrinsic_minimum_phases(
+                &container.projection(),
+                container.inherited_axes(),
+            );
+            Size::new(
+                request_minimum.width.or(contextual.width),
+                request_minimum.height.or(contextual.height),
+            )
+        };
+        self.input == request.input
+            && self.stage == request.stage
+            && self.container.same_container(&request.child)
+            && resolved(self.minimum, &self.container) == resolved(request.minimum, &request.child)
+            && self.loan.item == next.item
+            && self.loan.child_style == next.child_style
+            && self.loan.area == next.area
+            && self.loan.content_box_size == next.content_box_size
+            && self.loan.margin == next.margin
+            && self.loan.border == next.border
+            && self.loan.padding == next.padding
+            && self.loan.share.same_parent_facts(&next.share)
+    }
 }
 
 impl<'input, Node: Copy, S: LayoutScalar> SubgridItemLoan<'input, Node, S> {
@@ -959,6 +1107,35 @@ pub(in crate::grid) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar
     pub(in crate::grid) sizing_stage: GridSizingStage,
 }
 
+/// Whether the baseline refresh leaves the parent context of the item as the
+/// first pass built it.
+fn refresh_adds_nothing<Node: Copy + PartialEq, S: LayoutScalar>(
+    input: &SubgridBaselineRefreshInput<'_, Node, S>,
+    item: SubgridItemReport<Node>,
+    sizing: &GridItemSizing<S>,
+) -> bool {
+    let baseline_aligned =
+        |alignment| matches!(alignment, AlignItems::Baseline | AlignItems::LastBaseline);
+    if baseline_aligned(sizing.justify_self) || baseline_aligned(sizing.align_self) {
+        return false;
+    }
+    [item.column, item.row]
+        .into_iter()
+        .filter(|report| report.can_inherit())
+        .all(|report| {
+            let axis = report.mapping.parent_axis;
+            let group = input.ancestor_baseline_groups.for_axis(axis);
+            group.reference()
+                == grid_baseline_reference(input.container_style.baseline_references, axis)
+                && group.axis() == axis
+                && input
+                    .ancestor_baseline_groups
+                    .inherited_targets_for_axis(axis)
+                    .is_none()
+                && !input.template_area_expanded_axes.for_axis(axis)
+        })
+}
+
 type GridContextStep<'input, Node, S, M> =
     LayoutResultOf<Node, Option<GridContextRequest<'input, Node, S>>, S, M>;
 
@@ -1089,6 +1266,41 @@ impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
                 }
                 Err(error) => GridParentContextSource::Rejected(error),
             };
+            let request = GridContextRequest {
+                container: input.node,
+                node: item.node,
+                input: child_input,
+                minimum: sizing.standalone_intrinsic_minimum,
+                child,
+                stage,
+                parent_context,
+            };
+            // The refresh exists to give the item the ancestor baseline
+            // groups the first pass could not know. The recomputation returns
+            // what the first pass returned, and the item keeps its first
+            // receipt, when all of these hold:
+            // - the refresh adds nothing to the item's parent context: no
+            //   ancestor baseline target reaches an inherited axis, the group
+            //   references and axes agree (otherwise the context reports an
+            //   error), no parent axis is template-area expanded, and the
+            //   item aligns to no baseline;
+            // - the refresh request equals the first-pass request in every
+            //   input the computation reads (`is_reproduced_by`).
+            // Any other item is recomputed, as before.
+            if let Some(first) = &item.first_request
+                && let Some(effects) = &first.effects
+                && tree.reuses_subgrid_computations()
+                && !crate::grid::subgrid_reuse_disabled()
+                && refresh_adds_nothing(input, subgrid_item, &sizing)
+                && first.is_reproduced_by(&request)
+            {
+                // The recomputation would stage its writes again, each
+                // replacing its earlier write and moving last.
+                tree.replay_effects(effects)?;
+                continue;
+            }
+            tree.meter()
+                .charge(crate::accounting::LayoutWork::BaselineRefresh, 1);
             self.in_flight = Some(RefreshInFlight {
                 index,
                 sizing,
@@ -1098,15 +1310,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
                 physical_area_size,
                 stage,
             });
-            return Ok(Some(GridContextRequest {
-                container: input.node,
-                node: item.node,
-                input: child_input,
-                minimum: sizing.standalone_intrinsic_minimum,
-                child,
-                stage,
-                parent_context,
-            }));
+            return Ok(Some(request));
         }
         Ok(None)
     }

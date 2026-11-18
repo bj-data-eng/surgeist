@@ -1,7 +1,9 @@
 mod cache_stores;
 mod memo;
+mod staged_effects;
 #[cfg(test)]
 pub(crate) use memo::compute_ordinary_with_request_trace;
+pub(crate) use staged_effects::{CaptureKind, StagedEffect, StagedEffects};
 mod requests;
 
 #[cfg(test)]
@@ -15,7 +17,7 @@ use super::contracts::{
 };
 use super::entry_staging::{self, Rows};
 use super::hidden::HiddenRequest;
-use crate::accounting::Meter;
+use crate::accounting::{LayoutWork, Meter};
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
@@ -112,6 +114,8 @@ where
     outputs: OutputStaging<Tree::Node, Tree::Scalar>,
     cache: CacheStaging<Tree::Node, Tree::Scalar>,
     memo: Option<memo::Memo<Tree::Node, Tree::Scalar>>,
+    wrappers: crate::grid::WrapperResolutionMemo<'a, Tree::Node, Tree::Scalar>,
+    effects: staged_effects::EffectLog<Tree::Node, Tree::Scalar>,
     entry_storage: Option<EntryStorage>,
     meter: Meter,
 }
@@ -326,6 +330,16 @@ pub(crate) enum FloatChildTrial {
     InFlow,
 }
 
+/// Whether staging `entry` removes the cache stores of its node staged before
+/// it, as a hidden node's geometry does.
+fn hides_node_stores<Node: Copy, S: LayoutScalar>(entry: &LayoutOutputEntryOf<Node, S>) -> bool {
+    matches!(
+        entry.geometry_state(),
+        crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal }
+            if measured_normal.is_hidden()
+    )
+}
+
 /// One actual child request executed off-side against the same immutable tree
 /// and canonical Text invocation. This is not a rounded/completed child batch.
 pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
@@ -504,6 +518,8 @@ where
                 invalidated: invalidated_nodes,
             },
             memo: None,
+            wrappers: crate::grid::WrapperResolutionMemo::default(),
+            effects: staged_effects::EffectLog::new(),
             entry_storage: None,
             meter,
         }
@@ -732,6 +748,7 @@ where
         >,
     ) {
         self.invalidate_scoped_request_memo();
+        self.wrappers.clear();
         self.bound = Some(target);
         self.fragmentation = Some(FragmentComputation {
             scopes: None,
@@ -749,6 +766,7 @@ where
         >,
     ) {
         self.invalidate_scoped_request_memo();
+        self.wrappers.clear();
         self.bound = Some(context.target.clone());
         self.fragmentation = Some(FragmentComputation {
             scopes: None,
@@ -873,6 +891,8 @@ where
             .transpose()
     }
     pub(super) fn next_groups(&mut self, basis: &GroupBasis<Tree>) {
+        // A reused subgrid computation belongs to the pass that staged it.
+        self.wrappers.clear();
         if let (Some(state), Some(basis)) = (&mut self.groups, basis) {
             state.next_pass(basis);
         }
@@ -1063,6 +1083,7 @@ where
         frames: Vec<crate::text_layout::state::CanonicalFrame<Tree::Node, Tree::Scalar>>,
     ) -> SessionResult<Tree, ()> {
         self.invalidate_scoped_request_memo();
+        self.wrappers.clear();
         if let Some(text) = self.text.as_mut() {
             text.formatted_next_pass().map_err(|error| {
                 crate::error::staging_text_error(
@@ -1209,6 +1230,7 @@ where
     }
 
     fn complete(mut self, root: Tree::Node) -> CompletedLayoutBatchOf<Tree::Node, Tree::Scalar> {
+        debug_assert!(self.effects.is_idle(), "a capture was left open");
         let mut unrounded_inline_fragments: Vec<_> = self
             .outputs
             .rounded_fragments
@@ -1353,11 +1375,202 @@ where
         batch
     }
 
+    /// The writes of a computation in fewest that give the same result, in
+    /// the order they were staged. `None` when a write belongs to no node of
+    /// the document.
+    ///
+    /// A store or an unrounded geometry write replaces an earlier write to its
+    /// slot and moves it last, so only the last write to a slot counts. A
+    /// hidden geometry write also removes the stores of its node staged before
+    /// it, so those stores are dropped and the last hidden write is kept, with
+    /// the geometry that followed it. A cache clear and an inline fragment
+    /// slot keep the position of their first write, and the inline fragments
+    /// the value of their last.
+    ///
+    /// A formatter family's native writes are compacted by family. A reset
+    /// removes the family's runs and completion and a drop its runs, so
+    /// nothing before the last reset counts, nor does a run before the last
+    /// drop. A run replaces an earlier run of its source and a completion an
+    /// earlier completion of its family, in place.
+    fn compact_effects(
+        &self,
+        writes: &[StagedEffect<Tree::Node, Tree::Scalar>],
+    ) -> Option<Vec<StagedEffect<Tree::Node, Tree::Scalar>>> {
+        let graph = self.flow_graph;
+        let mut keep = Vec::new();
+        keep.try_reserve_exact(writes.len()).ok()?;
+        keep.resize(writes.len(), true);
+        let mut buckets = std::collections::BTreeMap::<usize, Vec<usize>>::new();
+        let mut families = std::collections::BTreeMap::<usize, Vec<usize>>::new();
+        for (position, write) in writes.iter().enumerate() {
+            let node = match write {
+                StagedEffect::Store { node, .. }
+                | StagedEffect::Clear(node)
+                | StagedEffect::InlineFragments { node, .. } => *node,
+                StagedEffect::Geometry(entry) => entry.node(),
+                StagedEffect::NativeReset { family } | StagedEffect::NativeRunsDrop { family } => {
+                    families.entry(*family).or_default().push(position);
+                    continue;
+                }
+                StagedEffect::NativeRun { run, .. } => {
+                    families.entry(run.family).or_default().push(position);
+                    continue;
+                }
+                StagedEffect::NativeCompletion { completion, .. } => {
+                    families
+                        .entry(completion.family)
+                        .or_default()
+                        .push(position);
+                    continue;
+                }
+            };
+            let index = graph?.index(node)?;
+            buckets.entry(index).or_default().push(position);
+        }
+        // The position of the last write that stands for the kept first write
+        // of a slot, by the position of that first write.
+        let mut last_value = std::collections::BTreeMap::<usize, usize>::new();
+        for positions in buckets.values() {
+            let mut stores: Vec<(&ComputeInputOf<Tree::Scalar>, &crate::CacheKeyContext)> =
+                Vec::new();
+            // A geometry write follows, and a hidden one, which makes every
+            // write of the node before it dead.
+            let mut geometry = false;
+            let mut hidden = false;
+            for &position in positions.iter().rev() {
+                match &writes[position] {
+                    StagedEffect::Store { input, context, .. } => {
+                        if hidden
+                            || stores.iter().any(|(seen, seen_context)| {
+                                *seen == input && *seen_context == context
+                            })
+                        {
+                            keep[position] = false;
+                        } else {
+                            stores.push((input, context));
+                        }
+                    }
+                    StagedEffect::Geometry(entry) => {
+                        if hidden || (geometry && !hides_node_stores(entry)) {
+                            keep[position] = false;
+                        } else if hides_node_stores(entry) {
+                            hidden = true;
+                        }
+                        geometry = true;
+                    }
+                    _ => {}
+                }
+            }
+            let mut clear = false;
+            let mut first_inline = None;
+            for &position in positions {
+                match &writes[position] {
+                    StagedEffect::Clear(_) => {
+                        if clear {
+                            keep[position] = false;
+                        }
+                        clear = true;
+                    }
+                    StagedEffect::InlineFragments { .. } => match first_inline {
+                        None => first_inline = Some((position, position)),
+                        Some((first, _)) => {
+                            keep[position] = false;
+                            first_inline = Some((first, position));
+                        }
+                    },
+                    _ => {}
+                }
+            }
+            if let Some((first, last)) = first_inline.filter(|(first, last)| first != last) {
+                last_value.insert(first, last);
+            }
+        }
+        for positions in families.values() {
+            // The last reset removes the runs and the completion staged before
+            // it, and the last drop the runs.
+            let reset = positions
+                .iter()
+                .rposition(|&p| matches!(writes[p], StagedEffect::NativeReset { .. }));
+            let drop_index = positions
+                .iter()
+                .rposition(|&p| matches!(writes[p], StagedEffect::NativeRunsDrop { .. }));
+            let mut completion = None;
+            let mut runs: Vec<(&std::ops::Range<usize>, usize)> = Vec::new();
+            for (index, &position) in positions.iter().enumerate() {
+                let after_reset = reset.is_none_or(|reset| index >= reset);
+                let after_runs_removal = after_reset && drop_index.is_none_or(|drop| index >= drop);
+                match &writes[position] {
+                    // A reset removes what a drop before it would, and a drop
+                    // after it only the runs this function drops.
+                    StagedEffect::NativeReset { .. } => keep[position] = Some(index) == reset,
+                    StagedEffect::NativeRunsDrop { .. } => {
+                        keep[position] = reset.is_none() && Some(index) == drop_index;
+                    }
+                    StagedEffect::NativeCompletion { .. } => {
+                        if !after_reset {
+                            keep[position] = false;
+                        } else if let Some((first, _)) = completion {
+                            keep[position] = false;
+                            completion = Some((first, position));
+                        } else {
+                            completion = Some((position, position));
+                        }
+                    }
+                    StagedEffect::NativeRun { run, .. } => {
+                        if !after_runs_removal {
+                            keep[position] = false;
+                        } else if let Some((_, first)) =
+                            runs.iter().find(|(source, _)| **source == run.source)
+                        {
+                            keep[position] = false;
+                            last_value.insert(*first, position);
+                        } else {
+                            runs.push((&run.source, position));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some((first, last)) = completion.filter(|(first, last)| first != last) {
+                last_value.insert(first, last);
+            }
+        }
+        let mut compacted = Vec::new();
+        compacted.try_reserve_exact(writes.len()).ok()?;
+        for (position, _) in keep.iter().enumerate().filter(|(_, kept)| **kept) {
+            let source = last_value.get(&position).copied().unwrap_or(position);
+            compacted.push(writes[source].try_clone()?);
+        }
+        Some(compacted)
+    }
+
+    fn reset_native_family(&mut self, family: usize) {
+        if self.effects.recording() {
+            self.effects.record(StagedEffect::NativeReset { family });
+        }
+        self.wrapping.native_runs.retain(|run| run.family != family);
+        self.wrapping
+            .native_completions
+            .retain(|completion| completion.family != family);
+    }
+
+    /// Removes a formatter family's native runs, and not its completion.
+    fn drop_native_runs(&mut self, family: usize) {
+        if self.effects.recording() {
+            self.effects.record(StagedEffect::NativeRunsDrop { family });
+        }
+        self.wrapping.native_runs.retain(|run| run.family != family);
+    }
+
     fn retain_native_completion(
         &mut self,
         node: Tree::Node,
         completion: crate::inline_wrapping::family::NativeFormatterCompletion<Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
+        if self.effects.recording() {
+            self.effects
+                .record(StagedEffect::NativeCompletion { node, completion });
+        }
         if let Some(old) = self
             .wrapping
             .native_completions
@@ -1385,6 +1598,12 @@ where
         node: Tree::Node,
         run: crate::inline_wrapping::family::NativePublication<Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
+        if self.effects.recording() {
+            match run.try_clone() {
+                Ok(run) => self.effects.record(StagedEffect::NativeRun { node, run }),
+                Err(_) => self.effects.poison_all(),
+            }
+        }
         if let Some(index) = self
             .wrapping
             .native_runs
@@ -1733,20 +1952,24 @@ where
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
     ) -> UncachedLayout<'a, Tree::Scalar> {
-        if input.run_mode().is_perform_layout()
-            && let Some(index) = self.wrapping.context.as_ref().and_then(|context| {
+        if input.run_mode().is_perform_layout() {
+            if self.text.is_some() {
+                // Text placement is staged by the node it places and written
+                // last by whichever computation of that node ran last, so a
+                // preparation that places text cannot be reused where other
+                // computations of the node may have run since.
+                self.effects.poison(Some(CaptureKind::Preparation));
+            }
+            if let Some(index) = self.wrapping.context.as_ref().and_then(|context| {
                 context
                     .families
                     .iter()
                     .position(|family| family.formatter() == node)
-            })
-        {
-            // Recompute this formatter's accepted runs rather than appending an
-            // earlier scrollbar/size trial. Intrinsic probes do not clear them.
-            self.wrapping.native_runs.retain(|run| run.family != index);
-            self.wrapping
-                .native_completions
-                .retain(|completion| completion.family != index);
+            }) {
+                // Recompute this formatter's accepted runs rather than appending an
+                // earlier scrollbar/size trial. Intrinsic probes do not clear them.
+                self.reset_native_family(index);
+            }
         }
         UncachedLayout {
             style: self.tree.node_input(node),
@@ -1902,6 +2125,9 @@ where
         if let Some(memo) = &self.memo {
             memo.barrier();
         }
+        // An entry trial observes the float state of its enclosing computations,
+        // which the log does not replay, so no capture around it is reused.
+        self.effects.poison(None);
         if !query
             .incoming
             .as_ref()
@@ -2253,6 +2479,112 @@ where
         self.groups.as_mut()
     }
 
+    fn begin_effect_capture(&mut self, kind: CaptureKind) -> usize {
+        self.effects.begin(kind)
+    }
+
+    fn end_effect_capture(
+        &mut self,
+        start: usize,
+    ) -> Option<crate::engine::StagedEffects<Self::Node, Self::Scalar>> {
+        let (writes, complete) = self.effects.finish(start);
+        // A formatted receipt that appeared during the capture may have
+        // decided a cache lookup inside it.
+        let complete = complete
+            && !self
+                .text
+                .as_ref()
+                .is_some_and(|text| text.formatted_active());
+        let compacted = if complete {
+            self.compact_effects(&writes)
+        } else {
+            None
+        };
+        // The enclosing captures need the writes of this one, as few as give
+        // the same result, so a log holds each distinct write of its subtree
+        // once however many times the subtree repeated it.
+        self.effects
+            .restore(compacted.as_deref().unwrap_or(&writes));
+        let compacted = compacted?;
+        self.meter
+            .charge(LayoutWork::EffectCaptured, compacted.len());
+        Some(std::sync::Arc::from(compacted))
+    }
+
+    fn replay_effects(
+        &mut self,
+        effects: &crate::engine::StagedEffects<Self::Node, Self::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        let allocation = |node| {
+            crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
+        };
+        self.meter.charge(LayoutWork::EffectReplayed, effects.len());
+        for effect in effects.iter() {
+            match effect {
+                StagedEffect::Store {
+                    node,
+                    input,
+                    context,
+                    output,
+                } => self.cache_store(*node, input, *context, *output)?,
+                StagedEffect::Clear(node) => self.cache_clear(*node)?,
+                StagedEffect::Geometry(entry) => self.set_unrounded(*entry),
+                StagedEffect::InlineFragments { node, fragments } => {
+                    let fragments = match fragments {
+                        Some(fragments) => {
+                            let mut copy = Vec::new();
+                            copy.try_reserve_exact(fragments.len())
+                                .map_err(|_| allocation(*node))?;
+                            copy.extend_from_slice(fragments);
+                            Some(copy)
+                        }
+                        None => None,
+                    };
+                    self.set_unrounded_inline_fragment_state(*node, fragments);
+                }
+                StagedEffect::NativeReset { family } => self.reset_native_family(*family),
+                StagedEffect::NativeRunsDrop { family } => self.drop_native_runs(*family),
+                StagedEffect::NativeRun { node, run } => {
+                    let run = run.try_clone().map_err(|_| allocation(*node))?;
+                    self.replace_native_run(*node, run)?;
+                }
+                StagedEffect::NativeCompletion { node, completion } => {
+                    self.retain_native_completion(*node, *completion)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn reuses_subgrid_computations(&self) -> bool {
+        // Group alignment numbers its owners and members by the sequence of
+        // computations, so a skipped repeat renumbers every later one.
+        // Fragmentation stages block bodies, scope receipts and margin groups
+        // that the log does not cover. Entry funding charges every visit, so a
+        // skipped repeat would charge less and move the first refusal; funding
+        // charges where the session stages entries or has entry sources. Active
+        // formatted receipts decide cache lookups from the pass's own history.
+        self.groups.is_none()
+            && self.fragmentation.is_none()
+            && self.entry_storage.is_none()
+            && self.entry_sources.is_none()
+            && !self
+                .text
+                .as_ref()
+                .is_some_and(|text| text.formatted_active())
+    }
+
+    fn wrapper_resolutions(
+        &mut self,
+        node: Self::Node,
+    ) -> Option<&mut crate::grid::WrapperResolutions<'input, Self::Node, Self::Scalar>> {
+        if !self.reuses_subgrid_computations() {
+            return None;
+        }
+        let index = self.flow_graph?.index(node)?;
+        self.wrappers.wrapper(index)
+    }
+
     fn text_computation(
         &mut self,
     ) -> Option<&mut crate::text_layout::state::TextComputation<'input, Self::Node, Self::Scalar>>
@@ -2295,16 +2627,16 @@ where
     }
 
     fn set_unrounded(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        if self.effects.recording() {
+            self.effects.record(StagedEffect::Geometry(entry));
+        }
         if let Some(scopes) = self.block_scopes_mut() {
             scopes.stage_adoption(entry.node());
         }
 
         let node = entry.node();
         entry.non_box = self.publication_kind(&entry);
-        if let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
-            entry.geometry_state()
-            && measured_normal.is_hidden()
-        {
+        if hides_node_stores(&entry) {
             if let Some(text) = &mut self.text {
                 text.discard_placement(node);
             }
@@ -2409,6 +2741,24 @@ where
         node: Self::Node,
         fragments: Option<Vec<InlineFragmentOutputOf<Self::Scalar>>>,
     ) {
+        if self.effects.recording() {
+            let copy = match &fragments {
+                Some(fragments) => {
+                    let mut copy = Vec::new();
+                    copy.try_reserve_exact(fragments.len()).ok().map(|()| {
+                        copy.extend_from_slice(fragments);
+                        Some(copy)
+                    })
+                }
+                None => Some(None),
+            };
+            match copy {
+                Some(fragments) => self
+                    .effects
+                    .record(StagedEffect::InlineFragments { node, fragments }),
+                None => self.effects.poison_all(),
+            }
+        }
         let replayable = self.memo.is_some()
             && fragments.is_none()
             && self.memo_hidden_effect_index(node).is_some();
@@ -2646,9 +2996,7 @@ where
                     crate::WrappingScopeError::InconsistentIncidence,
                 ));
             }
-            self.wrapping
-                .native_runs
-                .retain(|run| run.family != completion.family);
+            self.drop_native_runs(completion.family);
             self.retain_native_completion(packet.node, *completion)?;
         }
         for run in &packet.native_inline_runs {
@@ -2916,6 +3264,17 @@ where
         if self.block_floats.blocks_cache(node, input) {
             return Ok(());
         }
+        // Only a store that is staged is recorded: it replaces an earlier store
+        // of its key and moves last. One that clears or declines to store
+        // does so again when its replay reaches the same checks.
+        if self.effects.recording() {
+            self.effects.record(StagedEffect::Store {
+                node,
+                input: *input,
+                context,
+                output,
+            });
+        }
 
         let entry = LayoutCacheStoreEntryOf::new(node, *input, context, output);
         if let Some(stores) = &mut self.cache.indexed_stores {
@@ -2971,6 +3330,9 @@ where
     }
 
     fn cache_clear(&mut self, node: Self::Node) -> SessionResult<Tree, ()> {
+        if self.effects.recording() {
+            self.effects.record(StagedEffect::Clear(node));
+        }
         let hidden_effect_index = self
             .memo
             .as_ref()
