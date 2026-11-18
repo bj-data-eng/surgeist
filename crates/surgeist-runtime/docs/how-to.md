@@ -1,7 +1,7 @@
 # How-to
 
 These procedures assume the [first proof](getting-started.md) passes. They use
-the public `surgeist_runtime` reexports; the linked source owns the exact API and
+the public `surgeist_runtime` modules; the linked source owns the exact API and
 error contracts.
 
 ## Emit work for adapters
@@ -12,11 +12,7 @@ typed input, drain one bounded turn, and inspect the reported dispositions and
 intents. This example requests task, resource, and service work in one commit:
 
 ```rust
-use surgeist_runtime::{
-    AppEffect, AppInput, AppScope, EffectDisposition, InputProvenance, Reducer, ReducerCommit,
-    ReducerResult, ResourceId, Runtime, RuntimeBudget, RuntimeIntent, ServiceId, TaskIntentKey,
-    TaskIntentName, UiInput,
-};
+use surgeist_runtime::{Runtime, coordination::AppScope, drain::RuntimeBudget, effect::{AppEffect, EffectDisposition, RuntimeIntent}, identity::{ResourceId, ServiceId}, input::{AppInput, UiInput}, provenance::InputProvenance, reducer::{Reducer, ReducerCommit, ReducerResult}, task::{TaskIntentKey, TaskIntentName}};
 
 struct IntentReducer;
 

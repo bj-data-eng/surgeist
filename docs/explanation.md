@@ -77,7 +77,7 @@ computed Style integration and Render scene lowering remain unfinished.
 ## Facade And Integration
 
 The facade reexports production crates through their public front doors.
-Its `app` and `runtime` modules both expose `surgeist-runtime`; `surgeist::dom`
+Its `runtime` module exposes `surgeist-runtime`; `surgeist::dom`
 exposes the canonical DOM. The facade is a convenient entry point, not an
 integration intermediary required between lower-level crates.
 

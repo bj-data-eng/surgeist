@@ -10,7 +10,7 @@
 | Production dependencies | CSS, CSSOM, DOM, HTML and HTML semantics; target-gated `getrandom` 0.3.4 supplies native entropy. The HTML parser is a test dependency | [Cargo.toml](../Cargo.toml) |
 | Features | Empty `default` feature set; no other features declared | [Cargo.toml](../Cargo.toml) |
 | License | MIT | [LICENSE](../LICENSE) |
-| Public entry point | Reexports from `src/lib.rs`; implementation modules are private | [lib.rs](../src/lib.rs) |
+| Public entry point | `Runtime`, `DomSession` and `crate_name` at the root; every other item at one path in a public module declared in `src/lib.rs`; implementation modules under `src/internal/` are private | [lib.rs](../src/lib.rs) |
 | Source lint declarations | `forbid(unsafe_code)` and `warn(missing_docs)` | [lib.rs](../src/lib.rs) |
 | Tests and fixtures | `src/tests.rs`, local test modules in `src/internal/resource.rs` and `src/internal/coord.rs`, and private fixtures in `src/testing.rs` | [lib.rs](../src/lib.rs), [resource.rs](../src/internal/resource.rs), [coord.rs](../src/internal/coord.rs) |
 
