@@ -30,16 +30,20 @@
 //!
 //! # Where each front charges
 //!
-//! Each entry point below takes the handle, runs its work inside one phase of
-//! its scope and charges what it counted as one batch when it returns,
-//! refused or not; a refused call is charged the work admitted before the
-//! refusal. The units are those of each dimension's documentation.
+//! Each entry point below takes the handle, runs its work inside a phase of
+//! its scope and charges what it counted as one batch per scope when it
+//! returns, whether it succeeded or a request limit refused it; a call a
+//! request limit refuses is charged the work admitted before the refusal. The
+//! units are those of each dimension's documentation.
 //!
 //! - `css-input` and `css-parse`: the methods of `CssAccountedParser`, which
-//!   `CssParser::accounted` returns in `surgeist-css`. A parse charges the
-//!   documents it built, their components and spelling bytes to `css-parse`
-//!   and its input units to `css-input`; a UTF-16 parse also charges its
-//!   preparation steps to `css-input`, inside a phase of that scope.
+//!   `CssParser::accounted` returns in `surgeist-css`. A parse runs inside a
+//!   phase of `css-parse` and charges the documents it built, their
+//!   components and spelling bytes to `css-parse` and its input units to
+//!   `css-input`. A UTF-16 parse runs inside a phase of `css-input`, with the
+//!   parse in a phase of `css-parse` nested in it, so the inclusive time of
+//!   `css-input` contains that of `css-parse`; it also charges its preparation
+//!   steps to `css-input`.
 //! - `css-serialize`: `serialize_specified` and `serialize_cssom` of the
 //!   `CssAccounted` view that `accounted` returns on a sheet, a rule or a rule
 //!   graph input in `surgeist-css`.
@@ -48,12 +52,16 @@
 //!   steps of the walk it runs.
 //! - `css-color`: `parse_used_color` of the view on a colour input and
 //!   `resolve` of the view on an authored colour in `surgeist-css`.
-//! - `cssom`: every public operation of a store built with
-//!   `CssomStore::with_host` in `surgeist-cssom`, of its batches and rule
-//!   handles, and the beginning, finishing and cancelling of a sheet
-//!   replacement. A commit charges before it publishes, with the increases
-//!   of the store's gauges in the same batch, and releases the decreases when
-//!   it publishes.
+//! - `cssom`: the operations of a store built with `CssomStore::with_host` in
+//!   `surgeist-cssom` that run a state census or format a rule: the
+//!   constructor, each batch operation, `prepare_commit` and `commit`, the
+//!   store's object operations, the beginning, finishing and cancelling of a
+//!   sheet replacement, and the rule text of a batch or a rule handle. A commit
+//!   charges before it publishes, with the increases of the store's gauges in
+//!   the same batch, and releases the decreases in a batch of its own when it
+//!   publishes; a prepared commit dropped unpublished and the store's drop
+//!   release what they hold in one batch each. Reads such as `batch`,
+//!   `snapshot` and the object accessors make no ledger call.
 //!
 //! An accounted call that another accounted call makes adds to the outer
 //! call's record and is not charged on its own. No front charges inside a
@@ -64,6 +72,7 @@
 //!
 //! - Request limits. Each front checks its own limits with or without a
 //!   handle, with the same amounts and in the same order.
+//! - Decoding the bytes of a sheet before `parse_sheet_bytes` parses them.
 //! - The stepwise protocols a host drives itself, such as this crate's
 //!   `InputCursor` and `TokenCursor` with their `Meter`, and the controlled
 //!   colour parse and serialization continuations: the host meters them.
