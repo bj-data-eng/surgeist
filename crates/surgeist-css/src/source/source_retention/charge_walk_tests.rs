@@ -6,7 +6,7 @@
 
 use surgeist_ledger::{Limits, Operation, ProfileMode};
 
-use super::{CssSourceRetention, CssSourceRetentionResource};
+use super::{CssSourceRetention, CssSourceRetentionAction, CssSourceRetentionResource};
 use crate::CssParser;
 use crate::accounting::{
     CssChange, CssFront, CssHostScope, CssLedger, CssLimits, CssResourceTable, CssWork,
@@ -191,4 +191,45 @@ fn a_host_cap_on_source_visits_replaces_the_result() {
     assert_eq!(visits(&ledger), 0);
     // The collector itself took its steps; only the charge was refused.
     assert_eq!(u64::try_from(sources.steps()).unwrap(), needed);
+}
+
+/// A walk refused for depth or by the caller's admission is charged the
+/// steps the collector counted before the refusal.
+#[test]
+fn a_walk_refused_for_depth_or_by_admission_is_charged_its_counted_steps() {
+    let sheet = sheet(&rules(5));
+
+    // Depth zero refuses the sheet itself, after its first step.
+    let (ledger, host) = open_host();
+    let mut sources = CssSourceRetention::new(usize::MAX, usize::MAX, 0);
+    let refused = sources
+        .charge_walk(&host, |sources| sources.visit(&sheet))
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        refused.exhausted_limit(),
+        Some(CssSourceRetentionResource::Depth)
+    );
+    assert_eq!(visits(&ledger), 1);
+
+    // The caller admits ten steps, then refuses.
+    let needed = smallest_steps(&sheet);
+    let mut steps = 0_u64;
+    let mut admit = |action| {
+        if matches!(action, CssSourceRetentionAction::Step) {
+            steps += 1;
+            steps <= 10
+        } else {
+            true
+        }
+    };
+    let (ledger, host) = open_host();
+    let mut sources =
+        CssSourceRetention::with_admission(usize::MAX, usize::MAX, 256, &mut admit).unwrap();
+    let refused = sources
+        .charge_walk(&host, |sources| sources.visit(&sheet))
+        .unwrap();
+    assert!(refused.is_err());
+    assert!(needed > 10);
+    assert_eq!(visits(&ledger), 10);
 }
