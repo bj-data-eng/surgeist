@@ -2043,6 +2043,98 @@ fn subgrid_root_intrinsic_areas<S: LayoutScalar>(
     std::iter::once((area, GridMinimumWrapperTraversal::Shared { lane_track })).chain(candidates)
 }
 
+/// What entering one traversal child leaves to do.
+enum ChildEntry<'input, Node, S: LayoutScalar> {
+    /// A leaf, which the fold recorded.
+    Done,
+    /// An inherited wrapper, whose children the traversal visits next.
+    Wrapper(Box<WrapperEntry<'input, Node, S>>),
+}
+
+type ChildEntryResult<'input, Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    ChildEntry<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
+type WrapperLevelRequestResult<'input, Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    WrapperLevelRequest<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
+/// A wrapper the traversal entered and has not yet left.
+struct WrapperEntry<'input, Node, S: LayoutScalar> {
+    node: Node,
+    request: WrapperLevelRequest<'input, Node, S>,
+    /// The wrapper's resolved gap, which its children's parent gap is.
+    gap: Size<S>,
+    context: SubgridTraversalContext,
+    span_len: usize,
+    frame_checkpoint: usize,
+    leaf_checkpoint: usize,
+}
+
+/// The inputs of a wrapper's visit, owned by the traversal until the wrapper's
+/// level is prepared.
+struct WrapperLevelRequest<'input, Node, S: LayoutScalar> {
+    axis: GridAxisKind,
+    container: GridContainerInput<'input, S>,
+    parent_context: GridParentContext<S, Node>,
+    prepared: ComputeInputOf<S>,
+    containing_flow_axes: crate::geometry::FlowAxes,
+    content_box_size: Size<S>,
+    traversal: GridMinimumWrapperTraversal,
+    /// The query without its track slices, which the allocation flags record.
+    query: IntrinsicGridQuery<'static, S>,
+    columns_allocated: bool,
+    rows_allocated: bool,
+}
+
+impl<'input, Node, S: LayoutScalar> WrapperLevelRequest<'input, Node, S> {
+    fn as_input(&self) -> GridMinimumWrapperInput<'input, '_, Node, S> {
+        GridMinimumWrapperInput {
+            axis: self.axis,
+            container: &self.container,
+            parent_context: &self.parent_context,
+            prepared: self.prepared,
+            containing_flow_axes: self.containing_flow_axes,
+            content_box_estimate: Some(self.content_box_size),
+            traversal: self.traversal,
+            query: IntrinsicGridQuery {
+                columns: self
+                    .parent_context
+                    .columns
+                    .as_ref()
+                    .filter(|_| self.columns_allocated)
+                    .map(|axis| axis.tracks.as_slice()),
+                rows: self
+                    .parent_context
+                    .rows
+                    .as_ref()
+                    .filter(|_| self.rows_allocated)
+                    .map(|axis| axis.tracks.as_slice()),
+                ..self.query
+            },
+        }
+    }
+}
+
+/// A wrapper whose children the traversal is visiting.
+struct WrapperFrame<'input, Node, S: LayoutScalar> {
+    level: WrapperLevel<'input, Node, S>,
+    slot: usize,
+    /// The children visited so far.
+    child_count: usize,
+    gap: Size<S>,
+    context: SubgridTraversalContext,
+    span_len: usize,
+    frame_checkpoint: usize,
+    leaf_checkpoint: usize,
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "subgrid traversal child creation carries explicit grid layout phase inputs"
@@ -2069,8 +2161,198 @@ fn subgrid_traversal_child<'input, Tree, M>(
     prepared: ComputeInputOf<Tree::Scalar>,
     traversal: GridMinimumWrapperTraversal,
     fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
-    mut context: SubgridTraversalContext,
+    context: SubgridTraversalContext,
 ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let entry = subgrid_traversal_child_enter(
+        tree,
+        node,
+        style,
+        nested_container,
+        area,
+        area_size,
+        item_report,
+        queried_axis,
+        containing_flow_axes,
+        parent_semantic_gap,
+        parent_column_geometry,
+        parent_row_geometry,
+        parent_named_columns,
+        parent_named_rows,
+        parent_area_facts,
+        align_self,
+        query,
+        minimum_source,
+        prepared,
+        traversal,
+        fold,
+        context,
+    )?;
+    match entry {
+        ChildEntry::Done => Ok(()),
+        ChildEntry::Wrapper(entry) => visit_wrapper_levels(tree, *entry, fold),
+    }
+}
+
+/// Visits the children of a wrapper and of every wrapper below it in source
+/// order, with the wrappers' frames on a heap stack instead of the native one,
+/// so that the depth of the nesting does not bound the traversal.
+///
+/// A level's preparation, with the effect capture around it, runs to completion
+/// inside one call, so the captures it opens are never held open by a frame that
+/// is waiting, and they close in the order the native recursion closed them.
+fn visit_wrapper_levels<'input, Tree, M>(
+    tree: &mut Tree,
+    root: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
+    fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let mut frames: Vec<WrapperFrame<'input, Tree::Node, Tree::Scalar>> = Vec::new();
+    enter_wrapper_level(tree, &mut frames, root, fold)?;
+    while let Some(frame) = frames.last_mut() {
+        let mut entered = None;
+        while entered.is_none() && frame.slot < frame.level.child_slots() {
+            let slot = frame.slot;
+            frame.slot += 1;
+            let Some(child) = frame.level.child::<Tree, M>(slot)? else {
+                continue;
+            };
+            let execution = child.execution;
+            entered = Some(subgrid_traversal_child_enter(
+                tree,
+                child.node,
+                execution.child_style,
+                execution.child_container,
+                execution.area,
+                child.area_size,
+                execution
+                    .subgrid_item
+                    .ok_or_else(|| minimum_source_error(child.node))?,
+                child.child_axis,
+                child.minimum_source.flow_axes,
+                frame.gap,
+                Some(child.column_geometry),
+                Some(child.row_geometry),
+                execution.grid.named_columns,
+                execution.grid.named_rows,
+                execution.grid.area_facts,
+                child.align_self,
+                execution.grid.query,
+                child.minimum_source,
+                child.prepared,
+                child.traversal,
+                fold,
+                frame.context,
+            )?);
+        }
+        match entered {
+            Some(ChildEntry::Done) => frame.child_count += 1,
+            Some(ChildEntry::Wrapper(entry)) => {
+                enter_wrapper_level(tree, &mut frames, *entry, fold)?;
+            }
+            None => leave_wrapper_level(&mut frames, fold),
+        }
+    }
+    Ok(())
+}
+
+/// Prepares the level of a wrapper the traversal entered and pushes its frame.
+/// A wrapper with nothing to visit is left at once.
+fn enter_wrapper_level<'input, Tree, M>(
+    tree: &mut Tree,
+    frames: &mut Vec<WrapperFrame<'input, Tree::Node, Tree::Scalar>>,
+    entry: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
+    fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let WrapperEntry {
+        node,
+        request,
+        gap,
+        context,
+        span_len,
+        frame_checkpoint,
+        leaf_checkpoint,
+    } = entry;
+    let level = WrapperLevel::prepare::<Tree, M>(tree, node, request.as_input())?;
+    let frame = WrapperFrame {
+        level: match level {
+            Some(level) => level,
+            None => {
+                fold.finish_wrapper(context, span_len, true, frame_checkpoint, leaf_checkpoint);
+                if let Some(parent) = frames.last_mut() {
+                    parent.child_count += 1;
+                }
+                return Ok(());
+            }
+        },
+        slot: 0,
+        child_count: 0,
+        gap,
+        context,
+        span_len,
+        frame_checkpoint,
+        leaf_checkpoint,
+    };
+    frames.try_reserve(1).map_err(|_| allocation_error(node))?;
+    frames.push(frame);
+    Ok(())
+}
+
+/// Leaves the innermost wrapper once its children are visited.
+fn leave_wrapper_level<'input, Node: Copy + Eq, S: LayoutScalar>(
+    frames: &mut Vec<WrapperFrame<'input, Node, S>>,
+    fold: &mut SubgridIntrinsicFold<'input, '_, Node, S>,
+) {
+    let Some(frame) = frames.pop() else {
+        return;
+    };
+    fold.finish_wrapper(
+        frame.context,
+        frame.span_len,
+        frame.child_count == 0,
+        frame.frame_checkpoint,
+        frame.leaf_checkpoint,
+    );
+    if let Some(parent) = frames.last_mut() {
+        parent.child_count += 1;
+    }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "subgrid traversal child creation carries explicit grid layout phase inputs"
+)]
+fn subgrid_traversal_child_enter<'input, Tree, M>(
+    tree: &mut Tree,
+    node: <Tree as Traverse>::Node,
+    style: &GridItemProjection<'input, Tree::Scalar>,
+    nested_container: Option<&GridContainerInput<'input, Tree::Scalar>>,
+    area: GridArea<Tree::Scalar>,
+    area_size: Size<Tree::Scalar>,
+    item_report: SubgridItemReport<<Tree as Traverse>::Node>,
+    queried_axis: GridAxisKind,
+    containing_flow_axes: crate::geometry::FlowAxes,
+    parent_semantic_gap: Size<Tree::Scalar>,
+    parent_column_geometry: Option<&UsedGridAxisGeometryOf<Tree::Scalar>>,
+    parent_row_geometry: Option<&UsedGridAxisGeometryOf<Tree::Scalar>>,
+    parent_named_columns: &NamedGridLines,
+    parent_named_rows: &NamedGridLines,
+    parent_area_facts: Option<&GridAreaNameFacts>,
+    align_self: AlignItems,
+    query: IntrinsicGridQuery<'_, Tree::Scalar>,
+    minimum_source: SubgridParentTrackSource<'_, Tree::Scalar>,
+    prepared: ComputeInputOf<Tree::Scalar>,
+    traversal: GridMinimumWrapperTraversal,
+    fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
+    mut context: SubgridTraversalContext,
+) -> ChildEntryResult<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -2092,7 +2374,7 @@ where
             context,
             None,
         );
-        return Ok(());
+        return Ok(ChildEntry::Done);
     };
     let nested_container_style = nested_container.projection();
 
@@ -2289,7 +2571,7 @@ where
             context,
             Some(Box::new(standalone_parent_context)),
         );
-        return Ok(());
+        return Ok(ChildEntry::Done);
     }
 
     let subgrid_gap = Size::new(
@@ -2351,8 +2633,7 @@ where
     let frame_checkpoint = fold.report.adjustments.frames.len();
     let leaf_checkpoint = fold.report.leaves.len();
     let context = fold.enter(&subgrid, context, false);
-    let child_count = subgrid_traversal_children(
-        tree,
+    let request = wrapper_level_request::<Tree, M>(
         node,
         nested_container,
         content_box_size,
@@ -2365,25 +2646,23 @@ where
         traversal_constants.node_inner_size,
         wrapper_source,
         traversal,
-        fold,
-        context,
     )?;
-    fold.finish_wrapper(
+    Ok(ChildEntry::Wrapper(Box::new(WrapperEntry {
+        node,
+        request,
+        gap: subgrid_gap,
         context,
-        span_in_parent.checked_len().unwrap_or(0),
-        child_count == 0,
+        span_len: span_in_parent.checked_len().unwrap_or(0),
         frame_checkpoint,
         leaf_checkpoint,
-    );
-    Ok(())
+    })))
 }
 
 #[expect(
     clippy::too_many_arguments,
     reason = "subgrid traversal recursion preserves retained report and oracle parity inputs"
 )]
-fn subgrid_traversal_children<'input, Tree, M>(
-    tree: &mut Tree,
+fn wrapper_level_request<'input, Tree, M>(
     node: <Tree as Traverse>::Node,
     nested_container: &GridContainerInput<'input, Tree::Scalar>,
     content_box_size: Size<Tree::Scalar>,
@@ -2396,9 +2675,7 @@ fn subgrid_traversal_children<'input, Tree, M>(
     gap_basis: Size<Option<Tree::Scalar>>,
     wrapper_source: SubgridChildParentContextInput<'input, '_, Tree::Node, Tree::Scalar>,
     traversal: GridMinimumWrapperTraversal,
-    fold: &mut SubgridIntrinsicFold<'input, '_, Tree::Node, Tree::Scalar>,
-    context: SubgridTraversalContext,
-) -> LayoutResultOf<Tree::Node, usize, Tree::Scalar, M>
+) -> WrapperLevelRequestResult<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -2444,72 +2721,27 @@ where
         columns: axis_context(GridAxisKind::Column, item_report.column)?,
         rows: axis_context(GridAxisKind::Row, item_report.row)?,
     };
-    let query = IntrinsicGridQuery {
-        columns: allocated(item_report.column).then(|| {
-            parent_context
-                .columns
-                .as_ref()
-                .expect("inherited column context")
-                .tracks
-                .as_slice()
-        }),
-        rows: allocated(item_report.row).then(|| {
-            parent_context
-                .rows
-                .as_ref()
-                .expect("inherited row context")
-                .tracks
-                .as_slice()
-        }),
-        ..query
-    };
-    let mut child_count = 0;
-    visit_grid_minimum_wrapper_children::<_, _, ()>(
-        tree,
-        node,
-        GridMinimumWrapperInput {
-            axis: queried_axis,
-            container: nested_container,
-            parent_context: &parent_context,
-            prepared,
-            containing_flow_axes,
-            content_box_estimate: Some(content_box_size),
-            traversal,
-            query,
+    Ok(WrapperLevelRequest {
+        axis: queried_axis,
+        container: *nested_container,
+        parent_context,
+        prepared,
+        containing_flow_axes,
+        content_box_size,
+        traversal,
+        query: IntrinsicGridQuery {
+            purpose: query.purpose,
+            axis: query.axis,
+            stage: query.stage,
+            available: query.available,
+            columns: None,
+            rows: None,
+            observe_auto: query.observe_auto,
+            include_flexible_tracks: query.include_flexible_tracks,
         },
-        |tree, child| {
-            let execution = child.execution;
-            subgrid_traversal_child(
-                tree,
-                child.node,
-                execution.child_style,
-                execution.child_container,
-                execution.area,
-                child.area_size,
-                execution
-                    .subgrid_item
-                    .expect("wrapper placement keeps its actual item report"),
-                child.child_axis,
-                child.minimum_source.flow_axes,
-                gap,
-                Some(child.column_geometry),
-                Some(child.row_geometry),
-                execution.grid.named_columns,
-                execution.grid.named_rows,
-                execution.grid.area_facts,
-                child.align_self,
-                execution.grid.query,
-                child.minimum_source,
-                child.prepared,
-                child.traversal,
-                fold,
-                context,
-            )?;
-            child_count += 1;
-            Ok(None)
-        },
-    )?;
-    Ok(child_count)
+        columns_allocated: allocated(item_report.column),
+        rows_allocated: allocated(item_report.row),
+    })
 }
 
 pub(super) fn grid_minimum_wrapper_contained<S: LayoutScalar>(
@@ -2991,7 +3223,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
         );
         let content_box_size = content_box_estimate.unwrap_or_else(|| {
             let size = constants.flow_axes.logical_size(constants.node_inner_size);
-            Size::new(size.inline.unwrap_or(S::ZERO), size.block.unwrap_or(S::ZERO))
+            Size::new(
+                size.inline.unwrap_or(S::ZERO),
+                size.block.unwrap_or(S::ZERO),
+            )
         });
         let column_count = initialized.column_tracks.len();
         let row_count = initialized.row_tracks.len();
@@ -4038,8 +4273,7 @@ mod tests {
             IntrinsicMinTrackFacts::Known(&[true]),
             IntrinsicMinTrackFacts::Unknown,
         ] {
-            let error = subgrid_traversal_children::<_, Infallible>(
-                &mut tree.borrow_compute(),
+            let request = wrapper_level_request::<TraversalTreeCompute<'_>, Infallible>(
                 0,
                 container,
                 Size::new(20.0, 20.0),
@@ -4086,8 +4320,20 @@ mod tests {
                     scrollbar_gutter: Edges::ZERO,
                 },
                 GridMinimumWrapperTraversal::Shared { lane_track: false },
+            )
+            .expect("the wrapper's request is derived");
+            let error = visit_wrapper_levels::<_, Infallible>(
+                &mut tree.borrow_compute(),
+                WrapperEntry {
+                    node: 0,
+                    request,
+                    gap: Size::ZERO,
+                    context: SubgridTraversalContext::ROOT,
+                    span_len: 0,
+                    frame_checkpoint: 0,
+                    leaf_checkpoint: 0,
+                },
                 &mut SubgridIntrinsicFold::new(facts),
-                SubgridTraversalContext::ROOT,
             )
             .unwrap_err();
 
