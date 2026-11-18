@@ -19,11 +19,15 @@ use crate::serialization::{
     CssSerializationError, CssSerializationLimits,
 };
 
-/// A sheet, rule or rule graph whose work is charged below a host's scope.
+/// A sheet, rule, rule graph, colour input or authored colour whose work is
+/// charged below a host's scope.
 ///
-/// `accounted` on [`CssSheet`], [`CssRule`] and [`CssRuleGraphInput`] makes
-/// one. Each method does exactly what the method of the same name on the
-/// value does, and returns its result inside `Ok`. The call runs inside one
+/// `accounted` on [`CssSheet`], [`CssRule`], [`CssRuleGraphInput`],
+/// [`CssColorInput`] and [`CssColor`] makes one. Each method does exactly what
+/// the plain front of the same name does (a method of the value, or for
+/// [`parse_used_color`](CssAccounted::parse_used_color) the function
+/// [`parse_used_color`](crate::color::parse_used_color)), and returns its
+/// result inside `Ok`. The call runs inside one
 /// phase of its front's scope, and when it returns it charges that scope once
 /// with what the call admitted against its limits. The number of ledger calls
 /// does not depend on the value.
@@ -40,18 +44,19 @@ use crate::serialization::{
 ///   [`CssWork::NormalizedDeclaration`](crate::accounting::CssWork::NormalizedDeclaration)
 ///   and [`CssWork::NormalizedContribution`](crate::accounting::CssWork::NormalizedContribution):
 ///   the rules, declarations and longhand contributions.
+/// - [`parse_used_color`](CssAccounted::parse_used_color) on a colour input
+///   charges the `css-color` scope with
+///   [`CssWork::ColorInputUnit`](crate::accounting::CssWork::ColorInputUnit),
+///   the length of the input, and
+///   [`CssWork::ColorAction`](crate::accounting::CssWork::ColorAction), the
+///   actions its driver admitted. [`resolve`](CssAccounted::resolve) on an
+///   authored colour charges only the actions: the colour is an already
+///   parsed value with no input of its own. When the host parsed it with the
+///   accounted parser, that parse charged its text to the `css-input` and
+///   `css-parse` scopes.
 ///
 /// A call that a limit refuses is charged the work admitted before the
 /// refusal and returns the refusal inside `Ok`.
-///
-/// [`parse_used_color`](CssAccounted::parse_used_color) on a colour input
-/// charges the `css-color` scope
-/// [`CssWork::ColorInputUnit`](crate::accounting::CssWork::ColorInputUnit),
-/// the length of the input, and
-/// [`CssWork::ColorAction`](crate::accounting::CssWork::ColorAction), the
-/// actions its driver admitted. [`resolve`](CssAccounted::resolve) on an
-/// authored colour charges only the actions: the colour is an already
-/// parsed value, whose source text the parse that built it charged.
 ///
 /// Serialization of a single value or declaration is not charged on its own:
 /// its own work is a few hundred nanoseconds, and one charge would add a large
