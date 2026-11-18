@@ -16,9 +16,9 @@ use crate::accounting::{
 use crate::state_limits::probe;
 use crate::*;
 
-const SOURCE: &str = "@media screen { .a { color: red } .b { margin: 1px 2px } } .c { color: green } .d { width: 1px }";
+pub(super) const SOURCE: &str = "@media screen { .a { color: red } .b { margin: 1px 2px } } .c { color: green } .d { width: 1px }";
 
-fn host(caps: CssLimits, mode: ProfileMode) -> (CssLedger, CssHostScope) {
+pub(super) fn host(caps: CssLimits, mode: ProfileMode) -> (CssLedger, CssHostScope) {
     let operation = Operation::with_profile("host", caps, 1 + CssFront::ALL.len(), mode)
         .unwrap()
         .share();
@@ -26,7 +26,7 @@ fn host(caps: CssLimits, mode: ProfileMode) -> (CssLedger, CssHostScope) {
     (operation, host)
 }
 
-fn open_host() -> (CssLedger, CssHostScope) {
+pub(super) fn open_host() -> (CssLedger, CssHostScope) {
     host(Limits::unlimited(), ProfileMode::Off)
 }
 
@@ -59,7 +59,7 @@ fn report(ledger: &CssLedger, host: &CssHostScope) -> ScopeReport<CssWork, CssRe
         .unwrap()
 }
 
-fn smallest(admitted: impl Fn(usize) -> bool) -> u64 {
+pub(super) fn smallest(admitted: impl Fn(usize) -> bool) -> u64 {
     let (mut low, mut high) = (0_usize, 1 << 24);
     assert!(admitted(high));
     while low < high {
@@ -73,7 +73,7 @@ fn smallest(admitted: impl Fn(usize) -> bool) -> u64 {
     u64::try_from(low).unwrap()
 }
 
-fn version(name: &str) -> CssomInputVersion {
+pub(super) fn version(name: &str) -> CssomInputVersion {
     CssomInputVersion {
         role: CssomInputRole::Document,
         identity: name.into(),
@@ -81,11 +81,14 @@ fn version(name: &str) -> CssomInputVersion {
     }
 }
 
-fn guard(store: &CssomStore) -> CssomEditGuard {
+pub(super) fn guard(store: &CssomStore) -> CssomEditGuard {
     CssomEditGuard::from_snapshot(&store.snapshot())
 }
 
-fn make(limits: CssomLimits, host: Option<CssHostScope>) -> Result<CssomStore, CssomError> {
+pub(super) fn make(
+    limits: CssomLimits,
+    host: Option<CssHostScope>,
+) -> Result<CssomStore, CssomError> {
     match host {
         Some(host) => CssomStore::with_host(limits, CssomContext::default(), host),
         None => CssomStore::new(limits, CssomContext::default()),
@@ -93,7 +96,7 @@ fn make(limits: CssomLimits, host: Option<CssHostScope>) -> Result<CssomStore, C
 }
 
 /// A store holding one constructed sheet of `SOURCE`, and that sheet.
-fn with_sheet(
+pub(super) fn with_sheet(
     limits: CssomLimits,
     host: Option<CssHostScope>,
 ) -> Result<(CssomStore, CssomSheetId), CssomError> {
@@ -502,7 +505,9 @@ fn finishing_and_cancelling_a_replacement_are_charged_once_each() {
         .unwrap();
     assert!(matches!(done.outcome(), CssomReplaceOutcome::Replaced));
     let after = batches_and_phases(&ledger, &host);
-    assert_eq!((after.0 - before.0, after.1 - before.1), (1, 1));
+    // The work with the gauge increases before the commit publishes, and the
+    // release of the smaller sheet's decreases when it does.
+    assert_eq!((after.0 - before.0, after.1 - before.1), (2, 1));
     assert!(charged(&ledger)[0] - runs >= 2);
 
     let job = store

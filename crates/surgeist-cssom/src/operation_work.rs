@@ -216,3 +216,17 @@ fn settle(account: CssAccount<'_>, work: OperationWork) -> Result<(), CssomError
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_support {
+    pub(super) use super::tests::{
+        SOURCE, guard, host, make, open_host, smallest, version, with_sheet,
+    };
+    pub(super) use crate::accounting::{CssChange, CssLedger, CssLimits, CssResourceTable};
+    pub(super) use surgeist_ledger::ProfileMode;
+
+    pub(super) fn constructed() -> crate::CssomSheetInputs {
+        crate::CssomSheetInputs::constructed(version("document"), "document".into(), None)
+    }
+}
+#[cfg(test)]
+mod gauge_tests;
