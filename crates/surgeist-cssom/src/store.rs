@@ -43,20 +43,28 @@ impl CssomStore {
     }
     /// A store whose operations charge their work below `host`.
     ///
-    /// Each public operation of the store, of its batches and of the jobs it
-    /// starts runs inside one phase of the host's `cssom` scope and charges
-    /// that scope once, when it returns, with what its state census runs and
-    /// rule formatting did:
+    /// Each public operation of the store, of its batches and of its rule
+    /// handles, and the beginning, finishing and cancelling of a sheet
+    /// replacement, runs inside one phase of the host's `cssom` scope and
+    /// charges that scope with what its state census runs and rule formatting
+    /// did:
     /// [`CssWork::CensusRun`](crate::accounting::CssWork::CensusRun),
     /// [`CssWork::CensusObject`](crate::accounting::CssWork::CensusObject),
     /// [`CssWork::CensusEntry`](crate::accounting::CssWork::CensusEntry),
     /// [`CssWork::SourceVisit`](crate::accounting::CssWork::SourceVisit) for
     /// the steps of the retained-source walks and
     /// [`CssWork::RuleFormatNode`](crate::accounting::CssWork::RuleFormatNode).
-    /// An operation that another one runs, such as the commit of a sheet
-    /// replacement, adds to the charge of the outer one. A limit refusal is
-    /// charged the work done before it. A batch, its commit and a replacement
-    /// job all charge the store's host. This constructor is itself charged.
+    /// The charge is made once when the operation returns, or, for an
+    /// operation that commits, before each commit publishes and once more for
+    /// any work after the last one. An operation that another one runs adds
+    /// to the outer charge. A limit refusal is charged the work done before
+    /// it. A host refusal of a batch operation poisons the batch, and a
+    /// refused commit publishes nothing. Finishing a replacement whose host
+    /// refuses both its commit and the commit that ends the replacement leaves
+    /// the replacement pending; cancelling it ends it once the host admits
+    /// the cancellation's charge. The parse of a replacement job, snapshots
+    /// and captures run outside the store and are not charged. This
+    /// constructor is itself charged.
     ///
     /// # Errors
     ///
