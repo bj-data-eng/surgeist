@@ -137,7 +137,7 @@ pub(super) fn guest_verification_without_callback_retains_the_native_continuatio
         .unwrap();
     assert!(matches!(
         progress,
-        crate::DomSourceDriveProgress::Pending {request: DomSourceRequest::Script(request), ..}
+        crate::internal::dom_source::DomSourceDriveProgress::Pending {request: DomSourceRequest::Script(request), ..}
             if request.operation() == parked.operation()
     ));
     assert!(
@@ -172,7 +172,7 @@ pub(super) fn guest_attribute_policy_verifies_html_and_svg_sinks() {
         .with_current_top_level(&mut session.dom(), target, &cancel, |source, dom| {
             source
                 .document_constructor_context(dom.raw(), target.global(), &cancel)
-                .map_err(crate::DomHostedRuntimeError::Dom)
+                .map_err(crate::internal::dom_lifecycle::DomHostedRuntimeError::Dom)
         })
         .unwrap();
     let mut batch = DomBatch::new();
@@ -402,7 +402,7 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
         panic!(
             "adoption callback refused: {:?}, {:?}",
             failure.cause::<DocumentGuestEventError>(),
-            failure.cause::<crate::DomSourceDriveError>()
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>()
         );
     }
     result.unwrap();
@@ -429,7 +429,9 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
 }
 
 pub(super) fn guest_meta_retry_preserves_accepted_first_policy() {
-    use crate::{DomSourceDriveError, DomSourceRuntimeError};
+    use crate::{
+        internal::dom_source::DomSourceDriveError, internal::dom_source::DomSourceRuntimeError,
+    };
     use surgeist_dom::{limits::DomResource, meta::DomSourceMetaCspError, source::DomSourcePhase};
 
     let cancel = Arc::new(AtomicBool::new(false));
@@ -557,7 +559,9 @@ pub(super) fn guest_meta_retry_preserves_accepted_first_policy() {
 }
 
 pub(super) fn guest_meta_without_processor_preserves_original_source() {
-    use crate::{DomSourceDriveError, DomSourceRuntimeError};
+    use crate::{
+        internal::dom_source::DomSourceDriveError, internal::dom_source::DomSourceRuntimeError,
+    };
     use surgeist_dom::{meta::DomSourceMetaCspError, source::DomSourcePhase};
 
     let cancel = Arc::new(AtomicBool::new(false));
@@ -785,7 +789,9 @@ fn nested_meta_refusal_preserves_original_parent(
     head: NodeId,
     element: NodeId,
 ) {
-    use crate::{DomSourceDriveError, DomSourceRuntimeError};
+    use crate::{
+        internal::dom_source::DomSourceDriveError, internal::dom_source::DomSourceRuntimeError,
+    };
     use surgeist_dom::{meta::DomSourceMetaCspError, source::DomSourcePhase};
 
     let cancel = host.native.cancellation.clone();
@@ -920,7 +926,10 @@ impl HtmlMetaCspProcessor for StopAfterCspPreparation<'_> {
 
 pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier() {
     use crate::trusted_types_csp::{PolicyDelivery, PolicyProcessor};
-    use crate::{DomSourceDriveProgress, DomSourceServices, DomSourceUnavailable};
+    use crate::{
+        internal::dom_source::DomSourceDriveProgress, internal::dom_source::DomSourceServices,
+        internal::dom_source::DomSourceUnavailable,
+    };
     use surgeist_dom::meta::{DomDocumentCspState, DomSourceMetaCspError};
 
     let cancel = Arc::new(AtomicBool::new(false));
@@ -1009,7 +1018,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         } else {
             assert!(matches!(
                 source.service_meta_csp(&mut session.dom(), request, &mut other, SOURCE, &cancel),
-                Err(crate::DomSourceRuntimeError::MetaCsp(
+                Err(crate::internal::dom_source::DomSourceRuntimeError::MetaCsp(
                     DomSourceMetaCspError::Protocol(_)
                 ))
             ));
@@ -1267,9 +1276,11 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     assert!(
         matches!(
             progress,
-            DocumentCspViolationProgress::Retained(crate::DomEventDispatchOutcome::Retained(
-                crate::DomEventResource::Callbacks
-            ))
+            DocumentCspViolationProgress::Retained(
+                crate::internal::dom_event::DomEventDispatchOutcome::Retained(
+                    crate::internal::dom_event::DomEventResource::Callbacks
+                )
+            )
         ),
         "{progress:?}"
     );
@@ -1899,12 +1910,15 @@ fn attach_attribute_recovery_fixture(
 
 fn complete_guest_attribute(
     progress: Result<
-        Result<crate::DomSourceDriveProgress, crate::DomSourceDriveError>,
+        Result<
+            crate::internal::dom_source::DomSourceDriveProgress,
+            crate::internal::dom_source::DomSourceDriveError,
+        >,
         DocumentGuestEventError,
     >,
 ) -> surgeist_dom::source::DomSourceCompletion {
     let progress = progress.unwrap().unwrap();
-    let crate::DomSourceDriveProgress::Complete(completion) = progress else {
+    let crate::internal::dom_source::DomSourceDriveProgress::Complete(completion) = progress else {
         panic!("expected original attribute completion, got {progress:?}");
     };
     completion

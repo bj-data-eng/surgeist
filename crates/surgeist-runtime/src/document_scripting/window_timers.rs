@@ -9,7 +9,7 @@ use surgeist_bindings_js::{
 use surgeist_dom::hosted::DomHostedSourceId;
 
 use super::*;
-use crate::dom_lifecycle::WindowTimerMoment;
+use crate::internal::dom_lifecycle::WindowTimerMoment;
 
 /// Finite limits for the attached Window's callable timer profile.
 #[derive(Clone, Copy, Debug)]

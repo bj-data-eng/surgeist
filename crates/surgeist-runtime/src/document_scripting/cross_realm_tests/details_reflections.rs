@@ -4,7 +4,11 @@ use crate::document_scripting::guest::tests::{
     attach_public_nodes_with_source_output_limit, expose_public_node_for_source_test,
     projected_node_id,
 };
-use crate::{DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskRuntimeError};
+use crate::{
+    internal::element_tasks::DomElementTaskProgress,
+    internal::element_tasks::DomElementTaskRunLimits,
+    internal::element_tasks::DomElementTaskRuntimeError,
+};
 use surgeist_dom::task::DomElementTaskSourceKind;
 
 // HTML877d's HTMLDetailsElement IDL specifies name then open. This semantic
@@ -92,7 +96,7 @@ fn check_details_script(member: &str, script: &str) {
         DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
             "details.{member}: guest={:?}; source={:?}",
             failure.cause::<DocumentGuestEventError>(),
-            failure.cause::<crate::DomSourceDriveError>()
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>()
         ),
         _ => panic!("details.{member}: {error:?}"),
     });
@@ -600,9 +604,11 @@ fn details_source_outputs_are_admitted_before_publication(member: &str) {
                 panic!("short Details {member} output: {result:?}");
             };
             assert!(matches!(
-                failure.cause::<crate::DomSourceDriveError>(),
-                Some(crate::DomSourceDriveError::Source(
-                    crate::DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
+                failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                    crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                        DomError::SourceOutputLimit
+                    )
                 ))
             ));
             assert_eq!(after.stamp(), before.stamp());
@@ -655,9 +661,11 @@ fn details_source_outputs_are_admitted_before_publication(member: &str) {
         panic!("Details {member} Source work refusal: {result:?}");
     };
     assert!(matches!(
-        failure.cause::<crate::DomSourceDriveError>(),
-        Some(crate::DomSourceDriveError::Source(
-            crate::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit { limit: 0 })
+        failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+        Some(crate::internal::dom_source::DomSourceDriveError::Source(
+            crate::internal::dom_source::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit {
+                limit: 0
+            })
         ))
     ));
     assert_eq!(host.snapshot().unwrap().stamp(), before);
@@ -689,9 +697,9 @@ fn details_zero_intention_capacity_refuses_only_transitions() {
         panic!("zero intention capacity must refuse real transition: {result:?}");
     };
     assert!(matches!(
-        failure.cause::<crate::DomSourceDriveError>(),
-        Some(crate::DomSourceDriveError::Source(
-            crate::DomSourceRuntimeError::Dom(DomError::ResourceLimit {
+        failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+        Some(crate::internal::dom_source::DomSourceDriveError::Source(
+            crate::internal::dom_source::DomSourceRuntimeError::Dom(DomError::ResourceLimit {
                 resource: surgeist_dom::limits::DomResource::DetailsToggleIntentions,
                 limit: 0
             })

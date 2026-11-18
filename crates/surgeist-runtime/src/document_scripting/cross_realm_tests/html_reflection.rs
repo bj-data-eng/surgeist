@@ -230,9 +230,11 @@ fn nullable_popover_removal_admits_source_output() {
                 panic!("removal must refuse before Source publication: {result:?}");
             };
             assert!(matches!(
-                failure.cause::<crate::DomSourceDriveError>(),
-                Some(crate::DomSourceDriveError::Source(
-                    crate::DomSourceRuntimeError::Dom(surgeist_dom::DomError::SourceOutputLimit)
+                failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                    crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                        surgeist_dom::DomError::SourceOutputLimit
+                    )
                 ))
             ));
             assert_eq!(after.stamp(), before);
@@ -418,9 +420,9 @@ fn html_reflection_setters_admit_the_native_change_before_publication() {
                     );
                 };
                 assert!(matches!(
-                    failure.cause::<crate::DomSourceDriveError>(),
-                    Some(crate::DomSourceDriveError::Source(
-                        crate::DomSourceRuntimeError::Dom(
+                    failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                    Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                        crate::internal::dom_source::DomSourceRuntimeError::Dom(
                             surgeist_dom::DomError::SourceOutputLimit
                         )
                     ))

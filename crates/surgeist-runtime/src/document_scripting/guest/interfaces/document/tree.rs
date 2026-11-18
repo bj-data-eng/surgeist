@@ -1,7 +1,10 @@
 //! Structural Node methods over the original canonical Source operation.
 
 use super::*;
-use crate::{DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError};
+use crate::{
+    internal::dom_source::DomSourceDriveError, internal::dom_source::DomSourceDriveProgress,
+    internal::dom_source::DomSourceRuntimeError,
+};
 use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
 use surgeist_dom::source::{DomSourceEdit, DomSourceStatus};
 
@@ -467,7 +470,7 @@ impl DocumentScriptHost {
     pub(in crate::document_scripting) fn run_guest_joined_tree_edit_fixture(
         &mut self,
         permit: &DocumentScriptPermit,
-        edit: crate::DomSourceInlineStyleEdit,
+        edit: crate::internal::dom_source::DomSourceInlineStyleEdit,
     ) -> Result<(), DocumentScriptError> {
         let owner = self.native.clone();
         let events = self.guest_events().unwrap();
@@ -534,7 +537,7 @@ impl DocumentScriptHost {
                 &mut session.dom(),
                 edit,
                 events.limits.source_edits,
-                &mut crate::DomSourceServices {
+                &mut crate::internal::dom_source::DomSourceServices {
                     meta: Some(
                         surgeist_dom::meta::DomMetaAtomicLimits::new(
                             16_000_000, 1_000_000, 1_000_000, 128,

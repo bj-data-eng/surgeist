@@ -1,0 +1,1476 @@
+//! One requested Source operation through the original durable session owners.
+//!
+//! The canonical owner retains the command, hook cursor and acknowledged tail.
+//! This weak permission routes actual yielded requests; it owns neither tree nor
+//! resources and cannot accept an arbitrary sequence of commands.
+use crate::internal::dom_dialog::{
+    DomSourceEventRuntimeError, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
+    SourceEventRuntime,
+};
+use crate::internal::dom_event::DomEventDispatcher;
+use crate::internal::dom_event::DomEventDom;
+use crate::internal::dom_lifecycle::{DomHostedRuntimeError, HostedRuntime, HostedSourceProgress};
+use crate::internal::dom_style::{
+    DomStyleRuntime, DomStyleRuntimeError, DomStyleServiceProgress, DomStyleUnavailable,
+    StyleSourceGuard,
+};
+use crate::internal::element_tasks::{DomElementTaskRuntime, DomElementTaskRuntimeError};
+use std::sync::atomic::AtomicBool;
+use surgeist_dom::{
+    DomError,
+    event::DomSourceAdvance,
+    form::select::{DomSelectCompletionStart, DomSelectTask, DomSelectTaskCompletion},
+    installation::{
+        DomNativeHtmlInstallError, DomNativeHtmlInstallTarget, DomSourceNativeHtmlInstallLimits,
+    },
+    source::{
+        DomSourceCompletion, DomSourceEdit, DomSourceLease, DomSourceLimits, DomSourceOperationId,
+        DomSourceProgress, DomSourceRequest,
+    },
+    style::{DomStyleInlineCspObservation, DomStyleSource},
+    task::DomNativeCheckpointLimits,
+};
+
+/// Borrowed services for the reached requests of one actual Source operation.
+/// These references own no resource, response slot, issuer or operation cursor.
+pub struct DomSourceServices<'a> {
+    /// Explicit finite native Meta composition permission for this advance.
+    /// None preserves unavailable behavior and cannot discharge pending Meta.
+    pub meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>,
+    /// Optional exact Session/Host permission, bound only at fresh Source entry.
+    pub execution_scope: Option<&'a crate::internal::dom_lifecycle::DomSourceExecutionScope>,
+    /// Actual CSP observation supplier; absence remains an unavailable policy.
+    pub style_policy: &'a mut dyn FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+    /// Independently configured URL/origin observation service, if available.
+    pub url: Option<DomSourceUrlService<'a>>,
+}
+
+/// A reached URL response: `Ok(None)` is unavailable; `Err` refuses the step.
+pub type DomSourceUrlObservationResult =
+    Result<Option<surgeist_dom::url::DomSourceUrlObservation>, DomHostedRuntimeError>;
+
+/// A URL observer and its independently selected influencing configuration.
+/// The driver releases all canonical and Runtime borrows before observation.
+pub struct DomSourceUrlService<'a> {
+    /// Expected parse configuration, selected before receiving the observation.
+    pub revision: &'a surgeist_html_semantics::HtmlBaseFactsRevision,
+    /// Observes the issued inputs; None is unavailable, never URL parse failure.
+    pub observe: &'a mut dyn FnMut(
+        &surgeist_dom::url::DomSourceUrlRequest,
+        &AtomicBool,
+    ) -> DomSourceUrlObservationResult,
+}
+
+/// A missing service at the actual next request, without acknowledging it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceUnavailable {
+    /// This exact standard attribute operation awaits a qualified verifier.
+    AttributeVerification,
+    /// The exact replaced Attr awaits the initiating guest's return custody.
+    AttributeAttachmentOutput,
+    /// The exact constructor selected for synchronous element creation.
+    CustomElementConstruction,
+    /// The original private Meta insertion awaits its CSP processor.
+    MetaCsp,
+    /// An exact beforetoggle request requires explicit event dispatch.
+    Event,
+    /// This actual Dialog service has no implementation yet.
+    Dialog(surgeist_html::elements::dialog::HtmlDialogAction),
+    /// The exact child focusing action still lacks a qualified service.
+    DialogFocusing(surgeist_html::elements::dialog::HtmlDialogFocusingAction),
+    /// Exact unsupported fact in an original called focus-delegate traversal.
+    FocusDelegate(surgeist_dom::focus::DomSourceFocusDelegateStep),
+    /// The original designMode invocation needs this exact qualified service.
+    DesignMode(surgeist_dom::range::DomSourceDesignModeStep),
+    /// The exact autofocus insertion action still lacks a qualified service.
+    AutofocusInsertion(surgeist_html::focus::HtmlAutofocusInsertionAction),
+    /// The original Style owner needs this precise external input or resource.
+    Style(DomStyleUnavailable),
+    /// The original HTML Script preparation awaits this precise service.
+    Script(surgeist_dom::script::DomSourceScriptStep),
+    /// A reached URL stage has no qualified observation yet.
+    Url(surgeist_dom::url::DomSourceUrlStage),
+}
+
+/// The requested operation returned, or its exact next request remains parked.
+#[derive(Debug)]
+pub enum DomSourceDriveProgress {
+    /// The one command or named feature operation completed its mandatory hooks.
+    Complete(DomSourceCompletion),
+    /// The compound algorithm published its accepted effects and original error.
+    Failed(surgeist_dom::source::DomSourceFailure),
+    /// Original Source progress returned with its actual inline publication.
+    /// Requests are unserviced; terminal outcomes retain their original result.
+    InlineSource {
+        /// The exact unserviced request or completed original operation.
+        source: DomSourceProgress,
+        /// Original paired DOM and CSSOM publication evidence.
+        publication: surgeist_dom::style::inline::DomInlineStyleSourcePublication,
+    },
+    /// Authentic joined Meta publication; no later service has run.
+    /// Complete/Failed retain the original terminal; Request remains unserviced.
+    MetaSource(crate::internal::dom_style::DomStyleMetaSourceOutcome),
+    /// The fullscreen handoff was serviced and its original tail remains live.
+    InlineFullscreenHandoff {
+        /// The original operation whose mandatory continuation remains live.
+        operation: DomSourceOperationId,
+        /// Evidence committed before the actual Runtime row became runnable.
+        publication: surgeist_dom::style::inline::DomInlineStyleSourcePublication,
+    },
+    /// Original canonical custody remains live for this unacknowledged request.
+    Pending {
+        /// Exact yielded request, not execution or publication authority.
+        request: DomSourceRequest,
+        /// Actual missing service.
+        reason: DomSourceUnavailable,
+    },
+}
+
+/// Failure of the actual Source driver or its explicitly selected native join.
+/// Local services retain their own errors; no native failure is projected back.
+#[derive(Debug)]
+pub enum DomSourceDriveError {
+    /// Original Source qualification, service or family-tail refusal.
+    Source(DomSourceRuntimeError),
+    /// Native Meta composition retained its actual owner/producer failure.
+    Meta(crate::internal::dom_style::DomStyleMetaError),
+}
+impl std::fmt::Display for DomSourceDriveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Source(_) => f.write_str("the Source driver refused the operation"),
+            Self::Meta(_) => f.write_str(
+                "the native Meta composition of the Source driver refused the operation",
+            ),
+        }
+    }
+}
+impl std::error::Error for DomSourceDriveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Source(error) => Some(error),
+            Self::Meta(error) => Some(error),
+        }
+    }
+}
+impl From<DomSourceRuntimeError> for DomSourceDriveError {
+    fn from(error: DomSourceRuntimeError) -> Self {
+        Self::Source(error)
+    }
+}
+impl From<crate::internal::dom_style::DomStyleMetaError> for DomSourceDriveError {
+    fn from(error: crate::internal::dom_style::DomStyleMetaError) -> Self {
+        Self::Meta(error)
+    }
+}
+impl From<DomError> for DomSourceDriveError {
+    fn from(error: DomError) -> Self {
+        Self::Source(error.into())
+    }
+}
+impl From<DomStyleRuntimeError> for DomSourceDriveError {
+    fn from(error: DomStyleRuntimeError) -> Self {
+        Self::Source(error.into())
+    }
+}
+impl From<DomHostedRuntimeError> for DomSourceDriveError {
+    fn from(error: DomHostedRuntimeError) -> Self {
+        Self::Source(error.into())
+    }
+}
+
+/// Canonical retirement or live Source progress for one authorized Select task.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Return the original Source progress inline without a new fallible allocation after canonical publication"
+)]
+#[derive(Debug)]
+pub enum DomSelectCompletionProgress {
+    /// The canonical owner consumed the exact historical retirement outcome.
+    Skipped(DomSelectTaskCompletion),
+    /// The live task entered its original Source continuation.
+    Source(DomSourceDriveProgress),
+}
+
+/// Refusal preserves the original canonical operation and family-owned results.
+#[derive(Debug)]
+pub enum DomSourceRuntimeError {
+    /// The durable Source event adapter refused admission or execution.
+    SourceEvent(DomSourceEventRuntimeError),
+    /// The inline producer refused the still-unpublished canonical segment.
+    Inline(surgeist_dom::style::inline::DomInlineStyleError),
+    /// Canonical Source validation or finite admission refused the operation.
+    Dom(DomError),
+    /// The original Style resource or processing owner refused its step.
+    Style(DomStyleRuntimeError),
+    /// The original bound Details owner is unavailable or foreign.
+    ElementTasks(DomElementTaskRuntimeError),
+    /// The original hosted owner is unavailable or foreign.
+    Hosted(DomHostedRuntimeError),
+    /// The named native installation refused its actual input or target.
+    NativeInstallation(DomNativeHtmlInstallError),
+    /// The meta CSP pragma could not be processed: its processor is unavailable
+    /// or busy, or the processor or original Source controller refused it.
+    MetaCsp(
+        surgeist_dom::meta::DomSourceMetaCspError<crate::trusted_types_csp::PolicyListCapacity>,
+    ),
+}
+impl std::fmt::Display for DomSourceRuntimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::SourceEvent(_) => "the Source event adapter refused the Source operation",
+            Self::Inline(_) => "the inline style producer refused the Source operation",
+            Self::Dom(_) => "the canonical DOM refused the Source operation",
+            Self::Style(_) => "the Style runtime refused the Source operation",
+            Self::ElementTasks(_) => "the element-task owner refused the Source operation",
+            Self::Hosted(_) => "the hosted lifecycle owner refused the Source operation",
+            Self::NativeInstallation(_) => {
+                "the native HTML installation refused the Source operation"
+            }
+            Self::MetaCsp(_) => "the meta CSP pragma could not be processed",
+        })
+    }
+}
+impl std::error::Error for DomSourceRuntimeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::SourceEvent(error) => Some(error),
+            Self::Dom(error) => Some(error),
+            Self::Inline(error) => Some(error),
+            Self::Style(error) => Some(error),
+            Self::ElementTasks(error) => Some(error),
+            Self::Hosted(error) => Some(error),
+            Self::NativeInstallation(error) => Some(error),
+            Self::MetaCsp(error) => Some(error),
+        }
+    }
+}
+impl From<DomError> for DomSourceRuntimeError {
+    fn from(error: DomError) -> Self {
+        Self::Dom(error)
+    }
+}
+impl From<DomStyleRuntimeError> for DomSourceRuntimeError {
+    fn from(error: DomStyleRuntimeError) -> Self {
+        Self::Style(error)
+    }
+}
+
+impl From<DomHostedRuntimeError> for DomSourceRuntimeError {
+    fn from(error: DomHostedRuntimeError) -> Self {
+        Self::Hosted(error)
+    }
+}
+
+pub(crate) type InlineResolver<'a> = dyn FnMut(
+        &[surgeist_cssom::CssomDeclarationCandidate],
+        &surgeist_cssom::CssomContext,
+    ) -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>
+    + 'a;
+
+/// One requested edit with its original immutable inline qualifications.
+/// Controller limits remain separate; the callback belongs to each execution.
+pub struct DomSourceInlineStyleEdit {
+    edit: DomSourceEdit,
+    context: surgeist_dom::style::inline::DomInlineStyleSourceContext,
+    limits: surgeist_dom::style::inline::DomInlineStyleRequestLimits,
+}
+impl DomSourceInlineStyleEdit {
+    /// Qualify one edit with its explicit profiles and producer request limits.
+    pub fn new(
+        edit: DomSourceEdit,
+        context: surgeist_dom::style::inline::DomInlineStyleSourceContext,
+        limits: surgeist_dom::style::inline::DomInlineStyleRequestLimits,
+    ) -> Self {
+        Self {
+            edit,
+            context,
+            limits,
+        }
+    }
+}
+
+struct SourceDrive<'a, 'b> {
+    guard: StyleSourceGuard,
+    resolver: Option<&'a mut InlineResolver<'b>>,
+}
+
+/// Weak permission to route one operation through the same session's owners.
+/// Only the durable session constructs it. Replacing or dropping this value
+/// neither extracts the canonical owner nor releases its resources or cursor.
+pub struct DomSourceRuntime {
+    styles: DomStyleRuntime,
+    element_tasks: DomElementTaskRuntime,
+    hosted: HostedRuntime,
+    events: SourceEventRuntime,
+}
+impl std::fmt::Debug for DomSourceRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomSourceRuntime").finish_non_exhaustive()
+    }
+}
+impl DomSourceRuntime {
+    pub(crate) fn new(
+        styles: DomStyleRuntime,
+        element_tasks: DomElementTaskRuntime,
+        hosted: HostedRuntime,
+        events: SourceEventRuntime,
+    ) -> Self {
+        Self {
+            styles,
+            element_tasks,
+            hosted,
+            events,
+        }
+    }
+    /// Explicitly cancel the original parked Script preparation. Resume the
+    /// same operation to finish cancellation or its already-published tail.
+    pub fn cancel_script_preparation(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.prepare(dom, cancel)?;
+        dom.resume_source_edit(operation, limits, cancel)?
+            .cancel_script_preparation(cancel)?;
+        Ok(())
+    }
+
+    /// Apply the named processor to the actual reached Meta pragma. Use the
+    /// same processor for subsequent insertions and reads of this policy.
+    /// The ordinary Source resume publishes the prepared policy and tree.
+    pub fn service_meta_csp(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: surgeist_dom::meta::DomSourceMetaCspRequest,
+        processor: &mut crate::trusted_types_csp::PolicyProcessor,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.qualify_source_owners(dom)?;
+        dom.resume_source_edit(request.operation(), limits, cancel)?
+            .process_meta_csp(request, processor, cancel)
+            .map_err(DomSourceRuntimeError::MetaCsp)
+    }
+
+    /// Dispatch exactly the issued event and accept its actual receipt. This
+    /// does not advance the remaining Source tail; use ordinary `resume` next.
+    pub fn service_event<C>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: &surgeist_dom::event::DomSourceEventRequest,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        limits: DomSourceEventServiceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceEventServiceProgress, DomSourceRuntimeError> {
+        self.events
+            .service_event(dom, request, dispatcher, context, limits, cancel)
+            .map_err(DomSourceRuntimeError::SourceEvent)
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn service_attached_event(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: &surgeist_dom::event::DomSourceEventRequest,
+        dispatcher: &mut DomEventDispatcher<()>,
+        (limits, usage): (
+            DomSourceEventServiceLimits,
+            &mut crate::internal::dom_event::DispatchUsage,
+        ),
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceEventServiceProgress, DomSourceRuntimeError> {
+        self.events
+            .service_event_with_host(
+                dom,
+                request,
+                dispatcher,
+                &mut (),
+                (
+                    limits,
+                    crate::internal::dom_event::DispatchHost::AttachedNative,
+                    usage,
+                ),
+                cancel,
+            )
+            .map_err(DomSourceRuntimeError::SourceEvent)
+    }
+    /// Monotonically raise the original event operation's policy limits, even
+    /// while a retained child is topmost. This performs no dispatch, resume or
+    /// Source-tail execution and preserves the original cumulative counters.
+    pub fn raise_event_limits(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: &surgeist_dom::event::DomSourceEventRequest,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.events
+            .raise_event_limits(dom, request, limits, cancel)
+            .map_err(DomSourceRuntimeError::SourceEvent)
+    }
+    /// Monotonically raise this Session's independent event-adapter limits.
+    /// Retained jobs, actual receipts and cumulative work stay with the same
+    /// owner. Validation consumes actual work under the proposed work cap;
+    /// failed policy changes preserve that work and the original limits.
+    pub fn raise_event_runtime_limits(
+        &self,
+        dom: &DomEventDom<'_>,
+        limits: crate::internal::dom_dialog::DomSourceEventRuntimeLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.events
+            .raise_event_runtime_limits(dom, limits, cancel)
+            .map_err(DomSourceRuntimeError::SourceEvent)
+    }
+    fn prepare(
+        &self,
+        dom: &DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<StyleSourceGuard, DomSourceRuntimeError> {
+        let guard = self.qualify_source_owners(dom)?;
+        guard.reserve_cleanup(cancel)?;
+        Ok(guard)
+    }
+    fn qualify_source_owners(
+        &self,
+        dom: &DomEventDom<'_>,
+    ) -> Result<StyleSourceGuard, DomSourceRuntimeError> {
+        self.element_tasks
+            .validate_view(dom)
+            .map_err(DomSourceRuntimeError::ElementTasks)?;
+        self.hosted
+            .validate_view(dom)
+            .map_err(DomSourceRuntimeError::Hosted)?;
+        Ok(self.styles.qualify_source(dom)?)
+    }
+    /// Execute exactly one requested edit through the original Source engine.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    pub fn apply<Backing>(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        input: impl Into<surgeist_dom::source::DomSourceInput<Backing>>,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
+        let progress = {
+            let mut lease = dom.begin_source_edit(input, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, true, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease(
+                &guard,
+                &mut lease,
+                services.meta,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
+        };
+        self.finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            guard,
+            progress,
+            services,
+            cancel,
+        )
+    }
+    /// Resume the same operation without rebuilding acknowledged external work.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    pub fn resume(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
+        let progress = {
+            let mut lease = dom.resume_source_edit(operation, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, false, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease(
+                &guard,
+                &mut lease,
+                services.meta,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
+        };
+        self.finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            guard,
+            progress,
+            services,
+            cancel,
+        )
+    }
+    /// Execute one Source edit with the original inline context and a borrowed
+    /// pure resolver. Actual inline publications return before further service.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    pub fn apply_with_inline_styles(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        edit: DomSourceInlineStyleEdit,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        mut resolver: impl FnMut(
+            &[surgeist_cssom::CssomDeclarationCandidate],
+            &surgeist_cssom::CssomContext,
+        )
+            -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        let mut drive = SourceDrive {
+            guard: self.prepare(dom, cancel)?,
+            resolver: Some(&mut resolver),
+        };
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
+        let progress = {
+            let mut lease = dom
+                .raw_mut()
+                .begin_source_edit_with_inline_styles(
+                    edit.edit,
+                    edit.context,
+                    limits,
+                    edit.limits,
+                    cancel,
+                )
+                .map_err(DomSourceRuntimeError::Inline)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, true, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease_execution(
+                &drive.guard,
+                &mut lease,
+                services.meta,
+                services.url.as_ref().map(|s| s.revision),
+                (&mut drive.resolver, None),
+                cancel,
+            )?
+        };
+        self.finish_or_supply_execution(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            drive,
+            progress,
+            services,
+            cancel,
+        )
+    }
+
+    /// Resume the same inline-qualified operation, retaining its original
+    /// profiles, producer limits, work and acknowledged continuation.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    pub fn resume_with_inline_styles(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        mut resolver: impl FnMut(
+            &[surgeist_cssom::CssomDeclarationCandidate],
+            &surgeist_cssom::CssomContext,
+        )
+            -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        let mut drive = SourceDrive {
+            guard: self.prepare(dom, cancel)?,
+            resolver: Some(&mut resolver),
+        };
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
+        let progress = {
+            let mut lease = dom.resume_source_edit(operation, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, false, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease_execution(
+                &drive.guard,
+                &mut lease,
+                services.meta,
+                services.url.as_ref().map(|s| s.revision),
+                (&mut drive.resolver, None),
+                cancel,
+            )?
+        };
+        self.finish_or_supply_execution(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            drive,
+            progress,
+            services,
+            cancel,
+        )
+    }
+
+    /// Install one immutable native fragment using its original feature root.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    pub fn install_native_html(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        target: DomNativeHtmlInstallTarget,
+        fragment: &surgeist_html::construction::HtmlFragment,
+        budgets: DomSourceNativeHtmlInstallLimits,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
+        let limits = budgets.source();
+        let progress = {
+            let mut lease = dom
+                .raw_mut()
+                .begin_native_installation(target, fragment, budgets, cancel)
+                .map_err(DomSourceRuntimeError::NativeInstallation)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, true, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease(
+                &guard,
+                &mut lease,
+                services.meta,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
+        };
+        self.finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            guard,
+            progress,
+            services,
+            cancel,
+        )
+    }
+    /// Complete the actual once-authorized Select task through its feature root.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    pub fn complete_select(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        task: &DomSelectTask,
+        checkpoint: DomNativeCheckpointLimits,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSelectCompletionProgress, DomSourceDriveError> {
+        // Validate every original Session binding before canonical consumption.
+        // Cleanup admission and optional services belong only to a live Source.
+        let guard = self.qualify_source_owners(dom)?;
+        let progress = {
+            let mut lease = match dom
+                .raw_mut()
+                .begin_select_completion(task, checkpoint, limits, cancel)?
+            {
+                DomSelectCompletionStart::Skipped(completion) => {
+                    return Ok(DomSelectCompletionProgress::Skipped(completion));
+                }
+                DomSelectCompletionStart::Source(lease) => lease,
+            };
+            guard.reserve_cleanup(cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .qualify_execution_scope(scope)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, true, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease(
+                &guard,
+                &mut lease,
+                services.meta,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
+        };
+        self.finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: Some(task),
+            },
+            guard,
+            progress,
+            services,
+            cancel,
+        )
+        .map(DomSelectCompletionProgress::Source)
+    }
+    /// Resume Select processing with the same actual task authorization.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    pub fn resume_select(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+        task: &DomSelectTask,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
+        let progress = {
+            let mut lease = dom
+                .raw_mut()
+                .resume_select_completion(operation, task, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, false, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease(
+                &guard,
+                &mut lease,
+                services.meta,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
+        };
+        self.finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: Some(task),
+            },
+            guard,
+            progress,
+            services,
+            cancel,
+        )
+    }
+}
+
+impl DomSourceRuntime {
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn drive_watched_node(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        command: Result<DomSourceEdit, DomSourceOperationId>,
+        limits: DomSourceLimits,
+        output: &mut surgeist_dom::edit::DomSourceNodeOutputWatch<'_>,
+        cancel: &AtomicBool,
+    ) -> (
+        Result<DomSourceDriveProgress, DomSourceDriveError>,
+        Option<DomSourceOperationId>,
+    ) {
+        let prior_operation = dom
+            .pending_source_edit()
+            .map(surgeist_dom::source::DomSourceStatus::operation);
+        let guard = match self.prepare(dom, cancel) {
+            Ok(guard) => guard,
+            Err(error) => return (Err(error.into()), prior_operation),
+        };
+        let result = {
+            let lease = match command {
+                Ok(edit) => dom.begin_source_edit(edit, limits, cancel),
+                Err(operation) => dom.resume_source_edit(operation, limits, cancel),
+            };
+            let mut lease = match lease {
+                Ok(lease) => lease,
+                Err(error) => return (Err(error.into()), prior_operation),
+            };
+            self.drive_lease_execution(
+                &guard,
+                &mut lease,
+                None,
+                None,
+                (&mut None, Some(output)),
+                cancel,
+            )
+        };
+        if matches!(
+            result,
+            Ok(DomSourceDriveProgress::Complete(_) | DomSourceDriveProgress::Failed(_))
+        ) {
+            guard.finish(&dom.snapshot());
+        }
+        (result, prior_operation)
+    }
+
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    fn drive_lease(
+        &self,
+        guard: &StyleSourceGuard,
+        lease: &mut DomSourceLease<'_>,
+        meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>,
+        url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        self.drive_lease_execution(guard, lease, meta, url_revision, (&mut None, None), cancel)
+    }
+
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    fn drive_lease_execution(
+        &self,
+        guard: &StyleSourceGuard,
+        lease: &mut DomSourceLease<'_>,
+        meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>,
+        url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
+        (resolver, mut node_output_watch): (
+            &mut Option<&mut InlineResolver<'_>>,
+            Option<&mut surgeist_dom::edit::DomSourceNodeOutputWatch<'_>>,
+        ),
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        loop {
+            guard.flush(lease, cancel)?;
+            let settlement = self
+                .hosted
+                .prepare_watcher_settlement(lease, cancel)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+            // Keep the result unpropagated until the prepaid watcher tail sees
+            // canonical state. The native adapter has disposed its borrowed hold
+            // and all represented external banks before returning.
+            let advanced = if let Some(limits) = meta {
+                self.styles
+                    .advance_meta(
+                        lease,
+                        resolver.as_deref_mut(),
+                        limits,
+                        surgeist_dom::event::DomSourceEventClockMode::Hosted,
+                        cancel,
+                    )
+                    .map(|advanced| match advanced {
+                        DomSourceAdvance::Progress(outcome) => Advanced::Meta(outcome),
+                        DomSourceAdvance::EventFiring(firing) => Advanced::EventFiring(firing),
+                    })
+                    .map_err(DomSourceDriveError::Meta)
+            } else if let Some(resolver) = resolver.as_deref_mut() {
+                lease
+                    .advance_inline_for_runtime(resolver, cancel)
+                    .map(|advanced| match advanced {
+                        DomSourceAdvance::Progress(progress) => {
+                            Advanced::Source(progress.into_parts())
+                        }
+                        DomSourceAdvance::EventFiring(firing) => Advanced::EventFiring(firing),
+                    })
+                    .map_err(|error| DomSourceRuntimeError::Inline(error).into())
+            } else {
+                let advanced = match node_output_watch.as_deref_mut() {
+                    Some(output) => lease.advance_watching_node_for_runtime(output, cancel),
+                    None => lease.advance_for_runtime(cancel),
+                };
+                advanced
+                    .map(|advanced| match advanced {
+                        DomSourceAdvance::Progress(progress) => Advanced::Source((progress, None)),
+                        DomSourceAdvance::EventFiring(firing) => Advanced::EventFiring(firing),
+                    })
+                    .map_err(|error| DomSourceRuntimeError::Dom(error).into())
+            };
+            settlement.finish(&lease.snapshot());
+            let (source, publication) = match advanced? {
+                Advanced::Meta(outcome) if !outcome.preferences().is_empty() => {
+                    return Ok(DomSourceDriveProgress::MetaSource(outcome));
+                }
+                Advanced::Meta(outcome) => {
+                    let (source, _, inline, _) = outcome.into_parts();
+                    // Empty observations identify the non-Meta path;
+                    // no native producer output is dropped by this branch.
+                    (source, inline)
+                }
+                Advanced::Source(progress) => progress,
+                // The reached Dialog firings precede inline mutation. The
+                // original CSSOM and Meta/Style loans have already ended.
+                Advanced::EventFiring(firing) => (
+                    self.hosted
+                        .finish_source_event_firing(lease, firing, cancel)?,
+                    None,
+                ),
+            };
+            if let Some(publication) = publication {
+                return Ok(DomSourceDriveProgress::InlineSource {
+                    source,
+                    publication,
+                });
+            }
+            match source {
+                DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(request)) => {
+                    if let Some(resolver) = resolver.as_deref_mut() {
+                        if let Some(publication) = self
+                            .hosted
+                            .service_fullscreen_exit_handoff_with_inline_styles(
+                                lease, &request, resolver, cancel,
+                            )?
+                        {
+                            return Ok(DomSourceDriveProgress::InlineFullscreenHandoff {
+                                operation: lease.operation(),
+                                publication,
+                            });
+                        }
+                    } else {
+                        self.hosted
+                            .service_fullscreen_exit_handoff(lease, &request, cancel)
+                            .map_err(DomSourceRuntimeError::Hosted)?;
+                    }
+                }
+                DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Event(request),
+                        reason: DomSourceUnavailable::Event,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::CloseWatcher(request)) => {
+                    self.hosted
+                        .service_close_watcher_request(lease, &request, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?;
+                }
+                DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
+                    if matches!(
+                        request.action(),
+                        surgeist_html::elements::dialog::HtmlDialogAction::QueueToggle {
+                            source: surgeist_html::elements::dialog::HtmlDialogEventSource::Null
+                                | surgeist_html::elements::dialog::HtmlDialogEventSource::OperationSource,
+                            ..
+                        } | surgeist_html::elements::dialog::HtmlDialogAction::QueueClose
+                    ) {
+                        self.element_tasks
+                            .queue_dialog(lease, &request, cancel)
+                            .map_err(DomSourceRuntimeError::ElementTasks)?;
+                        continue;
+                    }
+                    if matches!(
+                        request.action(),
+                        surgeist_html::elements::dialog::HtmlDialogAction::EstablishCloseWatcher
+                            | surgeist_html::elements::dialog::HtmlDialogAction::DestroyCloseWatcher
+                    ) && self
+                        .hosted
+                        .service_dialog_watcher(lease, &request, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        continue;
+                    }
+                    if matches!(
+                        request.action(),
+                        surgeist_html::elements::dialog::HtmlDialogAction::RememberFocusedElement
+                    ) && self
+                        .hosted
+                        .service_focus(
+                            lease,
+                            &surgeist_dom::focus::DomFocusRequest::RememberDialog(request.clone()),
+                            cancel,
+                        )
+                        .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        continue;
+                    }
+                    let reason = DomSourceUnavailable::Dialog(request.action());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Dialog(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) => {
+                    if request.action()
+                        == surgeist_html::elements::dialog::HtmlDialogFocusingAction::ReadAllowFocus
+                        && self
+                            .hosted
+                            .service_focus(
+                                lease,
+                                &surgeist_dom::focus::DomFocusRequest::AllowDialog(request.clone()),
+                                cancel,
+                            )
+                            .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        continue;
+                    }
+                    let reason = DomSourceUnavailable::DialogFocusing(request.action());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::DialogFocusing(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::FocusDelegate(request)) => {
+                    let reason = DomSourceUnavailable::FocusDelegate(request.step());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::FocusDelegate(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::AttributeVerification(request)) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::AttributeVerification,
+                        request: DomSourceRequest::AttributeVerification(request),
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(
+                    request,
+                )) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::CustomElementConstruction,
+                        request: DomSourceRequest::CustomElementConstruction(request),
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::AttributeAttachmentOutput(
+                    request,
+                )) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::AttributeAttachmentOutput,
+                        request: DomSourceRequest::AttributeAttachmentOutput(request),
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::MetaCsp(request)) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::MetaCsp,
+                        request: DomSourceRequest::MetaCsp(request),
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::Script(request)) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::Script(request.step()),
+                        request: DomSourceRequest::Script(request),
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::DesignMode(request)) => {
+                    let reason = DomSourceUnavailable::DesignMode(request.step());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::DesignMode(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::AutofocusInsertion(request)) => {
+                    if request.action()
+                        == surgeist_html::focus::HtmlAutofocusInsertionAction::ReadAllowFocus
+                        && self
+                            .hosted
+                            .service_focus(
+                                lease,
+                                &surgeist_dom::focus::DomFocusRequest::AllowAutofocusInsertion(
+                                    request.clone(),
+                                ),
+                                cancel,
+                            )
+                            .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        continue;
+                    }
+                    let reason = DomSourceUnavailable::AutofocusInsertion(request.action());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::AutofocusInsertion(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Complete(done) => {
+                    return Ok(DomSourceDriveProgress::Complete(done));
+                }
+                DomSourceProgress::Failed(failure) => {
+                    return Ok(DomSourceDriveProgress::Failed(failure));
+                }
+                DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
+                    match self
+                        .hosted
+                        .service_source_child(lease, &request, url_revision, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        HostedSourceProgress::Serviced => {}
+                        HostedSourceProgress::Url(stage) => {
+                            return Ok(DomSourceDriveProgress::Pending {
+                                request: DomSourceRequest::HostedChild(request),
+                                reason: DomSourceUnavailable::Url(stage),
+                            });
+                        }
+                    }
+                }
+                DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
+                    match guard.service(lease, request, cancel)? {
+                        DomStyleServiceProgress::Serviced => {}
+                        DomStyleServiceProgress::Pending { request, reason } => {
+                            return Ok(DomSourceDriveProgress::Pending {
+                                request: DomSourceRequest::Style(request),
+                                reason: DomSourceUnavailable::Style(reason),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+enum Advanced {
+    Source(
+        (
+            DomSourceProgress,
+            Option<surgeist_dom::style::inline::DomInlineStyleSourcePublication>,
+        ),
+    ),
+    Meta(crate::internal::dom_style::DomStyleMetaSourceOutcome),
+    EventFiring(surgeist_dom::event::DomSourceEventFiring),
+}
+
+struct DriveRoot<'a> {
+    limits: DomSourceLimits,
+    select: Option<&'a DomSelectTask>,
+}
+
+impl DomSourceRuntime {
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    fn finish_or_supply(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        root: DriveRoot<'_>,
+        guard: StyleSourceGuard,
+        progress: DomSourceDriveProgress,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        self.finish_or_supply_execution(
+            dom,
+            root,
+            SourceDrive {
+                guard,
+                resolver: None,
+            },
+            progress,
+            services,
+            cancel,
+        )
+    }
+
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
+    fn finish_or_supply_execution(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        root: DriveRoot<'_>,
+        mut drive: SourceDrive<'_, '_>,
+        mut progress: DomSourceDriveProgress,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        let DriveRoot { limits, select } = root;
+        loop {
+            match progress {
+                DomSourceDriveProgress::Complete(_)
+                | DomSourceDriveProgress::Failed(_)
+                | DomSourceDriveProgress::InlineSource {
+                    source: DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_),
+                    ..
+                } => {
+                    drive.guard.finish(&dom.snapshot());
+                    return Ok(progress);
+                }
+                DomSourceDriveProgress::MetaSource(ref outcome)
+                    if matches!(
+                        outcome.source(),
+                        DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_)
+                    ) =>
+                {
+                    drive.guard.finish(&dom.snapshot());
+                    return Ok(progress);
+                }
+                DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Style(request),
+                    reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
+                } => {
+                    // The prior lease and every RefCell/CSSOM borrow ended before
+                    // this actual external observation supplier is entered.
+                    let Some(observation) = (services.style_policy)(request.source()) else {
+                        return Ok(DomSourceDriveProgress::Pending {
+                            request: DomSourceRequest::Style(request),
+                            reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
+                        });
+                    };
+                    let operation = request.source().operation();
+                    let mut lease = if let Some(task) = select {
+                        dom.raw_mut()
+                            .resume_select_completion(operation, task, limits, cancel)?
+                    } else {
+                        dom.resume_source_edit(operation, limits, cancel)?
+                    };
+                    lease.accept_inline_csp(&request, &observation, cancel)?;
+                    progress = self.drive_lease_execution(
+                        &drive.guard,
+                        &mut lease,
+                        services.meta,
+                        services.url.as_ref().map(|service| service.revision),
+                        (&mut drive.resolver, None),
+                        cancel,
+                    )?;
+                }
+                DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::HostedChild(child),
+                    reason: DomSourceUnavailable::Url(stage),
+                } => {
+                    let Some(service) = services.url.as_mut() else {
+                        return Ok(DomSourceDriveProgress::Pending {
+                            request: DomSourceRequest::HostedChild(child),
+                            reason: DomSourceUnavailable::Url(stage),
+                        });
+                    };
+                    let operation = child.operation();
+                    let issued = {
+                        let mut lease = if let Some(task) = select {
+                            dom.raw_mut()
+                                .resume_select_completion(operation, task, limits, cancel)?
+                        } else {
+                            dom.resume_source_edit(operation, limits, cancel)?
+                        };
+                        lease.source_url_request(&child, stage, service.revision, cancel)?
+                    };
+                    // Both exclusive owners and all issuer/store/RefCell guards are
+                    // released before calling the external producer. A rejected
+                    // not-yet-admitted candidate may drop; an accepted candidate
+                    // belongs to the canonical operation's charged response slot.
+                    self.hosted
+                        .admit_url_observation(&issued, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?;
+                    let Some(observation) = (service.observe)(&issued, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?
+                    else {
+                        return Ok(DomSourceDriveProgress::Pending {
+                            request: DomSourceRequest::HostedChild(child),
+                            reason: DomSourceUnavailable::Url(stage),
+                        });
+                    };
+                    let mut lease = if let Some(task) = select {
+                        dom.raw_mut()
+                            .resume_select_completion(operation, task, limits, cancel)?
+                    } else {
+                        dom.resume_source_edit(operation, limits, cancel)?
+                    };
+                    lease.accept_source_url_observation(
+                        &child,
+                        &issued,
+                        &mut Some(observation),
+                        cancel,
+                    )?;
+                    progress = self.drive_lease_execution(
+                        &drive.guard,
+                        &mut lease,
+                        services.meta,
+                        services.url.as_ref().map(|service| service.revision),
+                        (&mut drive.resolver, None),
+                        cancel,
+                    )?;
+                }
+                other => return Ok(other),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        internal::dom_style::DomSession, internal::dom_style::DomSessionLimits,
+        internal::dom_style::DomStyleRuntimeLimits,
+    };
+    use surgeist_dom::{
+        Dom,
+        hosted::{DomHostedLimits, DomHostedRecordLimits},
+        limits::DomLimits,
+        source::DomSourceOutput,
+    };
+
+    #[test]
+    fn each_requested_creation_returns_its_actual_scalar_without_cross_operation_tickets() {
+        let cancel = AtomicBool::new(false);
+        let dom = Dom::new(
+            DomLimits::new(
+                32,
+                4096,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut session = DomSession::new(
+            dom,
+            DomSessionLimits {
+                authored_events: crate::internal::dom_event::DomEventStorageLimits {
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
+                source_events: crate::internal::dom_dialog::DomSourceEventRuntimeLimits {
+                    jobs: 0,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
+                style: DomStyleRuntimeLimits {
+                    roots: 4,
+                    completions: 8,
+                    reports: 8,
+                    storage_bytes: 1_000_000,
+                    work: 100_000,
+                    css_input: surgeist_css::source::CssUtf16InputLimits::default(),
+                },
+                element_tasks: crate::internal::element_tasks::DomElementTaskRuntimeLimits {
+                    tasks: 8,
+                    storage_bytes: 1_000_000,
+                    work: 100_000,
+                },
+                hosted: crate::internal::dom_lifecycle::DomHostedRuntimeLimits {
+                    canonical: DomHostedLimits::new(
+                        DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
+                        1_000_000,
+                        1_000_000,
+                        100_000,
+                    ),
+                    tasks: 8,
+                    storage_bytes: 1_000_000,
+                    scratch_bytes: 1_000_000,
+                    work: 100_000,
+                },
+            },
+        )
+        .unwrap();
+        let mut source = session.source_execution();
+        let limits = DomSourceLimits::new(1_000_000, 4096, 100_000, 16, 64, 64, 1);
+        let DomSourceDriveProgress::Complete(document) = source
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::create_document(),
+                limits,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| panic!("Document creation has no inline CSS request"),
+                    url: None,
+                },
+                &cancel,
+            )
+            .unwrap()
+        else {
+            panic!("actual Document creation must finish");
+        };
+        let Some(DomSourceOutput::Document(id)) = document.output() else {
+            panic!("Document operation must return its actual typed identity");
+        };
+        assert_eq!(document.published_node(), Some(id.node()));
+        assert_eq!(session.snapshot().document(id).unwrap().id(), id);
+        let DomSourceDriveProgress::Complete(text) = source
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::create_text(id.node(), "exact text"),
+                limits,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| panic!("Text creation has no inline CSS request"),
+                    url: None,
+                },
+                &cancel,
+            )
+            .unwrap()
+        else {
+            panic!("actual Text creation must finish");
+        };
+        let Some(DomSourceOutput::Node(node)) = text.output() else {
+            panic!("Text operation must return its actual typed identity");
+        };
+        assert_eq!(text.published_node(), Some(node));
+        assert_ne!(document.operation(), text.operation());
+        assert_eq!(
+            session.snapshot().node(node).unwrap().data().unwrap(),
+            &surgeist_html::values::DocumentString::from("exact text")
+        );
+        assert_eq!(
+            session.snapshot().node(node).unwrap().owner_document(),
+            Some(id)
+        );
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod inline_tests;

@@ -1,0 +1,1972 @@
+//! One actual element-task owner with source-specific FIFO selection.
+//!
+//! Canonical pending transitions are admitted as a whole before ownership moves.
+//! Intake refusal leaves the actual intentions in the original bound DOM.
+//! The task bank and source tracker are distinct: post-dispatch cleanup can
+//! leave a reentrantly queued task untracked. Dropping this owner abandons its
+//! remaining tasks; it never reports those tasks as delivered.
+use crate::internal::dom_event::{
+    DispatchCall, DispatchFunding, DispatchHost, DispatchUsage, DomEventDispatchError,
+    DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
+    DomEventDom, DomEventTimestampUnavailable, EventDispatchObservation, EventInvocationOwner,
+    NativeDomEvent,
+};
+use crate::internal::dom_lifecycle::NativeTaskRunning;
+#[cfg(feature = "document-scripting")]
+use crate::{
+    internal::dom_event::DomEventHostInvocation, internal::dom_lifecycle::DomHostedTopLevel,
+};
+use std::cell::{Cell, RefCell};
+use std::fmt;
+use std::mem::size_of;
+use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "document-scripting")]
+use surgeist_dom::event::DomSourceEventRequest;
+use surgeist_dom::{
+    DomError, DomSnapshot,
+    details::{DomDetailsToggleIntention, DomDetailsToggleTransfer},
+    identity::{DomOwnerId, DomRevision},
+};
+use surgeist_html::elements::details::{HtmlDetailsState, HtmlDetailsToggleEvent};
+
+/// Finite bounds for this source task owner, independent of event-path limits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomElementTaskRuntimeLimits {
+    /// All queued, retained and executing tasks, including untracked tasks.
+    pub tasks: usize,
+    /// Actual owner header and task/tracker Vec capacities, including intake scratch.
+    pub storage_bytes: usize,
+    /// Monotone work admission, including failed attempts and reserved cleanup.
+    pub work: u64,
+}
+/// Independently explicit dispatcher and canonical cleanup policy per call.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomElementTaskRunLimits {
+    /// Actual shared event path/listener/callback work.
+    pub dispatch: DomEventDispatchLimits,
+    /// Original queued-task Source observation, rebase and mandatory cleanup.
+    pub source: surgeist_dom::source::DomSourceLimits,
+}
+use surgeist_dom::task::{DomElementTaskId, DomElementTaskSourceKind};
+/// One pending source task's immutable queued payload.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomDetailsTask {
+    id: DomElementTaskId,
+    event: HtmlDetailsToggleEvent,
+    association: Option<surgeist_dom::task::DomElementTaskAssociation>,
+}
+impl DomDetailsTask {
+    /// Exact execution identity.
+    pub fn id(self) -> DomElementTaskId {
+        self.id
+    }
+    /// First-old/latest-new values retained when this task was queued.
+    pub fn event(self) -> HtmlDetailsToggleEvent {
+        self.event
+    }
+    /// Original task Document/Global captured when the source queued the event.
+    /// Adoption changes the dispatch path, not this execution association.
+    pub fn queue_association(self) -> Option<surgeist_dom::task::DomElementTaskAssociation> {
+        self.association
+    }
+}
+/// Closed payloads in one bank, each deriving its actual HTML task source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomElementTask {
+    /// A Details transition.
+    DetailsToggle(DomDetailsTask),
+    /// A Dialog transition published by its original Source cursor.
+    DialogToggle(surgeist_dom::dialog::DomDialogToggleTaskInfo),
+    /// A noncoalesced plain close notification on the user-interaction source.
+    DialogClose(surgeist_dom::dialog::DomDialogCloseTaskInfo),
+}
+impl DomElementTask {
+    /// The HTML task source intrinsic to this payload.
+    pub fn source(self) -> DomElementTaskSourceKind {
+        match self {
+            Self::DetailsToggle(_) | Self::DialogToggle(_) => {
+                DomElementTaskSourceKind::DomManipulation
+            }
+            Self::DialogClose(_) => DomElementTaskSourceKind::UserInteraction,
+        }
+    }
+    /// The plain close notification payload, when this is a Close task.
+    pub fn dialog_close(self) -> Option<surgeist_dom::dialog::DomDialogCloseTaskInfo> {
+        if let Self::DialogClose(task) = self {
+            Some(task)
+        } else {
+            None
+        }
+    }
+    /// Exact original task occurrence and target generation.
+    pub fn id(self) -> DomElementTaskId {
+        match self {
+            Self::DetailsToggle(task) => task.id(),
+            Self::DialogToggle(task) => task.id(),
+            Self::DialogClose(task) => task.id(),
+        }
+    }
+    /// Original relevant Global and its associated Document.
+    pub fn queue_association(self) -> Option<surgeist_dom::task::DomElementTaskAssociation> {
+        match self {
+            Self::DetailsToggle(task) => task.queue_association(),
+            Self::DialogToggle(task) => task.queue_association(),
+            Self::DialogClose(task) => task.queue_association(),
+        }
+    }
+    /// The Details payload, when this is a Details task.
+    pub fn details(self) -> Option<DomDetailsTask> {
+        if let Self::DetailsToggle(task) = self {
+            Some(task)
+        } else {
+            None
+        }
+    }
+    /// The Dialog payload, when this is a Dialog task.
+    pub fn dialog_toggle(self) -> Option<surgeist_dom::dialog::DomDialogToggleTaskInfo> {
+        if let Self::DialogToggle(task) = self {
+            Some(task)
+        } else {
+            None
+        }
+    }
+}
+/// A refused owner operation. Pending task/tracker state is preserved.
+#[derive(Debug)]
+pub enum DomElementTaskRuntimeError {
+    /// Standalone intake already transferred unknown external task obligations.
+    PretransferredSession,
+    /// A foreign canonical owner, replaced task owner, invalid target kind, or a
+    /// retained task state that does not match the request or outcome.
+    Binding,
+    /// The original durable session has released this permission's owner.
+    OwnerDisposed,
+    /// The task state, or the hosted state this operation needs, is temporarily
+    /// borrowed by another operation.
+    Busy,
+    /// A transfer predates another already consumed transfer from this DOM.
+    OutOfOrderTransfer,
+    /// Canonical source/liveness validation failed.
+    Dom(DomError),
+    /// Task count, actual bank capacity or monotone work admission failed.
+    Admission,
+    /// A checked owner/task/work/storage representation would overflow.
+    IdentityExhausted,
+    /// Shared dispatch refused before starting or resuming this task.
+    Dispatch(DomEventDispatchError),
+    /// The original trusted Source event executor refused the task step.
+    SourceEvent(crate::internal::dom_dialog::DomSourceEventRuntimeError),
+    /// The actual original native Global/loop owner refused task admission.
+    Hosted(crate::internal::dom_lifecycle::DomHostedRuntimeError),
+}
+impl fmt::Display for DomElementTaskRuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::PretransferredSession => {
+                "standalone intake already transferred element-task obligations that this session cannot recover"
+            }
+            Self::Binding => "the element-task owner, DOM or task binding is missing or does not match, or the retained task state does not match",
+            Self::OwnerDisposed => "the session that owns the element-task state was disposed",
+            Self::Busy => {
+                "the state needed by the element-task operation is already borrowed by another operation"
+            }
+            Self::OutOfOrderTransfer => {
+                "the task transfer is older than a transfer from the same DOM that was already consumed"
+            }
+            Self::Dom(_) => "the canonical DOM refused the element-task operation",
+            Self::Admission => "element-task admission refused the operation",
+            Self::IdentityExhausted => {
+                "an element-task count, size or work total cannot be represented"
+            }
+            Self::Dispatch(_) => "shared event dispatch refused the element task",
+            Self::SourceEvent(_) => "the Source event executor refused the element-task step",
+            Self::Hosted(_) => "the native hosted lifecycle refused the element-task operation",
+        })
+    }
+}
+impl std::error::Error for DomElementTaskRuntimeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Dom(error) => Some(error),
+            Self::Dispatch(error) => Some(error),
+            Self::SourceEvent(error) => Some(error),
+            Self::Hosted(error) => Some(error),
+            Self::PretransferredSession
+            | Self::Binding
+            | Self::OwnerDisposed
+            | Self::Busy
+            | Self::OutOfOrderTransfer
+            | Self::Admission
+            | Self::IdentityExhausted => None,
+        }
+    }
+}
+/// Refused intake retains the exact unconsumed, non-Clone DOM transfer.
+#[cfg(test)]
+#[derive(Debug)]
+struct DomDetailsTransferError {
+    error: DomElementTaskRuntimeError,
+    transfer: DomDetailsToggleTransfer,
+}
+#[cfg(test)]
+impl DomDetailsTransferError {
+    /// Reason intake refused without changing tasks/trackers.
+    pub fn error(&self) -> &DomElementTaskRuntimeError {
+        &self.error
+    }
+    /// Recover the same transfer for an exact later retry or another owner.
+    pub fn into_transfer(self) -> DomDetailsToggleTransfer {
+        self.transfer
+    }
+}
+#[cfg(test)]
+impl fmt::Display for DomDetailsTransferError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(f)
+    }
+}
+#[cfg(test)]
+impl std::error::Error for DomDetailsTransferError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+/// Delivery or a precise retained source task, never an acknowledgement proxy.
+#[derive(Debug)]
+pub enum DomElementTaskProgress {
+    /// No task is pending.
+    Empty,
+    /// The current FIFO head is already executing a listener.
+    Running(DomElementTaskId),
+    /// Actual shared dispatch completed, including callback failures if any.
+    Complete {
+        /// Exact task whose source event finished.
+        task: DomElementTask,
+        /// Actual shared-dispatch delivery and listener failure evidence.
+        receipt: DomEventDispatchReceipt,
+        /// Source-produced post-dispatch Dialog Toggle cleanup, when applicable.
+        dialog_toggle_disposition: Option<surgeist_dom::dialog::DomDialogToggleTaskDisposition>,
+        /// Original bank when a callback replaced the context's coordinator.
+        /// Retains other queued work even if the callback dropped its old handle.
+        displaced_owner: Option<DomElementTaskRuntime>,
+    },
+    /// The exact target was retired before dispatch started.
+    SkippedTargetDestroyed(DomElementTask),
+    /// Shared dispatch retains its next step; no delivered listener is replayed.
+    Retained {
+        /// Exact task whose event retains its next source step.
+        task: DomElementTask,
+        /// Shared dispatcher retention reason and continuation ownership.
+        dispatch: DomEventDispatchOutcome,
+        /// Restore this exact owner before servicing its retained task if a
+        /// callback substituted another coordinator (even dropping the original).
+        displaced_owner: Option<DomElementTaskRuntime>,
+    },
+}
+/// The caller's actual composition context exposes its single task owner.
+/// No owner borrow is held while the shared dispatcher invokes listeners.
+pub trait DomElementTaskEventContext {
+    /// Current source task owner. Moving/replacing it cannot redirect an already
+    /// executing task; that task retains its original bank until cleanup.
+    fn element_tasks(&mut self) -> &mut DomElementTaskRuntime;
+}
+/// One actual counter allocation, with its original DOM Source funding
+/// transferred out of the State header. No execution capability is retained.
+struct TaskPayloadCounterTarget {
+    bytes: Cell<usize>,
+    _retained: surgeist_dom::task::DomElementTaskRetention,
+}
+
+#[derive(Clone)]
+struct TaskPayloadCounter(Option<Rc<TaskPayloadCounterTarget>>);
+impl TaskPayloadCounter {
+    fn funded(retained: surgeist_dom::task::DomElementTaskRetention) -> Self {
+        Self(Some(Rc::new(TaskPayloadCounterTarget {
+            bytes: Cell::new(size_of::<TaskPayloadCounterTarget>()),
+            _retained: retained,
+        })))
+    }
+    fn get(&self) -> usize {
+        self.0.as_ref().map_or(0, |counter| counter.bytes.get())
+    }
+    fn add(&self, bytes: usize) -> Result<(), DomElementTaskRuntimeError> {
+        let counter = self.0.as_ref().ok_or(DomElementTaskRuntimeError::Binding)?;
+        counter.bytes.set(
+            counter
+                .bytes
+                .get()
+                .checked_add(bytes)
+                .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
+        );
+        Ok(())
+    }
+    fn release(&self, bytes: usize) {
+        if let Some(counter) = self.0.as_ref() {
+            counter.bytes.set(counter.bytes.get() - bytes);
+        }
+    }
+    fn same_owner(&self, other: &Self) -> bool {
+        matches!((&self.0, &other.0), (Some(a), Some(b)) if Rc::ptr_eq(a, b))
+    }
+    #[cfg(test)]
+    fn as_ref(&self) -> &TaskPayloadCounterTarget {
+        self.0.as_deref().expect("actual bound counter target")
+    }
+}
+impl Drop for TaskPayloadCounter {
+    fn drop(&mut self) {
+        // There are no weak counter observers. On the final strong release,
+        // moving out the target frees backing before its Source debit drops.
+        drop(self.0.take().and_then(Rc::into_inner));
+    }
+}
+
+/// Relative custody of actual shared task-event allocations. The original
+/// owner's existing storage policy reads this extent even after its row drops.
+pub(crate) struct TaskPayload {
+    live: TaskPayloadCounter,
+    full: usize,
+    source: usize,
+    retained: surgeist_dom::task::DomElementTaskRetention,
+}
+impl fmt::Debug for TaskPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TaskPayload")
+            .field("full", &self.full)
+            .field("source", &self.source)
+            .finish_non_exhaustive()
+    }
+}
+impl TaskPayload {
+    fn new(
+        live: TaskPayloadCounter,
+        full: usize,
+        source: usize,
+        retained: surgeist_dom::task::DomElementTaskRetention,
+    ) -> Result<Self, DomElementTaskRuntimeError> {
+        live.add(full)?;
+        Ok(Self {
+            live,
+            full,
+            source,
+            retained,
+        })
+    }
+    pub(crate) fn full(&self) -> usize {
+        self.full
+    }
+    pub(crate) fn source(&self) -> usize {
+        self.source
+    }
+    pub(crate) fn split(
+        &mut self,
+        full: usize,
+        source: usize,
+    ) -> Result<Self, DomElementTaskRuntimeError> {
+        let remaining = self
+            .full
+            .checked_sub(full)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let remaining_source = self
+            .source
+            .checked_sub(source)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let retained = self
+            .retained
+            .split(source)
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        self.full = remaining;
+        self.source = remaining_source;
+        Ok(Self {
+            live: self.live.clone(),
+            full,
+            source,
+            retained,
+        })
+    }
+    pub(crate) fn absorb(&mut self, mut other: Self) -> Result<(), DomElementTaskRuntimeError> {
+        if !self.live.same_owner(&other.live) {
+            return Err(DomElementTaskRuntimeError::Binding);
+        }
+        let full = self
+            .full
+            .checked_add(other.full)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let source = self
+            .source
+            .checked_add(other.source)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        self.retained
+            .absorb(
+                other
+                    .retained
+                    .split(other.source)
+                    .map_err(DomElementTaskRuntimeError::Dom)?,
+            )
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        self.full = full;
+        self.source = source;
+        other.full = 0;
+        other.source = 0;
+        Ok(())
+    }
+}
+impl Drop for TaskPayload {
+    fn drop(&mut self) {
+        self.live.release(self.full);
+    }
+}
+struct Task {
+    value: DomElementTask,
+    event: Option<EventInvocationOwner>,
+    receipt: Option<DomEventDispatchReceipt>,
+    running: bool,
+    dialog: Option<surgeist_dom::dialog::DomDialogTask>,
+    publication: Option<surgeist_dom::dialog::DomDialogTaskQueuePublication>,
+    task_operation: Option<surgeist_dom::source::DomSourceOperationId>,
+    request: Option<surgeist_dom::event::DomSourceEventRequest>,
+    permit: Option<surgeist_dom::event::DomSourceEventDispatchPermit>,
+    event_publication: Option<surgeist_dom::event::DomSourceEventPublication>,
+    event_accepted: bool,
+    dialog_toggle_disposition: Option<surgeist_dom::dialog::DomDialogToggleTaskDisposition>,
+}
+impl Task {
+    fn has_started(&self) -> bool {
+        self.event.as_ref().is_some_and(|event| event.has_started())
+    }
+
+    fn plan(&self) -> Plan {
+        Plan {
+            value: self.value,
+            started: self.has_started() || self.running,
+        }
+    }
+}
+#[derive(Clone, Copy)]
+struct Plan {
+    value: DomElementTask,
+    started: bool,
+}
+#[derive(Clone, Copy)]
+struct Tracker {
+    task: DomElementTaskId,
+    old: HtmlDetailsState,
+}
+struct Intake {
+    plan: Vec<Plan>,
+    trackers: Vec<Tracker>,
+    output: Vec<Task>,
+    next: u64,
+    output_retained: surgeist_dom::task::DomElementTaskRetention,
+    trackers_retained: surgeist_dom::task::DomElementTaskRetention,
+    scratch_retained: surgeist_dom::task::DomElementTaskRetention,
+}
+enum TaskAdmission<'a, 'dom> {
+    Idle(&'a mut DomEventDom<'dom>),
+    Source(&'a mut surgeist_dom::source::DomSourceLease<'dom>),
+}
+impl TaskAdmission<'_, '_> {
+    fn retain(
+        &mut self,
+        source: &surgeist_dom::task::DomElementTaskSource,
+        bytes: usize,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::task::DomElementTaskRetention, DomElementTaskRuntimeError> {
+        match self {
+            Self::Idle(dom) => source.retain_payload(dom.raw_mut(), bytes, cancel),
+            Self::Source(lease) => lease.retain_element_task_payload(source, bytes, cancel),
+        }
+        .map_err(DomElementTaskRuntimeError::Dom)
+    }
+}
+/// Weak execution permission for the original session's shared task owner.
+/// Dropping or replacing this value cannot release its tasks or source trackers.
+#[derive(Clone)]
+pub struct DomElementTaskRuntime {
+    state: Weak<RefCell<ElementTaskState>>,
+}
+pub(crate) struct ElementTaskOwner {
+    state: Rc<RefCell<ElementTaskState>>,
+}
+impl ElementTaskOwner {
+    pub(crate) fn new(
+        dom: DomOwnerId,
+        limits: DomElementTaskRuntimeLimits,
+    ) -> Result<Self, DomElementTaskRuntimeError> {
+        if ElementTaskState::fixed_bytes()? > limits.storage_bytes {
+            return Err(DomElementTaskRuntimeError::Admission);
+        }
+        Ok(Self {
+            state: Rc::new(RefCell::new(ElementTaskState {
+                dom,
+                limits,
+                tasks: Vec::new(),
+                trackers: Vec::new(),
+                next: 1,
+                work: 0,
+                last_transfer: None,
+                hosted: None,
+                source: None,
+                tasks_retained: None,
+                trackers_retained: None,
+                owner_retained: None,
+                payload_bytes: TaskPayloadCounter(None),
+                events: None,
+            })),
+        })
+    }
+    pub(crate) fn bind_hosted(&self, hosted: crate::internal::dom_lifecycle::HostedRuntime) {
+        // Constructor-only join after both actual original owners exist. No
+        // callback or externally retained bank borrow can run during binding.
+        self.state.borrow_mut().hosted = Some(hosted);
+    }
+    pub(crate) fn bind_source(&self, dom: &mut surgeist_dom::Dom) {
+        let cancel = AtomicBool::new(false);
+        let source = Rc::new(
+            dom.bind_element_task_source(&cancel)
+                .expect("exclusive preflighted task source binding"),
+        );
+        let counter_bytes = size_of::<TaskPayloadCounterTarget>();
+        let (retained, counter_retained) = source
+            .retain_payload(
+                dom,
+                size_of::<RefCell<ElementTaskState>>()
+                    + size_of::<surgeist_dom::task::DomElementTaskSource>()
+                    + counter_bytes,
+                &cancel,
+            )
+            .and_then(|mut owner| {
+                // The admitted total includes this exact target extent.
+                let counter = owner.split(counter_bytes)?;
+                Ok((owner, counter))
+            })
+            .expect("preflighted fixed task owner");
+        let mut state = self.state.borrow_mut();
+        state.payload_bytes = TaskPayloadCounter::funded(counter_retained);
+        state.source = Some(source);
+        state.owner_retained = Some(retained);
+    }
+    pub(crate) fn bind_events(&self, events: crate::internal::dom_dialog::SourceEventRuntime) {
+        self.state.borrow_mut().events = Some(events);
+    }
+    pub(crate) fn execution(&self) -> DomElementTaskRuntime {
+        DomElementTaskRuntime {
+            state: Rc::downgrade(&self.state),
+        }
+    }
+    pub(crate) fn pending(&self) -> Result<Option<DomElementTaskId>, DomElementTaskRuntimeError> {
+        let state = self
+            .state
+            .try_borrow()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        Ok(state.tasks.first().map(|task| task.value.id()))
+    }
+}
+impl fmt::Debug for DomElementTaskRuntime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DomElementTaskRuntime")
+            .finish_non_exhaustive()
+    }
+}
+struct ElementTaskState {
+    dom: DomOwnerId,
+    limits: DomElementTaskRuntimeLimits,
+    tasks: Vec<Task>,
+    trackers: Vec<Tracker>,
+    next: u64,
+    work: u64,
+    last_transfer: Option<DomRevision>,
+    hosted: Option<crate::internal::dom_lifecycle::HostedRuntime>,
+    source: Option<Rc<surgeist_dom::task::DomElementTaskSource>>,
+    tasks_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
+    trackers_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
+    owner_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
+    payload_bytes: TaskPayloadCounter,
+    events: Option<crate::internal::dom_dialog::SourceEventRuntime>,
+}
+impl DomElementTaskRuntime {
+    pub(crate) fn validate_view(
+        &self,
+        dom: &DomEventDom<'_>,
+    ) -> Result<(), DomElementTaskRuntimeError> {
+        let state = self.state()?;
+        let state = state
+            .try_borrow()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        if state.dom != dom.owner() {
+            return Err(DomElementTaskRuntimeError::Binding);
+        }
+        Ok(())
+    }
+
+    fn state(&self) -> Result<Rc<RefCell<ElementTaskState>>, DomElementTaskRuntimeError> {
+        self.state
+            .upgrade()
+            .ok_or(DomElementTaskRuntimeError::OwnerDisposed)
+    }
+    /// Total obligations across both sources, including retained/executing work.
+    pub fn pending_total_tasks(&self) -> Result<usize, DomElementTaskRuntimeError> {
+        let state = self.state()?;
+        let state = state
+            .try_borrow()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        Ok(state.tasks.len())
+    }
+    /// Pending obligations in one actual source. Filtering spends original work.
+    pub fn pending_tasks(
+        &self,
+        source: DomElementTaskSourceKind,
+    ) -> Result<usize, DomElementTaskRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        let mut count = 0;
+        for index in 0..state.tasks.len() {
+            state.spend(1, &AtomicBool::new(false))?;
+            count += usize::from(state.tasks[index].value.source() == source);
+        }
+        Ok(count)
+    }
+    /// The selected source's immutable pending task in its own FIFO order.
+    pub fn pending_task(
+        &self,
+        source: DomElementTaskSourceKind,
+        wanted: usize,
+    ) -> Result<Option<DomElementTask>, DomElementTaskRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        let mut ordinal = 0;
+        for index in 0..state.tasks.len() {
+            state.spend(1, &AtomicBool::new(false))?;
+            if state.tasks[index].value.source() == source {
+                if ordinal == wanted {
+                    return Ok(Some(state.tasks[index].value));
+                }
+                ordinal += 1;
+            }
+        }
+        Ok(None)
+    }
+    /// Change finite admission for later work without resetting identity/work.
+    /// Existing task count and actual retained bank capacity must still fit.
+    /// Change configuration between dispatch calls, so reserved callback cleanup
+    /// cannot be invalidated by raising the task bound during execution.
+    pub fn set_limits(
+        &mut self,
+        limits: DomElementTaskRuntimeLimits,
+    ) -> Result<(), DomElementTaskRuntimeError> {
+        let state = self.state()?;
+        let mut state = state
+            .try_borrow_mut()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        for index in 0..state.tasks.len() {
+            state.spend_with_limit(1, limits.work, &AtomicBool::new(false))?;
+            if state.tasks[index].running {
+                return Err(DomElementTaskRuntimeError::Admission);
+            }
+        }
+        if state.tasks.len() > limits.tasks || state.work > limits.work {
+            return Err(DomElementTaskRuntimeError::Admission);
+        }
+        if state.byte_total(0, 0, 0)? > limits.storage_bytes {
+            return Err(DomElementTaskRuntimeError::Admission);
+        }
+        state.limits = limits;
+        Ok(())
+    }
+    /// Actual monotone work charged, including refused attempts.
+    pub fn work_used(&self) -> Result<u64, DomElementTaskRuntimeError> {
+        let state = self.state()?;
+        let state = state
+            .try_borrow()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        Ok(state.work)
+    }
+    /// Admit actual pending canonical transitions before consuming ownership.
+    /// On refusal, the original DOM retains every intention in source order.
+    pub fn ingest(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomElementTaskRuntimeError> {
+        let owner = self.state()?;
+        let hosted = owner
+            .try_borrow()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?
+            .hosted
+            .clone()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        hosted.ingest_element_tasks(self, dom, cancel)
+    }
+    pub(crate) fn ingest_source(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        issuer: &surgeist_dom::hosted::DomHostedSource,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomElementTaskRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        let source = dom.snapshot();
+        let intentions = source
+            .details_toggle_intentions()
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        let plan = state.plan(
+            &source,
+            intentions,
+            0,
+            &mut TaskAdmission::Idle(dom),
+            cancel,
+        )?;
+        state.spend(1, cancel)?;
+        if dom.snapshot().stamp() != source.stamp() {
+            return Err(DomElementTaskRuntimeError::Binding);
+        }
+        let transfer = dom
+            .raw_mut()
+            .take_hosted_details_toggle_intentions(issuer, intentions.len(), cancel)
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        Ok(state.publish_intake(transfer, plan))
+    }
+
+    pub(crate) fn queue_dialog(
+        &self,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
+        request: &surgeist_dom::dialog::DomSourceDialogRequest,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomElementTaskRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        if state.dom != lease.snapshot().owner() {
+            return Err(DomElementTaskRuntimeError::Binding);
+        }
+        // A real queue effect may have committed before its exact acceptance
+        // refused. The original row owns that affine publication across retries.
+        for index in 0..state.tasks.len() {
+            state.spend(1, cancel)?;
+            if state.tasks[index]
+                .publication
+                .as_ref()
+                .is_some_and(|publication| publication.operation() == request.operation())
+            {
+                return lease
+                    .accept_dialog_task_queue(request, &mut state.tasks[index].publication, cancel)
+                    .map_err(DomElementTaskRuntimeError::Dom);
+            }
+        }
+        let index = state.publish_dialog_queue(lease, request, cancel)?;
+        lease
+            .accept_dialog_task_queue(request, &mut state.tasks[index].publication, cancel)
+            .map_err(DomElementTaskRuntimeError::Dom)
+    }
+
+    #[cfg(test)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "Private raw-transfer oracle retains the actual non-Clone input on refusal without allocating"
+    )]
+    fn ingest_transfer(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        transfer: DomDetailsToggleTransfer,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomDetailsTransferError> {
+        let state = match self.state() {
+            Ok(state) => state,
+            Err(error) => return Err(DomDetailsTransferError { error, transfer }),
+        };
+        let mut state = match state.try_borrow_mut() {
+            Ok(state) => state,
+            Err(_) => {
+                return Err(DomDetailsTransferError {
+                    error: DomElementTaskRuntimeError::Busy,
+                    transfer,
+                });
+            }
+        };
+        match state.plan(
+            transfer.source(),
+            transfer.intentions(),
+            0,
+            &mut TaskAdmission::Idle(dom),
+            cancel,
+        ) {
+            Err(error) => Err(DomDetailsTransferError { error, transfer }),
+            Ok(plan) => Ok(state.publish_intake(transfer, plan)),
+        }
+    }
+}
+impl ElementTaskState {
+    fn publish_dialog_queue(
+        &mut self,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
+        request: &surgeist_dom::dialog::DomSourceDialogRequest,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomElementTaskRuntimeError> {
+        let source = self
+            .source
+            .clone()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let snapshot = lease.snapshot();
+        // This borrowed canonical slice is consumed only by preparation. No
+        // caller code or publication occurs while this original bank is lent.
+        let mut intake = {
+            let actual = lease
+                .dialog_task_prior_details(request, &snapshot)
+                .map_err(DomElementTaskRuntimeError::Dom)?;
+            self.plan(
+                &snapshot,
+                actual,
+                1,
+                &mut TaskAdmission::Source(lease),
+                cancel,
+            )?
+        };
+        let remaining_tasks = if matches!(
+            request.action(),
+            surgeist_html::elements::dialog::HtmlDialogAction::QueueToggle {
+                source: surgeist_html::elements::dialog::HtmlDialogEventSource::OperationSource,
+                ..
+            }
+        ) {
+            2
+        } else {
+            1
+        };
+        intake
+            .next
+            .checked_add(remaining_tasks)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let queue = lease
+            .dialog_task_queue_plan(request, &source, intake.next, cancel)
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        intake.next = intake
+            .next
+            .checked_add(1)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        if let Some(replacing) = queue.replacing() {
+            for index in 0..intake.plan.len() {
+                self.spend(1, cancel)?;
+                if intake.plan[index].value.id() == replacing {
+                    if !intake.plan[index].started {
+                        self.spend(
+                            u64::try_from(intake.plan.len() - index - 1)
+                                .map_err(|_| DomElementTaskRuntimeError::IdentityExhausted)?,
+                            cancel,
+                        )?;
+                        intake.plan.remove(index);
+                    }
+                    break;
+                }
+            }
+        }
+        if intake.plan.len() >= self.limits.tasks {
+            return Err(DomElementTaskRuntimeError::Admission);
+        }
+        intake.plan.push(Plan {
+            value: match queue.task() {
+                surgeist_dom::dialog::DomDialogTaskInfo::Toggle(info) => {
+                    DomElementTask::DialogToggle(info)
+                }
+                surgeist_dom::dialog::DomDialogTaskInfo::Close(info) => {
+                    DomElementTask::DialogClose(info)
+                }
+            },
+            started: false,
+        });
+        // Admit the complete infallible installation loop, including the new row.
+        let comparisons = intake
+            .plan
+            .len()
+            .checked_mul(self.tasks.len())
+            .and_then(|n| n.checked_add(intake.plan.len()))
+            .and_then(|n| n.checked_add(self.tasks.len()))
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        self.spend(
+            u64::try_from(comparisons)
+                .map_err(|_| DomElementTaskRuntimeError::IdentityExhausted)?,
+            cancel,
+        )?;
+        let commit = lease
+            .prepare_dialog_task_queue(request, &source, queue, cancel)
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        // Exclusive no-callback fence: all allocations, comparisons and work
+        // have already been admitted. The new append is the known final row.
+        self.install_intake(intake);
+        let (task, publication) = commit.publish();
+        let installed = self.tasks.last_mut().expect("prepared actual append");
+        installed.dialog = Some(task);
+        installed.publication = Some(publication);
+        Ok(self.tasks.len() - 1)
+    }
+    fn fixed_bytes() -> Result<usize, DomElementTaskRuntimeError> {
+        Self::header_bytes()?
+            .checked_add(size_of::<TaskPayloadCounterTarget>())
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)
+    }
+    fn header_bytes() -> Result<usize, DomElementTaskRuntimeError> {
+        size_of::<RefCell<Self>>()
+            .checked_add(size_of::<surgeist_dom::task::DomElementTaskSource>())
+            .and_then(|bytes| {
+                bytes.checked_add(surgeist_dom::task::DomElementTaskSource::binding_payload_bytes())
+            })
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)
+    }
+    fn spend(
+        &mut self,
+        amount: u64,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomElementTaskRuntimeError> {
+        self.spend_with_limit(amount, self.limits.work, cancel)
+    }
+    // Policy admission uses its proposed finite cap; execution uses the retained
+    // one. Both spend the SAME cumulative owner counter, including failed scans.
+    fn spend_with_limit(
+        &mut self,
+        amount: u64,
+        limit: u64,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomElementTaskRuntimeError> {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(DomElementTaskRuntimeError::Dom(DomError::Cancelled));
+        }
+        let next = self
+            .work
+            .checked_add(amount)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        if next > limit {
+            self.work = self.work.max(limit);
+            return Err(DomElementTaskRuntimeError::Admission);
+        }
+        self.work = next;
+        Ok(())
+    }
+    fn intake_bytes(
+        &self,
+        plans: usize,
+        trackers: usize,
+        output: usize,
+    ) -> Result<(), DomElementTaskRuntimeError> {
+        if self
+            .byte_total(plans, trackers, output)?
+            .checked_add(size_of::<Intake>())
+            .is_none_or(|bytes| bytes > self.limits.storage_bytes)
+        {
+            return Err(DomElementTaskRuntimeError::Admission);
+        }
+        Ok(())
+    }
+    fn byte_total(
+        &self,
+        plans: usize,
+        trackers: usize,
+        output: usize,
+    ) -> Result<usize, DomElementTaskRuntimeError> {
+        let banks = [
+            (self.tasks.capacity(), size_of::<Task>()),
+            (self.trackers.capacity(), size_of::<Tracker>()),
+            (plans, size_of::<Plan>()),
+            (trackers, size_of::<Tracker>()),
+            (output, size_of::<Task>()),
+        ];
+        let total = banks
+            .into_iter()
+            .try_fold(
+                Self::header_bytes()?
+                    .checked_add(self.payload_bytes.get())
+                    .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
+                |sum, (count, size)| count.checked_mul(size).and_then(|n| sum.checked_add(n)),
+            )
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        Ok(total)
+    }
+    fn publish_intake(&mut self, transfer: DomDetailsToggleTransfer, intake: Intake) -> usize {
+        let count = transfer.len();
+        let revision = transfer.source().revision();
+        self.install_intake(intake);
+        self.last_transfer = Some(revision);
+        drop(transfer);
+        count
+    }
+    fn install_intake(&mut self, intake: Intake) {
+        let Intake {
+            plan,
+            trackers,
+            mut output,
+            next,
+            output_retained,
+            trackers_retained,
+            scratch_retained,
+        } = intake;
+        // Complete storage, serial, comparison and move work was admitted before
+        // canonical take. Publication has no cancellation or fallible tail.
+        for item in plan {
+            if let Some(index) = self
+                .tasks
+                .iter()
+                .position(|e| e.plan().value.id() == item.value.id())
+            {
+                output.push(self.tasks.swap_remove(index));
+            } else {
+                output.push(Task {
+                    value: item.value,
+                    event: None,
+                    receipt: None,
+                    running: false,
+                    dialog: None,
+                    publication: None,
+                    task_operation: None,
+                    request: None,
+                    permit: None,
+                    event_publication: None,
+                    event_accepted: false,
+                    dialog_toggle_disposition: None,
+                });
+            }
+        }
+        self.tasks = output;
+        self.tasks_retained = Some(output_retained);
+        self.trackers = trackers;
+        self.trackers_retained = Some(trackers_retained);
+        drop(scratch_retained);
+        self.next = next;
+    }
+    fn plan(
+        &mut self,
+        source: &DomSnapshot,
+        intentions: &[DomDetailsToggleIntention],
+        additional: usize,
+        admission: &mut TaskAdmission<'_, '_>,
+        cancel: &AtomicBool,
+    ) -> Result<Intake, DomElementTaskRuntimeError> {
+        self.spend(1, cancel)?;
+        if source.owner() != self.dom {
+            return Err(DomElementTaskRuntimeError::Binding);
+        }
+        if self.last_transfer.is_some_and(|r| source.revision() < r) {
+            return Err(DomElementTaskRuntimeError::OutOfOrderTransfer);
+        }
+        // Each raw record appends at most one task/tracker. Admit the whole
+        // checked peak bound before allocating either empty scratch bank; no
+        // scratch bank grows/reallocates during planning. This avoids retaining
+        // an old allocation while allocating its replacement beyond admission.
+        let plan_capacity = self
+            .tasks
+            .len()
+            .checked_add(intentions.len())
+            .and_then(|n| n.checked_add(additional))
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?
+            .min(self.limits.tasks);
+        let tracker_capacity = self
+            .trackers
+            .len()
+            .checked_add(intentions.len())
+            .and_then(|n| n.checked_add(additional))
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?
+            .min(self.limits.tasks);
+        let source_owner = self
+            .source
+            .clone()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let formation_bytes = size_of::<Intake>()
+            .checked_add(
+                plan_capacity
+                    .checked_mul(size_of::<Plan>())
+                    .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
+            )
+            .and_then(|n| {
+                tracker_capacity
+                    .checked_mul(size_of::<Tracker>())
+                    .and_then(|bytes| n.checked_add(bytes))
+            })
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        self.intake_bytes(plan_capacity, tracker_capacity, 0)?;
+        let mut retained = admission.retain(&source_owner, formation_bytes, cancel)?;
+        let mut plan = Vec::new();
+        let mut trackers = Vec::new();
+        self.intake_bytes(plan_capacity, tracker_capacity, 0)?;
+        plan.try_reserve_exact(plan_capacity)
+            .map_err(|_| DomElementTaskRuntimeError::Admission)?;
+        self.intake_bytes(plan.capacity(), tracker_capacity, 0)?;
+        trackers
+            .try_reserve_exact(tracker_capacity)
+            .map_err(|_| DomElementTaskRuntimeError::Admission)?;
+        self.intake_bytes(plan.capacity(), trackers.capacity(), 0)?;
+        for index in 0..self.tasks.len() {
+            self.spend(1, cancel)?;
+            plan.push(self.tasks[index].plan());
+        }
+        for index in 0..self.trackers.len() {
+            self.spend(1, cancel)?;
+            trackers.push(self.trackers[index]);
+        }
+        let mut next = self.next;
+        for intention in intentions {
+            self.spend(1, cancel)?;
+            let mut tracked = None;
+            for (index, tracker) in trackers.iter().enumerate() {
+                self.spend(1, cancel)?;
+                if tracker.task.target() == intention.target() {
+                    tracked = Some(index);
+                    break;
+                }
+            }
+            let old = tracked.map(|index| trackers[index]);
+            if let Some(old) = old {
+                for (index, task) in plan.iter().enumerate() {
+                    self.spend(1, cancel)?;
+                    if task.value.id() == old.task {
+                        if !task.started {
+                            self.spend(
+                                u64::try_from(plan.len() - index - 1)
+                                    .map_err(|_| DomElementTaskRuntimeError::IdentityExhausted)?,
+                                cancel,
+                            )?;
+                            plan.remove(index);
+                        }
+                        break;
+                    }
+                }
+                let index = tracked.expect("tracked source association");
+                self.spend(
+                    u64::try_from(trackers.len() - index - 1)
+                        .map_err(|_| DomElementTaskRuntimeError::IdentityExhausted)?,
+                    cancel,
+                )?;
+                trackers.remove(index);
+            }
+            if plan.len() >= self.limits.tasks {
+                return Err(DomElementTaskRuntimeError::Admission);
+            }
+            let details = DomDetailsTask {
+                id: self
+                    .source
+                    .as_ref()
+                    .ok_or(DomElementTaskRuntimeError::Binding)?
+                    .task_id(next, intention.target())
+                    .map_err(DomElementTaskRuntimeError::Dom)?,
+                association: intention.queue_association(),
+                event: HtmlDetailsToggleEvent::queued(
+                    intention.old_state(),
+                    intention.new_state(),
+                    old.map(|t| t.old),
+                ),
+            };
+            let value = DomElementTask::DetailsToggle(details);
+            next = next
+                .checked_add(1)
+                .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+            plan.push(Plan {
+                value,
+                started: false,
+            });
+            trackers.push(Tracker {
+                task: value.id(),
+                old: details.event.old_state(),
+            });
+        }
+        let output_capacity = plan
+            .len()
+            .checked_add(additional)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let output_bytes = output_capacity
+            .checked_mul(size_of::<Task>())
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let mut output_retained = admission.retain(&source_owner, output_bytes, cancel)?;
+        let mut output = Vec::new();
+        self.intake_bytes(plan.capacity(), trackers.capacity(), output_capacity)?;
+        output
+            .try_reserve_exact(output_capacity)
+            .map_err(|_| DomElementTaskRuntimeError::Admission)?;
+        self.intake_bytes(plan.capacity(), trackers.capacity(), output.capacity())?;
+        let actual_scratch = size_of::<Intake>()
+            .checked_add(
+                plan.capacity()
+                    .checked_mul(size_of::<Plan>())
+                    .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
+            )
+            .and_then(|n| {
+                trackers
+                    .capacity()
+                    .checked_mul(size_of::<Tracker>())
+                    .and_then(|bytes| n.checked_add(bytes))
+            })
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        if actual_scratch > formation_bytes {
+            retained
+                .absorb(admission.retain(
+                    &source_owner,
+                    actual_scratch - formation_bytes,
+                    cancel,
+                )?)
+                .map_err(DomElementTaskRuntimeError::Dom)?;
+        }
+        let actual_output = output
+            .capacity()
+            .checked_mul(size_of::<Task>())
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        if actual_output > output_bytes {
+            output_retained
+                .absorb(admission.retain(&source_owner, actual_output - output_bytes, cancel)?)
+                .map_err(DomElementTaskRuntimeError::Dom)?;
+        }
+        let trackers_retained = retained
+            .split(trackers.capacity() * size_of::<Tracker>())
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        // Publication searches at most this many original entries per planned
+        // entry. Reserve that finite work before committing any ownership.
+        let comparisons = plan
+            .len()
+            .checked_mul(self.tasks.len())
+            .and_then(|n| n.checked_add(plan.len()))
+            .and_then(|n| n.checked_add(self.tasks.len()))
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        self.spend(
+            u64::try_from(comparisons)
+                .map_err(|_| DomElementTaskRuntimeError::IdentityExhausted)?,
+            cancel,
+        )?;
+        Ok(Intake {
+            plan,
+            trackers,
+            output,
+            next,
+            output_retained,
+            trackers_retained,
+            scratch_retained: retained,
+        })
+    }
+}
+enum PreparedEvent {
+    Destroyed,
+    Delivered,
+    Dispatch(
+        EventDispatchObservation,
+        Option<surgeist_dom::event::DomSourceEventDispatchGuard>,
+        DispatchFunding,
+    ),
+}
+impl ElementTaskState {
+    fn prepare_event<C>(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &DomEventDispatcher<C>,
+        value: DomElementTask,
+        native_task: Option<&NativeTaskRunning>,
+        limits: DomElementTaskRunLimits,
+        cancel: &AtomicBool,
+    ) -> Result<PreparedEvent, DomElementTaskRuntimeError> {
+        let index = self
+            .tasks
+            .iter()
+            .position(|task| task.value.id() == value.id())
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        if self.tasks[index].receipt.is_some() {
+            return Ok(PreparedEvent::Delivered);
+        }
+        if !self.tasks[index].has_started() {
+            match dom.snapshot().node(value.id().target()) {
+                Err(DomError::StaleNode) => return Ok(PreparedEvent::Destroyed),
+                Err(error) => return Err(DomElementTaskRuntimeError::Dom(error)),
+                Ok(node) => {
+                    let valid = match value {
+                        DomElementTask::DetailsToggle(_) => node.as_details().is_some(),
+                        DomElementTask::DialogToggle(_) | DomElementTask::DialogClose(_) => {
+                            node.as_dialog().is_some()
+                        }
+                    };
+                    if !valid {
+                        return Err(DomElementTaskRuntimeError::Binding);
+                    }
+                }
+            }
+        }
+        let source = self
+            .source
+            .clone()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        if matches!(
+            value,
+            DomElementTask::DialogToggle(_) | DomElementTask::DialogClose(_)
+        ) && self.tasks[index].request.is_none()
+        {
+            let mut lease = if let Some(operation) = self.tasks[index].task_operation {
+                source
+                    .resume_dialog_task(dom.raw_mut(), value.id(), operation, limits.source, cancel)
+                    .map_err(DomElementTaskRuntimeError::Dom)?
+            } else {
+                source
+                    .begin_dialog_task(
+                        dom.raw_mut(),
+                        &mut self.tasks[index].dialog,
+                        limits.source,
+                        cancel,
+                    )
+                    .map_err(DomElementTaskRuntimeError::Dom)?
+            };
+            self.tasks[index].task_operation = Some(lease.operation());
+            let request = match lease
+                .advance(cancel)
+                .map_err(DomElementTaskRuntimeError::Dom)?
+            {
+                surgeist_dom::source::DomSourceProgress::Request(
+                    surgeist_dom::source::DomSourceRequest::Event(request),
+                ) if matches!(
+                    request.kind(),
+                    surgeist_dom::event::DomSourceEventKind::Toggle
+                        | surgeist_dom::event::DomSourceEventKind::Close
+                ) =>
+                {
+                    request
+                }
+                _ => return Err(DomElementTaskRuntimeError::Binding),
+            };
+            self.tasks[index].request = Some(request);
+        }
+        if let Some(operation) = self.tasks[index].task_operation {
+            drop(
+                source
+                    .resume_dialog_task(dom.raw_mut(), value.id(), operation, limits.source, cancel)
+                    .map_err(DomElementTaskRuntimeError::Dom)?,
+            );
+        }
+        let (formation, fixed) = if let Some(event) = &self.tasks[index].event {
+            if let Some(error) = event.terminal_dispatch_error() {
+                return Err(DomElementTaskRuntimeError::Dispatch(
+                    dispatcher.qualify_terminal_error(dom.raw(), error),
+                ));
+            }
+            (event.dispatch_formation(limits.dispatch), 0)
+        } else {
+            (
+                EventInvocationOwner::fresh_dispatch_formation(limits.dispatch),
+                EventInvocationOwner::initial_payload_bytes()
+                    .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
+            )
+        };
+        let formation = formation.ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let extra = formation
+            .full
+            .checked_add(fixed)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let source_bytes = formation
+            .source
+            .checked_add(fixed)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        if self
+            .byte_total(0, 0, 0)?
+            .checked_add(extra)
+            .is_none_or(|bytes| bytes > self.limits.storage_bytes)
+        {
+            return Err(DomElementTaskRuntimeError::Admission);
+        }
+        let retained = source
+            .retain_payload(dom.raw_mut(), source_bytes, cancel)
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        let mut retained =
+            TaskPayload::new(self.payload_bytes.clone(), extra, source_bytes, retained)?;
+        let task = &mut self.tasks[index];
+        if task.event.is_none() {
+            let storage = self
+                .hosted
+                .as_ref()
+                .ok_or(DomElementTaskRuntimeError::Binding)?
+                .event_storage
+                .clone();
+            let backing =
+                crate::internal::dom_event::EventBodyCustody::element(&mut retained, storage)?;
+            let creation = match native_task {
+                Some(task) => task
+                    .sample_event_creation(dom, cancel)
+                    .map_err(DomElementTaskRuntimeError::Hosted)?,
+                None => Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            };
+            task.event = Some(match value {
+                DomElementTask::DetailsToggle(details) => NativeDomEvent::details_toggle(
+                    value.id().target(),
+                    details.event(),
+                    creation,
+                    backing,
+                ),
+                DomElementTask::DialogClose(_) => {
+                    NativeDomEvent::dialog_close(value.id().target(), creation, backing)
+                }
+                DomElementTask::DialogToggle(dialog) => NativeDomEvent::dialog_toggle(
+                    value.id().target(),
+                    dialog.old_state(),
+                    dialog.new_state(),
+                    creation,
+                    backing,
+                ),
+            });
+        }
+        let event = task
+            .event
+            .as_ref()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let scope = if let Some(request) = &task.request {
+            let Some(events) = self.events.as_ref() else {
+                return Err(DomElementTaskRuntimeError::Binding);
+            };
+            match events.task_dispatch_scope(dom, request, &mut task.permit, cancel) {
+                Ok(scope) => Some(scope),
+                Err(error) => {
+                    return Err(DomElementTaskRuntimeError::SourceEvent(error));
+                }
+            }
+        } else {
+            None
+        };
+        Ok(PreparedEvent::Dispatch(
+            event.dispatch_observation(),
+            scope,
+            DispatchFunding::element(retained),
+        ))
+    }
+    fn finish_dialog_event(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        id: DomElementTaskId,
+        limits: surgeist_dom::source::DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomElementTaskRuntimeError> {
+        let source = self
+            .source
+            .clone()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let events = self
+            .events
+            .clone()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let task = self
+            .tasks
+            .iter_mut()
+            .find(|task| task.value.id() == id)
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let Some(operation) = task.task_operation else {
+            return Ok(());
+        };
+        let request = task
+            .request
+            .as_ref()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        if !task.event_accepted {
+            if task.event_publication.is_none() {
+                task.event_publication = Some(
+                    events
+                        .seal_task_dispatch(dom, &mut task.permit, cancel)
+                        .map_err(DomElementTaskRuntimeError::SourceEvent)?,
+                );
+            }
+            let mut lease = source
+                .resume_dialog_task(dom.raw_mut(), id, operation, limits, cancel)
+                .map_err(DomElementTaskRuntimeError::Dom)?;
+            lease
+                .accept_source_event(request, &mut task.event_publication, cancel)
+                .map_err(DomElementTaskRuntimeError::Dom)?;
+            task.event_accepted = true;
+        }
+        let mut lease = source
+            .resume_dialog_task(dom.raw_mut(), id, operation, limits, cancel)
+            .map_err(DomElementTaskRuntimeError::Dom)?;
+        match lease
+            .advance(cancel)
+            .map_err(DomElementTaskRuntimeError::Dom)?
+        {
+            surgeist_dom::source::DomSourceProgress::Complete(completion) => {
+                let disposition = completion.dialog_toggle_disposition();
+                if completion.operation() != operation
+                    || match task.value {
+                        DomElementTask::DialogToggle(_) => disposition.is_none(),
+                        DomElementTask::DialogClose(_) => disposition.is_some(),
+                        DomElementTask::DetailsToggle(_) => true,
+                    }
+                {
+                    return Err(DomElementTaskRuntimeError::Binding);
+                }
+                // This original row retains both authentic outputs through the
+                // fallible native checkpoint. A retry cannot redispatch or infer
+                // cleanup from a later canonical snapshot.
+                task.dialog_toggle_disposition = disposition;
+                task.task_operation = None;
+                // The real canonical root has released its EventWork debit.
+                // Keep no private request backing across a later checkpoint
+                // refusal; actual event/path/receipt custody remains separate.
+                task.request = None;
+                Ok(())
+            }
+            _ => Err(DomElementTaskRuntimeError::Binding),
+        }
+    }
+}
+struct ElementTaskRun<'a> {
+    source: DomElementTaskSourceKind,
+    limits: DomElementTaskRunLimits,
+    cancel: &'a AtomicBool,
+    #[cfg(feature = "document-scripting")]
+    attachment: Option<AttachedTaskRequest<'a>>,
+}
+
+#[cfg(feature = "document-scripting")]
+pub(crate) struct AttachedTaskRequest<'a> {
+    pub(crate) target: DomHostedTopLevel,
+    pub(crate) expected: Option<DomElementTaskId>,
+    pub(crate) usage: &'a mut DispatchUsage,
+}
+
+pub(crate) enum ElementTaskRunOutcome {
+    Native(DomElementTaskProgress),
+    #[cfg(feature = "document-scripting")]
+    Guest(AttachedElementListener),
+}
+
+#[cfg(feature = "document-scripting")]
+pub(crate) struct AttachedElementListener {
+    pub(crate) id: DomElementTaskId,
+    pub(crate) request: Option<DomSourceEventRequest>,
+    pub(crate) invocation: DomEventHostInvocation,
+    _native_task: Option<NativeTaskRunning>,
+    _running: ElementTaskRunning,
+}
+
+impl DomElementTaskRuntime {
+    /// Execute or resume the selected source’s FIFO head through the actual shared dispatcher.
+    /// The source task and its actual event/receipt remain in their original
+    /// bank across caller work and unexpected unwind.
+    pub fn run_next<C: DomElementTaskEventContext>(
+        dom: &mut DomEventDom<'_>,
+        source: DomElementTaskSourceKind,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        limits: DomElementTaskRunLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomElementTaskProgress, DomElementTaskRuntimeError> {
+        let original = context.element_tasks().clone();
+        let outcome = original.run_next_inner(
+            dom,
+            dispatcher,
+            context,
+            ElementTaskRun {
+                source,
+                limits,
+                cancel,
+                #[cfg(feature = "document-scripting")]
+                attachment: None,
+            },
+            |context| context.element_tasks().clone(),
+        )?;
+        match outcome {
+            ElementTaskRunOutcome::Native(progress) => Ok(progress),
+            #[cfg(feature = "document-scripting")]
+            ElementTaskRunOutcome::Guest(_) => Err(DomElementTaskRuntimeError::Binding),
+        }
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn run_attached(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &mut DomEventDispatcher<()>,
+        (source, limits): (DomElementTaskSourceKind, DomElementTaskRunLimits),
+        attachment: AttachedTaskRequest<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<ElementTaskRunOutcome, DomElementTaskRuntimeError> {
+        self.run_next_inner(
+            dom,
+            dispatcher,
+            &mut (),
+            ElementTaskRun {
+                source,
+                limits,
+                cancel,
+                attachment: Some(attachment),
+            },
+            |_| self.clone(),
+        )
+    }
+
+    fn run_next_inner<C>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        run: ElementTaskRun<'_>,
+        current_owner: impl FnOnce(&mut C) -> Self,
+    ) -> Result<ElementTaskRunOutcome, DomElementTaskRuntimeError> {
+        let ElementTaskRun {
+            source,
+            limits,
+            cancel,
+            #[cfg(feature = "document-scripting")]
+            mut attachment,
+        } = run;
+        let state = self.state()?;
+        let (value, selected_index) = {
+            let mut owner = state.borrow_mut();
+            if owner.dom != dom.owner() {
+                return Err(DomElementTaskRuntimeError::Binding);
+            }
+            if cancel.load(Ordering::Relaxed) {
+                return Err(DomElementTaskRuntimeError::Dom(DomError::Cancelled));
+            }
+            let mut selected = None;
+            for index in 0..owner.tasks.len() {
+                owner.spend(1, cancel)?;
+                if owner.tasks[index].value.source() == source {
+                    selected = Some(index);
+                    break;
+                }
+            }
+            let Some(index) = selected else {
+                #[cfg(feature = "document-scripting")]
+                if attachment
+                    .as_ref()
+                    .is_some_and(|request| request.expected.is_some())
+                {
+                    return Err(DomElementTaskRuntimeError::Binding);
+                }
+                return Ok(ElementTaskRunOutcome::Native(DomElementTaskProgress::Empty));
+            };
+            let Some(head) = owner.tasks.get(index) else {
+                return Ok(ElementTaskRunOutcome::Native(DomElementTaskProgress::Empty));
+            };
+            let value = head.value;
+            #[cfg(feature = "document-scripting")]
+            if let Some(request) = &attachment
+                && (request
+                    .expected
+                    .is_some_and(|expected| expected != value.id())
+                    || value.queue_association().is_none_or(|association| {
+                        association.document() != request.target.document()
+                            || association.global() != request.target.global()
+                    }))
+            {
+                return Err(DomElementTaskRuntimeError::Binding);
+            }
+            if dom
+                .raw()
+                .pending_source_edit()
+                .is_some_and(|operation| head.task_operation != Some(operation.operation()))
+            {
+                return Err(DomElementTaskRuntimeError::Dom(
+                    DomError::SourceOperationPending,
+                ));
+            }
+            if head.running {
+                owner.spend(1, cancel)?;
+                return Ok(ElementTaskRunOutcome::Native(
+                    DomElementTaskProgress::Running(value.id()),
+                ));
+            }
+            let cleanup = owner
+                .limits
+                .tasks
+                .checked_mul(3)
+                .and_then(|n| n.checked_add(1))
+                .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+            owner.spend(
+                u64::try_from(cleanup)
+                    .map_err(|_| DomElementTaskRuntimeError::IdentityExhausted)?,
+                cancel,
+            )?;
+            owner.tasks[index].running = true;
+            (value, index)
+        };
+        let running = ElementTaskRunning {
+            state: state.clone(),
+            id: value.id(),
+        };
+        #[cfg(not(feature = "document-scripting"))]
+        let _running = running;
+        let mut native_task = if let Some(association) = value.queue_association() {
+            let (hosted, started) = {
+                let owner = state.borrow();
+                let head = owner
+                    .tasks
+                    .get(selected_index)
+                    .ok_or(DomElementTaskRuntimeError::Binding)?;
+                (
+                    owner
+                        .hosted
+                        .clone()
+                        .ok_or(DomElementTaskRuntimeError::Binding)?,
+                    head.has_started(),
+                )
+            };
+            let retired_target = !started
+                && matches!(
+                    dom.snapshot().node(value.id().target()),
+                    Err(DomError::StaleNode)
+                );
+            Some(
+                hosted
+                    .enter_element_task(
+                        dom,
+                        association,
+                        source,
+                        value.id(),
+                        retired_target,
+                        cancel,
+                    )
+                    .map_err(DomElementTaskRuntimeError::Hosted)?,
+            )
+        } else {
+            None
+        };
+        let result = (|| {
+            let prepared = {
+                let mut owner = state.borrow_mut();
+                owner.prepare_event(dom, dispatcher, value, native_task.as_ref(), limits, cancel)?
+            };
+            let (event, scope, funding) = match prepared {
+                PreparedEvent::Destroyed => return Ok(ElementTaskStep::Destroyed),
+                PreparedEvent::Delivered => return Ok(ElementTaskStep::Complete),
+                PreparedEvent::Dispatch(event, scope, funding) => (event, scope, funding),
+            };
+            #[cfg(not(feature = "document-scripting"))]
+            let _scope = scope;
+            let mut local_usage = DispatchUsage::default();
+            #[cfg(feature = "document-scripting")]
+            let (host, usage) = match &mut attachment {
+                Some(request) => (DispatchHost::AttachedNative, &mut *request.usage),
+                None => (DispatchHost::Unavailable, &mut local_usage),
+            };
+            #[cfg(not(feature = "document-scripting"))]
+            let (host, usage) = (DispatchHost::Unavailable, &mut local_usage);
+            let outcome = dispatcher
+                .deliver_with_usage(
+                    dom.raw_mut(),
+                    context,
+                    &event,
+                    DispatchCall {
+                        limits: limits.dispatch,
+                        cancel,
+                        host,
+                        funding,
+                    },
+                    usage,
+                )
+                .map_err(DomElementTaskRuntimeError::Dispatch)?;
+            let mut owner = state.borrow_mut();
+            let task = owner
+                .tasks
+                .iter_mut()
+                .find(|entry| entry.value.id() == value.id())
+                .ok_or(DomElementTaskRuntimeError::Binding)?;
+            match outcome {
+                DomEventDispatchOutcome::Complete(receipt) => {
+                    task.receipt = Some(receipt);
+                    Ok(ElementTaskStep::Complete)
+                }
+                #[cfg(feature = "document-scripting")]
+                DomEventDispatchOutcome::HostInvocation(invocation) => {
+                    if let Some(scope) = scope {
+                        invocation
+                            .retain_source_scope(scope)
+                            .map_err(DomElementTaskRuntimeError::Dispatch)?;
+                    }
+                    Ok(ElementTaskStep::Selected(invocation, task.request.clone()))
+                }
+                retained => Ok(ElementTaskStep::Retained(retained)),
+            }
+        })();
+        // This is arbitrary caller code too. The bank already owns a completed
+        // receipt if it unwinds, so subsequent execution cannot replay dispatch.
+        let displaced = !Weak::ptr_eq(&Rc::downgrade(&state), &current_owner(context).state);
+        match result? {
+            #[cfg(feature = "document-scripting")]
+            ElementTaskStep::Selected(invocation, request) => {
+                Ok(ElementTaskRunOutcome::Guest(AttachedElementListener {
+                    id: value.id(),
+                    request,
+                    invocation,
+                    _native_task: native_task,
+                    _running: running,
+                }))
+            }
+            ElementTaskStep::Complete | ElementTaskStep::Destroyed => {
+                if matches!(
+                    value,
+                    DomElementTask::DialogToggle(_) | DomElementTask::DialogClose(_)
+                ) && state
+                    .borrow()
+                    .tasks
+                    .iter()
+                    .any(|task| task.value.id() == value.id() && task.receipt.is_some())
+                {
+                    state.borrow_mut().finish_dialog_event(
+                        dom,
+                        value.id(),
+                        limits.source,
+                        cancel,
+                    )?;
+                }
+                if let Some(native_task) = &mut native_task {
+                    native_task
+                        .checkpoint(dom, cancel)
+                        .map_err(DomElementTaskRuntimeError::Hosted)?;
+                }
+                let mut owner = state.borrow_mut();
+                let index = owner
+                    .tasks
+                    .iter()
+                    .position(|entry| entry.value.id() == value.id())
+                    .ok_or(DomElementTaskRuntimeError::Binding)?;
+                let mut task = owner.tasks.remove(index);
+                if let Some(index) = owner
+                    .trackers
+                    .iter()
+                    .position(|tracker| tracker.task.target() == value.id().target())
+                {
+                    owner.trackers.remove(index);
+                }
+                if let Some(native_task) = &mut native_task {
+                    native_task.complete();
+                }
+                if let Some(mut receipt) = task.receipt.take() {
+                    // Ordinary caller output transfer ends product ownership of
+                    // diagnostic failure backing; shared Event/Path stay charged.
+                    receipt.release_producer_retention();
+                    Ok(ElementTaskRunOutcome::Native(
+                        DomElementTaskProgress::Complete {
+                            task: value,
+                            receipt,
+                            dialog_toggle_disposition: task.dialog_toggle_disposition,
+                            displaced_owner: displaced.then(|| Self {
+                                state: Rc::downgrade(&state),
+                            }),
+                        },
+                    ))
+                } else {
+                    Ok(ElementTaskRunOutcome::Native(
+                        DomElementTaskProgress::SkippedTargetDestroyed(value),
+                    ))
+                }
+            }
+            ElementTaskStep::Retained(dispatch) => Ok(ElementTaskRunOutcome::Native(
+                DomElementTaskProgress::Retained {
+                    task: value,
+                    dispatch,
+                    displaced_owner: displaced.then(|| Self {
+                        state: Rc::downgrade(&state),
+                    }),
+                },
+            )),
+        }
+    }
+}
+enum ElementTaskStep {
+    Complete,
+    Destroyed,
+    Retained(DomEventDispatchOutcome),
+    #[cfg(feature = "document-scripting")]
+    Selected(DomEventHostInvocation, Option<DomSourceEventRequest>),
+}
+struct ElementTaskRunning {
+    state: Rc<RefCell<ElementTaskState>>,
+    id: DomElementTaskId,
+}
+impl Drop for ElementTaskRunning {
+    fn drop(&mut self) {
+        // All private bank borrows end before caller work, or unwind before this
+        // guard. No caller can retain a RefMut, and cleanup invokes no user code.
+        let mut owner = self.state.borrow_mut();
+        if let Some(entry) = owner
+            .tasks
+            .iter_mut()
+            .find(|entry| entry.value.id() == self.id)
+        {
+            entry.running = false;
+        }
+    }
+}
+
+impl DomElementTaskRuntime {
+    // Destroy-document removes only this original Document's not-started task
+    // bodies. An adopted target's current Document is intentionally irrelevant.
+    pub(crate) fn cancel_document(
+        &self,
+        dom: &DomEventDom<'_>,
+        document: surgeist_dom::identity::DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomElementTaskRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        if state.dom != dom.owner() {
+            return Err(DomElementTaskRuntimeError::Binding);
+        }
+        let count = state.tasks.len();
+        // Every source association read, removal move and tracker comparison is
+        // admitted before any task is removed. Failure preserves the whole bank.
+        let upper = count
+            .checked_mul(
+                state
+                    .trackers
+                    .len()
+                    .checked_mul(2)
+                    .and_then(|trackers| count.checked_add(trackers))
+                    .and_then(|n| n.checked_add(3))
+                    .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
+            )
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        state.spend(
+            u64::try_from(upper).map_err(|_| DomElementTaskRuntimeError::IdentityExhausted)?,
+            cancel,
+        )?;
+        let mut retained_started = false;
+        let mut index = 0;
+        while index < state.tasks.len() {
+            let task = &state.tasks[index];
+            if task
+                .value
+                .queue_association()
+                .is_none_or(|association| association.document() != document)
+            {
+                index += 1;
+                continue;
+            }
+            let started = task.running || task.has_started();
+            if started {
+                retained_started = true;
+                index += 1;
+                continue;
+            }
+            let removed = state.tasks.remove(index);
+            if let Some(index) = state
+                .trackers
+                .iter()
+                .position(|tracker| tracker.task == removed.value.id())
+            {
+                state.trackers.remove(index);
+            }
+            // The private event owner can abandon an unstarted path, never
+            // manufacture a completion receipt or dispatch a cancellation event.
+            drop(removed);
+        }
+        Ok(retained_started)
+    }
+    pub(crate) fn has_task(
+        &self,
+        task: DomElementTaskId,
+    ) -> Result<bool, DomElementTaskRuntimeError> {
+        let owner = self.state()?;
+        let state = owner
+            .try_borrow()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        // This scalar query is used only after the destruction caller prepaid
+        // its complete task-source cleanup scan; it invokes no user code.
+        Ok(state.tasks.iter().any(|entry| entry.value.id() == task))
+    }
+}
+
+#[cfg(test)]
+mod tests;

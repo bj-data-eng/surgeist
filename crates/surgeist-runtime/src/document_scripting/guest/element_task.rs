@@ -1,8 +1,11 @@
 //! Guest delivery through the original native element task bank.
 
 use super::*;
-use crate::element_tasks::{AttachedTaskRequest, ElementTaskRunOutcome};
-use crate::{DomElementTaskProgress, DomElementTaskRunLimits};
+use crate::internal::element_tasks::{AttachedTaskRequest, ElementTaskRunOutcome};
+use crate::{
+    internal::element_tasks::DomElementTaskProgress,
+    internal::element_tasks::DomElementTaskRunLimits,
+};
 use surgeist_dom::task::DomElementTaskSourceKind;
 
 impl DocumentScriptHost {
@@ -30,7 +33,7 @@ impl DocumentScriptHost {
             .map_err(|_| DocumentScriptNativeError::Busy)?
             .element_task_execution();
         let mut expected = None;
-        let mut usage = crate::dom_event::DispatchUsage::default();
+        let mut usage = crate::internal::dom_event::DispatchUsage::default();
         loop {
             let result = self.with_native(|dom, _, _| {
                 let mut registry = events

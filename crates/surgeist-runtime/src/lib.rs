@@ -162,34 +162,11 @@
 //! These examples check the named public contracts. The root `surgeist`
 //! repository owns the complete generated API audit.
 
-mod command;
-mod coord;
-mod descriptor;
-mod diagnostic;
 #[cfg(feature = "document-scripting")]
 pub mod document_scripting;
-mod dom_dialog;
-mod dom_event;
-mod dom_host;
-mod dom_lifecycle;
-mod dom_source;
-mod dom_style;
-mod effect;
-mod element_tasks;
-mod event;
-mod ids;
-mod input;
-mod loop_;
-mod provenance;
-mod proxy;
-mod reducer;
-mod resource;
-mod runtime;
-mod service;
-mod snapshot;
-mod surface;
-mod task;
 pub mod trusted_types_csp;
+
+mod internal;
 
 #[cfg(test)]
 mod testing;
@@ -197,25 +174,27 @@ mod testing;
 #[cfg(test)]
 mod tests;
 
-pub use command::{AppCommand, CommandDescriptor, CommandName, NameError, PayloadTypeName};
-pub use coord::{
+pub use internal::command::{
+    AppCommand, CommandDescriptor, CommandName, NameError, PayloadTypeName,
+};
+pub use internal::coord::{
     AppScope, CoordinationState, ScopePathSegment, Subscription, SubscriptionAggregate,
     SubscriptionChange, SubscriptionError, SubscriptionErrorCode, SubscriptionKey,
     SubscriptionPriority, SubscriptionTarget, SubscriptionTargetKindId,
 };
-pub use descriptor::{
+pub use internal::descriptor::{
     App, AppDescriptor, AppManifest, ManifestValidationError, ManifestValidationErrorCode,
     ManifestValidationIssue, ResourceDescriptor, RootDescriptor, StartupWindow, TaskDescriptor,
     ValidatedAppManifest, WindowDescriptor, WindowDescriptorId,
 };
-pub use diagnostic::{
+pub use internal::diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
 };
-pub use dom_dialog::{
+pub use internal::dom_dialog::{
     DomSourceEventResource, DomSourceEventRuntimeError, DomSourceEventRuntimeLimits,
     DomSourceEventServiceLimits, DomSourceEventServiceProgress,
 };
-pub use dom_event::{
+pub use internal::dom_event::{
     DomEventCallback, DomEventCallbackError, DomEventComposedPath, DomEventConstructionError,
     DomEventCreationObservation, DomEventDispatch, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
@@ -225,20 +204,20 @@ pub use dom_event::{
     DomEventTimestampUnavailable, DomEventType, DomStandaloneEventTarget, DomToggleEvent,
     NativeDomEvent,
 };
-pub use dom_host::{
+pub use internal::dom_host::{
     RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,
 };
-pub use dom_lifecycle::{
+pub use internal::dom_lifecycle::{
     DomHostedDestructionQueued, DomHostedHistoryEntry, DomHostedRuntimeError,
     DomHostedRuntimeLimits, DomHostedSettings, DomHostedTaskKind, DomHostedTaskProgress,
     DomHostedTaskWait, DomHostedTopLevel, HostedRuntime,
 };
-pub use dom_source::{
+pub use internal::dom_source::{
     DomSelectCompletionProgress, DomSourceDriveError, DomSourceDriveProgress,
     DomSourceInlineStyleEdit, DomSourceRuntime, DomSourceRuntimeError, DomSourceServices,
     DomSourceUnavailable, DomSourceUrlObservationResult, DomSourceUrlService,
 };
-pub use dom_style::{
+pub use internal::dom_style::{
     DomConstructedSheet, DomConstructedSheetError, DomConstructedSheetOwnerInit, DomSession,
     DomSessionCreateError, DomSessionCreateFailure, DomSessionLimits, DomShutdownOutcome,
     DomShutdownReason, DomStyleDisabledObservation, DomStyleEventContext, DomStyleMetaError,
@@ -254,59 +233,59 @@ pub use dom_style::{
     DomStyleSheetSetCommit, DomStyleSheetSetObservation, DomStyleUnavailable,
     DomStyleWithdrawnSheetSetHistory,
 };
-pub use effect::{
+pub use internal::effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,
     EffectBatch, EffectDisposition, EffectKindId, EffectOutcome, InvalidateResourceEffect,
     LoadResourceEffect, PersistEffect, RedrawTarget, ReprioritizeTaskEffect, RequestRedrawEffect,
     RuntimeIntent, ServiceDiagnosticEffect, StartServiceEffect, StartTaskEffect, StopServiceEffect,
 };
-pub use element_tasks::{
+pub use internal::element_tasks::{
     DomDetailsTask, DomElementTask, DomElementTaskEventContext, DomElementTaskProgress,
     DomElementTaskRunLimits, DomElementTaskRuntime, DomElementTaskRuntimeError,
     DomElementTaskRuntimeLimits,
 };
-pub use event::{AppEvent, EventDescriptor, EventName};
-pub use ids::{
+pub use internal::event::{AppEvent, EventDescriptor, EventName};
+pub use internal::ids::{
     AppId, CalcId, CorrelationError, CorrelationId, CustomScopeId, ElementId, ExpressionId,
     ResourceGeneration, ResourceId, ResourceOperationId, RootId, ServiceId, SurfaceGeneration,
     SurfaceId, SurfaceInvalidationGeneration, ValueExprId, VersionError, WindowId,
 };
-pub use input::AppInput;
-pub use loop_::AppLoop;
-pub use provenance::{
+pub use internal::input::AppInput;
+pub use internal::loop_::AppLoop;
+pub use internal::provenance::{
     Correlation, InputOrigin, InputProvenance, InputSourceId, ProvenanceError, ProvenanceErrorCode,
     ServiceProvenance, SurfaceProvenance, TaskProvenance,
 };
-pub use proxy::{
+pub use internal::proxy::{
     AppProxy, AppProxyError, AppProxyErrorCode, ProxyDrainReport, ProxyInput, QueuePolicy,
     WakeBridge, WakeError,
 };
-pub use reducer::{Reducer, ReducerChange, ReducerCommit, ReducerFailure, ReducerResult};
-pub use resource::{
+pub use internal::reducer::{Reducer, ReducerChange, ReducerCommit, ReducerFailure, ReducerResult};
+pub use internal::resource::{
     FailureVisibility, Freshness, ResourceOperation, ResourceSnapshot, ResourceState,
     ResourceStateError, ResourceStateErrorCode, ResourceStatus,
 };
-pub use runtime::{
+pub use internal::runtime::{
     Runtime, RuntimeBudget, RuntimeDrainError, RuntimeDrainErrorCode, RuntimeDrainReport,
     RuntimeInputError, RuntimeLane, RuntimeQueueError, RuntimeQueueErrorCode, RuntimeQueuePolicy,
     ServiceInput, TaskInput, UiInput,
 };
-pub use service::{
+pub use internal::service::{
     MailboxOverflow, MailboxPolicy, MailboxPushOutcome, ServiceCommandName, ServiceCommandPayload,
     ServiceMailbox, ServiceRegistration, ServiceRestart, ServiceShutdown, ServiceStartup,
     ServiceStatus,
 };
-pub use snapshot::{
+pub use internal::snapshot::{
     AppSnapshot, SnapshotBinding, SnapshotBindingId, SnapshotEntry, SnapshotError,
     SnapshotErrorCode, SnapshotSourceType, SnapshotValue, StateVersion,
 };
-pub use surface::{
+pub use internal::surface::{
     ElementPhase, ElementRegistration, SurfaceElementRef, SurfaceElements, SurfaceError,
     SurfaceErrorCode, SurfaceInvalidation, SurfaceInvalidationKind, SurfaceLifecycle,
     SurfaceMutation, SurfacePoint, SurfaceRef, SurfaceRenderAck, SurfaceRenderFrame,
     SurfaceRenderState, SurfaceRoot, SurfaceRoute, SurfaceRouteStep, SurfaceSize, UiSurface,
 };
-pub use task::{
+pub use internal::task::{
     TaskIntentAttemptId, TaskIntentHandle, TaskIntentId, TaskIntentKey, TaskIntentName,
     TaskPriorityHint,
 };
@@ -317,4 +296,4 @@ pub const fn crate_name() -> &'static str {
     "surgeist-runtime"
 }
 
-pub use dom_lifecycle::DomSourceExecutionScope;
+pub use internal::dom_lifecycle::DomSourceExecutionScope;

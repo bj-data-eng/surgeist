@@ -5,11 +5,13 @@ pub(super) use node::install;
 
 use super::{super::character_data::copy_native_data, *};
 use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError,
     document_scripting::guest::{
         AttributeReply, PendingAttribute,
         reports::{ViolationBacking, ViolationOrigin, ViolationQueue, violation_error},
     },
+    internal::dom_source::DomSourceDriveError,
+    internal::dom_source::DomSourceDriveProgress,
+    internal::dom_source::DomSourceRuntimeError,
     trusted_types_csp::{AttributeMismatchProgress, AttributePolicies, AttributePolicyError},
 };
 use surgeist_bindings_js::{

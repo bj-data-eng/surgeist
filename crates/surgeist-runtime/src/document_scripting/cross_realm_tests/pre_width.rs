@@ -59,7 +59,7 @@ fn check_pre_script(tag: &str, script: &str) {
         DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
             "width {tag}: guest={:?}; source={:?}",
             failure.cause::<DocumentGuestEventError>(),
-            failure.cause::<crate::DomSourceDriveError>()
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>()
         ),
         _ => panic!("width {tag}: {error:?}"),
     });
@@ -388,9 +388,11 @@ fn pre_width_registered_realm_and_output_admission(tag: &str) {
                 panic!("one-short width Source output: {result:?}")
             };
             assert!(matches!(
-                failure.cause::<crate::DomSourceDriveError>(),
-                Some(crate::DomSourceDriveError::Source(
-                    crate::DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
+                failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                    crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                        DomError::SourceOutputLimit
+                    )
                 ))
             ));
             assert_eq!(after.stamp(), before.stamp());

@@ -1,7 +1,7 @@
 //! The standard SecurityPolicyViolationEvent interface on the attached Window.
 
 use super::*;
-use crate::dom_event::{AuthoredCspViolationInit, CspEventText};
+use crate::internal::dom_event::{AuthoredCspViolationInit, CspEventText};
 use surgeist_bindings_js::conversion::SecurityPolicyViolationEventDisposition;
 
 #[derive(Clone, Copy)]

@@ -1,7 +1,9 @@
 //! DOMImplementation identity associated with a canonical Document.
 
 use super::*;
-use crate::{DomSourceDriveError, DomSourceRuntimeError};
+use crate::{
+    internal::dom_source::DomSourceDriveError, internal::dom_source::DomSourceRuntimeError,
+};
 use character_data::copy_native_data;
 use surgeist_bindings_js::{
     NativeProjectionPrototype, ValueKind, conversion::declarations, dom_exception::DomExceptionName,

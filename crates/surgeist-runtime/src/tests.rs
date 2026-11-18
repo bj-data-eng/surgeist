@@ -1,7 +1,63 @@
-use super::testing::concurrency::{BlockingWakeBridge, ScenarioDeadline, run_in_child};
-use super::testing::{FakeWakeBridge, HeadlessHarness, PrototypeApp, PrototypeServiceEvent};
-use super::*;
-use crate::ids::CheckedNext;
+use crate::crate_name;
+use crate::internal::command::{CommandDescriptor, CommandName, NameError, PayloadTypeName};
+use crate::internal::coord::{
+    AppScope, CoordinationState, ScopePathSegment, Subscription, SubscriptionChange,
+    SubscriptionError, SubscriptionErrorCode, SubscriptionKey, SubscriptionPriority,
+    SubscriptionTarget,
+};
+use crate::internal::descriptor::{
+    App, AppDescriptor, AppManifest, ManifestValidationError, ManifestValidationErrorCode,
+    ManifestValidationIssue, ResourceDescriptor, RootDescriptor, StartupWindow, TaskDescriptor,
+    WindowDescriptor, WindowDescriptorId,
+};
+use crate::internal::diagnostic::{Diagnostic, DiagnosticCode, DiagnosticLog, QueueDiagnostic};
+use crate::internal::effect::{
+    AppEffect, AppEffectPayload, EffectBatch, EffectDisposition, EffectKindId, EffectOutcome,
+    RedrawTarget, RuntimeIntent,
+};
+use crate::internal::event::{EventDescriptor, EventName};
+use crate::internal::ids::CheckedNext;
+use crate::internal::ids::{
+    AppId, CorrelationError, CorrelationId, ElementId, ResourceId, RootId, ServiceId,
+    SurfaceGeneration, SurfaceId, SurfaceInvalidationGeneration, VersionError, WindowId,
+};
+use crate::internal::input::AppInput;
+use crate::internal::loop_::AppLoop;
+use crate::internal::provenance::{
+    Correlation, InputOrigin, InputProvenance, InputSourceId, ProvenanceError, ProvenanceErrorCode,
+};
+use crate::internal::proxy::{
+    AppProxy, AppProxyError, AppProxyErrorCode, ProxyInput, QueuePolicy, WakeBridge, WakeError,
+};
+use crate::internal::reducer::{Reducer, ReducerCommit, ReducerFailure, ReducerResult};
+use crate::internal::resource::{
+    FailureVisibility, Freshness, ResourceState, ResourceStateError, ResourceStatus,
+};
+use crate::internal::runtime::{
+    Runtime, RuntimeBudget, RuntimeDrainError, RuntimeDrainErrorCode, RuntimeDrainReport,
+    RuntimeInputError, RuntimeLane, RuntimeQueueError, RuntimeQueueErrorCode, RuntimeQueuePolicy,
+    ServiceInput, TaskInput, UiInput,
+};
+use crate::internal::service::{
+    MailboxOverflow, MailboxPolicy, MailboxPushOutcome, ServiceCommandName, ServiceCommandPayload,
+    ServiceMailbox, ServiceRegistration, ServiceRestart, ServiceShutdown, ServiceStartup,
+};
+use crate::internal::snapshot::{
+    SnapshotBinding, SnapshotBindingId, SnapshotEntry, SnapshotError, SnapshotErrorCode,
+    SnapshotSourceType, SnapshotValue, StateVersion,
+};
+use crate::internal::surface::{
+    ElementPhase, ElementRegistration, SurfaceElementRef, SurfaceError, SurfaceErrorCode,
+    SurfaceInvalidation, SurfaceInvalidationKind, SurfaceLifecycle, SurfacePoint, SurfaceRef,
+    SurfaceRenderFrame, SurfaceRenderState, SurfaceRoot, SurfaceRoute, SurfaceRouteStep,
+    SurfaceSize, UiSurface,
+};
+use crate::internal::task::{
+    TaskIntentAttemptId, TaskIntentHandle, TaskIntentId, TaskIntentKey, TaskIntentName,
+    TaskPriorityHint,
+};
+use crate::testing::concurrency::{BlockingWakeBridge, ScenarioDeadline, run_in_child};
+use crate::testing::{FakeWakeBridge, HeadlessHarness, PrototypeApp, PrototypeServiceEvent};
 use std::{
     error::Error,
     num::NonZeroUsize,

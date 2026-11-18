@@ -1,7 +1,7 @@
 //! Nested authored delivery inside the original selected native Source listener.
 
 use super::*;
-use crate::DomEventInit;
+use crate::internal::dom_event::DomEventInit;
 
 pub(super) fn verify_nested_authored_dispatch() {
     attached_source_listener_dispatches_an_authored_event();

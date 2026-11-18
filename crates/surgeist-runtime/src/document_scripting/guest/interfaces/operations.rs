@@ -215,7 +215,7 @@ fn project_path<'scope>(
     events: &GuestEvents,
     scope: &mut Scope<'scope>,
     receiver: &Value<'scope>,
-    path: crate::DomEventComposedPath,
+    path: crate::internal::dom_event::DomEventComposedPath,
 ) -> Result<Value<'scope>, DocumentGuestEventError> {
     let count = path.size_hint().1.ok_or(Error::RegistryConflict)?;
     if count == 0 {

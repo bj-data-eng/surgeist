@@ -185,9 +185,11 @@ pub(super) fn element_attribute_methods_observe_and_remove_canonical_attributes(
         panic!("attribute removal must respect the Source work limit: {result:?}");
     };
     assert!(matches!(
-        failure.cause::<crate::DomSourceDriveError>(),
-        Some(crate::DomSourceDriveError::Source(
-            crate::DomSourceRuntimeError::Dom(surgeist_dom::DomError::SourceWorkLimit { limit: 0 })
+        failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+        Some(crate::internal::dom_source::DomSourceDriveError::Source(
+            crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                surgeist_dom::DomError::SourceWorkLimit { limit: 0 }
+            )
         ))
     ));
     let after = host.snapshot().unwrap();

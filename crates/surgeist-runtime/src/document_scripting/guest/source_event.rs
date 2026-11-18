@@ -1,7 +1,10 @@
 //! Attached guest delivery through the original native Source dispatch.
 
 use super::*;
-use crate::{DomSourceEventServiceLimits, DomSourceEventServiceProgress};
+use crate::{
+    internal::dom_dialog::DomSourceEventServiceLimits,
+    internal::dom_dialog::DomSourceEventServiceProgress,
+};
 use surgeist_dom::event::DomSourceEventRequest;
 
 pub(super) struct ActiveAttachedEvent<'owner>(&'owner NativeOwner);
@@ -55,7 +58,7 @@ impl DocumentScriptHost {
             .guest_events()
             .map_err(DocumentScriptEventError::Guest)?;
         let owner = self.native.clone();
-        let mut usage = crate::dom_event::DispatchUsage::default();
+        let mut usage = crate::internal::dom_event::DispatchUsage::default();
         loop {
             let progress = self.with_native(|dom, _, source| {
                 super::super::source::validate_source_event(

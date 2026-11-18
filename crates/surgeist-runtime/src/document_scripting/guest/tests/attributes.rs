@@ -70,7 +70,7 @@ pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exac
         .resume_pending_attribute_write(&permit, limits)
         .unwrap()
         .unwrap();
-    let crate::DomSourceDriveProgress::Pending {
+    let crate::internal::dom_source::DomSourceDriveProgress::Pending {
         request: surgeist_dom::source::DomSourceRequest::AttributeAttachmentOutput(request),
         ..
     } = progress
@@ -85,7 +85,7 @@ pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exac
         .abandon_pending_attribute_write(limits)
         .unwrap()
         .unwrap();
-    let crate::DomSourceDriveProgress::Complete(done) = progress else {
+    let crate::internal::dom_source::DomSourceDriveProgress::Complete(done) = progress else {
         panic!("the stopped owner must complete the same accepted verification");
     };
     assert_eq!(done.operation(), status.operation());

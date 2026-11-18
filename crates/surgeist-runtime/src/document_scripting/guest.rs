@@ -21,7 +21,7 @@ mod source_event;
 mod wrapper;
 
 use super::*;
-use crate::dom_event::{
+use crate::internal::dom_event::{
     DispatchHost, DomEventCallback, DomEventCallbackError, DomEventComposedPath,
     DomEventConstructionError, DomEventCreationObservation, DomEventDispatch,
     DomEventDispatchError, DomEventDispatchLimits, DomEventDispatchOutcome,
@@ -73,7 +73,7 @@ pub enum DocumentGuestEventError {
     /// Event or standalone target construction refused.
     Construction(DomEventConstructionError),
     /// No original native Event timestamp is available.
-    Timestamp(crate::DomEventTimestampUnavailable),
+    Timestamp(crate::internal::dom_event::DomEventTimestampUnavailable),
     /// Native dispatch or registration refused.
     Dispatch(DomEventDispatchError),
     /// The associated engine Realm has no authority in this attachment.

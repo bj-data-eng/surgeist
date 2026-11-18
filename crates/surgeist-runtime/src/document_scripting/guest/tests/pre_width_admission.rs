@@ -287,9 +287,11 @@ pub(in crate::document_scripting) fn numeric_setters_admit_actual_temporary_work
         panic!("the numeric setter must consume its original Source allowance: {result:?}");
     };
     assert!(matches!(
-        failure.cause::<crate::DomSourceDriveError>(),
-        Some(crate::DomSourceDriveError::Source(
-            crate::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit { limit: 0 })
+        failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+        Some(crate::internal::dom_source::DomSourceDriveError::Source(
+            crate::internal::dom_source::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit {
+                limit: 0
+            })
         ))
     ));
     assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
@@ -342,7 +344,7 @@ pub(in crate::document_scripting) fn numeric_queries_preserve_cancellation_and_o
         failure.cause::<DocumentGuestEventError>(),
         Some(DocumentGuestEventError::Document(
             DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
-                crate::DomHostedRuntimeError::Cancelled
+                crate::internal::dom_lifecycle::DomHostedRuntimeError::Cancelled
             ))
         ))
     ));
@@ -388,14 +390,14 @@ fn numeric_queries_consume_the_enclosing_attribute_source() {
         .unwrap();
     let head = snapshot.node(html).unwrap().children()[0];
     let full = public_node_source_limits(2_000_000, 64);
-    let mut services = crate::DomSourceServices {
+    let mut services = crate::internal::dom_source::DomSourceServices {
         meta: None,
         execution_scope: None,
         style_policy: &mut |_| None,
         url: None,
     };
     let mut source = session.source_execution();
-    let crate::DomSourceDriveProgress::Pending {
+    let crate::internal::dom_source::DomSourceDriveProgress::Pending {
         request: surgeist_dom::source::DomSourceRequest::MetaCsp(request),
         ..
     } = source
@@ -423,7 +425,7 @@ fn numeric_queries_consume_the_enclosing_attribute_source() {
                 &cancel
             )
             .unwrap(),
-        crate::DomSourceDriveProgress::Complete(_)
+        crate::internal::dom_source::DomSourceDriveProgress::Complete(_)
     ));
     let mut host = attach_public_nodes(session, target, cancel.clone(), 200_000, SOURCE_WORK);
     let permit = host.permit().unwrap();

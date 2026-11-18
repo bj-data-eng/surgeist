@@ -11,10 +11,14 @@ use surgeist_dom::{
 };
 
 use crate::{
-    DomElementTaskRuntimeError, DomEventCallbackError, DomEventDispatchError,
-    DomEventDispatchOutcome, DomEventDispatcher, DomEventHostError, DomEventHostInvocation,
-    DomEventRegistrationId, DomSourceDriveProgress, DomSourceEventServiceLimits,
-    DomSourceEventServiceProgress, DomSourceRuntimeError, DomSourceServices,
+    internal::dom_dialog::DomSourceEventServiceLimits,
+    internal::dom_dialog::DomSourceEventServiceProgress,
+    internal::dom_event::DomEventCallbackError, internal::dom_event::DomEventDispatchError,
+    internal::dom_event::DomEventDispatchOutcome, internal::dom_event::DomEventDispatcher,
+    internal::dom_event::DomEventHostError, internal::dom_event::DomEventHostInvocation,
+    internal::dom_event::DomEventRegistrationId, internal::dom_source::DomSourceDriveProgress,
+    internal::dom_source::DomSourceRuntimeError, internal::dom_source::DomSourceServices,
+    internal::element_tasks::DomElementTaskRuntimeError,
 };
 
 #[derive(Clone)]
@@ -107,7 +111,7 @@ fn event_report_bytes() -> usize {
 }
 
 pub(super) fn validate_source_event(
-    dom: &crate::DomEventDom<'_>,
+    dom: &crate::internal::dom_event::DomEventDom<'_>,
     document: DocumentId,
     request: &DomSourceEventRequest,
     cancel: &AtomicBool,

@@ -136,9 +136,11 @@ fn element_toggle_output_is_admitted_before_publication() {
                 panic!("one-short output budget must refuse before the removal: {result:?}");
             };
             assert!(matches!(
-                failure.cause::<crate::DomSourceDriveError>(),
-                Some(crate::DomSourceDriveError::Source(
-                    crate::DomSourceRuntimeError::Dom(surgeist_dom::DomError::SourceOutputLimit)
+                failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+                Some(crate::internal::dom_source::DomSourceDriveError::Source(
+                    crate::internal::dom_source::DomSourceRuntimeError::Dom(
+                        surgeist_dom::DomError::SourceOutputLimit
+                    )
                 ))
             ));
             assert_eq!(after.stamp(), before.stamp());
