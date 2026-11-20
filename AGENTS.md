@@ -96,9 +96,10 @@ express CSS semantics and are not crate compatibility shims. Apply
 
 ## Subagent Models
 
-Use `gpt-6.1-sol` for every subagent and the coordinator, with no automatic
-alternatives. Follow `$pisct:coordination` for explicit launch settings,
-assignment-specific reasoning effort and review independence.
+Use a GPT-6.x Sol model for the coordinator and every subagent. Select an
+available Sol version explicitly for each subagent launch. Follow
+`$pisct:coordination` for assignment-specific reasoning effort and review
+independence.
 
 ## Generated Artifacts
 
