@@ -8,28 +8,13 @@ use std::{collections::BTreeSet, path::Path};
 use support::capture_authority::SpecializedProfile;
 use surgeist::render;
 
-#[path = "../../crates/surgeist-layout/tests/layout/browser_parity/atomic_paragraph_metrics.rs"]
-pub mod atomic_paragraph_metrics;
-#[path = "../../crates/surgeist-layout/tests/bin/surgeist-layout-generate/measurement/empty_line_br_font_band_profile.rs"]
-pub mod empty_line_br_font_band_profile;
-#[path = "../../crates/surgeist-layout/tests/layout/browser_parity/fixture_variants.rs"]
-pub mod fixture_variants;
-#[path = "../../crates/surgeist-layout/tests/layout/browser_parity/grid_alignment_reference.rs"]
-pub mod grid_alignment_reference;
-#[path = "../../crates/surgeist-layout/tests/bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]
-pub mod horizontal_br_font_band_profile;
-#[path = "../../crates/surgeist-layout/tests/bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
-pub mod original_subgrid_body_profile;
-#[path = "../../crates/surgeist-layout/tests/layout/browser_parity/pinned_font.rs"]
-pub mod pinned_font;
+#[path = "../../crates/surgeist-layout/tests/layout/browser_parity_modules.rs"]
+mod browser_parity_modules;
+pub use browser_parity_modules::*;
 #[path = "../../crates/surgeist-layout/tests/layout/browser_parity/portable_qualification.rs"]
 pub mod portable_qualification;
-#[path = "../../crates/surgeist-layout/tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage_profile.rs"]
-pub mod prepared_atomic_percentage_profile;
 #[path = "../../crates/surgeist-layout/tests/layout/browser_parity/support.rs"]
 pub mod support;
-#[path = "../../crates/surgeist-layout/tests/bin/surgeist-layout-generate/measurement/vertical_br_font_band_profile.rs"]
-pub mod vertical_br_font_band_profile;
 
 fn main() {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/surgeist-layout");
