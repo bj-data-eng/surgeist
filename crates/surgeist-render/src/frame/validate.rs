@@ -16,17 +16,13 @@ pub(super) fn validate_semantic_frame_graph(
     validate_backdrop_metadata(graph, account)?;
     validate_import_metadata(graph, account)?;
     validate_convolution_metadata(graph, account)?;
+    let pass_intents = validate_pass_intents(graph, account)?;
     validate_offset_metadata(graph, account)?;
     validate_gaussian_metadata(graph, account)?;
     validate_morphology_metadata(graph, account)?;
-    validate_displacement_metadata(graph, account)?;
+    validate_displacement_metadata(graph, account, pass_intents.has_displacement)?;
     validate_native_shadow_metadata(graph, account)?;
-    if any_node(&graph.passes, account, |pass| {
-        Ok(
-            matches!(pass.intent, SemanticPassIntent::VelloCapture { .. })
-                && !pass.reads.is_empty(),
-        )
-    })? {
+    if pass_intents.invalid_capture_read {
         return Err(GraphValidationError::InvalidCaptureResult);
     }
     Ok(())
@@ -263,31 +259,44 @@ fn validate_convolution_metadata(
             take(ConvolutionStage::Resolve, &[final_grid])?;
         }
     }
-    // Metadata cannot omit a pass with a convolution intent.
-    let mut count = 0_usize;
+    Ok(())
+}
+
+#[derive(Default)]
+struct PassIntentFacts {
+    has_displacement: bool,
+    invalid_capture_read: bool,
+}
+
+/// Prove native metadata cardinalities and collect intent facts in
+/// the same charged pass scan. The caller reports the capture error after the
+/// remaining metadata checks, preserving semantic error order.
+fn validate_pass_intents(
+    graph: &GpuRenderGraph,
+    account: &Account,
+) -> GraphBuildResult<PassIntentFacts> {
+    let mut convolution_count = 0_usize;
     let mut offset_count = 0_usize;
     let mut gaussian_count = 0_usize;
     let mut morphology_count = 0_usize;
     let mut shadow_count = 0_usize;
+    let mut facts = PassIntentFacts::default();
     for pass in &graph.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        if matches!(pass.intent, SemanticPassIntent::Convolution(_)) {
-            count += 1;
-        }
-        if pass.intent == SemanticPassIntent::NativeShadowMerge {
-            shadow_count += 1;
-        }
-        if matches!(pass.intent, SemanticPassIntent::Morphology(_)) {
-            morphology_count += 1;
-        }
-        if matches!(pass.intent, SemanticPassIntent::Gaussian(_)) {
-            gaussian_count += 1;
-        }
-        if matches!(pass.intent, SemanticPassIntent::Offset(_)) {
-            offset_count += 1;
+        match pass.intent {
+            SemanticPassIntent::Convolution(_) => convolution_count += 1,
+            SemanticPassIntent::NativeShadowMerge => shadow_count += 1,
+            SemanticPassIntent::Morphology(_) => morphology_count += 1,
+            SemanticPassIntent::Gaussian(_) => gaussian_count += 1,
+            SemanticPassIntent::Offset(_) => offset_count += 1,
+            SemanticPassIntent::Displacement(_) => facts.has_displacement = true,
+            SemanticPassIntent::VelloCapture { .. } if !pass.reads.is_empty() => {
+                facts.invalid_capture_read = true;
+            }
+            _ => {}
         }
     }
-    if count != graph.convolutions.len() {
+    if convolution_count != graph.convolutions.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
     if morphology_count != graph.morphologies.len() {
@@ -302,7 +311,7 @@ fn validate_convolution_metadata(
     if offset_count != graph.offsets.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
-    Ok(())
+    Ok(facts)
 }
 
 fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
@@ -1212,19 +1221,6 @@ fn count_nodes<T>(
     }
     Ok(count)
 }
-fn any_node<T>(
-    values: &[T],
-    account: &Account,
-    mut predicate: impl FnMut(&T) -> GraphBuildResult<bool>,
-) -> GraphBuildResult<bool> {
-    for value in values {
-        account.work(RenderWork::GraphNodeVisits, 1)?;
-        if predicate(value)? {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
 fn contains_edge<T: PartialEq>(
     values: &[T],
     needle: T,
@@ -1637,6 +1633,7 @@ fn validate_morphology_metadata(graph: &GpuRenderGraph, account: &Account) -> Gr
 fn validate_displacement_metadata(
     graph: &GpuRenderGraph,
     account: &Account,
+    has_displacement: bool,
 ) -> GraphBuildResult<()> {
     use super::DisplacementStage;
     let mut cursor = 0;
@@ -1725,7 +1722,11 @@ fn validate_displacement_metadata(
             cursor += 1;
         }
     }
-    // Reject orphaned pass intents rather than accepting an unauthenticated tag.
+    // The complete intent scan already proved absence. Otherwise reject
+    // orphaned pass intents, including when the metadata itself is empty.
+    if !has_displacement {
+        return Ok(());
+    }
     for pass in &graph.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         if let SemanticPassIntent::Displacement(_) = pass.intent {
