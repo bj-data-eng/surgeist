@@ -878,12 +878,13 @@ impl Inspection {
             else {
                 return violated(RETRY, "inspection-refusal-kind", format!("{cause:?}"));
             };
-            let Some(report) = context.last_attempt() else {
-                return violated(
-                    RETRY,
-                    "inspection-refusal-report-missing",
-                    "public inspection refusal published no accepted-prefix report",
-                );
+            let report = match crate::standalone_attempt(
+                &context,
+                RETRY,
+                "inspection-refusal-report-missing",
+            )? {
+                Ok(report) => report,
+                Err(outcome) => return Ok(outcome),
             };
             let prefix = report.usage();
             let exact_prefix = match self.refusal {
@@ -907,6 +908,7 @@ impl Inspection {
             };
             if scene != original
                 || report.status() != render::accounting::RenderAttemptStatus::Refused
+                || report.refusal() != Some(refusal)
                 || !exact_prefix
                 || prefix.work(work) != limit
                 || prefix.live(render::accounting::RenderResource::ScratchCpuBytes) != 0

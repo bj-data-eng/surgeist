@@ -74,3 +74,28 @@ pub(crate) fn product_observation<T, E: std::fmt::Display>(
         Err(cause) => Ok(Err(violated(property, discriminator, cause.to_string())?)),
     }
 }
+
+/// Observe a closed interval only when the operation published its terminal
+/// record and completed mandatory cleanup.
+fn standalone_attempt<'a>(
+    context: &'a surgeist_render::accounting::RenderAccountingContext,
+    property: &str,
+    missing: &str,
+) -> Result<std::result::Result<&'a surgeist_render::accounting::RenderAttemptReport, CaseOutcome>>
+{
+    let Some(report) = context.last_attempt() else {
+        return Ok(Err(violated(
+            property,
+            missing,
+            "operation did not publish a terminal accounting record",
+        )?));
+    };
+    if let Some(fault) = report.cleanup_fault() {
+        return Ok(Err(violated(
+            property,
+            "standalone-report-cleanup",
+            format!("mandatory accounting cleanup failed: {fault}"),
+        )?));
+    }
+    product_observation(report.attempt(), property, "standalone-report-extraction")
+}

@@ -4,16 +4,16 @@ use surgeist_font::{DecodeError, DecodeLimits, LimitKind};
 use surgeist_render::{
     Error, ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingError,
     accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
-    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderQuantity,
-    accounting::RenderRefusalReason, accounting::RenderResource, accounting::RenderWork,
-    geometry::Point, geometry::Rect, geometry::Size, image::Image, shape::PathElement,
-    text::FontData, text::GlyphNumericPhase, text::GlyphPreparationError, text::GlyphResource,
-    text::GlyphRunLimits, text::GlyphSynthesis, text::NormalizedCoordinate, text::PreparedGlyphRun,
-    text::TextGlyph, text::TextInstance, text::TextRunBoundsKind,
+    accounting::RenderAttemptReport, accounting::RenderAttemptStatus, accounting::RenderLimits,
+    accounting::RenderQuantity, accounting::RenderRefusalReason, accounting::RenderResource,
+    accounting::RenderWork, geometry::Point, geometry::Rect, geometry::Size, image::Image,
+    shape::PathElement, text::FontData, text::GlyphNumericPhase, text::GlyphPreparationError,
+    text::GlyphResource, text::GlyphRunLimits, text::GlyphSynthesis, text::NormalizedCoordinate,
+    text::PreparedGlyphRun, text::TextGlyph, text::TextInstance, text::TextRunBoundsKind,
 };
 
 use super::*;
-use crate::{evaluated, product_observation, rejected, violated};
+use crate::{evaluated, product_observation, rejected, standalone_attempt, violated};
 
 fn decode_limits(f: &FontCase) -> DecodeLimits {
     let [a, b, c, d, e, f, g] = f.limits.map(|v| v as usize);
@@ -276,7 +276,11 @@ fn glyph(g: &GlyphCase) -> Result<CaseOutcome> {
             )? {
                 return Ok(outcome);
             }
-            if !report_clean(&context, RenderAttemptStatus::Succeeded) {
+            let report = match standalone_attempt(&context, GLYPH, "preparation-report")? {
+                Ok(report) => report,
+                Err(outcome) => return Ok(outcome),
+            };
+            if report.status() != RenderAttemptStatus::Succeeded || !glyph_report_clean(report) {
                 return violated(
                     GLYPH,
                     "preparation-report",
@@ -316,12 +320,13 @@ fn glyph(g: &GlyphCase) -> Result<CaseOutcome> {
                     format!("unexpected Ahem preparation refusal: {e}"),
                 );
             }
-            if context.last_attempt().is_none_or(|r| {
-                r.kind() != RenderAttemptKind::GlyphRun
-                    || r.usage().work(RenderWork::PreparedTransferredBytes) != 0
-                    || r.usage().live(RenderResource::ScratchCpuBytes) != 0
-                    || r.usage().live(RenderResource::RetainedCpuBytes) != 0
-            }) {
+            let report = match standalone_attempt(&context, GLYPH, "failed-preparation-custody")? {
+                Ok(report) => report,
+                Err(outcome) => return Ok(outcome),
+            };
+            if !glyph_report_clean(report)
+                || report.usage().work(RenderWork::PreparedTransferredBytes) != 0
+            {
                 return violated(
                     GLYPH,
                     "failed-preparation-custody",
@@ -458,13 +463,11 @@ fn expected_outline(
     Ok(Ok((path, bounds)))
 }
 
-fn report_clean(context: &RenderAccountingContext, status: RenderAttemptStatus) -> bool {
-    context.last_attempt().is_some_and(|r| {
-        r.kind() == RenderAttemptKind::GlyphRun
-            && r.status() == status
-            && r.usage().live(RenderResource::ScratchCpuBytes) == 0
-            && r.usage().live(RenderResource::RetainedCpuBytes) == 0
-    })
+fn glyph_report_clean(report: &RenderAttemptReport) -> bool {
+    let usage = report.usage();
+    report.kind() == RenderAttemptKind::GlyphRun
+        && usage.live(RenderResource::ScratchCpuBytes) == 0
+        && usage.live(RenderResource::RetainedCpuBytes) == 0
 }
 
 fn work_options(
@@ -548,11 +551,15 @@ fn retry(
             if r.quantity()==RenderQuantity::Work(RenderWork::PathElementsEmitted)
                 && matches!(r.reason(),RenderRefusalReason::Limit {limit} if limit==refused_work)),
     };
+    let report = match standalone_attempt(&context, RETRY, "resource-refusal-report")? {
+        Ok(report) => report,
+        Err(outcome) => return Ok(outcome),
+    };
     if !typed
-        || !report_clean(&context, RenderAttemptStatus::Refused)
-        || context.last_attempt().is_none_or(|r| {
-            r.usage().work(RenderWork::PreparedTransferredBytes) != 0 || r.refusal().is_none()
-        })
+        || report.status() != RenderAttemptStatus::Refused
+        || !glyph_report_clean(report)
+        || report.usage().work(RenderWork::PreparedTransferredBytes) != 0
+        || report.refusal().is_none()
     {
         return violated(
             RETRY,
@@ -595,7 +602,12 @@ fn retry(
     )? {
         return Ok(outcome);
     }
-    if !report_clean(&context, RenderAttemptStatus::Succeeded)
+    let report = match standalone_attempt(&context, RETRY, "raised-retry-publication")? {
+        Ok(report) => report,
+        Err(outcome) => return Ok(outcome),
+    };
+    if report.status() != RenderAttemptStatus::Succeeded
+        || !glyph_report_clean(report)
         || retried.is_same_preparation(&previous)
         || previous.path_elements().collect::<Vec<_>>()
             != retried.path_elements().collect::<Vec<_>>()
