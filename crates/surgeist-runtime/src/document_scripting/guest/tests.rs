@@ -1759,8 +1759,9 @@ fn enable_public_nodes(
             registry,
             DocumentGuestEventLimits {
                 // Semantic fixtures fund installed interfaces and their actual
-                // root, registration and callback-frame preparation bodies.
-                storage_bytes: 512 * 1024,
+                // root, registration and callback-frame preparation bodies,
+                // including the OptGroup accessors in both realms.
+                storage_bytes: 516 * 1024,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),

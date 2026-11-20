@@ -601,6 +601,18 @@
       ]
     },
     {
+      "id": "HTMLOptGroupElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmloptgroupelement",
+      "block": 0,
+      "sha256": "c2e728b36cbd1f298f2bbf24fc9046207c944a39dd21884baa460f72232d78ea",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmloptgroupelement",
+      "entries": [
+        "HTMLOptGroupElement"
+      ]
+    },
+    {
       "id": "HTMLDetailsElement.source",
       "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
       "anchor": "htmldetailselement",
@@ -5049,6 +5061,66 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLOptGroupElement",
+      "kind": "interface",
+      "name": "HTMLOptGroupElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLOptGroupElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLOptGroupElement.disabled"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "label",
+          "readonly": false,
+          "id": "HTMLOptGroupElement.label"
+        }
+      ],
+      "inherits": "HTMLElement"
     },
     {
       "id": "HTMLDetailsElement",
@@ -10229,6 +10301,71 @@
     "HTMLLIElement.obsolete.type/set": {
       "kind": "native",
       "adapter": "htmllielement.type.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOptGroupElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmloptgroupelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOptGroupElement.disabled/get": {
+      "kind": "native",
+      "adapter": "htmloptgroupelement.disabled.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOptGroupElement.disabled/set": {
+      "kind": "native",
+      "adapter": "htmloptgroupelement.disabled.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOptGroupElement.label/get": {
+      "kind": "native",
+      "adapter": "htmloptgroupelement.label.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOptGroupElement.label/set": {
+      "kind": "native",
+      "adapter": "htmloptgroupelement.label.set",
       "producers": [
         {
           "owner": "surgeist-dom",

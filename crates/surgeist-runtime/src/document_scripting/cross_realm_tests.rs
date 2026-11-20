@@ -28,6 +28,8 @@ mod node_namespace;
 mod node_position;
 mod node_relations;
 mod normalize;
+mod optgroup_reflections;
+mod optgroup_selection;
 mod param;
 mod pre_width;
 mod processing_instruction;
@@ -410,6 +412,12 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     document_legacy_entrypoints::document_legacy_entrypoints_preserve_tree_and_constructor_identity(
     );
     document_legacy_entrypoints::document_legacy_entrypoints_preserve_native_qualification_and_realm_contracts();
+    optgroup_reflections::optgroup_members_reflect_their_own_native_attributes();
+    optgroup_reflections::optgroup_bindings_preserve_brands_and_reactions();
+    optgroup_reflections::optgroup_bindings_follow_realm_adoption_and_retirement();
+    optgroup_selection::optgroup_disabled_presence_changes_reset_selection_and_selectedcontent();
+    optgroup_selection::optgroup_disabled_resets_through_foreign_wrappers_but_stops_at_html_barriers();
+    optgroup_selection::optgroup_disabled_keeps_the_first_select_work_refusal();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();
     pre_width::pre_width_family_preserves_native_and_web_idl_contracts();
