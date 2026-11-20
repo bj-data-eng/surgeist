@@ -385,6 +385,9 @@ reflects the raw type attribute as a DOMString through that adapter.
 HTMLDetailsElement reflects name and open through the same Source adapter,
 including native exclusive group effects. Deferred toggle events use explicit
 native task ingestion and the attached element-task delivery entry.
+HTMLOptGroupElement reflects its own disabled attribute as presence and its
+label attribute as a raw DOMString. Adding or removing disabled reaches the
+native nearest-select and selectedness reset rules through the Source adapter.
 HTMLOListElement reflects reversed and compact as attribute presence, type as a
 raw DOMString, and start as a signed long with default one for missing, invalid
 or out-of-range content. The start getter remains independent of a reversed

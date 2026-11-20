@@ -33,6 +33,7 @@ mod li;
 mod list_compact;
 mod lists;
 mod meta;
+mod optgroup;
 mod ordinary;
 mod param;
 mod parent_node;
