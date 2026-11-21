@@ -1825,6 +1825,8 @@ pub enum PrimitiveOperation {
     GpuGaussianFilterExecution,
     /// Executing admitted finite native diffuse lighting on the GPU.
     GpuDiffuseLightingFilterExecution,
+    /// Executing admitted finite native specular lighting on the GPU.
+    GpuSpecularLightingFilterExecution,
     /// Executing admitted native straight-byte map displacement on the GPU.
     GpuDisplacementFilterExecution,
     /// Executing admitted rectangular component erosion and dilation on the GPU.
@@ -1915,6 +1917,7 @@ impl PrimitiveOperation {
             Self::GpuOffsetFilterExecution => "GPU offset filter execution",
             Self::GpuGaussianFilterExecution => "GPU Gaussian filter execution",
             Self::GpuDiffuseLightingFilterExecution => "GPU diffuse lighting filter execution",
+            Self::GpuSpecularLightingFilterExecution => "GPU specular lighting filter execution",
             Self::GpuMorphologyFilterExecution => "GPU morphology filter execution",
             Self::GpuDisplacementFilterExecution => "GPU displacement filter execution",
             Self::GpuNativeDropShadowFilterExecution => "GPU native drop-shadow filter execution",

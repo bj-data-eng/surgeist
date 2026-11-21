@@ -62,6 +62,8 @@ mod platform;
 mod porter_duff;
 mod repeating_gradients;
 mod separable;
+#[cfg(not(target_arch = "wasm32"))]
+mod specular_lighting;
 mod style;
 mod support;
 mod surface;

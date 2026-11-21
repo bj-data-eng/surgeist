@@ -739,6 +739,7 @@ pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_gauss
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_morphology_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_native_drop_shadow_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_offset_filter_execution(self) -> bool
+pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_specular_lighting_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_layer_filters(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_ordered_filter_lists(self) -> bool
 pub struct surgeist_render::capability::GeometryTargetCapabilities
@@ -940,6 +941,7 @@ pub surgeist_render::diagnostic::PrimitiveOperation::GpuGaussianFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuMorphologyFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuNativeDropShadowFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuOffsetFilterExecution
+pub surgeist_render::diagnostic::PrimitiveOperation::GpuSpecularLightingFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::ImageColorProfileConversion
 pub surgeist_render::diagnostic::PrimitiveOperation::ImageOrientationConversion
 pub surgeist_render::diagnostic::PrimitiveOperation::ImagePassExecution
@@ -1307,9 +1309,11 @@ pub surgeist_render::lighting::LightingParameter::KernelUnitLengthY
 pub surgeist_render::lighting::LightingParameter::LightX
 pub surgeist_render::lighting::LightingParameter::LightY
 pub surgeist_render::lighting::LightingParameter::LightZ
+pub surgeist_render::lighting::LightingParameter::MaterialExponent
 pub surgeist_render::lighting::LightingParameter::PointsAtX
 pub surgeist_render::lighting::LightingParameter::PointsAtY
 pub surgeist_render::lighting::LightingParameter::PointsAtZ
+pub surgeist_render::lighting::LightingParameter::SpecularConstant
 pub surgeist_render::lighting::LightingParameter::SpotExponent
 pub surgeist_render::lighting::LightingParameter::SurfaceScale
 #[non_exhaustive] pub enum surgeist_render::lighting::LightingPreparationError
@@ -1338,6 +1342,17 @@ pub struct surgeist_render::lighting::LightingSource
 impl surgeist_render::lighting::LightingSource
 pub const fn surgeist_render::lighting::LightingSource::finite(scene: surgeist_render::scene::Scene, domains: surgeist_render::effect::FilterDomains) -> Self
 pub struct surgeist_render::lighting::PreparedLighting
+pub struct surgeist_render::lighting::SpecularLightingInput
+impl surgeist_render::lighting::SpecularLightingInput
+pub const fn surgeist_render::lighting::SpecularLightingInput::new() -> Self
+pub const fn surgeist_render::lighting::SpecularLightingInput::with_kernel_unit_length(self, length: f64) -> Self
+pub const fn surgeist_render::lighting::SpecularLightingInput::with_kernel_unit_lengths(self, x: f64, y: f64) -> Self
+pub const fn surgeist_render::lighting::SpecularLightingInput::with_lighting_color(self, color: surgeist_render::paint::Color) -> Self
+pub const fn surgeist_render::lighting::SpecularLightingInput::with_specular_constant(self, constant: f64) -> Self
+pub const fn surgeist_render::lighting::SpecularLightingInput::with_specular_exponent(self, exponent: f64) -> Self
+pub const fn surgeist_render::lighting::SpecularLightingInput::with_surface_scale(self, scale: f64) -> Self
+impl core::default::Default for surgeist_render::lighting::SpecularLightingInput
+pub fn surgeist_render::lighting::SpecularLightingInput::default() -> Self
 pub struct surgeist_render::lighting::SpotLightInput
 impl surgeist_render::lighting::SpotLightInput
 pub const fn surgeist_render::lighting::SpotLightInput::new() -> Self
@@ -1348,6 +1363,7 @@ pub const fn surgeist_render::lighting::SpotLightInput::with_specular_exponent(s
 impl core::default::Default for surgeist_render::lighting::SpotLightInput
 pub fn surgeist_render::lighting::SpotLightInput::default() -> Self
 pub fn surgeist_render::lighting::prepare_lighting(input: surgeist_render::lighting::DiffuseLightingInput, light: surgeist_render::lighting::LightingLightInput, color_space: surgeist_render::effect::FilterColorSpace, accounting: &mut surgeist_render::accounting::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::lighting::PreparedLighting>
+pub fn surgeist_render::lighting::prepare_specular_lighting(input: surgeist_render::lighting::SpecularLightingInput, light: surgeist_render::lighting::LightingLightInput, color_space: surgeist_render::effect::FilterColorSpace, accounting: &mut surgeist_render::accounting::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::lighting::PreparedLighting>
 pub mod surgeist_render::morphology
 pub enum surgeist_render::morphology::MorphologyNumericPhase
 pub surgeist_render::morphology::MorphologyNumericPhase::EndpointMapping

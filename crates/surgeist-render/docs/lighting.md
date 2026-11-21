@@ -1,8 +1,9 @@
-# Native diffuse lighting
+# Native lighting
 
-`prepare_lighting` takes a resolved diffuse material, exactly one distant,
-point, or spot light, and a filter working color space. It validates the
-reached inputs and returns a reusable `PreparedLighting`. A
+`prepare_lighting` takes a resolved diffuse material, and
+`prepare_specular_lighting` takes a resolved specular material. Both take
+exactly one distant, point, or spot light and a filter working color space.
+They validate the reached inputs and return a reusable `PreparedLighting`. A
 `LightingSource::finite` owns the bump-map Scene and its `FilterDomains`.
 `Scene::lighting_layer` consumes that source and installs lighting as the
 layer's foreground effect.
@@ -44,23 +45,35 @@ An axis with two cells uses a one-sided derivative at both ends.
 
 Lighting uses the chosen working color space, with the straight light-color
 RGB independent of its alpha. Subnormal working components count as zero
-before applying light strength. The operation clamps the computed RGB
-components individually and gives the diffuse result opaque alpha. A point at
-the surface sample and a spot with coincident source and target contribute
-zero incident light. A zero-degree cone requires the represented direction of
-the sample to coincide with the spot axis. A positive cone ramps inward from
-its cutoff before applying full focus strength.
+before applying light strength. Both materials clamp the computed RGB
+components individually.
+
+Diffuse lighting uses the surface normal and incident light direction and
+produces opaque alpha. Specular lighting uses the halfway direction between
+the light and the viewer on the positive Z axis. Its material exponent defaults
+to one, and native preparation clamps finite values to the range 1–128. The
+specular alpha is the maximum of the clamped RGB components at the shading
+stage. The shader writes those components directly as the premultiplied
+highlight, so the result retains the light color at low coverage.
+
+A point at the surface sample and a spot with coincident source and target
+contribute zero incident light. An exactly antipodal light has no specular
+halfway direction and contributes transparent black. A zero-degree cone
+requires the represented direction of the sample to coincide with the spot
+axis. A positive cone ramps inward from its cutoff before applying full focus
+strength.
 
 Render reconstructs the lit result and applies coverage of the intersection of
 the filter and primitive result domains once. The complete outer layer
 transform then places that result, with the layer's clip, mask, opacity, and
 composition handled by the layer compositor.
 
-The equations and ordinary Sobel edge weights follow [Filter Effects Level
-1](https://drafts.csswg.org/filter-effects-1/#feDiffuseLightingElement).
-The finite grid phase, tiny-axis extension, and cone taper define Surgeist's
-native behavior for resolved inputs. Document adapters resolve syntax, units,
-the selected light child, and style before calling Render.
+The material equations and ordinary Sobel edge weights follow Filter Effects
+Level 1. The finite grid phase, tiny-axis extension, cone taper, and exponent
+range define Surgeist's native behavior for resolved inputs. Document adapters
+resolve syntax, units, the selected light child, and style before calling
+Render. [Diffuse lighting](https://drafts.csswg.org/filter-effects-1/#feDiffuseLightingElement)
+and [specular lighting](https://drafts.csswg.org/filter-effects-1/#feSpecularLightingElement).
 
 ## Errors and accounting
 

@@ -13,7 +13,7 @@ struct Parameters {
     shade_to_bump: vec4<i32>,
     light_anchor: vec2<i32>,
     height_anchor: f32,
-    anchor_padding: u32,
+    material_exponent: f32,
     reserved: array<vec4<u32>, 4>,
 }
 
@@ -160,10 +160,31 @@ fn spot_strength(light: vec3<f32>, direction: vec3<f32>) -> f32 {
     return focus;
 }
 
-fn diffuse(pixel: vec2<i32>, alpha: f32, normal: vec3<f32>) -> vec4<f32> {
+fn material_response(normal: vec3<f32>, light: vec3<f32>) -> f32 {
+    if parameters.material_exponent == 0.0 {
+        return clamp(dot(normal, light), 0.0, 1.0);
+    }
+    if all(light == vec3<f32>(0.0)) { return 0.0; }
+    var halfway_vector = vec3<f32>(light.xy, 1.0 + light.z);
+    if light.z < 0.0 {
+        // Use 1 + Lz = |Lxy|² / (1 - Lz), and scale the entire halfway
+        // vector by the dominant horizontal component before squaring.
+        // This preserves a near-antipodal Z through cancellation and underflow.
+        let scale = max(abs(light.x), abs(light.y));
+        if scale < MIN_ALPHA { return 0.0; }
+        let horizontal = light.xy / scale;
+        let z = scale * (dot(horizontal, horizontal) / (1.0 - light.z));
+        halfway_vector = vec3<f32>(horizontal, z);
+    }
+    let halfway = unit_vector(halfway_vector);
+    let alignment = clamp(dot(normal, halfway), 0.0, 1.0);
+    return clamp(pow(alignment, parameters.material_exponent), 0.0, 1.0);
+}
+
+fn shade(pixel: vec2<i32>, alpha: f32, normal: vec3<f32>) -> vec4<f32> {
     let direction = scaled_direction(incident_vector(pixel, alpha));
     let light = normalize_scaled(direction);
-    let angle = effective_strength(clamp(dot(normal, light), 0.0, 1.0));
+    let angle = effective_strength(material_response(normal, light));
     let angular_strength = effective_strength(angle * spot_strength(light, direction));
     let strength = effective_strength(parameters.surface_material.w * angular_strength);
     var working_rgb = parameters.light_color.rgb;
@@ -172,7 +193,8 @@ fn diffuse(pixel: vec2<i32>, alpha: f32, normal: vec3<f32>) -> vec4<f32> {
     }
     working_rgb = select(vec3<f32>(0.0), working_rgb, working_rgb >= vec3<f32>(MIN_ALPHA));
     let rgb = clamp(strength * working_rgb, vec3<f32>(0.0), vec3<f32>(1.0));
-    return vec4<f32>(rgb, 1.0);
+    let output_alpha = select(1.0, max(max(rgb.r, rgb.g), rgb.b), parameters.material_exponent > 0.0);
+    return vec4<f32>(rgb, output_alpha);
 }
 
 @fragment
@@ -209,12 +231,12 @@ fn shade_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> 
     );
     let dx = scaled_gradient(rows, x, y, parameters.surface_material.x);
     let dy = scaled_gradient(columns, y, x, parameters.surface_material.y);
-    return diffuse(pixel, middle.y, unit_vector(vec3<f32>(-dx, -dy, 1.0)));
+    return shade(pixel, middle.y, unit_vector(vec3<f32>(-dx, -dy, 1.0)));
 }
 
 @fragment
 fn zero_bump_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    return diffuse(vec2<i32>(floor(position.xy)), 0.0, vec3<f32>(0.0, 0.0, 1.0));
+    return shade(vec2<i32>(floor(position.xy)), 0.0, vec3<f32>(0.0, 0.0, 1.0));
 }
 
 fn result_sample(index: vec2<i32>) -> vec4<f32> {

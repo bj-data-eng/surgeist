@@ -2788,7 +2788,7 @@ mod lighting_shader_tests {
     use super::*;
 
     #[test]
-    fn diffuse_lighting_shader_reaches_only_each_stages_exact_bindings() {
+    fn native_lighting_shader_reaches_only_each_stages_exact_bindings() {
         let module = wgpu::naga::front::wgsl::parse_str(LIGHTING_WGSL)
             .unwrap_or_else(|error| panic!("{}", error.emit_to_string(LIGHTING_WGSL)));
         let info = wgpu::naga::valid::Validator::new(

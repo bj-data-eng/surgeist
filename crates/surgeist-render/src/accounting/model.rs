@@ -1017,7 +1017,7 @@ pub enum RenderAttemptKind {
     Offset,
     /// Standalone resolved native Gaussian admission.
     Gaussian,
-    /// Standalone resolved native diffuse lighting admission.
+    /// Standalone resolved native lighting admission.
     Lighting,
     /// Standalone resolved native displacement parameter admission.
     Displacement,
