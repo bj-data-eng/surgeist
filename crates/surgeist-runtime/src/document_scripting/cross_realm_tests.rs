@@ -512,6 +512,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     );
     super::guest::tests::numeric_control_admission::local_integer_rejection_precedes_source_admission(
     );
+    super::guest::tests::canvas_dimension_admission::canvas_dimension_write_preserves_original_source_refusal();
     super::guest::tests::range_indicator_admission::meter_read_admits_only_its_reached_input();
     super::guest::tests::range_indicator_admission::progress_max_preserves_source_noop_and_refusal(
     );
