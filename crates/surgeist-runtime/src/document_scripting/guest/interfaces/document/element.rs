@@ -370,6 +370,12 @@ impl ElementBindings {
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLParamElement" => super::param::install(scope, &prototype, capture)?,
                 "HTMLPreElement" => super::pre::install(scope, &prototype, capture)?,
+                "HTMLProgressElement" => {
+                    super::range_indicator::install_progress(scope, &prototype, capture)?
+                }
+                "HTMLMeterElement" => {
+                    super::range_indicator::install_meter(scope, &prototype, capture)?
+                }
                 "HTMLTableElement" => {
                     super::table_legacy::TableFamily::Table.install(scope, &prototype, capture)?
                 }

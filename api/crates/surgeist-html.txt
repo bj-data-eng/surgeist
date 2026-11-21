@@ -3198,6 +3198,10 @@ impl surgeist_html::bounded::numeric::HtmlFloatingPointParseResult
 pub const fn surgeist_html::bounded::numeric::HtmlFloatingPointParseResult::capacity_bytes(&self) -> usize
 pub fn surgeist_html::bounded::numeric::HtmlFloatingPointParseResult::into_parts(self) -> (core::result::Result<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber, surgeist_html::bounded::numeric::HtmlNumericParseError>, usize)
 pub fn surgeist_html::bounded::numeric::HtmlFloatingPointParseResult::value(&self) -> &core::result::Result<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber, surgeist_html::bounded::numeric::HtmlNumericParseError>
+pub struct surgeist_html::bounded::numeric::HtmlFloatingPointRecoveryToken<'a>
+impl surgeist_html::bounded::numeric::HtmlFloatingPointRecoveryToken<'_>
+pub fn surgeist_html::bounded::numeric::HtmlFloatingPointRecoveryToken<'_>::required_bytes(&self) -> usize
+pub fn surgeist_html::bounded::numeric::HtmlFloatingPointRecoveryToken<'_>::try_parse(self, max_capacity_bytes: usize) -> core::result::Result<surgeist_html::bounded::numeric::HtmlFloatingPointParseResult, surgeist_html::bounded::numeric::HtmlFloatingPointAllocationError>
 pub struct surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner
 impl surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner
 pub fn surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner::feed(&mut self, unit: u16) -> bool
@@ -3307,6 +3311,8 @@ pub const fn surgeist_html::bounded::numeric::HtmlScannedIntegerPrefix::end(&sel
 pub const fn surgeist_html::bounded::numeric::HtmlScannedIntegerPrefix::is_negative(&self) -> bool
 pub const fn surgeist_html::bounded::numeric::HtmlScannedIntegerPrefix::start(&self) -> usize
 pub fn surgeist_html::bounded::numeric::HtmlScannedIntegerPrefix::try_nonnegative_digits(self, units: &[u16]) -> core::result::Result<&[u16], surgeist_html::bounded::numeric::HtmlNumericParseError>
+pub fn surgeist_html::bounded::numeric::floating_point_number_work_bound(units: usize) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::numeric::floating_point_recovery_token(units: &[u16]) -> core::result::Result<surgeist_html::bounded::numeric::HtmlFloatingPointRecoveryToken<'_>, surgeist_html::bounded::numeric::HtmlNumericParseError>
 pub fn surgeist_html::bounded::numeric::integer_long_work_bound(input_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::numeric::parse_integer_long(input: &surgeist_html::values::DocumentString) -> core::result::Result<core::option::Option<i32>, surgeist_html::bounded::numeric::HtmlNumericParseError>
 pub fn surgeist_html::bounded::numeric::parse_nonnegative_integer_capped(input: &surgeist_html::values::DocumentString, cap: usize) -> core::result::Result<usize, surgeist_html::bounded::numeric::HtmlNumericParseError>
@@ -5133,6 +5139,23 @@ pub fn surgeist_html::elements::native::HtmlReflectedElementSetter::next_effect(
 pub const fn surgeist_html::elements::native::HtmlReflectedElementSetter::null() -> Self
 pub const fn surgeist_html::elements::native::custom_element_state_without_definition(is_html_namespace: bool, custom_name_or_saved_is: bool) -> surgeist_html::elements::native::HtmlCustomElementState
 pub fn surgeist_html::elements::native::reflected_element_attribute_change(reflected: surgeist_html::vocabulary::KnownHtmlAttribute, changed: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> bool
+pub mod surgeist_html::elements::range_indicator
+pub struct surgeist_html::elements::range_indicator::HtmlMeterRange
+impl surgeist_html::elements::range_indicator::HtmlMeterRange
+pub fn surgeist_html::elements::range_indicator::HtmlMeterRange::high(self, low: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>, high: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlMeterRange::low(self, low: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlMeterRange::maximum(self) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlMeterRange::minimum(self) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlMeterRange::minimum_from(minimum: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlMeterRange::new(minimum: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>, maximum: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> Self
+pub fn surgeist_html::elements::range_indicator::HtmlMeterRange::optimum(self, optimum: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlMeterRange::value(self, value: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub struct surgeist_html::elements::range_indicator::HtmlProgressMaximum(_)
+impl surgeist_html::elements::range_indicator::HtmlProgressMaximum
+pub fn surgeist_html::elements::range_indicator::HtmlProgressMaximum::determinate_position(self, value: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlProgressMaximum::determinate_value(self, value: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlProgressMaximum::maximum(self) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::elements::range_indicator::HtmlProgressMaximum::new(maximum: core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>) -> Self
 pub mod surgeist_html::elements::script
 pub enum surgeist_html::elements::script::HtmlScriptKind
 pub surgeist_html::elements::script::HtmlScriptKind::Classic

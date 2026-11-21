@@ -657,6 +657,30 @@
       ]
     },
     {
+      "id": "HTMLProgressElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmlprogresselement",
+      "block": 0,
+      "sha256": "614eeeebac038774786c8e921031f008cbbfc5879b0a3487ac4099a0bb327f9f",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlprogresselement",
+      "entries": [
+        "HTMLProgressElement"
+      ]
+    },
+    {
+      "id": "HTMLMeterElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmlmeterelement",
+      "block": 0,
+      "sha256": "cbb3299615c505dad60faa042136c64f59f32ae5a707a8055b521fe65b3e8deb",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlmeterelement",
+      "entries": [
+        "HTMLMeterElement"
+      ]
+    },
+    {
       "id": "HTMLTableElement.source",
       "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
       "anchor": "htmltableelement",
@@ -5910,6 +5934,238 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLProgressElement",
+      "kind": "interface",
+      "name": "HTMLProgressElement",
+      "inherits": "HTMLElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLProgressElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLProgressElement.value"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectPositive"
+            },
+            {
+              "name": "ReflectDefault",
+              "value": {
+                "kind": "decimal",
+                "literal": "1.0"
+              }
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "max",
+          "readonly": false,
+          "id": "HTMLProgressElement.max"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "position",
+          "readonly": true,
+          "id": "HTMLProgressElement.position"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "NodeList"
+          },
+          "name": "labels",
+          "readonly": true,
+          "id": "HTMLProgressElement.labels"
+        }
+      ]
+    },
+    {
+      "id": "HTMLMeterElement",
+      "kind": "interface",
+      "name": "HTMLMeterElement",
+      "inherits": "HTMLElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLMeterElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLMeterElement.value"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "min",
+          "readonly": false,
+          "id": "HTMLMeterElement.min"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "max",
+          "readonly": false,
+          "id": "HTMLMeterElement.max"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "low",
+          "readonly": false,
+          "id": "HTMLMeterElement.low"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "high",
+          "readonly": false,
+          "id": "HTMLMeterElement.high"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "optimum",
+          "readonly": false,
+          "id": "HTMLMeterElement.optimum"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "NodeList"
+          },
+          "name": "labels",
+          "readonly": true,
+          "id": "HTMLMeterElement.labels"
+        }
+      ]
     },
     {
       "id": "HTMLTableElement",
@@ -15661,6 +15917,426 @@
         }
       ],
       "requirements": []
+    },
+    "HTMLProgressElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlprogresselement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLProgressElement.value/get": {
+      "kind": "native",
+      "adapter": "htmlprogresselement.value.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "determinate_value"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLProgressElement.value/set": {
+      "kind": "native",
+      "adapter": "htmlprogresselement.value.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "write_range_indicator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLProgressElement.max/get": {
+      "kind": "native",
+      "adapter": "htmlprogresselement.max.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "maximum"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLProgressElement.max/set": {
+      "kind": "native",
+      "adapter": "htmlprogresselement.max.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "write_range_indicator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLProgressElement.position/get": {
+      "kind": "native",
+      "adapter": "htmlprogresselement.position.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "determinate_position"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLProgressElement.labels/get": {
+      "kind": "native",
+      "adapter": "htmlprogresselement.labels.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/control.rs",
+          "symbol": "control_labels"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the ordered associated labels from the current Source segment.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 3038
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the stable live labels NodeList with exact native identity and legacy indexed behavior.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLMeterElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.value/get": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.value.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "value"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.value/set": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.value.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "write_range_indicator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.min/get": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.min.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "minimum_from"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.min/set": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.min.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "write_range_indicator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.max/get": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.max.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "maximum"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.max/set": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.max.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "write_range_indicator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.low/get": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.low.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "low"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.low/set": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.low.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "write_range_indicator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.high/get": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.high.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "high"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.high/set": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.high.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "write_range_indicator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.optimum/get": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.optimum.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "read_range_indicator"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric/indicator.rs",
+          "symbol": "optimum"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.optimum/set": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.optimum.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range_indicator.rs",
+          "symbol": "write_range_indicator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMeterElement.labels/get": {
+      "kind": "native",
+      "adapter": "htmlmeterelement.labels.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/control.rs",
+          "symbol": "control_labels"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the ordered associated labels from the current Source segment.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 3038
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the stable live labels NodeList with exact native identity and legacy indexed behavior.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
     },
     "HTMLTableElement.constructor:0/construct": {
       "kind": "native",

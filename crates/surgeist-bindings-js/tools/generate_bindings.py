@@ -11,6 +11,7 @@ WHATWG-derived declarations retain licenses/whatwg/LICENSE and NOTICE.md.
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path, PurePosixPath
 import re
 import sys
@@ -28,7 +29,8 @@ PRIMITIVES = {"undefined", "boolean", "byte", "octet", "short", "unsigned short"
               "long", "unsigned long", "long long", "unsigned long long", "float",
               "unrestricted float", "double", "unrestricted double", "DOMString",
               "USVString", "ByteString", "object", "any"}
-REFLECTED_GETTERS = {"Reflect", "ReflectURL", "ReflectNonNegative", "ReflectPositiveWithFallback"}
+REFLECTED_GETTERS = {"Reflect", "ReflectURL", "ReflectNonNegative",
+                     "ReflectPositive", "ReflectPositiveWithFallback"}
 REFLECTION_ATTRIBUTES = REFLECTED_GETTERS | {"ReflectSetter"}
 ATTRIBUTES = {"Exposed", "Serializable", "SameObject", "NewObject", "CEReactions", "Unscopable",
               "PutForwards", "LegacyNullToEmptyString", "LegacyUnenumerableNamedProperties",
@@ -38,8 +40,10 @@ ATTRIBUTES = {"Exposed", "Serializable", "SameObject", "NewObject", "CEReactions
 SELECTED_SETTER_CONVERSIONS = {
     "HTMLElement.hidden", "HTMLTitleElement.text", "HTMLSelectElement.selectedIndex", "HTMLOptionElement.selected",
 }
+DECIMAL = r"-?(?:(?:[0-9]+\.[0-9]*|[0-9]*\.[0-9]+)(?:[Ee][+-]?[0-9]+)?|[0-9]+[Ee][+-]?[0-9]+)"
 TOKEN = re.compile(r'\s+|//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|'
-                   r'0[xX][0-9A-Fa-f]+|[A-Za-z_][A-Za-z_0-9]*|[0-9]+|\.\.\.|[^\w\s]', re.ASCII)
+                   r'0[xX][0-9A-Fa-f]+|[A-Za-z_][A-Za-z_0-9]*|' + DECIMAL +
+                   r'|[0-9]+|\.\.\.|[^\w\s]', re.ASCII)
 
 
 class DescriptionError(ValueError):
@@ -76,6 +80,18 @@ def boolean(value, label):
 def integer(value, label, minimum=-(2**63), maximum=2**63 - 1):
     require(type(value) is int and minimum <= value <= maximum,
             f"{label} must be an integer in [{minimum}, {maximum}]")
+
+
+def reflection_default(value):
+    if isinstance(value, dict):
+        keys(value, ["kind", "literal"])
+        literal = value["literal"]
+        require(value["kind"] == "decimal" and type(literal) is str
+                and re.fullmatch(DECIMAL, literal) and math.isfinite(float(literal)),
+                "reflection default must be a finite decimal literal")
+        return literal
+    integer(value, "reflection default", -(2**31), 2**32 - 1)
+    return str(value)
 
 
 def identity(value, label):
@@ -136,7 +152,7 @@ def attributes_shape(items):
                 integer(number, "reflection range bound", 0, 2**32 - 1)
             require(lower <= upper, "reflection range bounds must be ascending")
         elif item["name"] == "ReflectDefault":
-            integer(item.get("value"), "reflection default", -(2**31), 2**32 - 1)
+            reflection_default(item.get("value"))
         else:
             require("value" not in item, "valueless extended attribute cannot have a value field")
 
@@ -384,7 +400,7 @@ def attributes(items, names=None):
         elif isinstance(value, list):
             suffix = "=(" + ", ".join(map(str, value)) + ")"
         elif name == "ReflectDefault":
-            suffix = "=" + str(value)
+            suffix = "=" + reflection_default(value)
         elif value is not None:
             suffix = "=" + value
         values.append(name + suffix)
@@ -494,14 +510,19 @@ def render_member(member, names):
         require(reflected_type == "USVString", "ReflectURL requires a USVString attribute")
     if "ReflectNonNegative" in reflection:
         require(reflected_type == "long", "ReflectNonNegative requires a long attribute")
-    if "ReflectPositiveWithFallback" in reflection:
+    for mode in reflection & {"ReflectPositive", "ReflectPositiveWithFallback"}:
         require(reflected_type in {"double", "unsigned long"},
-                "ReflectPositiveWithFallback requires a double or unsigned long attribute")
+                f"{mode} requires a double or unsigned long attribute")
     if "ReflectDefault" in annotations:
-        require(reflected_type in {"long", "unsigned long"},
-                "ReflectDefault requires a reflected long or unsigned long attribute")
-        minimum, maximum = (-(2**31), 2**31 - 1) if reflected_type == "long" else (0, 2**32 - 1)
-        integer(annotations["ReflectDefault"], "reflection default", minimum, maximum)
+        require(reflected_type in {"double", "long", "unsigned long"},
+                "ReflectDefault requires a reflected double, long, or unsigned long attribute")
+        reflected_default = annotations["ReflectDefault"]
+        if reflected_type == "double":
+            require(isinstance(reflected_default, dict),
+                    "double reflection default requires a decimal literal")
+        else:
+            minimum, maximum = (-(2**31), 2**31 - 1) if reflected_type == "long" else (0, 2**32 - 1)
+            integer(reflected_default, "reflection default", minimum, maximum)
     if "ReflectRange" in annotations:
         require(reflected_type == "unsigned long" and "Reflect" in reflection,
                 "ReflectRange requires a reflected unsigned long attribute")

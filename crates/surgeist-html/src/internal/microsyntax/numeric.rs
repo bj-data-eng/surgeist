@@ -9,6 +9,7 @@ use crate::internal::values::DocumentString;
 use ordered::Order;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 pub(crate) mod decimal_total;
+pub(crate) mod indicator;
 pub(crate) mod natural_ratio;
 mod ordered;
 pub(crate) mod range;
@@ -2515,6 +2516,51 @@ pub(crate) fn parse_floating_point_number(
     floating_point(input.code_units(), true)
 }
 
+/// Work admission for one atomic HTML floating-point parse from UTF-16.
+///
+/// The envelope covers scanning, the ASCII token write, and binary64 conversion.
+/// The caller owns admission and any cancellation checks around the operation.
+pub fn floating_point_number_work_bound(units: usize) -> Option<usize> {
+    units.checked_add(1)?.checked_mul(3)?.checked_add(8)
+}
+
+/// A borrowed ASCII prefix selected by the HTML floating-point recovery grammar.
+#[derive(Debug)]
+pub struct HtmlFloatingPointRecoveryToken<'a> {
+    token: &'a [u16],
+}
+
+impl HtmlFloatingPointRecoveryToken<'_> {
+    /// Returns the exact ASCII token length in bytes before any allocation.
+    pub fn required_bytes(&self) -> usize {
+        self.token.len()
+    }
+
+    /// Converts the selected prefix without a second grammar scan.
+    ///
+    /// The caller admits the required backing before this call. The allocator's
+    /// actual capacity is checked against the supplied byte limit before writing.
+    /// The result reports observed capacity even when binary64 conversion fails.
+    pub fn try_parse(
+        self,
+        max_capacity_bytes: usize,
+    ) -> Result<HtmlFloatingPointParseResult, HtmlFloatingPointAllocationError> {
+        try_convert_floating_point_token(self.token, max_capacity_bytes)
+    }
+}
+
+/// Selects the recoverable ASCII prefix without allocating token backing.
+///
+/// The caller admits the atomic parser work before calling this function.
+pub fn floating_point_recovery_token(
+    units: &[u16],
+) -> Result<HtmlFloatingPointRecoveryToken<'_>, HtmlNumericParseError> {
+    let prefix = floating_point_prefix(units, HtmlFloatingPointParseMode::Recovery)?;
+    Ok(HtmlFloatingPointRecoveryToken {
+        token: prefix.token,
+    })
+}
+
 /// The source's author grammar and user-agent recovery remain distinct modes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFloatingPointParseMode {
@@ -3175,7 +3221,14 @@ pub fn try_floating_point_number(
             });
         }
     };
-    let required = prefix.token.len();
+    try_convert_floating_point_token(prefix.token, max_capacity_bytes)
+}
+
+fn try_convert_floating_point_token(
+    units: &[u16],
+    max_capacity_bytes: usize,
+) -> Result<HtmlFloatingPointParseResult, HtmlFloatingPointAllocationError> {
+    let required = units.len();
     check_floating_point_requested_capacity(required, max_capacity_bytes)?;
     let mut token = String::new();
     token.try_reserve_exact(required).map_err(|_| {
@@ -3184,7 +3237,7 @@ pub fn try_floating_point_number(
         }
     })?;
     check_floating_point_actual_capacity(required, token.capacity(), max_capacity_bytes)?;
-    for &unit in prefix.token {
+    for &unit in units {
         token.push(char::from(unit as u8));
     }
     Ok(HtmlFloatingPointParseResult {

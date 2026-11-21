@@ -22,6 +22,7 @@ pub(in crate::document_scripting) mod numeric_control_admission;
 pub(in crate::document_scripting) mod output_value_admission;
 pub(in crate::document_scripting) mod pre_width_admission;
 pub(in crate::document_scripting) mod projection_accounting;
+pub(in crate::document_scripting) mod range_indicator_admission;
 pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod select_string_admission;
 pub(in crate::document_scripting) mod shadow_root;

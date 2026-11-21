@@ -14,8 +14,8 @@ use surgeist_html::{
             HtmlNumericMaterializationError, HtmlNumericParseError, HtmlRangeBufferHeader,
             HtmlRangeLatticeCursor, HtmlRangeMidpointCursor, HtmlRangeNumericError,
             HtmlRangeNumericHeaders, HtmlRangeNumericReply, HtmlRangeNumericRequest,
-            parse_integer_long, parse_nonnegative_integer_capped, try_floating_point_number,
-            try_parse_integer,
+            floating_point_number_work_bound, floating_point_recovery_token, parse_integer_long,
+            parse_nonnegative_integer_capped, try_floating_point_number, try_parse_integer,
         },
     },
     microsyntax::numeric::{HtmlInteger, HtmlNonNegativeRational},
@@ -92,6 +92,45 @@ fn materialization_failure_retains_prior_numerator_allocation() {
         .unwrap();
     assert_eq!(divided.value().0.decimal_digits(), "33333333333333333333");
     assert_eq!(divided.value().1, 2);
+}
+
+#[test]
+fn floating_recovery_selects_token_bytes_before_allocation() {
+    let recovered = DocumentString::from(" +.5e+tail");
+    let token = floating_point_recovery_token(recovered.code_units()).unwrap();
+    assert_eq!(token.required_bytes(), 3);
+    assert_eq!(
+        token.try_parse(2).unwrap_err(),
+        HtmlFloatingPointAllocationError::RequestedCapacityLimitExceeded {
+            limit: 2,
+            required: 3,
+        }
+    );
+    let parsed = floating_point_recovery_token(recovered.code_units())
+        .unwrap()
+        .try_parse(3)
+        .unwrap();
+    assert_eq!(parsed.capacity_bytes(), 3);
+    assert_eq!(parsed.value().as_ref().unwrap().value(), 0.5);
+
+    let overflowed = DocumentString::from("1e999!");
+    let token = floating_point_recovery_token(overflowed.code_units()).unwrap();
+    assert_eq!(token.required_bytes(), 5);
+    assert_eq!(
+        token.try_parse(5).unwrap().into_parts(),
+        (Err(HtmlNumericParseError::FloatingPointOverflow), 5)
+    );
+    assert_eq!(
+        floating_point_recovery_token(&[0xd800]).unwrap_err(),
+        HtmlNumericParseError::InvalidSyntax
+    );
+}
+
+#[test]
+fn atomic_floating_point_work_bound_checks_representation() {
+    assert_eq!(floating_point_number_work_bound(0), Some(11));
+    assert_eq!(floating_point_number_work_bound(10), Some(41));
+    assert_eq!(floating_point_number_work_bound(usize::MAX), None);
 }
 
 #[test]

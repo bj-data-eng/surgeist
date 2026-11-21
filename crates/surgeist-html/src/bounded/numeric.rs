@@ -29,9 +29,11 @@ pub use crate::internal::microsyntax::numeric::range::{
 };
 pub use crate::internal::microsyntax::numeric::{
     HtmlFloatingPointAllocationError, HtmlFloatingPointGrammarCursor, HtmlFloatingPointParseMode,
-    HtmlFloatingPointParseResult, HtmlIntegerPrefixScanner, HtmlIntegerRecoveryError,
-    HtmlIntegerUnitStep, HtmlIntegerUnitStepError, HtmlIntegerUnitStepResult,
-    HtmlNumericMaterializationError, HtmlNumericMaterializationFailure, HtmlNumericMaterialized,
-    HtmlNumericParseError, HtmlScannedIntegerPrefix, integer_long_work_bound, parse_integer_long,
-    parse_nonnegative_integer_capped, try_floating_point_number, try_parse_integer,
+    HtmlFloatingPointParseResult, HtmlFloatingPointRecoveryToken, HtmlIntegerPrefixScanner,
+    HtmlIntegerRecoveryError, HtmlIntegerUnitStep, HtmlIntegerUnitStepError,
+    HtmlIntegerUnitStepResult, HtmlNumericMaterializationError, HtmlNumericMaterializationFailure,
+    HtmlNumericMaterialized, HtmlNumericParseError, HtmlScannedIntegerPrefix,
+    floating_point_number_work_bound, floating_point_recovery_token, integer_long_work_bound,
+    parse_integer_long, parse_nonnegative_integer_capped, try_floating_point_number,
+    try_parse_integer,
 };

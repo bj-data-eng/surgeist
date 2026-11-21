@@ -53,6 +53,7 @@ mod param;
 mod parent_node;
 mod pre;
 mod processing_instruction;
+mod range_indicator;
 mod reflection;
 mod select;
 mod shadow;
