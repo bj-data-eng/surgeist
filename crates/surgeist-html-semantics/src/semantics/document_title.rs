@@ -3,7 +3,80 @@
 //! second real buffer for ASCII strip/collapse; both capacities are cumulative.
 
 use super::*;
-use surgeist_html::{bounded::lexical::is_ascii_whitespace, values::DocumentString};
+use scan::name_part_is_with;
+use surgeist_html::{
+    bounded::lexical::is_ascii_whitespace,
+    values::{DocumentString, HtmlNameInput},
+};
+
+/// Selects the ordinary Document preorder (HTML) or direct children of the
+/// SVG document element (SVG) for the title lookup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlDocumentTitleKind {
+    Html,
+    Svg,
+}
+
+impl HtmlDocumentTitleKind {
+    /// Only the exact SVG `svg` expanded name selects the SVG branch.
+    pub fn for_root<E>(
+        name: &(impl HtmlNameInput + ?Sized),
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        if name_part_is_with(|| name.namespace_uri(), SVG_NAMESPACE, &mut step)?
+            && name_part_is_with(|| Some(name.local_name()), b"svg", &mut step)?
+        {
+            Ok(Self::Svg)
+        } else {
+            Ok(Self::Html)
+        }
+    }
+
+    /// Compare the reached Element's exact expanded name, charging the caller
+    /// for each comparison. Prefixes are immaterial.
+    pub fn matches<E>(
+        self,
+        name: &(impl HtmlNameInput + ?Sized),
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let namespace = match self {
+            Self::Html => scan::HTML_NAMESPACE.as_bytes(),
+            Self::Svg => SVG_NAMESPACE,
+        };
+        Ok(
+            name_part_is_with(|| name.namespace_uri(), namespace, &mut step)?
+                && name_part_is_with(|| Some(name.local_name()), b"title", &mut step)?,
+        )
+    }
+}
+
+const SVG_NAMESPACE: &[u8] = b"http://www.w3.org/2000/svg";
+
+/// Strips and collapses ASCII whitespace from a stream of direct child Text.
+/// Retain one value across the title's Text nodes. Other UTF-16 is unchanged.
+#[derive(Default)]
+pub struct HtmlDocumentTitleText {
+    seen_non_space: bool,
+    pending_space: bool,
+}
+
+impl HtmlDocumentTitleText {
+    /// Feed one previously admitted input unit and consume the output in order.
+    /// The caller admits and stores any output. Trailing whitespace has no output.
+    pub fn push(&mut self, unit: u16) -> impl Iterator<Item = u16> + use<> {
+        let output = if is_ascii_whitespace(unit) {
+            self.pending_space = self.seen_non_space;
+            [None, None]
+        } else {
+            self.seen_non_space = true;
+            [
+                std::mem::take(&mut self.pending_space).then_some(32),
+                Some(unit),
+            ]
+        };
+        output.into_iter().flatten()
+    }
+}
 
 /// Normalized document title and the actual selected title element.
 ///
@@ -31,7 +104,11 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
         element: &HtmlCapturedElement,
     ) -> Result<HtmlSemanticValue<DocumentString>, HtmlSemanticFailure> {
-        if !self.title_local_is(element, b"title")? {
+        if !name_part_is_with(
+            || Some(element.name().local_name()),
+            b"title",
+            || self.charge(1),
+        )? {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
         self.control_text_content(subject, HtmlControlTextOrigin::ChildText)
@@ -63,8 +140,8 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
         if let Some((root, element)) = root
-            && self.namespace_is(element, "http://www.w3.org/2000/svg")?
-            && self.title_local_is(element, b"svg")?
+            && HtmlDocumentTitleKind::for_root(element.name(), || self.charge(1))?
+                == HtmlDocumentTitleKind::Svg
         {
             self.charge(1)?;
             let HtmlCapturedChildren::Complete(mut children) = root.children() else {
@@ -79,8 +156,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 };
                 let child = self.node(&id)?;
                 if let HtmlCapturedNodeKind::Element(element) = child.kind()
-                    && self.namespace_is(element, "http://www.w3.org/2000/svg")?
-                    && self.title_local_is(element, b"title")?
+                    && HtmlDocumentTitleKind::Svg.matches(element.name(), || self.charge(1))?
                 {
                     return self.document_title_selected(id);
                 }
@@ -99,8 +175,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<HtmlSemanticValue<HtmlDocumentTitle>, HtmlSemanticFailure> {
         loop {
             if let HtmlCapturedNodeKind::Element(element) = node.kind()
-                && self.html_namespace(element)?
-                && self.title_local_is(element, b"title")?
+                && HtmlDocumentTitleKind::Html.matches(element.name(), || self.charge(1))?
             {
                 return self.document_title_selected(node.id());
             }
@@ -113,25 +188,6 @@ impl<'a> HtmlSemanticSession<'a> {
         }
     }
 
-    fn title_local_is(
-        &mut self,
-        element: &HtmlCapturedElement,
-        expected: &[u8],
-    ) -> Result<bool, HtmlSemanticFailure> {
-        self.charge(1)?;
-        let units = element.name().local_name().code_units();
-        if units.len() != expected.len() {
-            return Ok(false);
-        }
-        for (unit, byte) in units.iter().zip(expected) {
-            self.charge(1)?;
-            if *unit != u16::from(*byte) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
-    }
-
     fn document_title_selected(
         &mut self,
         id: HtmlCaptureSubjectId,
@@ -141,19 +197,10 @@ impl<'a> HtmlSemanticSession<'a> {
             Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
         };
         let mut units = Vec::new();
-        let mut pending_space = false;
-        for unit in raw.code_units() {
+        let mut normalized = HtmlDocumentTitleText::default();
+        for &unit in raw.code_units() {
             self.charge(1)?;
-            let unit = *unit;
-            if is_ascii_whitespace(unit) {
-                pending_space = !units.is_empty();
-            } else {
-                if pending_space {
-                    self.reserve_nested_output(&mut units, 1)?;
-                    self.charge(1)?;
-                    units.push(32);
-                    pending_space = false;
-                }
+            for unit in normalized.push(unit) {
                 self.reserve_nested_output(&mut units, 1)?;
                 self.charge(1)?;
                 units.push(unit);

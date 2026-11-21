@@ -8450,11 +8450,16 @@
       "kind": "native",
       "adapter": "document.title.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/document_title.rs", "symbol": "visit_document_title_with"},
         {
           "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics.rs",
-          "symbol": "DocumentTitle"
+          "path": "crates/surgeist-html-semantics/src/semantics/document_title.rs",
+          "symbol": "HtmlDocumentTitleText"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/title.rs",
+          "symbol": "document_title_get"
         }
       ],
       "requirements": []
@@ -8462,20 +8467,24 @@
     "Document.html.title/set": {
       "kind": "native",
       "adapter": "document.title.set",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "The Document title setter selects the prescribed HTML/SVG target, creates a title under the SVG document element or an existing HTML head only when that branch requires it, never creates a head, and performs string replacement through one original native operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-title"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "set_document_title"
         },
         {
           "owner": "surgeist-dom",
-          "contract": "The reached title string-replace-all operation retains its actual native Source tails and Range maintenance.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-node-string-replace-all",
-          "issue": 2276
+          "path": "crates/surgeist-dom/src/internal/store/compound/document_title.rs",
+          "symbol": "set_document_title"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/title.rs",
+          "symbol": "document_title_set"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Document.html.dir/get": {
       "kind": "native",

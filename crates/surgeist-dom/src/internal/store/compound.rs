@@ -1,6 +1,7 @@
 //! DOM3071's named compound algorithms, under one original Source root.
 use super::*;
 use crate::internal::compound::{Edit, Variadic};
+pub(super) mod document_title;
 #[cfg(test)]
 mod tests;
 
@@ -145,6 +146,9 @@ impl Draft {
         self.source_step(cancel)?;
         let receiver = self.resolve(edit.receiver().into())?;
         match edit {
+            Edit::DocumentTitle { value, .. } => {
+                self.set_document_title(receiver, value, limits, cancel)
+            }
             Edit::TextContent { value, .. } => {
                 self.compound_text_content(receiver, value, limits, cancel)
             }

@@ -12,6 +12,7 @@ use crate::{
 };
 use surgeist_html::values::DocumentString;
 
+mod document_title;
 mod equality;
 mod namespace;
 mod position;
@@ -609,25 +610,43 @@ impl<'a> DomNode<'a> {
     /// The first failed step, reservation, lookup, or visit ends traversal.
     pub fn visit_descendant_text_with<E: From<DomError>, Backing>(
         self,
-        mut step: impl FnMut() -> Result<(), E>,
-        mut reserve: impl FnMut(usize) -> Result<Backing, E>,
+        step: impl FnMut() -> Result<(), E>,
+        reserve: impl FnMut(usize) -> Result<Backing, E>,
         mut visit: impl FnMut(&'a DocumentString) -> Result<(), E>,
     ) -> Result<(), E> {
+        self.find_descendant_with(step, reserve, |node, _| {
+            if let DomNodeKind::Text(text) = node.kind() {
+                visit(text)?;
+            }
+            Ok(None::<()>)
+        })?;
+        Ok(())
+    }
+
+    fn find_descendant_with<E: From<DomError>, Backing, Step, Value>(
+        self,
+        mut step: Step,
+        mut reserve: impl FnMut(usize) -> Result<Backing, E>,
+        mut inspect: impl FnMut(Self, &mut Step) -> Result<Option<Value>, E>,
+    ) -> Result<Option<Value>, E>
+    where
+        Step: FnMut() -> Result<(), E>,
+    {
         let mut remaining = self.children();
         // Keep the allocation before its backing so unwind releases it first.
         let mut pending = (Vec::<&[NodeId]>::new(), None);
         loop {
             let Some((&child, siblings)) = remaining.split_first() else {
                 let Some(siblings) = pending.0.pop() else {
-                    return Ok(());
+                    return Ok(None);
                 };
                 remaining = siblings;
                 continue;
             };
             step()?;
             let child = self.snapshot.node_with(child, &mut step)?;
-            if let DomNodeKind::Text(text) = child.kind() {
-                visit(text)?;
+            if let Some(value) = inspect(child, &mut step)? {
+                return Ok(Some(value));
             }
             remaining = child.children();
             if remaining.is_empty() {
@@ -666,13 +685,24 @@ impl<'a> DomNode<'a> {
     /// child lookup before inspecting its kind and returning the first refusal.
     pub fn visit_child_text_with<E: From<DomError>>(
         self,
-        mut step: impl FnMut() -> Result<(), E>,
+        step: impl FnMut() -> Result<(), E>,
         mut visit: impl FnMut(&'a DocumentString) -> Result<(), E>,
     ) -> Result<(), E> {
+        self.visit_child_text_admitted(step, |value, _| visit(value))
+    }
+
+    fn visit_child_text_admitted<E: From<DomError>, Step>(
+        self,
+        mut step: Step,
+        mut visit: impl FnMut(&'a DocumentString, &mut Step) -> Result<(), E>,
+    ) -> Result<(), E>
+    where
+        Step: FnMut() -> Result<(), E>,
+    {
         for &id in self.children() {
             let child = self.snapshot.node_with(id, &mut step)?;
             if let DomNodeKind::Text(value) = child.kind() {
-                visit(value)?;
+                visit(value, &mut step)?;
             }
         }
         Ok(())

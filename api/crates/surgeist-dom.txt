@@ -3026,6 +3026,7 @@ pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_text(element: surgei
 pub fn surgeist_dom::source::DomSourceEdit::prepend(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_children(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_with(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_document_title(document: surgeist_dom::identity::DocumentId, value: surgeist_html::internal::values::document_string::DocumentString) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_text_content(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 impl core::convert::From<surgeist_dom::source::DomSourceEdit> for surgeist_dom::source::DomSourceInput
 pub fn surgeist_dom::source::DomSourceInput::from(edit: surgeist_dom::source::DomSourceEdit) -> Self
@@ -4569,3 +4570,5 @@ pub fn surgeist_dom::DomSnapshot::view_transition(&self, id: surgeist_dom::view_
 pub fn surgeist_dom::DomSnapshot::view_transition_pseudo(&self, id: surgeist_dom::view_transition::DomViewTransitionPseudoId) -> core::result::Result<surgeist_dom::view_transition::DomViewTransitionPseudo<'_>, surgeist_dom::DomError>
 pub fn surgeist_dom::DomSnapshot::view_transition_pseudo_captured(&self, id: surgeist_dom::view_transition::DomViewTransitionPseudoId) -> core::result::Result<bool, surgeist_dom::DomError>
 pub fn surgeist_dom::DomSnapshot::view_transition_record(&self, id: surgeist_dom::view_transition::DomViewTransitionRecordId) -> core::result::Result<surgeist_dom::view_transition::DomViewTransitionRecord<'_>, surgeist_dom::DomError>
+impl surgeist_dom::DomSnapshot
+pub fn surgeist_dom::DomSnapshot::visit_document_title_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(&self, document: surgeist_dom::identity::DocumentId, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>, emit: impl core::ops::function::FnMut(u16) -> core::result::Result<(), E>) -> core::result::Result<(), E>

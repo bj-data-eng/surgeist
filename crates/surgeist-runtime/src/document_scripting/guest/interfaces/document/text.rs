@@ -240,6 +240,14 @@ impl TextBuffer {
         read: &NativeRead<'_>,
         data: &DocumentString,
     ) -> Result<(), DocumentGuestEventError> {
+        self.append_units(read, data.code_units())
+    }
+
+    pub(super) fn append_units(
+        &mut self,
+        read: &NativeRead<'_>,
+        data: &[u16],
+    ) -> Result<(), DocumentGuestEventError> {
         let length = self
             .units
             .len()
@@ -269,7 +277,7 @@ impl TextBuffer {
                 _source_units: source_units,
             };
         }
-        for &unit in data.code_units() {
+        for &unit in data {
             read.step()?;
             self.units.push(unit);
         }
