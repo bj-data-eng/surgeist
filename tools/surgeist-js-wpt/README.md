@@ -1,4 +1,4 @@
-# Surgeist JavaScript conformance worker transport
+# Surgeist JavaScript conformance workers
 
 This workspace tool supervises one process per fixture variant. Its caller
 supplies a full source revision, relative fixture path, and exact root-relative
@@ -18,17 +18,30 @@ have explicit forms. The supervisor preserves process exit, stop reason, and
 cleanup evidence independently of the report. A process deadline cannot
 supply a harness timeout or subtest status.
 
-The existing process backend currently admits Apple-Silicon macOS. It owns
-process-group cleanup and reports the absence of a hard memory ceiling and
-RSS sampling. V8 heap and native host resource accounting belong to the
-future native worker. Process-group cleanup covers members that remain in the
-group.
+The process backend supports Apple-Silicon macOS. It owns process-group
+cleanup and reports the availability of a hard memory ceiling and RSS
+sampling. Both are unavailable on this backend. Process-group cleanup
+covers members that remain in the group.
 
-The package currently exercises transport with a repository-authored Rust
-worker. Loading and running the pinned WPT material through native Window
-and Runtime capabilities is tracked by [#2260](https://github.com/bj-data-eng/surgeist/issues/2260).
+Enable `native-worker` to build the `surgeist-js-wpt-worker` executable.
+It reads one request, matches the full identity against its compiled
+[qualification fixtures](fixtures/qualification/), and attaches to a native
+Runtime-owned Window on the entry thread. The revision for each authored
+fixture is its actual Git blob ID. The worker uses finite native and report
+limits and V8's default heap. Its supervisor enforces the process deadline.
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-js-wpt
 cargo clippy --offline --locked -j 1 -p surgeist-js-wpt --all-targets --no-deps -- -F unsafe-code -D warnings
 ```
+
+With the pinned V8 archive configured, run the native qualification on the
+supported process host.
+
+```sh
+cargo test --offline --locked -j 1 -p surgeist-js-wpt --features native-worker
+```
+
+The native qualification runs authored assertions. The pinned WPT harness,
+additional platform capabilities, and final memory reporting are tracked in
+[#2260](https://github.com/bj-data-eng/surgeist/issues/2260).

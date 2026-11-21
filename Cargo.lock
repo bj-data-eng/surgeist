@@ -4135,7 +4135,13 @@ name = "surgeist-js-wpt"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "sha1",
+ "surgeist-bindings-js",
+ "surgeist-css",
+ "surgeist-dom",
  "surgeist-fuzz",
+ "surgeist-html",
+ "surgeist-runtime",
 ]
 
 [[package]]
