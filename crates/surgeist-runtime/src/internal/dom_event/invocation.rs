@@ -57,6 +57,26 @@ impl<C> DomEventDispatcher<C> {
         })
     }
 
+    /// Admit the fixed native firing before the signal state changes.
+    pub(super) fn admit_signal_abort(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<SignalAbortFiring, DomEventDispatchError> {
+        let pending = self.reserve_pending()?;
+        self.storage.step(1, cancel)?;
+        let backing = EventBodyCustody::owned(dom, &self.storage, cancel)?;
+        let bytes = std::mem::size_of::<PrepaidAbortReservation>();
+        let funding = self.storage.reserve(dom, bytes, bytes, 0, cancel)?;
+        Ok(SignalAbortFiring {
+            pending: Rc::new(PrepaidAbortReservation {
+                reservation: pending,
+                _funding: funding,
+            }),
+            backing,
+        })
+    }
+
     /// Prepare the report's selected native delivery. Refused preparation
     /// leaves the task's original creation observation available to retry.
     #[cfg(feature = "document-scripting")]
@@ -97,24 +117,7 @@ impl<C> DomEventDispatcher<C> {
         self.storage.step(1, cancel)?;
         let payload = csp::CspEventData::native(dom, &self.storage, document, report, cancel)?;
 
-        let bytes = EventInvocationOwner::initial_payload_bytes()
-            .ok_or(DomEventDispatchError::Admission(DomEventResource::Storage))?;
-        let mut allocation = self.storage.reserve(dom, bytes, bytes, 0, cancel)?;
-        let event_bytes = EventBodyCustody::event_bytes();
-        let event_allocation = allocation.split(event_bytes, event_bytes, 0)?;
-        let backing = EventBodyCustody {
-            event: Rc::new(BodyCustody {
-                _storage: BodyStorage::Owned {
-                    _retained: event_allocation,
-                },
-            }),
-            continuation: BodyCustody {
-                _storage: BodyStorage::Owned {
-                    _retained: allocation,
-                },
-            },
-            storage: self.storage.clone(),
-        };
+        let backing = EventBodyCustody::owned(dom, &self.storage, cancel)?;
         let creation = creation
             .take()
             .ok_or(DomEventDispatchError::WrongContinuation)?;
@@ -127,6 +130,29 @@ impl<C> DomEventDispatcher<C> {
             ),
             registry: self.owner.id,
         })
+    }
+}
+
+pub(super) struct SignalAbortFiring {
+    pending: Rc<PrepaidAbortReservation>,
+    backing: EventBodyCustody,
+}
+impl SignalAbortFiring {
+    pub(super) fn prepare(
+        self,
+        target: DomStandaloneEventTarget,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
+    ) -> DomEventDispatch {
+        let owner = EventInvocationOwner::from_native(
+            NativeDispatchOrigin::SignalAbort(target),
+            EventPayload::None,
+            DomEventInit::default(),
+            creation,
+            self.backing,
+        );
+        let registry = self.pending.reservation.0.id;
+        owner._custody.prepaid_abort.set(Some(self.pending));
+        DomEventDispatch { owner, registry }
     }
 }
 

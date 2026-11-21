@@ -11,12 +11,14 @@
 //! [`DomEventCallbackError`] and [`DomEventHostError`].
 
 pub use crate::internal::dom_event::{
-    DomEventCallback, DomEventCallbackError, DomEventComposedPath, DomEventConstructionError,
-    DomEventCreationObservation, DomEventDispatch, DomEventDispatchError, DomEventDispatchLimits,
-    DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    DomEventHostError, DomEventHostInvocation, DomEventInit, DomEventListenerFailure,
-    DomEventListenerFailureKind, DomEventListenerOptions, DomEventPhase, DomEventRegistrationId,
-    DomEventRegistryLimits, DomEventResource, DomEventStorageLimits, DomEventTarget,
-    DomEventTimestampUnavailable, DomEventType, DomStandaloneEventTarget, DomToggleEvent,
+    DomAbortController, DomAbortDefaultReason, DomAbortError, DomAbortProgress, DomAbortReason,
+    DomAbortSignal, DomAbortValue, DomEventCallback, DomEventCallbackError, DomEventComposedPath,
+    DomEventConstructionError, DomEventCreationObservation, DomEventDispatch,
+    DomEventDispatchError, DomEventDispatchLimits, DomEventDispatchOutcome,
+    DomEventDispatchReceipt, DomEventDispatcher, DomEventDom, DomEventHostError,
+    DomEventHostInvocation, DomEventInit, DomEventListenerFailure, DomEventListenerFailureKind,
+    DomEventListenerOptions, DomEventPhase, DomEventRegistrationId, DomEventRegistryLimits,
+    DomEventResource, DomEventStorageLimits, DomEventTarget, DomEventTimestampUnavailable,
+    DomEventType, DomSignalListenerRegistration, DomStandaloneEventTarget, DomToggleEvent,
     NativeDomEvent,
 };

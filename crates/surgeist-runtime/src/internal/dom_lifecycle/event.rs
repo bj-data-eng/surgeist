@@ -1,7 +1,7 @@
 use super::*;
 use crate::internal::dom_event::{
-    DomEventConstructionError, DomEventCreationObservation, DomEventDispatcher, DomEventInit,
-    DomEventTimestampUnavailable, DomStandaloneEventTarget, NativeDomEvent,
+    DomAbortController, DomEventConstructionError, DomEventCreationObservation, DomEventDispatcher,
+    DomEventInit, DomEventTimestampUnavailable, DomStandaloneEventTarget, NativeDomEvent,
 };
 use surgeist_dom::{
     DomError,
@@ -137,6 +137,37 @@ impl HostedEventClock {
         origin: surgeist_dom::hosted::DomHostedMoment,
         cancel: &AtomicBool,
     ) -> Result<Result<EventCreation, DomEventTimestampUnavailable>, DomHostedRuntimeError> {
+        self.sample_at(
+            dom,
+            global,
+            clock::CoarsenedSample {
+                source: origin.source(),
+                microseconds: origin.microseconds(),
+            },
+            cancel,
+        )
+    }
+
+    fn sample_at(
+        &self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        origin: clock::CoarsenedSample,
+        cancel: &AtomicBool,
+    ) -> Result<Result<EventCreation, DomEventTimestampUnavailable>, DomHostedRuntimeError> {
+        self.with_firing_source(dom, global, origin, |state| {
+            state.admit_event_firing(dom, cancel)?;
+            firing_creation_from_sample(global, origin, state.clock.sample())
+        })
+    }
+
+    fn with_firing_source<T>(
+        &self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        origin: clock::CoarsenedSample,
+        action: impl FnOnce(&mut HostedState) -> Result<T, DomHostedRuntimeError>,
+    ) -> Result<T, DomHostedRuntimeError> {
         let owner = self
             .0
             .upgrade()
@@ -146,22 +177,65 @@ impl HostedEventClock {
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
         let source = state.source.id();
-        if origin.source() != source || global.source() != source || state.clock.source() != source
-        {
+        if origin.source != source || global.source() != source || state.clock.source() != source {
             return Err(DomHostedRuntimeError::Protocol);
         }
-        state.step(cancel)?;
+        action(&mut state)
+    }
+}
+
+impl HostedState {
+    fn admit_event_firing(
+        &mut self,
+        dom: &DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
+        self.step(cancel)?;
         if dom.raw().source_dispatch_blocker().is_none() {
-            state
-                .source
+            self.source
                 .admit_runtime_work(dom.raw(), 1, cancel)
                 .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         }
-        let origin = clock::CoarsenedSample {
-            source,
-            microseconds: origin.microseconds(),
-        };
-        firing_creation_from_sample(global, origin, state.clock.sample())
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct AbortEventClock {
+    clock: HostedEventClock,
+    global: DomHostedGlobalId,
+    origin: clock::CoarsenedSample,
+}
+
+impl AbortEventClock {
+    pub(crate) fn admit(
+        &self,
+        dom: &DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<AdmittedAbortEventClock, DomHostedRuntimeError> {
+        self.clock
+            .with_firing_source(dom, self.global, self.origin, |state| {
+                state.admit_event_firing(dom, cancel)
+            })?;
+        Ok(AdmittedAbortEventClock(self.clone()))
+    }
+}
+
+pub(crate) struct AdmittedAbortEventClock(AbortEventClock);
+
+impl AdmittedAbortEventClock {
+    pub(crate) fn sample(
+        &self,
+        dom: &DomEventDom<'_>,
+    ) -> Result<Result<EventCreation, DomEventTimestampUnavailable>, DomHostedRuntimeError> {
+        let AbortEventClock {
+            clock,
+            global,
+            origin,
+        } = &self.0;
+        clock.with_firing_source(dom, *global, *origin, |state| {
+            firing_creation_from_sample(*global, *origin, state.clock.sample())
+        })
     }
 }
 
@@ -207,6 +281,46 @@ impl NativeTaskRunning {
 }
 
 impl HostedRuntime {
+    /// Construct a native controller and signal in this authenticated Global.
+    /// The signal accepts at most `algorithm_limit` listener abort steps.
+    pub fn create_abort_controller<C>(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &mut DomEventDispatcher<C>,
+        global: DomHostedGlobalId,
+        algorithm_limit: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomAbortController<C>, DomEventConstructionError> {
+        let (association, clock) = self.abort_signal_context(dom, global, cancel)?;
+        dispatcher
+            .create_abort_controller(dom, association, clock, algorithm_limit, cancel)
+            .map_err(Into::into)
+    }
+
+    fn abort_signal_context(
+        &self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<(EventTargetAssociation, AbortEventClock), DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        let association = state.event_global(dom, global, cancel)?;
+        let origin = state
+            .event_settings(dom, &association, cancel)?
+            .navigation_start;
+        Ok((
+            association,
+            AbortEventClock {
+                clock: HostedEventClock(Rc::downgrade(&owner)),
+                global,
+                origin,
+            },
+        ))
+    }
+
     /// Sample the native scheduling clock for this live Window's Settings.
     #[cfg(feature = "document-scripting")]
     pub(crate) fn sample_window_timer(

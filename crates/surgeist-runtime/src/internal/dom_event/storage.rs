@@ -76,6 +76,11 @@ impl EventStorage {
         self.0.as_deref().ok_or(DomEventDispatchError::Abandoned)
     }
 
+    #[cfg(test)]
+    pub(super) fn used_bytes(&self) -> usize {
+        self.counter().unwrap().bytes.get()
+    }
+
     pub(crate) fn step(
         &self,
         amount: usize,
@@ -224,6 +229,7 @@ pub struct DomEventType(EventText);
 
 impl DomEventType {
     pub(super) const EMPTY: Self = Self(EventText::Static(&[]));
+    pub(super) const ABORT: Self = Self(EventText::Static(&[97, 98, 111, 114, 116]));
 
     /// Exact `load` spelling.
     pub const LOAD: Self = Self(EventText::Static(&[108, 111, 97, 100]));

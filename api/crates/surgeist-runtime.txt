@@ -407,6 +407,30 @@ pub surgeist_runtime::element_task::DomElementTaskRuntimeLimits::work: u64
 pub trait surgeist_runtime::element_task::DomElementTaskEventContext
 pub fn surgeist_runtime::element_task::DomElementTaskEventContext::element_tasks(&mut self) -> &mut surgeist_runtime::element_task::DomElementTaskRuntime
 pub mod surgeist_runtime::event
+#[non_exhaustive] pub enum surgeist_runtime::event::DomAbortError
+pub surgeist_runtime::event::DomAbortError::Busy
+pub surgeist_runtime::event::DomAbortError::EnclosingAbortPending
+pub surgeist_runtime::event::DomAbortError::Event(surgeist_runtime::event::DomEventDispatchError)
+pub surgeist_runtime::event::DomAbortError::Hosted(surgeist_runtime::hosted::DomHostedRuntimeError)
+impl core::convert::From<surgeist_runtime::event::DomEventDispatchError> for surgeist_runtime::event::DomAbortError
+pub fn surgeist_runtime::event::DomAbortError::from(error: surgeist_runtime::event::DomEventDispatchError) -> Self
+impl core::convert::From<surgeist_runtime::hosted::DomHostedRuntimeError> for surgeist_runtime::event::DomAbortError
+pub fn surgeist_runtime::event::DomAbortError::from(error: surgeist_runtime::hosted::DomHostedRuntimeError) -> Self
+impl core::error::Error for surgeist_runtime::event::DomAbortError
+pub fn surgeist_runtime::event::DomAbortError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_runtime::event::DomAbortError
+pub fn surgeist_runtime::event::DomAbortError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_runtime::event::DomAbortProgress
+pub surgeist_runtime::event::DomAbortProgress::AlreadyAborted
+pub surgeist_runtime::event::DomAbortProgress::Delivery(surgeist_runtime::event::DomEventDispatchOutcome)
+pub enum surgeist_runtime::event::DomAbortReason
+pub surgeist_runtime::event::DomAbortReason::AbortError(surgeist_runtime::event::DomAbortDefaultReason)
+pub surgeist_runtime::event::DomAbortReason::Explicit(surgeist_runtime::event::DomAbortValue)
+pub enum surgeist_runtime::event::DomAbortValue
+pub surgeist_runtime::event::DomAbortValue::Native(alloc::rc::Rc<dyn core::any::Any>)
+pub surgeist_runtime::event::DomAbortValue::Null
+impl core::fmt::Debug for surgeist_runtime::event::DomAbortValue
+pub fn surgeist_runtime::event::DomAbortValue::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_runtime::event::DomEventConstructionError
 pub surgeist_runtime::event::DomEventConstructionError::Event(surgeist_runtime::event::DomEventDispatchError)
 pub surgeist_runtime::event::DomEventConstructionError::Hosted(surgeist_runtime::hosted::DomHostedRuntimeError)
@@ -422,6 +446,8 @@ impl core::fmt::Display for surgeist_runtime::event::DomEventConstructionError
 pub fn surgeist_runtime::event::DomEventConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_runtime::event::DomEventDispatchError
 pub surgeist_runtime::event::DomEventDispatchError::Abandoned
+pub surgeist_runtime::event::DomEventDispatchError::AbortClock(surgeist_runtime::hosted::DomHostedRuntimeError)
+pub surgeist_runtime::event::DomEventDispatchError::AbortDeliveryPending
 pub surgeist_runtime::event::DomEventDispatchError::Admission(surgeist_runtime::event::DomEventResource)
 pub surgeist_runtime::event::DomEventDispatchError::AlreadyCompleted
 pub surgeist_runtime::event::DomEventDispatchError::AlreadyDispatching
@@ -439,6 +465,8 @@ impl core::convert::From<surgeist_dom::internal::hosted::DomHostedError> for sur
 pub fn surgeist_runtime::event::DomEventDispatchError::from(error: surgeist_dom::internal::hosted::DomHostedError) -> Self
 impl core::convert::From<surgeist_dom::internal::store::DomError> for surgeist_runtime::event::DomEventDispatchError
 pub fn surgeist_runtime::event::DomEventDispatchError::from(error: surgeist_dom::internal::store::DomError) -> Self
+impl core::convert::From<surgeist_runtime::event::DomEventDispatchError> for surgeist_runtime::event::DomAbortError
+pub fn surgeist_runtime::event::DomAbortError::from(error: surgeist_runtime::event::DomEventDispatchError) -> Self
 impl core::convert::From<surgeist_runtime::event::DomEventDispatchError> for surgeist_runtime::event::DomEventConstructionError
 pub fn surgeist_runtime::event::DomEventConstructionError::from(error: surgeist_runtime::event::DomEventDispatchError) -> Self
 impl core::error::Error for surgeist_runtime::event::DomEventDispatchError
@@ -449,6 +477,7 @@ pub enum surgeist_runtime::event::DomEventDispatchOutcome
 pub surgeist_runtime::event::DomEventDispatchOutcome::Complete(surgeist_runtime::event::DomEventDispatchReceipt)
 pub surgeist_runtime::event::DomEventDispatchOutcome::HostInvocation(surgeist_runtime::event::DomEventHostInvocation)
 pub surgeist_runtime::event::DomEventDispatchOutcome::Retained(surgeist_runtime::event::DomEventResource)
+pub surgeist_runtime::event::DomEventDispatchOutcome::RetainedAbortDelivery
 pub surgeist_runtime::event::DomEventDispatchOutcome::RetainedAfterUnwind
 pub surgeist_runtime::event::DomEventDispatchOutcome::RetainedForeignOwner
 pub surgeist_runtime::event::DomEventDispatchOutcome::RetainedForeignRegistry
@@ -498,6 +527,38 @@ impl core::error::Error for surgeist_runtime::event::DomEventTimestampUnavailabl
 pub fn surgeist_runtime::event::DomEventTimestampUnavailable::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_runtime::event::DomEventTimestampUnavailable
 pub fn surgeist_runtime::event::DomEventTimestampUnavailable::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_runtime::event::DomSignalListenerRegistration
+pub surgeist_runtime::event::DomSignalListenerRegistration::Existing(surgeist_runtime::event::DomEventRegistrationId)
+pub surgeist_runtime::event::DomSignalListenerRegistration::Inserted(surgeist_runtime::event::DomEventRegistrationId)
+pub surgeist_runtime::event::DomSignalListenerRegistration::SignalAborted
+pub struct surgeist_runtime::event::DomAbortController<C>
+impl<C> surgeist_runtime::event::DomAbortController<C>
+pub fn surgeist_runtime::event::DomAbortController<C>::abort(&self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, dispatcher: &mut surgeist_runtime::event::DomEventDispatcher<C>, context: &mut C, reason: core::option::Option<surgeist_runtime::event::DomAbortValue>, limits: surgeist_runtime::event::DomEventDispatchLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::event::DomAbortProgress, surgeist_runtime::event::DomAbortError>
+pub fn surgeist_runtime::event::DomAbortController<C>::signal(&self) -> surgeist_runtime::event::DomAbortSignal<C>
+impl<C> core::fmt::Debug for surgeist_runtime::event::DomAbortController<C>
+pub fn surgeist_runtime::event::DomAbortController<C>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_runtime::event::DomAbortDefaultReason(_)
+impl surgeist_runtime::event::DomAbortDefaultReason
+pub fn surgeist_runtime::event::DomAbortDefaultReason::global(&self) -> surgeist_dom::internal::hosted::DomHostedGlobalId
+impl core::cmp::Eq for surgeist_runtime::event::DomAbortDefaultReason
+impl core::cmp::PartialEq for surgeist_runtime::event::DomAbortDefaultReason
+pub fn surgeist_runtime::event::DomAbortDefaultReason::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_runtime::event::DomAbortDefaultReason
+pub fn surgeist_runtime::event::DomAbortDefaultReason::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_runtime::event::DomAbortSignal<C>(_)
+impl<C> surgeist_runtime::event::DomAbortSignal<C>
+pub fn surgeist_runtime::event::DomAbortSignal<C>::aborted(&self) -> core::result::Result<bool, surgeist_runtime::event::DomAbortError>
+pub fn surgeist_runtime::event::DomAbortSignal<C>::event_target(&self) -> surgeist_runtime::event::DomStandaloneEventTarget
+pub fn surgeist_runtime::event::DomAbortSignal<C>::reason(&self) -> core::result::Result<core::option::Option<surgeist_runtime::event::DomAbortReason>, surgeist_runtime::event::DomAbortError>
+pub fn surgeist_runtime::event::DomAbortSignal<C>::resume_abort(&self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, dispatcher: &mut surgeist_runtime::event::DomEventDispatcher<C>, context: &mut C, limits: surgeist_runtime::event::DomEventDispatchLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::event::DomEventDispatchOutcome, surgeist_runtime::event::DomAbortError>
+pub fn surgeist_runtime::event::DomAbortSignal<C>::take_abort_receipt(&self) -> core::result::Result<core::option::Option<surgeist_runtime::event::DomEventDispatchReceipt>, surgeist_runtime::event::DomAbortError>
+impl<C> core::clone::Clone for surgeist_runtime::event::DomAbortSignal<C>
+pub fn surgeist_runtime::event::DomAbortSignal<C>::clone(&self) -> Self
+impl<C> core::cmp::Eq for surgeist_runtime::event::DomAbortSignal<C>
+impl<C> core::cmp::PartialEq for surgeist_runtime::event::DomAbortSignal<C>
+pub fn surgeist_runtime::event::DomAbortSignal<C>::eq(&self, other: &Self) -> bool
+impl<C> core::fmt::Debug for surgeist_runtime::event::DomAbortSignal<C>
+pub fn surgeist_runtime::event::DomAbortSignal<C>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::event::DomEventCallback<C>(_)
 impl<C> surgeist_runtime::event::DomEventCallback<C>
 pub fn surgeist_runtime::event::DomEventCallback<C>::host(key: u64) -> Self
@@ -544,6 +605,7 @@ pub fn surgeist_runtime::event::DomEventDispatchReceipt::original_target(&self) 
 pub struct surgeist_runtime::event::DomEventDispatcher<C>
 impl<C> surgeist_runtime::event::DomEventDispatcher<C>
 pub fn surgeist_runtime::event::DomEventDispatcher<C>::add_listener(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, target: impl core::convert::Into<surgeist_runtime::event::DomEventTarget>, event_type: impl core::convert::AsRef<[u16]>, callback: surgeist_runtime::event::DomEventCallback<C>, options: surgeist_runtime::event::DomEventListenerOptions) -> core::result::Result<surgeist_runtime::event::DomEventRegistrationId, surgeist_runtime::event::DomEventDispatchError>
+pub fn surgeist_runtime::event::DomEventDispatcher<C>::add_listener_with_signal(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, target: impl core::convert::Into<surgeist_runtime::event::DomEventTarget>, event_type: impl core::convert::AsRef<[u16]>, callback: surgeist_runtime::event::DomEventCallback<C>, options: surgeist_runtime::event::DomEventListenerOptions, signal: &surgeist_runtime::event::DomAbortSignal<C>) -> core::result::Result<surgeist_runtime::event::DomSignalListenerRegistration, surgeist_runtime::event::DomEventDispatchError>
 pub fn surgeist_runtime::event::DomEventDispatcher<C>::bind(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_runtime::event::DomEventDispatchError>
 pub fn surgeist_runtime::event::DomEventDispatcher<C>::new(limits: surgeist_runtime::event::DomEventRegistryLimits) -> core::result::Result<Self, surgeist_runtime::event::DomEventDispatchError>
 pub fn surgeist_runtime::event::DomEventDispatcher<C>::remove_listener(&mut self, id: surgeist_runtime::event::DomEventRegistrationId) -> bool
@@ -724,6 +786,8 @@ pub surgeist_runtime::hosted::DomHostedRuntimeError::TargetNotFound
 pub surgeist_runtime::hosted::DomHostedRuntimeError::UrlUnavailable
 impl core::convert::From<surgeist_dom::internal::hosted::DomHostedError> for surgeist_runtime::hosted::DomHostedRuntimeError
 pub fn surgeist_runtime::hosted::DomHostedRuntimeError::from(error: surgeist_dom::internal::hosted::DomHostedError) -> Self
+impl core::convert::From<surgeist_runtime::hosted::DomHostedRuntimeError> for surgeist_runtime::event::DomAbortError
+pub fn surgeist_runtime::event::DomAbortError::from(error: surgeist_runtime::hosted::DomHostedRuntimeError) -> Self
 impl core::convert::From<surgeist_runtime::hosted::DomHostedRuntimeError> for surgeist_runtime::event::DomEventConstructionError
 pub fn surgeist_runtime::event::DomEventConstructionError::from(error: surgeist_runtime::hosted::DomHostedRuntimeError) -> Self
 impl core::convert::From<surgeist_runtime::hosted::DomHostedRuntimeError> for surgeist_runtime::source::DomSourceDriveError
@@ -817,6 +881,7 @@ impl core::fmt::Debug for surgeist_runtime::hosted::DomSourceExecutionScope
 pub fn surgeist_runtime::hosted::DomSourceExecutionScope::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::hosted::HostedRuntime
 impl surgeist_runtime::hosted::HostedRuntime
+pub fn surgeist_runtime::hosted::HostedRuntime::create_abort_controller<C>(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, dispatcher: &mut surgeist_runtime::event::DomEventDispatcher<C>, global: surgeist_dom::internal::hosted::DomHostedGlobalId, algorithm_limit: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::event::DomAbortController<C>, surgeist_runtime::event::DomEventConstructionError>
 pub fn surgeist_runtime::hosted::HostedRuntime::create_event(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, global: surgeist_dom::internal::hosted::DomHostedGlobalId, event_type: &[u16], init: surgeist_runtime::event::DomEventInit, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::event::NativeDomEvent, surgeist_runtime::event::DomEventConstructionError>
 pub fn surgeist_runtime::hosted::HostedRuntime::create_event_target<C>(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, dispatcher: &surgeist_runtime::event::DomEventDispatcher<C>, global: surgeist_dom::internal::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::event::DomStandaloneEventTarget, surgeist_runtime::event::DomEventConstructionError>
 pub fn surgeist_runtime::hosted::HostedRuntime::create_legacy_event(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, document: surgeist_dom::internal::identity::DocumentId, interface: &[u16], cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::event::NativeDomEvent, surgeist_runtime::event::DomEventConstructionError>
