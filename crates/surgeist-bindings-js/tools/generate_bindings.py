@@ -297,7 +297,8 @@ def document_shape(data):
     for name in ("sources", "declarations", "includes", "externals"):
         sequence(data[name], name)
     for d in data["declarations"]:
-        keys(d, ["id", "kind", "name", "attributes"], ["partial", "inherits", "members", "type", "values"])
+        keys(d, ["id", "kind", "name", "attributes"],
+             ["partial", "inherits", "members", "type", "values", "arguments"])
         identity(d["id"], "declaration ID")
         text(d["kind"], "declaration kind")
         identifier(d["name"])
@@ -308,6 +309,8 @@ def document_shape(data):
             identifier(d["inherits"])
         if "type" in d:
             type_shape(d["type"])
+        if "arguments" in d:
+            arguments_shape(d["arguments"])
         if "members" in d:
             sequence(d["members"], "members")
             for member in d["members"]:
@@ -561,18 +564,24 @@ def render_member(member, names):
 
 def render_definition(definition, names):
     keys(definition, ["id", "kind", "name", "attributes"],
-         ["inherits", "partial", "members", "values", "type"])
+         ["inherits", "partial", "members", "values", "type", "arguments"])
     identifier(definition["name"])
     if "partial" in definition:
         boolean(definition["partial"], "partial")
     kind = definition["kind"]
-    require(kind in {"interface", "mixin", "callback_interface", "dictionary", "enumeration", "typedef", "namespace"}, "unknown definition kind")
+    require(kind in {"interface", "mixin", "callback_interface", "callback", "dictionary",
+                     "enumeration", "typedef", "namespace"}, "unknown definition kind")
     require(not definition.get("partial", False) or kind in {"interface", "mixin"}, "invalid partial definition")
     require(all(x["name"] in {"Exposed", "Serializable", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties", "LegacyFactoryFunction"} for x in definition["attributes"]), "member attribute on a definition")
     require(kind == "interface" or all(x["name"] != "Serializable" for x in definition["attributes"]),
             "Serializable requires an interface")
     factory_scope = kind == "interface" and not definition.get("partial", False)
     prefix = attributes(definition["attributes"], names if factory_scope else None)
+    if kind == "callback":
+        keys(definition, ["id", "kind", "name", "attributes", "type", "arguments"])
+        require(not definition["attributes"], "unsupported callback declaration attributes")
+        return ("callback " + definition["name"] + " = " + render_type(definition["type"], names)
+                + " (" + arguments(definition["arguments"], names) + ");")
     if kind == "typedef":
         keys(definition, ["id", "kind", "name", "attributes", "type"])
         return prefix + "typedef " + render_type(definition["type"], names) + " " + definition["name"] + ";"

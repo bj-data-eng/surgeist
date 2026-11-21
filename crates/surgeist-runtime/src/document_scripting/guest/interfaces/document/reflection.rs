@@ -40,6 +40,7 @@ use surgeist_html::bounded::select::{
     select_size_reflection_setter_value, select_size_reflection_with,
 };
 use surgeist_html::elements::dialog::computed_dialog_closed_by;
+use surgeist_html::elements::media::HtmlCanvasDimension;
 use surgeist_html::values::Namespace;
 use surgeist_html::vocabulary::KnownHtmlElement;
 use surgeist_html_semantics::HtmlTranslationMode;
@@ -77,6 +78,7 @@ pub(super) enum Reflection {
     ControlLength,
     ControlDimension(HtmlControlDimensionRule),
     SelectSize,
+    CanvasDimension(HtmlCanvasDimension),
     MarqueeUnsigned(HtmlMarqueeUnsignedReflection),
     MarqueeLoop,
     TableSpan(TableSpan),
@@ -117,6 +119,7 @@ pub(super) enum Receiver {
     Template,
     Body,
     Button,
+    Canvas,
     Br,
     Hr,
     Data,
@@ -291,6 +294,10 @@ impl Receiver {
                 step()?;
                 html_element_is(node, "HTMLMeterElement")
             }
+            Self::Canvas => {
+                step()?;
+                html_element_is(node, "HTMLCanvasElement")
+            }
         })
     }
 
@@ -303,6 +310,7 @@ impl Receiver {
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Body => const { &ascii(b"HTMLBodyElement required") },
             Self::Button => const { &ascii(b"HTMLButtonElement required") },
+            Self::Canvas => const { &ascii(b"HTMLCanvasElement required") },
             Self::Br => const { &ascii(b"HTMLBRElement required") },
             Self::Hr => const { &ascii(b"HTMLHRElement required") },
             Self::Data => const { &ascii(b"HTMLDataElement required") },
@@ -491,7 +499,10 @@ impl Capture {
                 }
                 let stored = if matches!(
                     reflection,
-                    Reflection::Translate | Reflection::TabIndex | Reflection::InputType
+                    Reflection::Translate
+                        | Reflection::TabIndex
+                        | Reflection::InputType
+                        | Reflection::CanvasDimension(_)
                 ) {
                     None
                 } else {
@@ -660,6 +671,15 @@ impl Capture {
                     Reflection::MarqueeUnsigned(rule) => Reflected::Unsigned(
                         rule.read_with(stored.map(|value| value.value()), || read.step())?,
                     ),
+                    Reflection::CanvasDimension(dimension) => {
+                        let state = node
+                            .as_element()
+                            .and_then(|element| element.canvas_none_state())
+                            .ok_or(DomError::WrongNodeKind)?;
+                        Reflected::Unsigned(
+                            state.reflected_dimension_with(dimension, || read.step())?,
+                        )
+                    }
                     Reflection::MarqueeLoop => Reflected::Signed(marquee_loop_value_with(
                         stored.map(|value| value.value()),
                         || read.step(),
@@ -748,6 +768,7 @@ impl Capture {
                     | Reflection::ControlDimension(_)
                     | Reflection::TableSpan(_)
                     | Reflection::MarqueeUnsigned(_)
+                    | Reflection::CanvasDimension(_)
             ) {
                 let converted = self
                     .callbacks
@@ -764,18 +785,25 @@ impl Capture {
                     return Err(Error::BackendUnavailable.into());
                 };
                 events.step()?;
+                if matches!(
+                    reflection,
+                    Reflection::ControlDimension(_)
+                        | Reflection::MarqueeUnsigned(_)
+                        | Reflection::CanvasDimension(_)
+                ) {
+                    let current = self.callbacks.with_read(&owner, &events, |read, _| {
+                        receiver.matches(read.node(id)?, || read.step())
+                    })?;
+                    if !current {
+                        return Ok(Completion::Throw(
+                            scope.type_error(receiver.error_message())?,
+                        ));
+                    }
+                }
                 let value = match reflection {
                     Reflection::HeadingOffset => heading_offset_setter_value(value),
                     Reflection::SelectSize => select_size_reflection_setter_value(value),
                     Reflection::ControlDimension(rule) => {
-                        let current = self.callbacks.with_read(&owner, &events, |read, _| {
-                            receiver.matches(read.node(id)?, || read.step())
-                        })?;
-                        if !current {
-                            return Ok(Completion::Throw(
-                                scope.type_error(receiver.error_message())?,
-                            ));
-                        }
                         let Ok(value) = rule.setter_value(value) else {
                             return Ok(Completion::Throw(
                                 scope.dom_exception(DomExceptionName::IndexSizeError, &[])?,
@@ -783,17 +811,8 @@ impl Capture {
                         };
                         value
                     }
-                    Reflection::MarqueeUnsigned(rule) => {
-                        let current = self.callbacks.with_read(&owner, &events, |read, _| {
-                            receiver.matches(read.node(id)?, || read.step())
-                        })?;
-                        if !current {
-                            return Ok(Completion::Throw(
-                                scope.type_error(receiver.error_message())?,
-                            ));
-                        }
-                        rule.setter_value(value)
-                    }
+                    Reflection::MarqueeUnsigned(rule) => rule.setter_value(value),
+                    Reflection::CanvasDimension(dimension) => dimension.reflected_value(value),
                     _ => HtmlTableSpanRule::reflected_setter_value(value),
                 };
                 Some(copy_numeric_attribute(

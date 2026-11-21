@@ -117,6 +117,9 @@ pub fn surgeist_bindings_js::conversion::declarations::html_body_element_obsolet
 pub fn surgeist_bindings_js::conversion::declarations::html_body_element_obsolete_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::html_body_element_obsolete_v_link_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::html_button_element_set_custom_validity_0_error() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_canvas_element_get_context_0_context_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_canvas_element_to_blob_0_type() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_canvas_element_to_data_url_0_type() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_item_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_named_item_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_dialog_element_close_0_return_value() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>

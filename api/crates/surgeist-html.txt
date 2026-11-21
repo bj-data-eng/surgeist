@@ -4974,6 +4974,11 @@ pub mod surgeist_html::elements::media
 pub enum surgeist_html::elements::media::HtmlCanvasBitmapDimension<'a>
 pub surgeist_html::elements::media::HtmlCanvasBitmapDimension::Default(u128)
 pub surgeist_html::elements::media::HtmlCanvasBitmapDimension::Parsed(&'a surgeist_html::microsyntax::numeric::HtmlNonNegativeInteger)
+pub enum surgeist_html::elements::media::HtmlCanvasDimension
+pub surgeist_html::elements::media::HtmlCanvasDimension::Height
+pub surgeist_html::elements::media::HtmlCanvasDimension::Width
+impl surgeist_html::elements::media::HtmlCanvasDimension
+pub const fn surgeist_html::elements::media::HtmlCanvasDimension::reflected_value(self, value: u32) -> u32
 pub enum surgeist_html::elements::media::HtmlInitialMediaState
 pub surgeist_html::elements::media::HtmlInitialMediaState::Audio
 pub surgeist_html::elements::media::HtmlInitialMediaState::Video
@@ -5015,6 +5020,7 @@ pub const fn surgeist_html::elements::media::HtmlCanvasNoneState::has_bound_cont
 pub fn surgeist_html::elements::media::HtmlCanvasNoneState::height(&self) -> surgeist_html::elements::media::HtmlCanvasBitmapDimension<'_>
 pub fn surgeist_html::elements::media::HtmlCanvasNoneState::height_attribute_changed(&mut self, parsed: core::option::Option<surgeist_html::microsyntax::numeric::HtmlNonNegativeInteger>)
 pub const fn surgeist_html::elements::media::HtmlCanvasNoneState::origin_clean(&self) -> bool
+pub fn surgeist_html::elements::media::HtmlCanvasNoneState::reflected_dimension_with<E>(&self, dimension: surgeist_html::elements::media::HtmlCanvasDimension, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<u32, E>
 pub fn surgeist_html::elements::media::HtmlCanvasNoneState::width(&self) -> surgeist_html::elements::media::HtmlCanvasBitmapDimension<'_>
 pub fn surgeist_html::elements::media::HtmlCanvasNoneState::width_attribute_changed(&mut self, parsed: core::option::Option<surgeist_html::microsyntax::numeric::HtmlNonNegativeInteger>)
 pub struct surgeist_html::elements::media::HtmlMediaValue

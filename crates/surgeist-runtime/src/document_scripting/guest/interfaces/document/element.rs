@@ -332,6 +332,7 @@ impl ElementBindings {
                 "HTMLButtonElement" => super::button::install(scope, &prototype, capture)?,
                 "HTMLBRElement" => super::break_elements::install_br(scope, &prototype, capture)?,
                 "HTMLHRElement" => super::break_elements::install_hr(scope, &prototype, capture)?,
+                "HTMLCanvasElement" => super::canvas::install(scope, &prototype, capture)?,
                 "HTMLDataElement" => super::data_time::install_data(scope, &prototype, capture)?,
                 "HTMLDetailsElement" => super::details::install(scope, &prototype, capture)?,
                 "HTMLDialogElement" => super::dialog::install(scope, &prototype, capture)?,
