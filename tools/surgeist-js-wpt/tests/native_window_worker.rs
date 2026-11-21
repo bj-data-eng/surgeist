@@ -127,7 +127,12 @@ fn checks_the_whole_fixture_identity() {
     }
     for invalid in [
         fixture(ASSERTION_FAILURE, "native-window", ""),
-        fixture(NATIVE_WINDOW, "assertion-failure", ""),
+        FixtureId::new(
+            SourceRevision::new(NATIVE_WINDOW).unwrap(),
+            RelativePath::new("qualification/assertion-failure.js").unwrap(),
+            "/qualification/native-window.html".into(),
+        )
+        .unwrap(),
         fixture(NATIVE_WINDOW, "native-window", "#different-variant"),
     ] {
         let result = received(&invalid);
