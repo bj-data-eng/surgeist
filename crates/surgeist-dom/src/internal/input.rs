@@ -1,10 +1,11 @@
 //! Native Input intrinsic storage; canonical identities stay with Node/Draft.
-use crate::{internal::identity::NodeId, internal::snapshot::DomNode};
+use crate::internal::{form::DomForm, identity::NodeId, snapshot::DomNode, store::DomError};
 use surgeist_html::values::DocumentString;
 use surgeist_html::{
     attributes::HtmlInputType,
     elements::input::{
         HtmlInputFileSelection, HtmlInputFlags, HtmlInputImageHistory, HtmlInputSelection,
+        HtmlInputValueMode,
     },
 };
 
@@ -89,37 +90,94 @@ impl<'a> DomInput<'a> {
             .input_state()
             .expect("checked Input")
     }
-    pub fn form_owner(self) -> Result<Option<NodeId>, crate::internal::store::DomError> {
+    pub fn form_owner(self) -> Result<Option<NodeId>, DomError> {
         self.node.snapshot.require_complete_source()?;
         Ok(self.node.node.control_owner())
     }
+    /// Read the stored Form owner in this published snapshot segment.
+    ///
+    /// A live caller qualifies its access to the current segment. `step` admits
+    /// the association read and each reached owner lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first admission or lookup failure, or
+    /// [`DomError::WrongNodeKind`] if the stored owner is not a native Form.
+    pub fn form_owner_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomForm<'a>>, E> {
+        self.node.stored_form_owner_with(step)
+    }
+
+    /// Read the canonical Input type from this published snapshot segment.
+    ///
+    /// `step` admits the state read and its refusal is returned unchanged.
+    /// A live caller qualifies its access to the current segment.
+    pub fn input_type_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<HtmlInputType, E> {
+        Ok(self.state_with(step)?.input_type())
+    }
+
     /// HTML's value-mode getter: exact current/default/on/empty-file readback.
     pub fn value(self) -> &'a [u16] {
-        let content = self
-            .node
-            .attributes()
-            .into_iter()
-            .flat_map(crate::internal::attr::DomNamedNodeMap::iter)
-            .find(|a| {
-                a.name().namespace_uri().is_none()
-                    && a.name()
-                        .local_name()
-                        .code_units()
-                        .iter()
-                        .copied()
-                        .eq("value".encode_utf16())
-            })
-            .map(|a| a.value().code_units());
-        self.state()
-            .input_type()
-            .value_mode()
-            .readback(
-                self.state().current.code_units(),
-                content,
-                Some(self.state().files),
-            )
-            .expect("native selected-file state is established")
+        self.value_with(|| Ok::<_, DomError>(()))
+            .expect("native Input value state is established")
     }
+
+    /// Borrow the exact value selected by the current native storage mode.
+    ///
+    /// `step` admits the state read and the reached attribute lookup in
+    /// Default and Default/On modes. Value and Filename modes never look up
+    /// the content attribute. The caller admits any output copy and qualifies
+    /// access to this published snapshot segment.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first admission or canonical lookup failure unchanged.
+    pub fn value_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<&'a [u16], E> {
+        const VALUE: &[u16] = &[
+            b'v' as u16,
+            b'a' as u16,
+            b'l' as u16,
+            b'u' as u16,
+            b'e' as u16,
+        ];
+        let state = self.state_with(&mut step)?;
+        let mode = state.input_type().value_mode();
+        let (current, content, files) = match mode {
+            HtmlInputValueMode::Value => (state.current_value().code_units(), None, None),
+            HtmlInputValueMode::Default | HtmlInputValueMode::DefaultOn => {
+                let content = self
+                    .node
+                    .attributes()
+                    .ok_or(DomError::WrongNodeKind)?
+                    .get_null_namespace_attribute_with(VALUE, step)?
+                    .map(|attribute| attribute.value().code_units());
+                (&[][..], content, None)
+            }
+            HtmlInputValueMode::Filename => (&[][..], None, Some(state.files)),
+        };
+        mode.readback(current, content, files)
+            .ok_or_else(|| DomError::WrongNodeKind.into())
+    }
+
+    fn state_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<&'a DomInputState, E> {
+        step()?;
+        self.node
+            .as_element()
+            .and_then(|element| element.input_state())
+            .ok_or_else(|| DomError::WrongNodeKind.into())
+    }
+
     /// Raw permitted-weak slot; the scoped getter remains an HTML semantic query.
     pub fn explicit_popover_target(self) -> Option<NodeId> {
         self.node

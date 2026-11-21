@@ -27,6 +27,7 @@ mod font_element;
 mod form_attributes;
 mod html_reflection;
 mod inline_style;
+mod input_state;
 mod li_reflections;
 mod list_compact;
 mod list_reflections;
@@ -499,6 +500,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     );
     super::guest::tests::output_value_admission::output_edits_preserve_the_first_source_refusal();
     textarea_values::textarea_values_preserve_raw_default_and_caret_on_source_refusal();
+    input_state::input_bindings_use_configured_native_processing();
+    input_state::input_source_and_processing_refusals_preserve_native_state();
     super::guest::tests::select_string_admission::select_value_admits_native_text_and_its_guest_copy();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();

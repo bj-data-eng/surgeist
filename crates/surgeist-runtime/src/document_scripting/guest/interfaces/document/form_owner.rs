@@ -8,6 +8,7 @@ pub(super) enum FormOwnerGetter {
     Option,
     Button,
     Fieldset,
+    Input,
     Output,
     Textarea,
     Legend,
@@ -20,6 +21,7 @@ impl FormOwnerGetter {
             Self::Option => Receiver::Option,
             Self::Button => Receiver::Button,
             Self::Fieldset => Receiver::Fieldset,
+            Self::Input => Receiver::Input,
             Self::Output => Receiver::Output,
             Self::Textarea => Receiver::Textarea,
             Self::Legend => Receiver::Legend,
@@ -81,6 +83,10 @@ impl Capture {
                         .form_owner_with(|| read.step())?,
                     FormOwnerGetter::Fieldset => node
                         .as_fieldset()
+                        .ok_or(DomError::WrongNodeKind)?
+                        .form_owner_with(|| read.step())?,
+                    FormOwnerGetter::Input => node
+                        .as_input()
                         .ok_or(DomError::WrongNodeKind)?
                         .form_owner_with(|| read.step())?,
                     FormOwnerGetter::Output => node

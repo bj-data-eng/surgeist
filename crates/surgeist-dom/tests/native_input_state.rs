@@ -347,6 +347,77 @@ fn type_transfers_default_on_file_and_selection_follow_the_ordered_effects() {
 }
 
 #[test]
+fn input_mode_value_reads_only_the_reached_native_content() {
+    #[derive(Debug, PartialEq, Eq)]
+    enum Refusal {
+        Work,
+        Dom(DomError),
+    }
+    impl From<DomError> for Refusal {
+        fn from(error: DomError) -> Self {
+            Self::Dom(error)
+        }
+    }
+
+    let mut dom = owner();
+    let (_, _, input) = setup(&mut dom);
+    let mut batch = DomBatch::new();
+    for index in 0..8 {
+        batch.set_attribute(input, format!("data-spare-{index}"), "unrelated");
+    }
+    batch.set_attribute_ns(
+        input,
+        Namespace::from_uri("urn:foreign"),
+        "f:value",
+        "foreign",
+    );
+    batch.set_attribute(input, "value", "authored");
+    batch.set_input_value(input, "live");
+    apply(&mut dom, batch);
+
+    let read = |snapshot: &DomSnapshot, expected: &str| {
+        let view = snapshot.node(input).unwrap().as_input().unwrap();
+        let expected = expected.encode_utf16().collect::<Vec<_>>();
+        let mut steps = 0usize;
+        assert_eq!(
+            view.value_with(|| {
+                steps += 1;
+                Ok::<_, Refusal>(())
+            })
+            .unwrap(),
+            expected.as_slice()
+        );
+        let mut remaining = steps - 1;
+        assert_eq!(
+            view.value_with(|| {
+                remaining = remaining.checked_sub(1).ok_or(Refusal::Work)?;
+                Ok(())
+            }),
+            Err(Refusal::Work)
+        );
+        assert_eq!(remaining, 0);
+        steps
+    };
+    assert_eq!(read(&dom.snapshot(), "live"), 1);
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "checkbox");
+    batch.remove_attribute(input, "value");
+    apply(&mut dom, batch);
+    assert!(read(&dom.snapshot(), "on") > 1);
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "value", "");
+    apply(&mut dom, batch);
+    assert!(read(&dom.snapshot(), "") > 1);
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "file");
+    batch.set_attribute(input, "value", "authored file default");
+    apply(&mut dom, batch);
+    assert_eq!(read(&dom.snapshot(), ""), 1);
+}
+
+#[test]
 fn email_multiple_uses_real_produced_tokens_and_repeated_flag_changes() {
     let mut dom = owner();
     let (_, _, input) = setup(&mut dom);

@@ -57,6 +57,7 @@ pub(super) enum Reflection {
     FormMethod,
     FormEnctypeOverride,
     FormMethodOverride,
+    InputType,
     Popover,
     HeadingOffset,
     TabIndex,
@@ -125,6 +126,7 @@ pub(super) enum Receiver {
     Font,
     Form,
     Frameset,
+    Input,
     Legend,
     Marquee,
     Li,
@@ -219,6 +221,12 @@ impl Receiver {
                 step()?;
                 super::frameset::is_frameset(node)
             }
+            Self::Input => {
+                step()?;
+                node.as_element().is_some_and(|element| {
+                    !element.has_failed_construction_interface() && element.input_state().is_some()
+                })
+            }
             Self::Legend => {
                 step()?;
                 html_element_is(node, "HTMLLegendElement")
@@ -289,6 +297,7 @@ impl Receiver {
             Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Form => const { &ascii(b"HTMLFormElement required") },
             Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
+            Self::Input => const { &ascii(b"HTMLInputElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
             Self::Li => const { &ascii(b"HTMLLIElement required") },
@@ -445,7 +454,10 @@ impl Capture {
                 if write {
                     return Ok(Some(Reflected::Write));
                 }
-                let stored = if matches!(reflection, Reflection::Translate | Reflection::TabIndex) {
+                let stored = if matches!(
+                    reflection,
+                    Reflection::Translate | Reflection::TabIndex | Reflection::InputType
+                ) {
                     None
                 } else {
                     let attrs = node.attributes().ok_or(DomError::WrongNodeKind)?;
@@ -528,6 +540,11 @@ impl Capture {
                         Reflected::Keyword(Some(form_method_override_keyword_with(units, |_| {
                             read.step()
                         })?))
+                    }
+                    Reflection::InputType => {
+                        let input = node.as_input().ok_or(DomError::WrongNodeKind)?;
+                        let state = input.input_type_with(|| read.step())?;
+                        Reflected::Keyword(Some(state.canonical_keyword()))
                     }
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
@@ -799,6 +816,7 @@ impl Capture {
                             | Receiver::Fieldset
                             | Receiver::Form
                             | Receiver::Frameset
+                            | Receiver::Input
                             | Receiver::Legend
                             | Receiver::Marquee
                             | Receiver::Output

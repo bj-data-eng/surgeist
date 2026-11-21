@@ -166,6 +166,22 @@ class DescriptionTests(unittest.TestCase):
         with self.assertRaisesRegex(g.DescriptionError, "invalid reflected attribute name"):
             g.attributes([{"name": "Reflect", "value": 'invalid"name'}])
 
+    def test_url_reflection_preserves_its_name_and_requires_usvstring(self):
+        member = {
+            "id": "Fixture.source", "kind": "attribute", "name": "source", "readonly": False,
+            "type": {"kind": "named", "name": "USVString"},
+            "attributes": [{"name": "ReflectURL", "value": "src"}],
+        }
+        self.assertEqual(g.render_member(member, {}),
+                         '[ReflectURL="src"] attribute USVString source;')
+        member["type"]["name"] = "DOMString"
+        with self.assertRaisesRegex(g.DescriptionError, "ReflectURL requires"):
+            g.render_member(member, {})
+        member["type"]["name"] = "USVString"
+        member["attributes"].append({"name": "ReflectSetter"})
+        with self.assertRaisesRegex(g.DescriptionError, "only one primary reflection"):
+            g.render_member(member, {})
+
     @classmethod
     def setUpClass(cls):
         cls.original = g.load()
@@ -702,6 +718,41 @@ class DescriptionTests(unittest.TestCase):
         selection[-1]["default"]["value"] = "preserve"
         self.member("HTMLTextAreaElement.cols")["attributes"][-1]["value"] = 2
         self.rejected("source declaration mismatch: HTMLTextAreaElement.source")
+
+    def test_input_preserves_value_conversion_file_type_and_signed_step_defaults(self):
+        input_element = self.definition("HTMLInputElement")
+        self.assertEqual(input_element["inherits"], "HTMLElement")
+        self.assertEqual(self.member("HTMLInputElement.src")["attributes"],
+                         [{"name": "CEReactions"}, {"name": "ReflectURL"}])
+        self.assertEqual(self.member("HTMLInputElement.src")["type"]["name"], "USVString")
+        for name, kind in [("files", "FileList"), ("list", "HTMLDataListElement")]:
+            with self.subTest(member=name):
+                self.assertEqual(self.member("HTMLInputElement." + name)["type"],
+                                 {"kind": "nullable", "inner": {"kind": "named", "name": kind}})
+
+        model = g.lower_values(self.data)
+        selected = {identity: info for identity, _, info in g.lower_selected_setters(self.data, model)}
+        self.assertEqual(selected["HTMLInputElement.value"],
+                         ("DomString", "Type<DomString>", "types::DOM_STRING_NULL_TO_EMPTY"))
+        self.assertNotIn("HTMLInputElement.defaultValue", selected)
+        for name in ["stepUp", "stepDown"]:
+            with self.subTest(member=name):
+                self.assertEqual(self.member(f"HTMLInputElement.{name}:0")["arguments"], [{
+                    "name": "n", "presence": "optional", "type": {"kind": "named", "name": "long"},
+                    "default": {"kind": "integer", "value": 1},
+                }])
+        arguments = g.lower_arguments(self.data, model)
+        output = g.emit_conversions(model, arguments)
+        self.assertEqual(output.count("Ok(cx.plain(IntegerValue::Long(1)))"), 2)
+
+        default = self.member("HTMLInputElement.stepUp:0")["arguments"][0]["default"]
+        for value in [-(2**31) - 1, 2**31]:
+            with self.subTest(default=value):
+                default["value"] = value
+                with self.assertRaisesRegex(g.DescriptionError, "integer argument default"):
+                    g.emit_conversions(model, arguments)
+        default["value"] = 2
+        self.rejected("source declaration mismatch: HTMLInputElement.source")
 
     def test_dialog_state_and_native_methods_preserve_the_primary_declaration(self):
         dialog = self.definition("HTMLDialogElement")

@@ -1836,6 +1836,145 @@ pub fn html_output_element_set_custom_validity_0_error() -> Argument<Type<DomStr
     )
 }
 
+fn default_html_input_element_step_up_0_n(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<IntegerValue>, Failure> {
+    Ok(cx.plain(IntegerValue::Long(1)))
+}
+
+/// Selected argument `HTMLInputElement.stepUp:0/n` (not overload selection).
+pub fn html_input_element_step_up_0_n() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLInputElement.stepUp:0/n",
+        0,
+        true,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        Some(default_html_input_element_step_up_0_n),
+    )
+}
+
+fn default_html_input_element_step_down_0_n(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<IntegerValue>, Failure> {
+    Ok(cx.plain(IntegerValue::Long(1)))
+}
+
+/// Selected argument `HTMLInputElement.stepDown:0/n` (not overload selection).
+pub fn html_input_element_step_down_0_n() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLInputElement.stepDown:0/n",
+        0,
+        true,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        Some(default_html_input_element_step_down_0_n),
+    )
+}
+
+/// Selected argument `HTMLInputElement.setCustomValidity:0/error` (not overload selection).
+pub fn html_input_element_set_custom_validity_0_error() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLInputElement.setCustomValidity:0/error",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLInputElement.setRangeText:0/replacement` (not overload selection).
+pub fn html_input_element_set_range_text_0_replacement() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLInputElement.setRangeText:0/replacement",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLInputElement.setRangeText:1/replacement` (not overload selection).
+pub fn html_input_element_set_range_text_1_replacement() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLInputElement.setRangeText:1/replacement",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLInputElement.setRangeText:1/start` (not overload selection).
+pub fn html_input_element_set_range_text_1_start() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLInputElement.setRangeText:1/start",
+        1,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLInputElement.setRangeText:1/end` (not overload selection).
+pub fn html_input_element_set_range_text_1_end() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLInputElement.setRangeText:1/end",
+        2,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+fn default_html_input_element_set_range_text_1_selection_mode(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<SelectionMode>, Failure> {
+    Ok(cx.plain(SelectionMode::Preserve))
+}
+
+/// Selected argument `HTMLInputElement.setRangeText:1/selectionMode` (not overload selection).
+pub fn html_input_element_set_range_text_1_selection_mode() -> Argument<Type<SelectionMode>> {
+    Argument::new(
+        "HTMLInputElement.setRangeText:1/selectionMode",
+        3,
+        true,
+        selection_mode().0,
+        Some(default_html_input_element_set_range_text_1_selection_mode),
+    )
+}
+
+/// Selected argument `HTMLInputElement.setSelectionRange:0/start` (not overload selection).
+pub fn html_input_element_set_selection_range_0_start() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLInputElement.setSelectionRange:0/start",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLInputElement.setSelectionRange:0/end` (not overload selection).
+pub fn html_input_element_set_selection_range_0_end() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLInputElement.setSelectionRange:0/end",
+        1,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLInputElement.setSelectionRange:0/direction` (not overload selection).
+pub fn html_input_element_set_selection_range_0_direction() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLInputElement.setSelectionRange:0/direction",
+        2,
+        true,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected argument `HTMLTextAreaElement.setCustomValidity:0/error` (not overload selection).
 pub fn html_text_area_element_set_custom_validity_0_error() -> Argument<Type<DomString>> {
     Argument::new(
@@ -2064,6 +2203,11 @@ pub fn html_body_element_obsolete_a_link_setter() -> Type<DomString> {
 
 /// Selected setter conversion for `HTMLBodyElement.obsolete.bgColor`.
 pub fn html_body_element_obsolete_bg_color_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLInputElement.value`.
+pub fn html_input_element_value_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
 }
 
