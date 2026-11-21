@@ -10,7 +10,20 @@ one slot generation. Detaching or adopting a root preserves the cursor.
 Destroying the root retires the iterator. `DomLimits::with_node_iterators` bounds
 retained slots, including vacancies, and `DomUsage::node_iterators` counts live
 cursors. Next and previous operations take a finite work allowance shared by all
-filter calls within that traversal.
+filter calls within that traversal. The accounted next and previous methods
+instead take a synchronous admission callback. DOM calls it before each reached
+traversal step, including reads and a filter response's acceptance. The returned
+request owns that same callback through every response; a response cannot replace
+it. The callback's exact typed failure ends traversal before that step and
+releases the active filter without advancing the committed reference. Its error
+type converts `DomError` through `From<DomError>` so native failures remain typed.
+An accounted traversal with no filter returns a separate match request before
+publishing the reference. Prepare its output, then accept the request; dropping
+it preserves the reference. Acceptance requires the original owner, canonical
+publication and Source callback. Registering a retirement watch for that output
+preserves this qualification; intervening canonical publication refuses it.
+DOM independently charges the original Source callback and enclosing allowances;
+the admission callback must not charge those same Source accounts again.
 
 With a callback policy, traversal returns a request carrying the iterator and
 the actual node to pass to its filter. The caller may edit the same DOM while

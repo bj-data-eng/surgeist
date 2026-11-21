@@ -13,16 +13,17 @@ pub(super) enum Direction {
 }
 
 pub(super) trait OrdinaryTree<N: Copy + Eq> {
-    fn position(&self, node: N) -> Result<Option<(N, usize)>, DomError>;
-    fn child(&self, node: N, ordinal: usize) -> Result<Option<N>, DomError>;
-    fn last_child(&self, node: N) -> Result<Option<N>, DomError>;
+    type Error: From<DomError>;
+    fn position(&self, node: N) -> Result<Option<(N, usize)>, Self::Error>;
+    fn child(&self, node: N, ordinal: usize) -> Result<Option<N>, Self::Error>;
+    fn last_child(&self, node: N) -> Result<Option<N>, Self::Error>;
 }
 
-pub(super) fn following<N: Copy + Eq>(
-    tree: &impl OrdinaryTree<N>,
+pub(super) fn following<N: Copy + Eq, T: OrdinaryTree<N>>(
+    tree: &T,
     root: N,
     mut node: N,
-) -> Result<Option<N>, DomError> {
+) -> Result<Option<N>, T::Error> {
     while node != root {
         let (parent, ordinal) = tree.position(node)?.ok_or(DomError::HierarchyRequest)?;
         let next = ordinal
@@ -36,11 +37,11 @@ pub(super) fn following<N: Copy + Eq>(
     Ok(None)
 }
 
-pub(super) fn preceding<N: Copy + Eq>(
-    tree: &impl OrdinaryTree<N>,
+pub(super) fn preceding<N: Copy + Eq, T: OrdinaryTree<N>>(
+    tree: &T,
     root: N,
     node: N,
-) -> Result<Option<N>, DomError> {
+) -> Result<Option<N>, T::Error> {
     if node == root {
         return Ok(None);
     }
@@ -57,12 +58,12 @@ pub(super) fn preceding<N: Copy + Eq>(
     Ok(Some(node))
 }
 
-pub(super) fn advance<N: Copy + Eq>(
-    tree: &impl OrdinaryTree<N>,
+pub(super) fn advance<N: Copy + Eq, T: OrdinaryTree<N>>(
+    tree: &T,
     root: N,
     pointer: Pointer<N>,
     direction: Direction,
-) -> Result<Option<Pointer<N>>, DomError> {
+) -> Result<Option<Pointer<N>>, T::Error> {
     let node = match (direction, pointer.before) {
         (Direction::Next, true) | (Direction::Previous, false) => Some(pointer.node),
         (Direction::Next, false) => match tree.child(pointer.node, 0)? {
@@ -79,12 +80,12 @@ pub(super) fn advance<N: Copy + Eq>(
 
 /// The caller has already selected roots that are strict ordinary ancestors of
 /// the removed node. Neither shadow nor Template host edges enter this walk.
-pub(super) fn adjust<N: Copy + Eq>(
-    tree: &impl OrdinaryTree<N>,
+pub(super) fn adjust<N: Copy + Eq, T: OrdinaryTree<N>>(
+    tree: &T,
     root: N,
     removed: N,
     pointer: Pointer<N>,
-) -> Result<Pointer<N>, DomError> {
+) -> Result<Pointer<N>, T::Error> {
     let mut ancestor = pointer.node;
     loop {
         if ancestor == removed {

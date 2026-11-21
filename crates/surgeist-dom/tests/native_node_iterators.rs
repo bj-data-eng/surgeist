@@ -1,9 +1,9 @@
 //! Native cursor transitions from the pinned DOM NodeIterator algorithm.
 
-use std::sync::atomic::AtomicBool;
+use std::{cell::Cell, rc::Rc, sync::atomic::AtomicBool};
 use surgeist_dom::{
     Dom, DomBatch, DomError,
-    edit::DomChange,
+    edit::{DomChange, DomNodeRetirementLimits},
     event::{DomSourceEventExecutor, DomSourceEventOutcome, DomSourceEventRequest},
     identity::{DocumentId, NodeId},
     limits::{DomLimits, DomNameLimits, DomResource},
@@ -709,4 +709,391 @@ fn fragment_cursor_adjustments_survive_the_real_style_source_suspension() {
     assert_eq!(dom.snapshot().node(sibling).unwrap().parent(), Some(root));
     assert_eq!(reference(&dom, id), (fragment, false));
     assert_eq!(step(&mut dom, id, true), None);
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum AdmissionFailure {
+    Dom(DomError),
+    Refused(Rc<u32>),
+}
+
+impl From<DomError> for AdmissionFailure {
+    fn from(error: DomError) -> Self {
+        Self::Dom(error)
+    }
+}
+
+#[test]
+fn accounted_traversal_admits_actual_forward_backward_and_empty_steps() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, u32::MAX);
+    let admitted = Cell::new(0);
+    let admit = || {
+        admitted.set(admitted.get() + 1);
+        Ok::<(), DomError>(())
+    };
+    let DomNodeIteratorProgress::Match(matched) = dom
+        .node_iterator_next_accounted(id, admit, &cancel)
+        .unwrap()
+    else {
+        panic!("unfiltered output must wait for projection");
+    };
+    assert_eq!(matched.node(), root);
+    // Initial advance, node lookup, and its bank page are actual work.
+    assert_eq!(admitted.get(), 3);
+    assert_eq!(reference(&dom, id), (root, true));
+    assert_eq!(matched.accept(&mut dom, &cancel).unwrap(), root);
+    assert_eq!(admitted.get(), 4);
+    assert_eq!(reference(&dom, id), (root, false));
+    let DomNodeIteratorProgress::Match(matched) = dom
+        .node_iterator_previous_accounted(id, admit, &cancel)
+        .unwrap()
+    else {
+        panic!("backward output must wait for projection");
+    };
+    assert_eq!(admitted.get(), 7);
+    assert_eq!(matched.accept(&mut dom, &cancel).unwrap(), root);
+    assert_eq!(admitted.get(), 8);
+    assert!(matches!(
+        dom.node_iterator_previous_accounted(id, admit, &cancel)
+            .unwrap(),
+        DomNodeIteratorProgress::Complete(None)
+    ));
+    assert_eq!(admitted.get(), 9);
+    assert_eq!(reference(&dom, id), (root, true));
+}
+
+#[test]
+fn accounted_filter_keeps_its_original_admission_through_rejection_and_acceptance() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = dom
+        .create_node_iterator(root, u32::MAX, DomNodeIteratorFilter::Callback, &cancel)
+        .unwrap();
+    let admitted = Rc::new(Cell::new(0));
+    let counter = Rc::clone(&admitted);
+    let DomNodeIteratorProgress::Filter(filter) = dom
+        .node_iterator_next_accounted(
+            id,
+            move || {
+                counter.set(counter.get() + 1);
+                Ok::<(), AdmissionFailure>(())
+            },
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the root must reach the filter");
+    };
+    assert_eq!(filter.node(), root);
+    assert_eq!(admitted.get(), 3);
+    let DomNodeIteratorProgress::Filter(filter) = filter
+        .respond(&mut dom, DomNodeFilterDecision::Reject, &cancel)
+        .unwrap()
+    else {
+        panic!("rejecting the root must reach its first child");
+    };
+    assert_eq!(filter.node(), first);
+    let before_acceptance = admitted.get();
+    assert!(before_acceptance > 3);
+    assert!(matches!(
+        filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(),
+        DomNodeIteratorProgress::Complete(Some(node)) if node == first
+    ));
+    assert_eq!(admitted.get(), before_acceptance + 1);
+    assert_eq!(reference(&dom, id), (first, false));
+}
+
+#[test]
+fn accounted_refusal_after_first_filter_preserves_typed_failure_and_clears_activation() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = dom
+        .create_node_iterator(root, u32::MAX, DomNodeIteratorFilter::Callback, &cancel)
+        .unwrap();
+    let revision = dom.revision();
+    let admitted = Rc::new(Cell::new(0));
+    let counter = Rc::clone(&admitted);
+    let failure = Rc::new(91);
+    let original = Rc::clone(&failure);
+    let DomNodeIteratorProgress::Filter(filter) = dom
+        .node_iterator_next_accounted(
+            id,
+            move || {
+                if counter.get() == 3 {
+                    return Err(AdmissionFailure::Refused(Rc::clone(&failure)));
+                }
+                counter.set(counter.get() + 1);
+                Ok(())
+            },
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the admitted prefix must reach the root filter");
+    };
+    assert_eq!(filter.node(), root);
+    assert_eq!(admitted.get(), 3);
+    let AdmissionFailure::Refused(returned) = filter
+        .respond(&mut dom, DomNodeFilterDecision::Accept, &cancel)
+        .unwrap_err()
+    else {
+        panic!("the original typed admission failure must be returned");
+    };
+    assert!(Rc::ptr_eq(&returned, &original));
+    assert_eq!(admitted.get(), 3);
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(reference(&dom, id), (root, true));
+    // Refusal consumes the affine request and releases the active filter.
+    let filter = request(dom.node_iterator_next(id, 4, &cancel).unwrap(), root);
+    assert!(matches!(
+        filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(),
+        DomNodeIteratorProgress::Complete(Some(node)) if node == root
+    ));
+}
+
+#[test]
+fn accounted_refusal_during_masked_traversal_keeps_the_committed_cursor() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, 0);
+    let revision = dom.revision();
+    let admitted = Cell::new(0);
+    let failure = Rc::new(33);
+    let error = dom
+        .node_iterator_next_accounted(
+            id,
+            || {
+                if admitted.get() == 2 {
+                    return Err(AdmissionFailure::Refused(Rc::clone(&failure)));
+                }
+                admitted.set(admitted.get() + 1);
+                Ok(())
+            },
+            &cancel,
+        )
+        .unwrap_err();
+    assert_eq!(error, AdmissionFailure::Refused(failure));
+    assert_eq!(admitted.get(), 2);
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(reference(&dom, id), (root, true));
+}
+
+#[test]
+fn accounted_empty_traversal_charges_native_source_once_per_admitted_step() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, 0);
+    let limits = DomSourceLimits::new(32_000_000, 1_000_000, 4096, 64, 4096, 4096, 4);
+    let (executor, event) = begin_dialog_observation(&mut dom, root, limits, &cancel);
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    let native_before = dom.pending_source_edit().unwrap().spent_work();
+    assert!(matches!(
+        dom.node_iterator_next(id, 256, &cancel).unwrap(),
+        DomNodeIteratorProgress::Complete(None)
+    ));
+    let before = dom.pending_source_edit().unwrap().spent_work();
+    let native_spent = before - native_before;
+    let admitted = Cell::new(0);
+    assert!(matches!(
+        dom.node_iterator_next_accounted(
+            id,
+            || {
+                admitted.set(admitted.get() + 1);
+                Ok::<(), DomError>(())
+            },
+            &cancel
+        )
+        .unwrap(),
+        DomNodeIteratorProgress::Complete(None)
+    ));
+    let after = dom.pending_source_edit().unwrap().spent_work();
+    assert!(admitted.get() > 0);
+    // The same empty native walk has the same Source cost, including its
+    // separately qualified callback entry. Admission adds no Source charge.
+    assert_eq!(after - before, native_spent);
+    for _ in after..limits.work() {
+        dom.source_event_step(&event, &cancel).unwrap();
+    }
+    let error = dom
+        .node_iterator_next_accounted(id, || Ok::<(), AdmissionFailure>(()), &cancel)
+        .unwrap_err();
+    assert_eq!(
+        error,
+        AdmissionFailure::Dom(DomError::SourceWorkLimit {
+            limit: limits.work()
+        })
+    );
+    assert_eq!(reference(&dom, id), (root, true));
+    drop(scope);
+    let resumed = DomSourceLimits::new(32_000_000, 1_000_000, 1_000_000, 64, 4096, 4096, 4);
+    dom.raise_source_event_limits(&event, resumed, &cancel)
+        .unwrap();
+    let mut permit = Some(permit);
+    let mut outcome = Some(
+        executor
+            .seal_completed(&dom, &mut permit, DomSourceEventOutcome::Canceled, &cancel)
+            .unwrap(),
+    );
+    let mut lease = dom
+        .resume_source_edit(event.operation(), resumed, &cancel)
+        .unwrap();
+    lease
+        .accept_source_event(&event, &mut outcome, &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+}
+
+#[test]
+fn refusing_unfiltered_output_or_its_acceptance_preserves_the_committed_pointer() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, u32::MAX);
+    let revision = dom.revision();
+    let DomNodeIteratorProgress::Match(matched) = dom
+        .node_iterator_next_accounted(id, || Ok::<(), DomError>(()), &cancel)
+        .unwrap()
+    else {
+        panic!("unfiltered output must wait for projection");
+    };
+    assert_eq!(matched.node(), root);
+    drop(matched);
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(reference(&dom, id), (root, true));
+    let admitted = Cell::new(0);
+    let original = Rc::new(74);
+    let DomNodeIteratorProgress::Match(matched) = dom
+        .node_iterator_next_accounted(
+            id,
+            || {
+                if admitted.get() == 3 {
+                    return Err(AdmissionFailure::Refused(Rc::clone(&original)));
+                }
+                admitted.set(admitted.get() + 1);
+                Ok(())
+            },
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the admitted prefix must prepare its output");
+    };
+    let AdmissionFailure::Refused(returned) = matched.accept(&mut dom, &cancel).unwrap_err() else {
+        panic!("acceptance must return the original admission failure");
+    };
+    assert!(Rc::ptr_eq(&returned, &original));
+    assert_eq!(admitted.get(), 3);
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(reference(&dom, id), (root, true));
+}
+
+#[test]
+fn unfiltered_acceptance_rejects_foreign_owner_and_intervening_publication() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        ..
+    } = tree();
+    let mut other = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, u32::MAX);
+    let DomNodeIteratorProgress::Match(matched) = dom
+        .node_iterator_next_accounted(id, || Ok::<(), DomError>(()), &cancel)
+        .unwrap()
+    else {
+        panic!("unfiltered output must wait for projection");
+    };
+    assert_eq!(
+        matched.accept(&mut other.dom, &cancel),
+        Err(DomError::ForeignOwner)
+    );
+    assert_eq!(reference(&dom, id), (root, true));
+    let DomNodeIteratorProgress::Match(matched) = dom
+        .node_iterator_next_accounted(id, || Ok::<(), DomError>(()), &cancel)
+        .unwrap()
+    else {
+        panic!("unfiltered output must wait for projection");
+    };
+    let mut batch = DomBatch::new();
+    batch.detach(first);
+    dom.apply(batch, &cancel).unwrap();
+    assert_eq!(
+        matched.accept(&mut dom, &cancel),
+        Err(DomError::NodeIteratorPublicationUnavailable)
+    );
+    assert_eq!(reference(&dom, id), (root, true));
+}
+
+#[test]
+fn unfiltered_acceptance_allows_output_retirement_watch_registration() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, u32::MAX);
+    let limits = DomNodeRetirementLimits::new(2_000_000, 20_000);
+    let inbox = dom.node_retirement_inbox(limits, &cancel).unwrap();
+    let revision = dom.revision();
+    let DomNodeIteratorProgress::Match(matched) = dom
+        .node_iterator_next_accounted(id, || Ok::<(), DomError>(()), &cancel)
+        .unwrap()
+    else {
+        panic!("unfiltered output must wait for projection");
+    };
+    let _watch = dom
+        .watch_node_retirement(matched.node(), &inbox, 18, limits, &cancel)
+        .unwrap();
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(reference(&dom, id), (root, true));
+    assert_eq!(matched.accept(&mut dom, &cancel).unwrap(), root);
+    assert_eq!(reference(&dom, id), (root, false));
+}
+
+#[test]
+fn unfiltered_acceptance_cannot_outlive_its_original_source_callback() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, u32::MAX);
+    let limits = DomSourceLimits::new(32_000_000, 1_000_000, 4096, 64, 4096, 4096, 4);
+    let (executor, event) = begin_dialog_observation(&mut dom, root, limits, &cancel);
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    let DomNodeIteratorProgress::Match(matched) = dom
+        .node_iterator_next_accounted(id, || Ok::<(), DomError>(()), &cancel)
+        .unwrap()
+    else {
+        panic!("unfiltered output must wait for projection");
+    };
+    drop(scope);
+    let mut permit = Some(permit);
+    let mut outcome = Some(
+        executor
+            .seal_completed(&dom, &mut permit, DomSourceEventOutcome::Canceled, &cancel)
+            .unwrap(),
+    );
+    let mut lease = dom
+        .resume_source_edit(event.operation(), limits, &cancel)
+        .unwrap();
+    lease
+        .accept_source_event(&event, &mut outcome, &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    assert_eq!(
+        matched.accept(&mut dom, &cancel),
+        Err(DomError::InvalidSourceEvent)
+    );
+    assert_eq!(reference(&dom, id), (root, true));
 }

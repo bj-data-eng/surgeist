@@ -92,6 +92,36 @@ impl<'scope> Scope<'scope> {
         })
     }
 
+    /// Run the callback-interface operation in this object's associated realm.
+    ///
+    /// The object remains in the same heap. The nested scope ends on every
+    /// exit and does not run a microtask checkpoint. The host establishes any
+    /// required native script and stored callback settings before entering.
+    pub fn in_callback_object_realm<T, E: From<Error>>(
+        &mut self,
+        callback: &CallbackObject<'scope>,
+        action: impl for<'callback> FnOnce(&mut Scope<'callback>, &Value<'callback>) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let mut action = Some(action);
+        let mut result = None;
+        let root = &callback.object.root;
+        self.operations.with_callback_object_realm(
+            root,
+            callback.realm.key,
+            &mut |operations| {
+                let mut scope = Scope {
+                    operations,
+                    invariant: std::marker::PhantomData,
+                };
+                let object = scope.import(root)?;
+                let run = action.take().ok_or(Error::BackendUnavailable)?;
+                result = Some(run(&mut scope, &object));
+                Ok(())
+            },
+        )?;
+        result.ok_or_else(|| E::from(Error::BackendUnavailable))?
+    }
+
     /// Retain the exact observed object under one newly admitted holder.
     /// The admission closure receives the requested Rust backing bytes,
     /// excluding allocator and engine allocations. Its returned guard travels

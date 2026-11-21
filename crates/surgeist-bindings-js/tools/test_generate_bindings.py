@@ -153,6 +153,32 @@ class DescriptionTests(unittest.TestCase):
         for path, output in g.generate(self.data).items():
             self.assertEqual(output, path.read_text(encoding="utf-8"))
 
+    def test_node_filter_legacy_constants_cannot_be_dropped_from_pinned_idl(self):
+        # The exact declaration is the artifact contract: even obsolete SHOW
+        # constants remain part of the pinned NodeFilter interface object.
+        for name in ("SHOW_ENTITY_REFERENCE", "SHOW_ENTITY", "SHOW_NOTATION"):
+            with self.subTest(name=name):
+                self.setUp()
+                definition = self.definition("NodeFilter")
+                definition["members"] = [m for m in definition["members"] if m["name"] != name]
+                self.rejected("source declaration mismatch: NodeFilter.source")
+
+    def test_node_filter_invocation_requires_its_exact_guest_operation(self):
+        key = "NodeFilter.acceptNode:0/call"
+        self.data["access_mappings"][key] = {
+            "kind": "native", "adapter": "nodefilter.acceptnode.call",
+            "producers": [], "requirements": [{
+                "owner": "surgeist-runtime", "contract": "fixture",
+                "source": self.data["semantics"]["argument_conversion"]}],
+        }
+        self.rejected("callback-interface operation requires the guest invocation protocol")
+        self.setUp()
+        self.data["access_mappings"][key]["operation"] = "handleEvent"
+        self.rejected("callback-interface operation requires the guest invocation protocol")
+        self.setUp()
+        self.data["access_mappings"][key]["interface"] = "EventListener"
+        self.rejected("wrong callback interface")
+
     def test_namespace_source_qualifies_exposure_and_cssom_string_profile(self):
         self.definition("CSS")["attributes"][0]["value"] = "*"
         self.rejected("only Window namespace exposure is selected")

@@ -1321,6 +1321,33 @@ impl Operations for Entered<'_, '_, '_> {
         self.observe_callback_object(value)
     }
 
+    fn with_callback_object_realm(
+        &mut self,
+        root: &Root,
+        realm: RealmKey,
+        action: &mut dyn FnMut(&mut dyn Operations) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        self.check_active()?;
+        let object = v8::Local::<v8::Object>::try_from(self.roots.local(self.scope, root)?)
+            .map_err(|_| Error::ExpectedObject)?;
+        let (context, actual) = callback_object::creation_context(self.scope, &self.roots, object)?;
+        if actual != realm {
+            return Err(Error::CallbackRealmUnavailable);
+        }
+        let intrinsics = context
+            .get_embedder_data(self.scope, 0)
+            .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+            .ok_or(Error::BackendUnavailable)?;
+        let scope = &mut v8::ContextScope::new(self.scope, context);
+        let mut entered = Entered {
+            scope,
+            roots: self.roots.clone(),
+            realm,
+            intrinsics,
+        };
+        action(&mut entered)
+    }
+
     fn callback_object_storage_bytes(&self) -> usize {
         callback_object::CallbackObjects::storage_bytes()
     }

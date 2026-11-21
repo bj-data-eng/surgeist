@@ -221,8 +221,9 @@ use surgeist_dom::tree::{
     DomAttr, DomAttribute, DomAttributeAttachment, DomDocument, DomDocumentPosition,
     DomDocumentType, DomElement, DomNameAtom, DomNamedNodeMap, DomNamespaceUri, DomNode,
     DomNodeFilterDecision, DomNodeIterator, DomNodeIteratorFilter, DomNodeIteratorFilterRequest,
-    DomNodeIteratorId, DomNodeIteratorProgress, DomNodeKind, DomProcessingInstruction,
-    DomQualifiedName, DomSiblingDirection, DomTagName, DomTreeOrder, DomTreeScope,
+    DomNodeIteratorId, DomNodeIteratorMatchRequest, DomNodeIteratorProgress, DomNodeKind,
+    DomProcessingInstruction, DomQualifiedName, DomSiblingDirection, DomTagName, DomTreeOrder,
+    DomTreeScope,
 };
 use surgeist_dom::url::{
     DomBase, DomBaseFactsError, DomBaseResponse, DomEncodingUrlFactsError, DomFrozenBase,

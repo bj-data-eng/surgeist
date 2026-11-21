@@ -82,7 +82,7 @@ mod name_registry;
 mod navigable;
 mod node_iterator;
 mod node_retirement;
-pub use node_iterator::DomNodeIteratorFilterRequest;
+pub use node_iterator::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};
 pub use node_retirement::{
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
     DomNodeRetirementWatch, DomWatchedNode,

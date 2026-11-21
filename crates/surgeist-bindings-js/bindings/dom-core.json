@@ -2,6 +2,30 @@
   "schema": 1,
   "sources": [
     {
+      "id": "NodeIterator.source",
+      "path": "references/dom-traversal-idl--3071e5f26944.md",
+      "anchor": "interface-nodeiterator",
+      "block": 0,
+      "sha256": "b5c20aad6cec982f5699fee9799eab1cc7221112ef051b446bac5a58ddf6ab55",
+      "revision": "3071e5f269448350fdea79bb284eedaf17bc431e",
+      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nodeiterator",
+      "entries": [
+        "NodeIterator"
+      ]
+    },
+    {
+      "id": "NodeFilter.source",
+      "path": "references/dom-traversal-idl--3071e5f26944.md",
+      "anchor": "interface-nodefilter",
+      "block": 0,
+      "sha256": "3be4030226fe95bd15e9cbf31c9914f0a59b202951ab48640e38a1d0e68f227e",
+      "revision": "3071e5f269448350fdea79bb284eedaf17bc431e",
+      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nodefilter",
+      "entries": [
+        "NodeFilter"
+      ]
+    },
+    {
       "id": "DOMException.source",
       "path": "references/webidl-domexception--0620cf171d1b.md",
       "anchor": "idl-DOMException",
@@ -846,6 +870,329 @@
     }
   ],
   "declarations": [
+    {
+      "id": "NodeIterator",
+      "kind": "interface",
+      "name": "NodeIterator",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "id": "NodeIterator.root",
+          "kind": "attribute",
+          "name": "root",
+          "type": {
+            "kind": "named",
+            "name": "Node"
+          },
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "readonly": true
+        },
+        {
+          "id": "NodeIterator.referenceNode",
+          "kind": "attribute",
+          "name": "referenceNode",
+          "type": {
+            "kind": "named",
+            "name": "Node"
+          },
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "NodeIterator.pointerBeforeReferenceNode",
+          "kind": "attribute",
+          "name": "pointerBeforeReferenceNode",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "NodeIterator.whatToShow",
+          "kind": "attribute",
+          "name": "whatToShow",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "NodeIterator.filter",
+          "kind": "attribute",
+          "name": "filter",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "NodeFilter"
+            }
+          },
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "NodeIterator.nextNode:0",
+          "kind": "operation",
+          "name": "nextNode",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "NodeIterator.previousNode:0",
+          "kind": "operation",
+          "name": "previousNode",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "NodeIterator.detach:0",
+          "kind": "operation",
+          "name": "detach",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "attributes": [],
+          "arguments": []
+        }
+      ]
+    },
+    {
+      "id": "NodeFilter",
+      "kind": "callback_interface",
+      "name": "NodeFilter",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "id": "NodeFilter.FILTER_ACCEPT",
+          "kind": "constant",
+          "name": "FILTER_ACCEPT",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "attributes": [],
+          "value": 1
+        },
+        {
+          "id": "NodeFilter.FILTER_REJECT",
+          "kind": "constant",
+          "name": "FILTER_REJECT",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "attributes": [],
+          "value": 2
+        },
+        {
+          "id": "NodeFilter.FILTER_SKIP",
+          "kind": "constant",
+          "name": "FILTER_SKIP",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "attributes": [],
+          "value": 3
+        },
+        {
+          "id": "NodeFilter.SHOW_ALL",
+          "kind": "constant",
+          "name": "SHOW_ALL",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 4294967295
+        },
+        {
+          "id": "NodeFilter.SHOW_ELEMENT",
+          "kind": "constant",
+          "name": "SHOW_ELEMENT",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 1
+        },
+        {
+          "id": "NodeFilter.SHOW_ATTRIBUTE",
+          "kind": "constant",
+          "name": "SHOW_ATTRIBUTE",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 2
+        },
+        {
+          "id": "NodeFilter.SHOW_TEXT",
+          "kind": "constant",
+          "name": "SHOW_TEXT",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 4
+        },
+        {
+          "id": "NodeFilter.SHOW_CDATA_SECTION",
+          "kind": "constant",
+          "name": "SHOW_CDATA_SECTION",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 8
+        },
+        {
+          "id": "NodeFilter.SHOW_ENTITY_REFERENCE",
+          "kind": "constant",
+          "name": "SHOW_ENTITY_REFERENCE",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 16
+        },
+        {
+          "id": "NodeFilter.SHOW_ENTITY",
+          "kind": "constant",
+          "name": "SHOW_ENTITY",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 32
+        },
+        {
+          "id": "NodeFilter.SHOW_PROCESSING_INSTRUCTION",
+          "kind": "constant",
+          "name": "SHOW_PROCESSING_INSTRUCTION",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 64
+        },
+        {
+          "id": "NodeFilter.SHOW_COMMENT",
+          "kind": "constant",
+          "name": "SHOW_COMMENT",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 128
+        },
+        {
+          "id": "NodeFilter.SHOW_DOCUMENT",
+          "kind": "constant",
+          "name": "SHOW_DOCUMENT",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 256
+        },
+        {
+          "id": "NodeFilter.SHOW_DOCUMENT_TYPE",
+          "kind": "constant",
+          "name": "SHOW_DOCUMENT_TYPE",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 512
+        },
+        {
+          "id": "NodeFilter.SHOW_DOCUMENT_FRAGMENT",
+          "kind": "constant",
+          "name": "SHOW_DOCUMENT_FRAGMENT",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 1024
+        },
+        {
+          "id": "NodeFilter.SHOW_NOTATION",
+          "kind": "constant",
+          "name": "SHOW_NOTATION",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "value": 2048
+        },
+        {
+          "id": "NodeFilter.acceptNode:0",
+          "kind": "operation",
+          "name": "acceptNode",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "attributes": [],
+          "arguments": [
+            {
+              "name": "node",
+              "type": {
+                "kind": "named",
+                "name": "Node"
+              },
+              "presence": "required"
+            }
+          ]
+        }
+      ]
+    },
     {
       "id": "DOMException",
       "kind": "interface",
@@ -6789,20 +7136,8 @@
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#location",
       "requirement": "Source-qualified Location definition and its owning native/binding family; not an empty installed interface."
     },
-    {
-      "name": "NodeFilter",
-      "kind": "type",
-      "owner": "surgeist-dom",
-      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nodefilter",
-      "requirement": "Retain the complete NodeFilter definition and callback conversion before exposing traversal filters; the selected core only references this type and does not establish an ordinary node/interface brand."
-    },
-    {
-      "name": "NodeIterator",
-      "kind": "interface",
-      "owner": "surgeist-dom",
-      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nodeiterator",
-      "requirement": "Source-qualified NodeIterator definition and its owning native/binding family; not an empty installed interface."
-    },
+
+
     {
       "name": "ParseHTMLUnsafeOptions",
       "kind": "dictionary",
@@ -6882,6 +7217,131 @@
     }
   ],
   "access_mappings": {
+    "NodeIterator.root/get": {
+      "kind": "native",
+      "adapter": "nodeiterator.root.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/node_iterator.rs",
+          "symbol": "node_iterator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/node_iterator.rs",
+          "symbol": "root"
+        }
+      ],
+      "requirements": []
+    },
+    "NodeIterator.referenceNode/get": {
+      "kind": "native",
+      "adapter": "nodeiterator.referencenode.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/node_iterator.rs",
+          "symbol": "node_iterator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/node_iterator.rs",
+          "symbol": "reference_node"
+        }
+      ],
+      "requirements": []
+    },
+    "NodeIterator.pointerBeforeReferenceNode/get": {
+      "kind": "native",
+      "adapter": "nodeiterator.pointerbeforereferencenode.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/node_iterator.rs",
+          "symbol": "node_iterator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/node_iterator.rs",
+          "symbol": "pointer_before_reference_node"
+        }
+      ],
+      "requirements": []
+    },
+    "NodeIterator.whatToShow/get": {
+      "kind": "native",
+      "adapter": "nodeiterator.whattoshow.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/node_iterator.rs",
+          "symbol": "node_iterator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/node_iterator.rs",
+          "symbol": "what_to_show"
+        }
+      ],
+      "requirements": []
+    },
+    "NodeIterator.filter/get": {
+      "kind": "native",
+      "adapter": "nodeiterator.filter.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/node_iterator.rs",
+          "symbol": "node_iterator"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/node_iterator.rs",
+          "symbol": "filter"
+        }
+      ],
+      "requirements": []
+    },
+    "NodeIterator.nextNode:0/call": {
+      "kind": "native",
+      "adapter": "nodeiterator.nextnode.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/node_iterator/operation.rs",
+          "symbol": "node_iterator_next"
+        }
+      ],
+      "requirements": []
+    },
+    "NodeIterator.previousNode:0/call": {
+      "kind": "native",
+      "adapter": "nodeiterator.previousnode.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/node_iterator/operation.rs",
+          "symbol": "node_iterator_previous"
+        }
+      ],
+      "requirements": []
+    },
+    "NodeIterator.detach:0/call": {
+      "kind": "derived",
+      "algorithm": "nodeiterator.detach.noop",
+      "owner": "surgeist-runtime",
+      "contract": "Do nothing and return undefined. Retain the live canonical iterator and its removal maintenance; detach does not retire its native cursor.",
+      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-nodeiterator-detach",
+      "inputs": [],
+      "requirements": []
+    },
+    "NodeFilter.acceptNode:0/call": {
+      "kind": "callback",
+      "interface": "NodeFilter",
+      "operation": "acceptNode",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#call-a-user-objects-operation",
+      "requirements": []
+    },
     "DOMException.constructor:0/construct": {
       "kind": "native",
       "adapter": "dom_exception.constructor",
@@ -7600,14 +8060,14 @@
     "Document.createNodeIterator:0/call": {
       "kind": "native",
       "adapter": "document.createnodeiterator.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "An actual createNodeIterator cursor with canonical root/current traversal position, whatToShow and filter decisions, including removal maintenance and callback reentry rules of its selected traversal family.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-document-createnodeiterator"
+          "path": "crates/surgeist-dom/src/internal/store/node_iterator/operation.rs",
+          "symbol": "create_node_iterator"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Document.createTreeWalker:0/call": {
       "kind": "native",

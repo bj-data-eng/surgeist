@@ -148,6 +148,12 @@ pub(crate) trait Operations {
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
     fn is_constructor(&mut self, value: &Root) -> Result<bool, Error>;
     fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error>;
+    fn with_callback_object_realm(
+        &mut self,
+        object: &Root,
+        realm: RealmKey,
+        action: &mut dyn FnMut(&mut dyn Operations) -> Result<(), Error>,
+    ) -> Result<(), Error>;
     fn callback_object_storage_bytes(&self) -> usize;
     fn retain_callback_object(
         &mut self,
