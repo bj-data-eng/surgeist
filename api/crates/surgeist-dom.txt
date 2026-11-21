@@ -4578,6 +4578,8 @@ impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::resume_fullscreen_exit(&mut self, source: &surgeist_dom::hosted::DomHostedSource, job: &mut surgeist_dom::fullscreen::DomFullscreenExitJob, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::fullscreen::DomFullscreenExitStatus, surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::resume_queued_history<'a>(&'a mut self, source: &mut surgeist_dom::hosted::DomHostedSource, queued: &mut surgeist_dom::hosted::history::DomHostedQueuedHistory, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::history::DomHostedHistoryStep<'a>, surgeist_dom::hosted::DomHostedError>
+impl surgeist_dom::Dom
+pub fn surgeist_dom::Dom::window_indexed_child<E: core::convert::From<surgeist_dom::hosted::DomHostedError>>(&self, global: surgeist_dom::hosted::DomHostedGlobalId, index: usize, work_limit: u64, admission: impl core::ops::function::FnMut() -> core::result::Result<(), E>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::hosted::DomHostedBrowsingContextId>, E>
 pub struct surgeist_dom::DomBatch
 impl surgeist_dom::DomBatch
 pub fn surgeist_dom::DomBatch::adopt(&mut self, node: impl core::convert::Into<surgeist_dom::edit::NodeOperand>, document: impl core::convert::Into<surgeist_dom::edit::NodeOperand>)

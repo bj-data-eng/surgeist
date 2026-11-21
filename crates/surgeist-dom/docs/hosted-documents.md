@@ -76,8 +76,6 @@ reached work to the caller's allowance. During a Source callback it also draws
 on the exact active scope's remaining work. Cancellation, stale identity,
 unavailable authority and caller refusals interrupt the traversal. The order
 serves the [document-tree child navigable collection][document-tree-children].
-WindowProxy indexed access separately depends on container insertion
-chronology.
 
 [document-tree-children]: https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document-tree-child-navigables
 
@@ -92,6 +90,15 @@ one in the destination Document. Historical navigable views retain their
 original occurrence. The live ordinary-tree visitor verifies the occurrence
 against the current canonical container edge.
 
+`Dom::window_indexed_child` resolves an ordinal on a live Window Global to the
+exact native browsing context. It uses the same ordinary-tree children, ordered
+by insertion group. Equal groups follow current ordinary tree order, so a
+state-preserving move can change an index while preserving insertion provenance.
+An out-of-range index returns `None`. The lookup uses a fixed-size rank
+histogram and shares one caller allowance and one active Source scope across
+all reached work.
+
+[Pinned Window numeric lookup](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L98715-L98765) · [Pinned Infra stable list sort](https://github.com/whatwg/infra/blob/c67ae1fb1d161b23d0f8c9bf9917ea1993f7b19a/infra.bs#L1616-L1621).
 
 `Dom::window_named_value` qualifies the current Window Global and reads the
 origin of its associated Document. It finds the first ordinary-tree child
