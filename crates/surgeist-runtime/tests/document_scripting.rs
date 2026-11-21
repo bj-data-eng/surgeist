@@ -87,6 +87,8 @@ mod form_attributes;
 mod frameset_reflections;
 #[path = "document_scripting/hidden_reflection.rs"]
 mod hidden_reflection;
+#[path = "document_scripting/input_state.rs"]
+mod input_state;
 #[path = "document_scripting/legend_form.rs"]
 mod legend_form;
 #[path = "document_scripting/marquee.rs"]
@@ -2440,6 +2442,7 @@ fn main() {
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
             "button-attributes" => button_attributes::attached_button_attributes_use_live_submitter_and_form_state(),
             "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
+            "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
@@ -2544,6 +2547,7 @@ fn main() {
     output_values::attached_output_reads_native_values_and_stores_custom_validity();
     button_attributes::attached_button_attributes_use_live_submitter_and_form_state();
     textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state();
+    input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
