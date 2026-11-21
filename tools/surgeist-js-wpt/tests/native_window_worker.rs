@@ -1,6 +1,8 @@
 //! Process-level qualification of the actual Runtime-owned Window worker.
 
+use serde::Deserialize;
 use std::{collections::BTreeMap, env, path::PathBuf, sync::atomic::AtomicBool, time::Duration};
+use surgeist_fuzz::worker::read_frame;
 use surgeist_js_wpt::{
     CleanupStatus, FixtureId, GuestDiagnostic, HarnessStatus, MemoryPolicy, ProcessExit,
     ProcessStop, RelativePath, Report, Run, SourceRevision, SubtestStatus, WorkerFailure,
@@ -182,5 +184,66 @@ fn canonical_source_refusal_keeps_a_qualified_native_result() {
                 if owner == "runtime" && code == "source-work-limit"
         ),
         "{result:?}"
+    );
+}
+
+#[derive(Debug, Deserialize)]
+struct ResourceFrame {
+    resources: ResourceEvidence,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResourceEvidence {
+    native: NativeEvidence,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "status", rename_all = "kebab-case")]
+enum NativeEvidence {
+    NotAttached,
+    Measured {
+        adapter_work: u64,
+        live_backing_bytes: u64,
+        peak_backing_bytes: u64,
+    },
+}
+
+fn native_evidence(fixture: &FixtureId) -> NativeEvidence {
+    let run = invoke(fixture, Duration::from_secs(10));
+    assert_eq!(run.process.stop, ProcessStop::Exited, "{run:?}");
+    assert_eq!(run.process.exit, ProcessExit::Success, "{run:?}");
+    assert!(matches!(run.report, Report::Received(_)), "{run:?}");
+    let frame: ResourceFrame = read_frame(&mut run.process.stdout.bytes.as_slice(), 32_764)
+        .expect("the actual terminal frame carries native resource evidence")
+        .expect("the worker wrote a terminal frame");
+    frame.resources.native
+}
+
+#[test]
+fn native_resource_evidence_reports_actual_work_and_teardown() {
+    if !execution_capabilities().process_groups {
+        return;
+    }
+    let completed = native_evidence(&fixture(NATIVE_WINDOW, "native-window", ""));
+    let NativeEvidence::Measured {
+        adapter_work,
+        live_backing_bytes,
+        peak_backing_bytes,
+    } = completed
+    else {
+        panic!("expected native accounting after execution: {completed:?}");
+    };
+    assert!(adapter_work > 0);
+    assert!(peak_backing_bytes > 0);
+    assert_eq!(live_backing_bytes, 0);
+
+    let refused = native_evidence(&fixture(
+        NATIVE_WINDOW,
+        "native-window",
+        "?scripting=disabled",
+    ));
+    assert!(
+        matches!(refused, NativeEvidence::NotAttached),
+        "{refused:?}"
     );
 }
