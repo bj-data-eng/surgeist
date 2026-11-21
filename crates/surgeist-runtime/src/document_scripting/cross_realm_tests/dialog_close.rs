@@ -299,27 +299,7 @@ pub(super) fn external_source_service_resumes_after_callback_adoption() {
         style_policy: &mut |_| None,
         url: None,
     };
-    let request = host
-        .with_native(|dom, _, mut source| {
-            let progress = source
-                .apply(
-                    dom,
-                    DomSourceEdit::close_dialog(dialog, Some("unpublished".into())),
-                    SOURCE,
-                    &mut services,
-                    &cancel,
-                )
-                .unwrap();
-            let DomSourceDriveProgress::Pending {
-                request: DomSourceRequest::Event(request),
-                reason: DomSourceUnavailable::Event,
-            } = progress
-            else {
-                panic!("native Close must yield its original beforetoggle: {progress:?}");
-            };
-            request
-        })
-        .unwrap();
+    let request = start_external_close(&mut host, dialog, &mut services, &cancel);
     let mut bounded = EVENT;
     bounded.dispatch.callbacks = 2;
     assert!(matches!(
@@ -364,4 +344,92 @@ pub(super) fn external_source_service_resumes_after_callback_adoption() {
     .unwrap();
     assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
     host.stop().into_session().unwrap();
+}
+
+pub(super) fn fresh_external_source_requires_the_original_document() {
+    let AttachedClose {
+        mut host,
+        target,
+        dialog,
+        tasks,
+        observed,
+    } = setup(4);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            closeSubject.addEventListener('beforetoggle', function () {
+                this.setAttribute('data-unexpected-callback', 'entered');
+            });
+            document.implementation.createHTMLDocument().adoptNode(closeSubject);
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let cancel = host.native.cancellation.clone();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let request = start_external_close(&mut host, dialog, &mut services, &cancel);
+    let first = host.service_attached_source_event(&permit, &request, EVENT);
+    assert!(
+        matches!(
+            first,
+            Err(DocumentScriptEventError::Access(
+                DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                    DomError::WrongDocument
+                ))
+            ))
+        ),
+        "fresh external custody must require the original Document: {first:?}"
+    );
+    assert!(observed.borrow().is_empty());
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    let mut session = host.stop().into_session().unwrap();
+    let status = session.dom().pending_source_edit().unwrap();
+    assert_eq!(status.operation(), request.operation());
+    assert_eq!(status.phase(), DomSourcePhase::EventObservation);
+    let snapshot = session.snapshot();
+    let node = snapshot.node(dialog).unwrap();
+    assert_ne!(node.owner_document().unwrap(), target.document());
+    assert_eq!(node.attribute(&"open".into()), Some(&"".into()));
+    assert_eq!(node.attribute(&"data-unexpected-callback".into()), None);
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+}
+
+fn start_external_close(
+    host: &mut DocumentScriptHost,
+    dialog: NodeId,
+    services: &mut DomSourceServices<'_>,
+    cancel: &AtomicBool,
+) -> DomSourceEventRequest {
+    host.with_native(|dom, _, mut source| {
+        let progress = source
+            .apply(
+                dom,
+                DomSourceEdit::close_dialog(dialog, Some("unpublished".into())),
+                SOURCE,
+                services,
+                cancel,
+            )
+            .unwrap();
+        let DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(request),
+            reason: DomSourceUnavailable::Event,
+        } = progress
+        else {
+            panic!("native Close must yield its original beforetoggle: {progress:?}");
+        };
+        request
+    })
+    .unwrap()
 }

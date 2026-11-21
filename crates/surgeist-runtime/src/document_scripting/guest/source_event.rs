@@ -56,6 +56,12 @@ impl Drop for ActiveAttachedEvent<'_> {
     }
 }
 
+#[derive(Clone, Copy)]
+enum AttachedSourceEntry {
+    External(DocumentId),
+    Qualified(DocumentId),
+}
+
 impl DocumentScriptHost {
     /// Service the exact pending native event through the transferred listener
     /// registry. The original dispatcher owns the event and its cursor. A
@@ -76,7 +82,7 @@ impl DocumentScriptHost {
             .map_err(DocumentScriptEventError::Guest)?;
         let owner = self.native.clone();
         let mut usage = DispatchUsage::default();
-        let mut fresh_document = Some(permit.document);
+        let mut entry = AttachedSourceEntry::External(permit.document);
         loop {
             let progress = self
                 .with_native(|dom, _, source| {
@@ -86,7 +92,7 @@ impl DocumentScriptHost {
                         &source,
                         request,
                         (limits, &mut usage),
-                        fresh_document,
+                        entry,
                     )
                 })??
                 .map_err(DocumentScriptEventError::Service)?;
@@ -97,7 +103,7 @@ impl DocumentScriptHost {
                 return Ok(progress);
             };
             // A real selected invocation proves native path admission.
-            fresh_document = None;
+            entry = AttachedSourceEntry::Qualified(permit.document);
             self.invoke_attached_listener(&events, Some(request), &mut selected)?;
         }
     }
@@ -143,24 +149,52 @@ impl GuestEvents {
         source: &DomSourceRuntime,
         request: &DomSourceEventRequest,
         limits: (DomSourceEventServiceLimits, &mut DispatchUsage),
-        fresh_document: Option<DocumentId>,
+        entry: AttachedSourceEntry,
     ) -> Result<
         Result<DomSourceEventServiceProgress, DomSourceRuntimeError>,
         DocumentScriptNativeError,
     > {
-        if let Some(document) = fresh_document {
-            super::super::source::validate_source_event(
-                dom,
-                document,
-                request,
-                &owner.cancellation,
-            )?;
-        }
+        let (document, departed) = match entry {
+            AttachedSourceEntry::External(document) => {
+                super::super::source::validate_current_source_event(
+                    dom,
+                    request,
+                    &owner.cancellation,
+                )?;
+                let snapshot = dom.snapshot();
+                let error = match snapshot.document(document)?.node(request.subject()) {
+                    Ok(_) => None,
+                    Err(error @ (DomError::WrongDocument | DomError::StaleNode)) => Some(error),
+                    Err(error) => return Err(error.into()),
+                };
+                (document, error)
+            }
+            AttachedSourceEntry::Qualified(document) => (document, None),
+        };
         let mut registry = self
             .registry
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        Ok(source.service_attached_event(dom, request, &mut registry, limits, &owner.cancellation))
+        if let Some(error) = departed {
+            match source.has_started_attached_event(
+                request,
+                document,
+                &registry,
+                &owner.cancellation,
+            ) {
+                Ok(true) => {}
+                Ok(false) => return Err(error.into()),
+                Err(error) => return Ok(Err(error)),
+            }
+        }
+        Ok(source.service_attached_event(
+            dom,
+            request,
+            document,
+            &mut registry,
+            limits,
+            &owner.cancellation,
+        ))
     }
 
     pub(super) fn service_guest_source_event(
@@ -194,7 +228,7 @@ impl GuestEvents {
                     (limits, &mut usage),
                     // The exact request was just issued to the authenticated
                     // guest edit. Native dispatch still qualifies its path.
-                    None,
+                    AttachedSourceEntry::Qualified(attachment.target.document()),
                 )?
             };
             let mut selected = match progress {

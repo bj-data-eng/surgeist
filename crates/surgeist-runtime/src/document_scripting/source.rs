@@ -116,6 +116,16 @@ pub(super) fn validate_source_event(
     request: &DomSourceEventRequest,
     cancel: &AtomicBool,
 ) -> Result<(), DocumentScriptNativeError> {
+    validate_current_source_event(dom, request, cancel)?;
+    dom.snapshot().document(document)?.node(request.subject())?;
+    Ok(())
+}
+
+pub(super) fn validate_current_source_event(
+    dom: &crate::internal::dom_event::DomEventDom<'_>,
+    request: &DomSourceEventRequest,
+    cancel: &AtomicBool,
+) -> Result<(), DocumentScriptNativeError> {
     let root = dom
         .pending_source_edit()
         .ok_or(DocumentScriptNativeError::SourceAccess)?;
@@ -123,7 +133,6 @@ pub(super) fn validate_source_event(
         return Err(DocumentScriptNativeError::SourceAccess);
     }
     dom.raw().source_event_step(request, cancel)?;
-    dom.snapshot().document(document)?.node(request.subject())?;
     Ok(())
 }
 
