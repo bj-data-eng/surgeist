@@ -4,19 +4,24 @@ use super::*;
 use crate::{
     internal::dom_dialog::DomSourceEventServiceLimits,
     internal::dom_dialog::DomSourceEventServiceProgress,
+    internal::dom_event::{DispatchUsage, DomEventDom},
+    internal::dom_source::{DomSourceDriveError, DomSourceRuntimeError},
 };
-use surgeist_dom::event::DomSourceEventRequest;
+use surgeist_dom::{
+    event::DomSourceEventRequest, source::attribute::DomSourceAttributeVerificationRequest,
+};
 
-pub(super) struct ActiveAttachedEvent<'owner>(&'owner NativeOwner);
+pub(super) struct ActiveAttachedEvent<'owner> {
+    owner: &'owner NativeOwner,
+    previous_event: Option<DomSourceEventRequest>,
+    previous_attribute: Option<DomSourceAttributeVerificationRequest>,
+}
 
 impl<'owner> ActiveAttachedEvent<'owner> {
     fn enter(
         owner: &'owner NativeOwner,
         request: &DomSourceEventRequest,
     ) -> Result<Self, DocumentGuestEventError> {
-        if owner.active_attached_event.borrow().is_some() {
-            return Err(DocumentGuestEventError::RegistryState);
-        }
         let attachment = owner
             .attachment
             .get()
@@ -26,16 +31,28 @@ impl<'owner> ActiveAttachedEvent<'owner> {
                 .session
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
-            owner.qualify_event(attachment, &mut session, request)?;
+            owner.qualify_dispatched_event(attachment, &mut session, request)?;
         }
-        owner.active_attached_event.replace(Some(request.clone()));
-        Ok(Self(owner))
+        let previous_event = owner.active_attached_event.replace(Some(request.clone()));
+        // A child event owns the top Source callback scope. Its parent's
+        // attribute verification retains custody until this listener exits.
+        let previous_attribute = owner.active_attribute.take();
+        Ok(Self {
+            owner,
+            previous_event,
+            previous_attribute,
+        })
     }
 }
 
 impl Drop for ActiveAttachedEvent<'_> {
     fn drop(&mut self) {
-        self.0.active_attached_event.replace(None);
+        self.owner
+            .active_attached_event
+            .replace(self.previous_event.take());
+        self.owner
+            .active_attribute
+            .set(self.previous_attribute.take());
     }
 }
 
@@ -58,35 +75,29 @@ impl DocumentScriptHost {
             .guest_events()
             .map_err(DocumentScriptEventError::Guest)?;
         let owner = self.native.clone();
-        let mut usage = crate::internal::dom_event::DispatchUsage::default();
+        let mut usage = DispatchUsage::default();
+        let mut fresh_document = Some(permit.document);
         loop {
-            let progress = self.with_native(|dom, _, source| {
-                super::super::source::validate_source_event(
-                    dom,
-                    permit.document,
-                    request,
-                    &owner.cancellation,
-                )?;
-                let mut registry = events
-                    .registry
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                source
-                    .service_attached_event(
+            let progress = self
+                .with_native(|dom, _, source| {
+                    events.advance_attached_source(
+                        &owner,
                         dom,
+                        &source,
                         request,
-                        &mut registry,
                         (limits, &mut usage),
-                        &owner.cancellation,
+                        fresh_document,
                     )
-                    .map_err(DocumentScriptEventError::Service)
-            })??;
+                })??
+                .map_err(DocumentScriptEventError::Service)?;
             let DomSourceEventServiceProgress::Retained {
                 dispatch: DomEventDispatchOutcome::HostInvocation(mut selected),
             } = progress
             else {
                 return Ok(progress);
             };
+            // A real selected invocation proves native path admission.
+            fresh_document = None;
             self.invoke_attached_listener(&events, Some(request), &mut selected)?;
         }
     }
@@ -125,6 +136,88 @@ impl DocumentScriptHost {
 }
 
 impl GuestEvents {
+    fn advance_attached_source(
+        &self,
+        owner: &NativeOwner,
+        dom: &mut DomEventDom<'_>,
+        source: &DomSourceRuntime,
+        request: &DomSourceEventRequest,
+        limits: (DomSourceEventServiceLimits, &mut DispatchUsage),
+        fresh_document: Option<DocumentId>,
+    ) -> Result<
+        Result<DomSourceEventServiceProgress, DomSourceRuntimeError>,
+        DocumentScriptNativeError,
+    > {
+        if let Some(document) = fresh_document {
+            super::super::source::validate_source_event(
+                dom,
+                document,
+                request,
+                &owner.cancellation,
+            )?;
+        }
+        let mut registry = self
+            .registry
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        Ok(source.service_attached_event(dom, request, &mut registry, limits, &owner.cancellation))
+    }
+
+    pub(super) fn service_guest_source_event(
+        &self,
+        owner: &NativeOwner,
+        scope: &mut Scope<'_>,
+        request: &DomSourceEventRequest,
+    ) -> Result<(), DocumentGuestEventError> {
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let limits = DomSourceEventServiceLimits {
+            source: self.limits.source_edits,
+            dispatch: self.limits.dispatch,
+        };
+        let mut usage = DispatchUsage::default();
+        loop {
+            scope.check_active()?;
+            let progress = {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let source = session.source_execution();
+                self.advance_attached_source(
+                    owner,
+                    &mut session.dom(),
+                    &source,
+                    request,
+                    (limits, &mut usage),
+                    // The exact request was just issued to the authenticated
+                    // guest edit. Native dispatch still qualifies its path.
+                    None,
+                )?
+            };
+            let mut selected = match progress {
+                Ok(DomSourceEventServiceProgress::Serviced { .. }) => return Ok(()),
+                Ok(DomSourceEventServiceProgress::Retained { dispatch }) => {
+                    selected_dispatch(dispatch)?
+                }
+                Err(error) => {
+                    return refuse(
+                        scope,
+                        &attachment.source_failures,
+                        DomSourceDriveError::from(error),
+                    )
+                    .map_err(Into::into);
+                }
+            };
+            let invoked = self.invoke_native_listener(owner, scope, Some(request), &selected);
+            let reported = self.report_selected(&mut selected, invoked);
+            scope.check_active()?;
+            reported?;
+        }
+    }
+
     fn invoke_native_listener(
         &self,
         owner: &NativeOwner,

@@ -1458,39 +1458,7 @@ impl GuestEvents {
                     }
                     return Ok(receipt);
                 }
-                DomEventDispatchOutcome::HostInvocation(selected) => selected,
-                DomEventDispatchOutcome::Retained(resource) => {
-                    return Err(DomEventDispatchError::Admission(resource).into());
-                }
-                DomEventDispatchOutcome::RetainedHostUnavailable => {
-                    return Err(DocumentGuestEventError::HostRouteUnavailable);
-                }
-                DomEventDispatchOutcome::RetainedSourceOperation(operation) => {
-                    return Err(DocumentGuestEventError::SourcePending(operation));
-                }
-                DomEventDispatchOutcome::RetainedHostedOperation(operation) => {
-                    return Err(DocumentGuestEventError::HostedPending(operation));
-                }
-                DomEventDispatchOutcome::RetainedParsedSynchronous { requirement } => {
-                    return Err(
-                        DomEventDispatchError::ParsedSynchronousPending { requirement }.into(),
-                    );
-                }
-                DomEventDispatchOutcome::RetainedParsedAdmission(error) => {
-                    return Err(DomEventDispatchError::Dom(error).into());
-                }
-                DomEventDispatchOutcome::RetainedHostedAuthority(error) => {
-                    return Err(DomEventDispatchError::Hosted(error).into());
-                }
-                DomEventDispatchOutcome::RetainedForeignOwner => {
-                    return Err(DomEventDispatchError::Dom(DomError::ForeignOwner).into());
-                }
-                DomEventDispatchOutcome::RetainedForeignRegistry => {
-                    return Err(DomEventDispatchError::WrongContinuation.into());
-                }
-                DomEventDispatchOutcome::RetainedAfterUnwind => {
-                    return Err(DomEventDispatchError::Abandoned.into());
-                }
+                retained => selected_dispatch(retained)?,
             };
             let projection = projected
                 .map_err(DocumentGuestEventError::from)
@@ -1629,5 +1597,44 @@ impl GuestEvents {
                 Err(error)
             }
         }
+    }
+}
+
+fn selected_dispatch(
+    outcome: DomEventDispatchOutcome,
+) -> Result<DomEventHostInvocation, DocumentGuestEventError> {
+    match outcome {
+        DomEventDispatchOutcome::HostInvocation(selected) => Ok(selected),
+        DomEventDispatchOutcome::Retained(resource) => {
+            Err(DomEventDispatchError::Admission(resource).into())
+        }
+        DomEventDispatchOutcome::RetainedHostUnavailable => {
+            Err(DocumentGuestEventError::HostRouteUnavailable)
+        }
+        DomEventDispatchOutcome::RetainedSourceOperation(operation) => {
+            Err(DocumentGuestEventError::SourcePending(operation))
+        }
+        DomEventDispatchOutcome::RetainedHostedOperation(operation) => {
+            Err(DocumentGuestEventError::HostedPending(operation))
+        }
+        DomEventDispatchOutcome::RetainedParsedSynchronous { requirement } => {
+            Err(DomEventDispatchError::ParsedSynchronousPending { requirement }.into())
+        }
+        DomEventDispatchOutcome::RetainedParsedAdmission(error) => {
+            Err(DomEventDispatchError::Dom(error).into())
+        }
+        DomEventDispatchOutcome::RetainedHostedAuthority(error) => {
+            Err(DomEventDispatchError::Hosted(error).into())
+        }
+        DomEventDispatchOutcome::RetainedForeignOwner => {
+            Err(DomEventDispatchError::Dom(DomError::ForeignOwner).into())
+        }
+        DomEventDispatchOutcome::RetainedForeignRegistry => {
+            Err(DomEventDispatchError::WrongContinuation.into())
+        }
+        DomEventDispatchOutcome::RetainedAfterUnwind => {
+            Err(DomEventDispatchError::Abandoned.into())
+        }
+        DomEventDispatchOutcome::Complete(_) => Err(DocumentGuestEventError::RegistryState),
     }
 }

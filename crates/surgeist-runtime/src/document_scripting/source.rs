@@ -541,7 +541,7 @@ impl NativeOwner {
         session: &mut DomSession,
     ) -> Result<(), DocumentScriptNativeError> {
         let status = match self.attached_event_request() {
-            Some(request) => self.qualify_event(attachment, session, &request)?,
+            Some(request) => self.qualify_dispatched_event(attachment, session, &request)?,
             None => self.observe(attachment, session)?.status(),
         };
         if status != HtmlScriptingStatus::Enabled {
@@ -574,7 +574,7 @@ impl NativeOwner {
             return Ok(HtmlScriptingStatus::Enabled);
         }
         match event {
-            Some(request) => self.qualify_event(attachment, session, request),
+            Some(request) => self.qualify_callback_event(attachment, session, request),
             None => Ok(self.observe(attachment, session)?.status()),
         }
     }
@@ -591,7 +591,38 @@ impl NativeOwner {
         Some(observation)
     }
 
+    pub(super) fn qualify_callback_event(
+        &self,
+        attachment: &Attachment,
+        session: &mut DomSession,
+        request: &DomSourceEventRequest,
+    ) -> Result<HtmlScriptingStatus, DocumentScriptNativeError> {
+        let attached = self
+            .active_attached_event
+            .borrow()
+            .as_ref()
+            .is_some_and(|active| active.identity() == request.identity());
+        if attached {
+            self.qualify_dispatched_event(attachment, session, request)
+        } else {
+            self.qualify_event(attachment, session, request)
+        }
+    }
+
     pub(super) fn qualify_event(
+        &self,
+        attachment: &Attachment,
+        session: &mut DomSession,
+        request: &DomSourceEventRequest,
+    ) -> Result<HtmlScriptingStatus, DocumentScriptNativeError> {
+        let status = self.qualify_dispatched_event(attachment, session, request)?;
+        let snapshot = session.snapshot();
+        let document = snapshot.document(attachment.target.document())?;
+        document.node(request.subject())?;
+        Ok(status)
+    }
+
+    pub(super) fn qualify_dispatched_event(
         &self,
         attachment: &Attachment,
         session: &mut DomSession,
@@ -631,9 +662,9 @@ impl NativeOwner {
                 DomHostedRuntimeError::Dom(DomHostedError::ScriptingDisabled),
             ));
         }
-        let snapshot = dom.snapshot();
-        let document = snapshot.document(attachment.target.document())?;
-        document.node(request.subject())?;
+        // The canonical dispatcher already qualified the original subject
+        // and holds its path. This check authenticates the current attachment,
+        // even if a listener has since moved the dispatch subject.
         Ok(status)
     }
 }

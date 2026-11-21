@@ -241,11 +241,12 @@ pub(super) fn modal_dialog_accessors_preserve_the_original_queued_toggle() {
     host.stop().into_session().unwrap();
 }
 
-pub(super) fn dialog_setters_preserve_native_state_on_source_refusal() {
+pub(super) fn dialog_edits_preserve_native_state_on_source_refusal() {
     for script in [
         "limitedDialog.open = false",
         "limitedDialog.returnValue = 'changed'",
         "limitedDialog.closedBy = 'any'",
+        "limitedDialog.close('changed')",
     ] {
         let cancel = Arc::new(AtomicBool::new(false));
         let (mut session, target) = hosted_session(&cancel, 0);
