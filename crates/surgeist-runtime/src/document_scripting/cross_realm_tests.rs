@@ -15,6 +15,7 @@ mod document_tree_properties;
 mod document_type;
 mod dom_implementation;
 mod element_attributes;
+mod element_mixin;
 mod element_reflection;
 mod element_tasks;
 mod font_element;
@@ -454,6 +455,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     details_reflections::details_members_reflect_canonical_attributes();
     details_reflections::details_properties_preserve_native_and_web_idl_contracts();
     marquee::stop_marquee_preserves_native_state_on_source_work_refusal();
+    element_mixin::borrowed_accessors_keep_native_includers_across_creation_realms();
+    element_mixin::mixin_setters_preserve_native_state_on_source_refusal();
     document_tree_properties::document_tree_properties_select_and_forward_native_attributes();
     document_tree_properties::document_tree_properties_preserve_selection_conversion_and_source_contracts();
     document_legacy_entrypoints::document_legacy_entrypoints_preserve_tree_and_constructor_identity(

@@ -1489,6 +1489,8 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     })
     .unwrap();
 
+    // Fund the detached-node policy witness after the earlier policy exercises.
+    super::super::guest::tests::fund_guest_operation_after_setup(&host);
     let factory_result = host.in_document(&permit, |scope| {
         let script = r#"
             (() => {

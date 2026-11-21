@@ -1,6 +1,9 @@
 //! Reflected attributes over authenticated live elements and Source edits.
 
-use super::{element::HTML_NAMESPACE, *};
+use super::{
+    element::{HTML_NAMESPACE, MATHML_NAMESPACE, SVG_NAMESPACE},
+    *,
+};
 use std::fmt::Write;
 use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING, DOM_STRING_NULL_TO_EMPTY};
 use surgeist_bindings_js::conversion::{HiddenAttributeValue, IntegerType, declarations};
@@ -86,6 +89,8 @@ impl TableSpan {
 pub(super) enum Receiver {
     Element,
     Html,
+    Svg,
+    Mathml,
     Template,
     Body,
     Br,
@@ -131,6 +136,20 @@ impl Receiver {
                     .namespace_uri()
                     .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
             }),
+            Self::Svg | Self::Mathml => {
+                step()?;
+                let namespace = if matches!(self, Self::Svg) {
+                    SVG_NAMESPACE
+                } else {
+                    MATHML_NAMESPACE
+                };
+                node.as_element().is_some_and(|element| {
+                    element
+                        .name()
+                        .namespace_uri()
+                        .is_some_and(|uri| uri.code_units() == namespace)
+                })
+            }
             Self::Template => node.as_template().is_some(),
             Self::Body => {
                 step()?;
@@ -188,6 +207,8 @@ impl Receiver {
         match self {
             Self::Element => const { &ascii(b"Element required") },
             Self::Html => const { &ascii(b"HTMLElement required") },
+            Self::Svg => const { &ascii(b"SVGElement required") },
+            Self::Mathml => const { &ascii(b"MathMLElement required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Body => const { &ascii(b"HTMLBodyElement required") },
             Self::Br => const { &ascii(b"HTMLBRElement required") },
