@@ -778,11 +778,13 @@ impl Draft {
                 retirements_written.pushed::<dispatch::Retirement>();
             }
         }
+        let media_removals = self.finish_media_removals(&allocated_ids, cancel)?;
         let semantic_changed = !changes.is_empty();
         Ok((
             Prepared {
                 blocks: self.blocks.clone(),
                 node_retirement_candidates,
+                media_removals,
                 inline_echo: self.inline_echo.clone(),
                 inline_recording: self.inline_recording.clone(),
                 inline_positions: self
@@ -850,6 +852,8 @@ impl Draft {
         committed: &super::PublicationCommitted,
     ) {
         self.journal.commit(rebase.journal);
+        self.media_removals = None;
+        self.media_hook_index = 0;
         self.custom_element_reactions = None;
         self.pending_scoped_documents = None;
         self.inline_recording = rebase.inline_recording;

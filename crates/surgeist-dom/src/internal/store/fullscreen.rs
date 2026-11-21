@@ -93,35 +93,6 @@ impl Draft {
         }
         Ok(())
     }
-    pub(super) fn fullscreen_removing_members(
-        &mut self,
-        root: Key,
-        cancel: &AtomicBool,
-    ) -> Result<select::ScratchVec<Key>, DomError> {
-        let mut pending = self.effect_vec();
-        let mut flagged = self.effect_vec();
-        self.select_reserve(&mut pending, 1, cancel)?;
-        pending.push(root);
-        while let Some(key) = pending.pop() {
-            self.source_step(cancel)?;
-            let node = self.node(key)?;
-            if matches!(&node.kind(), transaction::KindRead::Element(element) if element.fullscreen_flag())
-            {
-                self.select_reserve(&mut flagged, 1, cancel)?;
-                flagged.push(key);
-            }
-            self.select_reserve(&mut pending, node.children().len(), cancel)?;
-            for child in node.children().iter().rev() {
-                self.source_step(cancel)?;
-                pending.push(child);
-            }
-            if let Some(shadow) = node.shadow_root() {
-                self.select_reserve(&mut pending, 1, cancel)?;
-                pending.push(shadow);
-            }
-        }
-        Ok(flagged)
-    }
     pub(super) fn retire_fullscreen_membership(
         &mut self,
         key: Key,

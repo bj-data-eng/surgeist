@@ -1742,6 +1742,8 @@ pub struct DomSessionLimits {
 /// The owner which refused construction, with the original DOM still returned.
 #[derive(Debug)]
 pub enum DomSessionCreateFailure {
+    /// The DOM already owns an independent media stable-state scheduler.
+    MediaStableState(DomError),
     /// The shared Event object storage could not be admitted.
     Events(crate::internal::dom_event::DomEventDispatchError),
     /// The original Source event executor or its fixed owner was not admitted.
@@ -1758,6 +1760,9 @@ pub enum DomSessionCreateFailure {
 impl std::fmt::Display for DomSessionCreateFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::MediaStableState(_) => {
+                f.write_str("session creation was refused by the media stable-state owner")
+            }
             Self::Events(_) => {
                 f.write_str("session creation was refused by the shared Event object storage")
             }
@@ -1780,6 +1785,7 @@ impl std::fmt::Display for DomSessionCreateFailure {
 impl std::error::Error for DomSessionCreateFailure {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::MediaStableState(error) => Some(error),
             Self::Events(error) => Some(error),
             Self::SourceEvents(error) => Some(error),
             Self::Style(error) => Some(error),
@@ -1794,6 +1800,7 @@ impl std::error::Error for DomSessionCreateFailure {
 /// permissions never own or release its resources.
 pub struct DomSession {
     dom: Dom,
+    media_stable_state: surgeist_dom::media::DomMediaStableState,
     #[cfg(feature = "document-scripting")]
     pub(crate) trusted_types_csp:
         Option<std::rc::Rc<crate::document_scripting::HostedPolicyProcessor>>,
@@ -1846,6 +1853,8 @@ impl std::error::Error for DomSessionCreateError {
 /// Exact unresolved Style obligation during graceful shutdown.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomShutdownReason {
+    /// An HTML media removal still awaits its original stable state.
+    MediaStableState,
     /// The actual beforetoggle event remains owned by this session.
     SourceEvent(surgeist_dom::event::DomSourceEventId),
     /// An actual Details source intention has not reached its task owner.
@@ -2011,6 +2020,17 @@ impl DomSession {
         } else {
             0
         };
+        let max_pending_media = dom.limits().managed_nodes();
+        let media_stable_state =
+            match dom.bind_media_stable_state(max_pending_media, &AtomicBool::new(false)) {
+                Ok(owner) => owner,
+                Err(error) => {
+                    return Err(DomSessionCreateError {
+                        dom,
+                        error: DomSessionCreateFailure::MediaStableState(error),
+                    });
+                }
+            };
         let owner = dom.owner();
         let event_storage = match crate::internal::dom_event::EventStorage::session(
             &mut DomEventDom::borrow(&mut dom),
@@ -2073,6 +2093,7 @@ impl DomSession {
         state.work.set(parsed_work);
         Ok(Self {
             dom,
+            media_stable_state,
             #[cfg(feature = "document-scripting")]
             trusted_types_csp: None,
             state: std::rc::Rc::new(std::cell::RefCell::new(state)),
@@ -2117,6 +2138,42 @@ impl DomSession {
             self.events.execution(),
         )
     }
+    /// Run the next pending media removal at a native stable-state checkpoint.
+    pub fn media_checkpoint_step(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<Option<surgeist_dom::media::DomMediaRemoval>, DomError> {
+        self.media_stable_state.run_native(&mut self.dom, cancel)
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn next_media_microtask(
+        &self,
+    ) -> Result<Option<surgeist_dom::media::DomMediaRemoval>, DomError> {
+        self.media_stable_state.next_to_schedule(&self.dom)
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn scheduled_media_microtask(
+        &mut self,
+        removal: surgeist_dom::media::DomMediaRemoval,
+    ) -> Result<(), DomError> {
+        self.media_stable_state
+            .mark_scheduled(&mut self.dom, removal)
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn run_media_microtask(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.media_stable_state
+            .run_scheduled(&mut self.dom, cancel)?;
+        Ok(())
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn discard_media_microtasks(&mut self) -> Result<(), DomError> {
+        self.media_stable_state.discard_scheduled(&mut self.dom)
+    }
+
     /// Controlled canonical access. No bound mutable owner can be extracted.
     pub fn dom(&mut self) -> DomEventDom<'_> {
         DomEventDom::borrow(&mut self.dom)
@@ -2168,6 +2225,8 @@ impl DomSession {
             Some(DomShutdownReason::ParsedAssociations(id))
         } else if events.is_some() {
             events
+        } else if self.dom.has_pending_media_removals() {
+            Some(DomShutdownReason::MediaStableState)
         } else if self.dom.pending_details_toggle_intentions() != 0 {
             Some(DomShutdownReason::DetailsIntentions)
         } else if details.is_some() {

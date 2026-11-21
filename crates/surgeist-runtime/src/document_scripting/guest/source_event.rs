@@ -115,7 +115,7 @@ impl DocumentScriptHost {
         };
         let result = events.report_selected(selected, result);
         if let Some(engine) = self.engine.as_mut() {
-            engine.settle_engine_cleanup(&attachment.realm);
+            engine.settle_engine_cleanup(owner, &attachment.realm);
         }
         result.map_err(|error| match error {
             DocumentGuestEventError::Document(error) => DocumentScriptEventError::Access(error),
@@ -132,6 +132,7 @@ impl GuestEvents {
         request: Option<&DomSourceEventRequest>,
         selected: &DomEventHostInvocation,
     ) -> Result<Result<(), DomEventCallbackError>, DocumentGuestEventError> {
+        owner.schedule_media_removals(scope)?;
         let mut report = None;
         let mut active = None;
         let values = (|| {

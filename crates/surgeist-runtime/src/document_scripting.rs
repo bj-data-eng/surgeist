@@ -8,7 +8,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use surgeist_bindings_js::{
     Callback, Completion, EngineKind, Error, HeapObservation, HostFailureSlot, Primitive, Process,
-    PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Scope,
+    PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Root, Scope,
     css::{self, CssNamespaceLimits},
     dom_exception::{self, DomExceptionLimits},
 };
@@ -45,6 +45,7 @@ pub use guest::{
     DocumentGuestListenerException, DocumentGuestResource, DocumentGuestWork,
     EnableDocumentGuestEventsFailure,
 };
+mod media_stable_state;
 mod source;
 mod window_event;
 mod window_relations;
@@ -251,6 +252,7 @@ const REGISTRATION_ACCESS_BYTES: usize =
 struct NativeOwner {
     attachment: OnceCell<Attachment>,
     session: RefCell<DomSession>,
+    media_removal_job: RefCell<Option<Root>>,
     active_source: Cell<Option<source::ActiveSource>>,
     active_attached_event: RefCell<Option<surgeist_dom::event::DomSourceEventRequest>>,
     active_attribute:
@@ -662,6 +664,7 @@ impl PreparedDocumentScriptHost {
             native: Rc::new(NativeOwner {
                 attachment: OnceCell::new(),
                 session: RefCell::new(session),
+                media_removal_job: RefCell::new(None),
                 active_source: Cell::new(None),
                 active_attached_event: RefCell::new(None),
                 active_attribute: Cell::new(None),
@@ -832,6 +835,7 @@ impl PreparedDocumentScriptHost {
             dom_exception::constructor_target_bytes::<DomHostedRuntimeRetention>()
                 .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let window_event_bytes = window_event::WindowEvent::storage_bytes();
+        let media_job_bytes = media_stable_state::capture_bytes();
         let timer_limits = owner.timer_limits.get();
         let timer_bytes = match timer_limits {
             Some(limits) => limits
@@ -850,6 +854,7 @@ impl PreparedDocumentScriptHost {
             .and_then(|bytes| bytes.checked_add(dom_exception_bytes))
             .and_then(|bytes| bytes.checked_add(window_relations::storage_bytes()))
             .and_then(|bytes| bytes.checked_add(window_event_bytes))
+            .and_then(|bytes| bytes.checked_add(media_job_bytes))
             .and_then(|bytes| bytes.checked_add(timer_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
@@ -865,6 +870,7 @@ impl PreparedDocumentScriptHost {
             dom_exception_backing,
             window_relations_backing,
             window_event_backing,
+            media_job_backing,
             timer_backing,
         ) = {
             let mut session = owner
@@ -904,6 +910,9 @@ impl PreparedDocumentScriptHost {
             let window_event = hosted
                 .retain_script_payload(&mut dom, window_event_bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
+            let media_job = hosted
+                .retain_script_payload(&mut dom, media_job_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
             let timer = timer_limits
                 .map(|limits| {
                     hosted.admit_script_work(&dom, 2, cancel)?;
@@ -927,6 +936,7 @@ impl PreparedDocumentScriptHost {
                 dom_exception,
                 window_relations,
                 window_event,
+                media_job,
                 timer,
             )
         };
@@ -1016,7 +1026,11 @@ impl PreparedDocumentScriptHost {
             Ok(())
         })?;
 
+        let media_removal_job = process.execution().in_realm(&realm, |scope| {
+            media_stable_state::install(scope, Rc::downgrade(owner), media_job_backing)
+        })?;
         Ok(UnpublishedScriptEngine {
+            media_removal_job,
             process,
             preparation,
             realm,
@@ -1033,6 +1047,7 @@ impl PreparedDocumentScriptHost {
 }
 
 struct UnpublishedScriptEngine {
+    media_removal_job: Root,
     process: Process,
     preparation: preparation::Prepared,
     realm: Realm,
@@ -1054,6 +1069,7 @@ impl UnpublishedScriptEngine {
     ) -> Result<ScriptEngine, DocumentScriptError> {
         let cancel = &owner.cancellation;
         let Self {
+            media_removal_job,
             process,
             preparation,
             realm,
@@ -1104,6 +1120,7 @@ impl UnpublishedScriptEngine {
             registration: Rc::downgrade(&registration),
             _registration_access_backing: registration_access_backing,
         });
+        owner.media_removal_job.replace(Some(media_removal_job));
         Ok(ScriptEngine {
             registration,
             guest_events: None,
@@ -1196,12 +1213,13 @@ impl ScriptEngine {
         self.preparation.total_with(additional)
     }
 
-    fn settle_engine_cleanup(&mut self, realm: &RealmAuthority) {
+    fn settle_engine_cleanup(&mut self, native: &NativeOwner, realm: &RealmAuthority) {
         self.comments.drain_retirements(&mut self.process);
         if let Some(events) = &self.guest_events {
             events.reap_retired_targets(&mut self.process);
         }
         if realm.check_owner_active().is_err() {
+            native.discard_media_removals();
             self.comments.release_all(&mut self.process);
             if let Some(timers) = &self.window_timers {
                 timers.discard(&mut self.process);
@@ -1239,7 +1257,7 @@ impl Drop for NativeLoanExit<'_> {
         if let Some(engine) = self.host.engine.as_mut()
             && let Some(attachment) = self.host.native.attachment.get()
         {
-            engine.settle_engine_cleanup(&attachment.realm);
+            engine.settle_engine_cleanup(&self.host.native, &attachment.realm);
         }
     }
 }
@@ -1290,6 +1308,7 @@ impl DocumentScriptHost {
                 Ok(()) => ScriptRetirement::NativeInactive,
                 Err(error) => ScriptRetirement::BindingsFailure(error),
             });
+            self.native.discard_media_removals();
             drop(self.engine.take());
             self.native.trusted_types_reports.borrow_mut().take();
         }
@@ -1307,7 +1326,10 @@ impl DocumentScriptHost {
 
     fn observe(&mut self) -> Result<DomDocumentScriptingObservation, DocumentScriptError> {
         let attachment = self.attachment()?;
-        attachment.realm.check_owner_active()?;
+        if let Err(first) = attachment.realm.check_owner_active() {
+            self.native.discard_media_removals();
+            return Err(first.into());
+        }
         let result = {
             let mut session = self
                 .native
@@ -1324,9 +1346,11 @@ impl DocumentScriptHost {
         };
         match result {
             Ok(observation) if observation.status() == HtmlScriptingStatus::Enabled => {
+                self.schedule_native_media_removals()?;
                 Ok(observation)
             }
             Ok(_) => {
+                self.native.discard_media_removals();
                 self.engine.take();
                 Err(
                     DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(
@@ -1337,6 +1361,7 @@ impl DocumentScriptHost {
             }
             Err(error) => {
                 if lost_attachment(&error) {
+                    self.native.discard_media_removals();
                     self.engine.take();
                 }
                 Err(error.into())
@@ -1512,7 +1537,7 @@ impl DocumentScriptHost {
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let result = engine.process.execution().in_realm(&engine.realm, action);
-        engine.settle_engine_cleanup(&attachment.realm);
+        engine.settle_engine_cleanup(&self.native, &attachment.realm);
         Ok(result?)
     }
 
@@ -1540,7 +1565,7 @@ impl DocumentScriptHost {
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let result = engine.process.execution().checkpoint();
-        engine.settle_engine_cleanup(&attachment.realm);
+        engine.settle_engine_cleanup(&self.native, &attachment.realm);
         Ok(result?)
     }
 
@@ -1595,6 +1620,7 @@ impl DocumentScriptHost {
 
     /// Revoke the attachment and dispose of its queue without a checkpoint.
     pub fn stop(self) -> StoppedDocumentScriptHost {
+        self.native.discard_media_removals();
         drop(self.engine);
         self.native.trusted_types_reports.borrow_mut().take();
         StoppedDocumentScriptHost {

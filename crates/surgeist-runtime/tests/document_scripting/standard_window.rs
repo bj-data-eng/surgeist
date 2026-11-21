@@ -181,6 +181,13 @@ pub(super) fn guest_media_removal_reaches_the_owning_checkpoint() {
         .enable_with_guest_event_registry(top, ALLOW, None, &mut Some(registry), guest_limits())
         .unwrap();
     let permit = host.permit().unwrap();
+    let parent = host
+        .snapshot()
+        .unwrap()
+        .document(top.document())
+        .unwrap()
+        .document_element()
+        .unwrap_or(top.document().node());
     eval(
         &mut host,
         &permit,
@@ -193,6 +200,9 @@ pub(super) fn guest_media_removal_reaches_the_owning_checkpoint() {
         })())"#,
         1.0,
     );
+    let initial = host.snapshot().unwrap();
+    let box_node = *initial.node(parent).unwrap().children().last().unwrap();
+    let media = initial.node(box_node).unwrap().children()[0];
     let removed = host.in_document(&permit, |scope| {
         assert_script_number(
             scope,
@@ -210,14 +220,131 @@ pub(super) fn guest_media_removal_reaches_the_owning_checkpoint() {
         );
     }
     removed.unwrap();
+    assert_eq!(autoplay(&host.snapshot().unwrap(), media), Some(true));
     host.checkpoint().unwrap();
+    assert_eq!(autoplay(&host.snapshot().unwrap(), media), Some(false));
+    assert_eq!(autoplay(&initial, media), Some(true));
     eval(
         &mut host,
         &permit,
         "Number(removalFixture.media.parentNode === null)",
         1.0,
     );
-    host.stop().into_session().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const {box} = removalFixture;
+            const early = box.appendChild(document.createElement('audio'));
+            const late = box.appendChild(document.createElement('video'));
+            Object.assign(removalFixture, {early, late});
+            return early.parentNode === box && late.parentNode === box;
+        })())"#,
+        1.0,
+    );
+    let both_attached = host.snapshot().unwrap();
+    let [early, late] = *both_attached.node(box_node).unwrap().children() else {
+        panic!("the script created two real child nodes");
+    };
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const {box, early, late} = removalFixture;
+            box.removeChild(early);
+            Promise.resolve().then(() => {
+                box.appendChild(early);
+                box.appendChild(late);
+            });
+            box.removeChild(late);
+            return early.parentNode === null && late.parentNode === null;
+        })())"#,
+        1.0,
+    );
+    assert_eq!(autoplay(&host.snapshot().unwrap(), early), Some(true));
+    assert_eq!(autoplay(&host.snapshot().unwrap(), late), Some(true));
+    host.checkpoint().unwrap();
+    let reinserted = host.snapshot().unwrap();
+    assert_eq!(reinserted.node(early).unwrap().parent(), Some(box_node));
+    assert_eq!(reinserted.node(late).unwrap().parent(), Some(box_node));
+    assert_eq!(autoplay(&reinserted, early), Some(false));
+    assert_eq!(autoplay(&reinserted, late), Some(true));
+
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.detach(late);
+        dom.apply(batch, &cancel())
+    })
+    .unwrap()
+    .unwrap();
+    assert_eq!(autoplay(&host.snapshot().unwrap(), late), Some(true));
+    host.checkpoint().unwrap();
+    assert_eq!(autoplay(&host.snapshot().unwrap(), late), Some(false));
+
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const {box} = removalFixture;
+            const fresh = box.appendChild(document.createElement('video'));
+            globalThis.textContentMedia = fresh;
+            return fresh.parentNode === box;
+        })())"#,
+        1.0,
+    );
+    let before_text = host.snapshot().unwrap();
+    let text_media = *before_text
+        .node(box_node)
+        .unwrap()
+        .children()
+        .last()
+        .unwrap();
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const {box} = removalFixture;
+            box.textContent = "";
+            Promise.resolve().then(() => box.appendChild(textContentMedia));
+            return textContentMedia.parentNode === null;
+        })())"#,
+        1.0,
+    );
+    host.checkpoint().unwrap();
+    let after_text = host.snapshot().unwrap();
+    assert_eq!(
+        after_text.node(text_media).unwrap().parent(),
+        Some(box_node)
+    );
+    assert_eq!(autoplay(&after_text, text_media), Some(false));
+
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const {box} = removalFixture;
+            const stopped = box.appendChild(document.createElement('audio'));
+            globalThis.stoppedMedia = stopped;
+            return stopped.parentNode === box;
+        })())"#,
+        1.0,
+    );
+    let before_stop = host.snapshot().unwrap();
+    let stopped = *before_stop
+        .node(box_node)
+        .unwrap()
+        .children()
+        .last()
+        .unwrap();
+    eval(
+        &mut host,
+        &permit,
+        "Number(removalFixture.box.removeChild(stoppedMedia) === stoppedMedia)",
+        1.0,
+    );
+    let mut session = host.stop().into_session().unwrap();
+    assert_eq!(session.media_checkpoint_step(&cancel()).unwrap(), None);
+    assert_eq!(autoplay(&session.snapshot(), stopped), Some(true));
 }
 
 fn new_registry() -> DomEventDispatcher<()> {
@@ -246,4 +373,11 @@ fn guest_limits() -> DocumentGuestEventLimits {
             work: 10_000,
         },
     }
+}
+
+fn autoplay(snapshot: &DomSnapshot, node: NodeId) -> Option<bool> {
+    let DomNodeKind::Element(element) = snapshot.node(node).unwrap().kind() else {
+        panic!("the exact node must remain a media element");
+    };
+    element.media_can_autoplay()
 }

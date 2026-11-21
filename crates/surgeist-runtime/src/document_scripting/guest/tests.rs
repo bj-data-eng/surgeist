@@ -4681,3 +4681,89 @@ fn a_refused_direct_dispatch_states_its_own_context_and_chains_its_cause() {
     );
     assert!(failure.exceptions().is_empty());
 }
+
+pub(in crate::document_scripting) fn cancelled_media_job_releases_only_abandoned_guest_custody() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    let owner = Rc::downgrade(&host.native);
+    let (guest_media, native_media) = host
+        .in_document(&permit, |scope| {
+            let native_media = scope.evaluate(&units(
+                r#"(() => {
+                const parent = document.documentElement ?? document;
+                const box = parent.appendChild(document.createElement('div'));
+                globalThis.guestAudio = box.appendChild(document.createElement('audio'));
+                return box.appendChild(document.createElement('video'));
+            })()"#,
+            ))?;
+            let native_media = projected_node_id(scope, &native_media)?;
+            let guest_media = scope.evaluate(&units("guestAudio"))?;
+            let guest_media = projected_node_id(scope, &guest_media)?;
+            let cancel_and_detach = scope.function(&Callback::new(move |_, _| {
+                let owner = owner.upgrade().unwrap();
+                let mut session = owner.session.borrow_mut();
+                let mut batch = surgeist_dom::DomBatch::new();
+                batch.detach(native_media);
+                session.dom().apply(batch, &owner.cancellation).unwrap();
+                owner
+                    .cancellation
+                    .store(true, std::sync::atomic::Ordering::Release);
+                Ok(Completion::Undefined)
+            }))?;
+            scope.enqueue_microtask(&cancel_and_detach)?;
+            assert_guest(
+                scope,
+                "guestAudio.parentNode.removeChild(guestAudio) === guestAudio",
+            )?;
+            Ok((guest_media, native_media))
+        })
+        .unwrap();
+
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host.checkpoint() else {
+        panic!("the canceled native media callback must refuse the heap");
+    };
+    let cause = failure.cause::<DocumentGuestEventError>().unwrap();
+    assert!(
+        matches!(
+            cause,
+            DocumentGuestEventError::Document(DocumentScriptError::Native(
+                DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Cancelled)
+            ))
+        ),
+        "{cause:?}"
+    );
+    let Err(DocumentScriptError::Script(Error::HostFailure(again))) = host.checkpoint() else {
+        panic!("the exact media failure must remain terminal");
+    };
+    assert!(std::ptr::eq(
+        cause,
+        again.cause::<DocumentGuestEventError>().unwrap()
+    ));
+
+    let mut session = host.native.session.borrow_mut();
+    let native = session
+        .media_checkpoint_step(&AtomicBool::new(false))
+        .unwrap()
+        .expect("only work created natively during the failed checkpoint remains");
+    assert_eq!(native.target(), native_media);
+    let snapshot = session.snapshot();
+    assert_eq!(
+        snapshot
+            .node(guest_media)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .media_can_autoplay(),
+        Some(true)
+    );
+    assert_eq!(
+        snapshot
+            .node(native.target())
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .media_can_autoplay(),
+        Some(false)
+    );
+    assert!(!session.read_dom().has_pending_media_removals());
+}

@@ -1426,6 +1426,7 @@ pub enum surgeist_runtime::session::DomSessionCreateFailure
 pub surgeist_runtime::session::DomSessionCreateFailure::ElementTasks(surgeist_runtime::element_task::DomElementTaskRuntimeError)
 pub surgeist_runtime::session::DomSessionCreateFailure::Events(surgeist_runtime::event::DomEventDispatchError)
 pub surgeist_runtime::session::DomSessionCreateFailure::Hosted(surgeist_runtime::hosted::DomHostedRuntimeError)
+pub surgeist_runtime::session::DomSessionCreateFailure::MediaStableState(surgeist_dom::internal::store::DomError)
 pub surgeist_runtime::session::DomSessionCreateFailure::Parsed(surgeist_runtime::style::parsed::DomStyleParsedAdmissionError)
 pub surgeist_runtime::session::DomSessionCreateFailure::SourceEvents(surgeist_runtime::source::DomSourceEventRuntimeError)
 pub surgeist_runtime::session::DomSessionCreateFailure::Style(surgeist_runtime::style::DomStyleRuntimeError)
@@ -1446,6 +1447,7 @@ pub surgeist_runtime::session::DomShutdownReason::DetailsIntentions
 pub surgeist_runtime::session::DomShutdownReason::DomElementTask(surgeist_dom::internal::element_tasks::DomElementTaskId)
 pub surgeist_runtime::session::DomShutdownReason::HostedLifecycle
 pub surgeist_runtime::session::DomShutdownReason::LiveResources
+pub surgeist_runtime::session::DomShutdownReason::MediaStableState
 pub surgeist_runtime::session::DomShutdownReason::NetworkingTask(surgeist_runtime::style::DomStyleNetworkingTaskId)
 pub surgeist_runtime::session::DomShutdownReason::ParsedAssociations(surgeist_dom::internal::parsed_installation::DomParsedHtmlAssociationId)
 pub surgeist_runtime::session::DomShutdownReason::Poisoned
@@ -2394,6 +2396,7 @@ pub fn surgeist_runtime::DomSession::admit_parsed(dom: surgeist_dom::internal::s
 pub fn surgeist_runtime::DomSession::dom(&mut self) -> surgeist_runtime::event::DomEventDom<'_>
 pub fn surgeist_runtime::DomSession::element_task_execution(&self) -> surgeist_runtime::element_task::DomElementTaskRuntime
 pub fn surgeist_runtime::DomSession::hosted_execution(&self) -> surgeist_runtime::hosted::HostedRuntime
+pub fn surgeist_runtime::DomSession::media_checkpoint_step(&mut self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::internal::store::media_removal::DomMediaRemoval>, surgeist_dom::internal::store::DomError>
 pub fn surgeist_runtime::DomSession::new(dom: surgeist_dom::internal::store::Dom, limits: surgeist_runtime::session::DomSessionLimits) -> core::result::Result<Self, surgeist_runtime::session::DomSessionCreateError>
 pub fn surgeist_runtime::DomSession::snapshot(&self) -> surgeist_dom::internal::snapshot::DomSnapshot
 pub fn surgeist_runtime::DomSession::source_execution(&self) -> surgeist_runtime::source::DomSourceRuntime

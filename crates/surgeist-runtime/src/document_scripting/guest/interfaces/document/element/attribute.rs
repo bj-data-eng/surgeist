@@ -144,6 +144,7 @@ impl Capture {
                 })?;
         let realm = scope.realm_authority()?.identity();
         owner.finish_guest_style(&mut result, limits, Some(realm));
+        owner.schedule_media_removals(scope)?;
         let mut pending = owner
             .session
             .try_borrow()
@@ -218,6 +219,7 @@ impl Capture {
                 }
             }
         }
+        owner.schedule_media_removals(scope)?;
         let drain = |scope: &mut Scope<'scope>, operation| {
             self.drain_source_and_routed_reactions(
                 scope,

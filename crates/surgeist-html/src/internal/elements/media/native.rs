@@ -15,6 +15,40 @@ pub enum HtmlInitialMediaState {
     Video,
 }
 
+/// Current state of an admitted media element before loading or playback.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlUnloadedMediaState {
+    initial: HtmlInitialMediaState,
+    can_autoplay: bool,
+}
+
+impl HtmlUnloadedMediaState {
+    /// Initialize an unloaded Audio or Video with its fresh eligibility.
+    pub const fn new(initial: HtmlInitialMediaState) -> Self {
+        Self {
+            initial,
+            can_autoplay: initial.can_autoplay(),
+        }
+    }
+
+    /// The original unloaded media family and initialization.
+    pub const fn initial(self) -> HtmlInitialMediaState {
+        self.initial
+    }
+
+    /// The current eligibility flag, independent of the autoplay attribute.
+    pub const fn can_autoplay(self) -> bool {
+        self.can_autoplay
+    }
+
+    /// Apply the internal pause steps supported for unloaded media.
+    pub const fn pause(&mut self) {
+        // This flag changes even when paused is already true. This phase
+        // has no pending play promises or playable-data event to settle.
+        self.can_autoplay = false;
+    }
+}
+
 /// A source-defined media resource operation reached by a native change.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaResourceEffect {

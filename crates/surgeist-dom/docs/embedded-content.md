@@ -142,11 +142,13 @@ waits, revision and history together.
 
 The exact HTML expanded names `audio` and `video` establish the unloaded media
 state through ordinary native creation, Source creation, cloning, and authored
-immutable installation. Read it through `DomElement::initial_media_state`.
-The network is empty, no media data is available, playback is paused, and the
-show-poster and autoplay eligibility flags are set. The initial playback time
-is zero, the current resource address is empty, and media does not delay the
-Document load event. The canonical node owns this state and its lifetime.
+immutable installation, and qualified parser-report installation.
+`DomElement::initial_media_state` reads the original initialization, and
+`DomElement::media_can_autoplay` reads current eligibility. The network is
+empty, no media data is available, playback is paused, and the show-poster and
+initial autoplay eligibility flags are set. The initial playback time is zero,
+the current resource address is empty, and media does not delay the Document
+load event. The canonical node owns this state and its lifetime.
 
 The unloaded profile has a private, empty shadow boundary with no slots.
 Fallback descendants keep their ordinary DOM identity and parentage, and the
@@ -161,13 +163,23 @@ reaches poster determination. Each operation returns
 publication. An empty or absent Video poster retains the absent frame and
 null resumption.
 
-Removing media from an ordinary Document tree reaches the stable-state
-removal steps. The edit returns `DomError::MediaRemovalStableStateUnavailable`
-before publication. Removing nodes from an ordinary detached fragment or
-removing a host that contains media only in its shadow tree does not reach this
-hook. Parser-created media requires its original lifecycle evidence, which the
-current immutable parse report does not supply.
+A direct or ancestor removal from an ordinary Document admits each affected
+media continuation before publishing the unlink. At stable state, the executor
+checks the original node generation and its current ordinary root. If the live
+node remains outside an ordinary Document, internal pause clears autoplay
+eligibility. A retired generation or a reinserted node completes without
+changing media state. Removal from a detached fragment or a shadow tree never
+queues this continuation. A DOM without a bound executor refuses publication
+with `DomError::MediaRemovalStableStateUnavailable`.
+
+Runtime's native Session exposes `media_checkpoint_step`. An attached script
+host schedules the continuations in its guest microtask queue in order.
+DOM admits the retained occurrence and Runtime funds the retained callback
+at attachment. The script engine owns its microtask queue storage and heap
+policy. The parser report still refuses a Document-removal effect that reached its own
+unavailable stable-state producer during parsing.
 [Pinned HTML removal steps](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L41444)
-· [Pinned parser lifecycle](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L42334).
+· [Pinned internal pause](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L41130)
+· [Pinned stable state](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L123936).
 
 [Back to surgeist-dom](../README.md).

@@ -75,6 +75,7 @@ pub use inline_style::feedback::DomInlineStyleOperation;
 mod input;
 mod input_processing;
 mod installation;
+pub(crate) mod media_removal;
 mod meta;
 pub(crate) mod meta_atomic;
 mod method;
@@ -135,6 +136,10 @@ pub(crate) use view_transition::TransitionMembership;
 /// Configured capacity whose admission would be exceeded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomResource {
+    /// Outstanding occurrences owned by the stable-state scheduler.
+    MediaRemovalContinuations,
+    /// Work admitted for one stable-state membership check and transition.
+    MediaRemovalWork,
     ParsedAssociationBytes,
     ParsedAssociationUnits,
     ParsedAssociationProcessingRetainedBytes,
@@ -713,6 +718,8 @@ impl std::fmt::Display for DomError {
 /// The configured capacity a `DomResource` names, as a noun phrase for a message.
 const fn resource_text(resource: DomResource) -> &'static str {
     match resource {
+        DomResource::MediaRemovalContinuations => "pending media removal continuations",
+        DomResource::MediaRemovalWork => "media removal stable-state work",
         DomResource::ParsedAssociationBytes => "retained parsed association bytes",
         DomResource::ParsedAssociationUnits => "retained parsed association code units",
         DomResource::ParsedAssociationProcessingRetainedBytes => {
@@ -2019,6 +2026,7 @@ pub struct Dom {
     fullscreen_exits: fullscreen::custody::Invocations,
     next_fullscreen_exit: u64,
     element_tasks: Option<std::sync::Weak<crate::internal::element_tasks::Binding>>,
+    media_removals: media_removal::Bank,
     dispatch_custody: dispatch::CustodyBank,
     node_retirements: Option<Arc<node_retirement::Index>>,
     event_recipients: Option<Arc<event::Owner>>,
@@ -2121,6 +2129,7 @@ impl Dom {
             event_registry: None,
             inline_styles: None,
             element_tasks: None,
+            media_removals: media_removal::Bank::default(),
             owner,
             names,
             csp_owner,
@@ -2360,6 +2369,7 @@ impl Dom {
         }
         self.names.replace_limits(limits.names());
         self.limits = limits;
+        self.media_removals.authorize_limits(limits);
         self.trim_history();
         Ok(())
     }
@@ -2554,6 +2564,7 @@ impl Dom {
             created_ranges,
             retirements,
             node_retirement_candidates,
+            media_removals,
             state,
             allocation_ids,
             owner,
@@ -2698,11 +2709,18 @@ impl Dom {
             },
             || source::formation::step(formation.as_ref(), cancelled),
         )?;
+        let media_removals = self.media_removals.prepare(
+            media_removals,
+            self.custody_registry.ledger(),
+            formation.as_ref(),
+            cancelled,
+        )?;
         // Last cancellation observation is the publication boundary. No user
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
             custom_element_reactions: None,
+            media_removals,
             name_promotions,
             state_custody,
             allocation_ids,
@@ -2755,6 +2773,7 @@ impl Dom {
             revision: &mut self.revision,
             history: &mut self.history,
             active_task: &mut self.active_task,
+            media_removals: &mut self.media_removals,
             inline_index,
             inline_objects,
         }
@@ -2798,6 +2817,7 @@ struct PublicationFields<'a> {
     revision: &'a mut DomRevision,
     history: &'a mut history::History,
     active_task: &'a mut std::sync::Weak<crate::internal::select::Authorization>,
+    media_removals: &'a mut media_removal::Bank,
     inline_index: Option<&'a mut inline_style::Index>,
     inline_objects: Option<&'a mut Vec<inline_style::ObjectEntry>>,
 }
@@ -2805,6 +2825,7 @@ impl PublicationFields<'_> {
     fn publish(mut self, publication: PreparedPublication) -> CommittedPublication {
         let PreparedPublication {
             custom_element_reactions,
+            media_removals,
             name_promotions,
             state_custody,
             allocation_ids: _,
@@ -2836,6 +2857,7 @@ impl PublicationFields<'_> {
             _formation,
             blocks: _,
         } = publication;
+        self.media_removals.publish(media_removals);
         if changed {
             name_promotions.commit();
             #[cfg(test)]
@@ -2988,6 +3010,9 @@ struct Draft {
     source_invocation: u64,
     source_headroom: Option<source::headroom::Scan>,
     method: Option<method::Frame>,
+    media_removals: Option<custody::Held<Vec<media_removal::Pending>>>,
+    media_scheduler: std::sync::Weak<media_removal::Binding>,
+    media_hook_index: usize,
     dispatch_retirements: Vec<(NodeId, Key)>,
     dispatch_retirements_charge: custody::Debit,
     phase_map: Option<source::PhaseMap>,
@@ -3057,6 +3082,7 @@ struct Draft {
 }
 pub(crate) struct PreparedPublication {
     custom_element_reactions: Option<source::reactions::Publication>,
+    media_removals: media_removal::Prepared,
     created_ranges: Vec<Option<crate::internal::range::DomRangeId>>,
     state: Arc<State>,
     changed: bool,
@@ -3095,6 +3121,7 @@ pub(crate) struct PreparedPublication {
 }
 struct Prepared {
     node_retirement_candidates: Vec<NodeId>,
+    media_removals: Option<custody::Held<Vec<media_removal::DomMediaRemoval>>>,
     inline_echo: Option<inline_style::feedback::Echo>,
     state: State,
     inline_positions: Option<transaction::slot_index::PositionChanges>,
@@ -3503,6 +3530,9 @@ impl Draft {
             method: None,
             fullscreen_exit: None,
             fullscreen_work_custody: None,
+            media_removals: None,
+            media_scheduler: dom.media_removals.scheduler(),
+            media_hook_index: 0,
             dispatch_retirements: Vec::new(),
             dispatch_retirements_charge,
             phase_map: None,

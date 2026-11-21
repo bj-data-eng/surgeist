@@ -484,11 +484,15 @@ impl DomElement {
             Requirement::KnownHtml(KnownHtmlElement::Picture) => NativeFamily::Picture,
             Requirement::KnownHtml(KnownHtmlElement::Source) => NativeFamily::Source,
             Requirement::KnownHtml(KnownHtmlElement::Audio) => NativeFamily::Media {
-                initial: surgeist_html::elements::media::HtmlInitialMediaState::Audio,
+                state: surgeist_html::elements::media::HtmlUnloadedMediaState::new(
+                    surgeist_html::elements::media::HtmlInitialMediaState::Audio,
+                ),
                 automatic_track_selection_performed: false,
             },
             Requirement::KnownHtml(KnownHtmlElement::Video) => NativeFamily::Media {
-                initial: surgeist_html::elements::media::HtmlInitialMediaState::Video,
+                state: surgeist_html::elements::media::HtmlUnloadedMediaState::new(
+                    surgeist_html::elements::media::HtmlInitialMediaState::Video,
+                ),
                 automatic_track_selection_performed: false,
             },
             Requirement::KnownHtml(KnownHtmlElement::Optgroup) => NativeFamily::Optgroup,
@@ -594,13 +598,30 @@ impl DomElement {
     pub(crate) fn is_img(&self) -> bool {
         matches!(self.family, NativeFamily::Img)
     }
-    /// Observe the actual admitted unloaded Audio or Video state.
+    /// Observe the original unloaded Audio or Video initialization.
+    /// Use [Self::media_can_autoplay] for the live autoplay eligibility flag.
     pub fn initial_media_state(
         &self,
     ) -> Option<surgeist_html::elements::media::HtmlInitialMediaState> {
         match self.family {
-            NativeFamily::Media { initial, .. } => Some(initial),
+            NativeFamily::Media { state, .. } => Some(state.initial()),
             _ => None,
+        }
+    }
+    /// The current autoplay eligibility of the admitted unloaded media element.
+    pub fn media_can_autoplay(&self) -> Option<bool> {
+        match self.family {
+            NativeFamily::Media { state, .. } => Some(state.can_autoplay()),
+            _ => None,
+        }
+    }
+    pub(crate) fn pause_unloaded_media(&mut self) -> Result<(), crate::DomError> {
+        match &mut self.family {
+            NativeFamily::Media { state, .. } => {
+                state.pause();
+                Ok(())
+            }
+            _ => Err(crate::DomError::WrongNodeKind),
         }
     }
     /// Whether the unloaded Media element has performed automatic text-track selection.
@@ -618,7 +639,7 @@ impl DomElement {
             NativeFamily::Img => Some(KnownHtmlElement::Img),
             NativeFamily::Picture => Some(KnownHtmlElement::Picture),
             NativeFamily::Source => Some(KnownHtmlElement::Source),
-            NativeFamily::Media { initial, .. } => Some(initial.element()),
+            NativeFamily::Media { state, .. } => Some(state.initial().element()),
             _ => None,
         }
     }

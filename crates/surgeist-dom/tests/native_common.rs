@@ -926,3 +926,251 @@ fn state_only_edits_have_dom_history_while_equal_host_facts_keep_their_revision(
         next.capture().stamp().document()
     );
 }
+
+#[test]
+fn media_stable_state_admits_before_publication_and_uses_current_ordinary_membership() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let owner = dom.bind_media_stable_state(1, &cancel).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let second_document = batch.create_document();
+    let reinsert_parent = batch.create_element_ns(&second_document, Namespace::html(), "div");
+    batch.insert_before(&reinsert_parent, &second_document, None);
+    let container = batch.create_element_ns(&document, Namespace::html(), "div");
+    let audio = batch.create_element_ns(&document, Namespace::html(), "audio");
+    let video = batch.create_element_ns(&document, Namespace::html(), "video");
+    batch.insert_before(&container, &document, None);
+    batch.insert_before(&audio, &container, None);
+    batch.insert_before(&video, &container, None);
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let second_document = commit.document(&second_document).unwrap();
+    let reinsert_parent = commit.created(&reinsert_parent).unwrap().unwrap();
+    let container = commit.created(&container).unwrap().unwrap();
+    let audio = commit.created(&audio).unwrap().unwrap();
+    let video = commit.created(&video).unwrap().unwrap();
+    let original = dom.snapshot();
+
+    let mut batch = DomBatch::new();
+    batch.detach(container);
+    assert!(matches!(
+        dom.apply(batch, &cancel),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::MediaRemovalContinuations,
+            ..
+        })
+    ));
+    assert_eq!(dom.snapshot().stamp(), original.stamp());
+    assert_eq!(owner.run_native(&mut dom, &cancel).unwrap(), None);
+
+    let limits = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+    let mut lease = dom
+        .begin_source_edit(DomSourceEdit::detach(audio), limits, &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    assert_eq!(media_autoplay(&dom, audio), Some(true));
+    assert_eq!(
+        owner.run_native(&mut dom, &AtomicBool::new(true)),
+        Err(DomError::Cancelled)
+    );
+    let mut batch = DomBatch::new();
+    batch.insert_before(audio, reinsert_parent, None);
+    apply(&mut dom, batch);
+    let completed = owner.run_native(&mut dom, &cancel).unwrap().unwrap();
+    assert_eq!(completed.target(), audio);
+    assert_eq!(completed.former_document(), document);
+    assert_eq!(media_autoplay(&dom, audio), Some(true));
+
+    let mut batch = DomBatch::new();
+    batch.insert_before(audio, reinsert_parent, None);
+    let before_same_position = dom.snapshot().stamp();
+    apply(&mut dom, batch);
+    assert_eq!(dom.snapshot().stamp(), before_same_position);
+    let reinsertion = owner.run_native(&mut dom, &cancel).unwrap().unwrap();
+    assert_ne!(reinsertion, completed);
+    assert_eq!(reinsertion.target(), audio);
+    assert_eq!(reinsertion.former_document(), second_document);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::move_before(audio, reinsert_parent, None),
+            limits,
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    assert_eq!(owner.run_native(&mut dom, &cancel).unwrap(), None);
+
+    let mut batch = DomBatch::new();
+    batch.detach(container);
+    apply(&mut dom, batch);
+    assert_eq!(media_autoplay(&dom, video), Some(true));
+    let completed = owner.run_native(&mut dom, &cancel).unwrap().unwrap();
+    assert_eq!(completed.target(), video);
+    assert_eq!(completed.former_document(), document);
+    assert_eq!(media_autoplay(&dom, video), Some(false));
+    assert_eq!(
+        dom.snapshot().node(video).unwrap().parent(),
+        Some(container)
+    );
+    assert_eq!(owner.run_native(&mut dom, &cancel).unwrap(), None);
+}
+
+#[test]
+fn media_stable_state_retires_the_original_generation_and_skips_other_trees() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let owner = dom.bind_media_stable_state(4, &cancel).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let host = batch.create_element_ns(&document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    let fragment = batch.create_fragment(&document);
+    let retired = batch.create_element_ns(&document, Namespace::html(), "audio");
+    let light = batch.create_element_ns(&document, Namespace::html(), "audio");
+    let hosted = batch.create_element_ns(&document, Namespace::html(), "video");
+    let detached = batch.create_element_ns(&document, Namespace::html(), "audio");
+    batch.insert_before(&host, &document, None);
+    batch.insert_before(&retired, &host, None);
+    batch.insert_before(&light, &host, None);
+    batch.insert_before(&hosted, &shadow, None);
+    batch.insert_before(&detached, &fragment, None);
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let retired = commit.created(&retired).unwrap().unwrap();
+    let host = commit.created(&host).unwrap().unwrap();
+    let light = commit.created(&light).unwrap().unwrap();
+    let hosted = commit.created(&hosted).unwrap().unwrap();
+    let detached = commit.created(&detached).unwrap().unwrap();
+
+    let mut batch = DomBatch::new();
+    batch.detach(retired);
+    batch.destroy(retired);
+    batch.detach(detached);
+    batch.detach(host);
+    apply(&mut dom, batch);
+    let mut batch = DomBatch::new();
+    let replacement = batch.create_element_ns(document.node(), Namespace::html(), "video");
+    let replacement = apply(&mut dom, batch)
+        .created(&replacement)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        dom.snapshot().node(retired).unwrap_err(),
+        DomError::StaleNode
+    );
+    assert_ne!(retired, replacement);
+    let retired_step = owner.run_native(&mut dom, &cancel).unwrap().unwrap();
+    let descendant_step = owner.run_native(&mut dom, &cancel).unwrap().unwrap();
+    assert_eq!(retired_step.target(), retired);
+    assert_eq!(descendant_step.target(), light);
+    assert_eq!(owner.run_native(&mut dom, &cancel).unwrap(), None);
+    assert_eq!(media_autoplay(&dom, light), Some(false));
+    for node in [hosted, detached, replacement] {
+        assert_eq!(media_autoplay(&dom, node), Some(true));
+    }
+}
+
+fn media_autoplay(dom: &Dom, node: surgeist_dom::identity::NodeId) -> Option<bool> {
+    let snapshot = dom.snapshot();
+    let surgeist_dom::tree::DomNodeKind::Element(element) = snapshot.node(node).unwrap().kind()
+    else {
+        panic!("the test created an exact media element");
+    };
+    element.media_can_autoplay()
+}
+
+#[test]
+fn media_removal_admission_keeps_first_refusal_before_later_resource_work() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let audio = batch.create_element_ns(&document, Namespace::html(), "audio");
+    batch.insert_before(&audio, &document, None);
+    let audio = apply(&mut dom, batch).created(&audio).unwrap().unwrap();
+    let before = dom.snapshot();
+
+    let conflicting_edit = || {
+        let mut batch = DomBatch::new();
+        batch.detach(audio);
+        batch.set_attribute(audio, "src", "");
+        batch
+    };
+    assert_eq!(
+        dom.apply(conflicting_edit(), &cancel).unwrap_err(),
+        DomError::MediaRemovalStableStateUnavailable,
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+
+    let stable_state = dom.bind_media_stable_state(0, &cancel).unwrap();
+    assert_eq!(
+        dom.apply(conflicting_edit(), &cancel).unwrap_err(),
+        DomError::ResourceLimit {
+            resource: DomResource::MediaRemovalContinuations,
+            limit: 0,
+        },
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(stable_state.run_native(&mut dom, &cancel).unwrap(), None);
+}
+
+#[test]
+fn raised_node_limits_cover_the_live_checkpoint_path() {
+    let with_nodes = |nodes| {
+        DomLimits::new(
+            nodes,
+            16384,
+            256,
+            0,
+            0,
+            16,
+            65536,
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let mut dom = Dom::new(with_nodes(4)).unwrap();
+    let cancel = AtomicBool::new(false);
+    let owner = dom.bind_media_stable_state(1, &cancel).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let audio = batch.create_element_ns(&document, Namespace::html(), "audio");
+    batch.insert_before(&audio, &document, None);
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let audio = commit.created(&audio).unwrap().unwrap();
+    let mut batch = DomBatch::new();
+    batch.detach(audio);
+    apply(&mut dom, batch);
+
+    dom.set_limits(with_nodes(32)).unwrap();
+    let mut batch = DomBatch::new();
+    let root = batch.create_element_ns(document.node(), Namespace::html(), "div");
+    let mut parent = root;
+    for _ in 0..10 {
+        let child = batch.create_element_ns(document.node(), Namespace::html(), "div");
+        batch.insert_before(&child, &parent, None);
+        parent = child;
+    }
+    batch.insert_before(audio, &parent, None);
+    apply(&mut dom, batch);
+    assert_eq!(
+        owner
+            .run_native(&mut dom, &cancel)
+            .unwrap()
+            .unwrap()
+            .target(),
+        audio
+    );
+    assert_eq!(media_autoplay(&dom, audio), Some(false));
+}

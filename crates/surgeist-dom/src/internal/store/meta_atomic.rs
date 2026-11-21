@@ -725,6 +725,7 @@ impl<'caps> DomMetaOrdinaryPreparation<'_, 'caps> {
             revision,
             history,
             active_task,
+            media_removals,
             inline_styles,
             ..
         } = dom;
@@ -764,6 +765,7 @@ impl<'caps> DomMetaOrdinaryPreparation<'_, 'caps> {
             revision,
             history,
             active_task,
+            media_removals,
             inline_index,
             inline_objects,
         }

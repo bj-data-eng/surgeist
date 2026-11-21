@@ -373,6 +373,7 @@ impl Capture {
             .attachment
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
+        owner.schedule_media_removals(scope)?;
         match result.map(guest_source_terminal) {
             Ok(Some(Ok(done))) => {
                 let reactions = self.drain_native_reactions(scope, owner, events, done.operation());
