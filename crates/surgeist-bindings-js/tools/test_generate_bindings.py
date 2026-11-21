@@ -580,6 +580,27 @@ class ValueLoweringTests(unittest.TestCase):
         self.assertIsNone(g.conversion_type({"kind": "nullable", "inner": {"kind": "named", "name": "EventInit"}}, model))
         self.assertIsNone(g.conversion_type({"kind": "nullable", "inner": {"kind": "nullable", "inner": {"kind": "named", "name": "DOMString"}}}, model))
 
+    def test_hidden_setter_lowers_the_exact_nullable_boolean_double_string_union(self):
+        data = g.load()
+        model = g.lower_values(data)
+        setters = g.lower_selected_setters(data, model)
+        hidden = next(setter for setter in setters if setter[0] == "HTMLElement.hidden")
+        self.assertEqual(hidden, (
+            "HTMLElement.hidden", "html_element_hidden",
+            ("Option<HiddenAttributeValue>", "Nullable<Type<HiddenAttributeValue>>",
+             "Type::scalar(super::composition::hidden_attribute_value).nullable()"),
+        ))
+        output = g.emit_conversions(model, selected_setters=setters)
+        self.assertIn("use super::HiddenAttributeValue;", output)
+        self.assertIn("pub fn html_element_hidden_setter() -> Nullable<Type<HiddenAttributeValue>>", output)
+        hidden_type = next(member["type"] for declaration in data["declarations"]
+                           for member in declaration.get("members", [])
+                           if member["id"] == "HTMLElement.hidden")
+        finite_double = copy.deepcopy(hidden_type)
+        finite_double["inner"]["members"][1]["name"] = "double"
+        self.assertIsNone(g.conversion_type(finite_double, model))
+        self.assertIsNone(g.conversion_type({"kind": "nullable", "inner": hidden_type}, model))
+
     def test_unavailable_inherited_member_excludes_whole_derived_dictionary(self):
         model = g.lower_values({"declarations": [
             {"name": "Base", "kind": "dictionary", "members": [

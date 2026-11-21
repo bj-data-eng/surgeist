@@ -640,8 +640,51 @@ fn installed_dom_exception_charges_the_retained_account_body() -> TestResult {
     Ok(())
 }
 
+fn hidden_union_keeps_selected_value_and_string_storage() -> TestResult {
+    use super::{HiddenAttributeValue, declarations::html_element_hidden_setter};
+
+    let (mut process, realm, _, account) = setup()?;
+    let (ledger, conversion_scope) = shared(&account);
+    let buffer_bytes = || {
+        ledger
+            .usage(conversion_scope)
+            .expect("conversion account scope")
+            .live(Resource::BufferBytes)
+    };
+    let descriptor = html_element_hidden_setter();
+    process.execution().in_realm(&realm, |scope| {
+        let number = scope.primitive(crate::Primitive::Number(-0.0))?;
+        let converted = account.run(scope, |cx| cx.value(&descriptor, &number))?;
+        assert!(
+            matches!(converted.get(), Some(HiddenAttributeValue::Number(number))
+            if number.to_bits() == (-0.0f64).to_bits())
+        );
+        assert_eq!(buffer_bytes(), 0);
+        drop(converted);
+
+        let input = scope.evaluate(&units(
+            r#"({[Symbol.toPrimitive](hint) {
+            if (hint !== 'string') throw new Error('wrong primitive hint');
+            return '\ud800\0\udc00';
+        }})"#,
+        ))?;
+        let baseline = buffer_bytes();
+        let converted = account.run(scope, |cx| cx.value(&descriptor, &input))?;
+        assert!(
+            matches!(converted.get(), Some(HiddenAttributeValue::String(string))
+            if string.as_code_units() == [0xd800, 0, 0xdc00])
+        );
+        assert_eq!(buffer_bytes() - baseline, 6);
+        drop(converted);
+        assert_eq!(buffer_bytes(), baseline);
+        Ok::<_, Error>(())
+    })?;
+    Ok(())
+}
+
 pub(crate) fn run() -> TestResult {
     super::hosted_execution::run()?;
+    hidden_union_keeps_selected_value_and_string_storage()?;
     installed_dom_exception_charges_the_retained_account_body()?;
     foreign_native_error_is_refused_during_cleanup()?;
     selected_native_error_survives_local_cleanup(false)?;

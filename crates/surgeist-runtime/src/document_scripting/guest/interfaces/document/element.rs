@@ -83,6 +83,13 @@ const HTML_REFLECTIONS: &[super::reflection::Member] = &[
         super::reflection::Reflection::Direction,
     ),
     (
+        &ascii(b"hidden"),
+        &ascii(b"get hidden"),
+        &ascii(b"set hidden"),
+        &ascii(b"hidden"),
+        super::reflection::Reflection::Hidden,
+    ),
+    (
         &ascii(b"inert"),
         &ascii(b"get inert"),
         &ascii(b"set inert"),

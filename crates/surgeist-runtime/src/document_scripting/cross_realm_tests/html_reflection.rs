@@ -370,6 +370,12 @@ fn html_reflection_setters_admit_the_native_change_before_publication() {
         ),
         ("inert", "inert", "limitedReflection.inert = true", &[][..]),
         (
+            "hidden",
+            "hidden",
+            "limitedReflection.hidden = 'UNTIL-FOUND'",
+            &b"until-found".map(u16::from)[..],
+        ),
+        (
             "dir",
             "dir",
             "limitedReflection.dir = 'RTL'",

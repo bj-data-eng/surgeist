@@ -11658,13 +11658,11 @@
       "kind": "derived",
       "algorithm": "htmlelement.hidden.get",
       "owner": "surgeist-html",
-      "contract": "Apply the selected hidden IDL union algorithm and HtmlHidden states, retaining until-found and the exact boolean/number/string/null setter branches; neither raw attribute text nor computed CSS display is the whole getter.",
+      "contract": "Observe the exact null-namespace hidden attribute. Return false for absence, the canonical until-found keyword for that state, and true for every other present value.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-hidden",
       "inputs": [
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlHidden"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "hidden_processing_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -11672,13 +11670,13 @@
       "kind": "derived",
       "algorithm": "htmlelement.hidden.set",
       "owner": "surgeist-html",
-      "contract": "Apply the selected hidden IDL union algorithm and HtmlHidden states, retaining until-found and the exact boolean/number/string/null setter branches; neither raw attribute text nor computed CSS display is the whole getter.",
+      "contract": "Convert once using the selected nullable Boolean, unrestricted double and DOMString union. Apply the local hidden action through the original null-namespace attribute edit and synchronous reactions.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-hidden",
       "inputs": [
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlHidden"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-bindings-js", "path": "crates/surgeist-bindings-js/src/conversion/composition.rs", "symbol": "hidden_attribute_value"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "hidden_setter_action_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
       ],
       "requirements": []
     },

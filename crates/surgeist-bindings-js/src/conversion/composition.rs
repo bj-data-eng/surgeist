@@ -1,5 +1,5 @@
 use crate::{
-    PropertyKey, Value, ValueKind,
+    DomString, PropertyKey, Value, ValueKind,
     declarations::{ElementCreationArgument, ImportNodeArgument},
 };
 
@@ -46,6 +46,40 @@ pub(super) fn import_node_argument<'s>(
             })
         }
     }
+}
+
+/// The non-null alternatives of the `HTMLElement.hidden` setter union.
+#[derive(Debug, PartialEq)]
+pub enum HiddenAttributeValue {
+    /// A JavaScript Boolean primitive.
+    Boolean(bool),
+    /// A JavaScript Number primitive, as an unrestricted double.
+    Number(f64),
+    /// The converted DOMString, retaining its exact UTF-16 code units.
+    String(DomString),
+}
+
+pub(super) fn hidden_attribute_value<'s>(
+    cx: &mut Conversion<'_, 's>,
+    input: &Value<'s>,
+) -> Result<Converted<HiddenAttributeValue>, Failure> {
+    let kind = cx.scope.kind(input);
+    let (value, storage) = match cx.core(kind)? {
+        ValueKind::Boolean => {
+            let Converted { value, storage } = cx.value(&super::types::BOOLEAN, input)?;
+            (HiddenAttributeValue::Boolean(value), storage)
+        }
+        ValueKind::Number => {
+            let Converted { value, storage } =
+                cx.value(&super::types::UNRESTRICTED_DOUBLE, input)?;
+            (HiddenAttributeValue::Number(value), storage)
+        }
+        _ => {
+            let Converted { value, storage } = cx.value(&super::types::DOM_STRING, input)?;
+            (HiddenAttributeValue::String(value), storage)
+        }
+    };
+    Ok(Converted { value, storage })
 }
 
 /// Closed typed descriptors compose without accepting downstream conversion

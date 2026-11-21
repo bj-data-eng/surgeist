@@ -113,6 +113,7 @@ pub fn surgeist_bindings_js::conversion::declarations::event_target_remove_event
 pub fn surgeist_bindings_js::conversion::declarations::get_root_node_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::GetRootNodeOptions>
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_item_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_named_item_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_element_hidden_setter() -> surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::conversion::HiddenAttributeValue>>
 pub fn surgeist_bindings_js::conversion::declarations::html_element_inner_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::html_element_outer_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::html_font_element_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
@@ -206,6 +207,10 @@ pub surgeist_bindings_js::conversion::FailureKind::Cleanup
 pub surgeist_bindings_js::conversion::FailureKind::GuestException
 pub surgeist_bindings_js::conversion::FailureKind::HostRefusal
 pub surgeist_bindings_js::conversion::FailureKind::TypeError(surgeist_bindings_js::conversion::Rule)
+pub enum surgeist_bindings_js::conversion::HiddenAttributeValue
+pub surgeist_bindings_js::conversion::HiddenAttributeValue::Boolean(bool)
+pub surgeist_bindings_js::conversion::HiddenAttributeValue::Number(f64)
+pub surgeist_bindings_js::conversion::HiddenAttributeValue::String(surgeist_bindings_js::DomString)
 pub enum surgeist_bindings_js::conversion::Resource
 pub surgeist_bindings_js::conversion::Resource::BufferBytes
 impl surgeist_ledger::__private::Sealed for surgeist_bindings_js::conversion::Resource
