@@ -1484,8 +1484,8 @@ total_enum_rule!(CLOSEDBY, CLOSEDBY_DEFAULTS, HtmlClosedByState, Closedby, Conte
     ["any" => ("any", HtmlClosedByState::Keyword(HtmlClosedBy::Any)),
      "closerequest" => ("closerequest", HtmlClosedByState::Keyword(HtmlClosedBy::CloseRequest)),
      "none" => ("none", HtmlClosedByState::Keyword(HtmlClosedBy::None))]);
-enum_rule!(FORM_AUTOCOMPLETE, HtmlFormAutocomplete, Autocomplete, Context::Elements(&[KnownHtmlElement::Form]), [13], "attr-form-autocomplete",
-    Some(HtmlFormAutocomplete::On), Some(HtmlFormAutocomplete::On), None,
+total_enum_rule!(FORM_AUTOCOMPLETE, FORM_AUTOCOMPLETE_DEFAULTS, HtmlFormAutocomplete, Autocomplete, Context::Elements(&[KnownHtmlElement::Form]), [13], "attr-form-autocomplete",
+    HtmlFormAutocomplete::On, HtmlFormAutocomplete::On, None,
     ["on" => ("on", HtmlFormAutocomplete::On), "off" => ("off", HtmlFormAutocomplete::Off)]);
 enum_rule!(DECODING, HtmlDecoding, Decoding, Context::Elements(&[KnownHtmlElement::Img]), [38], "attr-img-decoding",
     Some(HtmlDecoding::Auto), Some(HtmlDecoding::Auto), None,
@@ -1500,11 +1500,11 @@ enum_rule!(PRELOAD, HtmlPreloadState, Preload, Context::Elements(&[KnownHtmlElem
     ["auto" => ("auto", HtmlPreloadState::Keyword(HtmlPreload::Auto)),
      "none" => ("none", HtmlPreloadState::Keyword(HtmlPreload::None)),
      "metadata" => ("metadata", HtmlPreloadState::Keyword(HtmlPreload::Metadata))]);
-enum_rule!(FORM_METHOD, HtmlFormMethod, Method, Context::Elements(&[KnownHtmlElement::Form]), [96], "attr-fs-method",
-    Some(HtmlFormMethod::Get), Some(HtmlFormMethod::Get), None,
+total_enum_rule!(FORM_METHOD, FORM_METHOD_DEFAULTS, HtmlFormMethod, Method, Context::Elements(&[KnownHtmlElement::Form]), [96], "attr-fs-method",
+    HtmlFormMethod::Get, HtmlFormMethod::Get, None,
     ["get" => ("get", HtmlFormMethod::Get), "post" => ("post", HtmlFormMethod::Post), "dialog" => ("dialog", HtmlFormMethod::Dialog)]);
-enum_rule!(FORM_ENCTYPE, HtmlFormEnctype, Enctype, Context::Elements(&[KnownHtmlElement::Form]), [49], "attr-fs-enctype",
-    Some(HtmlFormEnctype::UrlEncoded), Some(HtmlFormEnctype::UrlEncoded), None,
+total_enum_rule!(FORM_ENCTYPE, FORM_ENCTYPE_DEFAULTS, HtmlFormEnctype, Enctype, Context::Elements(&[KnownHtmlElement::Form]), [49], "attr-fs-enctype",
+    HtmlFormEnctype::UrlEncoded, HtmlFormEnctype::UrlEncoded, None,
     ["application/x-www-form-urlencoded" => ("application/x-www-form-urlencoded", HtmlFormEnctype::UrlEncoded),
      "multipart/form-data" => ("multipart/form-data", HtmlFormEnctype::MultipartFormData), "text/plain" => ("text/plain", HtmlFormEnctype::PlainText)]);
 enum_rule!(TRACK_KIND, HtmlTrackKind, Kind, Context::Elements(&[KnownHtmlElement::Track]), [85], "attr-track-kind",
@@ -2973,6 +2973,36 @@ pub(crate) mod bounded_rules {
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<Option<&'static str>, E> {
         reflected_keyword_with(&POPOVER, raw, admit)
+    }
+
+    /// Returns the canonical Form autocomplete keyword from exact attribute units.
+    /// Missing, empty and invalid content selects on.
+    pub fn form_autocomplete_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        total_enum_value_with(&FORM_AUTOCOMPLETE, &FORM_AUTOCOMPLETE_DEFAULTS, raw, admit)
+            .map(HtmlFormAutocomplete::canonical_keyword)
+    }
+
+    /// Returns the canonical Form enctype (also used by encoding) keyword from exact attribute units.
+    /// Missing, empty and invalid content selects application/x-www-form-urlencoded.
+    pub fn form_enctype_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        total_enum_value_with(&FORM_ENCTYPE, &FORM_ENCTYPE_DEFAULTS, raw, admit)
+            .map(HtmlFormEnctype::canonical_keyword)
+    }
+
+    /// Returns the canonical Form method keyword from exact attribute units.
+    /// Missing, empty and invalid content selects get.
+    pub fn form_method_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        total_enum_value_with(&FORM_METHOD, &FORM_METHOD_DEFAULTS, raw, admit)
+            .map(HtmlFormMethod::canonical_keyword)
     }
 
     /// Selects the intrinsic contenteditable state from an exact null-namespace value.

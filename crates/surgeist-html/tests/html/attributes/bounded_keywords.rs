@@ -4,7 +4,8 @@
 
 use std::convert::Infallible;
 use surgeist_html::bounded::attributes::{
-    HtmlAttributeKeywordRead as Read, crossorigin_processing_with, referrerpolicy_processing_with,
+    HtmlAttributeKeywordRead as Read, crossorigin_processing_with, form_autocomplete_keyword_with,
+    form_enctype_keyword_with, form_method_keyword_with, referrerpolicy_processing_with,
 };
 use surgeist_html::{
     attributes::{
@@ -316,4 +317,66 @@ fn shared_selector_preserves_ordinary_exact_case_and_author_reports() {
             Some(&cors(Some(raw.value())))
         );
     }
+}
+
+#[test]
+fn form_keywords_use_canonical_defaults_and_admitted_exact_matches() {
+    let accept = |_| Ok::<_, Infallible>(());
+    assert_eq!(form_autocomplete_keyword_with(None, accept).unwrap(), "on");
+    assert_eq!(
+        form_autocomplete_keyword_with(Some(&b"oFf".map(u16::from)), accept).unwrap(),
+        "off",
+    );
+    assert_eq!(
+        form_autocomplete_keyword_with(Some(&[]), accept).unwrap(),
+        "on"
+    );
+    assert_eq!(
+        form_enctype_keyword_with(None, accept).unwrap(),
+        "application/x-www-form-urlencoded"
+    );
+    assert_eq!(
+        form_enctype_keyword_with(Some(&b"MULTIPART/Form-Data".map(u16::from)), accept).unwrap(),
+        "multipart/form-data",
+    );
+    assert_eq!(
+        form_enctype_keyword_with(Some(&[0xd800]), accept).unwrap(),
+        "application/x-www-form-urlencoded",
+    );
+    assert_eq!(form_method_keyword_with(None, accept).unwrap(), "get");
+    assert_eq!(
+        form_method_keyword_with(Some(&b"POST ".map(u16::from)), accept).unwrap(),
+        "get",
+    );
+
+    use Read::{KeywordHeader, KeywordPair, ValueHeader};
+    let post = b"PoST".map(u16::from);
+    let expected = [
+        ValueHeader,
+        KeywordHeader,
+        KeywordHeader,
+        KeywordPair,
+        KeywordPair,
+        KeywordPair,
+        KeywordPair,
+    ];
+    let mut reads = Vec::new();
+    assert_eq!(
+        form_method_keyword_with(Some(&post), |read| {
+            reads.push(read);
+            (reads.len() <= expected.len()).then_some(()).ok_or(read)
+        }),
+        Ok("post")
+    );
+    assert_eq!(reads, expected);
+
+    reads.clear();
+    assert_eq!(
+        form_method_keyword_with(Some(&post), |read| {
+            reads.push(read);
+            (reads.len() < expected.len()).then_some(()).ok_or(read)
+        }),
+        Err(KeywordPair)
+    );
+    assert_eq!(reads, expected);
 }

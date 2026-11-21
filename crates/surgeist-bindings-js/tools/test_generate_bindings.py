@@ -509,6 +509,30 @@ class DescriptionTests(unittest.TestCase):
         self.member("HTMLMarqueeElement.scrollAmount")["attributes"][-1]["value"] = 0
         self.rejected("source declaration mismatch: HTMLMarqueeElement.source")
 
+    def test_form_catalog_preserves_legacy_operations_and_encoding(self):
+        form = self.definition("HTMLFormElement")
+        self.assertEqual(form["inherits"], "HTMLElement")
+        self.assertEqual(form["attributes"], [
+            {"name": "Exposed", "value": "Window"},
+            {"name": "LegacyOverrideBuiltIns"},
+            {"name": "LegacyUnenumerableNamedProperties"},
+        ])
+        getters = [member for member in form["members"] if member.get("special") == "getter"]
+        self.assertEqual([member["arguments"][0]["type"]["name"] for member in getters],
+                         ["unsigned long", "DOMString"])
+        mappings = self.data["access_mappings"]
+        for property_name in ["acceptCharset", "autocomplete", "enctype", "encoding", "method",
+                              "name", "noValidate", "target", "rel"]:
+            for access in ["get", "set"]:
+                row = mappings[f"HTMLFormElement.{property_name}/{access}"]
+                self.assertFalse(row["requirements"])
+        for property_name in ["enctype", "encoding"]:
+            getter = mappings[f"HTMLFormElement.{property_name}/get"]
+            self.assertIn("form_enctype_keyword_with", [row["symbol"] for row in getter["producers"]])
+        self.assertEqual(mappings["HTMLFormElement.operation:0/call"]["requirement"]["issue"], 2480)
+        form["attributes"].pop(1)
+        self.rejected("source declaration mismatch: HTMLFormElement.source")
+
     def test_dialog_state_and_native_methods_preserve_the_primary_declaration(self):
         dialog = self.definition("HTMLDialogElement")
         self.assertEqual(dialog["inherits"], "HTMLElement")

@@ -1775,6 +1775,28 @@ pub fn html_slot_element_assigned_elements_0_options() -> Argument<Type<Assigned
     )
 }
 
+/// Selected argument `HTMLFormElement.operation:0/index` (not overload selection).
+pub fn html_form_element_operation_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLFormElement.operation:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLFormElement.operation:1/name` (not overload selection).
+pub fn html_form_element_operation_1_name() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLFormElement.operation:1/name",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected argument `ToggleEvent.constructor:0/type` (not overload selection).
 pub fn toggle_event_constructor_0_type() -> Argument<Type<DomString>> {
     Argument::new(

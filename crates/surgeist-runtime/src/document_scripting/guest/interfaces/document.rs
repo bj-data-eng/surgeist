@@ -29,6 +29,7 @@ pub(super) mod element;
 mod element_factory;
 mod element_mixin;
 mod font;
+mod form;
 mod form_owner;
 mod fragment;
 mod frameset;

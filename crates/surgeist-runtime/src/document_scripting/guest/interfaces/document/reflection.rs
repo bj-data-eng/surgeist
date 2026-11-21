@@ -17,7 +17,8 @@ use surgeist_html::attributes::{
 use surgeist_html::bounded::attributes::{
     HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule, closedby_processing_with,
     contenteditable_processing_with, contenteditable_setter_state_with, dir_keyword_with,
-    enterkeyhint_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
+    enterkeyhint_keyword_with, form_autocomplete_keyword_with, form_enctype_keyword_with,
+    form_method_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
     popover_keyword_with, table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
     template_shadow_root_slot_assignment_keyword_with,
@@ -47,6 +48,9 @@ pub(super) enum Reflection {
     Translate,
     Hidden,
     DialogClosedBy,
+    FormAutocomplete,
+    FormEnctype,
+    FormMethod,
     Popover,
     HeadingOffset,
     TabIndex,
@@ -111,6 +115,7 @@ pub(super) enum Receiver {
     DList,
     Directory,
     Font,
+    Form,
     Frameset,
     Legend,
     Marquee,
@@ -180,6 +185,13 @@ impl Receiver {
             Self::DList => html_element_is(node, "HTMLDListElement"),
             Self::Directory => super::list_compact::is_directory(node),
             Self::Font => super::font::is_font(node),
+            Self::Form => {
+                step()?;
+                node.as_form().is_some()
+                    && node
+                        .as_element()
+                        .is_some_and(|element| !element.has_failed_construction_interface())
+            }
             Self::Frameset => {
                 step()?;
                 super::frameset::is_frameset(node)
@@ -237,6 +249,7 @@ impl Receiver {
             Self::DList => const { &ascii(b"HTMLDListElement required") },
             Self::Directory => const { &ascii(b"HTMLDirectoryElement required") },
             Self::Font => const { &ascii(b"HTMLFontElement required") },
+            Self::Form => const { &ascii(b"HTMLFormElement required") },
             Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
@@ -437,6 +450,17 @@ impl Capture {
                             }
                         };
                         Reflected::Keyword(Some(value.canonical_keyword()))
+                    }
+                    Reflection::FormAutocomplete => {
+                        Reflected::Keyword(Some(form_autocomplete_keyword_with(units, |_| {
+                            read.step()
+                        })?))
+                    }
+                    Reflection::FormEnctype => {
+                        Reflected::Keyword(Some(form_enctype_keyword_with(units, |_| read.step())?))
+                    }
+                    Reflection::FormMethod => {
+                        Reflected::Keyword(Some(form_method_keyword_with(units, |_| read.step())?))
                     }
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
@@ -704,6 +728,7 @@ impl Capture {
                         receiver,
                         Receiver::Body
                             | Receiver::Dialog
+                            | Receiver::Form
                             | Receiver::Frameset
                             | Receiver::Legend
                             | Receiver::Marquee
@@ -789,7 +814,7 @@ impl Capture {
 }
 
 // HTML's longest canonical keyword among these reflected attributes.
-const MAX_KEYWORD_UNITS: usize = b"plaintext-only".len();
+const MAX_KEYWORD_UNITS: usize = b"application/x-www-form-urlencoded".len();
 
 fn keyword_units<'a>(
     keyword: &str,

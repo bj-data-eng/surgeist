@@ -22,6 +22,7 @@ mod element_mixin;
 mod element_reflection;
 mod element_tasks;
 mod font_element;
+mod form_attributes;
 mod html_reflection;
 mod inline_style;
 mod li_reflections;
@@ -488,6 +489,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     select_option_strings::select_and_option_strings_follow_canonical_text_and_value();
     select_option_metadata::select_metadata_reflects_current_source_and_numeric_rules();
     select_option_form::select_and_option_form_follow_native_owner();
+    form_attributes::form_setters_preserve_native_attributes_on_source_refusal();
     super::guest::tests::select_string_admission::select_value_admits_native_text_and_its_guest_copy();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();
