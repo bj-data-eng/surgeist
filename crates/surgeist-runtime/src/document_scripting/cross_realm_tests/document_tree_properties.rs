@@ -992,6 +992,13 @@ fn document_tree_source_output_and_work_admission_precede_publication() {
             let mut host =
                 attach_public_nodes_with_source_output_limit(session, target, cancel, outputs);
             let permit = host.permit().unwrap();
+            if property == "document.body.background" {
+                // Retain the receiver before measuring the setter's backing.
+                host.in_document(&permit, |scope| {
+                    evaluate(scope, "globalThis.bodyOutputReceiver = document.body").map(drop)
+                })
+                .unwrap();
+            }
             let before = host.snapshot().unwrap();
             let backing = guest_backing_used(&host);
             let result = host.in_document(&permit, |scope| {
@@ -1026,7 +1033,11 @@ fn document_tree_source_output_and_work_admission_precede_publication() {
                     Some(&expected.into())
                 );
             }
-            assert_eq!(guest_backing_used(&host), backing);
+            assert_eq!(
+                guest_backing_used(&host),
+                backing,
+                "{property} with {outputs} outputs"
+            );
             host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
                 .unwrap();
             host.stop().into_session().unwrap();

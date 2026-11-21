@@ -82,6 +82,7 @@ pub(super) enum Receiver {
     Element,
     Html,
     Template,
+    Body,
     Br,
     Hr,
     Data,
@@ -123,6 +124,10 @@ impl Receiver {
                     .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
             }),
             Self::Template => node.as_template().is_some(),
+            Self::Body => {
+                step()?;
+                html_element_is(node, "HTMLBodyElement")
+            }
             Self::Br => html_element_is(node, "HTMLBRElement"),
             Self::Hr => html_element_is(node, "HTMLHRElement"),
             Self::Data => html_element_is(node, "HTMLDataElement"),
@@ -161,6 +166,7 @@ impl Receiver {
             Self::Element => const { &ascii(b"Element required") },
             Self::Html => const { &ascii(b"HTMLElement required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
+            Self::Body => const { &ascii(b"HTMLBodyElement required") },
             Self::Br => const { &ascii(b"HTMLBRElement required") },
             Self::Hr => const { &ascii(b"HTMLHRElement required") },
             Self::Data => const { &ascii(b"HTMLDataElement required") },
@@ -560,7 +566,17 @@ impl Capture {
                         }
                     }
                 } else {
-                    if matches!(reflection, Reflection::EnterKeyHint | Reflection::InputMode) {
+                    if matches!(receiver, Receiver::Body) {
+                        let current = self.callbacks.with_read(&owner, &events, |read, _| {
+                            receiver.matches(read.node(id)?, || read.step())
+                        })?;
+                        if !current {
+                            return Ok(Completion::Throw(
+                                scope.type_error(receiver.error_message())?,
+                            ));
+                        }
+                    } else if matches!(reflection, Reflection::EnterKeyHint | Reflection::InputMode)
+                    {
                         self.callbacks
                             .with_read(&owner, &events, |read, _| read.node(id).map(drop))?;
                     }
