@@ -673,6 +673,24 @@ impl DomDocumentMetadata {
             .as_ref()
             .map(|inputs| inputs.0.referrer.as_ref())
     }
+
+    /// Referrer established by the original Document creation. `Ok(None)` is
+    /// the source-defined empty value. Missing hosted creation provenance is
+    /// reported as [`DomError::HostedSourceUnavailable`].
+    pub fn referrer(&self) -> Result<Option<&DocumentString>, DomError> {
+        match self.cause {
+            DomDocumentCreationCause::HostedInitialAboutBlank { .. } => self
+                .hosted_referrer()
+                .ok_or(DomError::HostedSourceUnavailable),
+            DomDocumentCreationCause::Native
+            | DomDocumentCreationCause::Constructed { .. }
+            | DomDocumentCreationCause::Cloned { .. }
+            | DomDocumentCreationCause::ParsedOffline { .. }
+            | DomDocumentCreationCause::ParsedTemplateOwner
+            | DomDocumentCreationCause::ParsedFragmentParser => Ok(None),
+        }
+    }
+
     pub fn origin(&self) -> &DomOpaqueOrigin {
         &self.origin
     }

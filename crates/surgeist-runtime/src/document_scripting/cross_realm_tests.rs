@@ -400,6 +400,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     document_title::document_title_observes_ordinary_names_and_creation_boundaries();
     document_title::document_title_preserves_coercion_and_native_reaction_order();
     document_referrer::document_referrer_reads_the_canonical_known_empty_value();
+    document_referrer::document_referrer_preserves_creation_defaults_and_refuses_unfunded_reads();
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     slot::slot_members_read_the_canonical_named_assignment();
     break_elements::break_elements_reflect_canonical_attributes();

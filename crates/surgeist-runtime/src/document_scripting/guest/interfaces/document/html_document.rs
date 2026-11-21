@@ -150,6 +150,15 @@ pub(super) fn install<'scope>(
             },
         )?;
     }
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"referrer"),
+        &ascii(b"get referrer"),
+        true,
+        Callback::new(move |scope, arguments| handler.document_referrer(scope, arguments)),
+    )?;
     Ok(())
 }
 
@@ -230,6 +239,32 @@ enum BodyPlan {
 }
 
 impl Capture {
+    fn document_referrer<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let Some(GuestNode::Document(document)) =
+            tree::projected_node(scope, arguments.receiver())?
+        else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Document required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let value = self.callbacks.with_read(&owner, &events, |read, _| {
+                let DomNodeKind::Document(metadata) = read.node(document.node())?.kind() else {
+                    return Err(DomError::WrongNodeKind.into());
+                };
+                Ok(metadata.referrer()?.cloned())
+            })?;
+            let units = value.as_ref().map_or(&[][..], DocumentString::code_units);
+            Ok(Completion::Return(self.copy_dom_units(scope, units)?))
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
     fn document_tree_get<'scope>(
         &self,
         scope: &mut Scope<'scope>,

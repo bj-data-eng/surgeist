@@ -342,6 +342,10 @@ fn exact_raw_utf16_observations_and_late_error_preserve_the_prior_frozen_record(
     apply(&mut dom, batch);
     let before = dom.snapshot();
     assert_eq!(frozen(&before, base).value(), &first_record);
+    assert_eq!(
+        before.document(document).unwrap().metadata().referrer(),
+        Ok(None)
+    );
 
     let mut batch = DomBatch::new();
     batch.set_attribute(base, "href", missing_raw);
@@ -371,6 +375,10 @@ fn exact_raw_utf16_observations_and_late_error_preserve_the_prior_frozen_record(
     apply(&mut dom, batch);
     let current = dom.snapshot();
     assert_eq!(frozen(&current, base).value(), &next_record);
+    assert_eq!(
+        current.document(document).unwrap().metadata().referrer(),
+        Ok(None)
+    );
     assert_eq!(
         current.node(base).unwrap().attribute(&"href".into()),
         Some(&next_raw)
