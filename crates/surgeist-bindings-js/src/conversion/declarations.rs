@@ -1725,6 +1725,90 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
     )
 }
 
+fn default_html_table_element_insert_row_0_index(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<IntegerValue>, Failure> {
+    Ok(cx.plain(IntegerValue::Long(-1)))
+}
+
+/// Selected argument `HTMLTableElement.insertRow:0/index` (not overload selection).
+pub fn html_table_element_insert_row_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTableElement.insertRow:0/index",
+        0,
+        true,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        Some(default_html_table_element_insert_row_0_index),
+    )
+}
+
+/// Selected argument `HTMLTableElement.deleteRow:0/index` (not overload selection).
+pub fn html_table_element_delete_row_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTableElement.deleteRow:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        None,
+    )
+}
+
+fn default_html_table_section_element_insert_row_0_index(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<IntegerValue>, Failure> {
+    Ok(cx.plain(IntegerValue::Long(-1)))
+}
+
+/// Selected argument `HTMLTableSectionElement.insertRow:0/index` (not overload selection).
+pub fn html_table_section_element_insert_row_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTableSectionElement.insertRow:0/index",
+        0,
+        true,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        Some(default_html_table_section_element_insert_row_0_index),
+    )
+}
+
+/// Selected argument `HTMLTableSectionElement.deleteRow:0/index` (not overload selection).
+pub fn html_table_section_element_delete_row_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTableSectionElement.deleteRow:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        None,
+    )
+}
+
+fn default_html_table_row_element_insert_cell_0_index(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<IntegerValue>, Failure> {
+    Ok(cx.plain(IntegerValue::Long(-1)))
+}
+
+/// Selected argument `HTMLTableRowElement.insertCell:0/index` (not overload selection).
+pub fn html_table_row_element_insert_cell_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTableRowElement.insertCell:0/index",
+        0,
+        true,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        Some(default_html_table_row_element_insert_cell_0_index),
+    )
+}
+
+/// Selected argument `HTMLTableRowElement.deleteCell:0/index` (not overload selection).
+pub fn html_table_row_element_delete_cell_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTableRowElement.deleteCell:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        None,
+    )
+}
+
 /// Selected argument `HTMLDialogElement.close:0/returnValue` (not overload selection).
 pub fn html_dialog_element_close_0_return_value() -> Argument<Type<DomString>> {
     Argument::new(
@@ -2169,6 +2253,26 @@ pub fn html_element_outer_text_setter() -> Type<DomString> {
 /// Selected setter conversion for `HTMLTitleElement.text`.
 pub fn html_title_element_text_setter() -> Type<DomString> {
     types::DOM_STRING
+}
+
+/// Selected setter conversion for `HTMLTableElement.obsolete.bgColor`.
+pub fn html_table_element_obsolete_bg_color_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLTableElement.obsolete.cellPadding`.
+pub fn html_table_element_obsolete_cell_padding_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLTableElement.obsolete.cellSpacing`.
+pub fn html_table_element_obsolete_cell_spacing_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLTableRowElement.obsolete.bgColor`.
+pub fn html_table_row_element_obsolete_bg_color_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
 }
 
 /// Selected setter conversion for `HTMLTableCellElement.obsolete.bgColor`.

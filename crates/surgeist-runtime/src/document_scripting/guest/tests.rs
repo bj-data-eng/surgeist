@@ -1764,7 +1764,7 @@ fn enable_public_nodes(
     (node_work, source_edits, pending_exception_reports): (u64, DomSourceLimits, usize),
     registry: &mut Option<DomEventDispatcher<()>>,
 ) -> DocumentScriptHost {
-    prepared
+    let host = prepared
         .enable_with_guest_event_registry(
             target,
             HtmlScriptingPolicy {
@@ -1780,7 +1780,7 @@ fn enable_public_nodes(
                 // Semantic fixtures fund two full realm installations and
                 // their callback frames. Admission tests reserve against the
                 // measured costs of their specific operations.
-                storage_bytes: 768 * 1024,
+                storage_bytes: 896 * 1024,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
@@ -1794,7 +1794,11 @@ fn enable_public_nodes(
                 },
             },
         )
-        .unwrap()
+        .unwrap();
+    // The fixture has completed startup. Fund the behavior under the same
+    // configured allowance while keeping startup work in the ledger.
+    fund_guest_operation_after_setup(&host);
+    host
 }
 
 pub(in crate::document_scripting) fn move_public_registry_for_source_test(
@@ -2874,7 +2878,8 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let mut foreign_registry = Some(foreign_registry);
     let mut bound = Some(bound);
     let limits = DocumentGuestEventLimits {
-        storage_bytes: 512 * 1024,
+        // The reference run measures the exact activation requirement.
+        storage_bytes: 640 * 1024,
         work: 10_000,
         pending_exception_reports: 2,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),

@@ -151,6 +151,16 @@ pub fn surgeist_bindings_js::conversion::declarations::html_select_element_set_c
 pub fn surgeist_bindings_js::conversion::declarations::html_slot_element_assigned_elements_0_options() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::AssignedNodesOptions>>
 pub fn surgeist_bindings_js::conversion::declarations::html_slot_element_assigned_nodes_0_options() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::AssignedNodesOptions>>
 pub fn surgeist_bindings_js::conversion::declarations::html_table_cell_element_obsolete_bg_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_element_delete_row_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_element_insert_row_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_element_obsolete_bg_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_element_obsolete_cell_padding_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_element_obsolete_cell_spacing_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_row_element_delete_cell_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_row_element_insert_cell_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_row_element_obsolete_bg_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_section_element_delete_row_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_table_section_element_insert_row_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_custom_validity_0_error() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_range_text_0_replacement() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_range_text_1_end() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>

@@ -618,7 +618,7 @@ fn attach_event_window_with_work(
             DocumentGuestEventLimits {
                 // These interface scenarios include the full native prototype
                 // graph and exercise behavior with guest storage headroom.
-                storage_bytes: 512 * 1024,
+                storage_bytes: 640 * 1024,
                 work: adapter_work,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),

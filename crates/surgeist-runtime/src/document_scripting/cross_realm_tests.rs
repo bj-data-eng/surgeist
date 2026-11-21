@@ -57,6 +57,7 @@ mod slot;
 mod split_text;
 mod structural_alignment;
 mod table_cell_column;
+mod table_legacy_reflections;
 mod template_content;
 mod textarea_values;
 mod title_text;
@@ -459,6 +460,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     table_cell_column::table_reflection_descriptors_conversions_and_reactions();
     table_cell_column::cell_index_tracks_current_ordinary_html_row_children();
     table_cell_column::borrowed_cell_accessors_preserve_the_creation_realm();
+    table_legacy_reflections::table_legacy_reflections_preserve_original_source_refusal();
     list_compact::list_compact_reflects_canonical_presence();
     param::param_members_reflect_canonical_attributes();
     data_time::data_and_time_reflect_canonical_attributes();

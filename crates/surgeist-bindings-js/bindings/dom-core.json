@@ -657,6 +657,102 @@
       ]
     },
     {
+      "id": "HTMLTableElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmltableelement",
+      "block": 0,
+      "sha256": "7d5a3c11c3ee94265e9da0646fd9976ae8c87f4f91a6f1d7c4758c13a0133238",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmltableelement",
+      "entries": [
+        "HTMLTableElement"
+      ]
+    },
+    {
+      "id": "HTMLTableElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLTableElement&#45;partial",
+      "block": 0,
+      "sha256": "e537b897cf8d34c6d3af205bbd3cd1086bf970b5acaf3307c1a44256653a9983",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLTableElement-partial",
+      "entries": [
+        "HTMLTableElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLTableCaptionElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmltablecaptionelement",
+      "block": 0,
+      "sha256": "2d04149b241a263a86a1e7ae00c147f5b26eee55cbec704368c55e243c2f5e3f",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmltablecaptionelement",
+      "entries": [
+        "HTMLTableCaptionElement"
+      ]
+    },
+    {
+      "id": "HTMLTableCaptionElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLTableCaptionElement&#45;partial",
+      "block": 0,
+      "sha256": "0a0c26525e5e212ec55debeac16cfa92317ac3e05ad54dbf4676e0e5527da1a8",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLTableCaptionElement-partial",
+      "entries": [
+        "HTMLTableCaptionElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLTableSectionElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmltablesectionelement",
+      "block": 0,
+      "sha256": "49e763a972aa54b6a7a95d06519bbc7092eaeffde0a026adea5bf3161cb55453",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmltablesectionelement",
+      "entries": [
+        "HTMLTableSectionElement"
+      ]
+    },
+    {
+      "id": "HTMLTableSectionElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLTableSectionElement&#45;partial",
+      "block": 0,
+      "sha256": "49b2a128ac0e728aa2544ae88dfa1ed39d22883cf9c22f2e018338a55fa03113",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLTableSectionElement-partial",
+      "entries": [
+        "HTMLTableSectionElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLTableRowElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmltablerowelement",
+      "block": 0,
+      "sha256": "5edff5ace0342d0216765d4f03e631059702d7d4366bdcb966f12995c71e9bf7",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmltablerowelement",
+      "entries": [
+        "HTMLTableRowElement"
+      ]
+    },
+    {
+      "id": "HTMLTableRowElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLTableRowElement&#45;partial",
+      "block": 0,
+      "sha256": "f74a150c0ea509eb6f0f7a17fc0513120b91f466687f4f4f6763c095e0ef87e2",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLTableRowElement-partial",
+      "entries": [
+        "HTMLTableRowElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLTableCellElement.source",
       "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
       "anchor": "htmltablecellelement",
@@ -5811,6 +5907,873 @@
           "name": "type",
           "readonly": false,
           "id": "HTMLLIElement.obsolete.type"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLTableElement",
+      "kind": "interface",
+      "name": "HTMLTableElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTableElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "HTMLTableCaptionElement"
+            }
+          },
+          "name": "caption",
+          "readonly": false,
+          "id": "HTMLTableElement.caption"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "HTMLTableCaptionElement"
+          },
+          "arguments": [],
+          "name": "createCaption",
+          "id": "HTMLTableElement.createCaption:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [],
+          "name": "deleteCaption",
+          "id": "HTMLTableElement.deleteCaption:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "HTMLTableSectionElement"
+            }
+          },
+          "name": "tHead",
+          "readonly": false,
+          "id": "HTMLTableElement.tHead"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "HTMLTableSectionElement"
+          },
+          "arguments": [],
+          "name": "createTHead",
+          "id": "HTMLTableElement.createTHead:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [],
+          "name": "deleteTHead",
+          "id": "HTMLTableElement.deleteTHead:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "HTMLTableSectionElement"
+            }
+          },
+          "name": "tFoot",
+          "readonly": false,
+          "id": "HTMLTableElement.tFoot"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "HTMLTableSectionElement"
+          },
+          "arguments": [],
+          "name": "createTFoot",
+          "id": "HTMLTableElement.createTFoot:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [],
+          "name": "deleteTFoot",
+          "id": "HTMLTableElement.deleteTFoot:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLCollection"
+          },
+          "name": "tBodies",
+          "readonly": true,
+          "id": "HTMLTableElement.tBodies"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "HTMLTableSectionElement"
+          },
+          "arguments": [],
+          "name": "createTBody",
+          "id": "HTMLTableElement.createTBody:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLCollection"
+          },
+          "name": "rows",
+          "readonly": true,
+          "id": "HTMLTableElement.rows"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "HTMLTableRowElement"
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "long"
+              },
+              "presence": "optional",
+              "default": {
+                "kind": "integer",
+                "value": -1
+              }
+            }
+          ],
+          "name": "insertRow",
+          "id": "HTMLTableElement.insertRow:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "long"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "deleteRow",
+          "id": "HTMLTableElement.deleteRow:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLTableElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLTableElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.align"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "border",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.border"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "frame",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.frame"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "rules",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.rules"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "summary",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.summary"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.width"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "bgColor",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.bgColor"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "cellPadding",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.cellPadding"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "cellSpacing",
+          "readonly": false,
+          "id": "HTMLTableElement.obsolete.cellSpacing"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLTableCaptionElement",
+      "kind": "interface",
+      "name": "HTMLTableCaptionElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTableCaptionElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLTableCaptionElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLTableCaptionElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLTableCaptionElement.obsolete.align"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLTableSectionElement",
+      "kind": "interface",
+      "name": "HTMLTableSectionElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTableSectionElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLCollection"
+          },
+          "name": "rows",
+          "readonly": true,
+          "id": "HTMLTableSectionElement.rows"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "HTMLTableRowElement"
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "long"
+              },
+              "presence": "optional",
+              "default": {
+                "kind": "integer",
+                "value": -1
+              }
+            }
+          ],
+          "name": "insertRow",
+          "id": "HTMLTableSectionElement.insertRow:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "long"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "deleteRow",
+          "id": "HTMLTableSectionElement.deleteRow:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLTableSectionElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLTableSectionElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLTableSectionElement.obsolete.align"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "char"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "ch",
+          "readonly": false,
+          "id": "HTMLTableSectionElement.obsolete.ch"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "charoff"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "chOff",
+          "readonly": false,
+          "id": "HTMLTableSectionElement.obsolete.chOff"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "vAlign",
+          "readonly": false,
+          "id": "HTMLTableSectionElement.obsolete.vAlign"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLTableRowElement",
+      "kind": "interface",
+      "name": "HTMLTableRowElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTableRowElement.constructor:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "long"
+          },
+          "name": "rowIndex",
+          "readonly": true,
+          "id": "HTMLTableRowElement.rowIndex"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "long"
+          },
+          "name": "sectionRowIndex",
+          "readonly": true,
+          "id": "HTMLTableRowElement.sectionRowIndex"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLCollection"
+          },
+          "name": "cells",
+          "readonly": true,
+          "id": "HTMLTableRowElement.cells"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "HTMLTableCellElement"
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "long"
+              },
+              "presence": "optional",
+              "default": {
+                "kind": "integer",
+                "value": -1
+              }
+            }
+          ],
+          "name": "insertCell",
+          "id": "HTMLTableRowElement.insertCell:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "long"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "deleteCell",
+          "id": "HTMLTableRowElement.deleteCell:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLTableRowElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLTableRowElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLTableRowElement.obsolete.align"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "char"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "ch",
+          "readonly": false,
+          "id": "HTMLTableRowElement.obsolete.ch"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "charoff"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "chOff",
+          "readonly": false,
+          "id": "HTMLTableRowElement.obsolete.chOff"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "vAlign",
+          "readonly": false,
+          "id": "HTMLTableRowElement.obsolete.vAlign"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "bgColor",
+          "readonly": false,
+          "id": "HTMLTableRowElement.obsolete.bgColor"
         }
       ],
       "partial": true
@@ -14691,6 +15654,1749 @@
       "kind": "native",
       "adapter": "htmllielement.type.set",
       "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltableelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.caption/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.caption.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_caption"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose a bounded current Source observation of the first direct HTML caption child.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the canonical nullable HTMLTableCaptionElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.caption/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.caption.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_caption"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Use the first direct HTML caption child and apply the pinned removal and insertion order in the current Source operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert and qualify the nullable HTMLTableCaptionElement on the original Table receiver, then drive the Source edit and CE reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.createCaption:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.createcaption.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_caption"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "create_element_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Return the first direct HTML caption child when present, or create and insert one in the pinned position.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createcaption"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Source operation and project the returned HTMLTableCaptionElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createcaption",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.deleteCaption:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.deletecaption.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_caption"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Remove the first direct HTML caption child if present in the current Source operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletecaption"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Authenticate the Table receiver and drive the canonical removal and CE reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletecaption",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.tHead/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.thead.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_head"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose a bounded current Source observation of the first direct HTML thead child.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the canonical nullable HTMLTableSectionElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.tHead/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.thead.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_head"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Use the first direct HTML thead child and apply the pinned removal and insertion order in the current Source operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert and qualify the nullable HTMLTableSectionElement on the original Table receiver, then drive the Source edit and CE reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.createTHead:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.createthead.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_head"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "create_element_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Return the first direct HTML thead child when present, or create and insert one in the pinned position.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createthead"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Source operation and project the returned HTMLTableSectionElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createthead",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.deleteTHead:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.deletethead.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_head"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Remove the first direct HTML thead child if present in the current Source operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletethead"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Authenticate the Table receiver and drive the canonical removal and CE reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletethead",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.tFoot/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.tfoot.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_foot"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose a bounded current Source observation of the first direct HTML tfoot child.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the canonical nullable HTMLTableSectionElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.tFoot/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.tfoot.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_foot"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Use the first direct HTML tfoot child and apply the pinned removal and insertion order in the current Source operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert and qualify the nullable HTMLTableSectionElement on the original Table receiver, then drive the Source edit and CE reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.createTFoot:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.createtfoot.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_foot"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "create_element_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Return the first direct HTML tfoot child when present, or create and insert one in the pinned position.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtfoot"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Source operation and project the returned HTMLTableSectionElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtfoot",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.deleteTFoot:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.deletetfoot.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
+          "symbol": "table_foot"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Remove the first direct HTML tfoot child if present in the current Source operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletetfoot"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Authenticate the Table receiver and drive the canonical removal and CE reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletetfoot",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.tBodies/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.tbodies.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_bodies"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose bounded live element-rooted HTMLCollection membership with direct HTML tbody children in tree order.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tbodies"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the same live HTMLCollection with supported indices and names.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tbodies",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLTableElement.createTBody:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.createtbody.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_bodies"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "create_element_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Create a new HTML tbody and insert it at the pinned position relative to the last direct tbody child.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtbody"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Source operation and project the returned HTMLTableSectionElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtbody",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.rows/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.rows.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_rows"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose bounded live element-rooted HTMLCollection membership with header-group rows first, direct and body-group rows next, and footer-group rows last.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-rows"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the same live HTMLCollection with supported indices and names.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-rows",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLTableElement.insertRow:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.insertrow.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_rows"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "create_element_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Resolve current ordered Table rows and apply the pinned insertion branches, including tbody creation for the applicable empty Table case.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-insertrow"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert optional long with default -1, drive the Source operation, map IndexSizeError and project the returned HTMLTableRowElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-insertrow",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.deleteRow:0/call": {
+      "kind": "native",
+      "adapter": "htmltableelement.deleterow.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_rows"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Resolve the current ordered row membership and apply the pinned -1, empty and invalid-index branches before removal.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deleterow"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert required long, drive the canonical Source operation and CE reactions, and map IndexSizeError.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deleterow",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.border/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.border.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.border/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.border.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.frame/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.frame.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.frame/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.frame.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.rules/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.rules.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.rules/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.rules.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.summary/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.summary.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.summary/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.summary.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.width/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.width.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.width/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.bgColor/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.bgcolor.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.bgColor/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.bgcolor.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.cellPadding/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.cellpadding.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.cellPadding/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.cellpadding.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.cellSpacing/get": {
+      "kind": "native",
+      "adapter": "htmltableelement.cellspacing.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableElement.obsolete.cellSpacing/set": {
+      "kind": "native",
+      "adapter": "htmltableelement.cellspacing.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCaptionElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltablecaptionelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCaptionElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmltablecaptionelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCaptionElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmltablecaptionelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.rows/get": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.rows.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_section_rows"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose bounded live element-rooted HTMLCollection membership with direct HTML tr children in tree order.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-rows"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the same live HTMLCollection with supported indices and names.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-rows",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLTableSectionElement.insertRow:0/call": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.insertrow.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_section_rows"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "create_element_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Resolve current ordered TableSection rows and apply the pinned -1, append, insertion and invalid-index branches.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-insertrow"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert optional long with default -1, drive the Source operation, map IndexSizeError and project the returned HTMLTableRowElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-insertrow",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableSectionElement.deleteRow:0/call": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.deleterow.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_section_rows"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Resolve the current ordered row membership and apply the pinned -1, empty and invalid-index branches before removal.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-deleterow"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert required long, drive the canonical Source operation and CE reactions, and map IndexSizeError.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-deleterow",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableSectionElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.obsolete.ch/get": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.ch.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.obsolete.ch/set": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.ch.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.obsolete.chOff/get": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.choff.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.obsolete.chOff/set": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.choff.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.obsolete.vAlign/get": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.valign.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableSectionElement.obsolete.vAlign/set": {
+      "kind": "native",
+      "adapter": "htmltablesectionelement.valign.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.rowIndex/get": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.rowindex.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_row_index"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose a bounded current Source index in the associated Table rows order through ordinary parent relationships.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-rowindex"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the checked long or the pinned -1 for a row with no qualifying Table collection.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-rowindex",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableRowElement.sectionRowIndex/get": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.sectionrowindex.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_section_row_index"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose a bounded current Source index in the direct Table or TableSection parent's rows order.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-sectionrowindex"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the checked long or the pinned -1 for a row with no qualifying parent collection.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-sectionrowindex",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableRowElement.cells/get": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.cells.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_row_cells"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose bounded live element-rooted HTMLCollection membership with direct HTML td and th children in tree order.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-cells"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the same live HTMLCollection with supported indices and names.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-cells",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLTableRowElement.insertCell:0/call": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.insertcell.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_row_cells"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "create_element_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "insert_before"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Resolve current ordered TableRow cells and apply the pinned index branches when creating and inserting an HTML td.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-insertcell"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert optional long with default -1, drive the Source operation, map IndexSizeError and project the returned HTMLTableCellElement wrapper.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-insertcell",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableRowElement.deleteCell:0/call": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.deletecell.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/semantic.rs",
+          "symbol": "query"
+        },
+        {
+          "owner": "surgeist-html-semantics",
+          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
+          "symbol": "table_row_cells"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_child"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Resolve the current ordered cell membership and apply the pinned -1, empty and invalid-index branches before removal.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-deletecell"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Convert required long, drive the canonical Source operation and CE reactions, and map IndexSizeError.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-deletecell",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTableRowElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.ch/get": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.ch.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.ch/set": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.ch.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.chOff/get": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.choff.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.chOff/set": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.choff.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.vAlign/get": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.valign.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.vAlign/set": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.valign.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.bgColor/get": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.bgcolor.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableRowElement.obsolete.bgColor/set": {
+      "kind": "native",
+      "adapter": "htmltablerowelement.bgcolor.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_legacy.rs",
+          "symbol": "install"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
         {
           "owner": "surgeist-dom",
           "path": "crates/surgeist-dom/src/internal/source.rs",
