@@ -510,6 +510,9 @@ fn native_window_relation_work_is_admitted_at_the_callback() {
     }
     assert_eq!(probe(accepted, READ), Probe::Accepted);
     assert_eq!(probe(accepted - 1, READ), Probe::CallbackRefused);
+    const CHILD_COUNT: &str = "Number(globalThis.length === 0)";
+    assert_eq!(probe(limits().hosted.work, CHILD_COUNT), Probe::Accepted);
+    assert_eq!(probe(accepted, CHILD_COUNT), Probe::CallbackRefused);
     // Besides the shared qualification, the setter admits one argument root,
     // its nonempty capture buffer, and the definition's exception outcome.
     // The native replacement also admits the six-unit "parent" property key.

@@ -140,6 +140,12 @@ impl fmt::Display for DomHostedRuntimeError {
         })
     }
 }
+impl From<DomHostedError> for DomHostedRuntimeError {
+    fn from(error: DomHostedError) -> Self {
+        Self::Dom(error)
+    }
+}
+
 impl std::error::Error for DomHostedRuntimeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -1026,6 +1032,27 @@ impl HostedRuntime {
             state.step(cancel)?;
         }
         Ok(())
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn script_child_navigable_count(
+        &self,
+        dom: &DomEventDom<'_>,
+        document: surgeist_dom::identity::DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        dom.raw().visit_document_tree_child_navigables(
+            document,
+            state.limits.work,
+            || state.step(cancel),
+            cancel,
+            |_| Ok(()),
+        )
     }
 
     #[cfg(feature = "document-scripting")]

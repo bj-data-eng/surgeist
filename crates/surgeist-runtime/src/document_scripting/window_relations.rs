@@ -30,6 +30,7 @@ const fn ascii<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
 enum Relation {
     WindowProxy,
     Opener,
+    Length,
 }
 
 struct Member {
@@ -63,6 +64,12 @@ const MEMBERS: &[Member] = &[
         get: &ascii(b"get parent"),
         set: Some(&ascii(b"set parent")),
         relation: Relation::WindowProxy,
+    },
+    Member {
+        key: &ascii(b"length"),
+        get: &ascii(b"get length"),
+        set: Some(&ascii(b"set length")),
+        relation: Relation::Length,
     },
 ];
 
@@ -196,18 +203,37 @@ impl Access {
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             qualify(&native, attachment, &mut session)?;
-            if replacement.is_some() {
-                session.hosted_execution().admit_script_work(
-                    &session.dom(),
-                    self.member.key.len(),
-                    &native.cancellation,
-                )?;
+            let hosted = session.hosted_execution();
+            if setter {
+                if replacement.is_some() {
+                    hosted.admit_script_work(
+                        &session.dom(),
+                        self.member.key.len(),
+                        &native.cancellation,
+                    )?;
+                }
+                return Ok(None);
             }
-            Ok(())
+            match self.member.relation {
+                // The canonical attached navigable is this parentless top-level.
+                Relation::WindowProxy => Ok(None),
+                Relation::Opener => Ok(Some(Primitive::Null)),
+                Relation::Length => {
+                    let count = hosted.script_child_navigable_count(
+                        &session.dom(),
+                        attachment.target.document(),
+                        &native.cancellation,
+                    )?;
+                    let length = u32::try_from(count)
+                        .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
+                    Ok(Some(Primitive::Number(f64::from(length))))
+                }
+            }
         })();
-        if let Err(error) = result {
-            return refuse(scope, &attachment.failures, error);
-        }
+        let primitive = match result {
+            Ok(primitive) => primitive,
+            Err(error) => return refuse(scope, &attachment.failures, error),
+        };
 
         if let Some(value) = replacement {
             return match scope.define_property(
@@ -233,12 +259,11 @@ impl Access {
             return Ok(Completion::Undefined);
         }
 
-        // The canonical attached navigable is this parentless top-level.
-        // Its actual browsing context was produced without an opener.
-        match self.member.relation {
-            Relation::WindowProxy => Ok(Completion::Return(global)),
-            Relation::Opener => Ok(Completion::Return(scope.primitive(Primitive::Null)?)),
-        }
+        let value = match primitive {
+            Some(primitive) => scope.primitive(primitive)?,
+            None => global,
+        };
+        Ok(Completion::Return(value))
     }
 }
 
@@ -247,10 +272,8 @@ fn qualify(
     attachment: &super::Attachment,
     session: &mut DomSession,
 ) -> Result<(), DocumentScriptNativeError> {
-    let status = match native.active_event_request() {
-        Some(request) => native.qualify_event(attachment, session, &request)?,
-        None => native.observe(attachment, session)?.status(),
-    };
+    let event = native.active_event_request();
+    let status = native.callback_scripting_status(attachment, session, event.as_ref())?;
     if status != HtmlScriptingStatus::Enabled {
         return Err(DomHostedRuntimeError::Dom(DomHostedError::ScriptingDisabled).into());
     }
