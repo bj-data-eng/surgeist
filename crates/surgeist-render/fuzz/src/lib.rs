@@ -94,7 +94,7 @@ fn standalone_attempt<'a>(
         return Ok(Err(violated(
             property,
             "standalone-report-cleanup",
-            format!("mandatory accounting cleanup failed: {fault}"),
+            format!("standalone accounting cleanup or finalization failed: {fault}"),
         )?));
     }
     product_observation(report.attempt(), property, "standalone-report-extraction")
