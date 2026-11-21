@@ -321,12 +321,12 @@ published effects and settle only their incurred original-owner work.
 
 ## Qualified dispatch reads
 
-The `dispatch_relevant_global`, `dispatch_global_document` and
-`dispatch_document_fully_active` fronts qualify current hosted reads during an
-actual active Source event scope. They validate the original executor and
-published observer chain, charge its Source work and preserve the incomplete
-marker. Outside that scope they require a completed Source basis; an unfinished
-nonobserving operation cannot use them to bypass ordinary completeness guards.
+The `dispatch_document_relevant_global_with`, `dispatch_global_document_with`
+and `dispatch_document_fully_active_with` fronts qualify current hosted reads.
+They charge the calling dispatch for reached associations and ancestry. During
+an active Source event scope they validate the original executor and observer
+chain, charge the original Source work and preserve the incomplete marker.
+Outside that scope they require a completed Source basis.
 
 ## Notification tasks
 

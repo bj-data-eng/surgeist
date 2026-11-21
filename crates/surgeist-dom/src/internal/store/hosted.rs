@@ -1322,6 +1322,12 @@ impl Dom {
     }
 }
 
+#[derive(Clone, Copy)]
+enum AssociationReadWork {
+    Record,
+    Pages,
+}
+
 impl Dom {
     /// Original clock origin of the exact Style notification receiver. A
     /// never-hosted receiver or retired origin has no available clock. The
@@ -1425,20 +1431,28 @@ impl Dom {
         E: From<DomError> + From<DomHostedError>,
     {
         let _work = self.dispatch_hosted_read_work(cancel)?;
-        self.dispatch_relevant_global_current_with(node, step)
+        self.dispatch_relevant_global_current_with(node, step, AssociationReadWork::Record)
     }
     fn dispatch_relevant_global_current_with<E>(
         &self,
         node: NodeId,
         step: &mut impl FnMut() -> Result<(), E>,
+        work: AssociationReadWork,
     ) -> Result<Option<DomHostedGlobalId>, E>
     where
         E: From<DomError> + From<DomHostedError>,
     {
-        step()?;
-        let global = self.snapshot().relevant_global(node)?;
+        let snapshot = self.snapshot();
+        let node = match work {
+            AssociationReadWork::Record => {
+                step()?;
+                snapshot.node(node)?
+            }
+            AssociationReadWork::Pages => snapshot.node_with(node, &mut *step)?,
+        };
+        let global = node.relevant_global()?;
         if let Some(global) = global {
-            self.dispatch_global_document_current_with(global, step)?;
+            self.dispatch_global_document_metadata(global, step, work)?;
         }
         Ok(global)
     }
@@ -1472,14 +1486,18 @@ impl Dom {
         E: From<DomError> + From<DomHostedError>,
     {
         let work = self.dispatch_hosted_read_work(cancel)?;
-        self.dispatch_relevant_global_current_with(document.node(), &mut || -> Result<(), E> {
-            check_cancel(cancel)?;
-            step()?;
-            if let Some(work) = &work {
-                work.step(cancel)?;
-            }
-            Ok(())
-        })
+        self.dispatch_relevant_global_current_with(
+            document.node(),
+            &mut || -> Result<(), E> {
+                check_cancel(cancel)?;
+                step()?;
+                if let Some(work) = &work {
+                    work.step(cancel)?;
+                }
+                Ok(())
+            },
+            AssociationReadWork::Pages,
+        )
     }
     /// Current issuer/role-qualified Document of a dispatcher Global endpoint.
     pub fn dispatch_global_document(
@@ -1502,14 +1520,19 @@ impl Dom {
         E: From<DomError> + From<DomHostedError>,
     {
         let work = self.dispatch_hosted_read_work(cancel)?;
-        self.dispatch_global_document_current_with(global, &mut || {
-            check_cancel(cancel)?;
-            step()?;
-            if let Some(work) = &work {
-                work.step(cancel)?;
-            }
-            Ok(())
-        })
+        self.dispatch_global_document_metadata(
+            global,
+            &mut || {
+                check_cancel(cancel)?;
+                step()?;
+                if let Some(work) = &work {
+                    work.step(cancel)?;
+                }
+                Ok(())
+            },
+            AssociationReadWork::Pages,
+        )
+        .map(|(document, _, _)| document)
     }
     fn dispatch_global_document_current(
         &self,
@@ -1537,6 +1560,18 @@ impl Dom {
     where
         E: From<DomError> + From<DomHostedError>,
     {
+        self.dispatch_global_document_metadata(global, step, AssociationReadWork::Record)
+    }
+
+    fn dispatch_global_document_metadata<E>(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), E>,
+        work: AssociationReadWork,
+    ) -> Result<(DocumentId, &DomDocumentMetadata, DocumentPhase), E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         if global.source.owner != self.owner {
             return Err(DomHostedError::ForeignSource.into());
         }
@@ -1546,9 +1581,16 @@ impl Dom {
             .as_ref()
             .ok_or(DomHostedError::StaleIdentity)?
             .document_with(global, step)?;
-        step()?;
-        let DomNodeKind::Document(metadata) = self.state.node(self.owner, document.node())?.kind()
-        else {
+        let node = match work {
+            AssociationReadWork::Record => {
+                step()?;
+                self.state.node(self.owner, document.node())?
+            }
+            AssociationReadWork::Pages => {
+                self.state.node_with(self.owner, document.node(), step)?
+            }
+        };
+        let DomNodeKind::Document(metadata) = node.kind() else {
             return Err(DomError::WrongNodeKind.into());
         };
         let environment = metadata.document_environment();
@@ -1585,14 +1627,30 @@ impl Dom {
         Ok(current.global == registration.global && !current.retiring && !current.retired)
     }
     /// Fresh activity for an actual dispatcher endpoint. Only canonical closed
-    /// or retired state proves false; positive state validates its real issuer.
-    pub fn dispatch_document_fully_active(
+    /// or retired state proves false. Each reached lookup uses caller work and,
+    /// when active, the original Source event scope.
+    pub fn dispatch_document_fully_active_with<E>(
         &self,
         document: DocumentId,
         cancel: &AtomicBool,
-    ) -> Result<bool, DomHostedError> {
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         let work = self.dispatch_hosted_read_work(cancel)?;
-        let DomNodeKind::Document(metadata) = self.state.node(self.owner, document.node())?.kind()
+        let mut meter = || -> Result<(), E> {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        };
+        let DomNodeKind::Document(metadata) = self
+            .state
+            .node_with(self.owner, document.node(), &mut meter)?
+            .kind()
         else {
             return Err(DomError::WrongDocument.into());
         };
@@ -1605,17 +1663,14 @@ impl Dom {
         }
         association.validate_live()?;
         let DocumentPhase::InitialEntry { navigable, .. } = association.phase else {
-            return Err(DomHostedError::IncompleteOperation);
+            return Err(DomHostedError::IncompleteOperation.into());
         };
         let graph = self
             .state
             .hosted_history
             .as_deref()
             .ok_or(DomHostedError::UnsupportedProfile)?;
-        captured_fully_active(graph, document, navigable, || match &work {
-            Some(work) => work.step(cancel).map_err(Into::into),
-            None => check_cancel(cancel).map_err(Into::into),
-        })
+        captured_fully_active(graph, document, navigable, meter)
     }
 }
 
@@ -2035,12 +2090,12 @@ impl Dom {
 
 /// One canonical relation predicate, shared by historical observation and
 /// current execution. It owns no activity table and performs no allocation.
-pub(crate) fn captured_fully_active(
+pub(crate) fn captured_fully_active<E: From<DomHostedError>>(
     graph: &history::Graph,
     document: DocumentId,
     navigable: DomHostedNavigableId,
-    mut step: impl FnMut() -> Result<(), DomHostedError>,
-) -> Result<bool, DomHostedError> {
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
     let mut id = navigable;
     let mut expected = Some(document);
     loop {
@@ -2380,7 +2435,11 @@ impl DomHostedSource {
         if dom.dispatch_global_document_current_with(binding.global, &mut || {
             work.step(cancel).map_err(DomHostedError::from)
         })? != binding.document
-            || !dom.dispatch_document_fully_active(binding.document, cancel)?
+            || !dom.dispatch_document_fully_active_with::<DomHostedError>(
+                binding.document,
+                cancel,
+                &mut || Ok(()),
+            )?
         {
             return Err(DomHostedError::StaleIdentity);
         }
