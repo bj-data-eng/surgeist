@@ -2,9 +2,85 @@
 //! These operations do not perform setters, selection resets or rendering.
 
 use super::*;
+use ascii_whitespace::AsciiWhitespaceText;
+use scan::name_part_is_with;
 use surgeist_html::{
-    bounded::lexical::is_ascii_whitespace, values::DocumentString, vocabulary::KnownHtmlElement,
+    values::{DocumentString, HtmlNameInput},
+    vocabulary::KnownHtmlElement,
 };
+
+/// Streaming HTML-aware Option text with image alt text excluded.
+///
+/// Retain one instance across all reached Text nodes. The caller owns the
+/// ordinary descendant walk and admits each input unit before feeding it.
+#[derive(Debug, Default)]
+pub struct HtmlOptionText {
+    text: AsciiWhitespaceText,
+}
+
+impl HtmlOptionText {
+    const HTML_EXCLUSIONS: [KnownHtmlElement; 2] =
+        [KnownHtmlElement::Script, KnownHtmlElement::Img];
+
+    /// Admit the reached name comparisons and decide whether to skip this
+    /// descendant Element and its subtree. Prefixes are immaterial.
+    pub fn prunes_descendants_with<E>(
+        name: &(impl HtmlNameInput + ?Sized),
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let mut known = None;
+        if name_part_is_with(
+            || name.namespace_uri(),
+            scan::HTML_NAMESPACE.as_bytes(),
+            &mut step,
+        )? {
+            for tag in Self::HTML_EXCLUSIONS {
+                if name_part_is_with(
+                    || Some(name.local_name()),
+                    tag.local_name().as_bytes(),
+                    &mut step,
+                )? {
+                    known = Some(tag);
+                    break;
+                }
+            }
+        }
+        Self::prunes_after_recognition(name, known, step)
+    }
+
+    fn prunes_after_recognition<E>(
+        name: &(impl HtmlNameInput + ?Sized),
+        known: Option<KnownHtmlElement>,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        if known.is_some_and(|tag| Self::HTML_EXCLUSIONS.contains(&tag)) {
+            return Ok(true);
+        }
+        step()?;
+        let Some(uri) = name.namespace_uri() else {
+            return Ok(false);
+        };
+        Ok(
+            name_part_is_with(|| Some(uri), b"http://www.w3.org/2000/svg", &mut step)?
+                && name_part_is_with(|| Some(name.local_name()), b"script", step)?,
+        )
+    }
+
+    /// Feed an admitted input unit. Emit one chunk of one or two exact UTF-16
+    /// units when there is output. The caller admits and stores the chunk.
+    /// A refused output ends the walk.
+    pub fn push<E>(
+        &mut self,
+        unit: u16,
+        emit: impl FnOnce(&[u16]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let (units, len) = self.text.push(unit);
+        if len == 0 {
+            return Ok(());
+        }
+        emit(&units[..len])
+    }
+}
 
 /// The source selected by an option string getter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -140,7 +216,7 @@ impl<'a> HtmlSemanticSession<'a> {
             ));
         };
         let mut units = Vec::new();
-        let mut pending_space = false;
+        let mut normalized = HtmlOptionText::default();
         if children.len() != 0 {
             self.reserve_scratch(frames, 1)?;
             self.charge(1)?;
@@ -156,32 +232,24 @@ impl<'a> HtmlSemanticSession<'a> {
             let descendant = self.node(&id)?;
             match descendant.kind() {
                 HtmlCapturedNodeKind::Text(text) => {
-                    for unit in text.code_units() {
+                    for &unit in text.code_units() {
                         self.charge(1)?;
-                        if is_ascii_whitespace(*unit) {
-                            pending_space = !units.is_empty();
-                        } else {
-                            self.reserve_nested_output(
-                                &mut units,
-                                if pending_space { 2 } else { 1 },
-                            )?;
-                            if pending_space {
+                        normalized.push(unit, |output| {
+                            self.reserve_nested_output(&mut units, output.len())?;
+                            for &unit in output {
                                 self.charge(1)?;
-                                units.push(0x20);
-                                pending_space = false;
+                                units.push(unit);
                             }
-                            self.charge(1)?;
-                            units.push(*unit);
-                        }
+                            Ok(())
+                        })?;
                     }
                     continue;
                 }
                 HtmlCapturedNodeKind::Element(element) => {
-                    if matches!(
-                        self.known(element)?,
-                        Some(KnownHtmlElement::Script | KnownHtmlElement::Img)
-                    ) || self.option_text_is_svg_script(element)?
-                    {
+                    let known = self.known(element)?;
+                    if HtmlOptionText::prunes_after_recognition(element.name(), known, || {
+                        self.charge(1)
+                    })? {
                         continue;
                     }
                 }
@@ -210,37 +278,5 @@ impl<'a> HtmlSemanticSession<'a> {
             self.option_string_header()?;
             DocumentString::from_utf16(units)
         }))
-    }
-
-    fn option_text_is_svg_script(
-        &mut self,
-        element: &HtmlCapturedElement,
-    ) -> Result<bool, HtmlSemanticFailure> {
-        self.charge(1)?;
-        let Some(uri) = element.name().namespace().uri() else {
-            return Ok(false);
-        };
-        Ok(
-            self.option_text_exact_ascii(uri, "http://www.w3.org/2000/svg")?
-                && self.option_text_exact_ascii(element.name().local_name(), "script")?,
-        )
-    }
-
-    fn option_text_exact_ascii(
-        &mut self,
-        value: &DocumentString,
-        expected: &str,
-    ) -> Result<bool, HtmlSemanticFailure> {
-        self.charge(1)?;
-        if value.len() != expected.len() {
-            return Ok(false);
-        }
-        for (unit, byte) in value.code_units().iter().zip(expected.bytes()) {
-            self.charge(1)?;
-            if *unit != u16::from(byte) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
     }
 }

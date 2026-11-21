@@ -7,6 +7,9 @@ use super::{
 use surgeist_bindings_js::{IntegerValue, conversion::declarations};
 use surgeist_dom::source::DomSourceEdit;
 
+mod strings;
+use strings::StringMember;
+
 const SELECT_REFLECTIONS: &[reflection::Member] = &[(
     &ascii(b"multiple"),
     &ascii(b"get multiple"),
@@ -43,7 +46,8 @@ pub(super) fn install_select<'scope>(
         &ascii(b"selectedIndex"),
         &ascii(b"get selectedIndex"),
         &ascii(b"set selectedIndex"),
-    )
+    )?;
+    strings::install(scope, prototype, capture, StringMember::SelectValue)
 }
 
 pub(super) fn install_option<'scope>(
@@ -51,6 +55,7 @@ pub(super) fn install_option<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    strings::install(scope, prototype, capture, StringMember::OptionLabel)?;
     reflection::install(
         scope,
         prototype,
@@ -67,6 +72,8 @@ pub(super) fn install_option<'scope>(
         &ascii(b"get selected"),
         &ascii(b"set selected"),
     )?;
+    strings::install(scope, prototype, capture, StringMember::OptionValue)?;
+    strings::install(scope, prototype, capture, StringMember::OptionText)?;
     let get = capture(size_of::<Capture>())?;
     install_getter(
         scope,

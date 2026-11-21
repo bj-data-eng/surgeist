@@ -402,7 +402,11 @@ HTMLSelectElement reflects multiple and exposes selectedIndex in native option
 order, returning −1 for an empty selection. HTMLOptionElement exposes selected
 and index from the current DOM and reflects defaultSelected through the
 selected attribute. Source applies selectedness changes and their native
-selectedcontent effects.
+selectedcontent effects. Select.value reads the first selected Option and
+assigns through the native first-match selection edit. Option.value and label
+prefer their own attributes and use the same HTML-aware text as Option.text
+when those attributes are absent. Assigning Option.text replaces its ordinary
+children with the converted string through Source.
 HTMLOListElement reflects reversed and compact as attribute presence, type as a
 raw DOMString, and start as a signed long with default one for missing, invalid
 or out-of-range content. The start getter remains independent of a reversed

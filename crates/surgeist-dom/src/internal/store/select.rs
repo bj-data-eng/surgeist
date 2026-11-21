@@ -28,11 +28,11 @@ use surgeist_html::{
 pub(in crate::internal::store) use source::scratch::ScratchVec;
 
 impl State {
-    pub(crate) fn selected_index_with<E: From<DomError>>(
+    pub(crate) fn first_selected_option_with<E: From<DomError>>(
         &self,
         select: NodeId,
         step: &mut impl FnMut() -> Result<(), E>,
-    ) -> Result<Option<usize>, E> {
+    ) -> Result<Option<(usize, NodeId)>, E> {
         self.family_index
             .find_option_with(select, step, |id, step| {
                 let state = self

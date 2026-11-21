@@ -15,9 +15,16 @@ use surgeist_html::values::DocumentString;
 mod document_title;
 mod equality;
 mod namespace;
+mod option_text;
 mod position;
 pub use namespace::DomNamespaceUri;
 pub use position::DomDocumentPosition;
+
+enum Descendant<Value> {
+    Descend,
+    Prune,
+    Found(Value),
+}
 
 /// A borrowed view of a node's immutable payload in one captured snapshot.
 /// Copying this view preserves its snapshot lifetime and creates no node.
@@ -642,7 +649,7 @@ impl<'a> DomNode<'a> {
             if let Some(text) = node.kind().text_data() {
                 visit(text)?;
             }
-            Ok(None::<()>)
+            Ok(Descendant::<()>::Descend)
         })?;
         Ok(())
     }
@@ -651,7 +658,7 @@ impl<'a> DomNode<'a> {
         self,
         mut step: Step,
         mut reserve: impl FnMut(usize) -> Result<Backing, E>,
-        mut inspect: impl FnMut(Self, &mut Step) -> Result<Option<Value>, E>,
+        mut inspect: impl FnMut(Self, &mut Step) -> Result<Descendant<Value>, E>,
     ) -> Result<Option<Value>, E>
     where
         Step: FnMut() -> Result<(), E>,
@@ -669,10 +676,11 @@ impl<'a> DomNode<'a> {
             };
             step()?;
             let child = self.snapshot.node_with(child, &mut step)?;
-            if let Some(value) = inspect(child, &mut step)? {
-                return Ok(Some(value));
+            match inspect(child, &mut step)? {
+                Descendant::Descend => remaining = child.children(),
+                Descendant::Prune => remaining = &[],
+                Descendant::Found(value) => return Ok(Some(value)),
             }
-            remaining = child.children();
             if remaining.is_empty() {
                 remaining = siblings;
             } else if !siblings.is_empty() {

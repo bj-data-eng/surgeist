@@ -63,6 +63,25 @@ fn option_index(snapshot: &DomSnapshot, node: NodeId) -> Result<usize, DomError>
         .index_with(|| Ok(()))
 }
 
+fn select_value(snapshot: &DomSnapshot, node: NodeId) -> Vec<u16> {
+    let mut value = Vec::new();
+    snapshot
+        .node(node)
+        .unwrap()
+        .as_select()
+        .unwrap()
+        .visit_value_with(
+            || Ok::<_, DomError>(()),
+            |_| Ok(()),
+            |units| {
+                value.extend_from_slice(units);
+                Ok(())
+            },
+        )
+        .unwrap();
+    value
+}
+
 #[test]
 fn option_membership_keeps_html_pruning_and_foreign_wrappers_distinct() {
     let cancel = AtomicBool::new(false);
@@ -321,6 +340,7 @@ fn index_reads_share_the_published_source_prefix_with_node_records() {
         )
     };
     assert_eq!(read(&original), (Ok(None), Ok(0)));
+    assert!(select_value(&original, select).is_empty());
     let mut lease = dom
         .begin_source_edit(
             DomSourceEdit::insert_before(group, select, None),
@@ -349,6 +369,9 @@ fn index_reads_share_the_published_source_prefix_with_node_records() {
     let published = (Ok(Some(1)), Ok(1));
     assert_eq!(read(&parked), published);
     assert_eq!(read(&original), (Ok(None), Ok(0)));
+    let selected_value = [99, 104, 111, 115, 101, 110];
+    assert_eq!(select_value(&parked, select), selected_value);
+    assert!(select_value(&original, select).is_empty());
     lease
         .accept_inline_csp(
             &request,
@@ -371,6 +394,17 @@ fn index_reads_share_the_published_source_prefix_with_node_records() {
     assert_eq!(complete.incomplete_source_operation(), None);
     assert_eq!(read(&complete), published);
     assert_eq!(read(&parked), published);
+    assert_eq!(select_value(&complete, select), selected_value);
+    assert_eq!(select_value(&parked, select), selected_value);
+
+    let mut edit = DomBatch::new();
+    edit.set_attribute(chosen, "value", "changed");
+    dom.apply(edit, &cancel).unwrap();
+    assert_eq!(
+        select_value(&dom.snapshot(), select),
+        [99, 104, 97, 110, 103, 101, 100]
+    );
+    assert_eq!(select_value(&parked, select), selected_value);
 }
 
 #[test]

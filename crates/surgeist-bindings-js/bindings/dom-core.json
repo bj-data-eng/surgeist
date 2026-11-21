@@ -8377,20 +8377,20 @@
       "requirements": []
     },
     "HTMLSelectElement.value/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the first selected Option's native value, including HTML option text fallback, or the empty string.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-value"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.value.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "visit_value_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/option_text.rs", "symbol": "prunes_descendants_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/option_text.rs", "symbol": "push"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.value/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind the existing native set_select_value Source edit and its first-match selectedness and dirtiness effects.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-value"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.value.set",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_select_value"}],
+      "requirements": []
     },
     "HTMLSelectElement.willValidate/get": {
       "kind": "host",
@@ -8489,20 +8489,20 @@
       }
     },
     "HTMLOptionElement.label/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Apply the HTML label getter's content attribute and native option-text fallback.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-label"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.label.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "visit_label_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/option_text.rs", "symbol": "prunes_descendants_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/option_text.rs", "symbol": "push"}
+      ],
+      "requirements": []
     },
     "HTMLOptionElement.label/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind label reflection through native Source.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-label"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.label.set",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
+      "requirements": []
     },
     "HTMLOptionElement.defaultSelected/get": {
       "kind": "native",
@@ -8556,36 +8556,36 @@
       "requirements": []
     },
     "HTMLOptionElement.value/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the value content attribute or the HTML option-text fallback through an admitted native read.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.value.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "visit_value_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/option_text.rs", "symbol": "prunes_descendants_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/option_text.rs", "symbol": "push"}
+      ],
+      "requirements": []
     },
     "HTMLOptionElement.value/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind value reflection through native Source.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.value.set",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
+      "requirements": []
     },
     "HTMLOptionElement.text/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the native HTML option-text collection and whitespace processing through an admitted read.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-text"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.text.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "visit_text_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/option_text.rs", "symbol": "prunes_descendants_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/option_text.rs", "symbol": "push"}
+      ],
+      "requirements": []
     },
     "HTMLOptionElement.text/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Replace the Option's children through native Source using the converted text.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-text"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.text.set",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "set_text_content"}],
+      "requirements": []
     },
     "HTMLOptionElement.index/get": {
       "kind": "native",

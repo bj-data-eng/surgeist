@@ -2844,6 +2844,10 @@ pub struct surgeist_html_semantics::HtmlOptionReadback
 impl surgeist_html_semantics::HtmlOptionReadback
 pub fn surgeist_html_semantics::HtmlOptionReadback::origin(&self) -> surgeist_html_semantics::HtmlOptionReadbackOrigin
 pub fn surgeist_html_semantics::HtmlOptionReadback::value(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+pub struct surgeist_html_semantics::HtmlOptionText
+impl surgeist_html_semantics::HtmlOptionText
+pub fn surgeist_html_semantics::HtmlOptionText::prunes_descendants_with<E>(name: &impl surgeist_html::internal::values::semantic_input::HtmlNameInput + ?core::marker::Sized, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
+pub fn surgeist_html_semantics::HtmlOptionText::push<E>(&mut self, unit: u16, emit: impl core::ops::function::FnOnce(&[u16]) -> core::result::Result<(), E>) -> core::result::Result<(), E>
 pub struct surgeist_html_semantics::HtmlOptionValueEnvelope
 impl surgeist_html_semantics::HtmlOptionValueEnvelope
 pub const fn surgeist_html_semantics::HtmlOptionValueEnvelope::new(live_bytes: usize, live_utf16: usize, remaining_work: u64) -> Self

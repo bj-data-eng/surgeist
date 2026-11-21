@@ -825,28 +825,28 @@ impl Members {
             })
             .transpose()
     }
-    /// Find the first matching position in the group's stored order. Stack depth
+    /// Find the first matching member and position in the group's stored order. Stack depth
     /// follows the balanced member tree, independently of DOM ancestry depth.
-    pub fn position_with<E: From<DomError>, S: FnMut() -> Result<(), E>>(
+    pub fn find_with<E: From<DomError>, S: FnMut() -> Result<(), E>>(
         &self,
         root: RootHeader,
         step: &mut S,
         mut matches: impl FnMut(Key, &mut S) -> Result<bool, E>,
-    ) -> Result<Option<usize>, E> {
+    ) -> Result<Option<(usize, Key)>, E> {
         fn scan<E: From<DomError>, S: FnMut() -> Result<(), E>>(
             members: &Members,
             id: Option<MemberId>,
             position: &mut usize,
             step: &mut S,
             matches: &mut impl FnMut(Key, &mut S) -> Result<bool, E>,
-        ) -> Result<Option<usize>, E> {
+        ) -> Result<Option<(usize, Key)>, E> {
             let Some(id) = id else { return Ok(None) };
             let link = members.get(id, step)?;
             if let Some(found) = scan(members, link.left, position, step, matches)? {
                 return Ok(Some(found));
             }
             if matches(link.key, step)? {
-                return Ok(Some(*position));
+                return Ok(Some((*position, link.key)));
             }
             *position = position
                 .checked_add(1)

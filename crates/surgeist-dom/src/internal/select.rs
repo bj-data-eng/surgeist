@@ -66,7 +66,33 @@ impl<'a> DomSelect<'a> {
         self.node
             .snapshot
             .state
-            .selected_index_with(self.id(), &mut step)
+            .first_selected_option_with(self.id(), &mut step)
+            .map(|selected| selected.map(|(position, _)| position))
+    }
+
+    /// Visit the value of the first selected Option in canonical list order.
+    ///
+    /// An empty selection emits nothing. `step` also admits order and selectedness
+    /// observations. See [`DomOption::visit_value_with`] for the remaining
+    /// admission and output contract. A live caller qualifies the current segment.
+    pub fn visit_value_with<E: From<DomError>, Backing>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+        reserve: impl FnMut(usize) -> Result<Backing, E>,
+        emit: impl FnMut(&[u16]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let snapshot = self.node.snapshot;
+        let Some((_, option)) = snapshot
+            .state
+            .first_selected_option_with(self.id(), &mut step)?
+        else {
+            return Ok(());
+        };
+        snapshot
+            .node_with(option, &mut step)?
+            .as_option()
+            .ok_or(DomError::SelectProtocol)?
+            .visit_value_with(step, reserve, emit)
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -101,6 +127,80 @@ impl DomOption<'_> {
             .snapshot
             .state
             .option_index_with(self.id(), &mut step)
+    }
+
+    /// Visit the null-namespace `value` attribute, or the HTML-aware Option text.
+    ///
+    /// A present attribute emits one borrowed UTF-16 slice, including when empty.
+    /// `step` admits attribute lookup and comparison. `emit` admits and stores
+    /// output. When the attribute is absent, see [`Self::visit_text_with`] for
+    /// traversal and text admission. The first refusal ends the read.
+    pub fn visit_value_with<E: From<DomError>, Backing>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+        reserve: impl FnMut(usize) -> Result<Backing, E>,
+        emit: impl FnMut(&[u16]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        const VALUE: &[u16] = &[
+            b'v' as u16,
+            b'a' as u16,
+            b'l' as u16,
+            b'u' as u16,
+            b'e' as u16,
+        ];
+        self.visit_attribute_or_text_with(VALUE, step, reserve, emit)
+    }
+
+    /// Visit the null-namespace `label` attribute, or the HTML-aware Option text.
+    ///
+    /// A present empty attribute emits an empty slice. Admission follows
+    /// [`Self::visit_value_with`].
+    pub fn visit_label_with<E: From<DomError>, Backing>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+        reserve: impl FnMut(usize) -> Result<Backing, E>,
+        emit: impl FnMut(&[u16]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        const LABEL: &[u16] = &[
+            b'l' as u16,
+            b'a' as u16,
+            b'b' as u16,
+            b'e' as u16,
+            b'l' as u16,
+        ];
+        self.visit_attribute_or_text_with(LABEL, step, reserve, emit)
+    }
+
+    /// Visit normalized HTML-aware Option text in the captured published segment.
+    ///
+    /// `step` admits ordinary tree observations, name comparisons and each input
+    /// code unit. `reserve` funds traversal scratch, including overlapping
+    /// allocations, with its backing held until the allocation drops. `emit`
+    /// owns output admission and storage. The first error ends the read, even
+    /// after an accepted output prefix. A live caller qualifies the current segment.
+    pub fn visit_text_with<E: From<DomError>, Backing>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+        reserve: impl FnMut(usize) -> Result<Backing, E>,
+        emit: impl FnMut(&[u16]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        self.node.visit_option_text_with(step, reserve, emit)
+    }
+
+    fn visit_attribute_or_text_with<E: From<DomError>, Backing>(
+        self,
+        attribute: &[u16],
+        mut step: impl FnMut() -> Result<(), E>,
+        reserve: impl FnMut(usize) -> Result<Backing, E>,
+        mut emit: impl FnMut(&[u16]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let attributes = self.node.attributes().ok_or(DomError::WrongNodeKind)?;
+        if let Some(attribute) =
+            attributes.get_null_namespace_attribute_with(attribute, &mut step)?
+        {
+            return emit(attribute.value().code_units());
+        }
+        self.visit_text_with(step, reserve, emit)
     }
 }
 #[derive(Clone, Copy, Debug)]

@@ -11,10 +11,10 @@ use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState,
-    HtmlOptionReadback, HtmlOptionReadbackOrigin, HtmlSelectValue, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlOptionReadback, HtmlOptionReadbackOrigin, HtmlOptionText, HtmlSelectValue,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -187,6 +187,21 @@ fn nested_text_concatenates_without_br_or_element_separators() {
         .value(),
         &DocumentString::from("ABC")
     );
+}
+
+#[test]
+fn long_unrelated_html_local_name_does_not_require_a_per_unit_scan() {
+    let local = format!("custom-{}", "x".repeat(16_384));
+    let name = QualifiedName::new(Namespace::html(), None, local.as_str());
+
+    // Both excluded local names are shorter than this one. Their length checks
+    // plus the namespace comparisons must fit well below its UTF-16 length.
+    let mut remaining = 64usize;
+    let prunes = HtmlOptionText::prunes_descendants_with(&name, || {
+        remaining = remaining.checked_sub(1).ok_or("name work exhausted")?;
+        Ok::<(), &str>(())
+    });
+    assert_eq!(prunes, Ok(false));
 }
 
 #[test]

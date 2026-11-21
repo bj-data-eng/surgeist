@@ -17,6 +17,7 @@
 //! remain with their producers; queries borrow one immutable capture.
 
 mod admission;
+mod ascii_whitespace;
 mod context;
 pub(crate) mod index;
 mod query_account;
