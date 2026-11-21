@@ -14,6 +14,7 @@ pub(crate) use displacement_observation::{
 };
 mod encode;
 mod gaussian;
+mod lighting;
 mod lower;
 mod model;
 mod morphology;

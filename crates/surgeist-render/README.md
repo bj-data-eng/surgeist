@@ -46,6 +46,10 @@ capture above an alpha-only Gaussian, finite displacement and colored flood. It
 keeps independent stage domains, working color, bounded outer composition and
 atomic resource lifetime.
 
+Prepared [native diffuse lighting](docs/lighting.md) shades the alpha of a
+finite Scene with a distant, point, or spot light. Its filter grid supports
+explicit kernel spacing and stays anchored when the result is cropped.
+
 Prepared [native offset](docs/offset.md) translates the captured input inside
 independent source, filter and result domains. It preserves numeric
 premultiplied color and the full outer affine, with exact aligned copies and
@@ -128,7 +132,7 @@ public through one module.
 | --- | --- |
 | `accounting` | Accounting contexts, limits, units and reports |
 | `capability` | Semantic and runtime capability reports |
-| `convolution`, `gaussian`, `morphology`, `displacement`, `offset`, `native_shadow` | Native filter preparation and its typed refusals |
+| `convolution`, `gaussian`, `morphology`, `displacement`, `lighting`, `offset`, `native_shadow` | Native filter preparation and its typed refusals |
 | `diagnostic` | Typed diagnostics that an `Error` carries |
 | `effect` | Inputs shared by the filter-primitive modules |
 | `geometry` | Logical and physical geometry and coordinate spaces |
@@ -165,6 +169,7 @@ and the full first-success walkthrough.
 | [Native convolution](docs/convolution.md) | Prepare and execute resolved convolution with explicit domains, grids and numeric policy. |
 | [Native morphology](docs/morphology.md) | Erode or dilate premultiplied components with resolved radii, independent domains and authentic source declarations. |
 | [Native displacement](docs/displacement.md) | Displace authentic first inputs with native straight-byte maps, independent domains and explicit numeric policy. |
+| [Native diffuse lighting](docs/lighting.md) | Light a finite bump-map Scene with a resolved distant, point, or spot light. |
 | [Native resolved drop shadow](docs/native-shadow.md) | Blur alpha, displace its finite result and merge the unchanged original above a colored shadow. |
 | [Native offset](docs/offset.md) | Translate finite captured images with independent clipping and resolved reconstruction intent. |
 | [Explanation](docs/explanation.md) | Understand execution routes, publication, precision, and ownership. |

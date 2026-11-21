@@ -15,7 +15,8 @@ use crate::{
     displacement::DisplacementSource, displacement::PreparedDisplacement,
     displacement::PreparedDisplacementMap, gaussian::GaussianPreparationError,
     gaussian::GaussianSource, gaussian::PreparedGaussian, geometry::Rect, geometry::Transform,
-    image::Image, image::ImageFit, morphology::MorphologyPreparationError,
+    image::Image, image::ImageFit, lighting::LightingForeground, lighting::LightingSource,
+    lighting::PreparedLighting, morphology::MorphologyPreparationError,
     morphology::MorphologySource, morphology::PreparedMorphology,
     native_shadow::DropShadowPreparationError, native_shadow::DropShadowSource,
     native_shadow::PreparedDropShadow, paint::Paint, shape::Path, shape::Shape, shape::Stroke,
@@ -228,6 +229,27 @@ impl Scene {
             children: child.commands.into(),
         });
         Ok(self)
+    }
+
+    /// Appends native diffuse lighting, replacing the layer's foreground effect.
+    ///
+    /// Moves the finite source's children into the layer, preserving its outer
+    /// transform, isolation, clip, mask, opacity and composition. Supported
+    /// same-layer backdrop contributes to the input alpha. Empty source
+    /// content is a flat plane within the intersection of the filter and
+    /// primitive-result domains.
+    pub fn lighting_layer(
+        &mut self,
+        layer: Layer,
+        operation: PreparedLighting,
+        source: LightingSource,
+    ) -> &mut Self {
+        let (child, source) = source.into_parts();
+        self.commands.push(Command::Layer {
+            layer: Box::new(layer.with_lighting(LightingForeground { operation, source })),
+            children: child.commands.into(),
+        });
+        self
     }
 
     /// Appends native displacement, replacing the layer's exclusive foreground effect.

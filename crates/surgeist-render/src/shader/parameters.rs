@@ -326,6 +326,22 @@ pub(crate) struct NativeShadowParameterFacts {
 }
 
 /// Exact 256-byte wire shared by all six concrete merge programs.
+/// Shares the serialized wire bytes with the accounted immutable stage payload.
+#[derive(Clone)]
+pub(crate) struct LightingParameterBytes(crate::frame::LightingPassFacts);
+
+impl LightingParameterBytes {
+    pub(crate) const SIZE: usize = 256;
+
+    pub(crate) fn from_stage(stage: &crate::frame::LightingPassFacts) -> Self {
+        Self(stage.clone())
+    }
+
+    pub(crate) fn as_bytes(&self) -> &[u8; Self::SIZE] {
+        self.0.uniform_bytes()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NativeShadowParameterBytes([u8; 256]);
 

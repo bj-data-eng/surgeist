@@ -1342,6 +1342,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::Displacement(_)
             | RuntimePassKind::Offset(_)
             | RuntimePassKind::NativeShadowMerge(_)
+            | RuntimePassKind::Lighting(_)
             | RuntimePassKind::BlurHorizontal(_)
             | RuntimePassKind::BlurVertical(_)
             | RuntimePassKind::DropShadowColorize(_)
@@ -3191,6 +3192,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         | RuntimePassKind::Displacement(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_)
+        | RuntimePassKind::Lighting(_)
         | RuntimePassKind::ColorFilter(_)
         | RuntimePassKind::BlurHorizontal(_)
         | RuntimePassKind::BlurVertical(_)
@@ -4918,6 +4920,22 @@ fn spatial_filter_pass_tags(
     let mut tags = Vec::new();
     for step in &facts.filter_steps {
         match step {
+            ExecutableFilterStepFacts::Lighting {
+                resample,
+                shade,
+                resolve,
+                ..
+            } => {
+                for id in resample.iter().copied().chain([*shade, *resolve]) {
+                    let pass = plan.passes.iter().find(|pass| pass.id == id)?;
+                    let RuntimePassKind::Lighting(work) = &pass.kind else {
+                        return None;
+                    };
+                    tags.push(SpatialFilterPassTagForTest::Lighting(
+                        super::lighting::shader_stage(work),
+                    ));
+                }
+            }
             ExecutableFilterStepFacts::NativeShadow { passes, .. } => {
                 for id in passes.iter() {
                     let pass = plan.passes.iter().find(|pass| pass.id == *id)?;
@@ -5370,6 +5388,7 @@ fn observe_layer_composition(
             | RuntimeReadRole::OffsetSource
             | RuntimeReadRole::NativeShadowOriginal
             | RuntimeReadRole::NativeShadowAlpha
+            | RuntimeReadRole::LightingSource
             | RuntimeReadRole::ConvolutionSource
             | RuntimeReadRole::GaussianSource
             | RuntimeReadRole::GaussianAuxiliary
@@ -6212,7 +6231,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 16];
+    let mut vocabulary = [false; 17];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6227,6 +6246,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && !vocabulary[13]
         && !vocabulary[14]
         && !vocabulary[15]
+        && !vocabulary[16]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6613,7 +6633,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 16];
+    let mut vocabulary = [false; 17];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6986,6 +7006,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::NativeShadowMerge(_) => 13,
         RuntimePassKind::Morphology(_) => 14,
         RuntimePassKind::Displacement(_) => 15,
+        RuntimePassKind::Lighting(_) => 16,
     }
 }
 

@@ -58,6 +58,7 @@ pub surgeist_render::accounting::RenderAttemptKind::Gaussian
 pub surgeist_render::accounting::RenderAttemptKind::GlyphRun
 pub surgeist_render::accounting::RenderAttemptKind::ImageRepeat
 pub surgeist_render::accounting::RenderAttemptKind::LeaderPattern
+pub surgeist_render::accounting::RenderAttemptKind::Lighting
 pub surgeist_render::accounting::RenderAttemptKind::Morphology
 pub surgeist_render::accounting::RenderAttemptKind::Offset
 pub surgeist_render::accounting::RenderAttemptKind::PaintGradient
@@ -329,6 +330,9 @@ pub surgeist_render::accounting::RenderWork::ScheduledDisplacementMapSamples
 pub surgeist_render::accounting::RenderWork::ScheduledDisplacementSourceSamples
 pub surgeist_render::accounting::RenderWork::ScheduledFilterTexels
 pub surgeist_render::accounting::RenderWork::ScheduledGaussianSamples
+pub surgeist_render::accounting::RenderWork::ScheduledLightingAlphaSamples
+pub surgeist_render::accounting::RenderWork::ScheduledLightingEvaluations
+pub surgeist_render::accounting::RenderWork::ScheduledLightingResultSamples
 pub surgeist_render::accounting::RenderWork::ScheduledMorphologySamples
 pub surgeist_render::accounting::RenderWork::ScheduledOffsetSamples
 pub surgeist_render::accounting::RenderWork::ScheduledShadowSamples
@@ -619,6 +623,9 @@ pub surgeist_render::accounting::RenderWorkFields::ScheduledDisplacementMapSampl
 pub surgeist_render::accounting::RenderWorkFields::ScheduledDisplacementSourceSamples: T
 pub surgeist_render::accounting::RenderWorkFields::ScheduledFilterTexels: T
 pub surgeist_render::accounting::RenderWorkFields::ScheduledGaussianSamples: T
+pub surgeist_render::accounting::RenderWorkFields::ScheduledLightingAlphaSamples: T
+pub surgeist_render::accounting::RenderWorkFields::ScheduledLightingEvaluations: T
+pub surgeist_render::accounting::RenderWorkFields::ScheduledLightingResultSamples: T
 pub surgeist_render::accounting::RenderWorkFields::ScheduledMorphologySamples: T
 pub surgeist_render::accounting::RenderWorkFields::ScheduledOffsetSamples: T
 pub surgeist_render::accounting::RenderWorkFields::ScheduledShadowSamples: T
@@ -725,6 +732,7 @@ pub const fn surgeist_render::capability::FilterCapabilities::supports_filter_re
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_blur_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_color_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_convolution_filter_execution(self) -> bool
+pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_diffuse_lighting_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_displacement_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_drop_shadow_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_gaussian_filter_execution(self) -> bool
@@ -925,6 +933,7 @@ pub surgeist_render::diagnostic::PrimitiveOperation::GeometryOffsetOperation
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuBlurFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuColorFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuConvolutionFilterExecution
+pub surgeist_render::diagnostic::PrimitiveOperation::GpuDiffuseLightingFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuDisplacementFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuDropShadowFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuGaussianFilterExecution
@@ -1269,6 +1278,76 @@ pub struct surgeist_render::image::ImageId(_)
 impl surgeist_render::image::ImageId
 pub const fn surgeist_render::image::ImageId::get(self) -> u64
 pub const fn surgeist_render::image::ImageId::new(value: u64) -> Self
+pub mod surgeist_render::lighting
+pub enum surgeist_render::lighting::LightingLightInput
+pub surgeist_render::lighting::LightingLightInput::Distant
+pub surgeist_render::lighting::LightingLightInput::Distant::azimuth: f64
+pub surgeist_render::lighting::LightingLightInput::Distant::elevation: f64
+pub surgeist_render::lighting::LightingLightInput::Point
+pub surgeist_render::lighting::LightingLightInput::Point::position: [f64; 3]
+pub surgeist_render::lighting::LightingLightInput::Spot(surgeist_render::lighting::SpotLightInput)
+impl surgeist_render::lighting::LightingLightInput
+pub const fn surgeist_render::lighting::LightingLightInput::distant() -> Self
+pub const fn surgeist_render::lighting::LightingLightInput::point() -> Self
+#[non_exhaustive] pub enum surgeist_render::lighting::LightingNumericPhase
+pub surgeist_render::lighting::LightingNumericPhase::ColorProduct
+pub surgeist_render::lighting::LightingNumericPhase::GridExtent
+pub surgeist_render::lighting::LightingNumericPhase::GridIndex
+pub surgeist_render::lighting::LightingNumericPhase::GridMapping
+pub surgeist_render::lighting::LightingNumericPhase::HeightGradient
+pub surgeist_render::lighting::LightingNumericPhase::LightVector
+pub surgeist_render::lighting::LightingNumericPhase::Sampling
+#[non_exhaustive] pub enum surgeist_render::lighting::LightingParameter
+pub surgeist_render::lighting::LightingParameter::Azimuth
+pub surgeist_render::lighting::LightingParameter::Cone
+pub surgeist_render::lighting::LightingParameter::DiffuseConstant
+pub surgeist_render::lighting::LightingParameter::Elevation
+pub surgeist_render::lighting::LightingParameter::KernelUnitLengthX
+pub surgeist_render::lighting::LightingParameter::KernelUnitLengthY
+pub surgeist_render::lighting::LightingParameter::LightX
+pub surgeist_render::lighting::LightingParameter::LightY
+pub surgeist_render::lighting::LightingParameter::LightZ
+pub surgeist_render::lighting::LightingParameter::PointsAtX
+pub surgeist_render::lighting::LightingParameter::PointsAtY
+pub surgeist_render::lighting::LightingParameter::PointsAtZ
+pub surgeist_render::lighting::LightingParameter::SpotExponent
+pub surgeist_render::lighting::LightingParameter::SurfaceScale
+#[non_exhaustive] pub enum surgeist_render::lighting::LightingPreparationError
+pub surgeist_render::lighting::LightingPreparationError::InvalidParameter
+pub surgeist_render::lighting::LightingPreparationError::InvalidParameter::parameter: surgeist_render::lighting::LightingParameter
+pub surgeist_render::lighting::LightingPreparationError::InvalidParameter::value: f64
+pub surgeist_render::lighting::LightingPreparationError::Numeric
+pub surgeist_render::lighting::LightingPreparationError::Numeric::phase: surgeist_render::lighting::LightingNumericPhase
+pub surgeist_render::lighting::LightingPreparationError::Numeric::value: f64
+impl core::convert::From<surgeist_render::lighting::LightingPreparationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::lighting::LightingPreparationError) -> Self
+impl core::error::Error for surgeist_render::lighting::LightingPreparationError
+impl core::fmt::Display for surgeist_render::lighting::LightingPreparationError
+pub fn surgeist_render::lighting::LightingPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_render::lighting::DiffuseLightingInput
+impl surgeist_render::lighting::DiffuseLightingInput
+pub const fn surgeist_render::lighting::DiffuseLightingInput::new() -> Self
+pub const fn surgeist_render::lighting::DiffuseLightingInput::with_diffuse_constant(self, constant: f64) -> Self
+pub const fn surgeist_render::lighting::DiffuseLightingInput::with_kernel_unit_length(self, length: f64) -> Self
+pub const fn surgeist_render::lighting::DiffuseLightingInput::with_kernel_unit_lengths(self, x: f64, y: f64) -> Self
+pub const fn surgeist_render::lighting::DiffuseLightingInput::with_lighting_color(self, color: surgeist_render::paint::Color) -> Self
+pub const fn surgeist_render::lighting::DiffuseLightingInput::with_surface_scale(self, scale: f64) -> Self
+impl core::default::Default for surgeist_render::lighting::DiffuseLightingInput
+pub fn surgeist_render::lighting::DiffuseLightingInput::default() -> Self
+pub struct surgeist_render::lighting::LightingSource
+impl surgeist_render::lighting::LightingSource
+pub const fn surgeist_render::lighting::LightingSource::finite(scene: surgeist_render::scene::Scene, domains: surgeist_render::effect::FilterDomains) -> Self
+pub struct surgeist_render::lighting::PreparedLighting
+pub struct surgeist_render::lighting::SpotLightInput
+impl surgeist_render::lighting::SpotLightInput
+pub const fn surgeist_render::lighting::SpotLightInput::new() -> Self
+pub const fn surgeist_render::lighting::SpotLightInput::with_limiting_cone_angle(self, angle: f64) -> Self
+pub const fn surgeist_render::lighting::SpotLightInput::with_points_at(self, points_at: [f64; 3]) -> Self
+pub const fn surgeist_render::lighting::SpotLightInput::with_position(self, position: [f64; 3]) -> Self
+pub const fn surgeist_render::lighting::SpotLightInput::with_specular_exponent(self, exponent: f64) -> Self
+impl core::default::Default for surgeist_render::lighting::SpotLightInput
+pub fn surgeist_render::lighting::SpotLightInput::default() -> Self
+pub fn surgeist_render::lighting::prepare_lighting(input: surgeist_render::lighting::DiffuseLightingInput, light: surgeist_render::lighting::LightingLightInput, color_space: surgeist_render::effect::FilterColorSpace, accounting: &mut surgeist_render::accounting::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::lighting::PreparedLighting>
 pub mod surgeist_render::morphology
 pub enum surgeist_render::morphology::MorphologyNumericPhase
 pub surgeist_render::morphology::MorphologyNumericPhase::EndpointMapping
@@ -1681,6 +1760,7 @@ pub fn surgeist_render::scene::Scene::inspect(&self, context: &mut surgeist_rend
 pub fn surgeist_render::scene::Scene::is_empty(&self) -> bool
 pub fn surgeist_render::scene::Scene::layer(&mut self, layer: surgeist_render::scene::Layer, children: impl core::ops::function::FnOnce(&mut surgeist_render::scene::Scene)) -> &mut Self
 pub fn surgeist_render::scene::Scene::len(&self) -> usize
+pub fn surgeist_render::scene::Scene::lighting_layer(&mut self, layer: surgeist_render::scene::Layer, operation: surgeist_render::lighting::PreparedLighting, source: surgeist_render::lighting::LightingSource) -> &mut Self
 pub fn surgeist_render::scene::Scene::masked_group(&mut self, masks: &[surgeist_render::scene::ResolvedMaskLayer], children: impl core::ops::function::FnOnce(&mut surgeist_render::scene::Scene)) -> &mut Self
 pub fn surgeist_render::scene::Scene::morphology_layer(&mut self, layer: surgeist_render::scene::Layer, operation: surgeist_render::morphology::PreparedMorphology, source: surgeist_render::morphology::MorphologySource) -> surgeist_render::Result<&mut Self>
 pub fn surgeist_render::scene::Scene::new() -> Self
@@ -2563,6 +2643,7 @@ pub const fn surgeist_render::Error::gradient_hint_diagnostic(&self) -> core::op
 pub const fn surgeist_render::Error::gradient_realization_diagnostic(&self) -> core::option::Option<&surgeist_render::paint::GradientRealizationError>
 pub fn surgeist_render::Error::invalid_value(name: impl core::convert::Into<alloc::string::String>, value: impl core::fmt::Display, rule: &'static str) -> Self
 pub const fn surgeist_render::Error::invalid_value_diagnostic(&self) -> core::option::Option<&surgeist_render::diagnostic::InvalidValue>
+pub const fn surgeist_render::Error::lighting_diagnostic(&self) -> core::option::Option<&surgeist_render::lighting::LightingPreparationError>
 pub fn surgeist_render::Error::message(&self) -> &str
 pub const fn surgeist_render::Error::morphology_diagnostic(&self) -> core::option::Option<&surgeist_render::morphology::MorphologyPreparationError>
 pub const fn surgeist_render::Error::offset_diagnostic(&self) -> core::option::Option<&surgeist_render::offset::OffsetPreparationError>
@@ -2582,6 +2663,8 @@ impl core::convert::From<surgeist_render::displacement::DisplacementPreparationE
 pub fn surgeist_render::Error::from(value: surgeist_render::displacement::DisplacementPreparationError) -> Self
 impl core::convert::From<surgeist_render::gaussian::GaussianPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::gaussian::GaussianPreparationError) -> Self
+impl core::convert::From<surgeist_render::lighting::LightingPreparationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::lighting::LightingPreparationError) -> Self
 impl core::convert::From<surgeist_render::morphology::MorphologyPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::morphology::MorphologyPreparationError) -> Self
 impl core::convert::From<surgeist_render::native_shadow::DropShadowPreparationError> for surgeist_render::Error

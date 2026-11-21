@@ -56,6 +56,7 @@ enum PreparationDiagnostic {
     Convolution(crate::convolution::ConvolutionPreparationError),
     Offset(crate::offset::OffsetPreparationError),
     Gaussian(crate::gaussian::GaussianPreparationError),
+    Lighting(crate::lighting::LightingPreparationError),
     Morphology(crate::morphology::MorphologyPreparationError),
     Displacement(crate::displacement::DisplacementPreparationError),
     DropShadow(crate::native_shadow::DropShadowPreparationError),
@@ -484,6 +485,18 @@ impl Error {
         }
     }
 
+    /// Returns the typed native lighting diagnostic, if present.
+    #[must_use]
+    pub const fn lighting_diagnostic(&self) -> Option<&crate::lighting::LightingPreparationError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::Lighting(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns the typed native displacement diagnostic, if present.
     #[must_use]
     pub const fn displacement_diagnostic(
@@ -715,6 +728,26 @@ impl From<crate::gaussian::GaussianPreparationError> for Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             preparation: Some(PreparationDiagnostic::Gaussian(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
+        })
+    }
+}
+
+impl From<crate::lighting::LightingPreparationError> for Error {
+    fn from(value: crate::lighting::LightingPreparationError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::InvalidInput,
+            message: chain(&value),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::Lighting(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
             #[cfg(feature = "render-text")]
@@ -1790,6 +1823,8 @@ pub enum PrimitiveOperation {
     GpuOffsetFilterExecution,
     /// Executing admitted native Gaussian filtering on the GPU.
     GpuGaussianFilterExecution,
+    /// Executing admitted finite native diffuse lighting on the GPU.
+    GpuDiffuseLightingFilterExecution,
     /// Executing admitted native straight-byte map displacement on the GPU.
     GpuDisplacementFilterExecution,
     /// Executing admitted rectangular component erosion and dilation on the GPU.
@@ -1879,6 +1914,7 @@ impl PrimitiveOperation {
             Self::GpuConvolutionFilterExecution => "GPU convolution filter execution",
             Self::GpuOffsetFilterExecution => "GPU offset filter execution",
             Self::GpuGaussianFilterExecution => "GPU Gaussian filter execution",
+            Self::GpuDiffuseLightingFilterExecution => "GPU diffuse lighting filter execution",
             Self::GpuMorphologyFilterExecution => "GPU morphology filter execution",
             Self::GpuDisplacementFilterExecution => "GPU displacement filter execution",
             Self::GpuNativeDropShadowFilterExecution => "GPU native drop-shadow filter execution",

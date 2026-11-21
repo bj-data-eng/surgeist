@@ -27,17 +27,17 @@ pub(crate) use displacement::{DisplacementParameterBytes, DisplacementParameterF
 pub(crate) use key::{
     BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderBindingRoleKey, ShaderCompositeKey,
     ShaderCompositePathKey, ShaderDataBindingKey, ShaderDisplacementSourceKey,
-    ShaderDisplacementStageKey, ShaderMaskExtendKey, ShaderMaskQualityKey, ShaderMaskSamplingKey,
-    ShaderModuleKey, ShaderMorphologyStageKey, ShaderNativeShadowSourceKey, ShaderProgramKey,
-    ShaderSamplingEdgeKey, ShaderSamplingFilterKey, ShaderTextureFormatKey,
+    ShaderDisplacementStageKey, ShaderLightingStageKey, ShaderMaskExtendKey, ShaderMaskQualityKey,
+    ShaderMaskSamplingKey, ShaderModuleKey, ShaderMorphologyStageKey, ShaderNativeShadowSourceKey,
+    ShaderProgramKey, ShaderSamplingEdgeKey, ShaderSamplingFilterKey, ShaderTextureFormatKey,
 };
 pub(crate) use morphology::{MorphologyParameterBytes, MorphologyParameterFacts};
 pub(crate) use parameters::{
     BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
     CompositeParameterBytes, ConvolutionParameterBytes, ConvolutionParameterFacts,
     DropShadowParameterBytes, GaussianParameterBytes, GaussianParameterFacts,
-    NativeShadowParameterBytes, NativeShadowParameterFacts, OffsetParameterBytes,
-    OffsetParameterFacts, PassSpatialUniformBytes,
+    LightingParameterBytes, NativeShadowParameterBytes, NativeShadowParameterFacts,
+    OffsetParameterBytes, OffsetParameterFacts, PassSpatialUniformBytes,
 };
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) use parameters::{
@@ -63,6 +63,6 @@ pub(crate) use test_support::{
 pub(crate) use validate::{
     BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, ConvolutionPassKeyRefs,
     CopyBackdropPassKeyRefs, CorePassKeyRefs, DisplacementPassKeyRefs,
-    DropShadowColorizePassKeyRefs, GaussianPassKeyRefs, MorphologyPassKeyRefs,
+    DropShadowColorizePassKeyRefs, GaussianPassKeyRefs, LightingPassKeyRefs, MorphologyPassKeyRefs,
     NativeShadowPassKeyRefs, OffsetPassKeyRefs,
 };

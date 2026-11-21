@@ -245,6 +245,7 @@ impl Capabilities {
             gpu_convolution_filter_execution: true,
             gpu_offset_filter_execution: true,
             gpu_gaussian_filter_execution: true,
+            gpu_diffuse_lighting_filter_execution: true,
             gpu_morphology_filter_execution: true,
             gpu_displacement_filter_execution: true,
             gpu_native_drop_shadow_filter_execution: true,
@@ -520,6 +521,9 @@ impl Capabilities {
             PrimitiveOperation::GpuGaussianFilterExecution => {
                 self.filters.supports_gpu_gaussian_filter_execution()
             }
+            PrimitiveOperation::GpuDiffuseLightingFilterExecution => self
+                .filters
+                .supports_gpu_diffuse_lighting_filter_execution(),
             PrimitiveOperation::GpuDisplacementFilterExecution => {
                 self.filters.supports_gpu_displacement_filter_execution()
             }
@@ -1007,6 +1011,7 @@ pub struct FilterCapabilities {
     gpu_convolution_filter_execution: bool,
     gpu_offset_filter_execution: bool,
     gpu_gaussian_filter_execution: bool,
+    gpu_diffuse_lighting_filter_execution: bool,
     gpu_morphology_filter_execution: bool,
     gpu_displacement_filter_execution: bool,
     gpu_native_drop_shadow_filter_execution: bool,
@@ -1070,6 +1075,15 @@ impl FilterCapabilities {
     #[must_use]
     pub const fn supports_gpu_gaussian_filter_execution(self) -> bool {
         self.gpu_gaussian_filter_execution
+    }
+
+    /// Returns whether native diffuse lighting over finite scene alpha executes on the GPU.
+    ///
+    /// Includes distant, point and spot lights. Runtime working texture
+    /// precision follows the selected device's effect precision capabilities.
+    #[must_use]
+    pub const fn supports_gpu_diffuse_lighting_filter_execution(self) -> bool {
+        self.gpu_diffuse_lighting_filter_execution
     }
 
     /// Returns whether admitted native straight-byte map displacement executes on GPU.

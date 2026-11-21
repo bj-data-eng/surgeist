@@ -101,6 +101,7 @@ impl<K: Eq + Hash, V> CacheIndexSlot<'_, K, V> {
 }
 
 mod displacement;
+mod lighting;
 pub(crate) use displacement::ProvisionalDisplacementPassObjects;
 
 use super::key::{

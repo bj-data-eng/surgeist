@@ -947,6 +947,7 @@ pub(crate) enum GraphLoweringPassKind {
     Gaussian(GaussianPassFacts),
     Morphology(MorphologyPassFacts),
     Displacement(DisplacementPassFacts),
+    Lighting(super::LightingPassFacts),
     NativeShadowMerge(NativeShadowPassFacts),
     BlurHorizontal(Option<GraphLoweringBlur>),
     BlurVertical(Option<GraphLoweringBlur>),
@@ -968,6 +969,7 @@ pub(crate) enum GraphLoweringReadRole {
     MorphologySource,
     MorphologyPreviousQuery,
     DisplacementSource,
+    LightingSource,
     NativeShadowOriginal,
     NativeShadowAlpha,
     BlurredSourceAlpha,
@@ -1271,6 +1273,25 @@ fn graph_lowering_pass_kind(
                 .filter(|entry| entry.pass == pass.id && entry.facts.stage() == stage)
                 .ok_or(GraphValidationError::InvalidPassArity)?;
             Ok(GraphLoweringPassKind::Displacement(entry.facts.clone()))
+        }
+        SemanticPassIntent::Lighting(stage) => {
+            let mut low = 0;
+            let mut high = graph.lighting.len();
+            while low < high {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let middle = low + (high - low) / 2;
+                if graph.lighting[middle].pass.index.0 < pass.id.index.0 {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+            }
+            let entry = graph
+                .lighting
+                .get(low)
+                .filter(|entry| entry.pass == pass.id && entry.facts.stage() == stage)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            Ok(GraphLoweringPassKind::Lighting(entry.facts.clone()))
         }
         SemanticPassIntent::NativeShadowMerge => {
             let mut low = 0;
@@ -1972,6 +1993,27 @@ fn graph_lowering_read_bindings(
                     GraphLoweringReadRole::DisplacementSource,
                     GraphLoweringSamplingFilter::Nearest,
                     GraphLoweringSamplingEdge::TransparentBlack,
+                )?);
+            }
+            reads
+        }
+        GraphLoweringPassKind::Lighting(facts) => {
+            let count = usize::from(facts.reads_source());
+            if pass.reads.len() != count {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let mut reads = account.temporary(count)?;
+            if facts.reads_source() {
+                let edge = if facts.stage() == super::LightingStage::ResampleBump {
+                    GraphLoweringSamplingEdge::TransparentBlack
+                } else {
+                    GraphLoweringSamplingEdge::ClampToExtent
+                };
+                reads.append_slot()?.write(make(
+                    0,
+                    GraphLoweringReadRole::LightingSource,
+                    GraphLoweringSamplingFilter::Nearest,
+                    edge,
                 )?);
             }
             reads

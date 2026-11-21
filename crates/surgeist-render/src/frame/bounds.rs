@@ -565,6 +565,7 @@ impl SemanticSourceContribution {
                         crate::command::NormalizedForegroundEffect::Gaussian(_)
                             | crate::command::NormalizedForegroundEffect::Morphology(_)
                             | crate::command::NormalizedForegroundEffect::Displacement(_)
+                            | crate::command::NormalizedForegroundEffect::Lighting(_)
                             | crate::command::NormalizedForegroundEffect::NativeShadow(_)
                     )
                 ))
@@ -579,6 +580,17 @@ impl SemanticSourceContribution {
                     current_parent,
                 },
             ));
+        }
+        if let Some(crate::command::NormalizedForegroundEffect::Lighting(foreground)) =
+            &layer.foreground_filters
+            && (!layer.composition.transparent_source_preserves_parent()
+                || (layer.opacity > 0.0
+                    && !layer
+                        .mask
+                        .as_ref()
+                        .is_some_and(RenderLayerMask::annihilates_source)))
+        {
+            super::lighting_grid::qualify_canvas_extent(foreground.source, account)?;
         }
         let gaussian_source_unreachable = layer.foreground_filters.as_ref().is_some_and(|effect| {
             super::bounded_filter_source(effect).is_some_and(|source| {
@@ -849,6 +861,14 @@ impl SemanticSourceContribution {
                         "displacement primitive result",
                     )?);
             }
+            Some(crate::command::NormalizedForegroundEffect::Lighting(foreground)) => {
+                let domains = foreground.source;
+                source_bounds =
+                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                        super::convolution::intersection(domains.result(), domains.filter()),
+                        "lighting primitive result",
+                    )?);
+            }
             Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) => {
                 // O is the operation footprint, including transparent Copy.
                 source_bounds =
@@ -959,7 +979,11 @@ impl SemanticSourceContribution {
                 && layer.composition.transparent_source_preserves_parent()
                 && !transparent_wrapper);
         let composition = layer.composition;
-        let partially_covered = layer.clip.is_some();
+        let partially_covered = layer.clip.is_some()
+            || matches!(
+                layer.foreground_filters,
+                Some(crate::command::NormalizedForegroundEffect::Lighting(_))
+            );
         let command = if no_operation {
             None
         } else {

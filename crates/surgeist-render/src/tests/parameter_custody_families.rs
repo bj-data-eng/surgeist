@@ -368,6 +368,23 @@ fn mixed_fixture() -> Fixture {
     fixture
 }
 
+fn lighting_fixture() -> Fixture {
+    use crate::lighting::DiffuseLightingInput;
+    let full = bounds(2, 1);
+    let scene = super::lighting::diffuse(
+        super::native_shadow::source_scene(image(2, 1, vec![255, 0, 0, 0, 0, 0, 255, 255]), full),
+        FilterDomains::try_new(full, full, full).unwrap(),
+        DiffuseLightingInput::new(),
+        super::lighting::VERTICAL,
+        FilterColorSpace::Srgb,
+        Layer::new(),
+    );
+    let mut fixture = Fixture::new("diffuse lighting", scene, vec![Family::Lighting]);
+    // Both ends of this two-cell bump use slope 2, giving z = 1/sqrt(5).
+    fixture.rectangle(2, 1, [114, 114, 114, 255]);
+    fixture
+}
+
 fn wait<F: Future>(mut future: Pin<&mut F>, device: &wgpu::Device, reached: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -439,6 +456,7 @@ fn assert_descriptors(fixture: &Fixture, snapshots: &[ParameterSnapshotForTest])
                 wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             ),
             Family::Gaussian
+            | Family::Lighting
             | Family::Morphology
             | Family::NativeShadow
             | Family::Offset
@@ -477,6 +495,15 @@ fn assert_descriptors(fixture: &Fixture, snapshots: &[ParameterSnapshotForTest])
         if fixture.core_only {
             assert!(matches!(buffer.family, Family::Spatial | Family::Composite));
         }
+    }
+    if fixture.required.contains(&Family::Lighting) {
+        assert_eq!(
+            originals
+                .iter()
+                .filter(|b| b.family == Family::Lighting)
+                .count(),
+            3
+        );
     }
     originals.sort_unstable_by_key(|b| b.native_identity);
     assert!(
@@ -656,6 +683,7 @@ fn public_native_prepared_families_retain_exact_parameter_descriptors_until_term
             gaussian_fixture(),
             morphology_fixture(),
             native_shadow_fixture(),
+            lighting_fixture(),
             offset_fixture(),
         ] {
             exercise(fixture, format);

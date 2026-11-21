@@ -842,6 +842,7 @@ impl Account {
                 | RenderAttemptKind::Convolution
                 | RenderAttemptKind::Offset
                 | RenderAttemptKind::Gaussian
+                | RenderAttemptKind::Lighting
                 | RenderAttemptKind::Morphology
                 | RenderAttemptKind::DropShadow
         ) {
@@ -879,6 +880,7 @@ impl Account {
                 | RenderAttemptKind::Convolution
                 | RenderAttemptKind::Offset
                 | RenderAttemptKind::Gaussian
+                | RenderAttemptKind::Lighting
                 | RenderAttemptKind::Morphology
                 | RenderAttemptKind::DropShadow
         ) {
@@ -953,6 +955,7 @@ impl Account {
             && self.kind != RenderAttemptKind::Convolution
             && self.kind != RenderAttemptKind::Offset
             && self.kind != RenderAttemptKind::Gaussian
+            && self.kind != RenderAttemptKind::Lighting
             && self.kind != RenderAttemptKind::Morphology
             && self.kind != RenderAttemptKind::DropShadow
             && refusal.phase != RenderPhase::Attempt

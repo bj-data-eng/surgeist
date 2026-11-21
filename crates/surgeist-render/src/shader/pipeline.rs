@@ -18,8 +18,8 @@ use super::{
         BlurAxis, BlurInput, BlurPassDescription, ColorFilterPassDescription,
         CompositePassDescription, ConvolutionPassDescription, CopyBackdropPassDescription,
         CorePassDescription, CorePassProgram, DisplacementPassDescription,
-        DropShadowColorizePassDescription, GaussianPassDescription, MorphologyPassDescription,
-        NativeShadowPassDescription, OffsetPassDescription,
+        DropShadowColorizePassDescription, GaussianPassDescription, LightingPassDescription,
+        MorphologyPassDescription, NativeShadowPassDescription, OffsetPassDescription,
     },
 };
 
@@ -44,6 +44,10 @@ pub(super) const NATIVE_SHADOW_WGSL: &str = concat!(
     include_str!("../shaders/native_filter_color.wgsl"),
     include_str!("../shaders/native_periodic.wgsl"),
     include_str!("../shaders/native_shadow.wgsl"),
+);
+const LIGHTING_WGSL: &str = concat!(
+    include_str!("../shaders/native_filter_color.wgsl"),
+    include_str!("../shaders/lighting.wgsl"),
 );
 const OFFSET_WGSL: &str = concat!(
     include_str!("../shaders/cubic.wgsl"),
@@ -932,6 +936,114 @@ pub(super) fn create_offset_render_pipeline(
             fragment: Some(wgpu::FragmentState {
                 module: shader,
                 entry_point: Some("fragment_main"),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
+pub(super) fn create_lighting_bind_group_layout(
+    generation: &Generation,
+    cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: LightingPassDescription,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    let input_and_uniform = [
+        wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(super::LightingParameterBytes::SIZE as u64),
+            },
+            count: None,
+        },
+    ];
+    let entries = if description.stage.reads_source() {
+        &input_and_uniform[..]
+    } else {
+        &input_and_uniform[1..]
+    };
+    super::key::shader_work(
+        cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist lighting bindings"),
+            entries,
+        })
+    })
+}
+
+pub(super) fn create_lighting_shader_module(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist lighting shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(LIGHTING_WGSL)),
+        })
+    })
+}
+
+pub(super) fn create_lighting_render_pipeline(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: LightingPassDescription,
+    layout: &wgpu::BindGroupLayout,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Surgeist lighting pipeline layout"),
+            bind_group_layouts: &[Some(layout)],
+            immediate_size: 0,
+        })
+    })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(description.target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist lighting pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vertex_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some(description.stage.fragment_entry()),
                 targets: &[Some(target)],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
@@ -2668,5 +2780,115 @@ mod native_shadow_shader_tests {
             }
         }
         assert!(pollster::block_on(validation.pop()).is_none());
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod lighting_shader_tests {
+    use super::*;
+
+    #[test]
+    fn diffuse_lighting_shader_reaches_only_each_stages_exact_bindings() {
+        let module = wgpu::naga::front::wgsl::parse_str(LIGHTING_WGSL)
+            .unwrap_or_else(|error| panic!("{}", error.emit_to_string(LIGHTING_WGSL)));
+        let info = wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap();
+        assert_eq!(
+            module
+                .global_variables
+                .iter()
+                .filter(|(_, variable)| variable.binding.is_some())
+                .count(),
+            2,
+        );
+        let (uniform, variable) = module
+            .global_variables
+            .iter()
+            .find(|(_, variable)| {
+                variable
+                    .binding
+                    .as_ref()
+                    .is_some_and(|binding| binding.group == 0 && binding.binding == 1)
+            })
+            .unwrap();
+        assert_eq!(variable.space, wgpu::naga::AddressSpace::Uniform);
+        let wgpu::naga::TypeInner::Struct { span, members } = &module.types[variable.ty].inner
+        else {
+            panic!("lighting parameters require the fixed uniform schema");
+        };
+        assert_eq!(*span, 256);
+        assert_eq!(
+            members
+                .iter()
+                .map(|member| member.offset)
+                .collect::<Vec<_>>(),
+            [
+                0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 184, 188, 192
+            ],
+        );
+        let (source, variable) = module
+            .global_variables
+            .iter()
+            .find(|(_, variable)| {
+                variable
+                    .binding
+                    .as_ref()
+                    .is_some_and(|binding| binding.group == 0 && binding.binding == 0)
+            })
+            .unwrap();
+        assert!(matches!(
+            module.types[variable.ty].inner,
+            wgpu::naga::TypeInner::Image {
+                dim: wgpu::naga::ImageDimension::D2,
+                arrayed: false,
+                class: wgpu::naga::ImageClass::Sampled {
+                    kind: wgpu::naga::ScalarKind::Float,
+                    multi: false
+                },
+            }
+        ));
+        assert_eq!(module.entry_points.len(), 5);
+        for (name, stage, uses_uniform, uses_source) in [
+            ("vertex_main", wgpu::naga::ShaderStage::Vertex, false, false),
+            (
+                "resample_bump_main",
+                wgpu::naga::ShaderStage::Fragment,
+                true,
+                true,
+            ),
+            ("shade_main", wgpu::naga::ShaderStage::Fragment, true, true),
+            (
+                "zero_bump_main",
+                wgpu::naga::ShaderStage::Fragment,
+                true,
+                false,
+            ),
+            (
+                "resolve_main",
+                wgpu::naga::ShaderStage::Fragment,
+                true,
+                true,
+            ),
+        ] {
+            let index = module
+                .entry_points
+                .iter()
+                .position(|entry| entry.name == name && entry.stage == stage)
+                .unwrap_or_else(|| panic!("missing lighting entry point {name}"));
+            assert_eq!(
+                !info.get_entry_point(index)[uniform].is_empty(),
+                uses_uniform,
+                "{name}"
+            );
+            assert_eq!(
+                !info.get_entry_point(index)[source].is_empty(),
+                uses_source,
+                "{name}"
+            );
+        }
     }
 }
