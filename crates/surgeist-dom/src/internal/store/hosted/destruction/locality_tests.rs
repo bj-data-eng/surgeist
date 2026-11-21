@@ -1442,6 +1442,32 @@ fn window_named_value_selects_the_first_child_before_origin_and_preserves_its_na
         DomWindowNamedValue::Unsupported
     ));
     drive_native_removal(&mut f, isolated);
+    let retiring = f.dom.snapshot();
+    let navigable = retiring.hosted_navigable(opaque.navigable).unwrap();
+    assert!(navigable.is_retiring());
+    assert!(!navigable.is_retired());
+    assert_eq!(navigable.active_document(), Some(opaque.document));
+    assert_eq!(retiring.global_document(opaque.global), Ok(opaque.document));
+    let resolve_retiring = |name| {
+        f.dom.window_named_value(
+            opaque.global,
+            name,
+            1024,
+            100_000,
+            || Ok::<_, DomHostedError>(()),
+            &cancel(),
+        )
+    };
+    assert!(matches!(
+        resolve_retiring(target.clone()),
+        Err(DomHostedError::StaleIdentity)
+    ));
+    let empty = resolve_retiring("".into());
+    assert!(
+        matches!(&empty, Err(DomHostedError::StaleIdentity)),
+        "retiring Window with an empty name: {empty:?}",
+    );
+
     let mut edit = DomBatch::new();
     edit.set_attribute(contributor, "id", target.clone());
     f.dom.apply(edit, &cancel()).unwrap();
