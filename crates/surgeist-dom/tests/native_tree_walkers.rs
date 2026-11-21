@@ -472,7 +472,7 @@ fn active_source_owns_search_work_and_suspended_operations_cannot_escape_it() {
     let collection = dom
         .get_elements_by_tag_name(document, "*".into(), 128, &cancel)
         .unwrap();
-    let collection_limits = surgeist_dom::tree::DomTagNameCollectionLimits::new(100_000, 16, 1024);
+    let collection_limits = surgeist_dom::tree::DomHtmlCollectionLimits::new(100_000, 16, 1024);
     let limits = DomSourceLimits::new(32_000_000, 1_000_000, 1_000_000, 64, 4096, 4096, 4);
     let executor = dom.bind_source_event_executor(&cancel).unwrap();
     let event = {
@@ -512,7 +512,7 @@ fn active_source_owns_search_work_and_suspended_operations_cannot_escape_it() {
     let before = dom.pending_source_edit().unwrap().spent_work();
     {
         let read = dom
-            .read_tag_name_collection(
+            .read_html_collection(
                 &collection,
                 collection_limits,
                 || {
@@ -538,7 +538,7 @@ fn active_source_owns_search_work_and_suspended_operations_cannot_escape_it() {
         .unwrap();
     {
         let read = dom
-            .read_tag_name_collection(
+            .read_html_collection(
                 &collection,
                 collection_limits,
                 || Ok::<_, DomError>(()),
@@ -550,7 +550,7 @@ fn active_source_owns_search_work_and_suspended_operations_cannot_escape_it() {
         let replacement_scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
         assert_eq!(read.item(0), Err(DomError::InvalidSourceEvent));
         let current = dom
-            .read_tag_name_collection(
+            .read_html_collection(
                 &collection,
                 collection_limits,
                 || Ok::<_, DomError>(()),

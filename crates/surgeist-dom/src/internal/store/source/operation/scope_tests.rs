@@ -251,6 +251,7 @@ fn collection_names_keep_output_custody_and_reject_a_revoked_executor() {
     let mut edit = DomBatch::new();
     edit.set_attribute(root, "id", "first");
     let dialog = edit.create_element_ns(document, Namespace::html(), "dialog");
+    edit.set_attribute(&dialog, "id", "first");
     edit.insert_before(&dialog, root, None);
     let dialog = dom
         .apply(edit, &cancel)
@@ -276,13 +277,38 @@ fn collection_names_keep_output_custody_and_reject_a_revoked_executor() {
     let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
     let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
     let read = dom
-        .read_tag_name_collection(
+        .read_html_collection(
             &collection,
-            crate::tree::DomTagNameCollectionLimits::new(100_000, 8, 64),
+            crate::tree::DomHtmlCollectionLimits::new(100_000, 8, 64),
             || Ok::<_, DomError>(()),
             &cancel,
         )
         .unwrap();
+
+    let resolve_window = || {
+        dom.window_named_elements(
+            document,
+            "first".into(),
+            64,
+            100_000,
+            || Ok::<_, DomError>(()),
+            &cancel,
+        )
+    };
+    let window = match resolve_window().unwrap() {
+        crate::tree::DomWindowNamedElements::Collection(value) => Some(value),
+        _ => None,
+    }
+    .expect("two actual Window candidate Elements");
+    let window = dom
+        .read_html_collection(
+            &window,
+            crate::tree::DomHtmlCollectionLimits::new(100_000, 8, 64),
+            || Ok::<_, DomError>(()),
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(window.length().unwrap(), 2);
 
     let ledger = dom.custody_registry.ledger();
     let baseline = ledger.total();
@@ -309,6 +335,11 @@ fn collection_names_keep_output_custody_and_reject_a_revoked_executor() {
 
     drop(executor);
     assert_eq!(read.item(0), Err(DomError::InvalidSourceEvent));
+    assert_eq!(window.item(0), Err(DomError::InvalidSourceEvent));
+    assert!(matches!(
+        resolve_window(),
+        Err(DomError::InvalidSourceEvent)
+    ));
     drop(scope);
 }
 

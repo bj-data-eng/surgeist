@@ -72,6 +72,7 @@ pub use hosted::style_root_withdrawal::{
     DomHostedStyleRootWithdrawalPublished,
 };
 pub use inline_style::feedback::DomInlineStyleOperation;
+mod html_collection;
 mod input;
 mod input_processing;
 mod installation;
@@ -84,7 +85,6 @@ mod navigable;
 mod node_iterator;
 mod node_retirement;
 mod read_source;
-mod tag_name_collection;
 mod tree_walker;
 pub use node_iterator::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};
 pub use node_retirement::{
@@ -129,27 +129,27 @@ mod view_transition;
 use crate::internal::view_transition::*;
 pub(crate) use bank::owned::{EmptyPath, OwnedBank};
 pub(crate) use bank::{Bank, Iter as BankIter};
+pub use html_collection::{
+    DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
+    DomWindowNamedElements,
+};
 pub(crate) use shared::SharedVec;
 pub(crate) use source::AllocationIds as KeyAliases;
 pub(crate) use source::formation::{SourceRetention, SourceStorage, SourceWorkIdentity};
-pub use tag_name_collection::{
-    DomTagNameCollection, DomTagNameCollectionLimits, DomTagNameCollectionNames,
-    DomTagNameCollectionRead,
-};
 use view_transition::DraftTransitions;
 pub(crate) use view_transition::TransitionMembership;
 
 /// Configured capacity whose admission would be exceeded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomResource {
-    /// The retained UTF-16 block of a Document tag-name query.
-    TagNameCollectionQueryUnits,
+    /// The retained UTF-16 backing of a live collection query.
+    HtmlCollectionQueryUnits,
     /// Cumulative work for a qualified collection read.
-    TagNameCollectionWork,
+    HtmlCollectionWork,
     /// Ordered supported-name slots returned by the collection.
-    TagNameCollectionNames,
+    HtmlCollectionNames,
     /// UTF-16 backing of the supported names returned by the collection.
-    TagNameCollectionNameUnits,
+    HtmlCollectionNameUnits,
     /// Outstanding occurrences owned by the stable-state scheduler.
     MediaRemovalContinuations,
     /// Work admitted for one stable-state membership check and transition.
@@ -732,10 +732,10 @@ impl std::fmt::Display for DomError {
 /// The configured capacity a `DomResource` names, as a noun phrase for a message.
 const fn resource_text(resource: DomResource) -> &'static str {
     match resource {
-        DomResource::TagNameCollectionQueryUnits => "tag-name collection query code units",
-        DomResource::TagNameCollectionWork => "tag-name collection read work",
-        DomResource::TagNameCollectionNames => "tag-name collection supported names",
-        DomResource::TagNameCollectionNameUnits => "tag-name collection supported name code units",
+        DomResource::HtmlCollectionQueryUnits => "HTML collection query code units",
+        DomResource::HtmlCollectionWork => "HTML collection read work",
+        DomResource::HtmlCollectionNames => "HTML collection supported names",
+        DomResource::HtmlCollectionNameUnits => "HTML collection supported name code units",
         DomResource::MediaRemovalContinuations => "pending media removal continuations",
         DomResource::MediaRemovalWork => "media removal stable-state work",
         DomResource::ParsedAssociationBytes => "retained parsed association bytes",

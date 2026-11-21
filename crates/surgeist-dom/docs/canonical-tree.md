@@ -160,18 +160,28 @@ changes these contextual getters and subsequent ordinary writes through actual
 node-document state; it does not rewrite stored names/attributes. Captured import
 also preserves raw QName/attribute fields while target context controls display.
 
-## Live Document tag-name collections
+## Live HTML collections
 
 `Dom::get_elements_by_tag_name` retains the exact Document and UTF-16
 qualified-name query. It admits the entire query backing, including when the
 query is a range of a larger text block. Opening a current read revalidates the
-Document and borrows the canonical tree. Reopen the read after an edit to
-observe the same collection against that edit's publication.
+Document and borrows the canonical tree. Use `Dom::read_html_collection` again
+after an edit to observe the same collection against that edit's publication.
 
 The wildcard selects ordinary descendant elements. An HTML Document folds
 the query's ASCII spelling when it compares an element in the HTML namespace.
 Foreign elements and XML Documents use the exact qualified name. The
 collection follows ordinary child edges in tree order.
+
+
+`Dom::window_named_elements` finds the current ordinary-tree Element candidates
+for an exact Window property name. A nonempty null-namespace `id` can match on
+any Element. A nonempty null-namespace `name` can match on HTML Embed, Form,
+Img, and Object. Each matching Element contributes once. The lookup returns
+absence, the identity of a single Element, or a live collection after reaching
+a second match. The collection retains the original Document and exact UTF-16
+name and follows later changes to its membership. Ordinary collection name
+methods apply to the Elements selected by this filter.
 
 Length and item read current membership. Named lookup selects the first
 matching ID or eligible HTML name, and supported-name output retains the
@@ -181,7 +191,7 @@ qualifying callback scope closes or its authority retires. Supported-name
 results retain their vector and text occurrences through a separate result
 limit. Source custody remains with each result until it is dropped.
 
-[Pinned qualified-name filter](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L5555-L5584) · [Pinned HTMLCollection](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L3904-L3958).
+[Pinned qualified-name filter](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L5008-L5032) · [Pinned HTMLCollection](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L3481-L3544) · [Pinned Window named objects](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L98165-L98229).
 
 ## Owned snapshots
 

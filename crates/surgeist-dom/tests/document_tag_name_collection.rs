@@ -7,14 +7,14 @@ use surgeist_dom::{
     identity::DocumentId,
     limits::{DomLimits, DomNameLimits, DomResource},
     shadow::DomShadowRootInit,
-    tree::{DomTagNameCollection, DomTagNameCollectionLimits, DomTagNameCollectionRead},
+    tree::{DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionRead},
 };
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace, TextBlock},
 };
 
-const COLLECTION: DomTagNameCollectionLimits = DomTagNameCollectionLimits::new(200_000, 32, 8192);
+const COLLECTION: DomHtmlCollectionLimits = DomHtmlCollectionLimits::new(200_000, 32, 8192);
 
 fn dom() -> Dom {
     Dom::new(
@@ -35,14 +35,14 @@ fn dom() -> Dom {
 
 fn read<'a>(
     dom: &'a Dom,
-    collection: &'a DomTagNameCollection,
+    collection: &'a DomHtmlCollection,
     cancel: &'a AtomicBool,
-) -> DomTagNameCollectionRead<'a, impl Fn() -> Result<(), DomError>> {
-    dom.read_tag_name_collection(collection, COLLECTION, || Ok(()), cancel)
+) -> DomHtmlCollectionRead<'a, impl Fn() -> Result<(), DomError>> {
+    dom.read_html_collection(collection, COLLECTION, || Ok(()), cancel)
         .unwrap()
 }
 
-fn query(dom: &Dom, document: DocumentId, tag: &str) -> DomTagNameCollection {
+fn query(dom: &Dom, document: DocumentId, tag: &str) -> DomHtmlCollection {
     dom.get_elements_by_tag_name(document, tag.into(), 1024, &AtomicBool::new(false))
         .unwrap()
 }
@@ -212,7 +212,7 @@ fn query_and_read_limits_preserve_the_collection_and_return_the_first_refusal() 
     assert!(matches!(
         dom.get_elements_by_tag_name(document, short, 1, &cancel),
         Err(DomError::ResourceLimit {
-            resource: DomResource::TagNameCollectionQueryUnits,
+            resource: DomResource::HtmlCollectionQueryUnits,
             limit: 1
         }),
     ));
@@ -220,12 +220,12 @@ fn query_and_read_limits_preserve_the_collection_and_return_the_first_refusal() 
     assert!(matches!(
         dom.get_elements_by_tag_name(document, "item".into(), 3, &cancel),
         Err(DomError::ResourceLimit {
-            resource: DomResource::TagNameCollectionQueryUnits,
+            resource: DomResource::HtmlCollectionQueryUnits,
             limit: 3
         }),
     ));
     assert!(matches!(
-        dom.read_tag_name_collection(
+        dom.read_html_collection(
             &collection,
             COLLECTION,
             || Ok::<_, DomError>(()),
@@ -234,7 +234,7 @@ fn query_and_read_limits_preserve_the_collection_and_return_the_first_refusal() 
         Err(DomError::Cancelled),
     ));
     assert!(matches!(
-        self::dom().read_tag_name_collection(
+        self::dom().read_html_collection(
             &collection,
             COLLECTION,
             || Ok::<_, DomError>(()),
@@ -244,21 +244,21 @@ fn query_and_read_limits_preserve_the_collection_and_return_the_first_refusal() 
     ));
     assert_eq!(
         DomError::WorkLimit {
-            resource: DomResource::TagNameCollectionWork,
+            resource: DomResource::HtmlCollectionWork,
             limit: 0
         },
-        dom.read_tag_name_collection(
+        dom.read_html_collection(
             &collection,
-            DomTagNameCollectionLimits::new(0, 32, 64),
+            DomHtmlCollectionLimits::new(0, 32, 64),
             || Ok::<_, DomError>(()),
             &cancel
         )
         .unwrap_err()
     );
     let limited = dom
-        .read_tag_name_collection(
+        .read_html_collection(
             &collection,
-            DomTagNameCollectionLimits::new(10_000, 0, 64),
+            DomHtmlCollectionLimits::new(10_000, 0, 64),
             || Ok::<_, DomError>(()),
             &cancel,
         )
@@ -266,7 +266,7 @@ fn query_and_read_limits_preserve_the_collection_and_return_the_first_refusal() 
     assert!(matches!(
         limited.supported_names(),
         Err(DomError::ResourceLimit {
-            resource: DomResource::TagNameCollectionNames,
+            resource: DomResource::HtmlCollectionNames,
             limit: 0
         }),
     ));
@@ -295,7 +295,7 @@ fn item_does_not_inspect_the_rest_of_the_collection_and_retirement_keeps_its_ide
     let spent = Cell::new(0);
     {
         let read = dom
-            .read_tag_name_collection(
+            .read_html_collection(
                 &collection,
                 COLLECTION,
                 || {
@@ -308,20 +308,20 @@ fn item_does_not_inspect_the_rest_of_the_collection_and_retirement_keeps_its_ide
         assert_eq!(read.item(0).unwrap(), Some(root));
     }
     let first_item_work = spent.get();
-    let limited = DomTagNameCollectionLimits::new(first_item_work, 32, 8192);
+    let limited = DomHtmlCollectionLimits::new(first_item_work, 32, 8192);
     assert_eq!(
-        dom.read_tag_name_collection(&collection, limited, || Ok::<_, DomError>(()), &cancel)
+        dom.read_html_collection(&collection, limited, || Ok::<_, DomError>(()), &cancel)
             .unwrap()
             .item(0)
             .unwrap(),
         Some(root)
     );
     assert_eq!(
-        dom.read_tag_name_collection(&collection, limited, || Ok::<_, DomError>(()), &cancel)
+        dom.read_html_collection(&collection, limited, || Ok::<_, DomError>(()), &cancel)
             .unwrap()
             .length(),
         Err(DomError::WorkLimit {
-            resource: DomResource::TagNameCollectionWork,
+            resource: DomResource::HtmlCollectionWork,
             limit: first_item_work,
         })
     );

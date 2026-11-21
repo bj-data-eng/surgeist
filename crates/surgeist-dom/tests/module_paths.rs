@@ -219,12 +219,14 @@ use surgeist_dom::task::{
 };
 use surgeist_dom::tree::{
     DomAttr, DomAttribute, DomAttributeAttachment, DomDocument, DomDocumentPosition,
-    DomDocumentType, DomElement, DomNameAtom, DomNamedNodeMap, DomNamespaceUri, DomNode,
-    DomNodeFilterDecision, DomNodeIterator, DomNodeIteratorFilter, DomNodeIteratorFilterRequest,
-    DomNodeIteratorId, DomNodeIteratorMatchRequest, DomNodeIteratorProgress, DomNodeKind,
-    DomProcessingInstruction, DomQualifiedName, DomSiblingDirection, DomTagName, DomTreeOrder,
-    DomTreeScope, DomTreeWalker, DomTreeWalkerDirection, DomTreeWalkerFilter,
-    DomTreeWalkerFilterRequest, DomTreeWalkerId, DomTreeWalkerMatchRequest, DomTreeWalkerProgress,
+    DomDocumentType, DomElement, DomHtmlCollection, DomHtmlCollectionLimits,
+    DomHtmlCollectionNames, DomHtmlCollectionRead, DomNameAtom, DomNamedNodeMap, DomNamespaceUri,
+    DomNode, DomNodeFilterDecision, DomNodeIterator, DomNodeIteratorFilter,
+    DomNodeIteratorFilterRequest, DomNodeIteratorId, DomNodeIteratorMatchRequest,
+    DomNodeIteratorProgress, DomNodeKind, DomProcessingInstruction, DomQualifiedName,
+    DomSiblingDirection, DomTagName, DomTreeOrder, DomTreeScope, DomTreeWalker,
+    DomTreeWalkerDirection, DomTreeWalkerFilter, DomTreeWalkerFilterRequest, DomTreeWalkerId,
+    DomTreeWalkerMatchRequest, DomTreeWalkerProgress, DomWindowNamedElements,
 };
 use surgeist_dom::url::{
     DomBase, DomBaseFactsError, DomBaseResponse, DomEncodingUrlFactsError, DomFrozenBase,
