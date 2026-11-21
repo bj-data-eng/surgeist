@@ -122,6 +122,29 @@ pub(super) fn attached_form_associated_custom_elements_deliver_native_reactions(
         &mut host,
         &permit,
         r#"(() => {
+        const name = 'x-detached-form-upgrade';
+        const owner = document.createElement('form');
+        const candidate = owner.appendChild(document.createElement(name));
+        const called = [];
+        class DetachedFace extends HTMLElement {
+            static formAssociated = true;
+            formAssociatedCallback(form) { called.push([this, form]); }
+        }
+        customElements.define(name, DetachedFace);
+        if (called.length !== 0 || candidate instanceof DetachedFace) {
+            return 'detached candidate waits for its explicit upgrade';
+        }
+        customElements.upgrade(owner);
+        return candidate instanceof DetachedFace && !candidate.isConnected && called.length === 1 &&
+            called[0][0] === candidate && called[0][1] === owner ? 'ok' :
+            'detached FACE upgrade delivers the Form to its otherwise empty callback queue';
+    })()"#,
+    );
+
+    observe(
+        &mut host,
+        &permit,
+        r#"(() => {
         const {form, alternative, fieldset, original, calls, same, armReentry} = faceProbe;
         const observe = (action, expected) => {
             calls.length = 0;

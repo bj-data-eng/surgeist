@@ -363,9 +363,9 @@ impl Inbox {
         Ok(None)
     }
 
-    fn requires_live_receiver(
+    fn requires_live_node(
         &self,
-        receiver: NodeId,
+        node: NodeId,
         mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<bool, DomError> {
         for slot in self.lock().iter() {
@@ -377,7 +377,13 @@ impl Inbox {
                 SlotState::Ready(batch) if batch.routed_pending != 0 => {
                     for fact in &batch.facts {
                         step()?;
-                        if !fact.delivered && fact.element == receiver {
+                        if !fact.delivered
+                            && (fact.element == node
+                                || matches!(
+                                    fact.kind,
+                                    ReactionKind::FormAssociated { form: Some(form) } if form == node
+                                ))
+                        {
                             return Ok(true);
                         }
                     }
@@ -556,12 +562,12 @@ impl Publication {
 }
 
 impl Draft {
-    pub(in crate::internal::store) fn require_reaction_receiver_retirement(
+    pub(in crate::internal::store) fn require_reaction_settled_for_retirement(
         &self,
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let Some(receiver) = self.published_id(key) else {
+        let Some(node) = self.published_id(key) else {
             return Ok(());
         };
         let Some(registration) = self
@@ -575,11 +581,13 @@ impl Draft {
             return Ok(());
         };
         if self.node(key)?.element().is_some_and(|element| {
-            element.language().custom_element_state()
-                == surgeist_html::elements::native::HtmlCustomElementState::Custom
-        }) && inbox.requires_live_receiver(receiver, || self.source_step(cancel))?
+            let element = element.language();
+            element.form_state().is_some()
+                || element.custom_element_state()
+                    == surgeist_html::elements::native::HtmlCustomElementState::Custom
+        }) && inbox.requires_live_node(node, || self.source_step(cancel))?
         {
-            return Err(DomError::CustomElementReactionPending(receiver));
+            return Err(DomError::CustomElementReactionPending(node));
         }
         Ok(())
     }

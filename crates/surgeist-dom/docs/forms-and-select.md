@@ -53,7 +53,9 @@ canonical Form owner relation and listed participant indexes. Their effective
 including changes to the first HTML Legend. A completed Source segment carries
 actual owner and disabled transitions in the order they occurred. Runtime
 delivers those transitions through the form callbacks of hosted Global
-definitions.
+definitions. A deferred reaction keeps its exact Form argument available
+until delivery takes custody of the argument or the original queue is
+explicitly discarded.
 
 Initial capture and Slot supplementation publish established-current native
 associations, including the Form owner of a qualified custom control. Positive

@@ -887,7 +887,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "CustomElementReactionPending",
             DomError::CustomElementReactionPending(node()),
-            "a routed custom element reaction must settle before the receiver can be retired",
+            "a routed custom element reaction must settle before a node needed for delivery can be retired",
         ),
         (
             "IndexSize",
