@@ -46,6 +46,7 @@ mod template_content;
 mod title_text;
 mod toggle_attribute;
 mod tree_mutations;
+mod tree_walker;
 mod trusted_attribute;
 mod whole_text;
 
@@ -394,6 +395,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     node_iterator::filter_dispatch_uses_its_associated_realm();
     super::guest::tests::node_iterator_admission::traversal_refusal_preserves_the_native_pointer();
     super::guest::tests::node_iterator_admission::an_unreachable_filter_cycle_releases_its_native_cursor();
+    tree_walker::the_factory_exposes_a_live_cursor_and_standard_prototype();
+    tree_walker::filter_calls_preserve_live_edits_identity_and_abrupt_completion();
+    tree_walker::other_unsigned_short_results_follow_each_navigation_algorithm();
     normalize::normalize_keeps_native_text_and_range_identity();
     normalize::normalize_preserves_typed_native_refusal();
     split_text::split_text_keeps_native_identity_and_range_boundaries();
