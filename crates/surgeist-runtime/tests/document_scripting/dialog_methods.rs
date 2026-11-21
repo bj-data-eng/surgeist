@@ -33,7 +33,7 @@ pub(super) fn attached_dialog_methods_use_original_native_events_and_tasks() {
             hooks(&hook()),
             &mut registry,
             DocumentGuestEventLimits {
-                storage_bytes: 512 * 1024,
+                storage_bytes: 640 * 1024,
                 work: 200_000,
                 pending_exception_reports: 8,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),

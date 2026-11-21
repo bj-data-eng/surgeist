@@ -370,6 +370,18 @@ impl ElementBindings {
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLParamElement" => super::param::install(scope, &prototype, capture)?,
                 "HTMLPreElement" => super::pre::install(scope, &prototype, capture)?,
+                "HTMLTableElement" => {
+                    super::table_legacy::TableFamily::Table.install(scope, &prototype, capture)?
+                }
+                "HTMLTableCaptionElement" => {
+                    super::table_legacy::TableFamily::Caption.install(scope, &prototype, capture)?
+                }
+                "HTMLTableSectionElement" => {
+                    super::table_legacy::TableFamily::Section.install(scope, &prototype, capture)?
+                }
+                "HTMLTableRowElement" => {
+                    super::table_legacy::TableFamily::Row.install(scope, &prototype, capture)?
+                }
                 "HTMLTableCellElement" => {
                     super::table_cell_column::install_cell(scope, &prototype, capture)?
                 }

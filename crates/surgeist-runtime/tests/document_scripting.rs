@@ -111,6 +111,8 @@ mod source_events;
 mod standard_window;
 #[path = "document_scripting/tab_index.rs"]
 mod tab_index;
+#[path = "document_scripting/table_legacy_reflections.rs"]
+mod table_legacy_reflections;
 #[path = "document_scripting/text_comment.rs"]
 mod text_comment;
 #[path = "document_scripting/textarea_values.rs"]
@@ -616,7 +618,7 @@ fn attach_event_window_with_work(
             DocumentGuestEventLimits {
                 // These interface scenarios include the full native prototype
                 // graph and exercise behavior with guest storage headroom.
-                storage_bytes: 512 * 1024,
+                storage_bytes: 640 * 1024,
                 work: adapter_work,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
@@ -2459,6 +2461,7 @@ fn main() {
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
             "tab-index" => tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs(),
+            "table-legacy-reflections" => table_legacy_reflections::attached_table_legacy_reflections_use_native_attributes(),
             "element-mixin" => element_mixin::attached_mixin_accessors_use_their_includers_and_native_state(),
             "dialog-close" => dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source(),
             "dialog-methods" => dialog_methods::attached_dialog_methods_use_original_native_events_and_tasks(),
@@ -2568,6 +2571,7 @@ fn main() {
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
     tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs();
+    table_legacy_reflections::attached_table_legacy_reflections_use_native_attributes();
     element_mixin::attached_mixin_accessors_use_their_includers_and_native_state();
     dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source();
     dialog_methods::attached_dialog_methods_use_original_native_events_and_tasks();

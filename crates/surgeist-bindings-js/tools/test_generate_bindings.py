@@ -754,6 +754,37 @@ class DescriptionTests(unittest.TestCase):
         default["value"] = 2
         self.rejected("source declaration mismatch: HTMLInputElement.source")
 
+    def test_table_legacy_partials_preserve_pinned_aliases_and_string_types(self):
+        members = {
+            "HTMLTableElement": ["align", "border", "frame", "rules", "summary", "width",
+                                 "bgColor", "cellPadding", "cellSpacing"],
+            "HTMLTableCaptionElement": ["align"],
+            "HTMLTableSectionElement": ["align", "ch", "chOff", "vAlign"],
+            "HTMLTableRowElement": ["align", "ch", "chOff", "vAlign", "bgColor"],
+        }
+        aliases = {"ch": "char", "chOff": "charoff"}
+        mappings = self.data["access_mappings"]
+        for interface, names in members.items():
+            with self.subTest(interface=interface):
+                self.assertEqual(self.definition(interface)["inherits"], "HTMLElement")
+                partial = self.definition(f"{interface}.obsolete")
+                self.assertTrue(partial["partial"])
+                self.assertEqual([member["name"] for member in partial["members"]], names)
+                for member in partial["members"]:
+                    name = member["name"]
+                    reflect = {"name": "Reflect"}
+                    if name in aliases:
+                        reflect["value"] = aliases[name]
+                    self.assertEqual(member["attributes"], [{"name": "CEReactions"}, reflect])
+                    expected = {"kind": "named", "name": "DOMString"}
+                    if name in {"bgColor", "cellPadding", "cellSpacing"}:
+                        expected["attributes"] = [{"name": "LegacyNullToEmptyString"}]
+                    self.assertEqual(member["type"], expected)
+                    for access in ["get", "set"]:
+                        self.assertFalse(mappings[f"{member['id']}/{access}"]["requirements"])
+        self.member("HTMLTableRowElement.obsolete.chOff")["attributes"][1].pop("value")
+        self.rejected("source declaration mismatch: HTMLTableRowElement.obsolete.source")
+
     def test_custom_validity_shares_native_source_with_required_dom_string(self):
         mappings = self.data["access_mappings"]
         for name in ["Button", "FieldSet", "Input", "Output", "Select", "TextArea"]:

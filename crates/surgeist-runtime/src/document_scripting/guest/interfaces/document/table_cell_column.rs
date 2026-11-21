@@ -2,46 +2,11 @@
 
 use super::{
     reflection::{self, Receiver, Reflection, TableSpan},
+    table_legacy::{ALIGN, BG_COLOR, CH, CH_OFF, V_ALIGN, WIDTH},
     *,
 };
 use surgeist_dom::tree::DomNode;
 use surgeist_html::vocabulary::KnownHtmlElement;
-
-const ALIGN: reflection::Member = (
-    &ascii(b"align"),
-    &ascii(b"get align"),
-    &ascii(b"set align"),
-    &ascii(b"align"),
-    Reflection::String,
-);
-const WIDTH: reflection::Member = (
-    &ascii(b"width"),
-    &ascii(b"get width"),
-    &ascii(b"set width"),
-    &ascii(b"width"),
-    Reflection::String,
-);
-const CH: reflection::Member = (
-    &ascii(b"ch"),
-    &ascii(b"get ch"),
-    &ascii(b"set ch"),
-    &ascii(b"char"),
-    Reflection::String,
-);
-const CH_OFF: reflection::Member = (
-    &ascii(b"chOff"),
-    &ascii(b"get chOff"),
-    &ascii(b"set chOff"),
-    &ascii(b"charoff"),
-    Reflection::String,
-);
-const V_ALIGN: reflection::Member = (
-    &ascii(b"vAlign"),
-    &ascii(b"get vAlign"),
-    &ascii(b"set vAlign"),
-    &ascii(b"valign"),
-    Reflection::String,
-);
 
 const CELL_SPANS_AND_HEADERS: &[reflection::Member] = &[
     (
@@ -108,13 +73,7 @@ const CELL_REFLECTIONS: &[reflection::Member] = &[
         Reflection::Boolean,
     ),
     V_ALIGN,
-    (
-        &ascii(b"bgColor"),
-        &ascii(b"get bgColor"),
-        &ascii(b"set bgColor"),
-        &ascii(b"bgcolor"),
-        Reflection::StringNullToEmpty,
-    ),
+    BG_COLOR,
 ];
 
 const COLUMN_REFLECTIONS: &[reflection::Member] = &[

@@ -60,6 +60,7 @@ mod slot;
 mod structural_alignment;
 mod style_policy;
 mod table_cell_column;
+mod table_legacy;
 mod template;
 mod text;
 mod textarea;

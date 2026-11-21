@@ -2,6 +2,7 @@
 
 use super::{
     element::{HTML_NAMESPACE, MATHML_NAMESPACE, SVG_NAMESPACE},
+    table_legacy::TableFamily,
     text::TextBuffer,
     *,
 };
@@ -148,6 +149,7 @@ pub(super) enum Receiver {
     Slot,
     TableCell,
     TableColumn,
+    TableLegacy(TableFamily),
     Textarea,
 }
 
@@ -275,6 +277,10 @@ impl Receiver {
                 step()?;
                 html_element_is(node, "HTMLTableColElement")
             }
+            Self::TableLegacy(family) => {
+                step()?;
+                html_element_is(node, family.interface())
+            }
         })
     }
 
@@ -319,6 +325,7 @@ impl Receiver {
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
             Self::TableCell => const { &ascii(b"HTMLTableCellElement required") },
             Self::TableColumn => const { &ascii(b"HTMLTableColElement required") },
+            Self::TableLegacy(family) => family.error_message(),
             Self::Textarea => const { &ascii(b"HTMLTextAreaElement required") },
         }
     }
@@ -899,6 +906,7 @@ impl Capture {
                             | Receiver::Legend
                             | Receiver::Marquee
                             | Receiver::Output
+                            | Receiver::TableLegacy(_)
                             | Receiver::Textarea
                     ) || matches!(reflection, Reflection::ControlAutocomplete)
                     {
