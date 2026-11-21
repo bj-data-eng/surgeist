@@ -1,6 +1,7 @@
 //! Controller preparation and retry only; trusted native publications come from
 //! the existing fixture. No Runtime Window, loop or cleanup proof is invented.
 use super::*;
+use crate::internal::store::DomWindowNamedValue;
 use crate::{internal::source::DomSourceProgress, internal::source::DomSourceRequest};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -1282,4 +1283,493 @@ fn child_insertion_provenance_follows_structural_groups_across_moves_and_reinser
         f.dom.hosted_navigable(stale),
         Err(DomHostedError::StaleIdentity)
     ));
+}
+
+fn named_value(dom: &Dom, global: DomHostedGlobalId, name: DocumentString) -> DomWindowNamedValue {
+    dom.window_named_value(
+        global,
+        name,
+        1024,
+        100_000,
+        || Ok::<_, DomHostedError>(()),
+        &cancel(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn window_named_value_selects_the_first_child_before_origin_and_preserves_its_native_name() {
+    use crate::internal::source::DomSourceEdit;
+    use surgeist_html::values::Namespace;
+
+    let mut f = Fixture::new();
+    let document = f.creation.document;
+    let global = f.creation.global;
+    let target = DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]);
+    let nearby = DocumentString::from_utf16(vec![0xd800, 0, 0xdc01]);
+    let parent = f
+        .dom
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let closed = batch.create_html_document(document, None);
+    let isolated = batch.create_element_ns(&closed, Namespace::html(), "iframe");
+    let same = batch.create_element_ns(&closed, Namespace::html(), "iframe");
+    batch.set_attribute(&isolated, "sandbox", "");
+    batch.set_attribute(&isolated, "name", target.clone());
+    batch.set_attribute(&same, "name", target.clone());
+    let contributor = batch.create_element_ns(document, Namespace::html(), "div");
+    let extra = batch.create_element_ns(document, Namespace::html(), "div");
+    batch.insert_before(&contributor, parent, None);
+    batch.insert_before(&extra, parent, None);
+    let commit = f.dom.apply(batch, &cancel()).unwrap();
+    let [isolated, same, contributor, extra] = [&isolated, &same, &contributor, &extra]
+        .map(|ticket| commit.created(ticket).unwrap().unwrap());
+    let [opaque] = drive_native_insertion(&mut f, isolated, parent, None);
+    let [inherited] = drive_native_insertion(&mut f, same, parent, None);
+    let snapshot = f.dom.snapshot();
+    let origin = snapshot.document(document).unwrap().metadata().origin();
+    assert_ne!(
+        snapshot
+            .document(opaque.document)
+            .unwrap()
+            .metadata()
+            .origin(),
+        origin
+    );
+    assert_eq!(
+        snapshot
+            .document(inherited.document)
+            .unwrap()
+            .metadata()
+            .origin(),
+        origin
+    );
+    for child in [opaque, inherited] {
+        let navigable = snapshot.hosted_navigable(child.navigable).unwrap();
+        assert_eq!(
+            snapshot
+                .hosted_entry(navigable.active_entry())
+                .unwrap()
+                .target_name(),
+            Some(&target)
+        );
+    }
+    assert!(matches!(
+        named_value(&f.dom, global, target.clone()),
+        DomWindowNamedValue::Unsupported
+    ));
+    assert!(matches!(
+        named_value(&f.dom, global, nearby),
+        DomWindowNamedValue::Unsupported
+    ));
+    assert!(matches!(
+        named_value(&f.dom, global, "".into()),
+        DomWindowNamedValue::Unsupported
+    ));
+
+    let mut edit = DomBatch::new();
+    edit.set_attribute(contributor, "name", target.clone());
+    f.dom.apply(edit, &cancel()).unwrap();
+    assert!(matches!(
+        named_value(&f.dom, global, target.clone()),
+        DomWindowNamedValue::Unsupported
+    ));
+
+    let mut edit = DomBatch::new();
+    edit.set_attribute(contributor, "id", target.clone());
+    edit.set_attribute(extra, "id", target.clone());
+    edit.set_attribute(isolated, "name", "authored-new");
+    edit.set_attribute(same, "name", "authored-new");
+    f.dom.apply(edit, &cancel()).unwrap();
+    assert!(
+        matches!(named_value(&f.dom, global, target.clone()), DomWindowNamedValue::Child(context) if context == opaque.context)
+    );
+    assert!(matches!(
+        named_value(&f.dom, global, "authored-new".into()),
+        DomWindowNamedValue::Unsupported
+    ));
+
+    let child_work = |dom: &Dom, expected| {
+        let steps = std::cell::Cell::new(0);
+        let outcome = dom
+            .window_named_value(
+                global,
+                target.clone(),
+                1024,
+                100_000,
+                || {
+                    steps.set(steps.get() + 1);
+                    Ok::<_, DomHostedError>(())
+                },
+                &cancel(),
+            )
+            .unwrap();
+        assert!(matches!(outcome, DomWindowNamedValue::Child(context) if context == expected));
+        steps.get()
+    };
+    let cross_origin_work = child_work(&f.dom, opaque.context);
+    let mut edit = DomBatch::new();
+    // The first Element already supplies the support the first child needs.
+    edit.set_attribute(extra, "id", "later-element");
+    f.dom.apply(edit, &cancel()).unwrap();
+    assert_eq!(child_work(&f.dom, opaque.context), cross_origin_work);
+
+    complete_native_structure(
+        &mut f,
+        DomSourceEdit::move_before(same, parent, Some(isolated)),
+    );
+    assert!(
+        matches!(named_value(&f.dom, global, target.clone()), DomWindowNamedValue::Child(context) if context == inherited.context)
+    );
+    let same_origin_work = child_work(&f.dom, inherited.context);
+    let mut edit = DomBatch::new();
+    edit.remove_attribute(contributor, "id");
+    edit.remove_attribute(extra, "id");
+    f.dom.apply(edit, &cancel()).unwrap();
+    assert!(
+        matches!(named_value(&f.dom, global, target.clone()), DomWindowNamedValue::Child(context) if context == inherited.context)
+    );
+
+    assert_eq!(child_work(&f.dom, inherited.context), same_origin_work);
+
+    drive_native_removal(&mut f, same);
+    assert!(matches!(
+        named_value(&f.dom, global, target.clone()),
+        DomWindowNamedValue::Unsupported
+    ));
+    assert!(matches!(
+        named_value(&f.dom, opaque.global, "".into()),
+        DomWindowNamedValue::Unsupported
+    ));
+    drive_native_removal(&mut f, isolated);
+    let retiring = f.dom.snapshot();
+    let navigable = retiring.hosted_navigable(opaque.navigable).unwrap();
+    assert!(navigable.is_retiring());
+    assert!(!navigable.is_retired());
+    assert_eq!(navigable.active_document(), Some(opaque.document));
+    assert_eq!(retiring.global_document(opaque.global), Ok(opaque.document));
+    let resolve_retiring = |name| {
+        f.dom.window_named_value(
+            opaque.global,
+            name,
+            1024,
+            100_000,
+            || Ok::<_, DomHostedError>(()),
+            &cancel(),
+        )
+    };
+    assert!(matches!(
+        resolve_retiring(target.clone()),
+        Err(DomHostedError::StaleIdentity)
+    ));
+    let empty = resolve_retiring("".into());
+    assert!(
+        matches!(&empty, Err(DomHostedError::StaleIdentity)),
+        "retiring Window with an empty name: {empty:?}",
+    );
+
+    let mut edit = DomBatch::new();
+    edit.set_attribute(contributor, "id", target.clone());
+    f.dom.apply(edit, &cancel()).unwrap();
+    assert!(
+        matches!(named_value(&f.dom, global, target.clone()), DomWindowNamedValue::Element(node) if node == contributor)
+    );
+    let mut edit = DomBatch::new();
+    edit.set_attribute(extra, "id", target.clone());
+    f.dom.apply(edit, &cancel()).unwrap();
+    let collection = match named_value(&f.dom, global, target) {
+        DomWindowNamedValue::Collection(value) => Some(value),
+        _ => None,
+    }
+    .expect("two actual Element contributors");
+    let cancelled = cancel();
+    let read = f
+        .dom
+        .read_html_collection(
+            &collection,
+            crate::tree::DomHtmlCollectionLimits::new(100_000, 8, 512),
+            || Ok::<_, DomError>(()),
+            &cancelled,
+        )
+        .unwrap();
+    assert_eq!(read.item(0).unwrap(), Some(contributor));
+    assert_eq!(read.item(1).unwrap(), Some(extra));
+    assert_eq!(read.length().unwrap(), 2);
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum NamedReadError {
+    Native(DomHostedError),
+    Refused,
+}
+impl From<DomHostedError> for NamedReadError {
+    fn from(error: DomHostedError) -> Self {
+        Self::Native(error)
+    }
+}
+
+#[test]
+fn window_named_value_revalidates_the_live_global_after_element_admission() {
+    use std::{
+        cell::{Cell, RefCell},
+        sync::atomic::Ordering,
+    };
+
+    let Fixture {
+        mut dom,
+        source,
+        creation,
+    } = Fixture::new();
+    let target = "native-only";
+    let parent = dom
+        .snapshot()
+        .document(creation.document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let mut edit = DomBatch::new();
+    let contributor = edit.create_element(creation.document, "div");
+    edit.set_attribute(&contributor, "id", target);
+    edit.insert_before(&contributor, parent, None);
+    dom.apply(edit, &cancel()).unwrap();
+
+    let resolve = |global, work| {
+        dom.window_named_value(
+            global,
+            target.into(),
+            1024,
+            work,
+            || Ok::<_, DomHostedError>(()),
+            &cancel(),
+        )
+    };
+    let mut stale = creation.global;
+    stale.generation += 1;
+    assert!(matches!(
+        resolve(stale, 100_000),
+        Err(DomHostedError::StaleIdentity)
+    ));
+    let foreign = Fixture::new();
+    assert!(matches!(
+        resolve(foreign.creation.global, 100_000),
+        Err(DomHostedError::ForeignSource)
+    ));
+
+    let steps = Cell::new(0);
+    assert!(matches!(
+        dom.window_named_value(
+            creation.global,
+            target.into(),
+            1024,
+            100_000,
+            || {
+                steps.set(steps.get() + 1);
+                Ok::<_, DomHostedError>(())
+            },
+            &cancel(),
+        ),
+        Ok(DomWindowNamedValue::Element(_))
+    ));
+    let exact = steps.get();
+    assert!(matches!(
+        resolve(creation.global, exact),
+        Ok(DomWindowNamedValue::Element(_))
+    ));
+    assert!(
+        matches!(resolve(creation.global, exact - 1), Err(DomHostedError::WorkLimit { limit }) if limit == exact - 1)
+    );
+
+    steps.set(0);
+    let refusal = dom.window_named_value(
+        creation.global,
+        target.into(),
+        1024,
+        exact,
+        || {
+            steps.set(steps.get() + 1);
+            if steps.get() == exact {
+                Err(NamedReadError::Refused)
+            } else {
+                Ok(())
+            }
+        },
+        &cancel(),
+    );
+    assert_eq!(refusal.unwrap_err(), NamedReadError::Refused);
+
+    let cancelled = cancel();
+    steps.set(0);
+    let result = dom.window_named_value(
+        creation.global,
+        target.into(),
+        1024,
+        exact,
+        || {
+            steps.set(steps.get() + 1);
+            if steps.get() == exact {
+                cancelled.store(true, Ordering::Relaxed);
+            }
+            Ok::<_, DomHostedError>(())
+        },
+        &cancelled,
+    );
+    assert!(matches!(
+        result,
+        Err(DomHostedError::Dom(DomError::Cancelled))
+    ));
+
+    let source = RefCell::new(Some(source));
+    steps.set(0);
+    let result = dom.window_named_value(
+        creation.global,
+        target.into(),
+        1024,
+        exact,
+        || {
+            steps.set(steps.get() + 1);
+            if steps.get() == exact {
+                drop(source.borrow_mut().take());
+            }
+            Ok::<_, DomHostedError>(())
+        },
+        &cancel(),
+    );
+    assert!(matches!(result, Err(DomHostedError::SourceExpired)));
+}
+
+#[test]
+fn window_named_value_charges_one_exact_dispatch_scope_across_child_and_element_matching() {
+    use crate::internal::{dispatch::DomDispatchCustodyLimits, source::DomSourceEdit};
+    use std::cell::Cell;
+    use surgeist_html::values::Namespace;
+
+    let mut f = Fixture::new();
+    let custody =
+        DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap();
+    f.dom
+        .set_limits(f.dom.limits().with_dispatch_custody(custody))
+        .unwrap();
+    let mut edit = DomBatch::new();
+    let actor = edit.create_html_document(f.creation.document, None);
+    let commit = f.dom.apply(edit, &cancel()).unwrap();
+    let actor = commit.document(&actor).unwrap();
+    let actor_parent = f
+        .dom
+        .snapshot()
+        .document(actor)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let parent = f
+        .dom
+        .snapshot()
+        .document(f.creation.document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let mut edit = DomBatch::new();
+    let iframe = edit.create_element_ns(actor, Namespace::html(), "iframe");
+    edit.set_attribute(&iframe, "sandbox", "");
+    edit.set_attribute(&iframe, "name", "marker");
+    let dialog = edit.create_element_ns(actor, Namespace::html(), "dialog");
+    let target = edit.create_element_ns(f.creation.document, Namespace::html(), "div");
+    edit.set_attribute(&target, "id", "marker");
+    edit.insert_before(&target, parent, None);
+    edit.insert_before(&dialog, actor_parent, None);
+    let commit = f.dom.apply(edit, &cancel()).unwrap();
+    let iframe = commit.created(&iframe).unwrap().unwrap();
+    let dialog = commit.created(&dialog).unwrap().unwrap();
+    let [opaque] = drive_native_insertion(&mut f, iframe, parent, None);
+    let executor = f.dom.bind_source_event_executor(&cancel()).unwrap();
+    let event = {
+        let mut edit = f
+            .dom
+            .begin_source_edit(
+                DomSourceEdit::show_dialog(dialog),
+                source_limits(),
+                &cancel(),
+            )
+            .unwrap();
+        match edit.advance(&cancel()).unwrap() {
+            DomSourceProgress::Request(DomSourceRequest::Event(event)) => Some(event),
+            _ => None,
+        }
+        .expect("actual native dialog event")
+    };
+    let admissions = Cell::new(0);
+    let global = f.creation.global;
+    let resolve = |dom: &Dom| {
+        dom.window_named_value(
+            global,
+            "marker".into(),
+            1024,
+            100_000,
+            || {
+                admissions.set(admissions.get() + 1);
+                Ok::<_, DomHostedError>(())
+            },
+            &cancel(),
+        )
+    };
+    assert!(matches!(
+        resolve(&f.dom),
+        Err(DomHostedError::Dom(DomError::IncompleteSourceOperation))
+    ));
+    let permit = executor.begin_dispatch(&f.dom, &event, &cancel()).unwrap();
+    let scope = executor.enter_dispatch(&f.dom, &permit, &cancel()).unwrap();
+    let before = f.dom.pending_source_edit().unwrap().spent_work();
+    assert!(matches!(
+        resolve(&f.dom), Ok(DomWindowNamedValue::Child(actual)) if actual == opaque.context
+    ));
+    let after = f.dom.pending_source_edit().unwrap().spent_work();
+    assert_eq!(after - before, admissions.get() + 1);
+    let required = after - before;
+    let stamp = f.dom.snapshot().stamp();
+    for shortfall in [0, 1] {
+        let allowance = required - shortfall;
+        let mut limits = source_limits();
+        let spent = f.dom.pending_source_edit().unwrap().spent_work();
+        // Leave room for the real resume checks, then spend the difference
+        // through the original event to reach the exact remaining allowance.
+        limits.work = spent + allowance + 4096;
+        drop(
+            f.dom
+                .resume_source_edit(event.operation(), limits, &cancel())
+                .unwrap(),
+        );
+        let remaining = limits.work - f.dom.pending_source_edit().unwrap().spent_work();
+        assert!(remaining >= allowance);
+        for _ in 0..remaining - allowance {
+            f.dom.source_event_step(&event, &cancel()).unwrap();
+        }
+
+        admissions.set(0);
+        let result = resolve(&f.dom);
+        if shortfall == 0 {
+            assert!(
+                matches!(result, Ok(DomWindowNamedValue::Child(actual)) if actual == opaque.context)
+            );
+        } else {
+            assert_eq!(
+                result.unwrap_err(),
+                DomHostedError::Dom(DomError::SourceWorkLimit { limit: limits.work }),
+            );
+        }
+        let current = f.dom.pending_source_edit().unwrap();
+        assert_eq!(current.operation(), event.operation());
+        assert_eq!(current.spent_work(), limits.work);
+        assert_eq!(admissions.get() + 1, required);
+        assert_eq!(f.dom.snapshot().stamp(), stamp);
+    }
+
+    drop(executor);
+    assert!(matches!(
+        resolve(&f.dom),
+        Err(DomHostedError::Dom(DomError::InvalidSourceEvent))
+    ));
+    drop(scope);
 }

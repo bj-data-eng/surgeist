@@ -131,7 +131,7 @@ pub(crate) use bank::owned::{EmptyPath, OwnedBank};
 pub(crate) use bank::{Bank, Iter as BankIter};
 pub use html_collection::{
     DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
-    DomWindowNamedElements,
+    DomWindowNamedElements, DomWindowNamedValue,
 };
 pub(crate) use shared::SharedVec;
 pub(crate) use source::AllocationIds as KeyAliases;

@@ -1529,7 +1529,7 @@ impl Dom {
             .map(|(document, _, _)| document)
     }
 
-    fn dispatch_global_document_metadata_with<E>(
+    pub(super) fn dispatch_global_document_metadata_with<E>(
         &self,
         global: DomHostedGlobalId,
         step: &mut impl FnMut() -> Result<(), E>,
