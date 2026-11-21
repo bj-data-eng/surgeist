@@ -185,6 +185,43 @@ class DescriptionTests(unittest.TestCase):
         callback["arguments"][0]["type"] = {"kind": "named", "name": "Blob"}
         self.rejected("source declaration mismatch: HTMLCanvasElement.source")
 
+    def test_media_retains_unloaded_observations_and_provider_boundaries(self):
+        media = self.definition("HTMLMediaElement")
+        self.assertEqual(media["inherits"], "HTMLElement")
+        members = {member["name"]: member for member in media["members"]}
+        mappings = self.data["access_mappings"]
+        for name, value_type in [
+            ("currentSrc", "USVString"),
+            ("networkState", "unsigned short"),
+            ("readyState", "unsigned short"),
+            ("paused", "boolean"),
+        ]:
+            with self.subTest(member=name):
+                member = members[name]
+                self.assertEqual(member["type"], {"kind": "named", "name": value_type})
+                self.assertTrue(member["readonly"])
+                getter = mappings[member["id"] + "/get"]
+                self.assertFalse(getter["requirements"])
+                self.assertNotIn(member["id"] + "/set", mappings)
+        for name, value in [
+            ("NETWORK_EMPTY", 0), ("NETWORK_IDLE", 1), ("NETWORK_LOADING", 2), ("NETWORK_NO_SOURCE", 3),
+            ("HAVE_NOTHING", 0), ("HAVE_METADATA", 1), ("HAVE_CURRENT_DATA", 2),
+            ("HAVE_FUTURE_DATA", 3), ("HAVE_ENOUGH_DATA", 4),
+        ]:
+            self.assertEqual(members[name]["kind"], "constant")
+            self.assertEqual(members[name]["value"], value)
+        self.assertEqual(self.definition("CanPlayTypeResult")["values"], ["", "maybe", "probably"])
+        provider = self.definition("MediaProvider")
+        self.assertEqual(provider["type"]["kind"], "union")
+        self.assertEqual([member["name"] for member in provider["type"]["members"]],
+                         ["MediaStream", "MediaSource", "Blob"])
+        for name in ["error", "src", "srcObject", "buffered", "currentTime", "duration", "audioTracks"]:
+            self.assertEqual(mappings[members[name]["id"] + "/get"]["kind"], "host")
+        for name in ["load", "play", "pause", "addTextTrack"]:
+            self.assertEqual(mappings[members[name]["id"] + "/call"]["kind"], "host")
+        members["NETWORK_EMPTY"]["value"] = 9
+        self.rejected("source declaration mismatch: HTMLMediaElement.source")
+
     def test_unsigned_numeric_reflection_requires_reflect_on_the_same_member(self):
         for annotation in [
             {"name": "ReflectDefault", "value": 1},

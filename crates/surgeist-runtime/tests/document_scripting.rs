@@ -101,6 +101,8 @@ mod input_state;
 mod legend_form;
 #[path = "document_scripting/marquee.rs"]
 mod marquee;
+#[path = "document_scripting/native_media_status.rs"]
+mod native_media_status;
 #[path = "document_scripting/numeric_control_attributes.rs"]
 mod numeric_control_attributes;
 #[path = "document_scripting/output_values.rs"]
@@ -2466,6 +2468,7 @@ fn main() {
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
+            "native-media-status" => native_media_status::attached_media_observes_unloaded_native_state(),
             "tab-index" => tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs(),
             "table-legacy-reflections" => table_legacy_reflections::attached_table_legacy_reflections_use_native_attributes(),
             "element-mixin" => element_mixin::attached_mixin_accessors_use_their_includers_and_native_state(),
@@ -2578,6 +2581,7 @@ fn main() {
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
+    native_media_status::attached_media_observes_unloaded_native_state();
     tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs();
     table_legacy_reflections::attached_table_legacy_reflections_use_native_attributes();
     element_mixin::attached_mixin_accessors_use_their_includers_and_native_state();
