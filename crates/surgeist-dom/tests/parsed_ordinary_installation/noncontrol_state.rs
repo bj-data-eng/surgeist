@@ -1,6 +1,8 @@
 //! Completed non-control history and later canonical operations stay distinct.
 use super::*;
-use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
+use surgeist_html::{
+    construction::HtmlShadowRootMode, elements::media::HtmlInitialMediaState, values::Namespace,
+};
 use surgeist_html::{
     construction::{HtmlNodeId, HtmlNodeKind},
     elements::{native::HtmlElementClass, script::HtmlScriptResult},
@@ -484,6 +486,57 @@ fn source_element(report: &HtmlParseReport, local: &str) -> HtmlNodeId {
         pending.extend(node.children().rev());
     }
     panic!("literal source element {local}")
+}
+
+#[test]
+fn parsed_unloaded_media_installs_native_audio_and_video_with_the_original_owner() {
+    let cancel = AtomicBool::new(false);
+    for (markup, name, namespace, expected) in [
+        (
+            "<!doctype html><audio></audio>",
+            "audio",
+            Namespace::html(),
+            Some(HtmlInitialMediaState::Audio),
+        ),
+        (
+            "<!doctype html><video>",
+            "video",
+            Namespace::html(),
+            Some(HtmlInitialMediaState::Video),
+        ),
+        (
+            "<!doctype html><svg><video/></svg>",
+            "video",
+            Namespace::svg(),
+            None,
+        ),
+    ] {
+        let report = parse(HtmlSource::utf8(markup));
+        let subject = source_element(&report, name);
+        let (mut dom, environment) = setup();
+        let installed = dom
+            .install_parsed_html_document(
+                dom.snapshot().stamp(),
+                report.clone(),
+                environment,
+                limits(),
+                &cancel,
+            )
+            .unwrap_or_else(|error| panic!("could not install {markup:?}: {error:?}"));
+        let id = installed.node_for(&subject).unwrap();
+        let snapshot = dom.snapshot();
+        let node = snapshot.node(id).unwrap();
+        let element = node.as_element().unwrap();
+        assert!(std::ptr::eq(installed.report(), report.as_ref()));
+        assert_eq!(node.owner_document(), Some(installed.document()));
+        assert_eq!(element.name().namespace_uri(), namespace.uri());
+        assert_eq!(element.initial_media_state(), expected);
+        if let Some(state) = element.initial_media_state() {
+            assert!(state.network_is_empty());
+            assert!(state.paused());
+            assert!(state.current_src().is_empty());
+        }
+    }
 }
 
 #[test]
