@@ -122,6 +122,38 @@ impl DocumentVisibilityState {
     }
 }
 
+/// Values of the declared `CanPlayTypeResult` enumeration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CanPlayTypeResult {
+    /// The `` value.
+    Empty,
+    /// The `maybe` value.
+    Maybe,
+    /// The `probably` value.
+    Probably,
+}
+
+impl CanPlayTypeResult {
+    /// Matches exact UTF-16 code units without guest coercion.
+    pub fn from_code_units(units: &[u16]) -> Option<Self> {
+        match units {
+            [] => Some(Self::Empty),
+            [109, 97, 121, 98, 101] => Some(Self::Maybe),
+            [112, 114, 111, 98, 97, 98, 108, 121] => Some(Self::Probably),
+            _ => None,
+        }
+    }
+
+    /// The exact code units of this enumeration value.
+    pub fn as_code_units(self) -> &'static [u16] {
+        match self {
+            Self::Empty => &[],
+            Self::Maybe => &[109, 97, 121, 98, 101],
+            Self::Probably => &[112, 114, 111, 98, 97, 98, 108, 121],
+        }
+    }
+}
+
 /// Values of the declared `SelectionMode` enumeration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SelectionMode {

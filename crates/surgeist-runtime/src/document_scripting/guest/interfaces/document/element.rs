@@ -658,6 +658,19 @@ fn install_constructor<'scope>(
     parent: &Value<'scope>,
     callback: &ConstructorCallback,
 ) -> Result<(Value<'scope>, Value<'scope>), Error> {
+    let (constructor, prototype) =
+        prepare_constructor(scope, name, parent_constructor, parent, callback)?;
+    install_interface(scope, global, name, &constructor, &prototype)?;
+    Ok((constructor, prototype))
+}
+
+fn prepare_constructor<'scope>(
+    scope: &mut Scope<'scope>,
+    name: &[u16],
+    parent_constructor: &Value<'scope>,
+    parent: &Value<'scope>,
+    callback: &ConstructorCallback,
+) -> Result<(Value<'scope>, Value<'scope>), Error> {
     let prototype = scope.object(ObjectPrototype::Object(parent))?;
     let constructor = scope.constructor(callback, FunctionMetadata { name, length: 0 })?;
     scope.set_prototype(&constructor, ObjectPrototype::Object(parent_constructor))?;
@@ -671,7 +684,6 @@ fn install_constructor<'scope>(
             configurable: false,
         },
     )?;
-    install_interface(scope, global, name, &constructor, &prototype)?;
     Ok((constructor, prototype))
 }
 
@@ -914,14 +926,14 @@ fn install_html_constructor<'scope>(
         move |scope| fallback.html_element_prototype(scope, interface),
         move |scope, arguments| construct.construct_html_element(scope, arguments, interface),
     );
-    Ok(install_constructor(
-        scope,
-        global,
-        units,
-        parent_constructor,
-        parent,
-        &callback,
-    )?)
+    let (constructor, prototype) =
+        prepare_constructor(scope, units, parent_constructor, parent, &callback)?;
+    if interface == "HTMLMediaElement" {
+        // Web IDL installs the interface's members before its constructor link.
+        super::media::install(scope, &constructor, &prototype, capture)?;
+    }
+    install_interface(scope, global, units, &constructor, &prototype)?;
+    Ok((constructor, prototype))
 }
 
 impl PublicEventBindings {

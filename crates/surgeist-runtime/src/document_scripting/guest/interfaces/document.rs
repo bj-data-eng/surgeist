@@ -46,6 +46,7 @@ mod li;
 mod list_compact;
 mod lists;
 mod marquee;
+mod media;
 mod meta;
 mod optgroup;
 mod ordinary;
