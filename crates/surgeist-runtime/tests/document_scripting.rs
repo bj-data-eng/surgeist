@@ -69,6 +69,8 @@ mod element_projection;
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
 mod source_events;
+#[path = "document_scripting/standard_window.rs"]
+mod standard_window;
 #[path = "document_scripting/text_comment.rs"]
 mod text_comment;
 #[path = "document_scripting/window_document.rs"]
@@ -159,12 +161,12 @@ const ALLOW: HtmlScriptingPolicy = HtmlScriptingPolicy {
 };
 const STORAGE: usize = 1_000_000;
 
-fn hooks(child_count: &[u16]) -> DocumentScriptHooks<'_> {
+fn hooks(child_count: &[u16]) -> Option<DocumentScriptHooks<'_>> {
     const DETACH: [u16; 8] = [100, 101, 116, 97, 99, 104, 73, 102];
-    DocumentScriptHooks {
+    Some(DocumentScriptHooks {
         child_count,
         detach_source_node_if: &DETACH,
-    }
+    })
 }
 
 fn hook() -> Vec<u16> {
@@ -299,10 +301,10 @@ fn native_window_relation_custody_and_collision() {
         let key: Vec<_> = key.encode_utf16().collect();
         for hooks in [
             hooks(&key),
-            DocumentScriptHooks {
+            Some(DocumentScriptHooks {
                 child_count: &[65],
                 detach_source_node_if: &key,
-            },
+            }),
         ] {
             let failure = prepared.enable(top, ALLOW, hooks).unwrap_err();
             assert!(matches!(
@@ -1220,10 +1222,10 @@ fn native_window_dom_exception_admission_and_hook_collision() {
     let name: Vec<_> = "DOMException".encode_utf16().collect();
     for names in [
         hooks(&name),
-        DocumentScriptHooks {
+        Some(DocumentScriptHooks {
             child_count: &[65],
             detach_source_node_if: &name,
-        },
+        }),
     ] {
         let failure = match prepared.enable(top, ALLOW, names) {
             Err(failure) => failure,
@@ -1512,22 +1514,22 @@ fn native_window_css_hook_collision_preserves_the_original_session() {
     let before = session.snapshot();
     let mut prepared = prepare(session, Arc::new(cancel()));
     for names in [
-        DocumentScriptHooks {
+        Some(DocumentScriptHooks {
             child_count: CSS,
             detach_source_node_if: &[65],
-        },
-        DocumentScriptHooks {
+        }),
+        Some(DocumentScriptHooks {
             child_count: &[65],
             detach_source_node_if: CSS,
-        },
-        DocumentScriptHooks {
+        }),
+        Some(DocumentScriptHooks {
             child_count: &global_this,
             detach_source_node_if: &[65],
-        },
-        DocumentScriptHooks {
+        }),
+        Some(DocumentScriptHooks {
             child_count: &[65],
             detach_source_node_if: &global_this,
-        },
+        }),
     ] {
         let failure = match prepared.enable(top, ALLOW, names) {
             Err(failure) => failure,
@@ -2188,10 +2190,10 @@ fn enable_at_host_work(
     match prepared.enable(
         top,
         ALLOW,
-        DocumentScriptHooks {
+        Some(DocumentScriptHooks {
             child_count,
             detach_source_node_if: detach,
-        },
+        }),
     ) {
         Ok(host) => Ok(host),
         Err(failure) => {
@@ -2362,6 +2364,8 @@ fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
+            "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),
             "native-window-relations" => native_window_exposes_canonical_top_level_relations(),
             "native-window-relation-controls" => {
                 native_window_relation_custody_and_collision();
@@ -2448,6 +2452,8 @@ fn main() {
         }
         return;
     }
+    standard_window::window_without_host_hooks_uses_standard_globals();
+    standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal();
     native_window_exposes_canonical_top_level_relations();
     native_window_relation_custody_and_collision();
     native_window_relation_refusal_retains_the_first_typed_cause();

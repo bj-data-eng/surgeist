@@ -200,10 +200,10 @@ pub(in crate::document_scripting) fn a_new_heap_cannot_claim_an_existing_executa
                 user_allows: true,
                 automation_allows: true,
             },
-            DocumentScriptHooks {
+            Some(DocumentScriptHooks {
                 child_count: &units("readChildCount"),
                 detach_source_node_if: &units("detachIf"),
-            },
+            }),
             &mut registry,
             limits,
         )
@@ -279,10 +279,10 @@ pub(in crate::document_scripting) fn only_public_origin_projection_requires_cons
                 user_allows: true,
                 automation_allows: true,
             },
-            DocumentScriptHooks {
+            Some(DocumentScriptHooks {
                 child_count: &units("readChildCount"),
                 detach_source_node_if: &units("detachIf"),
-            },
+            }),
         )
         .unwrap();
     let permit = event_only.permit().unwrap();
@@ -1762,10 +1762,10 @@ fn enable_public_nodes(
                 user_allows: true,
                 automation_allows: true,
             },
-            DocumentScriptHooks {
+            Some(DocumentScriptHooks {
                 child_count: &units("readChildCount"),
                 detach_source_node_if: &units("detachIf"),
-            },
+            }),
             registry,
             DocumentGuestEventLimits {
                 // Semantic fixtures fund two full realm installations and
@@ -2775,10 +2775,10 @@ fn host(cancel: Arc<AtomicBool>) -> DocumentScriptHost {
                 user_allows: true,
                 automation_allows: true,
             },
-            DocumentScriptHooks {
+            Some(DocumentScriptHooks {
                 child_count: &units("readChildCount"),
                 detach_source_node_if: &units("detachIf"),
-            },
+            }),
         )
         .unwrap()
 }
@@ -2884,9 +2884,11 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     };
     let read = units("readChildCount");
     let detach = units("detachIf");
-    let hooks = || DocumentScriptHooks {
-        child_count: &read,
-        detach_source_node_if: &detach,
+    let hooks = || {
+        Some(DocumentScriptHooks {
+            child_count: &read,
+            detach_source_node_if: &detach,
+        })
     };
     let prepared = PreparedDocumentScriptHost::prepare(session, 2_000_000, cancellation).unwrap();
 

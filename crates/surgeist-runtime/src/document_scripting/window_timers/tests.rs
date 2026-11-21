@@ -13,10 +13,10 @@ fn attach(cancel: Arc<AtomicBool>, storage_bytes: usize) -> DocumentScriptHost {
                 user_allows: true,
                 automation_allows: true,
             },
-            DocumentScriptHooks {
+            Some(DocumentScriptHooks {
                 child_count: &b"readChildCount".map(u16::from),
                 detach_source_node_if: &b"detachIf".map(u16::from),
-            },
+            }),
         )
         .unwrap()
 }
