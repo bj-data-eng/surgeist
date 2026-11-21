@@ -1,12 +1,20 @@
-//! The three Dialog accessors over the canonical element and slot.
+//! Dialog accessors and methods over the canonical element and Source lifecycle.
 
 use super::{
     reflection::{self, Receiver, Reflection},
     text::TextBuffer,
     *,
 };
-use surgeist_bindings_js::conversion::{
-    ArgumentValue, declarations::html_dialog_element_close_0_return_value, types::DOM_STRING,
+use surgeist_bindings_js::{
+    DomString,
+    conversion::{
+        Argument, ArgumentValue, Converted, Type,
+        declarations::{
+            html_dialog_element_close_0_return_value,
+            html_dialog_element_request_close_0_return_value,
+        },
+        types::DOM_STRING,
+    },
 };
 use surgeist_dom::source::DomSourceEdit;
 
@@ -24,6 +32,40 @@ const CLOSED_BY: reflection::Member = (
     &ascii(b"closedby"),
     Reflection::DialogClosedBy,
 );
+
+const METHODS: &[(&[u16], DialogMethod)] = &[
+    (&ascii(b"show"), DialogMethod::Show),
+    (&ascii(b"showModal"), DialogMethod::ShowModal),
+    (&ascii(b"close"), DialogMethod::Close),
+    (&ascii(b"requestClose"), DialogMethod::RequestClose),
+];
+
+#[derive(Clone, Copy)]
+enum DialogMethod {
+    Show,
+    ShowModal,
+    Close,
+    RequestClose,
+}
+
+impl DialogMethod {
+    fn result_argument(self) -> Option<Argument<Type<DomString>>> {
+        match self {
+            Self::Show | Self::ShowModal => None,
+            Self::Close => Some(html_dialog_element_close_0_return_value()),
+            Self::RequestClose => Some(html_dialog_element_request_close_0_return_value()),
+        }
+    }
+
+    fn edit(self, dialog: NodeId, result: Option<DocumentString>) -> DomSourceEdit {
+        match self {
+            Self::Show => DomSourceEdit::show_dialog(dialog),
+            Self::ShowModal => DomSourceEdit::show_modal_dialog(dialog),
+            Self::Close => DomSourceEdit::close_dialog(dialog, result),
+            Self::RequestClose => DomSourceEdit::request_close_dialog(dialog, result),
+        }
+    }
+}
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
@@ -58,30 +100,32 @@ pub(super) fn install<'scope>(
         },
     )?;
     reflection::install(scope, prototype, capture, Receiver::Dialog, &[CLOSED_BY])?;
-    let close = capture(size_of::<Capture>())?;
-    let name = &ascii(b"close");
-    let callable = scope.bounded_function(
-        &Callback::new(move |scope, arguments| close.dialog_close(scope, arguments)),
-        FunctionMetadata { name, length: 0 },
-        1,
-    )?;
-    define_data(
-        scope,
-        prototype,
-        PropertyKey::String(name),
-        &callable,
-        true,
-        true,
-        true,
-    )?;
+    for &(name, method) in METHODS {
+        let handler = capture(size_of::<(Capture, DialogMethod)>())?;
+        let callable = scope.bounded_function(
+            &Callback::new(move |scope, arguments| handler.dialog_method(scope, arguments, method)),
+            FunctionMetadata { name, length: 0 },
+            u32::from(method.result_argument().is_some()),
+        )?;
+        define_data(
+            scope,
+            prototype,
+            PropertyKey::String(name),
+            &callable,
+            true,
+            true,
+            true,
+        )?;
+    }
     Ok(())
 }
 
 impl Capture {
-    fn dialog_close<'scope>(
+    fn dialog_method<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
+        method: DialogMethod,
     ) -> Result<Completion<'scope>, Error> {
         let receiver = Receiver::Dialog;
         let Some(GuestNode::Element(id)) = tree::projected_node(scope, arguments.receiver())?
@@ -103,23 +147,26 @@ impl Capture {
                     scope.type_error(receiver.error_message())?,
                 ));
             }
-            let descriptor = html_dialog_element_close_0_return_value();
-            let converted = self
-                .callbacks
-                .conversion
-                .run(scope, |conversion| {
-                    conversion.argument(&descriptor, arguments.get(descriptor.index()))
+            let converted = method
+                .result_argument()
+                .map(|descriptor| {
+                    self.callbacks.conversion.run(scope, |conversion| {
+                        conversion.argument(&descriptor, arguments.get(descriptor.index()))
+                    })
                 })
+                .transpose()
                 .map_err(Error::from)?;
-            scope.check_active()?;
-            if !matches_receiver()? {
-                return Ok(Completion::Throw(
-                    scope.type_error(receiver.error_message())?,
-                ));
+            if converted.is_some() {
+                scope.check_active()?;
+                if !matches_receiver()? {
+                    return Ok(Completion::Throw(
+                        scope.type_error(receiver.error_message())?,
+                    ));
+                }
             }
-            let (value, _backing) = match converted.get() {
-                ArgumentValue::Missing => (None, None),
-                ArgumentValue::Present(value) => {
+            let (value, _backing) = match converted.as_ref().map(Converted::get) {
+                None | Some(ArgumentValue::Missing) => (None, None),
+                Some(ArgumentValue::Present(value)) => {
                     let (value, backing) =
                         copy_native_data(&owner, &events, value.as_code_units())?;
                     (Some(value), Some(backing))
@@ -129,7 +176,7 @@ impl Capture {
                 scope,
                 &owner,
                 &events,
-                DomSourceEdit::close_dialog(id, value),
+                method.edit(id, value),
                 Completion::Undefined,
             )
         })();

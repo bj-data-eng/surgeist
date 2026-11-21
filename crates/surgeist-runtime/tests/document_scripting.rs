@@ -67,6 +67,8 @@ mod body_reflections;
 mod content_editable;
 #[path = "document_scripting/dialog_close.rs"]
 mod dialog_close;
+#[path = "document_scripting/dialog_methods.rs"]
+mod dialog_methods;
 #[path = "document_scripting/dialog_state.rs"]
 mod dialog_state;
 #[path = "document_scripting/document_fragment.rs"]
@@ -2429,6 +2431,7 @@ fn main() {
             "tab-index" => tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs(),
             "element-mixin" => element_mixin::attached_mixin_accessors_use_their_includers_and_native_state(),
             "dialog-close" => dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source(),
+            "dialog-methods" => dialog_methods::attached_dialog_methods_use_original_native_events_and_tasks(),
             "dialog-state" => dialog_state::attached_dialog_accessors_use_current_native_state(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
@@ -2527,6 +2530,7 @@ fn main() {
     tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs();
     element_mixin::attached_mixin_accessors_use_their_includers_and_native_state();
     dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source();
+    dialog_methods::attached_dialog_methods_use_original_native_events_and_tasks();
     dialog_state::attached_dialog_accessors_use_current_native_state();
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();

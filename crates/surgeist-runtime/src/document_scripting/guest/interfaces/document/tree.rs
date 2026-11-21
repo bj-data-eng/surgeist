@@ -473,6 +473,7 @@ fn tree_exception(error: &DomError) -> Option<DomExceptionName> {
         DomError::NotSupported => Some(DomExceptionName::NotSupportedError),
         DomError::InvalidCharacter => Some(DomExceptionName::InvalidCharacterError),
         DomError::InvalidAdjacentPosition => Some(DomExceptionName::SyntaxError),
+        DomError::DialogInvalidState => Some(DomExceptionName::InvalidStateError),
         DomError::IndexSize => Some(DomExceptionName::IndexSizeError),
         _ => None,
     }

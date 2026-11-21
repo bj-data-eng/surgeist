@@ -522,6 +522,12 @@ class DescriptionTests(unittest.TestCase):
         self.assertEqual(closed_by["attributes"], [{"name": "CEReactions"}, {"name": "ReflectSetter"}])
         self.assertEqual([method["name"] for method in methods],
                          ["show", "showModal", "close", "requestClose"])
+        native_commands = {
+            "show": "show_dialog",
+            "showModal": "show_modal_dialog",
+            "close": "close_dialog",
+            "requestClose": "request_close_dialog",
+        }
         for method in methods:
             with self.subTest(method=method["name"]):
                 self.assertEqual(method["type"]["name"], "undefined")
@@ -533,13 +539,10 @@ class DescriptionTests(unittest.TestCase):
                 else:
                     self.assertFalse(arguments)
                 mapping = self.data["access_mappings"][method["id"] + "/call"]
-                issues = {entry["issue"] for entry in mapping["requirements"]}
-                if method["name"] == "close":
-                    self.assertEqual(issues, {1225})
-                    self.assertEqual({producer["symbol"] for producer in mapping["producers"]},
-                                     {"close_dialog", "dialog_close", "service_guest_source_event"})
-                else:
-                    self.assertEqual(issues, {2258, 1225})
+                self.assertEqual({entry["issue"] for entry in mapping["requirements"]}, {1225})
+                self.assertEqual({producer["symbol"] for producer in mapping["producers"]},
+                                 {native_commands[method["name"]], "dialog_method",
+                                  "service_guest_source_event"})
         closed_by["attributes"][-1]["name"] = "Reflect"
         self.rejected("source declaration mismatch: HTMLDialogElement.source")
 
