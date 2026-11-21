@@ -1,5 +1,5 @@
 //! Native Output state; derived text readbacks use the HTML semantic queries.
-use crate::{internal::identity::NodeId, internal::snapshot::DomNode};
+use crate::internal::{form::DomForm, identity::NodeId, snapshot::DomNode, store::DomError};
 use surgeist_html::values::DocumentString;
 
 /// Actual nullable default-value override, independent of descendant Text.
@@ -49,9 +49,24 @@ impl<'a> DomOutput<'a> {
             .output_state()
             .expect("checked Output")
     }
-    pub fn form_owner(self) -> Result<Option<NodeId>, crate::internal::store::DomError> {
+    pub fn form_owner(self) -> Result<Option<NodeId>, DomError> {
         self.node.snapshot.require_complete_source()?;
         Ok(self.node.node.control_owner())
+    }
+    /// Read the stored Form owner in this published snapshot segment.
+    ///
+    /// A live caller qualifies its access to the current segment. `step` admits
+    /// the association read and each reached owner lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first admission or lookup failure, or
+    /// [`DomError::WrongNodeKind`] if the stored owner is not a native Form.
+    pub fn form_owner_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomForm<'a>>, E> {
+        self.node.stored_form_owner_with(step)
     }
 }
 #[derive(Clone, Debug)]

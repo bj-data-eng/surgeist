@@ -7,6 +7,7 @@ pub(super) enum FormOwnerGetter {
     Select,
     Option,
     Fieldset,
+    Output,
     Legend,
 }
 
@@ -16,6 +17,7 @@ impl FormOwnerGetter {
             Self::Select => Receiver::Select,
             Self::Option => Receiver::Option,
             Self::Fieldset => Receiver::Fieldset,
+            Self::Output => Receiver::Output,
             Self::Legend => Receiver::Legend,
         }
     }
@@ -71,6 +73,10 @@ impl Capture {
                         .form_owner_with(|| read.step())?,
                     FormOwnerGetter::Fieldset => node
                         .as_fieldset()
+                        .ok_or(DomError::WrongNodeKind)?
+                        .form_owner_with(|| read.step())?,
+                    FormOwnerGetter::Output => node
+                        .as_output()
                         .ok_or(DomError::WrongNodeKind)?
                         .form_owner_with(|| read.step())?,
                     FormOwnerGetter::Legend => {

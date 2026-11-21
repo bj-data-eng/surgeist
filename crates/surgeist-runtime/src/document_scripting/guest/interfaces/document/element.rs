@@ -335,6 +335,7 @@ impl ElementBindings {
                 "HTMLDetailsElement" => super::details::install(scope, &prototype, capture)?,
                 "HTMLDialogElement" => super::dialog::install(scope, &prototype, capture)?,
                 "HTMLOptGroupElement" => super::optgroup::install(scope, &prototype, capture)?,
+                "HTMLOutputElement" => super::output::install(scope, &prototype, capture)?,
                 "HTMLOptionElement" => super::select::install_option(scope, &prototype, capture)?,
                 "HTMLSelectElement" => super::select::install_select(scope, &prototype, capture)?,
                 "HTMLTimeElement" => super::data_time::install_time(scope, &prototype, capture)?,

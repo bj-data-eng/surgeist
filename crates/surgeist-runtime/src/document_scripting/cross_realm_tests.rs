@@ -492,6 +492,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     select_option_form::select_and_option_form_follow_native_owner();
     form_attributes::form_setters_preserve_native_attributes_on_source_refusal();
     fieldset_attributes::custom_validity_preserves_original_refusal_and_native_message();
+    super::guest::tests::output_value_admission::output_default_override_uses_only_the_reached_read(
+    );
+    super::guest::tests::output_value_admission::output_edits_preserve_the_first_source_refusal();
     super::guest::tests::select_string_admission::select_value_admits_native_text_and_its_guest_copy();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();

@@ -1808,6 +1808,17 @@ pub fn html_form_element_operation_1_name() -> Argument<Type<DomString>> {
     )
 }
 
+/// Selected argument `HTMLOutputElement.setCustomValidity:0/error` (not overload selection).
+pub fn html_output_element_set_custom_validity_0_error() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLOutputElement.setCustomValidity:0/error",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected argument `ToggleEvent.constructor:0/type` (not overload selection).
 pub fn toggle_event_constructor_0_type() -> Argument<Type<DomString>> {
     Argument::new(

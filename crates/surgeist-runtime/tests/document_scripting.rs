@@ -79,8 +79,6 @@ mod element_mixin;
 mod element_projection;
 #[path = "document_scripting/fieldset_attributes.rs"]
 mod fieldset_attributes;
-#[path = "document_scripting/output_values.rs"]
-mod output_values;
 #[path = "document_scripting/form_attributes.rs"]
 mod form_attributes;
 #[path = "document_scripting/frameset_reflections.rs"]
@@ -91,6 +89,8 @@ mod hidden_reflection;
 mod legend_form;
 #[path = "document_scripting/marquee.rs"]
 mod marquee;
+#[path = "document_scripting/output_values.rs"]
+mod output_values;
 #[path = "document_scripting/script_preparation.rs"]
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]

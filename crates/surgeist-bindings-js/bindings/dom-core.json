@@ -844,6 +844,16 @@
       "entries": ["HTMLFrameSetElement", "HTMLFrameSetElement.includes.WindowEventHandlers"]
     },
     {
+      "id": "HTMLOutputElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmloutputelement",
+      "block": 0,
+      "sha256": "b61d7e01772b5d96125221cdb9c07e08e7cdc6ea996b4c30d1170443c8c8785d",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmloutputelement",
+      "entries": ["HTMLOutputElement"]
+    },
+    {
       "id": "HTMLLegendElement.source",
       "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
       "anchor": "htmllegendelement",
@@ -7171,6 +7181,125 @@
           "name": "rows",
           "readonly": false,
           "id": "HTMLFrameSetElement.rows"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLOutputElement",
+      "kind": "interface",
+      "name": "HTMLOutputElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLOutputElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "SameObject"}, {"name": "PutForwards", "value": "value"}, {"name": "Reflect", "value": "for"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMTokenList"},
+          "name": "htmlFor",
+          "readonly": true,
+          "id": "HTMLOutputElement.htmlFor"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLFormElement"}},
+          "name": "form",
+          "readonly": true,
+          "id": "HTMLOutputElement.form"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLOutputElement.name"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "type",
+          "readonly": true,
+          "id": "HTMLOutputElement.type"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "defaultValue",
+          "readonly": false,
+          "id": "HTMLOutputElement.defaultValue"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLOutputElement.value"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "willValidate",
+          "readonly": true,
+          "id": "HTMLOutputElement.willValidate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "ValidityState"},
+          "name": "validity",
+          "readonly": true,
+          "id": "HTMLOutputElement.validity"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "validationMessage",
+          "readonly": true,
+          "id": "HTMLOutputElement.validationMessage"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "checkValidity",
+          "arguments": [],
+          "id": "HTMLOutputElement.checkValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "reportValidity",
+          "arguments": [],
+          "id": "HTMLOutputElement.reportValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setCustomValidity",
+          "arguments": [{"name": "error", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "id": "HTMLOutputElement.setCustomValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "NodeList"},
+          "name": "labels",
+          "readonly": true,
+          "id": "HTMLOutputElement.labels"
         }
       ],
       "inherits": "HTMLElement"
@@ -15044,7 +15173,7 @@
       "kind": "native",
       "adapter": "htmlfieldsetelement.type.get",
       "producers": [
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
       ],
       "requirements": []
     },
@@ -15072,7 +15201,7 @@
       "kind": "native",
       "adapter": "htmlfieldsetelement.willvalidate.get",
       "producers": [
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
       ],
       "requirements": []
     },
@@ -15096,7 +15225,7 @@
       "kind": "native",
       "adapter": "htmlfieldsetelement.validationmessage.get",
       "producers": [
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
       ],
       "requirements": []
     },
@@ -15104,7 +15233,7 @@
       "kind": "native",
       "adapter": "htmlfieldsetelement.checkvalidity.call",
       "producers": [
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
       ],
       "requirements": []
     },
@@ -15112,7 +15241,7 @@
       "kind": "native",
       "adapter": "htmlfieldsetelement.reportvalidity.call",
       "producers": [
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
       ],
       "requirements": []
     },
@@ -15120,7 +15249,7 @@
       "kind": "native",
       "adapter": "htmlfieldsetelement.setcustomvalidity.call",
       "producers": [
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_set_custom_validity"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_set_custom_validity"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
       ],
       "requirements": []
@@ -15464,6 +15593,177 @@
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
+    },
+    "HTMLOutputElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmloutputelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.htmlFor/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project the same live DOMTokenList over the Output's exact null-namespace for content.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-output-for",
+        "issue": 2258
+      },
+      "result_view": "live"
+    },
+    "HTMLOutputElement.htmlFor/set": {
+      "kind": "forwarding",
+      "getter": "HTMLOutputElement.htmlFor/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLOutputElement.form/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.form.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/output.rs", "symbol": "form_owner_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/form_owner.rs", "symbol": "read_form_owner"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.name/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.name.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.name/set": {
+      "kind": "native",
+      "adapter": "htmloutputelement.name.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.type/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.type.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.defaultValue/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.defaultvalue.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/output.rs", "symbol": "read_output_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/output.rs", "symbol": "default_value_override"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "visit_descendant_text_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.defaultValue/set": {
+      "kind": "native",
+      "adapter": "htmloutputelement.defaultvalue.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/output.rs", "symbol": "write_output_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_output_default_value"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.value/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.value.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/output.rs", "symbol": "read_output_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "visit_descendant_text_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.value/set": {
+      "kind": "native",
+      "adapter": "htmloutputelement.value.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/output.rs", "symbol": "write_output_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_output_value"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.willValidate/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.willvalidate.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.validity/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.validity.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/output.rs", "symbol": "custom_validity_message"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project live ValidityState from the canonical Output custom error and applicable constraint facts.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validity",
+          "issue": 1235
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLOutputElement.validationMessage/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.validationmessage.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.checkValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmloutputelement.checkvalidity.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.reportValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmloutputelement.reportvalidity.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.setCustomValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmloutputelement.setcustomvalidity.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_set_custom_validity"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
+      ],
+      "requirements": []
+    },
+    "HTMLOutputElement.labels/get": {
+      "kind": "native",
+      "adapter": "htmloutputelement.labels.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the Output's current associated Label elements in tree order through the native labeling algorithm.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the same live labels NodeList with exact supported indices and current node identities.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
     },
     "HTMLLegendElement.constructor:0/construct": {
       "kind": "native",

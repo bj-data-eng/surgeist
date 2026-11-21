@@ -942,6 +942,7 @@ pub fn surgeist_dom::form::DomInputState::selection(&self) -> core::option::Opti
 pub struct surgeist_dom::form::DomOutput<'a>
 impl<'a> surgeist_dom::form::DomOutput<'a>
 pub fn surgeist_dom::form::DomOutput<'a>::form_owner(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
+pub fn surgeist_dom::form::DomOutput<'a>::form_owner_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::form::DomForm<'a>>, E>
 pub fn surgeist_dom::form::DomOutput<'a>::id(self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::form::DomOutput<'a>::state(self) -> &'a surgeist_dom::form::DomOutputState
 pub struct surgeist_dom::form::DomOutputState
