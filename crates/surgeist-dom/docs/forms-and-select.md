@@ -47,13 +47,19 @@ copied-attribute hooks; adoption preserves the message and runs actual removal
 and insertion/reset effects. The Fieldset payload allocates no control value,
 selection, cached disabledness or fake form object.
 
-Semantic capture publishes actual established-current Fieldset and Button associations,
-closing actual Form owners and retained map targets. Both initial capture and
-Slot supplementation establish negative custom-control classifications only from
-actual HTML elements with an actual null definition. The finite subject budget
-bounds these records; adapter work admits their context validation and duplicate
-comparison envelope. No custom spelling or registry emptiness stands in for a
-definition fact.
+Successful native autonomous form-associated custom elements join the same
+canonical Form owner relation and listed participant indexes. Their effective
+`disabled` state follows the own attribute and ordinary Fieldset ancestry,
+including changes to the first HTML Legend. A completed Source segment carries
+actual owner and disabled transitions in the order they occurred. Runtime
+retains its hosted Global registration gate for form-associated definitions.
+
+Initial capture and Slot supplementation publish established-current native
+associations, including the Form owner of a qualified custom control. Positive
+custom-control classifications require the successfully initialized native
+receiver. A proven HTML null definition establishes a negative classification.
+The finite subject and work budgets admit these records and their context
+validation.
 Fieldset collections, Legend delegation, first-Legend disabledness and constraint
 candidacy remain HTML semantic queries over the current captured tree. Slot
 supplementation rebuilds actual control facts into that same context, preserving

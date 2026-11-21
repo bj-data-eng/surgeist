@@ -85,6 +85,7 @@ pub enum DomElementDefinition {
 pub struct DomElement {
     name: Arc<Payload<ElementName>>,
     custom_state: HtmlCustomElementState,
+    form_associated_custom_disabled: Option<bool>,
     common_scope: surgeist_html::elements::native::HtmlCommonScope,
     custom: Option<Arc<Payload<CustomAssociation>>>,
     nonce: Option<Arc<Payload<NonceSlot>>>,
@@ -101,6 +102,7 @@ impl PartialEq for DomElement {
             && self.custom_element_definition() == other.custom_element_definition()
             && self.saved_is() == other.saved_is()
             && self.custom_state == other.custom_state
+            && self.form_associated_custom_disabled == other.form_associated_custom_disabled
             && self.common_scope == other.common_scope
             && self.focus == other.focus
             && self.nonce == other.nonce
@@ -240,6 +242,7 @@ impl DomElement {
         let value = Self {
             name,
             custom_state,
+            form_associated_custom_disabled: None,
             common_scope: common.scope(),
             custom,
             nonce,
@@ -280,6 +283,7 @@ impl DomElement {
         Ok(formation.finish(Self {
             name,
             custom_state: HtmlCustomElementState::Failed,
+            form_associated_custom_disabled: None,
             common_scope: surgeist_html::elements::native::HtmlCommonScope::Html,
             custom: Some(association),
             nonce: None,
@@ -537,6 +541,7 @@ impl DomElement {
                 html,
                 custom_name,
             ),
+            form_associated_custom_disabled: None,
             common_scope: common.scope(),
             custom,
             nonce,
@@ -900,6 +905,7 @@ impl DomElement {
             && self.custom_element_definition() == other.custom_element_definition()
             && self.saved_is() == other.saved_is()
             && self.custom_state == other.custom_state
+            && self.form_associated_custom_disabled == other.form_associated_custom_disabled
             && self.common_scope == other.common_scope
             && self.focus == other.focus
             && self.nonce == other.nonce
@@ -917,11 +923,25 @@ impl DomElement {
             .as_ref()
             .map_or(DomRegistryBinding::Null, |value| value.value.registry)
     }
+    pub(crate) fn form_associated_custom_disabled(&self) -> Option<bool> {
+        self.form_associated_custom_disabled
+    }
+
+    pub(crate) fn set_form_associated_custom_disabled(&mut self, disabled: bool) {
+        self.form_associated_custom_disabled = Some(disabled);
+    }
+
     pub(crate) fn set_custom_context(
         &mut self,
         state: HtmlCustomElementState,
         value: Option<Arc<Payload<CustomAssociation>>>,
     ) {
+        let next = value
+            .as_ref()
+            .map_or(DomElementDefinition::Null, |value| value.value.definition);
+        if state != HtmlCustomElementState::Custom || self.custom_element_definition() != next {
+            self.form_associated_custom_disabled = None;
+        }
         self.custom_state = state;
         self.custom = value;
     }

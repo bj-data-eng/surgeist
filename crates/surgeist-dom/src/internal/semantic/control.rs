@@ -8,8 +8,7 @@ use surgeist_html_semantics::{
     HtmlFormAssociationState,
 };
 
-/// Establish only actual HTML/Null-definition negatives. Neither a valid name
-/// nor an incomplete registry proves this classification.
+/// Project qualified FACE positives and the existing HTML null-definition negatives.
 pub(super) fn native_input(
     source: &DomSnapshot,
     entries: &[Entry],
@@ -18,21 +17,26 @@ pub(super) fn native_input(
     let mut classifications = Vec::new();
     for entry in entries {
         control.charge(1)?;
-        if let Some(element) = source.node(entry.node)?.as_element()
-            && element.common_state().html().is_some()
+        let Some(element) = source.node(entry.node)?.as_element() else {
+            continue;
+        };
+        let form_associated = if element.form_associated_custom_disabled().is_some() {
+            true
+        } else if element.common_state().html().is_some()
             && element.custom_element_definition()
                 == crate::internal::element::DomElementDefinition::Null
         {
-            control.reserve(&mut classifications, 1)?;
-            // Context::new performs one element qualification and one
-            // duplicate flag test for this record; admit that exact envelope
-            // before entering its non-cancelable bounded validation loop.
-            control.charge(2)?;
-            classifications.push(HtmlCustomControlClassification::new(
-                entry.subject.clone(),
-                false,
-            ));
-        }
+            false
+        } else {
+            continue;
+        };
+        control.reserve(&mut classifications, 1)?;
+        // Context::new performs one element qualification and one duplicate flag test.
+        control.charge(2)?;
+        classifications.push(HtmlCustomControlClassification::new(
+            entry.subject.clone(),
+            form_associated,
+        ));
     }
     Ok(HtmlSemanticContextInput::new(classifications))
 }
@@ -67,6 +71,11 @@ pub(super) fn with_native_state(
             .and_then(crate::internal::element::DomElement::native_control)
             .map(|_| ())
             .or_else(|| node.as_img().map(|_| ()))
+            .or_else(|| {
+                node.as_element()
+                    .and_then(crate::internal::element::DomElement::form_associated_custom_disabled)
+                    .map(|_| ())
+            })
         else {
             continue;
         };

@@ -57,6 +57,12 @@ impl Draft {
             before
         };
         let old_parent = self.ensure_move(node, new_parent, before, cancel)?;
+        let old_legend = self.capture_form_associated_legend_fence(node, old_parent, cancel)?;
+        let new_legend = if new_parent == old_parent {
+            None
+        } else {
+            self.capture_form_associated_legend_fence(node, new_parent, cancel)?
+        };
 
         self.range_pre_remove(node, old_parent, cancel)?;
         self.node_iterator_pre_remove(node, old_parent, cancel)?;
@@ -96,6 +102,11 @@ impl Draft {
         let mut fields = self.common_fields_mut(node, cancel)?;
         fields.parent = Some(new_parent);
         fields.commit(cancel)?;
+        self.refresh_form_associated_disabled_tree_change(
+            node,
+            old_legend.into_iter().chain(new_legend),
+            cancel,
+        )?;
         self.slot_insertion(node, new_parent, limits, cancel)?;
 
         self.push_effect(

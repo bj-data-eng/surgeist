@@ -11,6 +11,7 @@ mod base;
 mod bidi;
 mod capture;
 mod controlled_option_value;
+pub mod fieldset_disabledness;
 mod hyperlink;
 #[cfg(test)]
 mod schema_tests;

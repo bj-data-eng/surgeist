@@ -875,7 +875,7 @@ impl Draft {
         name: &crate::internal::name::DomQualifiedName,
         saved_is: Option<&DocumentString>,
         cancel: &AtomicBool,
-    ) -> Result<Option<DomRegistryDefinitionId>, DomError> {
+    ) -> Result<Option<(DomRegistryDefinitionId, bool)>, DomError> {
         let crate::internal::document::DomRegistryBinding::Registry(registry) = binding else {
             return Ok(None);
         };
@@ -883,7 +883,15 @@ impl Draft {
         if !crate::internal::names::in_html_namespace_with(name, || self.source_step(cancel))? {
             return Ok(None);
         }
-        self.lookup_definition(registry, record, name, saved_is, cancel)
+        let Some(definition) = self.lookup_definition(registry, record, name, saved_is, cancel)?
+        else {
+            return Ok(None);
+        };
+        // Reuse the exact row the admitted lookup selected from this record.
+        let facts = record
+            .definition(definition.ordinal())
+            .map_err(DomError::SelectCapture)?;
+        Ok(Some((definition, facts.form_associated())))
     }
 
     pub(super) fn creation_registry(

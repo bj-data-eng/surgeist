@@ -49,6 +49,7 @@ pub use range::*;
 mod inert;
 pub use inert::*;
 mod control;
+mod fieldset;
 pub use control::*;
 mod command_targets;
 mod input_type;
@@ -1882,66 +1883,7 @@ impl<'a> HtmlSemanticSession<'a> {
         if self.disabled_attribute(element, custom_control)? {
             return Ok(HtmlSemanticValue::Known(true));
         }
-        let mut current = node;
-        let mut branch = node.id();
-        let mut missing_children = None;
-        loop {
-            let id = match self.parent(current)? {
-                Ok(Some(id)) => id,
-                Ok(None) => {
-                    return Ok(missing_children
-                        .map_or(HtmlSemanticValue::Known(false), HtmlSemanticValue::Missing));
-                }
-                Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
-            };
-            let ancestor = self.node(&id)?;
-            if let HtmlCapturedNodeKind::Element(e) = ancestor.kind()
-                && self.known(e)? == Some(KnownHtmlElement::Fieldset)
-                && self.disabled_attribute(e, false)?
-            {
-                // A descendant can be inside the first legend only through a
-                // direct HTML legend child. Other branches need no child-order
-                // evidence to establish this fieldset's disabling effect.
-                let branch_node = self.node(&branch)?;
-                let legend_branch = match branch_node.kind() {
-                    HtmlCapturedNodeKind::Element(e) => {
-                        self.known(e)? == Some(KnownHtmlElement::Legend)
-                    }
-                    _ => false,
-                };
-                if !legend_branch {
-                    return Ok(HtmlSemanticValue::Known(true));
-                }
-                self.charge(1)?;
-                match ancestor.children() {
-                    HtmlCapturedChildren::Unavailable => {
-                        missing_children = Some(HtmlSemanticMissing::OrderedChildren(id.clone()))
-                    }
-                    HtmlCapturedChildren::Complete(children) => {
-                        let mut first_legend = None;
-                        let mut children = children;
-                        loop {
-                            self.charge(1)?;
-                            let Some(child) = children.next() else {
-                                break;
-                            };
-                            let child_node = self.node(&child)?;
-                            if let HtmlCapturedNodeKind::Element(e) = child_node.kind()
-                                && self.known(e)? == Some(KnownHtmlElement::Legend)
-                            {
-                                first_legend = Some(child);
-                                break;
-                            }
-                        }
-                        if first_legend.as_ref() != Some(&branch) {
-                            return Ok(HtmlSemanticValue::Known(true));
-                        }
-                    }
-                }
-            }
-            branch = id;
-            current = ancestor;
-        }
+        fieldset::disabled_above(self, node)
     }
     fn nearest_select(
         &mut self,

@@ -4,14 +4,31 @@ use surgeist_html::bounded::form::{
     HtmlFormOwnerResetDecision as Decision, HtmlFormOwnerResetTrigger as Trigger,
     form_owner_reset_trigger,
 };
-use surgeist_html::vocabulary::KnownHtmlAttribute;
+use surgeist_html::{
+    elements::form::HtmlNativeFormAssociationKind, vocabulary::KnownHtmlAttribute,
+};
+
+pub(super) mod form_associated;
+use HtmlNativeFormAssociationKind as Kind;
+
+#[derive(Clone, Copy)]
+enum AssociationKind {
+    Native(Kind),
+    FormAssociatedCustom,
+}
+
+impl AssociationKind {
+    fn listed(self) -> bool {
+        match self {
+            Self::Native(kind) => kind.listed(),
+            Self::FormAssociatedCustom => true,
+        }
+    }
+}
 
 fn state<'a>(
     kind: transaction::KindRead<'a>,
-) -> Option<(
-    &'a crate::internal::control::NativeControlState,
-    surgeist_html::elements::form::HtmlNativeFormAssociationKind,
-)> {
+) -> Option<(&'a crate::internal::control::NativeControlState, Kind)> {
     match kind {
         transaction::KindRead::Element(element) => element.language().native_control(),
         _ => None,
@@ -20,23 +37,18 @@ fn state<'a>(
 // Association is wider than constraint-validation/custom-error control state.
 // Standalone Img is nonlisted and has a real parser flag/form owner, but cannot
 // acquire a custom validity message through this join.
-fn association(
-    node: &transaction::NodeRead<'_>,
-) -> Option<(
-    bool,
-    surgeist_html::elements::form::HtmlNativeFormAssociationKind,
-)> {
-    state(node.kind())
-        .map(|(control, kind)| (control.parser_inserted, kind))
-        .or_else(|| {
-            node.image().map(|image| {
-                (
-                    image.parser_inserted,
-                    surgeist_html::elements::form::HtmlNativeFormAssociationKind::Image,
-                )
-            })
-        })
+fn association(node: &transaction::NodeRead<'_>) -> Option<(bool, AssociationKind)> {
+    if let Some((control, kind)) = state(node.kind()) {
+        return Some((control.parser_inserted, AssociationKind::Native(kind)));
+    }
+    if let Some(image) = node.image() {
+        return Some((image.parser_inserted, AssociationKind::Native(Kind::Image)));
+    }
+    node.element()
+        .and_then(|element| element.language().form_associated_custom_disabled())
+        .map(|_| (false, AssociationKind::FormAssociatedCustom))
 }
+
 impl Draft {
     pub(in crate::internal::store) fn with_control<R>(
         &mut self,
@@ -53,7 +65,6 @@ impl Draft {
         formation: Option<source::formation::Formation>,
         edit: impl FnOnce(&mut crate::internal::control::NativeControlState) -> R,
     ) -> Result<R, DomError> {
-        use surgeist_html::elements::form::HtmlNativeFormAssociationKind as Kind;
         let kind = state(self.node(key)?.kind())
             .expect("checked native control")
             .1;
@@ -224,8 +235,7 @@ impl Draft {
         use surgeist_html::bounded::form::{
             HtmlFormOwnerResetAction as A, HtmlFormOwnerResetCursor, HtmlFormOwnerResetReply as R,
         };
-        let (_, kind) =
-            association(&self.node(key)?).expect("actual native form-associated element");
+        let (_, kind) = association(&self.node(key)?).ok_or(DomError::WrongNodeKind)?;
         let owner = self.node(key)?.control_owner();
         let mut former_owner = None;
         let mut found = None;
@@ -234,12 +244,22 @@ impl Draft {
             self.source_step(cancel)?;
             let reply = match cursor.action() {
                 A::ClearParserInserted => {
-                    if self.node(key)?.image().is_some() {
-                        let mut image = self.image_fields_mut(key, cancel)?;
-                        image.as_mut().expect("checked Img").parser_inserted = false;
-                        image.commit(cancel)?;
-                    } else {
-                        self.with_control(key, cancel, |control| control.parser_inserted = false)?;
+                    match kind {
+                        AssociationKind::Native(Kind::Image) => {
+                            let mut image = self.image_fields_mut(key, cancel)?;
+                            image
+                                .as_mut()
+                                .ok_or(DomError::WrongNodeKind)?
+                                .parser_inserted = false;
+                            image.commit(cancel)?;
+                        }
+                        AssociationKind::Native(_) => {
+                            self.with_control(key, cancel, |control| {
+                                control.parser_inserted = false
+                            })?;
+                        }
+                        // Successful autonomous elements never carry a parser-seeded owner.
+                        AssociationKind::FormAssociatedCustom => {}
                     }
                     R::Applied
                 }
@@ -277,24 +297,22 @@ impl Draft {
                     if let Some(former) = former_owner.take() {
                         self.remove_form_aliases(former, key, cancel)?;
                     }
-                    match kind {
-                        surgeist_html::elements::form::HtmlNativeFormAssociationKind::Button
-                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Fieldset
-                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Textarea
-                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Output
-                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Select
-                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Image => {}
-                        surgeist_html::elements::form::HtmlNativeFormAssociationKind::Input => self
-                            .input_radio_normalize(
-                                key,
-                                surgeist_html::elements::input::HtmlRadioTrigger::FormOwner,
-                                cancel,
-                            )?,
-                        _ => unreachable!("actual admitted native control kinds"),
+                    if matches!(kind, AssociationKind::Native(Kind::Input)) {
+                        self.input_radio_normalize(
+                            key,
+                            surgeist_html::elements::input::HtmlRadioTrigger::FormOwner,
+                            cancel,
+                        )?;
                     }
                     R::Applied
                 }
-                A::Complete => return Ok(()),
+                A::Complete => {
+                    if matches!(kind, AssociationKind::FormAssociatedCustom) {
+                        let final_owner = self.node(key)?.control_owner();
+                        self.record_form_associated_owner_change(key, owner, final_owner, cancel)?;
+                    }
+                    return Ok(());
+                }
             };
             cursor
                 .reply(reply)
@@ -351,9 +369,9 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some((parser_inserted, _)) = association(&self.node(key)?) {
+        if let Some((parser_inserted, kind)) = association(&self.node(key)?) {
             self.reset_control_for(key, Trigger::Insertion { parser_inserted }, cancel)?;
-            if self.control_connected(key, cancel)? {
+            if matches!(kind, AssociationKind::Native(_)) && self.control_connected(key, cancel)? {
                 self.input_radio_normalize(
                     key,
                     surgeist_html::elements::input::HtmlRadioTrigger::Connected,

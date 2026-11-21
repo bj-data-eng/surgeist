@@ -13,7 +13,14 @@ pub(in crate::internal::store) struct Creation {
     pub(in crate::internal::store) document: DocumentId,
     pub(in crate::internal::store) name: payload::Sealed<ElementName>,
     pub(in crate::internal::store) definition: crate::internal::registry::DomRegistryDefinitionId,
+    pub(in crate::internal::store) form_associated: bool,
     pub(in crate::internal::store) global: crate::internal::hosted::DomHostedGlobalId,
+}
+
+#[derive(Clone, Copy)]
+enum FormAssociationTiming {
+    AcceptedConstruction { form_associated: bool },
+    PendingFactoryResult,
 }
 
 pub(super) struct Pending {
@@ -23,6 +30,7 @@ pub(super) struct Pending {
     outcome: Option<DomSourceCustomElementOutcome>,
     disposition: Option<DomSourceCustomElementDisposition>,
     receiver: Option<NodeId>,
+    form_associated: bool,
 }
 
 impl Pending {
@@ -37,6 +45,7 @@ impl Pending {
             document,
             name,
             definition,
+            form_associated,
             global,
         } = creation;
         draft.source_step(cancel)?;
@@ -53,6 +62,7 @@ impl Pending {
             outcome: None,
             disposition: None,
             receiver: None,
+            form_associated,
         })
     }
 
@@ -115,6 +125,13 @@ impl Pending {
                         },
                         cancel,
                     )?;
+                    if successful && self.form_associated {
+                        draft.initialize_form_associated_custom(
+                            key,
+                            self.request.definition,
+                            cancel,
+                        )?;
+                    }
                 }
                 Err(DomError::StaleNode) => (),
                 Err(error) => return Err(error),
@@ -146,6 +163,13 @@ impl Pending {
         let (key, disposition) = match returned {
             Ok(key) => {
                 draft.finalize_autonomous_element(key, name.value.clone(), registry, cancel)?;
+                if self.form_associated {
+                    draft.initialize_form_associated_custom(
+                        key,
+                        self.request.definition,
+                        cancel,
+                    )?;
+                }
                 (key, DomSourceCustomElementDisposition::Constructed)
             }
             Err(disposition) => {
@@ -821,6 +845,13 @@ impl Dom {
                 (document, global)
             };
             let saved_is = element.saved_is().cloned();
+            // The exact receiver lookup already established this definition in
+            // the selected canonical registry. Keep its immutable flag with
+            // the pending constructor through reentry and final admission.
+            let form_associated = registry_record
+                .definition(definition.ordinal())
+                .map_err(DomError::SelectCapture)?
+                .form_associated();
             let shadow_forbidden = node.shadow_root().is_some()
                 && operation
                     .draft
@@ -843,6 +874,7 @@ impl Dom {
                 outcome: None,
                 disposition: None,
                 receiver: Some(receiver),
+                form_associated,
             });
             operation.qualify_custom_element_registration(dom, &registration.0, cancel)?;
             operation.headroom = Some(headroom::Reservation {
@@ -1075,7 +1107,12 @@ impl Dom {
         self.publish_constructed_custom_element(
             draft,
             document,
-            (name, None, selected.definition),
+            (
+                name,
+                None,
+                selected.definition,
+                FormAssociationTiming::PendingFactoryResult,
+            ),
             (inbox, key, limits),
             budget,
             cancel,
@@ -1147,6 +1184,7 @@ impl Dom {
             facts.local_name().code_units(),
             &mut || draft.source_step(cancel),
         )?;
+        let form_associated = !customized && facts.form_associated();
         let saved_is = customized.then(|| facts.name().clone());
         let raw = surgeist_html::values::QualifiedName::new(
             surgeist_html::values::Namespace::html(),
@@ -1159,7 +1197,12 @@ impl Dom {
         self.publish_constructed_custom_element(
             draft,
             document,
-            (name, saved_is, definition),
+            (
+                name,
+                saved_is,
+                definition,
+                FormAssociationTiming::AcceptedConstruction { form_associated },
+            ),
             (inbox, key, watch_limits),
             budget,
             cancel,
@@ -1170,10 +1213,11 @@ impl Dom {
         &mut self,
         mut draft: Draft,
         document: Key,
-        (name, saved_is, definition): (
+        (name, saved_is, definition, form_association): (
             crate::internal::name::DomQualifiedName,
             Option<surgeist_html::values::DocumentString>,
             crate::internal::registry::DomRegistryDefinitionId,
+            FormAssociationTiming,
         ),
         (inbox, key, limits): (
             &crate::internal::store::DomNodeRetirementInbox,
@@ -1207,6 +1251,14 @@ impl Dom {
             },
             cancel,
         )?;
+        if matches!(
+            form_association,
+            FormAssociationTiming::AcceptedConstruction {
+                form_associated: true
+            }
+        ) {
+            draft.initialize_form_associated_custom(node, definition, cancel)?;
+        }
         draft.register_ticket(node, cancel)?;
         let mut prepared = draft.finish(self, cancel)?;
         if u64::try_from(prepared.allocation_ids.len())

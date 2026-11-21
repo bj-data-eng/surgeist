@@ -700,6 +700,516 @@ fn hosted(dom: &mut Dom, source: &mut DomHostedSource) -> DomHostedCreation {
     lease.finish(dom, source, &cancel()).unwrap()
 }
 
+fn upgrade_test_faces(
+    dom: &mut Dom,
+    issuer: &DomHostedSource,
+    owner: &DomHostedCreation,
+    name: &str,
+    faces: &[NodeId],
+) -> DomDocumentScriptRegistration {
+    use crate::internal::store::source::operation::DomSourceCustomElementUpgrade;
+    use surgeist_html::{
+        elements::native::HtmlCustomElementState,
+        scripting::{HtmlScriptingEngine, HtmlScriptingPolicy},
+    };
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let cancel = cancel();
+    let document = owner.document();
+    let initial = dom.snapshot();
+    let view = initial.document(document).unwrap();
+    let DomRegistryBinding::Registry(registry) = view.metadata().custom_element_registry() else {
+        panic!("expected the actual hosted Global registry");
+    };
+    let facts = HtmlCustomElementDefinition::new(name.into(), name.into(), true, false);
+    let definition = dom
+        .prepare_registry_definition(
+            issuer,
+            owner.global(),
+            registry,
+            &facts,
+            source_limits(1),
+            &cancel,
+        )
+        .unwrap()
+        .commit()
+        .1;
+    let backing = issuer
+        .retain_runtime_payload(dom, DomDocumentScriptRegistration::storage_bytes(), &cancel)
+        .unwrap();
+    let (_, registration) = issuer
+        .attach_document_script_host(
+            dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel,
+        )
+        .unwrap();
+
+    let limits = source_limits(4096);
+    for &face in faces {
+        let Some(DomSourceCustomElementUpgrade::Callback {
+            request,
+            scope,
+            receiver_registry_matches,
+        }) = dom
+            .open_custom_element_upgrade(
+                face,
+                (definition, owner.global()),
+                &registration,
+                limits,
+                &cancel,
+            )
+            .unwrap()
+        else {
+            panic!("expected a reached constructor for the original FACE candidate");
+        };
+        assert!(receiver_registry_matches);
+        assert_eq!(request.definition(), definition);
+        dom.source_custom_element_callback_step(request, &registration, &cancel)
+            .unwrap();
+        // The trusted native constructor protocol returns this exact receiver.
+        drop(scope);
+        let mut lease = dom
+            .resume_source_edit(request.operation(), limits, &cancel)
+            .unwrap();
+        let mut outcome = Some(DomSourceCustomElementOutcome::Returned(face));
+        lease
+            .accept_custom_element_callback(request, &registration, &mut outcome, &cancel)
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("expected the accepted original upgrade to complete");
+        };
+        assert_eq!(done.operation(), request.operation());
+        assert_eq!(
+            done.custom_element_disposition(),
+            Some(DomSourceCustomElementDisposition::Constructed)
+        );
+        let after = lease.snapshot();
+        let element = after.node(face).unwrap().as_element().unwrap();
+        assert_eq!(
+            element.custom_element_state(),
+            HtmlCustomElementState::Custom
+        );
+        assert_eq!(
+            element.custom_element_definition(),
+            DomElementDefinition::Definition(definition)
+        );
+    }
+    registration
+}
+
+fn face_capture(
+    snapshot: &DomSnapshot,
+    document: DocumentId,
+) -> crate::internal::semantic::DomHtmlCapture {
+    use surgeist_html_semantics::HtmlCaptureLimits;
+    snapshot
+        .html_capture(
+            document,
+            None,
+            HtmlCaptureLimits::new(256, 4096, 1024, 65_536, 256, 16, 16, 1_000_000),
+            DomHtmlCaptureLimits::new(256, 1_000_000),
+            &cancel(),
+        )
+        .unwrap()
+}
+
+fn face_fact(
+    captured: &crate::internal::semantic::DomHtmlCapture,
+    node: NodeId,
+    query: surgeist_html_semantics::HtmlSemanticQuery,
+) -> surgeist_html_semantics::HtmlSemanticFact {
+    use surgeist_html::values::HtmlValueInterpreter;
+    use surgeist_html_semantics::{
+        HtmlSemanticCancellation, HtmlSemanticLimits, HtmlSemanticRequest,
+    };
+
+    let report = captured
+        .query(
+            &[HtmlSemanticRequest::new(
+                captured.subject(node).unwrap(),
+                query,
+            )],
+            HtmlValueInterpreter::new(4096),
+            HtmlSemanticLimits::new(1_000_000, 4, 128, 64, 1_000_000, 64),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+    report.results()[0].fact().clone()
+}
+
+fn assert_face_owner(snapshot: &DomSnapshot, face: NodeId, expected: Option<NodeId>) {
+    use surgeist_html_semantics::{
+        HtmlFormOwnerOrigin, HtmlSemanticFact, HtmlSemanticQuery, HtmlSemanticValue,
+    };
+    let receiver = snapshot.node(face).unwrap();
+    let captured = face_capture(snapshot, receiver.owner_document().unwrap());
+    let fact = face_fact(&captured, face, HtmlSemanticQuery::FormOwner);
+    let HtmlSemanticFact::FormOwner(HtmlSemanticValue::Known(association)) = fact else {
+        panic!("successful FACE upgrade must publish an established Form owner, got {fact:?}");
+    };
+    assert_eq!(
+        association.origin(),
+        HtmlFormOwnerOrigin::EstablishedCurrent
+    );
+    assert_eq!(
+        association.owner().map(|id| captured.node(id).unwrap()),
+        expected
+    );
+    assert_eq!(receiver.node.control_owner(), expected);
+}
+
+#[test]
+fn successful_form_associated_upgrade_publishes_its_actual_form_owner() {
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let initial = dom.snapshot();
+    let view = initial.document(document).unwrap();
+    let root = view.document_element().unwrap();
+    let body = initial.node(root).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let form = batch.create_element(document, "form");
+    let name = "x-upgrade-form-owner";
+    let face = batch.create_element(document, name);
+    batch.insert_before(&form, body, None);
+    batch.insert_before(&face, &form, None);
+    let made = apply(&mut dom, batch);
+    let form = made.created(&form).unwrap().unwrap();
+    let face = made.created(&face).unwrap().unwrap();
+    let _registration = upgrade_test_faces(&mut dom, &issuer, &owner, name, &[face]);
+    let after = dom.snapshot();
+    assert_eq!(after.node(face).unwrap().parent(), Some(form));
+    assert_face_owner(&after, face, Some(form));
+}
+
+#[test]
+fn autonomous_form_associated_upgrade_accepts_saved_is_value() {
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let initial = dom.snapshot();
+    let root = initial
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let body = initial.node(root).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let form = batch.create_element(document, "form");
+    let fieldset = batch.create_element(document, "fieldset");
+    batch.set_attribute(&fieldset, "disabled", "");
+    batch.insert_before(&form, body, None);
+    batch.insert_before(&fieldset, &form, None);
+    let made = apply(&mut dom, batch);
+    let [form, fieldset] = [form, fieldset].map(|node| made.created(&node).unwrap().unwrap());
+
+    let name = "x-face-with-is";
+    let created = source(
+        &mut dom,
+        DomSourceEdit::create_element_with_options(
+            document.node(),
+            DomElementCreationName::Local(name.into()),
+            DomElementCreationOptions {
+                is: Some("x-other".into()),
+                registry: None,
+            },
+        ),
+    );
+    let Some(DomSourceOutput::Node(face)) = created.output() else {
+        panic!("expected the exact undefined autonomous candidate");
+    };
+    source(&mut dom, DomSourceEdit::insert_before(face, fieldset, None));
+    let before = dom.snapshot();
+    assert_eq!(
+        before.node(face).unwrap().as_element().unwrap().saved_is(),
+        Some(&"x-other".into())
+    );
+    let _registration = upgrade_test_faces(&mut dom, &issuer, &owner, name, &[face]);
+    let after = dom.snapshot();
+    let element = after.node(face).unwrap().as_element().unwrap();
+    assert_eq!(element.saved_is(), Some(&"x-other".into()));
+    assert_face_owner(&after, face, Some(form));
+    assert_eq!(element.form_associated_custom_disabled(), Some(true));
+}
+
+fn assert_face_changes(completed: &DomSourceCompletion, expected: &[DomChange]) {
+    let facts: Vec<_> = completed
+        .commit()
+        .changes()
+        .changes()
+        .iter()
+        .copied()
+        .filter(|change| {
+            matches!(
+                change,
+                DomChange::FormAssociatedCustomElementOwner { .. }
+                    | DomChange::FormAssociatedCustomElementDisabled { .. }
+            )
+        })
+        .collect();
+    assert_eq!(facts, expected);
+}
+
+#[test]
+fn form_associated_upgrade_reassociates_by_first_dom_id_and_maintains_listed_membership() {
+    use surgeist_html_semantics::{HtmlSemanticFact, HtmlSemanticQuery, HtmlSemanticValue};
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let initial = dom.snapshot();
+    let root = initial
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let body = initial.node(root).unwrap().children()[1];
+
+    let mut batch = DomBatch::new();
+    let nearest = batch.create_element(document, "form");
+    let blocker = batch.create_element(document, "div");
+    let first = batch.create_element(document, "form");
+    let second = batch.create_element(document, "form");
+    for node in [&nearest, &blocker, &first, &second] {
+        batch.insert_before(node, body, None);
+    }
+    for node in [&blocker, &first, &second] {
+        batch.set_attribute(node, "id", "chosen");
+    }
+    let name = "x-reassociate";
+    let face = batch.create_element(document, name);
+    batch.insert_before(&face, &nearest, None);
+    let made = apply(&mut dom, batch);
+    let [nearest, blocker, first, second, face] =
+        [nearest, blocker, first, second, face].map(|node| made.created(&node).unwrap().unwrap());
+    let _registration = upgrade_test_faces(&mut dom, &issuer, &owner, name, &[face]);
+    let before = dom.snapshot();
+    assert_face_owner(&before, face, Some(nearest));
+
+    assert_face_changes(
+        &source(
+            &mut dom,
+            DomSourceEdit::set_attribute(face, "form", "chosen"),
+        ),
+        &[DomChange::FormAssociatedCustomElementOwner {
+            element: face,
+            owner: None,
+        }],
+    );
+    assert_face_owner(&dom.snapshot(), face, None);
+    {
+        let cancel = cancel();
+        let draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
+        let participants = draft
+            .control_id_participants(Key::Existing(blocker), true, &cancel)
+            .unwrap();
+        let mut members = participants.cursor(|| draft.source_step(&cancel)).unwrap();
+        assert_eq!(
+            members.next(|| draft.source_step(&cancel)).unwrap(),
+            Some(Key::Existing(face))
+        );
+        assert_eq!(members.next(|| draft.source_step(&cancel)).unwrap(), None);
+    }
+
+    assert_face_changes(
+        &source(
+            &mut dom,
+            DomSourceEdit::set_attribute(blocker, "id", "Chosen"),
+        ),
+        &[DomChange::FormAssociatedCustomElementOwner {
+            element: face,
+            owner: Some(first),
+        }],
+    );
+    assert_face_owner(&dom.snapshot(), face, Some(first));
+    assert_face_changes(
+        &source(
+            &mut dom,
+            DomSourceEdit::set_attribute(first, "id", "former"),
+        ),
+        &[DomChange::FormAssociatedCustomElementOwner {
+            element: face,
+            owner: Some(second),
+        }],
+    );
+    assert_face_owner(&dom.snapshot(), face, Some(second));
+    assert_face_changes(
+        &source(
+            &mut dom,
+            DomSourceEdit::set_attribute(blocker, "id", "other"),
+        ),
+        &[],
+    );
+    let reassociated = dom.snapshot();
+    assert_face_owner(&reassociated, face, Some(second));
+    let captured = face_capture(&reassociated, document);
+    for (form, expected) in [(nearest, &[][..]), (first, &[][..]), (second, &[face][..])] {
+        let fact = face_fact(&captured, form, HtmlSemanticQuery::FormControls);
+        let HtmlSemanticFact::FormControls(HtmlSemanticValue::Known(list)) = fact else {
+            panic!("expected a known current Form participant list, got {fact:?}");
+        };
+        let actual: Vec<_> = list
+            .controls()
+            .iter()
+            .map(|id| captured.node(id).unwrap())
+            .collect();
+        assert_eq!(actual, expected);
+    }
+
+    assert_face_changes(
+        &source(&mut dom, DomSourceEdit::remove_attribute(face, "form")),
+        &[DomChange::FormAssociatedCustomElementOwner {
+            element: face,
+            owner: Some(nearest),
+        }],
+    );
+    assert_face_owner(&dom.snapshot(), face, Some(nearest));
+    assert_face_changes(
+        &source(&mut dom, DomSourceEdit::detach(face)),
+        &[DomChange::FormAssociatedCustomElementOwner {
+            element: face,
+            owner: None,
+        }],
+    );
+    assert_face_owner(&dom.snapshot(), face, None);
+    assert_face_owner(&before, face, Some(nearest));
+    let mut retire = DomBatch::new();
+    retire.destroy(face);
+    apply(&mut dom, retire);
+    assert!(matches!(
+        dom.snapshot().node(face),
+        Err(DomError::StaleNode)
+    ));
+    let cancel = cancel();
+    let draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
+    assert!(!draft.has_form_associated_custom_controls());
+}
+
+#[test]
+fn form_associated_disabledness_reaches_both_legend_branches_and_outer_fieldsets() {
+    use surgeist_html_semantics::{HtmlSemanticFact, HtmlSemanticQuery, HtmlSemanticValue};
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let initial = dom.snapshot();
+    let root = initial
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let body = initial.node(root).unwrap().children()[1];
+
+    let mut batch = DomBatch::new();
+    let outer = batch.create_element(document, "fieldset");
+    let outer_first = batch.create_element(document, "legend");
+    let outer_second = batch.create_element(document, "legend");
+    let inner = batch.create_element(document, "fieldset");
+    let foreign = batch.create_element_ns(document, Namespace::svg(), "legend");
+    let first = batch.create_element(document, "legend");
+    let second = batch.create_element(document, "legend");
+    let name = "x-disabled-face";
+    let one = batch.create_element(document, name);
+    let two = batch.create_element(document, name);
+    batch.set_attribute(&outer, "disabled", "");
+    batch.set_attribute(&inner, "disabled", "");
+    batch.insert_before(&outer, body, None);
+    batch.insert_before(&outer_first, &outer, None);
+    batch.insert_before(&outer_second, &outer, None);
+    batch.insert_before(&inner, &outer_first, None);
+    for legend in [&foreign, &first, &second] {
+        batch.insert_before(legend, &inner, None);
+    }
+    batch.insert_before(&one, &first, None);
+    batch.insert_before(&two, &second, None);
+    let made = apply(&mut dom, batch);
+    let [outer, outer_second, inner, first, second, one, two] =
+        [outer, outer_second, inner, first, second, one, two]
+            .map(|node| made.created(&node).unwrap().unwrap());
+    let _registration = upgrade_test_faces(&mut dom, &issuer, &owner, name, &[one, two]);
+    let assert_disabled = |snapshot: &DomSnapshot, expected: [bool; 2]| {
+        let captured = face_capture(snapshot, document);
+        for (face, disabled) in [one, two].into_iter().zip(expected) {
+            assert_eq!(
+                face_fact(&captured, face, HtmlSemanticQuery::Disabledness),
+                HtmlSemanticFact::Disabledness(HtmlSemanticValue::Known(disabled)),
+                "effective disabledness of {face:?}"
+            );
+        }
+    };
+
+    let before = dom.snapshot();
+    assert_disabled(&before, [false, true]);
+    assert_face_changes(
+        &source(&mut dom, DomSourceEdit::set_attribute(one, "disabled", "")),
+        &[DomChange::FormAssociatedCustomElementDisabled {
+            element: one,
+            disabled: true,
+        }],
+    );
+    assert_disabled(&dom.snapshot(), [true, true]);
+    assert_face_changes(
+        &source(&mut dom, DomSourceEdit::remove_attribute(one, "disabled")),
+        &[DomChange::FormAssociatedCustomElementDisabled {
+            element: one,
+            disabled: false,
+        }],
+    );
+    assert_disabled(&dom.snapshot(), [false, true]);
+
+    assert_face_changes(
+        &source(
+            &mut dom,
+            DomSourceEdit::move_before(second, inner, Some(first)),
+        ),
+        &[
+            DomChange::FormAssociatedCustomElementDisabled {
+                element: two,
+                disabled: false,
+            },
+            DomChange::FormAssociatedCustomElementDisabled {
+                element: one,
+                disabled: true,
+            },
+        ],
+    );
+    assert_disabled(&dom.snapshot(), [true, false]);
+    assert_face_changes(
+        &source(
+            &mut dom,
+            DomSourceEdit::move_before(inner, outer_second, None),
+        ),
+        &[DomChange::FormAssociatedCustomElementDisabled {
+            element: two,
+            disabled: true,
+        }],
+    );
+    assert_disabled(&dom.snapshot(), [true, true]);
+    assert_face_changes(
+        &source(&mut dom, DomSourceEdit::remove_attribute(outer, "disabled")),
+        &[DomChange::FormAssociatedCustomElementDisabled {
+            element: two,
+            disabled: false,
+        }],
+    );
+    assert_disabled(&dom.snapshot(), [true, false]);
+    assert_disabled(&before, [false, true]);
+}
+
 #[test]
 fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     use surgeist_html_semantics::{HtmlCaptureError, HtmlCustomElementDefinition};
@@ -2205,6 +2715,219 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
         DomSourceCustomElementDisposition::InvalidElement,
         3,
     );
+}
+
+fn face_construction_fixture(
+    dom: &mut Dom,
+    issuer: &DomHostedSource,
+    owner: &DomHostedCreation,
+    name: &str,
+) -> (
+    DomDocumentScriptRegistration,
+    crate::internal::registry::DomRegistryDefinitionId,
+    NodeId,
+    NodeId,
+) {
+    let document = owner.document();
+    let snapshot = dom.snapshot();
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let body = snapshot.node(root).unwrap().children()[1];
+    let mut setup = DomBatch::new();
+    let form = setup.create_element(document, "form");
+    let fieldset = setup.create_element(document, "fieldset");
+    setup.set_attribute(&fieldset, "disabled", "");
+    setup.insert_before(&form, body, None);
+    setup.insert_before(&fieldset, &form, None);
+    let commit = apply(dom, setup);
+    let form = commit.created(&form).unwrap().unwrap();
+    let fieldset = commit.created(&fieldset).unwrap().unwrap();
+
+    let before_definition = dom.snapshot().stamp();
+    let registration = upgrade_test_faces(dom, issuer, owner, name, &[]);
+    let changes = dom.changes_since(before_definition).unwrap();
+    let mut definitions = changes.changes().iter().filter_map(|change| match change {
+        DomChange::RegistryDefinitionAdded(id) => Some(*id),
+        _ => None,
+    });
+    let definition = definitions.next().expect("actual canonical definition");
+    assert_eq!(definitions.next(), None);
+    (registration, definition, form, fieldset)
+}
+
+fn assert_constructed_face_joins_form(dom: &mut Dom, face: NodeId, form: NodeId, fieldset: NodeId) {
+    use surgeist_html_semantics::{HtmlSemanticFact, HtmlSemanticQuery, HtmlSemanticValue};
+
+    let detached = dom.snapshot();
+    let original = detached.node(face).unwrap();
+    assert_eq!(original.parent(), None);
+    assert!(!original.is_connected());
+    let document = original.owner_document().unwrap();
+    let assert_disabled = |snapshot, disabled| {
+        let captured = face_capture(snapshot, document);
+        assert_eq!(
+            face_fact(&captured, face, HtmlSemanticQuery::Disabledness),
+            HtmlSemanticFact::Disabledness(HtmlSemanticValue::Known(disabled))
+        );
+    };
+    assert_face_owner(&detached, face, None);
+    assert_disabled(&detached, false);
+
+    source(dom, DomSourceEdit::insert_before(face, fieldset, None));
+    let connected = dom.snapshot();
+    let original = connected.node(face).unwrap();
+    assert_eq!(original.parent(), Some(fieldset));
+    assert!(original.is_connected());
+    assert_face_owner(&connected, face, Some(form));
+    assert_disabled(&connected, true);
+    assert_face_owner(&detached, face, None);
+    assert_disabled(&detached, false);
+}
+
+#[test]
+fn returned_form_associated_factory_resumes_the_accepted_receiver_after_cancellation() {
+    let cancel = cancel();
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let (registration, definition, form, fieldset) =
+        face_construction_fixture(&mut dom, &issuer, &owner, "x-face-factory");
+    let limits = source_limits(4096);
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let inbox = dom.node_retirement_inbox(watch_limits, &cancel).unwrap();
+    let (request, constructor) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::create_element_ns(
+                    owner.document().node(),
+                    Namespace::html(),
+                    "p:x-face-factory",
+                ),
+                limits,
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the synchronous factory must select the registered FACE constructor");
+        };
+        assert_eq!(request.definition(), definition);
+        let constructor = lease
+            .open_custom_element_callback(request, &registration, &cancel)
+            .unwrap();
+        (request, constructor)
+    };
+    let watched = dom
+        .construct_autonomous_element_with_watch(
+            (request, request),
+            &registration,
+            owner.global(),
+            (&inbox, 0),
+            watch_limits,
+            &cancel,
+        )
+        .unwrap();
+    let receiver = watched.node();
+    drop(constructor);
+
+    let prefix = dom.snapshot();
+    let provisional = prefix.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(provisional.name().prefix(), None);
+    assert_eq!(provisional.form_associated_custom_disabled(), None);
+    {
+        let mut lease = dom
+            .resume_source_edit(request.operation(), limits, &cancel)
+            .unwrap();
+        let mut returned = Some(DomSourceCustomElementOutcome::Returned(receiver));
+        lease
+            .accept_custom_element_callback(request, &registration, &mut returned, &cancel)
+            .unwrap();
+        assert_eq!(returned, None);
+        assert_eq!(
+            lease.finish_returned_custom_element(request, &AtomicBool::new(true)),
+            Err(DomError::Cancelled)
+        );
+        assert_eq!(lease.snapshot().stamp(), prefix.stamp());
+        assert_eq!(lease.status().operation(), request.operation());
+    }
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        request.operation()
+    );
+
+    {
+        let mut lease = dom
+            .resume_source_edit(request.operation(), limits, &cancel)
+            .unwrap();
+        let mut duplicate = Some(DomSourceCustomElementOutcome::Returned(receiver));
+        assert_eq!(
+            lease.accept_custom_element_callback(request, &registration, &mut duplicate, &cancel),
+            Err(DomError::InvalidSourceOperation)
+        );
+        assert_eq!(
+            duplicate,
+            Some(DomSourceCustomElementOutcome::Returned(receiver))
+        );
+        assert_eq!(
+            lease
+                .finish_returned_custom_element(request, &cancel)
+                .unwrap(),
+            DomSourceCustomElementReturn::Constructed(receiver)
+        );
+    }
+    assert!(dom.pending_source_edit().is_none());
+    let completed = dom.snapshot();
+    let element = completed.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(element.name().prefix(), Some(&"p".into()));
+    assert_eq!(element.form_associated_custom_disabled(), Some(false));
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Definition(definition)
+    );
+    assert_eq!(completed.nodes().count(), prefix.nodes().count());
+    assert_constructed_face_joins_form(&mut dom, receiver, form, fieldset);
+}
+
+#[test]
+fn direct_form_associated_construction_publishes_the_original_detached_receiver() {
+    use surgeist_html::elements::native::HtmlCustomElementState;
+
+    let cancel = cancel();
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let (registration, definition, form, fieldset) =
+        face_construction_fixture(&mut dom, &issuer, &owner, "x-direct-face");
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let inbox = dom.node_retirement_inbox(watch_limits, &cancel).unwrap();
+    let watched = dom
+        .construct_registered_element_with_watch(
+            (definition, owner.global()),
+            &registration,
+            (&inbox, 0, watch_limits),
+            source_limits(4096),
+            &cancel,
+        )
+        .unwrap();
+    assert!(dom.pending_source_edit().is_none());
+    let receiver = watched.node();
+    let snapshot = dom.snapshot();
+    let node = snapshot.node(receiver).unwrap();
+    let element = node.as_element().unwrap();
+    assert_eq!(node.owner_document(), Some(owner.document()));
+    assert_eq!(
+        element.custom_element_state(),
+        HtmlCustomElementState::Custom
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Definition(definition)
+    );
+    assert_constructed_face_joins_form(&mut dom, receiver, form, fieldset);
 }
 
 #[test]
