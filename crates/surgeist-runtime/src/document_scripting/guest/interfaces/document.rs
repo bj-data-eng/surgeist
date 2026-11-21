@@ -36,6 +36,7 @@ mod legend;
 mod li;
 mod list_compact;
 mod lists;
+mod marquee;
 mod meta;
 mod optgroup;
 mod ordinary;

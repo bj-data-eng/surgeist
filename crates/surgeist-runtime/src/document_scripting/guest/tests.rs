@@ -44,6 +44,11 @@ pub(in crate::document_scripting) fn guest_backing_used(host: &DocumentScriptHos
     host.guest_events().unwrap().budget.used()
 }
 
+pub(in crate::document_scripting) fn fund_guest_operation_after_setup(host: &DocumentScriptHost) {
+    let events = host.guest_events().unwrap();
+    events.budget.set_work_remaining(events.limits.work);
+}
+
 pub(in crate::document_scripting) fn expose_reaction_work_exhaustion(
     host: &mut DocumentScriptHost,
     permit: &DocumentScriptPermit,

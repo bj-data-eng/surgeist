@@ -10,6 +10,7 @@ pub mod form;
 pub mod frame;
 pub mod input;
 pub mod lexical;
+pub mod marquee;
 pub mod media;
 pub mod microdata;
 pub mod native;

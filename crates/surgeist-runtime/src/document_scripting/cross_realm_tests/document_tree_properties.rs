@@ -1,8 +1,8 @@
 use super::*;
 use crate::document_scripting::guest::tests::{
     attach_public_nodes, attach_public_nodes_with_source_output_limit,
-    expose_public_node_for_source_test, guest_backing_used, projected_node_id,
-    refuse_next_source_node_validation,
+    expose_public_node_for_source_test, fund_guest_operation_after_setup, guest_backing_used,
+    projected_node_id, refuse_next_source_node_validation,
 };
 
 // HTML877d tree accessors select direct HTML children. Document direction
@@ -810,6 +810,8 @@ fn document_tree_accessors_use_registered_function_and_creation_realms() {
             })
             .unwrap()
     };
+    // Fund the receiver checks after installing both realms.
+    fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let value = evaluate(scope, "originTreeDocument")?;
         assert_ne!(scope.callback_object(&value)?.associated_realm().identity(), permit.realm);
