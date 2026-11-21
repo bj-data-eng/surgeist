@@ -10,6 +10,11 @@ pub(super) fn starts_unmodified_harness_with_native_timers() {
         .expect("supply the pinned testharness.js path");
     let harness = std::fs::read_to_string(path).expect("read the pinned harness");
     let script: Vec<_> = harness.encode_utf16().collect();
+    let fixtures: Vec<_> = std::env::args_os()
+        .skip(3)
+        .map(|path| std::fs::read_to_string(path).expect("read the exact EventTarget fixture"))
+        .collect();
+    assert!(fixtures.is_empty() || fixtures.len() == 2);
 
     for expected_seconds in [10, 60] {
         let mut dom = native_dom();
@@ -108,6 +113,9 @@ pub(super) fn starts_unmodified_harness_with_native_timers() {
         );
         println!("Runtime Window harness scheduled {expected_seconds} s without delivering load");
         exercise_live_meta_collection(&mut host, &permit, top.document(), expected_seconds == 60);
+        if !fixtures.is_empty() {
+            observe_event_target_subtests(&mut host, &permit, &fixtures);
+        }
         assert!(host.stop().into_session().is_ok());
     }
 }
@@ -205,4 +213,31 @@ fn exercise_live_meta_collection(
         assert_script_number(scope, &script, 1.0)
     })
     .unwrap();
+}
+
+fn observe_event_target_subtests(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    fixtures: &[String],
+) {
+    host.in_document(permit, |scope| {
+        let install = r#"
+            globalThis.startupSubtests = [];
+            globalThis.startupComplete = false;
+            add_result_callback(test => startupSubtests.push([test.name, test.status]));
+            add_completion_callback(() => { startupComplete = true; });
+        "#;
+        scope.evaluate(&install.encode_utf16().collect::<Vec<_>>())?;
+        for fixture in fixtures {
+            scope.evaluate(&fixture.encode_utf16().collect::<Vec<_>>())?;
+        }
+        assert_script_number(scope, r#"Number(!startupComplete && startupSubtests.length === 2 &&
+            startupSubtests[0][0] === "Adding a null event listener should succeed" &&
+            startupSubtests[0][1] === 0 &&
+            startupSubtests[1][0] === "Removing an event listener without explicit capture arg should succeed" &&
+            startupSubtests[1][1] === 0)"#, 1.0)
+    }).unwrap();
+    println!(
+        "Both upstream EventTarget assertions passed while harness completion remained pending"
+    );
 }
