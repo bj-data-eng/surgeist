@@ -2,6 +2,7 @@ mod adjacent_element;
 mod adjacent_text;
 mod authored_toggle;
 mod break_elements;
+mod cdata_section;
 mod data_time;
 mod declarative_shadow;
 mod details_reflections;
@@ -396,6 +397,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::node_iterator_admission::traversal_refusal_preserves_the_native_pointer();
     super::guest::tests::node_iterator_admission::an_unreachable_filter_cycle_releases_its_native_cursor();
     tree_walker::the_factory_exposes_a_live_cursor_and_standard_prototype();
+    cdata_section::cdata_factory_and_inherited_text_behavior();
     tree_walker::filter_calls_preserve_live_edits_identity_and_abrupt_completion();
     tree_walker::other_unsigned_short_results_follow_each_navigation_algorithm();
     tree_walker::filter_errors_use_the_callbacks_associated_realm();
