@@ -2337,6 +2337,10 @@ pub surgeist_dom::limits::DomResource::FullscreenEvents
 pub surgeist_dom::limits::DomResource::FullscreenExits
 pub surgeist_dom::limits::DomResource::HistoryBytes
 pub surgeist_dom::limits::DomResource::HistoryEntries
+pub surgeist_dom::limits::DomResource::HtmlCollectionNameUnits
+pub surgeist_dom::limits::DomResource::HtmlCollectionNames
+pub surgeist_dom::limits::DomResource::HtmlCollectionQueryUnits
+pub surgeist_dom::limits::DomResource::HtmlCollectionWork
 pub surgeist_dom::limits::DomResource::ImageUpdateCancellations
 pub surgeist_dom::limits::DomResource::InlineStyleBindings
 pub surgeist_dom::limits::DomResource::InlineStyleScratch
@@ -2374,10 +2378,6 @@ pub surgeist_dom::limits::DomResource::SlotReferences
 pub surgeist_dom::limits::DomResource::SourceRetainedBytes
 pub surgeist_dom::limits::DomResource::SourceRetainedUnits
 pub surgeist_dom::limits::DomResource::StringCodeUnits
-pub surgeist_dom::limits::DomResource::TagNameCollectionNameUnits
-pub surgeist_dom::limits::DomResource::TagNameCollectionNames
-pub surgeist_dom::limits::DomResource::TagNameCollectionQueryUnits
-pub surgeist_dom::limits::DomResource::TagNameCollectionWork
 pub surgeist_dom::limits::DomResource::TreeWalkers
 pub surgeist_dom::limits::DomResource::ViewTransitionCaptureBytes
 pub surgeist_dom::limits::DomResource::ViewTransitionPseudos
@@ -3558,6 +3558,10 @@ pub surgeist_dom::tree::DomTreeWalkerProgress::Match(surgeist_dom::tree::DomTree
 pub surgeist_dom::tree::DomTreeWalkerProgress::NoMatch
 impl<A> core::fmt::Debug for surgeist_dom::tree::DomTreeWalkerProgress<'_, A>
 pub fn surgeist_dom::tree::DomTreeWalkerProgress<'_, A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_dom::tree::DomWindowNamedElements
+pub surgeist_dom::tree::DomWindowNamedElements::Absent
+pub surgeist_dom::tree::DomWindowNamedElements::Collection(surgeist_dom::tree::DomHtmlCollection)
+pub surgeist_dom::tree::DomWindowNamedElements::Element(surgeist_dom::identity::NodeId)
 pub struct surgeist_dom::tree::DomAttr<'a>
 impl<'a> surgeist_dom::tree::DomAttr<'a>
 pub fn surgeist_dom::tree::DomAttr<'a>::id(self) -> surgeist_dom::identity::DomAttrId
@@ -3663,6 +3667,23 @@ pub fn surgeist_dom::tree::DomElement::textarea_state(&self) -> core::option::Op
 impl core::cmp::Eq for surgeist_dom::tree::DomElement
 impl core::cmp::PartialEq for surgeist_dom::tree::DomElement
 pub fn surgeist_dom::tree::DomElement::eq(&self, other: &Self) -> bool
+pub struct surgeist_dom::tree::DomHtmlCollection
+pub struct surgeist_dom::tree::DomHtmlCollectionLimits
+impl surgeist_dom::tree::DomHtmlCollectionLimits
+pub const fn surgeist_dom::tree::DomHtmlCollectionLimits::new(work: u64, names: usize, name_units: usize) -> Self
+pub struct surgeist_dom::tree::DomHtmlCollectionNames
+impl surgeist_dom::tree::DomHtmlCollectionNames
+pub fn surgeist_dom::tree::DomHtmlCollectionNames::as_slice(&self) -> &[surgeist_html::internal::values::document_string::DocumentString]
+impl core::fmt::Debug for surgeist_dom::tree::DomHtmlCollectionNames
+pub fn surgeist_dom::tree::DomHtmlCollectionNames::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::tree::DomHtmlCollectionRead<'dom, A>
+impl<A, E> surgeist_dom::tree::DomHtmlCollectionRead<'_, A> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::tree::DomHtmlCollectionRead<'_, A>::item(&self, index: usize) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
+pub fn surgeist_dom::tree::DomHtmlCollectionRead<'_, A>::length(&self) -> core::result::Result<usize, E>
+pub fn surgeist_dom::tree::DomHtmlCollectionRead<'_, A>::named_item(&self, name: &surgeist_html::internal::values::document_string::DocumentString) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
+pub fn surgeist_dom::tree::DomHtmlCollectionRead<'_, A>::supported_names(&self) -> core::result::Result<surgeist_dom::tree::DomHtmlCollectionNames, E>
+impl<A> core::fmt::Debug for surgeist_dom::tree::DomHtmlCollectionRead<'_, A>
+pub fn surgeist_dom::tree::DomHtmlCollectionRead<'_, A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomNameAtom(_)
 impl surgeist_dom::tree::DomNameAtom
 pub fn surgeist_dom::tree::DomNameAtom::owner(&self) -> surgeist_dom::identity::DomOwnerId
@@ -3845,23 +3866,6 @@ impl surgeist_dom::tree::DomTagName
 pub const fn surgeist_dom::tree::DomTagName::code_unit_len(&self) -> usize
 pub fn surgeist_dom::tree::DomTagName::code_units(&self) -> impl core::iter::traits::iterator::Iterator<Item = u16> + '_
 pub fn surgeist_dom::tree::DomTagName::contiguous_units(&self) -> core::option::Option<&[u16]>
-pub struct surgeist_dom::tree::DomTagNameCollection
-pub struct surgeist_dom::tree::DomTagNameCollectionLimits
-impl surgeist_dom::tree::DomTagNameCollectionLimits
-pub const fn surgeist_dom::tree::DomTagNameCollectionLimits::new(work: u64, names: usize, name_units: usize) -> Self
-pub struct surgeist_dom::tree::DomTagNameCollectionNames
-impl surgeist_dom::tree::DomTagNameCollectionNames
-pub fn surgeist_dom::tree::DomTagNameCollectionNames::as_slice(&self) -> &[surgeist_html::internal::values::document_string::DocumentString]
-impl core::fmt::Debug for surgeist_dom::tree::DomTagNameCollectionNames
-pub fn surgeist_dom::tree::DomTagNameCollectionNames::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_dom::tree::DomTagNameCollectionRead<'dom, A>
-impl<A, E> surgeist_dom::tree::DomTagNameCollectionRead<'_, A> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
-pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::item(&self, index: usize) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
-pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::length(&self) -> core::result::Result<usize, E>
-pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::named_item(&self, name: &surgeist_html::internal::values::document_string::DocumentString) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
-pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::supported_names(&self) -> core::result::Result<surgeist_dom::tree::DomTagNameCollectionNames, E>
-impl<A> core::fmt::Debug for surgeist_dom::tree::DomTagNameCollectionRead<'_, A>
-pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomTreeOrder<'a>
 impl core::iter::traits::iterator::Iterator for surgeist_dom::tree::DomTreeOrder<'_>
 pub type surgeist_dom::tree::DomTreeOrder<'_>::Item = surgeist_dom::identity::NodeId
@@ -4521,8 +4525,9 @@ impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::fullscreen_exit_status(&self, id: surgeist_dom::fullscreen::DomFullscreenExitId) -> core::result::Result<surgeist_dom::fullscreen::DomFullscreenExitStatus, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::take_fullscreen_events(&mut self, document: surgeist_dom::identity::DocumentId, max_output: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::fullscreen::DomFullscreenEventBatch, surgeist_dom::DomError>
 impl surgeist_dom::Dom
-pub fn surgeist_dom::Dom::get_elements_by_tag_name(&self, document: surgeist_dom::identity::DocumentId, qualified_name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomTagNameCollection, surgeist_dom::DomError>
-pub fn surgeist_dom::Dom::read_tag_name_collection<'dom, A, E>(&'dom self, collection: &'dom surgeist_dom::tree::DomTagNameCollection, limits: surgeist_dom::tree::DomTagNameCollectionLimits, admission: A, cancel: &'dom core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomTagNameCollectionRead<'dom, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::get_elements_by_tag_name(&self, document: surgeist_dom::identity::DocumentId, qualified_name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlCollection, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::read_html_collection<'dom, A, E>(&'dom self, collection: &'dom surgeist_dom::tree::DomHtmlCollection, limits: surgeist_dom::tree::DomHtmlCollectionLimits, admission: A, cancel: &'dom core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlCollectionRead<'dom, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::window_named_elements<A, E>(&self, document: surgeist_dom::identity::DocumentId, name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, work_limit: u64, admission: A, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomWindowNamedElements, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::global_document(&self, global: surgeist_dom::hosted::DomHostedGlobalId) -> core::result::Result<surgeist_dom::identity::DocumentId, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::Dom::relevant_global(&self, node: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_dom::hosted::DomHostedGlobalId>, surgeist_dom::hosted::DomHostedError>
