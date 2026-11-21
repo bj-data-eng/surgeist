@@ -423,6 +423,7 @@ pub(in crate::internal::store) fn commands(
         step()?;
         match command {
             Command::Compound(edit) => match edit {
+                crate::internal::compound::Edit::TablePart { .. } => {}
                 crate::internal::compound::Edit::Variadic { nodes, .. } => {
                     payload.bank::<crate::internal::compound::DomNodeOrString>(nodes.capacity())?;
                     for node in nodes {

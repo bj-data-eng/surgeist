@@ -3084,12 +3084,16 @@ impl surgeist_dom::source::DomSourceEdit
 pub fn surgeist_dom::source::DomSourceEdit::after(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::append(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::before(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part_in_attachment(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::delete_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_element(receiver: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, element: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_text(element: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::prepend(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_children(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_with(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_document_title(document: surgeist_dom::identity::DocumentId, value: surgeist_html::internal::values::document_string::DocumentString) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_text_content(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 impl core::convert::From<surgeist_dom::source::DomSourceEdit> for surgeist_dom::source::DomSourceInput
 pub fn surgeist_dom::source::DomSourceInput::from(edit: surgeist_dom::source::DomSourceEdit) -> Self
@@ -3528,6 +3532,10 @@ pub enum surgeist_dom::tree::DomAttributeAttachment
 pub surgeist_dom::tree::DomAttributeAttachment::Appended(surgeist_dom::identity::DomAttrId)
 pub surgeist_dom::tree::DomAttributeAttachment::Replaced(surgeist_dom::identity::DomAttrId)
 pub surgeist_dom::tree::DomAttributeAttachment::Unchanged(surgeist_dom::identity::DomAttrId)
+pub enum surgeist_dom::tree::DomHtmlTablePart
+pub surgeist_dom::tree::DomHtmlTablePart::Caption
+pub surgeist_dom::tree::DomHtmlTablePart::Foot
+pub surgeist_dom::tree::DomHtmlTablePart::Head
 pub enum surgeist_dom::tree::DomNodeFilterDecision
 pub surgeist_dom::tree::DomNodeFilterDecision::Accept
 pub surgeist_dom::tree::DomNodeFilterDecision::Reject
@@ -3735,6 +3743,8 @@ pub fn surgeist_dom::tree::DomNode<'_>::assigned_slot_with<E: core::convert::Fro
 pub fn surgeist_dom::tree::DomNode<'_>::find_slot_with<E: core::convert::From<surgeist_dom::DomError>>(self, open: bool, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::compare_document_position_with<E: core::convert::From<surgeist_dom::DomError>>(self, other: surgeist_dom::identity::NodeId, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_dom::tree::DomDocumentPosition, E>
+impl surgeist_dom::tree::DomNode<'_>
+pub fn surgeist_dom::tree::DomNode<'_>::html_table_part_with<E: core::convert::From<surgeist_dom::DomError>>(self, part: surgeist_dom::tree::DomHtmlTablePart, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::html_table_row_index_with<E: core::convert::From<surgeist_dom::DomError>>(self, kind: surgeist_html_semantics::table_rows::HtmlTableRowIndexKind, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<usize>, E>
 impl surgeist_dom::tree::DomNode<'_>

@@ -2400,11 +2400,17 @@ impl DomSourceLease<'_> {
                         | Command::CreateHtmlDocument { .. }
                         | Command::CreateXmlDocument { .. }
                         | Command::ToggleAttribute { .. }
-                        | Command::Compound(crate::internal::compound::Edit::AdjacentElement { .. })
-                        | Command::ProcessingInstructionAttribute {
-                            edit: crate::internal::source::DomProcessingInstructionAttributeEdit::Toggle { .. },
-                            ..
-                        }
+                        | Command::Compound(
+                            crate::internal::compound::Edit::AdjacentElement { .. }
+                                | crate::internal::compound::Edit::TablePart {
+                                    action: crate::internal::compound::TablePartEdit::Create { .. },
+                                    ..
+                                }
+                        ) | Command::ProcessingInstructionAttribute {
+                        edit:
+                            crate::internal::source::DomProcessingInstructionAttributeEdit::Toggle { .. },
+                        ..
+                    }
                 ) {
                     ticket_count = ticket_count
                         .checked_add(1)

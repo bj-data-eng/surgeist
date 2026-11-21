@@ -2472,6 +2472,83 @@ fn implementation_attachment_refuses_stale_factory_authority() {
     assert_eq!(dom.snapshot().stamp(), before);
 }
 #[test]
+fn table_part_creation_qualifies_the_attachment_for_a_document_without_a_global() {
+    use crate::tree::DomHtmlTablePart::{Foot, Head};
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let hosted = hosted(&mut dom, &mut issuer);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let table = batch.create_element_ns(&document, Namespace::html(), "table");
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let table = commit.created(&table).unwrap().unwrap();
+    let initial = dom.snapshot();
+    assert_eq!(initial.relevant_global(document.node()).unwrap(), None);
+    assert_eq!(initial.relevant_global(table).unwrap(), None);
+
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (_, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            hosted.global(),
+            hosted.document(),
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    let fallback = registration.creation_realm_fallback();
+    let completion = source(
+        &mut dom,
+        DomSourceEdit::create_html_table_part_in_attachment(table, Foot, fallback),
+    );
+    let Some(DomSourceOutput::Node(foot)) = completion.output() else {
+        panic!("expected a native Table foot result");
+    };
+    let with_foot = dom.snapshot();
+    assert_eq!(
+        with_foot.node(foot).unwrap().owner_document(),
+        Some(document)
+    );
+    assert_eq!(with_foot.node(foot).unwrap().parent(), Some(table));
+    assert_eq!(
+        with_foot.relevant_global(foot).unwrap(),
+        Some(hosted.global())
+    );
+    assert_eq!(with_foot.relevant_global(document.node()).unwrap(), None);
+
+    registration.revoke();
+    let before = dom.snapshot();
+    let failed = dom
+        .begin_source_edit(
+            DomSourceEdit::create_html_table_part_in_attachment(table, Head, fallback),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .advance(&cancel());
+    assert!(matches!(failed, Err(DomError::HostedSourceUnavailable)));
+    let after = dom.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.node(table).unwrap().children(), &[foot]);
+}
+
+#[test]
 fn associated_global_constructor_copies_exact_origin_but_keeps_defaults_and_no_window_association()
 {
     let mut dom = dom();
