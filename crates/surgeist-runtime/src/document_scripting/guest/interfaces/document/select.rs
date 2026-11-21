@@ -64,6 +64,13 @@ pub(super) fn install_select<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    reflection::install(
+        scope,
+        prototype,
+        capture,
+        Receiver::Select,
+        &[reflection::CONTROL_AUTOCOMPLETE],
+    )?;
     reflection::install(scope, prototype, capture, Receiver::Select, DISABLED)?;
     form_owner::install(scope, prototype, capture, FormOwnerGetter::Select)?;
     reflection::install(

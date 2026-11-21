@@ -34,6 +34,7 @@ const BEFORE_CHECKED: &[reflection::Member] = &[
         &ascii(b"alt"),
         Reflection::String,
     ),
+    reflection::CONTROL_AUTOCOMPLETE,
     (
         &ascii(b"defaultChecked"),
         &ascii(b"get defaultChecked"),

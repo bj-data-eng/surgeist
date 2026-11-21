@@ -2,6 +2,7 @@
 
 use super::{
     element::{HTML_NAMESPACE, MATHML_NAMESPACE, SVG_NAMESPACE},
+    text::TextBuffer,
     *,
 };
 use std::fmt::Write;
@@ -16,9 +17,10 @@ use surgeist_html::attributes::{
     HtmlClosedByState, HtmlContentEditableState, HtmlHidden, HtmlHiddenState, HtmlTranslate,
 };
 use surgeist_html::bounded::attributes::{
-    HtmlControlDimensionRule, HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule,
-    button_command_readback_with, closedby_processing_with, contenteditable_processing_with,
-    contenteditable_setter_state_with, control_length_reflection_with, control_length_setter_value,
+    HtmlAutocompleteControl, HtmlControlDimensionRule, HtmlHiddenSetterAction,
+    HtmlHiddenSetterInput, HtmlTableSpanRule, button_command_readback_with,
+    closedby_processing_with, contenteditable_processing_with, contenteditable_setter_state_with,
+    control_autocomplete_idl_with, control_length_reflection_with, control_length_setter_value,
     dir_keyword_with, enterkeyhint_keyword_with, form_autocomplete_keyword_with,
     form_enctype_keyword_with, form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
@@ -55,6 +57,7 @@ pub(super) enum Reflection {
     ButtonCommand,
     ButtonType,
     FormAutocomplete,
+    ControlAutocomplete,
     FormEnctype,
     FormMethod,
     FormEnctypeOverride,
@@ -337,6 +340,14 @@ pub(super) type Member = (
     Reflection,
 );
 
+pub(super) const CONTROL_AUTOCOMPLETE: Member = (
+    &ascii(b"autocomplete"),
+    &ascii(b"get autocomplete"),
+    &ascii(b"set autocomplete"),
+    &ascii(b"autocomplete"),
+    Reflection::ControlAutocomplete,
+);
+
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
@@ -530,6 +541,30 @@ impl Capture {
                             read.step()
                         })?))
                     }
+                    Reflection::ControlAutocomplete => {
+                        let control = match receiver {
+                            Receiver::Input => HtmlAutocompleteControl::Input(
+                                node.as_input()
+                                    .ok_or(DomError::WrongNodeKind)?
+                                    .input_type_with(|| read.step())?,
+                            ),
+                            Receiver::Select => HtmlAutocompleteControl::Select,
+                            Receiver::Textarea => HtmlAutocompleteControl::Textarea,
+                            _ => return Err(DomError::WrongNodeKind.into()),
+                        };
+                        let plan = control_autocomplete_idl_with(units, control, |work| {
+                            for _ in 0..work {
+                                read.step()?;
+                            }
+                            Ok::<_, DocumentGuestEventError>(())
+                        })?;
+                        let length = plan
+                            .code_units_len()
+                            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                        Reflected::Autocomplete(TextBuffer::build_exact(read, length, |emit| {
+                            plan.visit_code_units_with(|| read.step(), emit)
+                        })?)
+                    }
                     Reflection::FormEnctype => {
                         Reflected::Keyword(Some(form_enctype_keyword_with(units, |_| read.step())?))
                     }
@@ -630,6 +665,9 @@ impl Capture {
                     scope,
                     value.as_ref().map_or(&[], DocumentString::code_units),
                 )?),
+                Reflected::Autocomplete(value) => {
+                    Some(self.copy_dom_units(scope, value.code_units())?)
+                }
                 Reflected::Keyword(None) => Some(scope.primitive(Primitive::Null)?),
                 Reflected::Keyword(Some(keyword)) => {
                     let mut units = [0; MAX_KEYWORD_UNITS];
@@ -862,7 +900,8 @@ impl Capture {
                             | Receiver::Marquee
                             | Receiver::Output
                             | Receiver::Textarea
-                    ) {
+                    ) || matches!(reflection, Reflection::ControlAutocomplete)
+                    {
                         let current = self.callbacks.with_read(&owner, &events, |read, _| {
                             receiver.matches(read.node(id)?, || read.step())
                         })?;
@@ -965,6 +1004,7 @@ enum Reflected {
     Unsigned(u32),
     Signed(i32),
     String(Option<DocumentString>),
+    Autocomplete(TextBuffer),
     Keyword(Option<&'static str>),
 }
 

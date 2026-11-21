@@ -508,6 +508,10 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     );
     super::guest::tests::numeric_control_admission::local_integer_rejection_precedes_source_admission(
     );
+    super::guest::tests::control_autocomplete_admission::autocomplete_read_stops_after_six_reached_tokens();
+    super::guest::tests::control_autocomplete_admission::autocomplete_read_releases_working_text_backing(
+    );
+    super::guest::tests::control_autocomplete_admission::autocomplete_setter_returns_original_source_work_refusal();
     super::guest::tests::select_string_admission::select_value_admits_native_text_and_its_guest_copy();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();

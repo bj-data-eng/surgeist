@@ -1,6 +1,7 @@
 mod accept;
 mod area;
 mod autocomplete;
+mod autocomplete_idl;
 mod boolean_completion;
 mod boolean_content;
 mod bounded_keywords;

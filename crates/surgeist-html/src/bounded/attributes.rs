@@ -4,9 +4,10 @@
 //! captured-tree, resource or host evidence, and introduce no controller.
 
 pub use crate::internal::attributes::autocomplete::{
-    HtmlAutocompleteMaterializationError, HtmlAutocompleteMaterializationFailure,
-    HtmlAutocompleteMaterializationLimits, HtmlAutocompleteMaterializationUsage,
-    HtmlAutocompleteMaterialized, autocomplete_materialization_work_bound,
+    HtmlAutocompleteControl, HtmlAutocompleteIdl, HtmlAutocompleteMaterializationError,
+    HtmlAutocompleteMaterializationFailure, HtmlAutocompleteMaterializationLimits,
+    HtmlAutocompleteMaterializationUsage, HtmlAutocompleteMaterialized,
+    autocomplete_materialization_work_bound, control_autocomplete_idl_with,
 };
 pub use crate::internal::attributes::bounded_rules::{
     HtmlAttributeKeywordRead, HtmlButtonSubmitterFact, HtmlHiddenSetterAction,
