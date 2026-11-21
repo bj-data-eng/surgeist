@@ -61,6 +61,8 @@ use surgeist_runtime::{
     style::DomStyleRuntimeLimits,
 };
 
+#[path = "document_scripting/body_reflections.rs"]
+mod body_reflections;
 #[path = "document_scripting/content_editable.rs"]
 mod content_editable;
 #[path = "document_scripting/document_fragment.rs"]
@@ -2406,6 +2408,7 @@ fn main() {
             "content-editable" => content_editable::attached_html_elements_use_native_content_editability(),
             "hidden-reflection" => hidden_reflection::attached_hidden_reflects_the_native_attribute_and_web_idl_union(),
             "translate-reflection" => translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords(),
+            "body-reflections" => body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
@@ -2496,6 +2499,7 @@ fn main() {
     content_editable::attached_html_elements_use_native_content_editability();
     hidden_reflection::attached_hidden_reflects_the_native_attribute_and_web_idl_union();
     translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords();
+    body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings();
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();

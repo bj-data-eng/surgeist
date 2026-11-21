@@ -970,7 +970,11 @@ fn document_tree_body_operand_refusal_keeps_native_state() {
 
 fn document_tree_source_output_and_work_admission_precede_publication() {
     // New raw attributes publish Created(Attr) plus Attributes(element).
-    for (member, attribute, expected) in [("dir", "dir", "RTL"), ("fgColor", "text", "raw color")] {
+    for (property, attribute, expected) in [
+        ("document.dir", "dir", "RTL"),
+        ("document.fgColor", "text", "raw color"),
+        ("document.body.background", "background", "../raw image.png"),
+    ] {
         for outputs in [1, 2] {
             let cancel = Arc::new(AtomicBool::new(false));
             let (session, target) = hosted_session(&cancel, 0);
@@ -980,7 +984,7 @@ fn document_tree_source_output_and_work_admission_precede_publication() {
                 .unwrap()
                 .document_element()
                 .unwrap();
-            let element = if member == "dir" {
+            let element = if property == "document.dir" {
                 root
             } else {
                 snapshot.node(root).unwrap().children()[1]
@@ -991,12 +995,12 @@ fn document_tree_source_output_and_work_admission_precede_publication() {
             let before = host.snapshot().unwrap();
             let backing = guest_backing_used(&host);
             let result = host.in_document(&permit, |scope| {
-                evaluate(scope, &format!("document.{member} = '{expected}'")).map(drop)
+                evaluate(scope, &format!("{property} = '{expected}'")).map(drop)
             });
             let after = host.snapshot().unwrap();
             if outputs == 1 {
                 let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
-                    panic!("one-short Document {member} output: {result:?}");
+                    panic!("one-short {property} output: {result:?}");
                 };
                 assert!(matches!(
                     failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
