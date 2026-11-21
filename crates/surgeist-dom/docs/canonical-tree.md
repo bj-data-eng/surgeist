@@ -193,6 +193,25 @@ limit. Source custody remains with each result until it is dropped.
 
 [Pinned qualified-name filter](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L5008-L5032) · [Pinned HTMLCollection](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L3481-L3544) · [Pinned Window named objects](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L98165-L98229).
 
+## Table parts
+
+`DomNode::html_table_part_with` reads the first direct HTML Caption, Head, or
+Foot of a Table in ordinary child order. It uses the caller's admitted
+snapshot, including for detached Tables and authorized published Source
+segments. The result keeps the original node identity.
+
+Table-part Source edits use ordinary removal and pre-insertion. Create returns
+the existing first part or a new node in the Table's current document.
+Caption inserts before the first node. Head inserts before the first element
+other than an HTML caption or colgroup. Foot appends. Set validates the
+candidate kind before removing the current part, then selects the insertion
+reference from the resulting tree. If pre-insertion fails with an ordinary
+hierarchy error, the completed removal and its notifications remain committed.
+Any native service requested during removal parks that original operation
+before insertion.
+
+[Pinned HTML Table algorithms](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-table-element) · [Source protocol](source-and-style.md).
+
 ## Owned snapshots
 
 `DomSnapshot` owns immutable storage for every managed node, including detached

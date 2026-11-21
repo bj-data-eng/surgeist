@@ -35,6 +35,7 @@ pub use crate::internal::store::{
     DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomWindowNamedElements,
 };
 pub use crate::internal::store::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};
+pub use crate::internal::table_part::DomHtmlTablePart;
 pub use crate::internal::tree_walker::{
     DomTreeWalker, DomTreeWalkerDirection, DomTreeWalkerFilter, DomTreeWalkerId,
     DomTreeWalkerProgress,

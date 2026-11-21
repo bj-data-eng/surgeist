@@ -2,6 +2,7 @@
 use super::*;
 use crate::internal::compound::{Edit, Variadic};
 pub(super) mod document_title;
+pub(super) mod table_part;
 #[cfg(test)]
 mod tests;
 
@@ -146,6 +147,9 @@ impl Draft {
         self.source_step(cancel)?;
         let receiver = self.resolve(edit.receiver().into())?;
         match edit {
+            Edit::TablePart { part, action, .. } => {
+                self.edit_html_table_part(receiver, *part, *action, limits, cancel)
+            }
             Edit::DocumentTitle { value, .. } => {
                 self.set_document_title(receiver, value, limits, cancel)
             }

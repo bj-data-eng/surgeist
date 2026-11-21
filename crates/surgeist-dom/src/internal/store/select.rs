@@ -1051,6 +1051,7 @@ pub(super) enum Effect {
     Style(style::Frame),
     XmlDocument(super::document::XmlDocumentFrame),
     DocumentTitle(super::compound::document_title::Frame),
+    TablePartInsert(super::compound::table_part::Insertion),
     ChildrenChanged {
         parent: Key,
         stage: u8,
@@ -1186,6 +1187,7 @@ impl EffectFrame {
             Effect::Style(frame) => Effect::Style(*frame),
             Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
             Effect::DocumentTitle(frame) => Effect::DocumentTitle(frame.clone()),
+            Effect::TablePartInsert(frame) => Effect::TablePartInsert(*frame),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
                 parent: *parent,
                 stage: *stage,
@@ -1443,6 +1445,9 @@ impl Draft {
                     Effect::Style(frame) => self.style_effect(frame, cancel)?,
                     Effect::DocumentTitle(frame) => {
                         self.document_title_effect(frame, payload, limits, cancel)?
+                    }
+                    Effect::TablePartInsert(frame) => {
+                        self.insert_html_table_part(frame, limits, cancel)?
                     }
                     Effect::XmlDocument(frame) => {
                         self.xml_document_effect(frame, payload, limits, cancel)?

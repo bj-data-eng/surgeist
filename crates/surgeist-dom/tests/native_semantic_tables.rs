@@ -525,3 +525,6 @@ fn stale_optional_host_basis_is_rejected_before_a_table_capture_is_published() {
 
 #[path = "native_semantic_tables/row_indexes.rs"]
 mod row_indexes;
+
+#[path = "native_semantic_tables/table_parts.rs"]
+mod table_parts;
