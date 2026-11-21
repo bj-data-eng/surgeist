@@ -1441,6 +1441,10 @@ fn window_named_value_selects_the_first_child_before_origin_and_preserves_its_na
         named_value(&f.dom, global, target.clone()),
         DomWindowNamedValue::Unsupported
     ));
+    assert!(matches!(
+        named_value(&f.dom, opaque.global, "".into()),
+        DomWindowNamedValue::Unsupported
+    ));
     drive_native_removal(&mut f, isolated);
     let retiring = f.dom.snapshot();
     let navigable = retiring.hosted_navigable(opaque.navigable).unwrap();

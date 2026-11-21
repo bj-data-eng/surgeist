@@ -1766,6 +1766,7 @@ impl Dom {
                 document,
                 metadata,
                 &mut step,
+                true,
                 |child, _, _| {
                     visit(child).map_err(HostedReadError::Caller)?;
                     validate_scope()?;
@@ -1780,13 +1781,14 @@ impl Dom {
         read().map_err(HostedReadError::into_caller)
     }
 
-    /// Walk the qualified ordinary-tree content edges until a caller accepts one.
+    /// Qualify the parent, then search its ordinary-tree content edges on request.
     pub(in crate::internal::store) fn find_document_tree_child<E, S>(
         &self,
         snapshot: &DomSnapshot,
         document: DocumentId,
         metadata: &DomDocumentMetadata,
         step: &mut S,
+        search_children: bool,
         mut visit: impl FnMut(DomHostedNavigable<'_>, &DomDocumentMetadata, &mut S) -> Result<bool, E>,
     ) -> Result<bool, E>
     where
@@ -1817,6 +1819,9 @@ impl Dom {
         validate_navigable_association(&association, parent)?;
         if active.document != Some(document) {
             return Err(DomHostedError::StaleIdentity.into());
+        }
+        if !search_children {
+            return Ok(false);
         }
 
         let found = self.state.container_index.find_with(

@@ -284,10 +284,6 @@ impl Dom {
                 max_retained_query_units,
                 DomResource::HtmlCollectionQueryUnits,
             )?;
-            if name.is_empty() {
-                return Ok(DomWindowNamedValue::Unsupported);
-            }
-
             let snapshot = self.snapshot();
             let mut first = None;
             self.find_document_tree_child(
@@ -295,6 +291,7 @@ impl Dom {
                 document,
                 metadata,
                 &mut || meter.step(),
+                !name.is_empty(),
                 |child, child_document, step| {
                     step()?;
                     let entry = DomHostedEntry {
@@ -315,6 +312,9 @@ impl Dom {
                     Ok(true)
                 },
             )?;
+            if name.is_empty() {
+                return Ok(DomWindowNamedValue::Unsupported);
+            }
             if let Some((context, true)) = first {
                 return Ok(DomWindowNamedValue::Child(context));
             }
