@@ -1,5 +1,5 @@
 //! Native select-family values and explicit intrinsic task checkpoint.
-use crate::internal::{identity::NodeId, snapshot::DomNode, store::DomError};
+use crate::internal::{form::DomForm, identity::NodeId, snapshot::DomNode, store::DomError};
 
 /// Native Select scalars; form identity remains on the canonical node.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -54,6 +54,29 @@ impl<'a> DomSelect<'a> {
         self.node.snapshot.require_complete_source()?;
         Ok(self.node.node.control_owner())
     }
+    /// Read the stored form owner in this published segment.
+    ///
+    /// The result belongs to this same snapshot, including during an unfinished
+    /// Source operation. It reflects the form-owner steps reached at publication.
+    /// `step` admits the association read and each reached owner lookup. A live
+    /// caller must separately qualify access to the current segment.
+    pub fn form_owner_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomForm<'a>>, E> {
+        step()?;
+        self.node
+            .node
+            .control_owner()
+            .map(|owner| {
+                self.node
+                    .snapshot
+                    .node_with(owner, &mut step)?
+                    .as_form()
+                    .ok_or_else(|| DomError::WrongNodeKind.into())
+            })
+            .transpose()
+    }
     /// Read the first selected Option's zero-based position in the canonical option list.
     ///
     /// Returns `None` for an empty selection in the captured published segment.
@@ -99,7 +122,7 @@ impl<'a> DomSelect<'a> {
 pub struct DomOption<'a> {
     pub(crate) node: DomNode<'a>,
 }
-impl DomOption<'_> {
+impl<'a> DomOption<'a> {
     pub fn id(self) -> NodeId {
         self.node.id()
     }
@@ -113,6 +136,29 @@ impl DomOption<'_> {
     pub fn cached_select(self) -> Result<Option<NodeId>, crate::internal::store::DomError> {
         self.node.snapshot.require_complete_source()?;
         Ok(self.node.node.option_select())
+    }
+    /// Read the form owner of this Option's nearest HTML Select.
+    ///
+    /// The nearest Select is determined by this segment's ordinary topology
+    /// using HTML's ancestor barriers. The result is that Select's stored
+    /// owner in this same snapshot. `step` admits each reached lookup and
+    /// association read. A live caller qualifies access to the current segment.
+    pub fn form_owner_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomForm<'a>>, E> {
+        let snapshot = self.node.snapshot;
+        let Some(select) = snapshot
+            .state
+            .nearest_option_select_with(self.id(), &mut step)?
+        else {
+            return Ok(None);
+        };
+        snapshot
+            .node_with(select, &mut step)?
+            .as_select()
+            .ok_or(DomError::SelectProtocol)?
+            .form_owner_with(step)
     }
     /// Read this Option's zero-based position in its canonical option list.
     ///

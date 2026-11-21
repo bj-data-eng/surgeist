@@ -92,6 +92,13 @@ option list and its order in the captured published segment. The caller admits
 each reached lookup and qualifies live access during Source callbacks. The
 observed index and selectedness describe that segment's node records.
 
+`DomSelect::form_owner_with` reads the stored form owner reached in the
+published segment, including a parser-established association.
+`DomOption::form_owner_with` finds the nearest HTML Select from that segment's
+ordinary topology using HTML's ancestor barriers, then reads its stored owner.
+Both return a checked Form view from the same snapshot and admit each reached
+lookup. Live callers qualify access to the current segment.
+
 `DomSelect::visit_value_with` reads the value of the first selected Option in
 the same list. `DomOption::visit_value_with` and `visit_label_with` borrow a
 present null-namespace attribute, preserving empty and other exact UTF-16

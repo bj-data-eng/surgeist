@@ -8181,12 +8181,13 @@
       "requirements": []
     },
     "HTMLSelectElement.form/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Project the actual native form owner through the HTMLFormElement wrapper.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fae-form"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.form.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "form_owner_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/select/form.rs", "symbol": "read_select_family_form"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.multiple/get": {
       "kind": "native",
@@ -8479,12 +8480,14 @@
       "requirements": []
     },
     "HTMLOptionElement.form/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Resolve the associated Select's actual form owner and project its HTMLFormElement wrapper.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-form"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.form.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "form_owner_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/select.rs", "symbol": "nearest_option_select_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/select/form.rs", "symbol": "read_select_family_form"}
+      ],
+      "requirements": []
     },
     "HTMLOptionElement.label/get": {
       "kind": "native",
