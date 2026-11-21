@@ -1996,3 +1996,168 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
     assert_eq!(queued.hosted_entry(other_entry).unwrap().step(), None);
     assert_eq!(current.incomplete_source_operation(), None);
 }
+
+#[test]
+fn hosted_ancestor_activity_needs_dispatch_work_before_selecting_a_once_listener() {
+    use surgeist_runtime::event::{
+        DomEventDispatchError, DomEventDispatchOutcome, DomEventInit, DomEventResource,
+    };
+
+    fn try_first_callback(
+        session: &mut DomSession,
+        global: DomHostedGlobalId,
+        work: u64,
+        verify_retry: bool,
+    ) -> bool {
+        let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+            registrations: 4,
+            pending_events: 4,
+            nested_dispatches: 1,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        })
+        .unwrap();
+        let mut hosted = session.hosted_execution();
+        let target = hosted
+            .create_event_target(&mut session.dom(), &registry, global, &cancel())
+            .unwrap();
+        let kind: Vec<_> = "activity".encode_utf16().collect();
+        let event = hosted
+            .create_event(
+                &mut session.dom(),
+                global,
+                &kind,
+                DomEventInit::default(),
+                &cancel(),
+            )
+            .unwrap();
+        let id = registry
+            .add_listener(
+                &mut session.dom(),
+                target.clone(),
+                &kind,
+                DomEventCallback::new(|_, _, entered: &mut usize, _| {
+                    *entered += 1;
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    once: true,
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+        let mut dispatch = registry
+            .prepare_dispatch(&mut session.dom(), target.clone(), &event, &cancel())
+            .unwrap();
+        let mut entered = 0;
+        let limits = DomEventDispatchLimits {
+            path_items: 4,
+            snapshot_listeners: 4,
+            failure_records: 4,
+            callbacks: 4,
+            work,
+        };
+        let result = dispatch.advance(
+            &mut session.dom(),
+            &mut registry,
+            &mut entered,
+            limits,
+            &cancel(),
+        );
+        assert!(
+            matches!(
+                result,
+                Ok(DomEventDispatchOutcome::Complete(_)
+                    | DomEventDispatchOutcome::Retained(DomEventResource::Work))
+                    | Err(DomEventDispatchError::Admission(DomEventResource::Work))
+            ),
+            "{result:?}"
+        );
+        if verify_retry {
+            assert_eq!(entered, 0);
+            assert!(matches!(
+                result,
+                Ok(DomEventDispatchOutcome::Retained(DomEventResource::Work))
+            ));
+            let resume_limits = DomEventDispatchLimits {
+                work: 10_000,
+                ..limits
+            };
+            assert!(matches!(
+                dispatch.advance(
+                    &mut session.dom(),
+                    &mut registry,
+                    &mut entered,
+                    resume_limits,
+                    &AtomicBool::new(true)
+                ),
+                Err(DomEventDispatchError::Dom(DomError::Cancelled))
+            ));
+            assert_eq!(entered, 0);
+            let result = dispatch
+                .advance(
+                    &mut session.dom(),
+                    &mut registry,
+                    &mut entered,
+                    resume_limits,
+                    &cancel(),
+                )
+                .unwrap();
+            let DomEventDispatchOutcome::Complete(receipt) = result else {
+                panic!("{result:?}")
+            };
+            assert_eq!(entered, 1);
+            assert_eq!(receipt.callbacks(), 1);
+            assert!(receipt.failures().is_empty());
+            assert!(!registry.remove_listener(id));
+            let mut next = registry
+                .prepare_dispatch(&mut session.dom(), target, &event, &cancel())
+                .unwrap();
+            let result = next
+                .advance(
+                    &mut session.dom(),
+                    &mut registry,
+                    &mut entered,
+                    resume_limits,
+                    &cancel(),
+                )
+                .unwrap();
+            let DomEventDispatchOutcome::Complete(receipt) = result else {
+                panic!("{result:?}")
+            };
+            assert_eq!(receipt.callbacks(), 0);
+            assert_eq!(entered, 1);
+        }
+        entered == 1
+    }
+
+    let mut session = session();
+    let top = top_level(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let (_, siblings) = detached_siblings(&mut session, top.document());
+    complete_source_edit(
+        &mut session,
+        DomSourceEdit::insert_before(siblings[0], parent, None),
+    );
+    let snapshot = session.snapshot();
+    let child = snapshot
+        .hosted_navigable(child_id(&snapshot, siblings[0]))
+        .unwrap()
+        .global();
+    let [top_first, child_first] = [top.global(), child].map(|global| {
+        (0..256)
+            .find(|&work| try_first_callback(&mut session, global, work, false))
+            .expect("the reached activity and callback must fit in a finite work envelope")
+    });
+    assert!(
+        child_first > top_first,
+        "top {top_first}, child {child_first}"
+    );
+    assert!(try_first_callback(&mut session, child, child_first, false));
+    assert!(try_first_callback(
+        &mut session,
+        child,
+        child_first - 1,
+        true
+    ));
+}
