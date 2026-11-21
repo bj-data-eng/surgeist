@@ -107,6 +107,21 @@ impl ContainerIndex {
         self.members
             .after(self.header(root), key, order, Mode::ShadowIncluding, step)
     }
+    /// Visit the existing group in order without recomparing its members.
+    pub fn visit_with<E: From<DomError>, S: FnMut() -> Result<(), E>>(
+        &self,
+        root: Key,
+        step: &mut S,
+        mut visit: impl FnMut(Key, &mut S) -> Result<(), E>,
+    ) -> Result<(), E> {
+        step()?;
+        self.members
+            .find_with(self.header(root), step, |key, step| {
+                visit(key, step)?;
+                Ok(false)
+            })?;
+        Ok(())
+    }
     pub fn adopt_custody(
         &self,
         registry: &bank::CustodyRegistry,

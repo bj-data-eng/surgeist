@@ -4527,6 +4527,7 @@ pub fn surgeist_dom::Dom::take_hosted_details_toggle_intentions(&mut self, sourc
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::hosted_entry(&self, id: surgeist_dom::hosted::history::DomHostedEntryId) -> core::result::Result<surgeist_dom::hosted::history::DomHostedEntry<'_>, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::Dom::hosted_navigable(&self, id: surgeist_dom::hosted::DomHostedNavigableId) -> core::result::Result<surgeist_dom::hosted::history::DomHostedNavigable<'_>, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::Dom::visit_document_tree_child_navigables<E: core::convert::From<surgeist_dom::hosted::DomHostedError>>(&self, document: surgeist_dom::identity::DocumentId, work_limit: u64, admission: impl core::ops::function::FnMut() -> core::result::Result<(), E>, cancel: &core::sync::atomic::AtomicBool, visit: impl core::ops::function::FnMut(surgeist_dom::hosted::history::DomHostedNavigable<'_>) -> core::result::Result<(), E>) -> core::result::Result<usize, E>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::install_native_html_fragment(&mut self, basis: surgeist_dom::identity::DomDocumentStamp, parent: surgeist_dom::identity::NodeId, before: core::option::Option<surgeist_dom::identity::NodeId>, source: &surgeist_html::internal::construction::HtmlFragment, limits: surgeist_dom::installation::DomNativeHtmlInstallLimits, cancelled: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::installation::DomNativeHtmlInstallation, surgeist_dom::installation::DomNativeHtmlInstallError>
 impl surgeist_dom::Dom

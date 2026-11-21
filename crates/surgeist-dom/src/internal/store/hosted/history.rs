@@ -729,11 +729,13 @@ impl Graph {
         Ok(output)
     }
     /// Window.navigable is selected from actual active Document equality.
-    pub(in crate::internal::store) fn active_navigable_for_document_with(
+    pub(in crate::internal::store) fn active_navigable_for_document_with<
+        E: From<DomHostedError>,
+    >(
         &self,
         document: DocumentId,
-        mut step: impl FnMut() -> Result<(), DomHostedError>,
-    ) -> Result<Option<DomHostedNavigableId>, DomHostedError> {
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedNavigableId>, E> {
         if self.navigables.is_empty() {
             return Ok(None);
         }
@@ -750,7 +752,7 @@ impl Graph {
         self.navigables
             .get(member.navigable)
             .map(|row| Some(row.id))
-            .ok_or(DomHostedError::StaleIdentity)
+            .ok_or_else(|| DomHostedError::StaleIdentity.into())
     }
     pub(crate) fn navigable(&self, id: DomHostedNavigableId) -> Result<&Navigable, DomHostedError> {
         self.navigable_with(id, || Ok(()))
@@ -760,11 +762,11 @@ impl Graph {
     }
     /// Lend the caller's original admission/cancellation to one fully qualified
     /// identity lookup. Historical observations supply a no-budget step.
-    pub(crate) fn navigable_with(
+    pub(crate) fn navigable_with<E: From<DomHostedError>>(
         &self,
         id: DomHostedNavigableId,
-        mut step: impl FnMut() -> Result<(), DomHostedError>,
-    ) -> Result<&Navigable, DomHostedError> {
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<&Navigable, E> {
         step()?;
         let ordinal = self
             .navigable_ids
@@ -774,13 +776,13 @@ impl Graph {
         self.navigables
             .get(ordinal.value)
             .map(|row| &row.value)
-            .ok_or(DomHostedError::StaleIdentity)
+            .ok_or_else(|| DomHostedError::StaleIdentity.into())
     }
-    pub(crate) fn entry_with(
+    pub(crate) fn entry_with<E: From<DomHostedError>>(
         &self,
         id: DomHostedEntryId,
-        mut step: impl FnMut() -> Result<(), DomHostedError>,
-    ) -> Result<&Entry, DomHostedError> {
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<&Entry, E> {
         step()?;
         let ordinal = self
             .entry_ids
@@ -790,7 +792,7 @@ impl Graph {
         self.entries
             .get(ordinal.value)
             .map(|row| &row.value)
-            .ok_or(DomHostedError::StaleIdentity)
+            .ok_or_else(|| DomHostedError::StaleIdentity.into())
     }
     #[cfg(test)]
     pub(crate) fn payload(
@@ -1681,7 +1683,180 @@ impl DomSnapshot {
     }
 }
 
+// Storage and graph APIs retain their own failures, and caller errors bypass
+// both conversions until the public read returns.
+enum ChildReadError<E> {
+    Hosted(DomHostedError),
+    Caller(E),
+}
+
+impl<E> From<DomHostedError> for ChildReadError<E> {
+    fn from(error: DomHostedError) -> Self {
+        Self::Hosted(error)
+    }
+}
+
+impl<E> From<DomError> for ChildReadError<E> {
+    fn from(error: DomError) -> Self {
+        Self::Hosted(error.into())
+    }
+}
+
+fn validate_navigable_association(
+    association: &DocumentAssociation,
+    record: &Navigable,
+) -> Result<(), DomHostedError> {
+    association.validate_live()?;
+    if !matches!(association.phase, DocumentPhase::InitialEntry { navigable, .. }
+        if navigable == record.id)
+        || association.host != record.host
+        || association.context != record.context
+        || association.global != record.global
+        || record.retiring
+        || record.retired
+    {
+        return Err(DomHostedError::StaleIdentity);
+    }
+    Ok(())
+}
+
 impl Dom {
+    /// Visit the Document's current ordinary-tree child navigables and return their count.
+    ///
+    /// The visitor receives each established content navigable in tree order.
+    /// A Document with known absence of a node navigable yields zero. Each reached read
+    /// draws on `work_limit` and calls `admission`. Inside Source, the read also
+    /// borrows the exact current callback scope and its remaining work.
+    ///
+    /// # Errors
+    ///
+    /// Fails on cancellation, work exhaustion, an invalid Document, an
+    /// unavailable hosted association or Source scope, or a refusal from
+    /// `admission` or `visit`. A refusal stops the read immediately. Calls
+    /// already made to the visitor may have had effects.
+    pub fn visit_document_tree_child_navigables<E: From<DomHostedError>>(
+        &self,
+        document: DocumentId,
+        work_limit: u64,
+        mut admission: impl FnMut() -> Result<(), E>,
+        cancel: &AtomicBool,
+        mut visit: impl FnMut(DomHostedNavigable<'_>) -> Result<(), E>,
+    ) -> Result<usize, E> {
+        if document.node().owner() != self.owner {
+            return Err(DomHostedError::from(DomError::ForeignOwner).into());
+        }
+        let source = self
+            .qualify_read_source(cancel)
+            .map_err(DomHostedError::from)?;
+        let validate_scope = || -> Result<(), ChildReadError<E>> {
+            check_cancel(cancel)?;
+            if let Some(source) = &source {
+                source.validate()?;
+            }
+            Ok(())
+        };
+        let mut remaining = work_limit;
+        let mut step = || -> Result<(), ChildReadError<E>> {
+            validate_scope()?;
+            remaining = remaining
+                .checked_sub(1)
+                .ok_or(DomHostedError::WorkLimit { limit: work_limit })?;
+            admission().map_err(ChildReadError::Caller)?;
+            match &source {
+                Some(source) => source.step(cancel)?,
+                None => check_cancel(cancel)?,
+            }
+            Ok(())
+        };
+        let mut read = || -> Result<usize, ChildReadError<E>> {
+            let snapshot = self.snapshot();
+            let root = snapshot.node_with(document.node(), &mut step)?;
+            let DomNodeKind::Document(metadata) = root.kind() else {
+                return Err(DomError::WrongDocument.into());
+            };
+            step()?;
+            let Some(association) = metadata.document_environment().hosted else {
+                return Ok(0);
+            };
+            if matches!(association.phase, DocumentPhase::Retired { .. }) {
+                return Ok(0);
+            }
+            association.validate_live()?;
+            let graph = self
+                .state
+                .hosted_history
+                .as_deref()
+                .ok_or(DomHostedError::UnsupportedProfile)?;
+            let Some(parent) = graph.active_navigable_for_document_with(document, &mut step)?
+            else {
+                // The live association still needs to be valid after admission.
+                association.validate_live()?;
+                return Ok(0);
+            };
+            let parent = graph.navigable_with(parent, &mut step)?;
+            let active = graph.entry_with(parent.active, &mut step)?;
+            step()?;
+            validate_navigable_association(&association, parent)?;
+            if active.document != Some(document) {
+                return Err(DomHostedError::StaleIdentity.into());
+            }
+
+            let mut count = 0usize;
+            self.state.container_index.visit_with(
+                Key::Existing(document.node()),
+                &mut step,
+                |key, step| {
+                    let Key::Existing(container) = key else {
+                        return Err(DomError::UnavailableCreation.into());
+                    };
+                    let candidate = snapshot.node_with(container, &mut *step)?;
+                    let content = candidate
+                        .as_element()
+                        .and_then(|element| element.child_navigable())
+                        .ok_or(DomError::WrongNodeKind)?;
+                    let Some(child) = content else {
+                        return Ok(());
+                    };
+                    if candidate.root_with(false, &mut *step)?.id() != document.node() {
+                        return Ok(());
+                    }
+                    if child.source != parent.id.source {
+                        return Err(DomHostedError::ForeignSource.into());
+                    }
+                    let record = graph.navigable_with(child, &mut *step)?;
+                    if record.container != Some(container) {
+                        return Err(DomHostedError::StaleIdentity.into());
+                    }
+                    let active = graph.entry_with(record.active, &mut *step)?;
+                    let child_document = active.document.ok_or(DomHostedError::StaleIdentity)?;
+                    let child_node = snapshot.node_with(child_document.node(), &mut *step)?;
+                    let DomNodeKind::Document(metadata) = child_node.kind() else {
+                        return Err(DomError::WrongDocument.into());
+                    };
+                    step()?;
+                    let child_association = metadata
+                        .document_environment()
+                        .hosted
+                        .ok_or(DomHostedError::UnsupportedProfile)?;
+                    validate_navigable_association(&child_association, record)?;
+                    visit(DomHostedNavigable { record, active }).map_err(ChildReadError::Caller)?;
+                    validate_scope()?;
+                    count = count
+                        .checked_add(1)
+                        .ok_or(DomHostedError::RepresentationExhausted)?;
+                    Ok(())
+                },
+            )?;
+            step()?;
+            association.validate_live()?;
+            Ok(count)
+        };
+        read().map_err(|error| match error {
+            ChildReadError::Hosted(error) => error.into(),
+            ChildReadError::Caller(error) => error,
+        })
+    }
+
     pub fn hosted_navigable(
         &self,
         id: DomHostedNavigableId,

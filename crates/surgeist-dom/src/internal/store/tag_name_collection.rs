@@ -1,18 +1,12 @@
 use std::cell::Cell;
 use std::ops::ControlFlow;
-use std::sync::Weak;
 
 use super::node_iterator::traversal::{OrdinaryTree, following};
-use super::*;
+use super::{read_source::ReadSource, *};
 use crate::internal::{
     document::DomDocumentClass,
-    hosted::{DocumentAssociation, ScriptRegistration},
     names::{in_html_namespace_with, qualified_equals_with, same_code_units},
     snapshot::{DomNode, DomNodeKind},
-    source::{
-        callback::{CallbackWork, DispatchScope},
-        event::DomSourceEventRequest,
-    },
 };
 
 const ID: &[u16] = &[0x69, 0x64];
@@ -89,78 +83,6 @@ impl std::fmt::Debug for DomTagNameCollectionNames {
     }
 }
 
-pub(super) struct ReadSource<'dom> {
-    work: Arc<CallbackWork>,
-    scope: Weak<DispatchScope>,
-    authority: ReadAuthority<'dom>,
-}
-
-pub(super) enum ReadAuthority<'dom> {
-    Event(&'dom DomSourceEventRequest),
-    Script {
-        registration: &'dom ScriptRegistration,
-        association: Arc<DocumentAssociation>,
-        attribute: bool,
-    },
-}
-
-impl<'dom> ReadSource<'dom> {
-    pub(super) fn new(
-        work: Arc<CallbackWork>,
-        authority: ReadAuthority<'dom>,
-    ) -> Result<Self, DomError> {
-        let scope = work.active_scope().ok_or(DomError::InvalidSourceEvent)?;
-        let qualified = Self {
-            work,
-            scope,
-            authority,
-        };
-        qualified.validate()?;
-        Ok(qualified)
-    }
-
-    fn validate(&self) -> Result<(), DomError> {
-        if !self
-            .work
-            .active_scope()
-            .is_some_and(|active| active.ptr_eq(&self.scope))
-        {
-            return Err(DomError::InvalidSourceEvent);
-        }
-        match &self.authority {
-            ReadAuthority::Event(request) => {
-                let executor = request
-                    .executor
-                    .upgrade()
-                    .ok_or(DomError::InvalidSourceEvent)?;
-                request.validate_executor(&executor)
-            }
-            ReadAuthority::Script {
-                registration,
-                association,
-                attribute,
-            } => {
-                if !registration.is_active() {
-                    return Err(if *attribute {
-                        DomError::SourceAttributeExecutorUnavailable
-                    } else {
-                        DomError::HostedSourceUnavailable
-                    });
-                }
-                association
-                    .validate_live()
-                    .map(|_| ())
-                    .map_err(|_| DomError::HostedSourceUnavailable)
-            }
-        }
-    }
-
-    fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
-        self.validate()?;
-        self.work.step(cancel)
-    }
-}
-
 impl<A> std::fmt::Debug for DomTagNameCollectionRead<'_, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DomTagNameCollectionRead")
@@ -183,7 +105,7 @@ impl Dom {
             return Err(DomError::ForeignOwner);
         }
         self.require_source_entry(cancel)?;
-        let source = self.qualify_collection_read(cancel)?;
+        let source = self.qualify_read_source(cancel)?;
         let document_node = self.snapshot();
         let view = document_node.node_with(document.node(), || match &source {
             Some(source) => source.step(cancel),
@@ -219,7 +141,7 @@ impl Dom {
             return Err(DomError::ForeignOwner.into());
         }
         self.require_source_entry(cancel)?;
-        let source = self.qualify_collection_read(cancel)?;
+        let source = self.qualify_read_source(cancel)?;
         let meter = Meter {
             cancellation: cancel,
             admission,

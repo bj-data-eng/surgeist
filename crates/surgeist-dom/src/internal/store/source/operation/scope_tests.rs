@@ -311,3 +311,85 @@ fn collection_names_keep_output_custody_and_reject_a_revoked_executor() {
     assert_eq!(read.item(0), Err(DomError::InvalidSourceEvent));
     drop(scope);
 }
+
+#[test]
+fn document_tree_child_read_borrows_only_the_exact_live_dispatch_scope() {
+    use crate::internal::hosted::DomHostedError;
+
+    let (mut dom, _hosted, _, document, root) = fixture();
+    let cancel = AtomicBool::new(false);
+    let custody = crate::internal::dispatch::DomDispatchCustodyLimits::new(
+        64, 4096, 16_000_000, 16_000_000, 4_000_000,
+    )
+    .unwrap();
+    dom.set_limits(dom.limits().with_dispatch_custody(custody))
+        .unwrap();
+    let mut edit = DomBatch::new();
+    let dialog = edit.create_element_ns(document, Namespace::html(), "dialog");
+    edit.insert_before(&dialog, root, None);
+    let dialog = dom
+        .apply(edit, &cancel)
+        .unwrap()
+        .created(&dialog)
+        .unwrap()
+        .unwrap();
+    let executor = dom.bind_source_event_executor(&cancel).unwrap();
+    let event = {
+        let mut source = dom
+            .begin_source_edit(DomSourceEdit::show_dialog(dialog), limits(), &cancel)
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Event(event)) =
+            source.advance(&cancel).unwrap()
+        else {
+            panic!("the original dialog effect must reach its event");
+        };
+        event
+    };
+    let read = |dom: &Dom| {
+        dom.visit_document_tree_child_navigables(
+            document,
+            10_000,
+            || Ok::<_, DomHostedError>(()),
+            &cancel,
+            |_| Ok(()),
+        )
+    };
+    assert_eq!(read(&dom), Err(DomError::IncompleteSourceOperation.into()));
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let mut scope = Some(executor.enter_dispatch(&dom, &permit, &cancel).unwrap());
+    let before = dom.pending_source_edit().unwrap().spent_work();
+    let mut admitted = 0;
+    assert_eq!(
+        dom.visit_document_tree_child_navigables(
+            document,
+            10_000,
+            || {
+                admitted += 1;
+                Ok::<_, DomHostedError>(())
+            },
+            &cancel,
+            |_| Ok(()),
+        ),
+        Ok(0)
+    );
+    let after = dom.pending_source_edit().unwrap().spent_work();
+    assert!(admitted > 0);
+    // The dispatch qualification consumes one step. Remaining steps each
+    // charge the original Source exactly once alongside caller admission.
+    assert_eq!(after - before, admitted + 1);
+    let mut reached_admission = false;
+    let result = dom.visit_document_tree_child_navigables(
+        document,
+        10_000,
+        || {
+            reached_admission = true;
+            drop(scope.take());
+            Ok::<_, DomHostedError>(())
+        },
+        &cancel,
+        |_| Ok(()),
+    );
+    assert_eq!(result, Err(DomError::InvalidSourceEvent.into()));
+    assert!(reached_admission);
+    assert_eq!(read(&dom), Err(DomError::IncompleteSourceOperation.into()));
+}
