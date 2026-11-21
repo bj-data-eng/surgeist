@@ -146,3 +146,84 @@ fn reflection_admission_stops_at_each_reached_read_and_preserves_exact_budgets()
         }
     }
 }
+
+#[test]
+fn content_editable_conversion_keeps_content_defaults_out_of_the_setter() {
+    use surgeist_html::{
+        attributes::{HtmlContentEditable as Keyword, HtmlContentEditableState as State},
+        bounded::attributes::{contenteditable_processing_with, contenteditable_setter_state_with},
+    };
+
+    assert_eq!(
+        contenteditable_processing_with(None, |_| Ok::<_, Infallible>(())).unwrap(),
+        State::Inherit
+    );
+    for (raw, content, setter) in [
+        ("", State::Keyword(Keyword::True), None),
+        ("INHERIT", State::Inherit, Some(State::Inherit)),
+        (
+            "TRUE",
+            State::Keyword(Keyword::True),
+            Some(State::Keyword(Keyword::True)),
+        ),
+        (
+            "FaLsE",
+            State::Keyword(Keyword::False),
+            Some(State::Keyword(Keyword::False)),
+        ),
+        (
+            "PLainText-ONly",
+            State::Keyword(Keyword::PlaintextOnly),
+            Some(State::Keyword(Keyword::PlaintextOnly)),
+        ),
+        ("true ", State::Inherit, None),
+        ("inherit\0", State::Inherit, None),
+    ] {
+        let units: Vec<_> = raw.encode_utf16().collect();
+        assert_eq!(
+            contenteditable_processing_with(Some(&units), |_| Ok::<_, Infallible>(())).unwrap(),
+            content,
+            "content {raw:?}"
+        );
+        assert_eq!(
+            contenteditable_setter_state_with(&units, |_| Ok::<_, Infallible>(())).unwrap(),
+            setter,
+            "setter {raw:?}"
+        );
+    }
+}
+
+#[test]
+fn editing_keyword_read_and_set_preserve_the_first_refusal() {
+    use surgeist_html::bounded::attributes::{
+        HtmlAttributeKeywordRead, contenteditable_setter_state_with, enterkeyhint_keyword_with,
+        inputmode_keyword_with,
+    };
+
+    let hint: Vec<_> = "PREVIOUS".encode_utf16().collect();
+    let mode: Vec<_> = "DECIMAL".encode_utf16().collect();
+    assert_eq!(
+        enterkeyhint_keyword_with(Some(&hint), |_| Ok::<_, Infallible>(())).unwrap(),
+        "previous"
+    );
+    assert_eq!(
+        inputmode_keyword_with(Some(&mode), |_| Ok::<_, Infallible>(())).unwrap(),
+        "decimal"
+    );
+    let invalid = [0xd800, 0, 0xdc00];
+    assert_eq!(
+        enterkeyhint_keyword_with(Some(&invalid), |_| Ok::<_, Infallible>(())).unwrap(),
+        ""
+    );
+    assert_eq!(
+        inputmode_keyword_with(Some(&invalid), |_| Ok::<_, Infallible>(())).unwrap(),
+        ""
+    );
+    for result in [
+        enterkeyhint_keyword_with(Some(&hint), Err).map(|_| ()),
+        inputmode_keyword_with(Some(&mode), Err).map(|_| ()),
+        contenteditable_setter_state_with(&[], Err).map(|_| ()),
+    ] {
+        assert_eq!(result, Err(HtmlAttributeKeywordRead::ValueHeader));
+    }
+}

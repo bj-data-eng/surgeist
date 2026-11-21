@@ -411,6 +411,12 @@ pub surgeist_html_semantics::HtmlDocumentTitleKind::Svg
 impl surgeist_html_semantics::HtmlDocumentTitleKind
 pub fn surgeist_html_semantics::HtmlDocumentTitleKind::for_root<E>(name: &impl surgeist_html::internal::values::semantic_input::HtmlNameInput + ?core::marker::Sized, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<Self, E>
 pub fn surgeist_html_semantics::HtmlDocumentTitleKind::matches<E>(self, name: &impl surgeist_html::internal::values::semantic_input::HtmlNameInput + ?core::marker::Sized, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
+pub enum surgeist_html_semantics::HtmlEditableAttribute
+pub surgeist_html_semantics::HtmlEditableAttribute::ExplicitHost
+pub surgeist_html_semantics::HtmlEditableAttribute::Inherit
+pub surgeist_html_semantics::HtmlEditableAttribute::LocalFalse
+impl core::convert::From<surgeist_html::internal::attributes::HtmlContentEditableState> for surgeist_html_semantics::HtmlEditableAttribute
+pub fn surgeist_html_semantics::HtmlEditableAttribute::from(state: surgeist_html::internal::attributes::HtmlContentEditableState) -> Self
 pub enum surgeist_html_semantics::HtmlElementReferenceFactsError
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
@@ -3331,6 +3337,7 @@ pub fn surgeist_html_semantics::HtmlUsemapReferenceResult::processing(&self) -> 
 pub fn surgeist_html_semantics::HtmlUsemapReferenceResult::raw_attribute(&self) -> core::option::Option<&surgeist_html::internal::values::Attribute>
 pub fn surgeist_html_semantics::HtmlUsemapReferenceResult::reference(&self) -> &surgeist_html::internal::attributes::hash_name::HtmlHashNameReferenceReport
 pub fn surgeist_html_semantics::HtmlUsemapReferenceResult::selected_target_diagnostic(&self) -> core::option::Option<surgeist_html_semantics::HtmlUsemapSelectedTargetDiagnostic>
+pub fn surgeist_html_semantics::html_foreign_root_inherits_editability_with<E>(name: &impl surgeist_html::internal::values::semantic_input::HtmlNameInput + ?core::marker::Sized, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub fn surgeist_html_semantics::select_document_base<'a>(document: core::option::Option<&'a surgeist_html_semantics::HtmlBaseDocumentFacts>, first: surgeist_html_semantics::HtmlDocumentFirstBase<'a>) -> core::result::Result<&'a surgeist_html_semantics::HtmlBaseUrlRecord, surgeist_html_semantics::HtmlBaseMissing>
 pub fn surgeist_html_semantics::select_document_base_serialization<'a>(established_fallback: &'a surgeist_html::internal::values::document_string::DocumentString, first: surgeist_html_semantics::HtmlDocumentFirstBase<'a>) -> core::result::Result<&'a surgeist_html::internal::values::document_string::DocumentString, surgeist_html_semantics::HtmlBaseMissing>
 pub fn surgeist_html_semantics::select_frozen_base<'a>(fallback: &'a surgeist_html_semantics::HtmlBaseUrlRecord, outcome: &'a surgeist_html_semantics::HtmlBaseParseOutcome) -> core::result::Result<(&'a surgeist_html_semantics::HtmlBaseUrlRecord, bool), surgeist_html_semantics::HtmlBaseMissing>

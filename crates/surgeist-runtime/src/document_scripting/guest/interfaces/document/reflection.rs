@@ -4,12 +4,17 @@ use super::{element::HTML_NAMESPACE, *};
 use std::fmt::Write;
 use surgeist_bindings_js::conversion::IntegerType;
 use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING, DOM_STRING_NULL_TO_EMPTY};
-use surgeist_bindings_js::{IntegerKind, IntegerMode, IntegerValue};
+use surgeist_bindings_js::{
+    IntegerKind, IntegerMode, IntegerValue, dom_exception::DomExceptionName,
+};
 use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
+use surgeist_html::attributes::HtmlContentEditableState;
 use surgeist_html::bounded::attributes::{
-    HtmlTableSpanRule, dir_keyword_with, heading_offset_reflection_with,
-    heading_offset_setter_value, popover_keyword_with, table_cell_scope_keyword_with,
-    template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
+    HtmlTableSpanRule, contenteditable_processing_with, contenteditable_setter_state_with,
+    dir_keyword_with, enterkeyhint_keyword_with, heading_offset_reflection_with,
+    heading_offset_setter_value, inputmode_keyword_with, popover_keyword_with,
+    table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
+    template_shadow_root_slot_assignment_keyword_with,
 };
 use surgeist_html::bounded::numeric::{
     HtmlNumericParseError, integer_long_work_bound, parse_integer_long,
@@ -30,6 +35,9 @@ pub(super) enum Reflection {
     Direction,
     Popover,
     HeadingOffset,
+    ContentEditable,
+    EnterKeyHint,
+    InputMode,
     // Unit policies keep frequently captured reflection metadata compact.
     SignedLongZero,
     SignedLongOne,
@@ -233,7 +241,60 @@ pub(super) fn install<'scope>(
     Ok(())
 }
 
+pub(super) fn install_is_content_editable<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let getter = capture(size_of::<Capture>())?;
+    super::install_getter(
+        scope,
+        prototype,
+        &ascii(b"isContentEditable"),
+        &ascii(b"get isContentEditable"),
+        true,
+        Callback::new(move |scope, arguments| getter.is_content_editable(scope, arguments)),
+    )?;
+    Ok(())
+}
+
 impl Capture {
+    fn is_content_editable<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let receiver = Receiver::Html;
+        let Some(GuestNode::Element(id)) = tree::projected_node(scope, arguments.receiver())?
+        else {
+            return Ok(Completion::Throw(
+                scope.type_error(receiver.error_message())?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            events.step()?;
+            let editable = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(id)?;
+                if !receiver.matches(node, || read.step())? {
+                    return Ok(None);
+                }
+                read.snapshot
+                    .html_is_content_editable_with(id, || read.step())
+                    .map(Some)
+            })?;
+            match editable {
+                Some(value) => Ok(Completion::Return(
+                    scope.primitive(Primitive::Boolean(value))?,
+                )),
+                None => Ok(Completion::Throw(
+                    scope.type_error(receiver.error_message())?,
+                )),
+            }
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
     fn reflect_attribute<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -283,6 +344,16 @@ impl Capture {
                     Reflection::HeadingOffset => Reflected::Unsigned(u32::from(
                         heading_offset_reflection_with(units, |_| read.step())?,
                     )),
+                    Reflection::ContentEditable => Reflected::Keyword(Some(
+                        contenteditable_processing_with(units, |_| read.step())?
+                            .reflection_keyword(),
+                    )),
+                    Reflection::EnterKeyHint => {
+                        Reflected::Keyword(Some(enterkeyhint_keyword_with(units, |_| read.step())?))
+                    }
+                    Reflection::InputMode => {
+                        Reflected::Keyword(Some(inputmode_keyword_with(units, |_| read.step())?))
+                    }
                     Reflection::TableSpan(span) => {
                         Reflected::Unsigned(u32::from(table_span_value(
                             span.rule(node, read)?,
@@ -331,14 +402,8 @@ impl Capture {
                 )?),
                 Reflected::Keyword(None) => Some(scope.primitive(Primitive::Null)?),
                 Reflected::Keyword(Some(keyword)) => {
-                    let mut units = [0_u16; b"rowgroup".len()];
-                    let units = units
-                        .get_mut(..keyword.len())
-                        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-                    for (unit, byte) in units.iter_mut().zip(keyword.bytes()) {
-                        *unit = u16::from(byte);
-                    }
-                    Some(self.copy_dom_units(scope, units)?)
+                    let mut units = [0; MAX_KEYWORD_UNITS];
+                    Some(self.copy_dom_units(scope, keyword_units(keyword, &mut units)?)?)
                 }
             };
             if let Some(output) = output {
@@ -439,11 +504,32 @@ impl Capture {
                     .run(scope, |cx| cx.value(descriptor, input))
                     .map_err(Error::from)?;
                 scope.check_active()?;
-                Some(copy_native_data(
-                    &owner,
-                    &events,
-                    converted.get().as_code_units(),
-                )?)
+                let raw = converted.get().as_code_units();
+                if matches!(reflection, Reflection::ContentEditable) {
+                    let state = self.callbacks.with_read(&owner, &events, |read, _| {
+                        read.node(id)?;
+                        contenteditable_setter_state_with(raw, |_| read.step())
+                    })?;
+                    match state {
+                        Some(HtmlContentEditableState::Inherit) => None,
+                        Some(HtmlContentEditableState::Keyword(keyword)) => {
+                            let mut units = [0; MAX_KEYWORD_UNITS];
+                            let units = keyword_units(keyword.canonical_keyword(), &mut units)?;
+                            Some(copy_native_data(&owner, &events, units)?)
+                        }
+                        None => {
+                            return Ok(Completion::Throw(
+                                scope.dom_exception(DomExceptionName::SyntaxError, &[])?,
+                            ));
+                        }
+                    }
+                } else {
+                    if matches!(reflection, Reflection::EnterKeyHint | Reflection::InputMode) {
+                        self.callbacks
+                            .with_read(&owner, &events, |read, _| read.node(id).map(drop))?;
+                    }
+                    Some(copy_native_data(&owner, &events, raw)?)
+                }
             };
             let (name, _name_backing) = copy_native_data(&owner, &events, attribute)?;
             match value {
@@ -466,6 +552,22 @@ impl Capture {
         })();
         tree::tree_completion(scope, &events, result)
     }
+}
+
+// HTML's longest canonical keyword among these reflected attributes.
+const MAX_KEYWORD_UNITS: usize = b"plaintext-only".len();
+
+fn keyword_units<'a>(
+    keyword: &str,
+    units: &'a mut [u16; MAX_KEYWORD_UNITS],
+) -> Result<&'a [u16], DocumentScriptNativeError> {
+    let units = units
+        .get_mut(..keyword.len())
+        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+    for (unit, byte) in units.iter_mut().zip(keyword.bytes()) {
+        *unit = u16::from(byte);
+    }
+    Ok(units)
 }
 
 enum Reflected {

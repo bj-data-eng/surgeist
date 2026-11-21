@@ -976,6 +976,15 @@ default_state!(
     Inherit,
     "The Inherit state, which a missing or invalid value selects: the element is editable or not according to its parent."
 );
+impl HtmlContentEditableState {
+    /// The canonical `contentEditable` IDL value for this intrinsic state.
+    pub fn reflection_keyword(self) -> &'static str {
+        match self {
+            Self::Inherit => "inherit",
+            Self::Keyword(keyword) => keyword.canonical_keyword(),
+        }
+    }
+}
 keyword_type!(HtmlDraggable, Draggable, [
     /// The `true` keyword: the element is draggable.
     True => "true",
@@ -1410,8 +1419,8 @@ enum_rule!(DIR, HtmlDirState, Dir, Context::Direction, [41, 42], "attr-dir",
     ["ltr" => ("ltr", HtmlDirState::Keyword(HtmlDir::Ltr)),
      "rtl" => ("rtl", HtmlDirState::Keyword(HtmlDir::Rtl)),
      "auto" => ("auto", HtmlDirState::Keyword(HtmlDir::Auto))]);
-enum_rule!(CONTENTEDITABLE, HtmlContentEditableState, Contenteditable, Context::Global, [31], "attr-contenteditable",
-    Some(HtmlContentEditableState::Inherit), Some(HtmlContentEditableState::Inherit), Some(HtmlContentEditableState::Keyword(HtmlContentEditable::True)),
+total_enum_rule!(CONTENTEDITABLE, CONTENTEDITABLE_DEFAULTS, HtmlContentEditableState, Contenteditable, Context::Global, [31], "attr-contenteditable",
+    HtmlContentEditableState::Inherit, HtmlContentEditableState::Inherit, Some(HtmlContentEditableState::Keyword(HtmlContentEditable::True)),
     ["true" => ("true", HtmlContentEditableState::Keyword(HtmlContentEditable::True)),
      "false" => ("false", HtmlContentEditableState::Keyword(HtmlContentEditable::False)),
      "plaintext-only" => ("plaintext-only", HtmlContentEditableState::Keyword(HtmlContentEditable::PlaintextOnly))]);
@@ -2120,9 +2129,17 @@ fn enum_keyword_matches_with<T, E>(
     exact: bool,
     admit: &mut impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
 ) -> Result<bool, E> {
+    keyword_spelling_matches_with(value, keyword.spelling, exact, admit)
+}
+
+fn keyword_spelling_matches_with<E>(
+    value: &[u16],
+    spelling: &str,
+    exact: bool,
+    admit: &mut impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<bool, E> {
     use bounded_rules::HtmlAttributeKeywordRead as Read;
     admit(Read::KeywordHeader)?;
-    let spelling = keyword.spelling;
     if exact {
         let mut actual = value.iter();
         let mut expected = spelling.encode_utf16();
@@ -2956,6 +2973,54 @@ pub(crate) mod bounded_rules {
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<Option<&'static str>, E> {
         reflected_keyword_with(&POPOVER, raw, admit)
+    }
+
+    /// Selects the intrinsic contenteditable state from an exact null-namespace value.
+    /// Missing and invalid values inherit. Empty content selects true.
+    pub fn contenteditable_processing_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlContentEditableState, E> {
+        total_enum_value_with(&CONTENTEDITABLE, &CONTENTEDITABLE_DEFAULTS, raw, admit)
+    }
+
+    /// Classifies the `contentEditable` setter's converted DOMString.
+    /// `None` denotes an invalid setter value. `Inherit` denotes removal.
+    pub fn contenteditable_setter_state_with<E>(
+        raw: &[u16],
+        mut admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<Option<HtmlContentEditableState>, E> {
+        use HtmlContentEditable::{False, PlaintextOnly, True};
+        use HtmlContentEditableState::{Inherit, Keyword};
+
+        admit(HtmlAttributeKeywordRead::ValueHeader)?;
+        for state in [
+            Inherit,
+            Keyword(True),
+            Keyword(PlaintextOnly),
+            Keyword(False),
+        ] {
+            if keyword_spelling_matches_with(raw, state.reflection_keyword(), false, &mut admit)? {
+                return Ok(Some(state));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Projects `enterKeyHint` from the exact attribute, limited to known values.
+    pub fn enterkeyhint_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        reflected_keyword_with(&ENTERKEYHINT, raw, admit).map(|keyword| keyword.unwrap_or(""))
+    }
+
+    /// Projects `inputMode` from the exact attribute, limited to known values.
+    pub fn inputmode_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        reflected_keyword_with(&INPUTMODE, raw, admit).map(|keyword| keyword.unwrap_or(""))
     }
 
     fn reflected_keyword_with<T: Copy + PartialEq, E>(

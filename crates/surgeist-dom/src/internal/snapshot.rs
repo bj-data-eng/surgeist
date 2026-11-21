@@ -13,6 +13,7 @@ use crate::{
 use surgeist_html::values::DocumentString;
 
 mod document_title;
+mod editability;
 mod equality;
 mod namespace;
 mod option_text;

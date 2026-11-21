@@ -14057,13 +14057,11 @@
       "kind": "derived",
       "algorithm": "elementcontenteditable.contenteditable.get",
       "owner": "surgeist-html",
-      "contract": "Apply the source contentEditable enumerated reflection get rules to the exact contenteditable content attribute, including its allowed-keyword/invalid/missing and nullable or SyntaxError branches; native authored applicability is not the IDL getter result.",
+      "contract": "Select the intrinsic state of the exact null-namespace contenteditable attribute. Reflect missing or invalid content as inherit and empty content as true.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-contenteditable",
       "inputs": [
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlContentEditable"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "contenteditable_processing_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -14071,13 +14069,12 @@
       "kind": "derived",
       "algorithm": "elementcontenteditable.contenteditable.set",
       "owner": "surgeist-html",
-      "contract": "Apply the source contentEditable enumerated reflection set rules to the exact contenteditable content attribute, including its allowed-keyword/invalid/missing and nullable or SyntaxError branches; native authored applicability is not the IDL getter result.",
+      "contract": "Classify the converted DOMString by the source ASCII-case-insensitive exact keywords. Remove for inherit, write a canonical value for true, plaintext-only or false, or throw SyntaxError before starting a native edit. Successful edits run the original reactions.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-contenteditable",
       "inputs": [
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlContentEditable"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "contenteditable_setter_state_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
       ],
       "requirements": []
     },
@@ -14085,13 +14082,11 @@
       "kind": "derived",
       "algorithm": "elementcontenteditable.enterkeyhint.get",
       "owner": "surgeist-html",
-      "contract": "Apply the source enterKeyHint enumerated reflection get rules to the exact enterkeyhint content attribute, including its allowed-keyword/invalid/missing and nullable or SyntaxError branches; native authored applicability is not the IDL getter result.",
+      "contract": "Reflect the exact null-namespace enterkeyhint value limited to known keywords. Return the canonical spelling or the empty string.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-enterkeyhint",
       "inputs": [
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlEnterKeyHint"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "enterkeyhint_keyword_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -14099,13 +14094,10 @@
       "kind": "derived",
       "algorithm": "elementcontenteditable.enterkeyhint.set",
       "owner": "surgeist-html",
-      "contract": "Apply the source enterKeyHint enumerated reflection set rules to the exact enterkeyhint content attribute, including its allowed-keyword/invalid/missing and nullable or SyntaxError branches; native authored applicability is not the IDL getter result.",
+      "contract": "Write the converted DOMString verbatim to the null-namespace enterkeyhint attribute through the native edit and its synchronous reactions.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-enterkeyhint",
       "inputs": [
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlEnterKeyHint"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
     },
@@ -14113,12 +14105,7 @@
       "kind": "native",
       "adapter": "elementcontenteditable.iscontenteditable.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics.rs",
-          "symbol": "IsContentEditable"
-        }
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/editability.rs", "symbol": "html_is_content_editable_with"}
       ],
       "requirements": []
     },
@@ -14126,13 +14113,11 @@
       "kind": "derived",
       "algorithm": "elementcontenteditable.inputmode.get",
       "owner": "surgeist-html",
-      "contract": "Apply the source inputMode enumerated reflection get rules to the exact inputmode content attribute, including its allowed-keyword/invalid/missing and nullable or SyntaxError branches; native authored applicability is not the IDL getter result.",
+      "contract": "Reflect the exact null-namespace inputmode value limited to known keywords. Return the canonical spelling or the empty string.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-inputmode",
       "inputs": [
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlInputMode"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "inputmode_keyword_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -14140,13 +14125,10 @@
       "kind": "derived",
       "algorithm": "elementcontenteditable.inputmode.set",
       "owner": "surgeist-html",
-      "contract": "Apply the source inputMode enumerated reflection set rules to the exact inputmode content attribute, including its allowed-keyword/invalid/missing and nullable or SyntaxError branches; native authored applicability is not the IDL getter result.",
+      "contract": "Write the converted DOMString verbatim to the null-namespace inputmode attribute through the native edit and its synchronous reactions.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-inputmode",
       "inputs": [
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlInputMode"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
     },

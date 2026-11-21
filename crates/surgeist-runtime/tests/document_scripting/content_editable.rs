@@ -2,8 +2,13 @@
 
 use super::*;
 
+fn prepare_editability_window() -> (DocumentScriptHost, DomHostedTopLevel) {
+    let (session, top) = setup();
+    attach_event_window_with_work(session, top, Arc::new(cancel()), 100_000, |_, _, _| {})
+}
+
 pub(super) fn attached_html_elements_use_native_content_editability() {
-    let (mut host, top) = prepare_event_window();
+    let (mut host, top) = prepare_editability_window();
     let permit = host.permit().unwrap();
     assert_eq!(permit.document(), top.document());
     observe(
@@ -160,7 +165,7 @@ pub(super) fn attached_html_elements_use_native_content_editability() {
 }
 
 fn ordinary_ancestry_reopens_after_native_mutation() {
-    let (mut host, top) = prepare_event_window();
+    let (mut host, top) = prepare_editability_window();
     let permit = host.permit().unwrap();
     let document = top.document();
     let [root, target, barrier] = host
@@ -259,7 +264,7 @@ fn ordinary_ancestry_reopens_after_native_mutation() {
 }
 
 fn genuine_design_mode_is_read_from_the_parent_document() {
-    let (mut host, _) = prepare_event_window();
+    let (mut host, _) = prepare_editability_window();
     let permit = host.permit().unwrap();
     let before = host.snapshot().unwrap();
     observe(

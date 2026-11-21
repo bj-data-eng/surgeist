@@ -539,9 +539,19 @@ fn prepare_event_window_with(
 }
 
 fn attach_event_window(
+    session: DomSession,
+    top: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
+) -> (DocumentScriptHost, DomHostedTopLevel) {
+    attach_event_window_with_work(session, top, cancellation, 10_000, configure)
+}
+
+fn attach_event_window_with_work(
     mut session: DomSession,
     top: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,
+    adapter_work: u64,
     configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
 ) -> (DocumentScriptHost, DomHostedTopLevel) {
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
@@ -565,7 +575,7 @@ fn attach_event_window(
                 // These interface scenarios include the full native prototype
                 // graph and exercise behavior with guest storage headroom.
                 storage_bytes: 512 * 1024,
-                work: 10_000,
+                work: adapter_work,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
                 source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),

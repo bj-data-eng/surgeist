@@ -14,6 +14,7 @@ use surgeist_html::attributes::{
     HtmlContentEditable, HtmlContentEditableState, HtmlSpellcheck, HtmlSpellcheckState,
     HtmlTranslate, HtmlTranslateState,
 };
+use surgeist_html::values::HtmlNameInput;
 use surgeist_html::{attributes::HtmlBooleanAttribute, values::DocumentString};
 
 identity!(HtmlGlobalInheritanceProducerId, fresh);
@@ -28,6 +29,55 @@ pub enum HtmlDesignMode {
     Disabled,
     Unavailable,
 }
+
+/// The editing rule selected by an HTML element's intrinsic contenteditable state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlEditableAttribute {
+    /// The attribute itself establishes an editing host.
+    ExplicitHost,
+    /// The attribute permits editability from an ordinary parent Element.
+    Inherit,
+    /// The attribute blocks Element inheritance. Direct Document design mode
+    /// can still establish an editing host.
+    LocalFalse,
+}
+
+impl From<HtmlContentEditableState> for HtmlEditableAttribute {
+    fn from(state: HtmlContentEditableState) -> Self {
+        match state {
+            HtmlContentEditableState::Keyword(
+                HtmlContentEditable::True | HtmlContentEditable::PlaintextOnly,
+            ) => Self::ExplicitHost,
+            HtmlContentEditableState::Keyword(HtmlContentEditable::False) => Self::LocalFalse,
+            HtmlContentEditableState::Inherit => Self::Inherit,
+        }
+    }
+}
+
+/// Check whether a foreign expanded name can inherit editability from an
+/// ordinary parent Element. Only SVG `svg` and MathML `math` qualify.
+/// The caller admits each reached comparison through `step`.
+pub fn html_foreign_root_inherits_editability_with<E>(
+    name: &(impl HtmlNameInput + ?Sized),
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    use super::scan::name_part_is_with;
+
+    let Some(uri) = name.namespace_uri() else {
+        step()?;
+        return Ok(false);
+    };
+    Ok(
+        (name_part_is_with(|| Some(uri), b"http://www.w3.org/2000/svg", &mut step)?
+            && name_part_is_with(|| Some(name.local_name()), b"svg", &mut step)?)
+            || (name_part_is_with(
+                || Some(uri),
+                b"http://www.w3.org/1998/Math/MathML",
+                &mut step,
+            )? && name_part_is_with(|| Some(name.local_name()), b"math", &mut step)?),
+    )
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlDocumentDesignModeFact {
     document: HtmlCaptureSubjectId,
@@ -346,7 +396,7 @@ impl<'a> HtmlSemanticSession<'a> {
     fn inherited_contenteditable(
         &mut self,
         element: &'a HtmlCapturedElement,
-    ) -> Result<HtmlContentEditableState, HtmlSemanticFailure> {
+    ) -> Result<HtmlEditableAttribute, HtmlSemanticFailure> {
         let raw = self.attribute(element, "contenteditable")?;
         self.admit_intrinsic(element, raw, 3)?;
         let report = self
@@ -356,6 +406,7 @@ impl<'a> HtmlSemanticSession<'a> {
         report
             .intrinsic()
             .copied()
+            .map(HtmlEditableAttribute::from)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))
     }
     fn design_mode(
@@ -388,12 +439,7 @@ impl<'a> HtmlSemanticSession<'a> {
         if !self.html_namespace(element)? {
             return Ok(HtmlSemanticValue::Known(false));
         }
-        if matches!(
-            self.inherited_contenteditable(element)?,
-            HtmlContentEditableState::Keyword(
-                HtmlContentEditable::True | HtmlContentEditable::PlaintextOnly
-            )
-        ) {
+        if self.inherited_contenteditable(element)? == HtmlEditableAttribute::ExplicitHost {
             return Ok(HtmlSemanticValue::Known(true));
         }
         let parent = match self.parent(node)? {
@@ -425,19 +471,6 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         Ok(true)
     }
-    fn inheritance_entry(
-        &mut self,
-        element: &HtmlCapturedElement,
-    ) -> Result<bool, HtmlSemanticFailure> {
-        let Some(uri) = element.name().namespace().uri() else {
-            self.charge(1)?;
-            return Ok(false);
-        };
-        Ok((self.inheritance_exact(uri, "http://www.w3.org/2000/svg")?
-            && self.inheritance_exact(element.name().local_name(), "svg")?)
-            || (self.inheritance_exact(uri, "http://www.w3.org/1998/Math/MathML")?
-                && self.inheritance_exact(element.name().local_name(), "math")?))
-    }
     pub(super) fn editable(
         &mut self,
         subject: &HtmlCaptureSubjectId,
@@ -454,13 +487,14 @@ impl<'a> HtmlSemanticSession<'a> {
                     if self.html_namespace(element)? {
                         // A local host or False state independently defeats the
                         // delegated conjunction, without consulting design mode.
-                        if !matches!(
-                            self.inherited_contenteditable(element)?,
-                            HtmlContentEditableState::Inherit
-                        ) {
+                        if self.inherited_contenteditable(element)?
+                            != HtmlEditableAttribute::Inherit
+                        {
                             return Ok(HtmlSemanticValue::Known(false));
                         }
-                    } else if !self.inheritance_entry(element)? {
+                    } else if !html_foreign_root_inherits_editability_with(element.name(), || {
+                        self.charge(1)
+                    })? {
                         return Ok(HtmlSemanticValue::Known(false));
                     }
                     false
