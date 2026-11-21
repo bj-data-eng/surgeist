@@ -637,7 +637,8 @@ def validate(data, root=ROOT):
     for inc in data["includes"]:
         keys(inc, ["id", "interface", "mixin"])
         require(inc["id"] not in definitions and inc["id"] not in includes, "duplicate includes ID")
-        require(names.get(inc["interface"]) == "interface", "includes target is not an interface")
+        require(names.get(inc["interface"]) in {"interface", "external_interface"},
+                "includes target is not an interface")
         require(names.get(inc["mixin"]) in {"mixin", "external_mixin"}, "includes source is not a mixin")
         edge = (inc["interface"], inc["mixin"])
         require(edge not in edges, "duplicate includes relation")

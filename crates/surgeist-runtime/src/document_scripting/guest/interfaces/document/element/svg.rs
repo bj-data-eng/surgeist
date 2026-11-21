@@ -161,6 +161,12 @@ impl SvgBindings {
             element,
             capture,
         )?;
+        super::super::element_mixin::install(
+            scope,
+            &base.1,
+            capture,
+            super::super::reflection::Receiver::Svg,
+        )?;
         let graphics = install_named(
             scope,
             global,

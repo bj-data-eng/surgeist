@@ -301,6 +301,25 @@ class DescriptionTests(unittest.TestCase):
         self.data["includes"][0]["mixin"] = "Element"
         self.rejected("includes source is not a mixin")
 
+    def test_external_element_mixin_inclusions_match_the_source(self):
+        mixin = "HTMLOrSVGOrMathMLElement"
+        definitions, names = g.validate(self.data)
+        actual = {edge["interface"] for edge in self.data["includes"] if edge["mixin"] == mixin}
+        self.assertEqual(actual, {"HTMLElement", "SVGElement", "MathMLElement"})
+        for interface in ("SVGElement", "MathMLElement"):
+            with self.subTest(interface=interface):
+                self.assertEqual(names[interface], "external_interface")
+                self.assertNotIn(interface, definitions)
+                edge = next(record for record in self.data["includes"] if record["interface"] == interface)
+                edge["mixin"] = "GlobalEventHandlers"
+                self.rejected(f"source declaration mismatch: {interface}.mixin.source")
+                edge["mixin"] = mixin
+
+    def test_external_mixin_target_still_requires_interface_kind(self):
+        external = next(record for record in self.data["externals"] if record["name"] == "SVGElement")
+        external["kind"] = "dictionary"
+        self.rejected("includes target is not an interface")
+
     def test_duplicate_relation_and_forged_overload_identity_are_refused(self):
         edge = copy.deepcopy(self.data["includes"][0])
         edge["id"] = "duplicate"

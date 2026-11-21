@@ -15,8 +15,8 @@ mod svg;
 const ELEMENT: &[u16] = &ascii(b"Element");
 const MATHML_ELEMENT: &[u16] = &ascii(b"MathMLElement");
 pub(super) const HTML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1999/xhtml");
-const MATHML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1998/Math/MathML");
-const SVG_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/2000/svg");
+pub(super) const MATHML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1998/Math/MathML");
+pub(super) const SVG_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/2000/svg");
 
 // The HTML element interface algorithm and the defining obsolete clauses
 // supplement the language owner's individually named element inventory.
@@ -243,6 +243,12 @@ impl ElementBindings {
             &element,
             capture,
         )?;
+        super::element_mixin::install(
+            scope,
+            &mathml,
+            capture,
+            super::reflection::Receiver::Mathml,
+        )?;
         let svg = svg::SvgBindings::install(scope, &global, &constructor, &element, capture, fund)?;
         let (html_constructor, html) = install_html_constructor(
             scope,
@@ -267,6 +273,7 @@ impl ElementBindings {
             super::reflection::Receiver::Html,
             &[INPUT_MODE_REFLECTION],
         )?;
+        super::element_mixin::install(scope, &html, capture, super::reflection::Receiver::Html)?;
         let (media_constructor, media) = install_html_constructor(
             scope,
             &global,

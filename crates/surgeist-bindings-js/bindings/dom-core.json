@@ -367,6 +367,26 @@
       "entries": ["HTMLOrSVGOrMathMLElement"]
     },
     {
+      "id": "SVGElement.mixin.source",
+      "path": "references/element-mixin-inclusions--svg-fd140018a189--mathml-1681f190a88d.md",
+      "anchor": "svg-element-includes",
+      "block": 0,
+      "sha256": "4867ab421cfb33120c7ccabb5a551844501770eec7ba33ed2cbb68fdabb6c391",
+      "revision": "fd140018a189e6bf2fbaa56f35655635824bfb3f",
+      "url": "https://github.com/w3c/svgwg/blob/fd140018a189e6bf2fbaa56f35655635824bfb3f/master/types.html#L696-L706",
+      "entries": ["SVGElement.includes.HTMLOrSVGOrMathMLElement"]
+    },
+    {
+      "id": "MathMLElement.mixin.source",
+      "path": "references/element-mixin-inclusions--svg-fd140018a189--mathml-1681f190a88d.md",
+      "anchor": "mathml-element-includes",
+      "block": 0,
+      "sha256": "c58145e187f9ef86a21d474ce3a4d5a42aeba7eb8398d0dca2fd192e18bfd88f",
+      "revision": "1681f190a88d2ddd109c23f356c7bc24085c705f",
+      "url": "https://github.com/w3c/mathml-core/blob/1681f190a88d2ddd109c23f356c7bc24085c705f/webidl/MathMLElement.idl#L1-L4",
+      "entries": ["MathMLElement.includes.HTMLOrSVGOrMathMLElement"]
+    },
+    {
       "id": "HTMLHtmlElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "the&#45;html&#45;element",
@@ -8265,6 +8285,8 @@
     {"id": "HTMLElement.includes.GlobalEventHandlers", "interface": "HTMLElement", "mixin": "GlobalEventHandlers"},
     {"id": "HTMLElement.includes.ElementContentEditable", "interface": "HTMLElement", "mixin": "ElementContentEditable"},
     {"id": "HTMLElement.includes.HTMLOrSVGOrMathMLElement", "interface": "HTMLElement", "mixin": "HTMLOrSVGOrMathMLElement"},
+    {"id": "SVGElement.includes.HTMLOrSVGOrMathMLElement", "interface": "SVGElement", "mixin": "HTMLOrSVGOrMathMLElement"},
+    {"id": "MathMLElement.includes.HTMLOrSVGOrMathMLElement", "interface": "MathMLElement", "mixin": "HTMLOrSVGOrMathMLElement"},
     {"id": "HTMLBodyElement.includes.WindowEventHandlers", "interface": "HTMLBodyElement", "mixin": "WindowEventHandlers"},
     {"id": "HTMLFrameSetElement.includes.WindowEventHandlers", "interface": "HTMLFrameSetElement", "mixin": "WindowEventHandlers"}
   ],
@@ -8363,6 +8385,13 @@
 
 
     {
+      "name": "MathMLElement",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://github.com/w3c/mathml-core/blob/1681f190a88d2ddd109c23f356c7bc24085c705f/webidl/MathMLElement.idl#L1-L4",
+      "requirement": "The external MathMLElement prototype's remaining members require their defining interface sources and native producers."
+    },
+    {
       "name": "ParseHTMLUnsafeOptions",
       "kind": "dictionary",
       "owner": "surgeist-html-parser",
@@ -8375,6 +8404,13 @@
       "owner": "surgeist-dom",
       "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-range",
       "requirement": "Source-qualified Range definition and its owning native/binding family; not an empty installed interface."
+    },
+    {
+      "name": "SVGElement",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://github.com/w3c/svgwg/blob/fd140018a189e6bf2fbaa56f35655635824bfb3f/master/types.html#L696-L706",
+      "requirement": "The external SVGElement prototype's remaining members require their defining interface sources and native producers."
     },
     {
       "name": "SVGScriptElement",
@@ -12390,12 +12426,10 @@
       "kind": "derived",
       "algorithm": "htmlorsvgormathmlelement.autofocus.get",
       "owner": "surgeist-bindings-js",
-      "contract": "Reflect null-namespace autofocus by content-attribute presence; true creates/preserves presence and false removes through the actual native attribute hooks.",
+      "contract": "Return the presence of the exact null-namespace autofocus content attribute.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -12403,12 +12437,11 @@
       "kind": "derived",
       "algorithm": "htmlorsvgormathmlelement.autofocus.set",
       "owner": "surgeist-bindings-js",
-      "contract": "Reflect null-namespace autofocus by content-attribute presence; true creates/preserves presence and false removes through the actual native attribute hooks.",
+      "contract": "Write the empty string for true and remove the exact null-namespace autofocus attribute for false through Source with its custom-element reactions.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
       ],
       "requirements": []
     },
