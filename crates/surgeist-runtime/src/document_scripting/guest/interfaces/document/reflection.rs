@@ -125,6 +125,7 @@ pub(super) enum Receiver {
     UList,
     Menu,
     Meta,
+    Output,
     Param,
     Pre,
     Slot,
@@ -220,6 +221,12 @@ impl Receiver {
             Self::UList => html_element_is(node, "HTMLUListElement"),
             Self::Menu => html_element_is(node, "HTMLMenuElement"),
             Self::Meta => html_element_is(node, "HTMLMetaElement"),
+            Self::Output => {
+                step()?;
+                node.as_element().is_some_and(|element| {
+                    !element.has_failed_construction_interface() && element.output_state().is_some()
+                })
+            }
             Self::Param => super::param::is_param(node),
             Self::Pre => return super::pre::is_pre(node, step),
             Self::Slot => super::slot::is_slot(node),
@@ -267,6 +274,7 @@ impl Receiver {
             Self::UList => const { &ascii(b"HTMLUListElement required") },
             Self::Menu => const { &ascii(b"HTMLMenuElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
+            Self::Output => const { &ascii(b"HTMLOutputElement required") },
             Self::Param => const { &ascii(b"HTMLParamElement required") },
             Self::Pre => const { &ascii(b"HTMLPreElement required") },
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
@@ -742,6 +750,7 @@ impl Capture {
                             | Receiver::Frameset
                             | Receiver::Legend
                             | Receiver::Marquee
+                            | Receiver::Output
                     ) {
                         let current = self.callbacks.with_read(&owner, &events, |read, _| {
                             receiver.matches(read.node(id)?, || read.step())

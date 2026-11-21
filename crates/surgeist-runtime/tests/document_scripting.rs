@@ -89,6 +89,8 @@ mod hidden_reflection;
 mod legend_form;
 #[path = "document_scripting/marquee.rs"]
 mod marquee;
+#[path = "document_scripting/output_values.rs"]
+mod output_values;
 #[path = "document_scripting/script_preparation.rs"]
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
@@ -2431,6 +2433,7 @@ fn main() {
             "body-reflections" => body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings(),
             "form-attributes" => form_attributes::attached_form_settings_reflect_live_native_attributes(),
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
+            "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
@@ -2532,6 +2535,7 @@ fn main() {
     body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings();
     form_attributes::attached_form_settings_reflect_live_native_attributes();
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
+    output_values::attached_output_reads_native_values_and_stores_custom_validity();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();

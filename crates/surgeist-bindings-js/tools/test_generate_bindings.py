@@ -549,7 +549,7 @@ class DescriptionTests(unittest.TestCase):
         writer = mappings[setter["id"] + "/call"]
         self.assertFalse(writer["requirements"])
         self.assertEqual({producer["symbol"] for producer in writer["producers"]},
-                         {"fieldset_set_custom_validity", "set_custom_validity"})
+                         {"barred_control_set_custom_validity", "set_custom_validity"})
         for name, issues in [("elements", {1235, 2480}), ("validity", {1235})]:
             with self.subTest(member=name):
                 member = self.member("HTMLFieldSetElement." + name)
@@ -559,6 +559,35 @@ class DescriptionTests(unittest.TestCase):
                 self.assertEqual({requirement["issue"] for requirement in getter["requirements"]}, issues)
         setter["arguments"][0]["presence"] = "optional"
         self.rejected("source declaration mismatch: HTMLFieldSetElement.source")
+
+    def test_output_keeps_native_value_writers_and_live_object_contracts(self):
+        output = self.definition("HTMLOutputElement")
+        self.assertEqual(output["inherits"], "HTMLElement")
+        ctor, *members = output["members"]
+        self.assertEqual(ctor["id"], "HTMLOutputElement.constructor:0")
+        self.assertEqual([member["name"] for member in members],
+                         ["htmlFor", "form", "name", "type", "defaultValue", "value",
+                          "willValidate", "validity", "validationMessage", "checkValidity",
+                          "reportValidity", "setCustomValidity", "labels"])
+        mappings = self.data["access_mappings"]
+        for name, command in [("defaultValue", "set_output_default_value"), ("value", "set_output_value")]:
+            with self.subTest(member=name):
+                member = self.member("HTMLOutputElement." + name)
+                self.assertEqual(member["attributes"], [{"name": "CEReactions"}])
+                self.assertEqual(member["type"], {"kind": "named", "name": "DOMString"})
+                writer = mappings[member["id"] + "/set"]
+                self.assertFalse(writer["requirements"])
+                self.assertEqual({producer["symbol"] for producer in writer["producers"]},
+                                 {"write_output_value", command})
+        self.assertEqual(mappings["HTMLOutputElement.htmlFor/set"]["target"], "value")
+        self.assertEqual(mappings["HTMLOutputElement.htmlFor/set"]["kind"], "forwarding")
+        for name in ["htmlFor", "validity", "labels"]:
+            with self.subTest(member=name):
+                getter = mappings[f"HTMLOutputElement.{name}/get"]
+                self.assertEqual(getter["result_view"], "live")
+                self.assertTrue(getter.get("requirements") or getter.get("requirement"))
+        self.member("HTMLOutputElement.defaultValue")["attributes"].clear()
+        self.rejected("source declaration mismatch: HTMLOutputElement.source")
 
     def test_dialog_state_and_native_methods_preserve_the_primary_declaration(self):
         dialog = self.definition("HTMLDialogElement")

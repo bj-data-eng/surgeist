@@ -287,7 +287,7 @@ impl TextBuffer {
     }
 }
 
-fn collect_text(
+pub(super) fn collect_text(
     read: &NativeRead<'_>,
     node: surgeist_dom::tree::DomNode<'_>,
 ) -> Result<TextBuffer, DocumentGuestEventError> {
