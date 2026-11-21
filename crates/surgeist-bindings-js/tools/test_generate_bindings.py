@@ -107,6 +107,43 @@ class DescriptionTests(unittest.TestCase):
                 with self.assertRaisesRegex(g.DescriptionError, annotation["name"] + " requires"):
                     g.render_member(member, {})
 
+    def test_numeric_reflection_modes_keep_their_types_and_defaults(self):
+        member = {
+            "id": "Fixture.extent", "kind": "attribute", "name": "extent", "readonly": False,
+            "type": {"kind": "named", "name": "unsigned long"},
+            "attributes": [{"name": "ReflectPositiveWithFallback"},
+                           {"name": "ReflectDefault", "value": 20}],
+        }
+        self.assertEqual(
+            g.render_member(member, {}),
+            "[ReflectPositiveWithFallback, ReflectDefault=20] attribute unsigned long extent;",
+        )
+        member["type"]["name"] = "long"
+        with self.assertRaisesRegex(g.DescriptionError, "ReflectPositiveWithFallback requires"):
+            g.render_member(member, {})
+        member["attributes"] = [{"name": "ReflectNonNegative", "value": "max-length"}]
+        self.assertEqual(
+            g.render_member(member, {}),
+            '[ReflectNonNegative="max-length"] attribute long extent;',
+        )
+        member["attributes"].append({"name": "Reflect"})
+        with self.assertRaisesRegex(g.DescriptionError, "only one primary reflection"):
+            g.render_member(member, {})
+        member["attributes"].pop()
+        member["type"]["name"] = "unsigned long"
+        with self.assertRaisesRegex(g.DescriptionError, "ReflectNonNegative requires"):
+            g.render_member(member, {})
+
+    def test_positive_fallback_does_not_admit_the_reflect_only_range(self):
+        member = {
+            "id": "Fixture.span", "kind": "attribute", "name": "span", "readonly": False,
+            "type": {"kind": "named", "name": "unsigned long"},
+            "attributes": [{"name": "ReflectPositiveWithFallback"},
+                           {"name": "ReflectRange", "value": [1, 1000]}],
+        }
+        with self.assertRaisesRegex(g.DescriptionError, "ReflectRange requires"):
+            g.render_member(member, {})
+
     def test_retained_ol_start_default_and_its_reflection_context_cannot_change(self):
         # Source correspondence validates altered declarations through the real generator.
         for change in ["altered", "omitted", "without_reflect", "string_type"]:
@@ -623,6 +660,49 @@ class DescriptionTests(unittest.TestCase):
         self.member("HTMLButtonElement.type")["attributes"][-1]["name"] = "Reflect"
         self.rejected("source declaration mismatch: HTMLButtonElement.source")
 
+    def test_textarea_preserves_value_conversion_numeric_metadata_and_selection_overloads(self):
+        textarea = self.definition("HTMLTextAreaElement")
+        self.assertEqual(textarea["inherits"], "HTMLElement")
+        for name, fallback in [("cols", 20), ("rows", 2)]:
+            with self.subTest(member=name):
+                member = self.member("HTMLTextAreaElement." + name)
+                self.assertEqual(member["type"]["name"], "unsigned long")
+                self.assertEqual(member["attributes"], [
+                    {"name": "CEReactions"}, {"name": "ReflectPositiveWithFallback"},
+                    {"name": "ReflectDefault", "value": fallback},
+                ])
+        for name in ["maxLength", "minLength"]:
+            with self.subTest(member=name):
+                member = self.member("HTMLTextAreaElement." + name)
+                self.assertEqual(member["type"]["name"], "long")
+                self.assertEqual(member["attributes"],
+                                 [{"name": "CEReactions"}, {"name": "ReflectNonNegative"}])
+
+        model = g.lower_values(self.data)
+        default = self.member("HTMLTextAreaElement.defaultValue")
+        self.assertEqual(g.conversion_type(default["type"], model),
+                         ("DomString", "Type<DomString>", "types::DOM_STRING"))
+        self.assertEqual(default["attributes"], [{"name": "CEReactions"}])
+        selected = {identity: info for identity, _, info in g.lower_selected_setters(self.data, model)}
+        self.assertEqual(selected["HTMLTextAreaElement.value"],
+                         ("DomString", "Type<DomString>", "types::DOM_STRING_NULL_TO_EMPTY"))
+        self.assertEqual(self.member("HTMLTextAreaElement.value")["attributes"], [])
+        self.assertEqual(self.definition("SelectionMode")["values"], ["select", "start", "end", "preserve"])
+        replacement = self.member("HTMLTextAreaElement.setRangeText:0")["arguments"]
+        self.assertEqual([argument["name"] for argument in replacement], ["replacement"])
+        selection = self.member("HTMLTextAreaElement.setRangeText:1")["arguments"]
+        self.assertEqual([argument["name"] for argument in selection],
+                         ["replacement", "start", "end", "selectionMode"])
+        self.assertEqual(selection[-1]["default"], {"kind": "string", "value": "preserve"})
+        arguments = g.lower_arguments(self.data, model)
+        self.assertIn("Ok(cx.plain(SelectionMode::Preserve))", g.emit_conversions(model, arguments))
+        selection[-1]["default"]["value"] = "unknown"
+        with self.assertRaisesRegex(g.DescriptionError, "enumeration argument default is not a member"):
+            g.emit_conversions(model, arguments)
+        selection[-1]["default"]["value"] = "preserve"
+        self.member("HTMLTextAreaElement.cols")["attributes"][-1]["value"] = 2
+        self.rejected("source declaration mismatch: HTMLTextAreaElement.source")
+
     def test_dialog_state_and_native_methods_preserve_the_primary_declaration(self):
         dialog = self.definition("HTMLDialogElement")
         self.assertEqual(dialog["inherits"], "HTMLElement")
@@ -771,7 +851,8 @@ class ValueLoweringTests(unittest.TestCase):
                          ["GetRootNodeOptions", "ElementCreationOptions", "ImportNodeOptions",
                           "ShadowRootInit", "EventInit", "EventListenerOptions", "AssignedNodesOptions"])
         self.assertEqual([d["name"] for d in model["enumerations"]],
-                         ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState", "DocumentVisibilityState"])
+                         ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState",
+                          "DocumentVisibilityState", "SelectionMode"])
         # No member may be discarded. Signal and source combinations outside
         # the selected conversion profiles stay unavailable.
         for name in ("AddEventListenerOptions",

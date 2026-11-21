@@ -955,10 +955,13 @@ pub struct surgeist_dom::form::DomTextarea<'a>
 impl<'a> surgeist_dom::form::DomTextarea<'a>
 pub fn surgeist_dom::form::DomTextarea<'a>::default_value(self, limits: surgeist_dom::form::DomTextareaReadLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html::internal::values::document_string::DocumentString, surgeist_dom::DomError>
 pub fn surgeist_dom::form::DomTextarea<'a>::form_owner(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
+pub fn surgeist_dom::form::DomTextarea<'a>::form_owner_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::form::DomForm<'a>>, E>
 pub fn surgeist_dom::form::DomTextarea<'a>::id(self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::form::DomTextarea<'a>::state(self) -> &'a surgeist_dom::form::DomTextareaState
 pub fn surgeist_dom::form::DomTextarea<'a>::text_length(self, limits: surgeist_dom::form::DomTextareaReadLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<usize, surgeist_dom::DomError>
+pub fn surgeist_dom::form::DomTextarea<'a>::text_length_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, E>
 pub fn surgeist_dom::form::DomTextarea<'a>::value(self, limits: surgeist_dom::form::DomTextareaReadLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html::internal::values::document_string::DocumentString, surgeist_dom::DomError>
+pub fn surgeist_dom::form::DomTextarea<'a>::visit_value_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, visit: impl core::ops::function::FnMut(u16) -> core::result::Result<(), E>) -> core::result::Result<(), E>
 pub struct surgeist_dom::form::DomTextareaReadLimits
 impl surgeist_dom::form::DomTextareaReadLimits
 pub const fn surgeist_dom::form::DomTextareaReadLimits::code_units(self) -> usize

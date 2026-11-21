@@ -139,6 +139,16 @@ pub fn surgeist_bindings_js::conversion::declarations::html_select_element_set_c
 pub fn surgeist_bindings_js::conversion::declarations::html_slot_element_assigned_elements_0_options() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::AssignedNodesOptions>>
 pub fn surgeist_bindings_js::conversion::declarations::html_slot_element_assigned_nodes_0_options() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::AssignedNodesOptions>>
 pub fn surgeist_bindings_js::conversion::declarations::html_table_cell_element_obsolete_bg_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_custom_validity_0_error() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_range_text_0_replacement() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_range_text_1_end() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_range_text_1_replacement() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_range_text_1_selection_mode() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::SelectionMode>>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_range_text_1_start() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_selection_range_0_direction() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_selection_range_0_end() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_set_selection_range_0_start() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::html_text_area_element_value_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::html_title_element_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::import_node_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ImportNodeOptions>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -166,6 +176,7 @@ pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_se
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_set_attribute_0_value() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_toggle_attribute_0_force() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<bool>>
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_toggle_attribute_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::selection_mode() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::SelectionMode>
 pub fn surgeist_bindings_js::conversion::declarations::shadow_root_init() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ShadowRootInit>
 pub fn surgeist_bindings_js::conversion::declarations::shadow_root_mode() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::ShadowRootMode>
 pub fn surgeist_bindings_js::conversion::declarations::slot_assignment_mode() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::SlotAssignmentMode>
@@ -498,6 +509,14 @@ pub surgeist_bindings_js::declarations::ElementCreationArgument::String(surgeist
 pub enum surgeist_bindings_js::declarations::ImportNodeArgument
 pub surgeist_bindings_js::declarations::ImportNodeArgument::Options(surgeist_bindings_js::declarations::ImportNodeOptions)
 pub surgeist_bindings_js::declarations::ImportNodeArgument::Subtree(bool)
+pub enum surgeist_bindings_js::declarations::SelectionMode
+pub surgeist_bindings_js::declarations::SelectionMode::End
+pub surgeist_bindings_js::declarations::SelectionMode::Preserve
+pub surgeist_bindings_js::declarations::SelectionMode::Select
+pub surgeist_bindings_js::declarations::SelectionMode::Start
+impl surgeist_bindings_js::declarations::SelectionMode
+pub fn surgeist_bindings_js::declarations::SelectionMode::as_code_units(self) -> &'static [u16]
+pub fn surgeist_bindings_js::declarations::SelectionMode::from_code_units(units: &[u16]) -> core::option::Option<Self>
 pub enum surgeist_bindings_js::declarations::ShadowRootMode
 pub surgeist_bindings_js::declarations::ShadowRootMode::Closed
 pub surgeist_bindings_js::declarations::ShadowRootMode::Open

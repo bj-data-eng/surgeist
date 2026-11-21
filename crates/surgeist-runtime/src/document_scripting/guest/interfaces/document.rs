@@ -60,6 +60,7 @@ mod style_policy;
 mod table_cell_column;
 mod template;
 mod text;
+mod textarea;
 mod title;
 mod traversal;
 pub(super) mod tree;

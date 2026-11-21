@@ -17,6 +17,7 @@ use crate::declarations::EventListenerOptions;
 use crate::declarations::GetRootNodeOptions;
 use crate::declarations::ImportNodeArgument;
 use crate::declarations::ImportNodeOptions;
+use crate::declarations::SelectionMode;
 use crate::declarations::ShadowRootInit;
 use crate::declarations::ShadowRootMode;
 use crate::declarations::SlotAssignmentMode;
@@ -43,6 +44,11 @@ pub fn document_visibility_state() -> Enumeration<DocumentVisibilityState> {
         "DocumentVisibilityState",
         DocumentVisibilityState::from_code_units,
     )
+}
+
+/// Scoped conversion for `SelectionMode`.
+pub fn selection_mode() -> Enumeration<SelectionMode> {
+    Enumeration::new("SelectionMode", SelectionMode::from_code_units)
 }
 
 /// Complete dictionary conversion for `GetRootNodeOptions`.
@@ -1830,6 +1836,111 @@ pub fn html_output_element_set_custom_validity_0_error() -> Argument<Type<DomStr
     )
 }
 
+/// Selected argument `HTMLTextAreaElement.setCustomValidity:0/error` (not overload selection).
+pub fn html_text_area_element_set_custom_validity_0_error() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLTextAreaElement.setCustomValidity:0/error",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLTextAreaElement.setRangeText:0/replacement` (not overload selection).
+pub fn html_text_area_element_set_range_text_0_replacement() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLTextAreaElement.setRangeText:0/replacement",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLTextAreaElement.setRangeText:1/replacement` (not overload selection).
+pub fn html_text_area_element_set_range_text_1_replacement() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLTextAreaElement.setRangeText:1/replacement",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLTextAreaElement.setRangeText:1/start` (not overload selection).
+pub fn html_text_area_element_set_range_text_1_start() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTextAreaElement.setRangeText:1/start",
+        1,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLTextAreaElement.setRangeText:1/end` (not overload selection).
+pub fn html_text_area_element_set_range_text_1_end() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTextAreaElement.setRangeText:1/end",
+        2,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+fn default_html_text_area_element_set_range_text_1_selection_mode(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<SelectionMode>, Failure> {
+    Ok(cx.plain(SelectionMode::Preserve))
+}
+
+/// Selected argument `HTMLTextAreaElement.setRangeText:1/selectionMode` (not overload selection).
+pub fn html_text_area_element_set_range_text_1_selection_mode() -> Argument<Type<SelectionMode>> {
+    Argument::new(
+        "HTMLTextAreaElement.setRangeText:1/selectionMode",
+        3,
+        true,
+        selection_mode().0,
+        Some(default_html_text_area_element_set_range_text_1_selection_mode),
+    )
+}
+
+/// Selected argument `HTMLTextAreaElement.setSelectionRange:0/start` (not overload selection).
+pub fn html_text_area_element_set_selection_range_0_start() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTextAreaElement.setSelectionRange:0/start",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLTextAreaElement.setSelectionRange:0/end` (not overload selection).
+pub fn html_text_area_element_set_selection_range_0_end() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLTextAreaElement.setSelectionRange:0/end",
+        1,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLTextAreaElement.setSelectionRange:0/direction` (not overload selection).
+pub fn html_text_area_element_set_selection_range_0_direction() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLTextAreaElement.setSelectionRange:0/direction",
+        2,
+        true,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected argument `ToggleEvent.constructor:0/type` (not overload selection).
 pub fn toggle_event_constructor_0_type() -> Argument<Type<DomString>> {
     Argument::new(
@@ -1953,6 +2064,11 @@ pub fn html_body_element_obsolete_a_link_setter() -> Type<DomString> {
 
 /// Selected setter conversion for `HTMLBodyElement.obsolete.bgColor`.
 pub fn html_body_element_obsolete_bg_color_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLTextAreaElement.value`.
+pub fn html_text_area_element_value_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
 }
 
