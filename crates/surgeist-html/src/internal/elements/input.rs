@@ -1189,6 +1189,29 @@ impl<'a> HtmlInputColorSpaceCursor<'a> {
     }
 }
 
+/// Recognize the exact Input colorspace under caller-owned step admission.
+///
+/// The caller admits each reached cursor action before its row lookup, length
+/// decision or code-unit comparison. Missing, empty and invalid content use
+/// the canonical LimitedSrgb default. Recognition does not apply color effects.
+///
+/// # Errors
+///
+/// Returns the first caller admission failure unchanged.
+pub fn input_colorspace_with<E>(
+    raw: Option<&[u16]>,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<crate::internal::attributes::input_colorspace::HtmlInputColorSpace, E> {
+    let mut cursor = HtmlInputColorSpaceCursor::new(raw);
+    loop {
+        if let Some(space) = cursor.result() {
+            return Ok(space);
+        }
+        step()?;
+        cursor.step();
+    }
+}
+
 /// The outcome of an exact old-versus-current value comparison.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputValueComparison {

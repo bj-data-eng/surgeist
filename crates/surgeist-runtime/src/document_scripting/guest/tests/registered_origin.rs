@@ -426,6 +426,7 @@ pub(in crate::document_scripting) fn definition_queues_candidates_before_resolvi
             })
             .unwrap()
     };
+    fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let foreign = scope.import(&foreign)?;
         let global = scope.global()?;

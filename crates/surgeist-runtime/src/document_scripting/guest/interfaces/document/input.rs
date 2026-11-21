@@ -11,14 +11,44 @@ use surgeist_bindings_js::conversion::{
 };
 use surgeist_dom::source::DomSourceEdit;
 
-const DEFAULT_CHECKED: reflection::Member = (
-    &ascii(b"defaultChecked"),
-    &ascii(b"get defaultChecked"),
-    &ascii(b"set defaultChecked"),
-    &ascii(b"checked"),
-    Reflection::Boolean,
-);
+const BEFORE_CHECKED: &[reflection::Member] = &[
+    (
+        &ascii(b"accept"),
+        &ascii(b"get accept"),
+        &ascii(b"set accept"),
+        &ascii(b"accept"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"alpha"),
+        &ascii(b"get alpha"),
+        &ascii(b"set alpha"),
+        &ascii(b"alpha"),
+        Reflection::Boolean,
+    ),
+    (
+        &ascii(b"alt"),
+        &ascii(b"get alt"),
+        &ascii(b"set alt"),
+        &ascii(b"alt"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"defaultChecked"),
+        &ascii(b"get defaultChecked"),
+        &ascii(b"set defaultChecked"),
+        &ascii(b"checked"),
+        Reflection::Boolean,
+    ),
+];
 const BEFORE_FORM: &[reflection::Member] = &[
+    (
+        &ascii(b"colorSpace"),
+        &ascii(b"get colorSpace"),
+        &ascii(b"set colorSpace"),
+        &ascii(b"colorspace"),
+        Reflection::InputColorSpace,
+    ),
     (
         &ascii(b"dirName"),
         &ascii(b"get dirName"),
@@ -34,7 +64,51 @@ const BEFORE_FORM: &[reflection::Member] = &[
         Reflection::Boolean,
     ),
 ];
+const BEFORE_INDETERMINATE: &[reflection::Member] = &[
+    (
+        &ascii(b"formEnctype"),
+        &ascii(b"get formEnctype"),
+        &ascii(b"set formEnctype"),
+        &ascii(b"formenctype"),
+        Reflection::FormEnctypeOverride,
+    ),
+    (
+        &ascii(b"formMethod"),
+        &ascii(b"get formMethod"),
+        &ascii(b"set formMethod"),
+        &ascii(b"formmethod"),
+        Reflection::FormMethodOverride,
+    ),
+    (
+        &ascii(b"formNoValidate"),
+        &ascii(b"get formNoValidate"),
+        &ascii(b"set formNoValidate"),
+        &ascii(b"formnovalidate"),
+        Reflection::Boolean,
+    ),
+    (
+        &ascii(b"formTarget"),
+        &ascii(b"get formTarget"),
+        &ascii(b"set formTarget"),
+        &ascii(b"formtarget"),
+        Reflection::String,
+    ),
+];
 const AFTER_INDETERMINATE: &[reflection::Member] = &[
+    (
+        &ascii(b"max"),
+        &ascii(b"get max"),
+        &ascii(b"set max"),
+        &ascii(b"max"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"min"),
+        &ascii(b"get min"),
+        &ascii(b"set min"),
+        &ascii(b"min"),
+        Reflection::String,
+    ),
     (
         &ascii(b"multiple"),
         &ascii(b"get multiple"),
@@ -47,6 +121,13 @@ const AFTER_INDETERMINATE: &[reflection::Member] = &[
         &ascii(b"get name"),
         &ascii(b"set name"),
         &ascii(b"name"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"pattern"),
+        &ascii(b"get pattern"),
+        &ascii(b"set pattern"),
+        &ascii(b"pattern"),
         Reflection::String,
     ),
     (
@@ -71,6 +152,13 @@ const AFTER_INDETERMINATE: &[reflection::Member] = &[
         Reflection::Boolean,
     ),
     (
+        &ascii(b"step"),
+        &ascii(b"get step"),
+        &ascii(b"set step"),
+        &ascii(b"step"),
+        Reflection::String,
+    ),
+    (
         &ascii(b"type"),
         &ascii(b"get type"),
         &ascii(b"set type"),
@@ -82,6 +170,23 @@ const AFTER_INDETERMINATE: &[reflection::Member] = &[
         &ascii(b"get defaultValue"),
         &ascii(b"set defaultValue"),
         &ascii(b"value"),
+        Reflection::String,
+    ),
+];
+
+const OBSOLETE: &[reflection::Member] = &[
+    (
+        &ascii(b"align"),
+        &ascii(b"get align"),
+        &ascii(b"set align"),
+        &ascii(b"align"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"useMap"),
+        &ascii(b"get useMap"),
+        &ascii(b"set useMap"),
+        &ascii(b"usemap"),
         Reflection::String,
     ),
 ];
@@ -172,16 +277,17 @@ pub(super) fn install<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    reflection::install(scope, prototype, capture, Receiver::Input, BEFORE_CHECKED)?;
+    InputProperty::Flag(InputFlag::Checked).install(scope, prototype, capture)?;
+    reflection::install(scope, prototype, capture, Receiver::Input, BEFORE_FORM)?;
+    form_owner::install(scope, prototype, capture, FormOwnerGetter::Input)?;
     reflection::install(
         scope,
         prototype,
         capture,
         Receiver::Input,
-        &[DEFAULT_CHECKED],
+        BEFORE_INDETERMINATE,
     )?;
-    InputProperty::Flag(InputFlag::Checked).install(scope, prototype, capture)?;
-    reflection::install(scope, prototype, capture, Receiver::Input, BEFORE_FORM)?;
-    form_owner::install(scope, prototype, capture, FormOwnerGetter::Input)?;
     InputProperty::Flag(InputFlag::Indeterminate).install(scope, prototype, capture)?;
     reflection::install(
         scope,
@@ -190,7 +296,8 @@ pub(super) fn install<'scope>(
         Receiver::Input,
         AFTER_INDETERMINATE,
     )?;
-    InputProperty::Value.install(scope, prototype, capture)
+    InputProperty::Value.install(scope, prototype, capture)?;
+    reflection::install(scope, prototype, capture, Receiver::Input, OBSOLETE)
 }
 
 impl Capture {

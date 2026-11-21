@@ -2796,6 +2796,7 @@ pub struct surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError
 impl core::error::Error for surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError
 impl core::fmt::Display for surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError
 pub fn surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn surgeist_html::bounded::input::input_colorspace_with<E>(raw: core::option::Option<&[u16]>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::input_colorspace::HtmlInputColorSpace, E>
 pub mod surgeist_html::bounded::lexical
 pub enum surgeist_html::bounded::lexical::HtmlCustomNameScanAction
 pub surgeist_html::bounded::lexical::HtmlCustomNameScanAction::Header

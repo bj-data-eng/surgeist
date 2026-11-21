@@ -754,6 +754,31 @@ class DescriptionTests(unittest.TestCase):
         default["value"] = 2
         self.rejected("source declaration mismatch: HTMLInputElement.source")
 
+    def test_input_local_reflections_retain_the_native_producers_and_obsolete_partial(self):
+        obsolete = self.definition("HTMLInputElement.obsolete")
+        self.assertTrue(obsolete["partial"])
+        self.assertEqual(obsolete["name"], "HTMLInputElement")
+        self.assertEqual([member["name"] for member in obsolete["members"]], ["align", "useMap"])
+        mappings = self.data["access_mappings"]
+        for name, producer in [
+            ("colorSpace", "input_colorspace_with"),
+            ("formEnctype", "form_enctype_override_keyword_with"),
+            ("formMethod", "form_method_override_keyword_with"),
+            ("obsolete.align", "get_null_namespace_attribute_with"),
+            ("obsolete.useMap", "get_null_namespace_attribute_with"),
+        ]:
+            with self.subTest(getter=name):
+                getter = mappings[f"HTMLInputElement.{name}/get"]
+                self.assertFalse(getter["requirements"])
+                self.assertIn(producer, [item["symbol"] for item in getter["producers"]])
+        for name in ["alpha", "colorSpace", "max", "min", "step"]:
+            with self.subTest(setter=name):
+                setter = mappings[f"HTMLInputElement.{name}/set"]
+                self.assertFalse(setter["requirements"])
+                self.assertIn("input_attribute_change", [item["symbol"] for item in setter["producers"]])
+        self.member("HTMLInputElement.obsolete.useMap")["attributes"].pop()
+        self.rejected("source declaration mismatch: HTMLInputElement.obsolete.source")
+
     def test_dialog_state_and_native_methods_preserve_the_primary_declaration(self):
         dialog = self.definition("HTMLDialogElement")
         self.assertEqual(dialog["inherits"], "HTMLElement")
