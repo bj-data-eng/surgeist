@@ -37,10 +37,14 @@ pub(super) fn attached_media_observes_unloaded_native_state() {
             }
         }
         const constantNames = constants.map(([name]) => name);
-        const prototypeNames = [...values.map(([name]) => name), ...constantNames];
+        const prototypeNames = [...values.map(([name]) => name), ...constantNames, 'constructor'];
         if (Object.getOwnPropertyNames(base).filter(name => constantNames.includes(name)).join() !== constantNames.join() ||
-            Object.getOwnPropertyNames(prototype).filter(name => prototypeNames.includes(name)).join() !== prototypeNames.join()) {
+            Object.getOwnPropertyNames(prototype).join() !== prototypeNames.join()) {
             return 'Web IDL Media prototype and constructor property order';
+        }
+        const link = Object.getOwnPropertyDescriptor(prototype, 'constructor');
+        if (link?.value !== base || !link.writable || link.enumerable || !link.configurable) {
+            return 'Media prototype constructor link descriptor';
         }
         if (Object.getPrototypeOf(base) !== HTMLElement || Object.getPrototypeOf(prototype) !== HTMLElement.prototype) {
             return 'shared Media interface inheritance';

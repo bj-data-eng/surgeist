@@ -657,6 +657,20 @@
       ]
     },
     {
+      "id": "HTMLMediaElement.source",
+      "path": "references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md",
+      "anchor": "htmlmediaelement",
+      "block": 0,
+      "sha256": "31a3bc1a41a20850e7b4d28aa59e683ef281ac1a279de8777efdfef2519f155f",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlmediaelement",
+      "entries": [
+        "CanPlayTypeResult",
+        "MediaProvider",
+        "HTMLMediaElement"
+      ]
+    },
+    {
       "id": "HTMLCanvasElement.source",
       "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
       "anchor": "htmlcanvaselement",
@@ -5950,6 +5964,672 @@
       "partial": true
     },
     {
+      "id": "CanPlayTypeResult",
+      "kind": "enumeration",
+      "name": "CanPlayTypeResult",
+      "attributes": [],
+      "values": [
+        "",
+        "maybe",
+        "probably"
+      ]
+    },
+    {
+      "id": "MediaProvider",
+      "kind": "typedef",
+      "name": "MediaProvider",
+      "attributes": [],
+      "type": {
+        "kind": "union",
+        "members": [
+          {
+            "kind": "named",
+            "name": "MediaStream"
+          },
+          {
+            "kind": "named",
+            "name": "MediaSource"
+          },
+          {
+            "kind": "named",
+            "name": "Blob"
+          }
+        ]
+      }
+    },
+    {
+      "id": "HTMLMediaElement",
+      "kind": "interface",
+      "name": "HTMLMediaElement",
+      "inherits": "HTMLElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "MediaError"
+            }
+          },
+          "name": "error",
+          "readonly": true,
+          "id": "HTMLMediaElement.error"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "src",
+          "readonly": false,
+          "id": "HTMLMediaElement.src"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "MediaProvider"
+            }
+          },
+          "name": "srcObject",
+          "readonly": false,
+          "id": "HTMLMediaElement.srcObject"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "currentSrc",
+          "readonly": true,
+          "id": "HTMLMediaElement.currentSrc"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "DOMString"
+            }
+          },
+          "name": "crossOrigin",
+          "readonly": false,
+          "id": "HTMLMediaElement.crossOrigin"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "NETWORK_EMPTY",
+          "value": 0,
+          "id": "HTMLMediaElement.NETWORK_EMPTY"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "NETWORK_IDLE",
+          "value": 1,
+          "id": "HTMLMediaElement.NETWORK_IDLE"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "NETWORK_LOADING",
+          "value": 2,
+          "id": "HTMLMediaElement.NETWORK_LOADING"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "NETWORK_NO_SOURCE",
+          "value": 3,
+          "id": "HTMLMediaElement.NETWORK_NO_SOURCE"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "networkState",
+          "readonly": true,
+          "id": "HTMLMediaElement.networkState"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "preload",
+          "readonly": false,
+          "id": "HTMLMediaElement.preload"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "TimeRanges"
+          },
+          "name": "buffered",
+          "readonly": true,
+          "id": "HTMLMediaElement.buffered"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "name": "load",
+          "arguments": [],
+          "id": "HTMLMediaElement.load:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "CanPlayTypeResult"
+          },
+          "name": "canPlayType",
+          "arguments": [
+            {
+              "name": "type",
+              "presence": "required",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              }
+            }
+          ],
+          "id": "HTMLMediaElement.canPlayType:0"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "HAVE_NOTHING",
+          "value": 0,
+          "id": "HTMLMediaElement.HAVE_NOTHING"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "HAVE_METADATA",
+          "value": 1,
+          "id": "HTMLMediaElement.HAVE_METADATA"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "HAVE_CURRENT_DATA",
+          "value": 2,
+          "id": "HTMLMediaElement.HAVE_CURRENT_DATA"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "HAVE_FUTURE_DATA",
+          "value": 3,
+          "id": "HTMLMediaElement.HAVE_FUTURE_DATA"
+        },
+        {
+          "attributes": [],
+          "kind": "constant",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "HAVE_ENOUGH_DATA",
+          "value": 4,
+          "id": "HTMLMediaElement.HAVE_ENOUGH_DATA"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned short"
+          },
+          "name": "readyState",
+          "readonly": true,
+          "id": "HTMLMediaElement.readyState"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "seeking",
+          "readonly": true,
+          "id": "HTMLMediaElement.seeking"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "currentTime",
+          "readonly": false,
+          "id": "HTMLMediaElement.currentTime"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "name": "fastSeek",
+          "arguments": [
+            {
+              "name": "time",
+              "presence": "required",
+              "type": {
+                "kind": "named",
+                "name": "double"
+              }
+            }
+          ],
+          "id": "HTMLMediaElement.fastSeek:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unrestricted double"
+          },
+          "name": "duration",
+          "readonly": true,
+          "id": "HTMLMediaElement.duration"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "object"
+          },
+          "name": "getStartDate",
+          "arguments": [],
+          "id": "HTMLMediaElement.getStartDate:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "paused",
+          "readonly": true,
+          "id": "HTMLMediaElement.paused"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "defaultPlaybackRate",
+          "readonly": false,
+          "id": "HTMLMediaElement.defaultPlaybackRate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "playbackRate",
+          "readonly": false,
+          "id": "HTMLMediaElement.playbackRate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "preservesPitch",
+          "readonly": false,
+          "id": "HTMLMediaElement.preservesPitch"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "TimeRanges"
+          },
+          "name": "played",
+          "readonly": true,
+          "id": "HTMLMediaElement.played"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "TimeRanges"
+          },
+          "name": "seekable",
+          "readonly": true,
+          "id": "HTMLMediaElement.seekable"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "ended",
+          "readonly": true,
+          "id": "HTMLMediaElement.ended"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "autoplay",
+          "readonly": false,
+          "id": "HTMLMediaElement.autoplay"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "loop",
+          "readonly": false,
+          "id": "HTMLMediaElement.loop"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "promise",
+            "inner": {
+              "kind": "named",
+              "name": "undefined"
+            }
+          },
+          "name": "play",
+          "arguments": [],
+          "id": "HTMLMediaElement.play:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "name": "pause",
+          "arguments": [],
+          "id": "HTMLMediaElement.pause:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "controls",
+          "readonly": false,
+          "id": "HTMLMediaElement.controls"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "double"
+          },
+          "name": "volume",
+          "readonly": false,
+          "id": "HTMLMediaElement.volume"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "muted",
+          "readonly": false,
+          "id": "HTMLMediaElement.muted"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "muted"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "defaultMuted",
+          "readonly": false,
+          "id": "HTMLMediaElement.defaultMuted"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "loading",
+          "readonly": false,
+          "id": "HTMLMediaElement.loading"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "AudioTrackList"
+          },
+          "name": "audioTracks",
+          "readonly": true,
+          "id": "HTMLMediaElement.audioTracks"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "VideoTrackList"
+          },
+          "name": "videoTracks",
+          "readonly": true,
+          "id": "HTMLMediaElement.videoTracks"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "TextTrackList"
+          },
+          "name": "textTracks",
+          "readonly": true,
+          "id": "HTMLMediaElement.textTracks"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "TextTrack"
+          },
+          "name": "addTextTrack",
+          "arguments": [
+            {
+              "name": "kind",
+              "presence": "required",
+              "type": {
+                "kind": "named",
+                "name": "TextTrackKind"
+              }
+            },
+            {
+              "name": "label",
+              "presence": "optional",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "default": {
+                "kind": "string",
+                "value": ""
+              }
+            },
+            {
+              "name": "language",
+              "presence": "optional",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "default": {
+                "kind": "string",
+                "value": ""
+              }
+            }
+          ],
+          "id": "HTMLMediaElement.addTextTrack:0"
+        }
+      ]
+    },
+    {
       "id": "RenderingContext",
       "kind": "typedef",
       "name": "RenderingContext",
@@ -11227,6 +11907,69 @@
   ],
   "externals": [
     {
+      "name": "MediaError",
+      "kind": "interface",
+      "owner": "surgeist-dom",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#mediaerror",
+      "requirement": "Provide the actual native media failure record."
+    },
+    {
+      "name": "MediaStream",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://www.w3.org/TR/mediacapture-streams/#mediastream",
+      "requirement": "Provide a live media stream source and its owner."
+    },
+    {
+      "name": "MediaSource",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://www.w3.org/TR/media-source-2/#mediasource",
+      "requirement": "Provide a live media source and its resource lifecycle."
+    },
+    {
+      "name": "TimeRanges",
+      "kind": "interface",
+      "owner": "surgeist-dom",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#timeranges",
+      "requirement": "Expose actual normalized native media range observations."
+    },
+    {
+      "name": "AudioTrackList",
+      "kind": "interface",
+      "owner": "surgeist-dom",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#audiotracklist",
+      "requirement": "Expose the native live audio track membership."
+    },
+    {
+      "name": "VideoTrackList",
+      "kind": "interface",
+      "owner": "surgeist-dom",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#videotracklist",
+      "requirement": "Expose the native live video track membership."
+    },
+    {
+      "name": "TextTrackList",
+      "kind": "interface",
+      "owner": "surgeist-dom",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#texttracklist",
+      "requirement": "Expose the native live text track membership."
+    },
+    {
+      "name": "TextTrack",
+      "kind": "interface",
+      "owner": "surgeist-dom",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#texttrack",
+      "requirement": "Expose actual native text track identity and transitions."
+    },
+    {
+      "name": "TextTrackKind",
+      "kind": "type",
+      "owner": "surgeist-html",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#texttrackkind",
+      "requirement": "Retain the typed text track classification with its producer."
+    },
+    {
       "name": "CanvasRenderingContext2D",
       "kind": "interface",
       "owner": "surgeist-render",
@@ -16205,6 +16948,473 @@
         }
       ],
       "requirements": []
+    },
+    "HTMLMediaElement.error/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Publish the actual native failure and the corresponding MediaError object.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-error"
+      }
+    },
+    "HTMLMediaElement.src/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Supply the reflected resource URL and authentic Source load continuation.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-src"
+      }
+    },
+    "HTMLMediaElement.src/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Supply the reflected resource URL and authentic Source load continuation.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-src"
+      }
+    },
+    "HTMLMediaElement.srcObject/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Publish the actual MediaProvider association and resource replacement effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-srcobject"
+      }
+    },
+    "HTMLMediaElement.srcObject/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Publish the actual MediaProvider association and resource replacement effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-srcobject"
+      }
+    },
+    "HTMLMediaElement.currentSrc/get": {
+      "kind": "native",
+      "adapter": "htmlmediaelement.currentsrc.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "initial_media_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/media/native.rs",
+          "symbol": "current_src"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/media.rs",
+          "symbol": "read_media_status"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMediaElement.crossOrigin/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect reflected CORS mode to the actual native media fetch settings.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-crossorigin"
+      }
+    },
+    "HTMLMediaElement.crossOrigin/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect reflected CORS mode to the actual native media fetch settings.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-crossorigin"
+      }
+    },
+    "HTMLMediaElement.networkState/get": {
+      "kind": "native",
+      "adapter": "htmlmediaelement.networkstate.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "initial_media_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/media/native.rs",
+          "symbol": "network_is_empty"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/media.rs",
+          "symbol": "read_media_status"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMediaElement.preload/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Interpret the preload setting and retain its native resource selection effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-preload"
+      }
+    },
+    "HTMLMediaElement.preload/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Interpret the preload setting and retain its native resource selection effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-preload"
+      }
+    },
+    "HTMLMediaElement.buffered/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Capture actual buffered intervals and expose the normalized TimeRanges result.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-buffered"
+      }
+    },
+    "HTMLMediaElement.load:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Execute the canonical media load state machine and its required effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-load"
+      }
+    },
+    "HTMLMediaElement.canPlayType:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Query the host's actual registered media decoder capabilities.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#media-elements"
+      }
+    },
+    "HTMLMediaElement.readyState/get": {
+      "kind": "native",
+      "adapter": "htmlmediaelement.readystate.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "initial_media_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/media/native.rs",
+          "symbol": "has_media_data"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/media.rs",
+          "symbol": "read_media_status"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMediaElement.seeking/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose the live canonical seek state.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-seeking"
+      }
+    },
+    "HTMLMediaElement.currentTime/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose playback position and canonical seeking transitions.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-currenttime"
+      }
+    },
+    "HTMLMediaElement.currentTime/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose playback position and canonical seeking transitions.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-currenttime"
+      }
+    },
+    "HTMLMediaElement.fastSeek:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Execute the native approximate seek transition.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-fastseek"
+      }
+    },
+    "HTMLMediaElement.duration/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose duration from the canonical media state across resource changes.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-duration"
+      }
+    },
+    "HTMLMediaElement.getStartDate:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Project the actual media timeline offset through the required Date object.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-getstartdate"
+      }
+    },
+    "HTMLMediaElement.paused/get": {
+      "kind": "native",
+      "adapter": "htmlmediaelement.paused.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "initial_media_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/media/native.rs",
+          "symbol": "paused"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/media.rs",
+          "symbol": "read_media_status"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMediaElement.defaultPlaybackRate/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose the canonical default playback rate and its mutation effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-defaultplaybackrate"
+      }
+    },
+    "HTMLMediaElement.defaultPlaybackRate/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose the canonical default playback rate and its mutation effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-defaultplaybackrate"
+      }
+    },
+    "HTMLMediaElement.playbackRate/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose the canonical playback rate and its mutation effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-playbackrate"
+      }
+    },
+    "HTMLMediaElement.playbackRate/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose the canonical playback rate and its mutation effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-playbackrate"
+      }
+    },
+    "HTMLMediaElement.preservesPitch/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose the retained pitch setting and the applicable playback effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-preservespitch"
+      }
+    },
+    "HTMLMediaElement.preservesPitch/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose the retained pitch setting and the applicable playback effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-preservespitch"
+      }
+    },
+    "HTMLMediaElement.played/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Capture actual played intervals and expose the normalized TimeRanges result.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-played"
+      }
+    },
+    "HTMLMediaElement.seekable/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Capture actual seekable intervals and expose the normalized TimeRanges result.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-seekable"
+      }
+    },
+    "HTMLMediaElement.ended/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose playback-ended observation through the actual media lifecycle.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-ended"
+      }
+    },
+    "HTMLMediaElement.autoplay/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the canonical autoplay reflection and its actual media eligibility effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-autoplay"
+      }
+    },
+    "HTMLMediaElement.autoplay/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the canonical autoplay reflection and its actual media eligibility effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-autoplay"
+      }
+    },
+    "HTMLMediaElement.loop/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the canonical loop reflection and retain native playback semantics.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-loop"
+      }
+    },
+    "HTMLMediaElement.loop/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the canonical loop reflection and retain native playback semantics.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-loop"
+      }
+    },
+    "HTMLMediaElement.play:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Execute the actual playback transition and settle its native-owned promise.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-play"
+      }
+    },
+    "HTMLMediaElement.pause:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Execute the public pause semantics and native event and promise effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-pause"
+      }
+    },
+    "HTMLMediaElement.controls/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the canonical controls reflection and its authentic host effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-controls"
+      }
+    },
+    "HTMLMediaElement.controls/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the canonical controls reflection and its authentic host effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-controls"
+      }
+    },
+    "HTMLMediaElement.volume/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose native volume with bounded range and canonical mutation effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-volume"
+      }
+    },
+    "HTMLMediaElement.volume/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose native volume with bounded range and canonical mutation effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-volume"
+      }
+    },
+    "HTMLMediaElement.muted/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose actual media mute state and the corresponding canonical transition.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-muted"
+      }
+    },
+    "HTMLMediaElement.muted/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Expose actual media mute state and the corresponding canonical transition.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-muted"
+      }
+    },
+    "HTMLMediaElement.defaultMuted/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the canonical muted content attribute without rewriting live mute state.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-defaultmuted"
+      }
+    },
+    "HTMLMediaElement.defaultMuted/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the canonical muted content attribute without rewriting live mute state.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-defaultmuted"
+      }
+    },
+    "HTMLMediaElement.loading/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind interpreted loading mode and authentic resource or poster resumption.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-loading"
+      }
+    },
+    "HTMLMediaElement.loading/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind interpreted loading mode and authentic resource or poster resumption.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-loading"
+      }
+    },
+    "HTMLMediaElement.audioTracks/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Project the stable live AudioTrackList over actual native membership.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-audiotracks"
+      },
+      "result_view": "live"
+    },
+    "HTMLMediaElement.videoTracks/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Project the stable live VideoTrackList over actual native membership.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-videotracks"
+      },
+      "result_view": "live"
+    },
+    "HTMLMediaElement.textTracks/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Project the stable live TextTrackList over actual native membership.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-texttracks"
+      },
+      "result_view": "live"
+    },
+    "HTMLMediaElement.addTextTrack:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Create the actual native track and publish its ordered membership and effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-addtexttrack"
+      }
     },
     "HTMLCanvasElement.constructor:0/construct": {
       "kind": "native",

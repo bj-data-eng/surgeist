@@ -141,6 +141,7 @@ pub(super) enum Receiver {
     Input,
     Legend,
     Marquee,
+    Media,
     Meter,
     Li,
     OList,
@@ -290,6 +291,16 @@ impl Receiver {
                 step()?;
                 html_element_is(node, "HTMLProgressElement")
             }
+            Self::Media => {
+                step()?;
+                node.as_element().is_some_and(|element| {
+                    !element.has_failed_construction_interface()
+                        && matches!(
+                            KnownHtmlElement::from_name(element.name()),
+                            Some(KnownHtmlElement::Audio | KnownHtmlElement::Video)
+                        )
+                })
+            }
             Self::Meter => {
                 step()?;
                 html_element_is(node, "HTMLMeterElement")
@@ -332,6 +343,7 @@ impl Receiver {
             Self::Input => const { &ascii(b"HTMLInputElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
+            Self::Media => const { &ascii(b"HTMLMediaElement required") },
             Self::Meter => const { &ascii(b"HTMLMeterElement required") },
             Self::Li => const { &ascii(b"HTMLLIElement required") },
             Self::OList => const { &ascii(b"HTMLOListElement required") },

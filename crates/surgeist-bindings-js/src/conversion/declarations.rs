@@ -8,6 +8,7 @@ use super::{
 };
 use crate::TrustedAttributeValue;
 use crate::declarations::AssignedNodesOptions;
+use crate::declarations::CanPlayTypeResult;
 use crate::declarations::DocumentReadyState;
 use crate::declarations::DocumentVisibilityState;
 use crate::declarations::ElementCreationArgument;
@@ -44,6 +45,11 @@ pub fn document_visibility_state() -> Enumeration<DocumentVisibilityState> {
         "DocumentVisibilityState",
         DocumentVisibilityState::from_code_units,
     )
+}
+
+/// Scoped conversion for `CanPlayTypeResult`.
+pub fn can_play_type_result() -> Enumeration<CanPlayTypeResult> {
+    Enumeration::new("CanPlayTypeResult", CanPlayTypeResult::from_code_units)
 }
 
 /// Scoped conversion for `SelectionMode`.
@@ -1722,6 +1728,62 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
         false,
         types::DOM_STRING,
         None,
+    )
+}
+
+/// Selected argument `HTMLMediaElement.canPlayType:0/type` (not overload selection).
+pub fn html_media_element_can_play_type_0_type() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLMediaElement.canPlayType:0/type",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLMediaElement.fastSeek:0/time` (not overload selection).
+pub fn html_media_element_fast_seek_0_time() -> Argument<Type<f64>> {
+    Argument::new(
+        "HTMLMediaElement.fastSeek:0/time",
+        0,
+        false,
+        types::DOUBLE,
+        None,
+    )
+}
+
+fn default_html_media_element_add_text_track_0_label(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    Ok(cx.plain(DomString::new(Vec::new())))
+}
+
+/// Selected argument `HTMLMediaElement.addTextTrack:0/label` (not overload selection).
+pub fn html_media_element_add_text_track_0_label() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLMediaElement.addTextTrack:0/label",
+        1,
+        true,
+        types::DOM_STRING,
+        Some(default_html_media_element_add_text_track_0_label),
+    )
+}
+
+fn default_html_media_element_add_text_track_0_language(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    Ok(cx.plain(DomString::new(Vec::new())))
+}
+
+/// Selected argument `HTMLMediaElement.addTextTrack:0/language` (not overload selection).
+pub fn html_media_element_add_text_track_0_language() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLMediaElement.addTextTrack:0/language",
+        2,
+        true,
+        types::DOM_STRING,
+        Some(default_html_media_element_add_text_track_0_language),
     )
 }
 

@@ -1139,7 +1139,7 @@ class ValueLoweringTests(unittest.TestCase):
                           "ShadowRootInit", "EventInit", "EventListenerOptions", "AssignedNodesOptions"])
         self.assertEqual([d["name"] for d in model["enumerations"]],
                          ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState",
-                          "DocumentVisibilityState", "SelectionMode"])
+                          "DocumentVisibilityState", "CanPlayTypeResult", "SelectionMode"])
         # No member may be discarded. Signal and source combinations outside
         # the selected conversion profiles stay unavailable.
         for name in ("AddEventListenerOptions",
