@@ -101,6 +101,8 @@ mod html_prototype_order;
 mod input_attributes;
 #[path = "document_scripting/input_state.rs"]
 mod input_state;
+#[path = "document_scripting/label_live.rs"]
+mod label_live;
 #[path = "document_scripting/legend_form.rs"]
 mod legend_form;
 #[path = "document_scripting/marquee.rs"]
@@ -2476,6 +2478,7 @@ fn main() {
             "control-autocomplete" => control_autocomplete::attached_controls_project_live_autocomplete(),
             "control-custom-validity" => control_custom_validity::attached_controls_store_native_custom_validity(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
+            "label-live" => label_live::attached_labels_track_their_live_control_and_form(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
             "native-media-status" => native_media_status::attached_media_observes_unloaded_native_state(),
@@ -2593,6 +2596,7 @@ fn main() {
     control_autocomplete::attached_controls_project_live_autocomplete();
     control_custom_validity::attached_controls_store_native_custom_validity();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
+    label_live::attached_labels_track_their_live_control_and_form();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
     native_media_status::attached_media_observes_unloaded_native_state();

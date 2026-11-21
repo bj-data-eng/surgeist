@@ -4468,6 +4468,7 @@ pub fn surgeist_html::elements::form::HtmlTextareaFlags::mark_dirty_value(&mut s
 pub const fn surgeist_html::elements::form::HtmlTextareaFlags::new(dirty_value: bool, user_validity: bool) -> Self
 pub fn surgeist_html::elements::form::HtmlTextareaFlags::reset(&mut self) -> surgeist_html::elements::form::HtmlTextareaRawValueAction
 pub const fn surgeist_html::elements::form::HtmlTextareaFlags::user_validity(&self) -> bool
+pub fn surgeist_html::elements::form::native_labelability_with<E>(element: surgeist_html::vocabulary::KnownHtmlElement, input_type: impl core::ops::function::FnOnce() -> core::result::Result<surgeist_html::attributes::HtmlInputType, E>) -> core::result::Result<bool, E>
 pub const fn surgeist_html::elements::form::output_default_source(has_override: bool) -> surgeist_html::elements::form::HtmlOutputDefaultSource
 pub fn surgeist_html::elements::form::textarea_value_setter_finish(comparison: surgeist_html::elements::input::HtmlInputValueComparison) -> surgeist_html::elements::form::HtmlTextControlValueSetterFinish
 pub mod surgeist_html::elements::frame

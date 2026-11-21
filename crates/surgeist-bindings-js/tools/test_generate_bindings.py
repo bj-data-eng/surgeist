@@ -644,6 +644,35 @@ class DescriptionTests(unittest.TestCase):
         include["mixin"] = "GlobalEventHandlers"
         self.rejected("source declaration mismatch: HTMLFrameSetElement.source")
 
+    def test_label_catalogue_preserves_the_retained_interface(self):
+        definitions, _ = g.validate(self.data)
+        label = definitions.get("HTMLLabelElement")
+        self.assertIsNotNone(label, "missing HTMLLabelElement in the validated catalogue")
+        source = next(s for s in self.data["sources"] if "HTMLLabelElement" in s["entries"])
+        self.assertEqual(source["path"],
+                         "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md")
+        self.assertEqual((source["anchor"], source["block"]), ("htmllabelelement", 0))
+        self.assertEqual(source["sha256"],
+                         "332cd00a0d3af09002d9b5579d58fde2c9081806e1d8fce4bd86b6dafe5ccba3")
+        self.assertEqual(source["revision"], "877d6146487f15b15bc8dd0e3c625063a37b456a")
+        self.assertEqual(label["inherits"], "HTMLElement")
+        constructor, form, html_for, control = label["members"]
+        self.assertEqual(constructor["kind"], "constructor")
+        self.assertEqual(constructor["attributes"], [{"name": "HTMLConstructor"}])
+        self.assertEqual(constructor["arguments"], [])
+        self.assertEqual([member["name"] for member in (form, html_for, control)],
+                         ["form", "htmlFor", "control"])
+        for member, interface in [(form, "HTMLFormElement"), (control, "HTMLElement")]:
+            with self.subTest(member=member["name"]):
+                self.assertTrue(member["readonly"])
+                self.assertEqual(member["type"],
+                                 {"kind": "nullable", "inner": {"kind": "named", "name": interface}})
+        self.assertFalse(html_for["readonly"])
+        self.assertEqual(html_for["attributes"],
+                         [{"name": "CEReactions"}, {"name": "Reflect", "value": "for"}])
+        self.assertEqual(g.conversion_type(html_for["type"], g.lower_values(self.data)),
+                         ("DomString", "Type<DomString>", "types::DOM_STRING"))
+
     def test_legend_keeps_readonly_nullable_form_and_plain_alignment(self):
         legend = self.definition("HTMLLegendElement")
         self.assertEqual(legend["inherits"], "HTMLElement")

@@ -6,5 +6,7 @@ pub use crate::internal::elements::control_values::{
     HtmlTextControlValueSetterFinish, HtmlTextareaFlags, HtmlTextareaRawValueAction,
     output_default_source, textarea_value_setter_finish,
 };
-pub use crate::internal::elements::form_association::HtmlNativeFormAssociationKind;
+pub use crate::internal::elements::form_association::{
+    HtmlNativeFormAssociationKind, native_labelability_with,
+};
 pub use crate::internal::elements::form_native::HtmlFormNativeState;

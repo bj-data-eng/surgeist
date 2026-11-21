@@ -1,4 +1,4 @@
-//! Control and Legend form observations from the published DOM segment.
+//! Form owner observations from the published DOM segment.
 
 use super::{reflection::Receiver, *};
 
@@ -11,6 +11,7 @@ pub(super) enum FormOwnerGetter {
     Input,
     Output,
     Textarea,
+    Label,
     Legend,
 }
 
@@ -24,6 +25,7 @@ impl FormOwnerGetter {
             Self::Input => Receiver::Input,
             Self::Output => Receiver::Output,
             Self::Textarea => Receiver::Textarea,
+            Self::Label => Receiver::Label,
             Self::Legend => Receiver::Legend,
         }
     }
@@ -97,6 +99,8 @@ impl Capture {
                         .as_textarea()
                         .ok_or(DomError::WrongNodeKind)?
                         .form_owner_with(|| read.step())?,
+                    FormOwnerGetter::Label => node
+                        .html_label_form_owner_with(|| read.step(), |bytes| read.reserve(bytes))?,
                     FormOwnerGetter::Legend => {
                         node.fieldset_parent_form_owner_with(|| read.step())?
                     }

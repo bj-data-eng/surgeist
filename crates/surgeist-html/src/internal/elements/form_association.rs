@@ -1,7 +1,7 @@
 //! Native association categories, HTML877d §4.10.2. These values grant no
 //! creation profile, custom definition, form-owner identity or execution capability.
 
-use crate::vocabulary::KnownHtmlElement;
+use crate::{attributes::HtmlInputType, vocabulary::KnownHtmlElement};
 
 // One semantic family mapping. Canonical tag spellings remain owned by
 // KnownHtmlElement; there is no second name inventory here. The first six
@@ -53,6 +53,30 @@ native_form_kinds! {
     Output => Output, "The `output` element, which is listed.",
     Input => Input, "The `input` element, which is listed.",
     Select => Select, "The `select` element, which is listed.",
+}
+
+/// Determine labelability for an already recognized native HTML element.
+///
+/// The callback supplies the current Input type only for [`KnownHtmlElement::Input`].
+/// Actual form-associated custom definitions are qualified by the caller.
+///
+/// # Errors
+///
+/// Returns the callback's failure unchanged if the Input type cannot be read.
+pub fn native_labelability_with<E>(
+    element: KnownHtmlElement,
+    input_type: impl FnOnce() -> Result<HtmlInputType, E>,
+) -> Result<bool, E> {
+    match element {
+        KnownHtmlElement::Button
+        | KnownHtmlElement::Meter
+        | KnownHtmlElement::Output
+        | KnownHtmlElement::Progress
+        | KnownHtmlElement::Select
+        | KnownHtmlElement::Textarea => Ok(true),
+        KnownHtmlElement::Input => Ok(input_type()? != HtmlInputType::Hidden),
+        _ => Ok(false),
+    }
 }
 
 /// Classifies through caller-admitted exact comparisons of borrowed operands.
