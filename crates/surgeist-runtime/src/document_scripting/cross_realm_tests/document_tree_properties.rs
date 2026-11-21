@@ -40,6 +40,7 @@ pub(super) fn document_tree_properties_select_and_forward_native_attributes() {
     ] {
         expose_public_node_for_source_test(&mut host, &permit, node, name);
     }
+    fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"
             (() => {

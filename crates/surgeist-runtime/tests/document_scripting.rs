@@ -103,6 +103,8 @@ mod standard_window;
 mod tab_index;
 #[path = "document_scripting/text_comment.rs"]
 mod text_comment;
+#[path = "document_scripting/textarea_values.rs"]
+mod textarea_values;
 #[path = "document_scripting/translate_reflection.rs"]
 mod translate_reflection;
 #[path = "document_scripting/window_document.rs"]
@@ -2437,6 +2439,7 @@ fn main() {
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
             "button-attributes" => button_attributes::attached_button_attributes_use_live_submitter_and_form_state(),
+            "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
@@ -2540,6 +2543,7 @@ fn main() {
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
     output_values::attached_output_reads_native_values_and_stores_custom_validity();
     button_attributes::attached_button_attributes_use_live_submitter_and_form_state();
+    textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();

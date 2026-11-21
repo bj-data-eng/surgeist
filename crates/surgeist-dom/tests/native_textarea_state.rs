@@ -685,6 +685,80 @@ fn immutable_reads_have_exact_unit_work_and_cancellation_boundaries() {
 }
 
 #[test]
+fn caller_admission_covers_each_textarea_raw_unit_and_preserves_visitor_refusal() {
+    #[derive(Debug, PartialEq, Eq)]
+    enum Refusal {
+        Native(DomError),
+        Input,
+        Output,
+    }
+    impl From<DomError> for Refusal {
+        fn from(error: DomError) -> Self {
+            Self::Native(error)
+        }
+    }
+
+    let mut dom = owner();
+    let (_, _, textarea) = setup(&mut dom);
+    let mut batch = DomBatch::new();
+    batch.set_textarea_value(textarea, "A\r\nB");
+    apply(&mut dom, batch);
+    let snapshot = dom.snapshot();
+    let view = snapshot.node(textarea).unwrap().as_textarea().unwrap();
+
+    for (budget, expected_text, visit_result, count_result) in [
+        (4usize, "A\nB", Ok(()), Ok(3)),
+        (3, "A\n", Err(Refusal::Input), Err(Refusal::Input)),
+    ] {
+        let units = expected_text.encode_utf16().collect::<Vec<_>>();
+        let mut remaining = budget;
+        let mut visited = Vec::new();
+        assert_eq!(
+            view.visit_value_with(
+                || {
+                    remaining = remaining.checked_sub(1).ok_or(Refusal::Input)?;
+                    Ok(())
+                },
+                |unit| {
+                    visited.push(unit);
+                    Ok(())
+                },
+            ),
+            visit_result
+        );
+        assert_eq!(visited, units);
+        assert_eq!(remaining, 0);
+
+        remaining = budget;
+        assert_eq!(
+            view.text_length_with(|| {
+                remaining = remaining.checked_sub(1).ok_or(Refusal::Input)?;
+                Ok(())
+            }),
+            count_result
+        );
+        assert_eq!(remaining, 0);
+    }
+
+    let mut reads = 0;
+    let result = view.visit_value_with(
+        || {
+            reads += 1;
+            Ok(())
+        },
+        |unit| {
+            if unit == u16::from(b'\n') {
+                return Err(Refusal::Output);
+            }
+            Ok(())
+        },
+    );
+    assert_eq!(result, Err(Refusal::Output));
+    assert_eq!(reads, 2);
+    assert_eq!(dom.snapshot().stamp(), snapshot.stamp());
+}
+
+#[test]
 fn raw_message_and_default_text_units_have_independent_exact_retained_costs() {
     let mut dom = owner();
     let (_, _, textarea) = setup(&mut dom);

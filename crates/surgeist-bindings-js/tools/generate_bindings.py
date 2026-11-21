@@ -28,11 +28,13 @@ PRIMITIVES = {"undefined", "boolean", "byte", "octet", "short", "unsigned short"
               "long", "unsigned long", "long long", "unsigned long long", "float",
               "unrestricted float", "double", "unrestricted double", "DOMString",
               "USVString", "ByteString", "object", "any"}
+REFLECTED_GETTERS = {"Reflect", "ReflectNonNegative", "ReflectPositiveWithFallback"}
+REFLECTION_ATTRIBUTES = REFLECTED_GETTERS | {"ReflectSetter"}
 ATTRIBUTES = {"Exposed", "Serializable", "SameObject", "NewObject", "CEReactions", "Unscopable",
               "PutForwards", "LegacyNullToEmptyString", "LegacyUnenumerableNamedProperties",
               "LegacyUnforgeable", "LegacyOverrideBuiltIns", "LegacyLenientThis",
-              "HTMLConstructor", "LegacyFactoryFunction", "Reflect", "ReflectSetter", "ReflectRange",
-              "ReflectDefault"}
+              "HTMLConstructor", "LegacyFactoryFunction", "ReflectRange",
+              "ReflectDefault"} | REFLECTION_ATTRIBUTES
 SELECTED_SETTER_CONVERSIONS = {
     "HTMLElement.hidden", "HTMLTitleElement.text", "HTMLSelectElement.selectedIndex", "HTMLOptionElement.selected",
 }
@@ -124,7 +126,7 @@ def attributes_shape(items):
             keys(value, ["name", "arguments"])
             identifier(value["name"])
             arguments_shape(value["arguments"])
-        elif item["name"] == "Reflect" and "value" in item:
+        elif item["name"] in REFLECTION_ATTRIBUTES and "value" in item:
             text(item["value"], "reflected attribute name")
         elif item["name"] == "ReflectRange":
             sequence(item.get("value"), "reflection range", nonempty=True)
@@ -366,13 +368,13 @@ def attributes(items, names=None):
         value = item.get("value")
         if name in {"Exposed", "PutForwards", "ReflectRange", "ReflectDefault", "LegacyFactoryFunction"}:
             require(value is not None, f"{name} requires a value")
-        elif name != "Reflect":
+        elif name not in REFLECTION_ATTRIBUTES:
             require(value is None, f"{name} takes no value")
         if name == "Exposed":
             require(value in {"Window", "*"}, "unexpected selected exposure")
         elif name == "PutForwards":
             identifier(value)
-        elif name == "Reflect" and value is not None:
+        elif name in REFLECTION_ATTRIBUTES and value is not None:
             require(re.fullmatch(r"[a-z][a-z0-9-]*", value), "invalid reflected attribute name")
             value = json.dumps(value)
         suffix = ""
@@ -481,17 +483,26 @@ def render_member(member, names):
     keys(member, {"id", "kind", "attributes"} | required, optional)
     annotations = {x["name"]: x.get("value") for x in member["attributes"]}
     value_type = member.get("type", {})
+    reflection = annotations.keys() & REFLECTION_ATTRIBUTES
+    require(len(reflection) <= 1, "only one primary reflection annotation is allowed")
+    require(not reflection or kind == "attribute", "reflection requires an interface member attribute")
     reflected_type = (
-        value_type.get("name") if kind == "attribute" and "Reflect" in annotations
+        value_type.get("name") if reflection & REFLECTED_GETTERS
         and value_type.get("kind") == "named" and not value_type.get("attributes") else None
     )
+    if "ReflectNonNegative" in reflection:
+        require(reflected_type == "long", "ReflectNonNegative requires a long attribute")
+    if "ReflectPositiveWithFallback" in reflection:
+        require(reflected_type in {"double", "unsigned long"},
+                "ReflectPositiveWithFallback requires a double or unsigned long attribute")
     if "ReflectDefault" in annotations:
         require(reflected_type in {"long", "unsigned long"},
                 "ReflectDefault requires a reflected long or unsigned long attribute")
         minimum, maximum = (-(2**31), 2**31 - 1) if reflected_type == "long" else (0, 2**32 - 1)
         integer(annotations["ReflectDefault"], "reflection default", minimum, maximum)
     if "ReflectRange" in annotations:
-        require(reflected_type == "unsigned long", "ReflectRange requires a reflected unsigned long attribute")
+        require(reflected_type == "unsigned long" and "Reflect" in reflection,
+                "ReflectRange requires a reflected unsigned long attribute")
     if "SameObject" in annotations or "PutForwards" in annotations:
         require(kind == "attribute" and member.get("readonly"), "SameObject/PutForwards requires a readonly attribute")
     require("NewObject" not in annotations or kind == "operation", "NewObject requires an operation")
@@ -1128,6 +1139,7 @@ def emit_conversions(model, arguments=(), selected_setters=()):
         if default is not None:
             default_fn = "Some(default_" + function + ")"
             kind = default["kind"]
+            argument_type = arg["type"].get("name")
             if kind == "empty_dictionary":
                 expression = output + "::default()"
                 if output == "ElementCreationArgument":
@@ -1139,14 +1151,19 @@ def emit_conversions(model, arguments=(), selected_setters=()):
             elif kind == "integer":
                 expression = "IntegerValue::" + {"unsigned long": "UnsignedLong"}[arg["type"]["name"]] + "(" + str(default["value"]) + ")"
             elif kind == "string":
-                require(arg["type"]["name"] == "DOMString", "unsupported declared string default")
-                expression = "DomString::new(Vec::new())"
+                if argument_type == "DOMString":
+                    expression = "DomString::new(Vec::new())"
+                else:
+                    require(argument_type in enumerations, "unsupported declared string default")
+                    require(default["value"] in enumerations[argument_type]["values"],
+                            "enumeration argument default is not a member")
+                    expression = argument_type + "::" + variant(default["value"])
             elif kind == "null":
                 expression = "None"
             else:
                 raise DescriptionError("unsupported declared argument default")
             statement = "Ok(cx.plain(" + expression + "))"
-            if kind == "string" and default["value"]:
+            if kind == "string" and argument_type == "DOMString" and default["value"]:
                 statement = "cx.default_dom_string(&" + units_literal(default["value"]) + ")"
             result += ["fn default_" + function + "(", "    cx: &mut Conversion<'_, '_>,", ") -> Result<Converted<" + output + ">, Failure> {",
                        "    " + statement, "}", ""]

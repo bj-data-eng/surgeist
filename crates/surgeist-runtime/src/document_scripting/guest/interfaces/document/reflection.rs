@@ -138,6 +138,7 @@ pub(super) enum Receiver {
     Slot,
     TableCell,
     TableColumn,
+    Textarea,
 }
 
 impl Receiver {
@@ -247,6 +248,13 @@ impl Receiver {
                 step()?;
                 html_element_is(node, "HTMLTableCellElement")
             }
+            Self::Textarea => {
+                step()?;
+                node.as_element().is_some_and(|element| {
+                    !element.has_failed_construction_interface()
+                        && element.textarea_state().is_some()
+                })
+            }
             Self::TableColumn => {
                 step()?;
                 html_element_is(node, "HTMLTableColElement")
@@ -294,6 +302,7 @@ impl Receiver {
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
             Self::TableCell => const { &ascii(b"HTMLTableCellElement required") },
             Self::TableColumn => const { &ascii(b"HTMLTableColElement required") },
+            Self::Textarea => const { &ascii(b"HTMLTextAreaElement required") },
         }
     }
 }
@@ -793,6 +802,7 @@ impl Capture {
                             | Receiver::Legend
                             | Receiver::Marquee
                             | Receiver::Output
+                            | Receiver::Textarea
                     ) {
                         let current = self.callbacks.with_read(&owner, &events, |read, _| {
                             receiver.matches(read.node(id)?, || read.step())

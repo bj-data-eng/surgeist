@@ -339,6 +339,7 @@ impl ElementBindings {
                 "HTMLOutputElement" => super::output::install(scope, &prototype, capture)?,
                 "HTMLOptionElement" => super::select::install_option(scope, &prototype, capture)?,
                 "HTMLSelectElement" => super::select::install_select(scope, &prototype, capture)?,
+                "HTMLTextAreaElement" => super::textarea::install(scope, &prototype, capture)?,
                 "HTMLTimeElement" => super::data_time::install_time(scope, &prototype, capture)?,
                 "HTMLDivElement" => {
                     super::structural_alignment::install_div(scope, &prototype, capture)?

@@ -884,6 +884,26 @@
       "entries": ["HTMLLegendElement.obsolete"]
     },
     {
+      "id": "HTMLTextAreaElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmltextareaelement",
+      "block": 0,
+      "sha256": "efef4c2300a128ee25ff45978ea1d2a83ed333b3a59cdfd4346b926825173899",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmltextareaelement",
+      "entries": ["HTMLTextAreaElement"]
+    },
+    {
+      "id": "SelectionMode.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "selectionmode",
+      "block": 0,
+      "sha256": "b423b69e0bde9982f2713ad3175cbc417c4feb5399012cac33db24b6e154d0c2",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#selectionmode",
+      "entries": ["SelectionMode"]
+    },
+    {
       "id": "HTMLMarqueeElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlmarqueeelement",
@@ -7520,6 +7540,276 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLTextAreaElement",
+      "kind": "interface",
+      "name": "HTMLTextAreaElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTextAreaElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "autocomplete",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.autocomplete"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectPositiveWithFallback"}, {"name": "ReflectDefault", "value": 20}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "cols",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.cols"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "dirName",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.dirName"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.disabled"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLFormElement"}},
+          "name": "form",
+          "readonly": true,
+          "id": "HTMLTextAreaElement.form"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectNonNegative"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "long"},
+          "name": "maxLength",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.maxLength"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectNonNegative"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "long"},
+          "name": "minLength",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.minLength"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.name"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "placeholder",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.placeholder"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "readOnly",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.readOnly"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "required",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.required"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectPositiveWithFallback"}, {"name": "ReflectDefault", "value": 2}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "rows",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.rows"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "wrap",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.wrap"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "type",
+          "readonly": true,
+          "id": "HTMLTextAreaElement.type"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "defaultValue",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.defaultValue"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]},
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.value"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "textLength",
+          "readonly": true,
+          "id": "HTMLTextAreaElement.textLength"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "willValidate",
+          "readonly": true,
+          "id": "HTMLTextAreaElement.willValidate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "ValidityState"},
+          "name": "validity",
+          "readonly": true,
+          "id": "HTMLTextAreaElement.validity"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "validationMessage",
+          "readonly": true,
+          "id": "HTMLTextAreaElement.validationMessage"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "checkValidity",
+          "arguments": [],
+          "id": "HTMLTextAreaElement.checkValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "reportValidity",
+          "arguments": [],
+          "id": "HTMLTextAreaElement.reportValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setCustomValidity",
+          "arguments": [{"name": "error", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "id": "HTMLTextAreaElement.setCustomValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "NodeList"},
+          "name": "labels",
+          "readonly": true,
+          "id": "HTMLTextAreaElement.labels"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "select",
+          "arguments": [],
+          "id": "HTMLTextAreaElement.select:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "selectionStart",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.selectionStart"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "selectionEnd",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.selectionEnd"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "selectionDirection",
+          "readonly": false,
+          "id": "HTMLTextAreaElement.selectionDirection"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setRangeText",
+          "arguments": [{"name": "replacement", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "id": "HTMLTextAreaElement.setRangeText:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setRangeText",
+          "arguments": [{"name": "replacement", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}, {"name": "start", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}, {"name": "end", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}, {"name": "selectionMode", "type": {"kind": "named", "name": "SelectionMode"}, "presence": "optional", "default": {"kind": "string", "value": "preserve"}}],
+          "id": "HTMLTextAreaElement.setRangeText:1"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setSelectionRange",
+          "arguments": [{"name": "start", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}, {"name": "end", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}, {"name": "direction", "type": {"kind": "named", "name": "DOMString"}, "presence": "optional"}],
+          "id": "HTMLTextAreaElement.setSelectionRange:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "SelectionMode",
+      "kind": "enumeration",
+      "name": "SelectionMode",
+      "attributes": [],
+      "values": ["select", "start", "end", "preserve"]
     },
     {
       "id": "HTMLMarqueeElement",
@@ -16313,6 +16603,648 @@
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
+    },
+    "HTMLTextAreaElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.autocomplete/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.autocomplete.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/autocomplete.rs", "symbol": "control_autocomplete"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/autocomplete.rs", "symbol": "control_autocomplete_controlled"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Observe the existing Textarea autofill IDL processing and reached Form owner facts under current Source admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the actual autofill IDL value on the branded attached Textarea.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.autocomplete/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.autocomplete.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired branded Textarea autocomplete accessor with its raw Source setter.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.cols/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.cols.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/scalar.rs", "symbol": "textarea_cols"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Apply the pinned reflected numeric getter to current native Textarea content and project the exact declared integer.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-cols",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.cols/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.cols.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the typed Textarea reflection with the pinned conversion, range handling and Source reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-cols",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.dirName/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.dirname.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.dirName/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.dirname.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.disabled/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.disabled.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.disabled/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.disabled.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.form/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.form.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "form_owner_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/form_owner.rs", "symbol": "read_form_owner"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.maxLength/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.maxlength.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Apply the pinned reflected numeric getter to current native Textarea content and project the exact declared integer.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-maxlength",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.maxLength/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.maxlength.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the typed Textarea reflection with the pinned conversion, range handling and Source reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-maxlength",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.minLength/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.minlength.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Apply the pinned reflected numeric getter to current native Textarea content and project the exact declared integer.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-minlength",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.minLength/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.minlength.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the typed Textarea reflection with the pinned conversion, range handling and Source reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-minlength",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.name/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.name.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.name/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.name.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.placeholder/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.placeholder.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.placeholder/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.placeholder.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.readOnly/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.readonly.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.readOnly/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.readonly.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.required/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.required.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.required/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.required.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.rows/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.rows.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/scalar.rs", "symbol": "textarea_rows"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Apply the pinned reflected numeric getter to current native Textarea content and project the exact declared integer.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-rows",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.rows/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.rows.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the typed Textarea reflection with the pinned conversion, range handling and Source reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-rows",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.wrap/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.wrap.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.wrap/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.wrap.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.type/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.type.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/textarea.rs", "symbol": "read_textarea"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.defaultValue/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.defaultvalue.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/textarea.rs", "symbol": "read_textarea"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "visit_child_text_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.defaultValue/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.defaultvalue.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/textarea.rs", "symbol": "write_textarea_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_textarea_default_value"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.value/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.value.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/textarea.rs", "symbol": "read_textarea"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "visit_value_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.value/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.value.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/textarea.rs", "symbol": "write_textarea_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_textarea_value"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.textLength/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.textlength.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/textarea.rs", "symbol": "read_textarea"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "text_length_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLTextAreaElement.willValidate/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.willvalidate.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "constraint_validation_candidate"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the existing Textarea candidacy calculation as a bounded observation of the current published Source segment with reached disabled, readonly and ancestry facts.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Authenticate the attached Textarea and project its reached candidacy as a Boolean under the original read admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.validity/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.validity.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "custom_validity_message"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project live ValidityState from actual Textarea constraints and canonical custom error.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validity",
+          "issue": 1235
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLTextAreaElement.validationMessage/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project the actual Textarea validation message under current candidacy and pinned message selection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validationmessage",
+        "issue": 1235
+      }
+    },
+    "HTMLTextAreaElement.checkValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Evaluate actual Textarea candidacy and constraints and dispatch the pinned invalid event when reached.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-checkvalidity",
+        "issue": 1235
+      }
+    },
+    "HTMLTextAreaElement.reportValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Evaluate the real Textarea constraint result, dispatch invalid when reached and use the reached native validation reporting service.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-reportvalidity",
+        "issue": 1235
+      }
+    },
+    "HTMLTextAreaElement.setCustomValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.setcustomvalidity.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the branded Textarea method with its required DOMString argument and canonical Source custom validity edit.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-setcustomvalidity",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.labels/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.labels.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "control_labels"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the existing Label association calculation in tree order through a bounded observation of the current published Source segment.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the same live labels NodeList with exact supported indices and current node identities.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLTextAreaElement.select:0/call": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.select.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the canonical Textarea select-all Source command over the actual normalized value and selection, with its pinned change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.selectionStart/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.selectionstart.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Observe the actual current Textarea selection start through bounded native read admission and project the declared IDL value.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.selectionStart/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.selectionstart.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the native Textarea selection start setter over the actual current value and selection, with its pinned clamping and change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.selectionEnd/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.selectionend.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Observe the actual current Textarea selection end through bounded native read admission and project the declared IDL value.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.selectionEnd/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.selectionend.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the native Textarea selection end setter over the actual current value and selection, with its pinned clamping and change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.selectionDirection/get": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.selectiondirection.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Observe the actual current Textarea selection direction through bounded native read admission and project the declared IDL value.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.selectionDirection/set": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.selectiondirection.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the native Textarea selection direction setter over the actual current value and selection, with its pinned clamping and change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.setRangeText:0/call": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.setrangetext.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the canonical Textarea range replacement at the current native selection, with actual raw value and selection changes.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.setRangeText:1/call": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.setrangetext.1.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the canonical Textarea range replacement with explicit endpoints and SelectionMode, including pinned range refusal and actual value and selection changes.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLTextAreaElement.setSelectionRange:0/call": {
+      "kind": "native",
+      "adapter": "htmltextareaelement.setselectionrange.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/textarea.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the canonical Textarea set-selection-range command with actual normalized bounds, direction and change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
     },
     "HTMLMarqueeElement.constructor:0/construct": {
       "kind": "native",

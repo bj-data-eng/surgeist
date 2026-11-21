@@ -56,6 +56,7 @@ mod split_text;
 mod structural_alignment;
 mod table_cell_column;
 mod template_content;
+mod textarea_values;
 mod title_text;
 mod toggle_attribute;
 mod tree_mutations;
@@ -497,6 +498,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::output_value_admission::output_default_override_uses_only_the_reached_read(
     );
     super::guest::tests::output_value_admission::output_edits_preserve_the_first_source_refusal();
+    textarea_values::textarea_values_preserve_raw_default_and_caret_on_source_refusal();
     super::guest::tests::select_string_admission::select_value_admits_native_text_and_its_guest_copy();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();

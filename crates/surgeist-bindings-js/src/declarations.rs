@@ -122,6 +122,42 @@ impl DocumentVisibilityState {
     }
 }
 
+/// Values of the declared `SelectionMode` enumeration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelectionMode {
+    /// The `select` value.
+    Select,
+    /// The `start` value.
+    Start,
+    /// The `end` value.
+    End,
+    /// The `preserve` value.
+    Preserve,
+}
+
+impl SelectionMode {
+    /// Matches exact UTF-16 code units without guest coercion.
+    pub fn from_code_units(units: &[u16]) -> Option<Self> {
+        match units {
+            [115, 101, 108, 101, 99, 116] => Some(Self::Select),
+            [115, 116, 97, 114, 116] => Some(Self::Start),
+            [101, 110, 100] => Some(Self::End),
+            [112, 114, 101, 115, 101, 114, 118, 101] => Some(Self::Preserve),
+            _ => None,
+        }
+    }
+
+    /// The exact code units of this enumeration value.
+    pub fn as_code_units(self) -> &'static [u16] {
+        match self {
+            Self::Select => &[115, 101, 108, 101, 99, 116],
+            Self::Start => &[115, 116, 97, 114, 116],
+            Self::End => &[101, 110, 100],
+            Self::Preserve => &[112, 114, 101, 115, 101, 114, 118, 101],
+        }
+    }
+}
+
 /// Complete brand-free `GetRootNodeOptions` dictionary value.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GetRootNodeOptions {

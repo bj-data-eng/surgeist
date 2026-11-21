@@ -1,7 +1,9 @@
 //! Native Textarea raw state and bounded API/default-value reads.
-use crate::{
-    internal::identity::NodeId, internal::snapshot::DomNode, internal::store::DomError,
-    internal::store::DomResource,
+use crate::internal::{
+    form::DomForm,
+    identity::NodeId,
+    snapshot::DomNode,
+    store::{DomError, DomResource},
 };
 use std::sync::atomic::AtomicBool;
 use surgeist_html::values::DocumentString;
@@ -102,9 +104,57 @@ impl<'a> DomTextarea<'a> {
             .textarea_state()
             .expect("checked Textarea")
     }
-    pub fn form_owner(self) -> Result<Option<NodeId>, crate::internal::store::DomError> {
+    pub fn form_owner(self) -> Result<Option<NodeId>, DomError> {
         self.node.snapshot.require_complete_source()?;
         Ok(self.node.node.control_owner())
+    }
+    /// Read the stored Form owner in this published snapshot segment.
+    ///
+    /// A live caller qualifies its access to the current segment. `step` admits
+    /// the association read and each reached owner lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first admission or lookup failure, or
+    /// [`DomError::WrongNodeKind`] if the stored owner is not a native Form.
+    pub fn form_owner_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomForm<'a>>, E> {
+        self.node.stored_form_owner_with(step)
+    }
+
+    /// Visit the current API value's normalized UTF-16 units in order.
+    ///
+    /// `step` admits every raw unit, including any LF suppressed after CR.
+    /// The visitor admits its own output work and backing. The first failed
+    /// step or visit is returned unchanged. A live caller qualifies access
+    /// to the current published segment.
+    pub fn visit_value_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+        mut visit: impl FnMut(u16) -> Result<(), E>,
+    ) -> Result<(), E> {
+        visit_normalized_units(self.raw_units()?, step, |unit, _| visit(unit))
+    }
+
+    /// Count normalized UTF-16 units without materializing the API value.
+    ///
+    /// `step` admits each reached raw unit and its first refusal is returned
+    /// unchanged. A live caller qualifies access to the published segment.
+    pub fn text_length_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, E> {
+        normalized_length(self.raw_units()?, step)
+    }
+
+    fn raw_units(self) -> Result<&'a [u16], DomError> {
+        self.node
+            .as_element()
+            .and_then(|element| element.textarea_state())
+            .map(|state| state.raw_value().code_units())
+            .ok_or(DomError::WrongNodeKind)
     }
     /// API value, with Infra newlines normalized; no submitted hard wrapping.
     pub fn value(
@@ -119,7 +169,7 @@ impl<'a> DomTextarea<'a> {
             cancel,
         };
         normalized_value(
-            self.state().raw.code_units(),
+            self.raw_units()?,
             limits.units,
             &mut || read.step(),
             None,
@@ -137,7 +187,7 @@ impl<'a> DomTextarea<'a> {
             limit: limits.work,
             cancel,
         };
-        let length = normalized_length(self.state().raw.code_units(), &mut || read.step())?;
+        let length = self.text_length_with(|| read.step())?;
         crate::internal::store::admit(length, limits.units, DomResource::StringCodeUnits)?;
         Ok(length)
     }
@@ -186,20 +236,32 @@ pub(crate) fn output(
 ) -> Result<Vec<u16>, DomError> {
     crate::internal::store::source::formation::utf16_buffer(length, limit, budget, cancel)
 }
-pub(crate) fn normalized_length(
+fn visit_normalized_units<E, Step: FnMut() -> Result<(), E>>(
     raw: &[u16],
-    step: &mut impl FnMut() -> Result<(), DomError>,
-) -> Result<usize, DomError> {
+    mut step: Step,
+    mut visit: impl FnMut(u16, &mut Step) -> Result<(), E>,
+) -> Result<(), E> {
     let mut normalizer = HtmlNewlineNormalizer::new();
-    let mut length = 0usize;
     for unit in raw {
         step()?;
-        if normalizer.push(*unit).is_some() {
-            length = length
-                .checked_add(1)
-                .ok_or(DomError::RepresentationExhausted)?;
+        if let Some(unit) = normalizer.push(*unit) {
+            visit(unit, &mut step)?;
         }
     }
+    Ok(())
+}
+
+pub(crate) fn normalized_length<E: From<DomError>>(
+    raw: &[u16],
+    step: impl FnMut() -> Result<(), E>,
+) -> Result<usize, E> {
+    let mut length = 0usize;
+    visit_normalized_units(raw, step, |_, _| {
+        length = length
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(())
+    })?;
     Ok(length)
 }
 pub(crate) fn normalized_value(
@@ -209,20 +271,17 @@ pub(crate) fn normalized_value(
     budget: Option<&crate::internal::store::source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<DocumentString, DomError> {
-    let length = normalized_length(raw, step)?;
+    let length = normalized_length(raw, &mut *step)?;
     step()?;
     #[cfg(test)]
     let mut output_writes = crate::internal::store::CopyObservation::default();
     let mut output = output(length, limit, budget, cancel)?;
-    let mut normalizer = HtmlNewlineNormalizer::new();
-    for unit in raw {
+    visit_normalized_units(raw, step, |unit, step| {
         step()?;
-        if let Some(unit) = normalizer.push(*unit) {
-            step()?;
-            output.push(unit);
-            #[cfg(test)]
-            output_writes.pushed::<u16>();
-        }
-    }
+        output.push(unit);
+        #[cfg(test)]
+        output_writes.pushed::<u16>();
+        Ok(())
+    })?;
     Ok(DocumentString::from_utf16(output))
 }
