@@ -322,6 +322,7 @@ pub(super) fn install<'scope>(
     )?;
     InputProperty::Value.install(scope, prototype, capture)?;
     CustomValidityControl::Input.install(scope, prototype, capture)?;
+    super::popover_target::install(scope, prototype, capture, Receiver::Input)?;
     reflection::install(scope, prototype, capture, Receiver::Input, OBSOLETE)
 }
 

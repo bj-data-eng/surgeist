@@ -115,6 +115,8 @@ mod native_media_status;
 mod numeric_control_attributes;
 #[path = "document_scripting/output_values.rs"]
 mod output_values;
+#[path = "document_scripting/popover_target.rs"]
+mod popover_target;
 #[path = "document_scripting/range_indicator_bindings.rs"]
 mod range_indicator_bindings;
 #[path = "document_scripting/script_preparation.rs"]
@@ -2482,6 +2484,7 @@ fn main() {
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "get-element-by-id" => get_element_by_id::attached_id_lookup_uses_the_current_ordinary_tree(),
             "label-live" => label_live::attached_labels_track_their_live_control_and_form(),
+            "popover-target" => popover_target::attached_controls_reflect_their_live_popover_target(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
             "native-media-status" => native_media_status::attached_media_observes_unloaded_native_state(),
@@ -2601,6 +2604,7 @@ fn main() {
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     get_element_by_id::attached_id_lookup_uses_the_current_ordinary_tree();
     label_live::attached_labels_track_their_live_control_and_form();
+    popover_target::attached_controls_reflect_their_live_popover_target();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
     native_media_status::attached_media_observes_unloaded_native_state();

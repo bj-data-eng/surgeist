@@ -171,11 +171,14 @@ Two fixed slots per Button are covered by managed-node capacity, not dynamic Slo
 assignment-reference capacity. No target IDs, attribute data or history records
 are invented from ticket indices.
 
-`DomButton::explicit_command_for` / `explicit_popover_target` read raw stored weak
-references. Their scoped associated-element getters remain existing HTML semantic
-queries, with first-ID content fallback only when the actual explicit slot is
-null. An out-of-scope explicit target is retained and queries null without content
-retargeting. Capture closes actual weak targets, node documents and ancestors
+`DomButton::explicit_command_for` and the Button and Input
+`explicit_popover_target` accessors read stored weak references.
+`DomNode::html_popover_target_with` resolves live popover reflection with
+caller-admitted reads on the current native view. HTML semantic captures
+retain their scoped command and popover queries. The association uses the
+first exact ID when the explicit slot is null. An out-of-scope explicit
+target remains stored and the getter returns null. Capture closes actual
+weak targets, node documents and ancestors
 conservatively, without claiming unrelated supplemental children are empty or
 complete, and joins existing checked reference/control facts. Each reference-fact
 vector is bounded by twice the explicit subject bound (two per Button, one per

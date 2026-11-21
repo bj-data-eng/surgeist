@@ -71,7 +71,8 @@ impl<'a> DomButton<'a> {
             .get(ReflectedTarget::CommandFor)
             .expect("Button command slot")
     }
-    /// Independent raw weak slot, not the common popover trigger state.
+    /// Stored weak reference. Use `DomNode::html_popover_target_with` for
+    /// the scoped associated Element.
     pub fn explicit_popover_target(self) -> Option<NodeId> {
         self.node
             .node

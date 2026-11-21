@@ -1,6 +1,6 @@
 //! DOM namespace queries over ordinary tree and attribute relationships.
 
-use super::{DomNode, DomNodeKind};
+use super::{DomNode, DomNodeKind, ascii_units};
 use crate::{internal::names::same_code_units, internal::store::DomError};
 use surgeist_html::values::DocumentString;
 
@@ -8,16 +8,6 @@ const XML: &[u16] = &ascii_units(b"xml");
 const XMLNS: &[u16] = &ascii_units(b"xmlns");
 const XML_URI: &[u16] = &ascii_units(b"http://www.w3.org/XML/1998/namespace");
 const XMLNS_URI: &[u16] = &ascii_units(b"http://www.w3.org/2000/xmlns/");
-
-const fn ascii_units<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
-    let mut units = [0; N];
-    let mut index = 0;
-    while index < N {
-        units[index] = bytes[index] as u16;
-        index += 1;
-    }
-    units
-}
 
 /// A nonempty namespace URI from a captured DOM query. The result shares a
 /// native string or refers to one of the fixed XML namespace constants.
