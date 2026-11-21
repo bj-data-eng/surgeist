@@ -904,6 +904,47 @@ class DescriptionTests(unittest.TestCase):
         self.assertIn(2480, {provider["issue"] for provider in cells["requirements"]
                              if "issue" in provider})
 
+    def test_table_parts_keep_pinned_writable_and_creation_contracts(self):
+        table = self.definition("HTMLTableElement")
+        members = table["members"][1:10]
+        parts = [("caption", "Caption", "HTMLTableCaptionElement"),
+                 ("tHead", "THead", "HTMLTableSectionElement"),
+                 ("tFoot", "TFoot", "HTMLTableSectionElement")]
+        mappings = self.data["access_mappings"]
+        reactions = [{"name": "CEReactions"}]
+        for index, (attribute, suffix, result_interface) in enumerate(parts):
+            with self.subTest(attribute=attribute):
+                value, create, delete = members[index * 3:index * 3 + 3]
+                self.assertEqual([member["name"] for member in (value, create, delete)],
+                                 [attribute, "create" + suffix, "delete" + suffix])
+                interface = {"kind": "named", "name": result_interface}
+                self.assertEqual(value["type"], {"kind": "nullable", "inner": interface})
+                self.assertFalse(value["readonly"])
+                self.assertEqual(value["attributes"], reactions)
+                self.assertEqual(create["type"], interface)
+                self.assertEqual(create["attributes"], [])
+                self.assertEqual(delete["type"], {"kind": "named", "name": "undefined"})
+                self.assertEqual(delete["attributes"], reactions)
+                self.assertEqual(create["arguments"], [])
+                self.assertEqual(delete["arguments"], [])
+                for member, edge, producer in [
+                    (value, "get", "html_table_part_with"),
+                    (value, "set", "set_html_table_part"),
+                    (create, "call", "create_html_table_part_in_attachment"),
+                    (delete, "call", "delete_html_table_part"),
+                ]:
+                    access = mappings[member["id"] + "/" + edge]
+                    self.assertFalse(access["requirements"])
+                    self.assertEqual({item["owner"] for item in access["producers"]},
+                                     {"surgeist-dom", "surgeist-runtime"})
+                    self.assertIn(producer, {item["symbol"] for item in access["producers"]
+                                             if item["owner"] == "surgeist-dom"})
+        for attribute in ["tBodies", "rows"]:
+            access = mappings[f"HTMLTableElement.{attribute}/get"]
+            self.assertEqual(access["result_view"], "live")
+            self.assertIn(2480, {provider["issue"] for provider in access["requirements"]
+                                 if "issue" in provider})
+
     def test_table_legacy_partials_preserve_pinned_aliases_and_string_types(self):
         members = {
             "HTMLTableElement": ["align", "border", "frame", "rules", "summary", "width",
