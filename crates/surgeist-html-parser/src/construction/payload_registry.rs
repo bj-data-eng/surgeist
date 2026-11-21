@@ -81,6 +81,8 @@ pub(super) struct ParseFacts {
     /// attribute, the clones of such an element, and `html` and `body`. Any other element of the
     /// HTML, SVG or MathML namespace has the empty nonce.
     pub(super) nonces: FamilyTable<NonceRow>,
+    /// Parser-created media rows, allocated only when a media element is reached.
+    pub(super) media: Option<FamilyTable<media::HtmlParseMedia>>,
 }
 impl ParseFacts {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
@@ -140,6 +142,7 @@ impl ParseFacts {
             contexts,
             creation,
             nonces,
+            media: None,
         })
     }
 }
@@ -776,6 +779,7 @@ impl PayloadStorage {
             contexts,
             creation,
             nonces,
+            media,
             ..
         } = facts;
         let join_entries = node_joins.len() as u64;
@@ -803,6 +807,9 @@ impl PayloadStorage {
         );
         // The strings the rows name are rows of the registry, released with it.
         keep_first(&mut refused, nonces.release(control, owner, |_, _| Ok(())));
+        if let Some(media) = media {
+            keep_first(&mut refused, media.release(control, owner, |_, _| Ok(())));
+        }
         // The storage the owner's state holds is returned with the registry's own, below.
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         if let Some(log) = csp {

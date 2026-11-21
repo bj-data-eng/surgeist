@@ -2166,6 +2166,9 @@ pub surgeist_dom::installation::DomParsedHtmlInstallError::HyperlinkUnavailable:
 pub surgeist_dom::installation::DomParsedHtmlInstallError::HyperlinkUnavailable::subject: surgeist_html::internal::construction::HtmlNodeId
 pub surgeist_dom::installation::DomParsedHtmlInstallError::ImageActivityUnavailable
 pub surgeist_dom::installation::DomParsedHtmlInstallError::ImageActivityUnavailable::subject: surgeist_html::internal::construction::HtmlNodeId
+pub surgeist_dom::installation::DomParsedHtmlInstallError::MediaStateUnavailable
+pub surgeist_dom::installation::DomParsedHtmlInstallError::MediaStateUnavailable::reason: surgeist_html_parser::construction::media::HtmlParseMediaUnavailable
+pub surgeist_dom::installation::DomParsedHtmlInstallError::MediaStateUnavailable::subject: surgeist_html::internal::construction::HtmlNodeId
 pub surgeist_dom::installation::DomParsedHtmlInstallError::MetaStateUnavailable
 pub surgeist_dom::installation::DomParsedHtmlInstallError::MetaStateUnavailable::document: surgeist_html::internal::construction::HtmlNodeId
 pub surgeist_dom::installation::DomParsedHtmlInstallError::MetaStateUnavailable::reason: surgeist_html_parser::construction::meta::HtmlParseMetaMissingKind
@@ -3622,6 +3625,7 @@ pub fn surgeist_dom::tree::DomElement::initial_media_state(&self) -> core::optio
 pub fn surgeist_dom::tree::DomElement::input_state(&self) -> core::option::Option<&surgeist_dom::form::DomInputState>
 pub fn surgeist_dom::tree::DomElement::keyboard_lock_flag(&self) -> bool
 pub fn surgeist_dom::tree::DomElement::marquee_state(&self) -> core::option::Option<surgeist_html::internal::elements::marquee::HtmlMarqueeState>
+pub fn surgeist_dom::tree::DomElement::media_automatic_track_selection_performed(&self) -> core::option::Option<bool>
 pub fn surgeist_dom::tree::DomElement::name(&self) -> &surgeist_dom::tree::DomQualifiedName
 pub fn surgeist_dom::tree::DomElement::nonce(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_dom::tree::DomElement::option_state(&self) -> core::option::Option<surgeist_dom::form::select::DomOptionState>

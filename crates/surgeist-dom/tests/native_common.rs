@@ -229,6 +229,10 @@ fn fresh_native_audio_and_video_preserve_exact_namespaces() {
         assert_eq!(element.name().local_name(), &DocumentString::from(*local));
         assert!(node.attributes().unwrap().is_empty());
         assert_eq!(element.initial_media_state(), *state);
+        assert_eq!(
+            element.media_automatic_track_selection_performed(),
+            state.map(|_| false)
+        );
         if let Some(state) = state {
             assert!(state.network_is_empty());
             assert!(!state.has_media_data());

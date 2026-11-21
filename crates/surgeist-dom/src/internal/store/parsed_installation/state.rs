@@ -902,6 +902,28 @@ fn family(
         Requirement::KnownHtml(Element::Form) => {
             NativeFamily::Form(surgeist_html::elements::form::HtmlFormNativeState::fresh())
         }
+        Requirement::KnownHtml(expected @ (Element::Audio | Element::Video)) => {
+            use surgeist_html_parser::HtmlParseMediaDisposition;
+            let subject = node.id();
+            let unavailable = || Error::FamilyStateUnavailable {
+                subject,
+                class: requirement,
+            };
+            let media = source.media(&subject, c)?.ok_or_else(unavailable)?;
+            if media.initial().element() != expected {
+                return Err(Error::UnsupportedState { subject });
+            }
+            match media.disposition() {
+                HtmlParseMediaDisposition::Unloaded => NativeFamily::Media {
+                    initial: media.initial(),
+                    automatic_track_selection_performed: true,
+                },
+                HtmlParseMediaDisposition::AwaitingStackExit => return Err(unavailable()),
+                HtmlParseMediaDisposition::Unavailable(reason) => {
+                    return Err(Error::MediaStateUnavailable { subject, reason });
+                }
+            }
+        }
         Requirement::KnownHtml(Element::Template) => {
             required(source.observation(&node.id(), c, |r| r.template())?, node)?;
             NativeFamily::Template

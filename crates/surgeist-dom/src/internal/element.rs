@@ -483,12 +483,14 @@ impl DomElement {
             ) => NativeFamily::Img,
             Requirement::KnownHtml(KnownHtmlElement::Picture) => NativeFamily::Picture,
             Requirement::KnownHtml(KnownHtmlElement::Source) => NativeFamily::Source,
-            Requirement::KnownHtml(KnownHtmlElement::Audio) => {
-                NativeFamily::Media(surgeist_html::elements::media::HtmlInitialMediaState::Audio)
-            }
-            Requirement::KnownHtml(KnownHtmlElement::Video) => {
-                NativeFamily::Media(surgeist_html::elements::media::HtmlInitialMediaState::Video)
-            }
+            Requirement::KnownHtml(KnownHtmlElement::Audio) => NativeFamily::Media {
+                initial: surgeist_html::elements::media::HtmlInitialMediaState::Audio,
+                automatic_track_selection_performed: false,
+            },
+            Requirement::KnownHtml(KnownHtmlElement::Video) => NativeFamily::Media {
+                initial: surgeist_html::elements::media::HtmlInitialMediaState::Video,
+                automatic_track_selection_performed: false,
+            },
             Requirement::KnownHtml(KnownHtmlElement::Optgroup) => NativeFamily::Optgroup,
             Requirement::KnownHtml(KnownHtmlElement::Selectedcontent) => {
                 NativeFamily::Selectedcontent(false)
@@ -597,7 +599,17 @@ impl DomElement {
         &self,
     ) -> Option<surgeist_html::elements::media::HtmlInitialMediaState> {
         match self.family {
-            NativeFamily::Media(state) => Some(state),
+            NativeFamily::Media { initial, .. } => Some(initial),
+            _ => None,
+        }
+    }
+    /// Whether the unloaded Media element has performed automatic text-track selection.
+    pub fn media_automatic_track_selection_performed(&self) -> Option<bool> {
+        match self.family {
+            NativeFamily::Media {
+                automatic_track_selection_performed,
+                ..
+            } => Some(automatic_track_selection_performed),
             _ => None,
         }
     }
@@ -606,7 +618,7 @@ impl DomElement {
             NativeFamily::Img => Some(KnownHtmlElement::Img),
             NativeFamily::Picture => Some(KnownHtmlElement::Picture),
             NativeFamily::Source => Some(KnownHtmlElement::Source),
-            NativeFamily::Media(state) => Some(state.element()),
+            NativeFamily::Media { initial, .. } => Some(initial.element()),
             _ => None,
         }
     }

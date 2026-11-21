@@ -432,6 +432,16 @@ impl HtmlParseReport {
     > {
         self.storage.node_nonce(node)
     }
+    /// Source-qualified media lifecycle for an original parser-created Audio or Video.
+    pub fn media_state(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<
+        crate::HtmlParseNodeRead<Option<crate::HtmlParseMedia>>,
+        crate::HtmlParseNodeReadError,
+    > {
+        self.storage.node_media(node)
+    }
     /// The document of the tree rooted at `root`. Every node of a tree has the document of its
     /// root, so a report holds the document of each root and not of each node: a Document root is
     /// its own document, and any other root is found among the roots that name one. A node that

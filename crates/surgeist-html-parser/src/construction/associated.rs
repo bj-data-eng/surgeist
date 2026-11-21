@@ -343,10 +343,10 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
+        tag: Option<KnownHtmlElement>,
     ) -> Result<(), SessionError> {
         self.initialize_style(c, node)?;
         self.initialize_dialog(c, node)?;
-        let tag = self.associated_tag(c, node)?;
         if matches!(tag, Some(KnownHtmlElement::A | KnownHtmlElement::Area)) {
             let document = self.node_document_ref(c, node)?;
             let cause = self.associated_cause(c)?;
@@ -861,10 +861,9 @@ impl SessionStorage {
             root == node,
         )
         .map_err(|_| SessionError::WrongToken)?;
-        // Media resource selection has no Img recipient and is outside this
-        // retained standalone-Img prefix. No Audio/Video capability is issued.
         if effect.check_media_parent_selection() {
-            return Ok(());
+            let parent = parent.ok_or_else(|| latch_registry_row(c))?;
+            return self.parser_media_source_inserted(c, parent);
         }
         match effect.targets() {
             HtmlImageMutationTargets::None => {}

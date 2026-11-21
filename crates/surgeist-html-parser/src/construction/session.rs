@@ -362,6 +362,7 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         let node = storage.index(control, node)?;
         storage.style_stack_changed(control, node, false)?;
+        storage.parser_media_stack_exit(control, node)?;
         if storage.html_local(control, node, "option")? {
             storage.update_for_option(control, node)?;
             return storage.drain_construction_effects(control);

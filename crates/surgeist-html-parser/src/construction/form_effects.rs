@@ -48,6 +48,8 @@ pub(super) struct FormEffects {
     pub(super) pass: FormEffectPass,
     /// Whether a base element with an `href` in the subtree has yet to have its hook run.
     pub(super) href_base: base::HrefBaseAhead,
+    /// The former ordinary Document status shared by this removed subtree.
+    pub(super) media_removal_from_document: Option<bool>,
 }
 
 impl SessionStorage {
@@ -119,6 +121,12 @@ impl SessionStorage {
         let mut identified = false;
         let mut next = Some(root);
         while let Some(node) = next {
+            if self.payloads.facts.media.is_some()
+                && ((remove && self.has_parser_media(control, node)?)
+                    || (insert && node == root && self.html_local(control, node, "track")?))
+            {
+                local = true;
+            }
             for name in [
                 "option",
                 "optgroup",
@@ -196,6 +204,7 @@ impl SessionStorage {
             next: Some(root),
             pass: FormEffectPass::Local,
             href_base: base::HrefBaseAhead::Unscanned,
+            media_removal_from_document: None,
         }))
     }
 
@@ -543,6 +552,7 @@ impl SessionStorage {
                     return Ok(());
                 }
                 FormEffectPass::Intrinsic => {
+                    self.parser_media_tree_changed(control, node, &mut effects)?;
                     let id_event = self.has_id(control, node)?
                         && match effects.stage {
                             // The selected source predicate requires an actual

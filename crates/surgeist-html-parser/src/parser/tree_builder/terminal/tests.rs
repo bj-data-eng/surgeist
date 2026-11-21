@@ -2325,6 +2325,112 @@ fn cancellation_at_final_completion_retains_prior_diagnostics_without_useful_cle
 }
 
 #[test]
+fn original_eof_pop_qualifies_media_at_the_exact_work_boundary() {
+    use crate::HtmlParseMediaDisposition::{AwaitingStackExit, Unloaded};
+
+    let request = || {
+        HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><video>"),
+            super::super::tests::limits(100),
+        )
+    };
+    let current = |driver: &mut StandaloneDocumentDriver<'_>| {
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .current(&mut driver.control)
+            .unwrap()
+    };
+    let media = |driver: &StandaloneDocumentDriver<'_>, node: &crate::construction::ParserNode| {
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session
+            .observed_parser_media_for_test(node)
+            .unwrap()
+            .disposition()
+    };
+    let cost = {
+        let request = request();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+        to_phase(&mut driver, EndPhase::PopOpen);
+        let node = current(&mut driver);
+        assert_eq!(media(&driver, &node), AwaitingStackExit);
+        let before = driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
+        assert_eq!(media(&driver, &node), Unloaded);
+        let after = driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        cleanup(&mut driver);
+        after - before
+    };
+    assert!(cost > 0);
+
+    for (allowance, cancel) in [(cost, false), (cost - 1, false), (cost, true)] {
+        let request = request();
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+        to_phase(&mut driver, EndPhase::PopOpen);
+        let node = current(&mut driver);
+        assert_eq!(media(&driver, &node), AwaitingStackExit);
+        let used = driver
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        driver
+            .control
+            .charge(
+                HtmlParseWorkCategory::StateStep,
+                request.limits().work_credits() - used - allowance,
+            )
+            .unwrap();
+        if cancel {
+            request.cancellation().cancel();
+        }
+        let result = driver.step();
+        if cancel {
+            assert!(matches!(
+                result,
+                Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
+            ));
+            assert_eq!(media(&driver, &node), AwaitingStackExit);
+        } else if allowance == cost {
+            assert_eq!(result.unwrap(), HeadStep::Consumed);
+            assert_eq!(media(&driver, &node), Unloaded);
+        } else {
+            assert!(result.is_err());
+            assert!(matches!(
+                driver.control.stop(),
+                Some(HtmlParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    ..
+                })
+            ));
+        }
+        cleanup(&mut driver);
+    }
+}
+
+#[test]
 fn interactive_precedes_all_pops_and_postload_precedes_complete_continuation() {
     let request = HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<!doctype html><div>A"),

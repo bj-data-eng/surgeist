@@ -1293,6 +1293,14 @@ fn parsed_install_error_messages_state_the_refused_report() {
             false,
         ),
         row(
+            E::MediaStateUnavailable {
+                subject: subject(),
+                reason: surgeist_html_parser::HtmlParseMediaUnavailable::TextTrack,
+            },
+            "an original parser media effect requires an unavailable service",
+            false,
+        ),
+        row(
             E::BaseStateUnavailable { subject: subject() },
             "the original state of a Base element is unavailable",
             false,
@@ -1416,6 +1424,7 @@ fn parsed_install_error_messages_state_the_refused_report() {
             E::MissingMetadata { .. } => 11,
             E::UnsupportedState { .. } => 12,
             E::FamilyStateUnavailable { .. } => 13,
+            E::MediaStateUnavailable { .. } => 26,
             E::BaseStateUnavailable { .. } => 14,
             E::MetaStateUnavailable { .. } => 15,
             E::AssociationCaptureUnavailable { .. } => 16,
@@ -1430,7 +1439,7 @@ fn parsed_install_error_messages_state_the_refused_report() {
             E::RepresentationExhausted => 25,
         }
     }
-    assert_semantic(rows, index, 26, &[4], &[22]);
+    assert_semantic(rows, index, 27, &[4], &[22]);
 }
 
 #[test]

@@ -58,6 +58,7 @@ mod csp;
 mod css_color;
 mod input_color;
 mod input_image;
+pub(crate) mod media;
 pub(crate) mod meta;
 pub(crate) mod pending_association;
 pub(crate) mod positions;

@@ -673,6 +673,20 @@ impl<'a> Source<'a> {
         // The clone shares the block the report holds, as the other strings of the installation do.
         Ok((*answer.value()).cloned())
     }
+    fn media(
+        &self,
+        id: &HtmlNodeId,
+        c: &mut Control<'_>,
+    ) -> Result<Option<surgeist_html_parser::HtmlParseMedia>, Error> {
+        c.step(1)?;
+        let answer = self
+            .report
+            .media_state(id)
+            .map_err(|error| node_read_error(error, id))?;
+        c.step(usize::try_from(answer.probes()).map_err(|_| Error::RepresentationExhausted)?)?;
+        Ok(*answer.value())
+    }
+
     fn observation<T>(
         &self,
         id: &HtmlNodeId,
