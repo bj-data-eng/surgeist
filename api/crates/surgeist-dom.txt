@@ -898,6 +898,7 @@ impl<'a> surgeist_dom::form::DomButton<'a>
 pub fn surgeist_dom::form::DomButton<'a>::explicit_command_for(self) -> core::option::Option<surgeist_dom::identity::NodeId>
 pub fn surgeist_dom::form::DomButton<'a>::explicit_popover_target(self) -> core::option::Option<surgeist_dom::identity::NodeId>
 pub fn surgeist_dom::form::DomButton<'a>::form_owner(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
+pub fn surgeist_dom::form::DomButton<'a>::form_owner_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::form::DomForm<'a>>, E>
 pub fn surgeist_dom::form::DomButton<'a>::id(self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::form::DomButton<'a>::state(self) -> &'a surgeist_dom::form::DomButtonState
 pub struct surgeist_dom::form::DomButtonState

@@ -1524,8 +1524,8 @@ total_enum_rule!(INPUT_TYPE, INPUT_TYPE_DEFAULTS, HtmlInputType, Type, Context::
      "radio" => ("radio", HtmlInputType::Radio), "file" => ("file", HtmlInputType::File),
      "submit" => ("submit", HtmlInputType::Submit), "image" => ("image", HtmlInputType::Image),
      "reset" => ("reset", HtmlInputType::Reset), "button" => ("button", HtmlInputType::Button)]);
-enum_rule!(BUTTON_TYPE, HtmlButtonTypeState, Type, Context::Elements(&[KnownHtmlElement::Button]), [167], "attr-button-type",
-    Some(HtmlButtonTypeState::Auto), Some(HtmlButtonTypeState::Auto), None,
+total_enum_rule!(BUTTON_TYPE, BUTTON_TYPE_DEFAULTS, HtmlButtonTypeState, Type, Context::Elements(&[KnownHtmlElement::Button]), [167], "attr-button-type",
+    HtmlButtonTypeState::Auto, HtmlButtonTypeState::Auto, None,
     ["submit" => ("submit", HtmlButtonTypeState::Keyword(HtmlButtonType::Submit)),
      "reset" => ("reset", HtmlButtonTypeState::Keyword(HtmlButtonType::Reset)),
      "button" => ("button", HtmlButtonTypeState::Keyword(HtmlButtonType::Button))]);
@@ -2931,9 +2931,9 @@ pub(crate) mod bounded_rules {
         ValueHeader,
         /// One keyword's spelling/length and the raw comparison headers.
         KeywordHeader,
-        /// One raw UTF-16 unit and canonical ASCII byte comparison. The shared
-        /// exact-keyword path instead compares UTF-16 units and admits its
-        /// optional next-unit/end observation through this same action.
+        /// One raw UTF-16 unit and a keyword byte or unit comparison.
+        /// Exact-keyword matching also admits its next-unit/end observation
+        /// through this action.
         KeywordPair,
     }
 
@@ -3003,6 +3003,29 @@ pub(crate) mod bounded_rules {
     ) -> Result<&'static str, E> {
         total_enum_value_with(&FORM_METHOD, &FORM_METHOD_DEFAULTS, raw, admit)
             .map(HtmlFormMethod::canonical_keyword)
+    }
+
+    /// Reflects a submitter's own formenctype, independently of Form settings.
+    ///
+    /// Missing content reflects as empty. Empty or unrecognized content selects
+    /// the same default as the Form enctype rule.
+    pub fn form_enctype_override_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        reflected_keyword_with(&scalar::FORMENCTYPE, raw, admit)
+            .map(|keyword| keyword.unwrap_or(""))
+    }
+
+    /// Reflects a submitter's own formmethod, independently of Form settings.
+    ///
+    /// Missing content reflects as empty. Empty or unrecognized content selects
+    /// the same default as the Form method rule.
+    pub fn form_method_override_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        reflected_keyword_with(&scalar::FORMMETHOD, raw, admit).map(|keyword| keyword.unwrap_or(""))
     }
 
     /// Selects the intrinsic contenteditable state from an exact null-namespace value.
@@ -3285,6 +3308,30 @@ pub(crate) mod bounded_rules {
         } else {
             HtmlButtonSubmitterContext::NotSubmitButton
         })
+    }
+
+    /// Returns the canonical Button type keyword from its exact raw content.
+    ///
+    /// Only Auto requests live facts, through [`button_submitter_context_with`].
+    /// The first refused keyword read or reached fact is returned unchanged.
+    pub fn button_type_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+        facts: impl FnMut(HtmlButtonSubmitterFact) -> Result<bool, E>,
+    ) -> Result<&'static str, E> {
+        let state = total_enum_value_with(&BUTTON_TYPE, &BUTTON_TYPE_DEFAULTS, raw, admit)?;
+        let submitter = button_submitter_context_with(state, facts)?;
+        let keyword = match (submitter, state) {
+            (HtmlButtonSubmitterContext::SubmitButton, _) => HtmlButtonType::Submit,
+            (HtmlButtonSubmitterContext::NotSubmitButton, HtmlButtonTypeState::Auto) => {
+                HtmlButtonType::Button
+            }
+            (
+                HtmlButtonSubmitterContext::NotSubmitButton,
+                HtmlButtonTypeState::Keyword(keyword),
+            ) => keyword,
+        };
+        Ok(keyword.canonical_keyword())
     }
 
     /// Finite work envelope for stylesheet membership and fixed context creation.

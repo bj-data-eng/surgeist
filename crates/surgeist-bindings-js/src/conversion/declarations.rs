@@ -1775,6 +1775,17 @@ pub fn html_slot_element_assigned_elements_0_options() -> Argument<Type<Assigned
     )
 }
 
+/// Selected argument `HTMLButtonElement.setCustomValidity:0/error` (not overload selection).
+pub fn html_button_element_set_custom_validity_0_error() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLButtonElement.setCustomValidity:0/error",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected argument `HTMLFieldSetElement.setCustomValidity:0/error` (not overload selection).
 pub fn html_field_set_element_set_custom_validity_0_error() -> Argument<Type<DomString>> {
     Argument::new(

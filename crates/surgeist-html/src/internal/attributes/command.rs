@@ -1,6 +1,6 @@
 //! Local command/action content states. Targets and activation are separate.
 
-use super::*;
+use super::{bounded_rules::HtmlAttributeKeywordRead, *};
 use crate::internal::microsyntax::tokens::is_ascii_whitespace;
 
 keyword_type!(HtmlStandardCommand, Command, [
@@ -169,7 +169,26 @@ impl HtmlCommandReadback {
 }
 
 fn custom_prefix(value: &DocumentString) -> bool {
-    value.code_units().starts_with(&[0x2D, 0x2D])
+    match custom_prefix_with(value, &mut |_| Ok::<_, std::convert::Infallible>(())) {
+        Ok(custom) => custom,
+        Err(never) => match never {},
+    }
+}
+
+fn custom_prefix_with<E>(
+    value: &DocumentString,
+    admit: &mut impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<bool, E> {
+    let [first, second, ..] = value.code_units() else {
+        return Ok(false);
+    };
+    for unit in [first, second] {
+        admit(HtmlAttributeKeywordRead::KeywordPair)?;
+        if *unit != u16::from(b'-') {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 fn custom_boundary_whitespace(value: &DocumentString) -> bool {
     // A prefix-qualified Custom begins with '-' so only the final unit can
@@ -180,8 +199,8 @@ fn custom_boundary_whitespace(value: &DocumentString) -> bool {
         .is_some_and(|&unit| is_ascii_whitespace(unit))
 }
 
-enum_rule!(COMMAND, HtmlCommandState, Command, Context::Elements(&[KnownHtmlElement::Button]), [28], "attr-button-command",
-    Some(HtmlCommandState::Unknown), Some(HtmlCommandState::Unknown), None,
+total_enum_rule!(COMMAND, COMMAND_DEFAULTS, HtmlCommandState, Command, Context::Elements(&[KnownHtmlElement::Button]), [28], "attr-button-command",
+    HtmlCommandState::Unknown, HtmlCommandState::Unknown, None,
     ["toggle-popover" => ("toggle-popover", HtmlCommandState::Standard(HtmlStandardCommand::TogglePopover)),
      "show-popover" => ("show-popover", HtmlCommandState::Standard(HtmlStandardCommand::ShowPopover)),
      "hide-popover" => ("hide-popover", HtmlCommandState::Standard(HtmlStandardCommand::HidePopover)),
@@ -193,6 +212,35 @@ enum_rule!(POPOVER_ACTION, HtmlPopoverTargetAction, Popovertargetaction, Context
     ["toggle" => ("toggle", HtmlPopoverTargetAction::Toggle),
      "show" => ("show", HtmlPopoverTargetAction::Show),
      "hide" => ("hide", HtmlPopoverTargetAction::Hide)]);
+
+/// Reads the Button command state and the complete exact custom value when present.
+///
+/// The existing standard keyword recognition precedes up to two reached
+/// custom-prefix comparisons. A custom prefix qualifies even when the author
+/// value ends in ASCII whitespace. The first refusal is returned unchanged.
+pub fn button_command_readback_with<E>(
+    raw: Option<&DocumentString>,
+    mut admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<HtmlCommandReadback, E> {
+    let state = total_enum_value_with(
+        &COMMAND,
+        &COMMAND_DEFAULTS,
+        raw.map(DocumentString::code_units),
+        &mut admit,
+    )?;
+    if let Some(value) = raw
+        && custom_prefix_with(value, &mut admit)?
+    {
+        return Ok(HtmlCommandReadback {
+            state: HtmlCommandState::Custom,
+            custom: Some(value.clone()),
+        });
+    }
+    Ok(HtmlCommandReadback {
+        state,
+        custom: None,
+    })
+}
 
 impl HtmlValueInterpreter {
     /// Retains local command processing and independent author observations.

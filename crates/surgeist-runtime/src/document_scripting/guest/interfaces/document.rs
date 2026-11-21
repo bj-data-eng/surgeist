@@ -19,6 +19,7 @@ mod attr_factory;
 mod barred_control;
 mod body;
 mod break_elements;
+mod button;
 mod character_data;
 mod data_time;
 mod details;

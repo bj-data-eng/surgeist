@@ -621,7 +621,7 @@ const TABINDEX: RuleMetadata = RuleMetadata {
 
 // These override records reuse the defining form keywords, but have no missing
 // default. They never select the form owner's effective submission settings.
-const FORMMETHOD: EnumRule<HtmlFormMethod> = EnumRule {
+pub(super) const FORMMETHOD: EnumRule<HtmlFormMethod> = EnumRule {
     metadata: RuleMetadata {
         attribute: KnownHtmlAttribute::Formmethod,
         rows: &[58],
@@ -636,7 +636,7 @@ const FORMMETHOD: EnumRule<HtmlFormMethod> = EnumRule {
     exact_keywords: false,
 };
 
-const FORMENCTYPE: EnumRule<HtmlFormEnctype> = EnumRule {
+pub(super) const FORMENCTYPE: EnumRule<HtmlFormEnctype> = EnumRule {
     metadata: RuleMetadata {
         attribute: KnownHtmlAttribute::Formenctype,
         rows: &[57],

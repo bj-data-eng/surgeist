@@ -589,6 +589,40 @@ class DescriptionTests(unittest.TestCase):
         self.member("HTMLOutputElement.defaultValue")["attributes"].clear()
         self.rejected("source declaration mismatch: HTMLOutputElement.source")
 
+    def test_button_keeps_owned_keyword_rules_and_the_popover_mixin(self):
+        button = self.definition("HTMLButtonElement")
+        self.assertEqual(button["inherits"], "HTMLElement")
+        ctor, *members = button["members"]
+        self.assertEqual(ctor["id"], "HTMLButtonElement.constructor:0")
+        self.assertEqual([member["name"] for member in members],
+                         ["command", "commandForElement", "disabled", "form", "formAction", "formEnctype",
+                          "formMethod", "formNoValidate", "formTarget", "name", "type", "value",
+                          "willValidate", "validity", "validationMessage", "checkValidity",
+                          "reportValidity", "setCustomValidity", "labels"])
+        include = next(row for row in self.data["includes"] if row["interface"] == "HTMLButtonElement")
+        self.assertEqual(include["mixin"], "PopoverTargetAttributes")
+        mappings = self.data["access_mappings"]
+        for name, producer in [("command", "button_command_readback_with"), ("type", "button_type_keyword_with"),
+                               ("formMethod", "form_method_override_keyword_with"),
+                               ("formEnctype", "form_enctype_override_keyword_with")]:
+            with self.subTest(member=name):
+                read = mappings[f"HTMLButtonElement.{name}/get"]
+                self.assertFalse(read["requirements"])
+                self.assertIn(producer, [item["symbol"] for item in read["producers"]])
+        for name in ["commandForElement", "formAction", "validity", "labels"]:
+            with self.subTest(member=name):
+                read = mappings[f"HTMLButtonElement.{name}/get"]
+                self.assertTrue(read.get("requirements") or read.get("requirement"))
+        for name, producer in [("commandForElement", "associated_element"), ("labels", "control_labels"),
+                               ("willValidate", "constraint_validation_candidate")]:
+            with self.subTest(member=name):
+                read = mappings[f"HTMLButtonElement.{name}/get"]
+                self.assertIn(producer, [item["symbol"] for item in read["producers"]])
+                self.assertEqual({item["owner"] for item in read["requirements"]},
+                                 {"surgeist-dom", "surgeist-runtime"})
+        self.member("HTMLButtonElement.type")["attributes"][-1]["name"] = "Reflect"
+        self.rejected("source declaration mismatch: HTMLButtonElement.source")
+
     def test_dialog_state_and_native_methods_preserve_the_primary_declaration(self):
         dialog = self.definition("HTMLDialogElement")
         self.assertEqual(dialog["inherits"], "HTMLElement")

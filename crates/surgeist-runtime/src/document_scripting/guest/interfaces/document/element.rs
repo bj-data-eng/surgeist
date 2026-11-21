@@ -329,6 +329,7 @@ impl ElementBindings {
             )?;
             match interface {
                 "HTMLBodyElement" => super::body::install(scope, &prototype, capture)?,
+                "HTMLButtonElement" => super::button::install(scope, &prototype, capture)?,
                 "HTMLBRElement" => super::break_elements::install_br(scope, &prototype, capture)?,
                 "HTMLHRElement" => super::break_elements::install_hr(scope, &prototype, capture)?,
                 "HTMLDataElement" => super::data_time::install_data(scope, &prototype, capture)?,
