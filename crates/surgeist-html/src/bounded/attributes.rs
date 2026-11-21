@@ -11,7 +11,7 @@ pub use crate::internal::attributes::autocomplete::{
 pub use crate::internal::attributes::bounded_rules::{
     HtmlAttributeKeywordRead, HtmlButtonSubmitterFact, HtmlHiddenSetterAction,
     HtmlHiddenSetterInput, HtmlIntegerAttributeRead, HtmlWritingSuggestionsProcessing,
-    button_submitter_context_with, contenteditable_processing_with,
+    button_submitter_context_with, closedby_processing_with, contenteditable_processing_with,
     contenteditable_setter_state_with, crossorigin_processing_with, dir_keyword_with,
     enterkeyhint_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, input_list_applies, input_readonly_applies,

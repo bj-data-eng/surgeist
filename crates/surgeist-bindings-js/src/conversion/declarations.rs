@@ -1719,6 +1719,28 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
     )
 }
 
+/// Selected argument `HTMLDialogElement.close:0/returnValue` (not overload selection).
+pub fn html_dialog_element_close_0_return_value() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLDialogElement.close:0/returnValue",
+        0,
+        true,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLDialogElement.requestClose:0/returnValue` (not overload selection).
+pub fn html_dialog_element_request_close_0_return_value() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLDialogElement.requestClose:0/returnValue",
+        0,
+        true,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 fn default_html_slot_element_assigned_nodes_0_options(
     cx: &mut Conversion<'_, '_>,
 ) -> Result<Converted<AssignedNodesOptions>, Failure> {
