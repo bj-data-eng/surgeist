@@ -1930,6 +1930,9 @@ fn pause_guest_attribute(
     cancel: &Arc<AtomicBool>,
     script: &str,
 ) -> Rc<Cell<usize>> {
+    // Fund the cancellation probe independently of attachment and earlier
+    // guest work. The original native Source allowance still applies.
+    super::super::guest::tests::set_guest_work_remaining(host, 5_000);
     let calls = Rc::new(Cell::new(0));
     let armed = Rc::new(Cell::new(false));
     let arm = armed.clone();

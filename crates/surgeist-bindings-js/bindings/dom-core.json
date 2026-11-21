@@ -8166,20 +8166,19 @@
       }
     },
     "HTMLSelectElement.disabled/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind null-namespace disabled attribute presence on the native Select.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-disabled"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.disabled.get",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "requirements": []
     },
     "HTMLSelectElement.disabled/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind boolean reflection through the native Source attribute path and its Select attribute hooks.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-disabled"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.disabled.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.form/get": {
       "kind": "host",
@@ -8218,60 +8217,59 @@
       "requirements": []
     },
     "HTMLSelectElement.name/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind the native null-namespace name content attribute as a reflected DOMString.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-name"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.name.get",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "requirements": []
     },
     "HTMLSelectElement.name/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind name reflection through the native Source attribute path.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-name"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.name.set",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
+      "requirements": []
     },
     "HTMLSelectElement.required/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind null-namespace required attribute presence on the native Select.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-required"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.required.get",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "requirements": []
     },
     "HTMLSelectElement.required/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind boolean reflection through the native Source attribute path and its Select attribute hooks.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-required"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.required.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.size/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind reflected unsigned long parsing with the declared zero default.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-size"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.size.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/select.rs", "symbol": "select_size_reflection_with"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.size/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind unsigned long reflection through the native Source attribute path, including Select reset behavior on attribute changes.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-size"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.size.set",
+      "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/select.rs", "symbol": "select_size_reflection_setter_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/select.rs", "symbol": "select_attribute"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.type/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Project select-multiple or select-one from the current multiple content attribute.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-type"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.type.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/select.rs", "symbol": "select_type_value"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.options/get": {
       "kind": "host",
@@ -8465,20 +8463,20 @@
       "requirements": []
     },
     "HTMLOptionElement.disabled/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind reflected disabled attribute presence, independently of the Option's effective disabledness.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-disabled"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.disabled.get",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "requirements": []
     },
     "HTMLOptionElement.disabled/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind boolean reflection through native Source so disabledness dependencies update.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-disabled"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.disabled.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/select.rs", "symbol": "select_attribute"}
+      ],
+      "requirements": []
     },
     "HTMLOptionElement.form/get": {
       "kind": "host",

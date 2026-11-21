@@ -3527,6 +3527,9 @@ pub fn surgeist_html::bounded::select::HtmlSelectedcontentAncestors::observe(&mu
 pub fn surgeist_html::bounded::select::option_disabled_ancestor(kind: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> surgeist_html::bounded::select::HtmlOptionDisabledAncestor
 pub const fn surgeist_html::bounded::select::select_display_size_default(multiple: bool) -> u8
 pub fn surgeist_html::bounded::select::select_option_rule(kind: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, inside_optgroup: bool) -> surgeist_html::bounded::select::HtmlSelectOptionRule
+pub const fn surgeist_html::bounded::select::select_size_reflection_setter_value(value: u32) -> u32
+pub fn surgeist_html::bounded::select::select_size_reflection_with<E>(raw: core::option::Option<&surgeist_html::values::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<u32, E>
+pub const fn surgeist_html::bounded::select::select_type_value(multiple: bool) -> &'static str
 pub fn surgeist_html::bounded::select::selectedcontent_update(multiple: bool, disabled: bool, first_selected: surgeist_html::bounded::select::HtmlSelectFirstSelection) -> surgeist_html::bounded::select::HtmlSelectedcontentUpdate
 pub mod surgeist_html::bounded::template
 pub enum surgeist_html::bounded::template::HtmlSlotAssignAction

@@ -31,8 +31,12 @@ pub(super) fn select_and_option_strings_follow_canonical_text_and_value() {
                 if (value.get.length !== 0 || value.set.length !== 1 ||
                     !value.enumerable || !value.configurable || select.value !== '')
                     return 'Select descriptor and empty value';
-                if (Object.keys(HTMLSelectElement.prototype).join() !== 'multiple,selectedIndex,value' ||
-                    Object.keys(HTMLOptionElement.prototype).join() !== 'label,defaultSelected,selected,value,text,index')
+                const selectMembers = ['multiple', 'selectedIndex', 'value'];
+                const optionMembers = ['label', 'defaultSelected', 'selected', 'value', 'text', 'index'];
+                if (Object.keys(HTMLSelectElement.prototype).filter(name => selectMembers.includes(name)).join() !==
+                        selectMembers.join() ||
+                    Object.keys(HTMLOptionElement.prototype).filter(name => optionMembers.includes(name)).join() !==
+                        optionMembers.join())
                     return 'supported declaration order';
                 select.multiple = true;
                 const first = document.createElement('option');
