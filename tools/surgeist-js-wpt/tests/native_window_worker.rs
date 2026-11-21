@@ -166,6 +166,87 @@ fn checks_the_whole_fixture_identity() {
 }
 
 #[test]
+fn pinned_window_variants_report_the_missing_native_environment() {
+    if !execution_capabilities().process_groups {
+        return;
+    }
+    let revision = "69f2bba61ce7e9469ccbce53de4644a89f6b7dff";
+    let listener = "dom/events/EventTarget-addEventListener.any.js";
+    let listener_window = "/dom/events/EventTarget-addEventListener.any.html";
+    for (revision, path, url, expected) in [
+        (
+            revision,
+            listener,
+            listener_window,
+            "native Window WPT environment",
+        ),
+        (
+            revision,
+            "dom/events/EventTarget-add-remove-listener.any.js",
+            "/dom/events/EventTarget-add-remove-listener.any.html",
+            "native Window WPT environment",
+        ),
+        (
+            "e22da4aff850a2f0042c5ecda4c844cc1852f2ec",
+            listener,
+            listener_window,
+            "fixture identity absent from worker inventory",
+        ),
+        (
+            revision,
+            "dom/events/EventTarget-add-remove-listener.any.js",
+            listener_window,
+            "fixture identity absent from worker inventory",
+        ),
+        (
+            revision,
+            listener,
+            "/dom/events/EventTarget-addEventListener.any.worker.html",
+            "fixture identity absent from worker inventory",
+        ),
+        (
+            revision,
+            listener,
+            "/dom/events/EventTarget-addEventListener.any.html?other",
+            "fixture identity absent from worker inventory",
+        ),
+        (
+            revision,
+            listener,
+            "/dom/events/EventTarget-addEventListener.any.html#other",
+            "fixture identity absent from worker inventory",
+        ),
+    ] {
+        let fixture = FixtureId::new(
+            SourceRevision::new(revision).unwrap(),
+            RelativePath::new(path).unwrap(),
+            url.into(),
+        )
+        .unwrap();
+        let report = received_report(&fixture);
+        assert_eq!(
+            report.result,
+            WorkerResult::Failure(WorkerFailure::UnavailableCapability {
+                capability: expected.into(),
+                diagnostic: GuestDiagnostic {
+                    message: None,
+                    stack: None
+                },
+            }),
+            "{fixture:?}"
+        );
+        assert_eq!(
+            report.resources.native,
+            NativeResourceEvidence::NotAttached {}
+        );
+        assert_eq!(
+            report.resources.engine,
+            EngineResourceEvidence::Unavailable {}
+        );
+    }
+}
+
+#[test]
 fn policy_refusal_and_worker_deadline_have_distinct_outcomes() {
     if !execution_capabilities().process_groups {
         return;

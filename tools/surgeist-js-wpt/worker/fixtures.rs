@@ -1,6 +1,9 @@
 use sha1::{Digest, Sha1};
 use surgeist_js_wpt::FixtureId;
 
+mod wpt;
+pub(crate) use wpt::is_pinned_window;
+
 pub(super) struct Fixture {
     pub(super) source: &'static str,
     pub(super) admission: Admission,
@@ -28,10 +31,7 @@ impl Asset {
 
         // The authored source revision is the Git blob ID of the embedded
         // file. The request carries no file path for the worker to open.
-        let mut hash = Sha1::new();
-        hash.update(format!("blob {}\0", self.source.len()));
-        hash.update(self.source.as_bytes());
-        if identity.revision().as_str() != format!("{:x}", hash.finalize()) {
+        if !matches_git_blob(self.source.as_bytes(), identity.revision().as_str()) {
             return None;
         }
 
@@ -40,6 +40,13 @@ impl Asset {
             admission: self.admission,
         })
     }
+}
+
+fn matches_git_blob(source: &[u8], expected: &str) -> bool {
+    let mut hash = Sha1::new();
+    hash.update(format!("blob {}\0", source.len()));
+    hash.update(source);
+    expected == format!("{:x}", hash.finalize())
 }
 
 const NATIVE: Asset = Asset {

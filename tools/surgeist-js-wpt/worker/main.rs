@@ -49,6 +49,10 @@ fn serve() -> Result<(), Box<dyn StdError>> {
     let identity = read_request(&mut io::stdin().lock(), REQUEST_PAYLOAD_BYTES)?;
     let report = match fixtures::resolve(&identity) {
         Some(fixture) => run_case(fixture)?,
+        None if fixtures::is_pinned_window(&identity)? => without_attachment(
+            unavailable("native Window WPT environment"),
+            EngineResourceEvidence::Unavailable {},
+        ),
         None => without_attachment(
             unavailable("fixture identity absent from worker inventory"),
             EngineResourceEvidence::Unavailable {},

@@ -25,11 +25,17 @@ sampling. Both are unavailable on this backend. Process-group cleanup
 covers members that remain in the group.
 
 Enable `native-worker` to build the `surgeist-js-wpt-worker` executable.
-It reads one request, matches the full identity against its compiled
-[qualification fixtures](fixtures/qualification/), and attaches to a native
-Runtime-owned Window on the entry thread. The revision for each authored
-fixture is its actual Git blob ID. The worker uses finite native and report
-limits and V8's default heap. Its supervisor enforces the process deadline.
+It matches the request's full identity against the compiled fixture inventory.
+For an [authored qualification fixture](fixtures/qualification/), the revision
+is its Git blob ID and the worker attaches to a native Runtime-owned Window on
+the entry thread. The worker uses finite native and report limits and V8's
+default heap. Its supervisor enforces the process deadline.
+
+The [upstream inventory](fixtures/wpt/README.md) uses the WPT commit as the
+revision. For the exact Window variant, the worker verifies the embedded case
+and harness bytes and reports the native Window WPT environment as unavailable.
+A request outside the inventory reports an unknown fixture. A source integrity
+failure stops the worker before it emits a terminal report.
 
 A qualified native response reports cumulative Runtime guest adapter work,
 live backing after teardown, and peak backing for the same Ledger. The V8
@@ -50,6 +56,6 @@ supported process host.
 cargo test --offline --locked -j 1 -p surgeist-js-wpt --features native-worker
 ```
 
-The native qualification runs authored assertions. The pinned WPT harness
-and additional platform capabilities are tracked in
+The native qualification runs authored assertions. The upstream harness
+execution and additional platform capabilities are tracked in
 [#2260](https://github.com/bj-data-eng/surgeist/issues/2260).
