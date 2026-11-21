@@ -43,6 +43,9 @@ use surgeist_runtime::{
     style::DomStyleRuntimeLimits,
 };
 
+#[path = "native_authored_events/abort.rs"]
+mod abort;
+
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }

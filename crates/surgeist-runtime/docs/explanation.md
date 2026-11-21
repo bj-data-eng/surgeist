@@ -134,6 +134,26 @@ unbind operation. With a live Host, graceful Session shutdown reports
 `HostedLifecycle`; terminal Session drop releases custody without claiming
 destruction or completion.
 
+### Native listener abort
+
+`HostedRuntime::create_abort_controller` associates one native signal and its
+standalone EventTarget with an authenticated Global and the original dispatcher.
+Use `DomEventDispatcher::add_listener_with_signal` to register against that
+signal. Adding with an aborted signal returns `SignalAborted`. A live duplicate
+keeps the existing listener and retains a detached abort step. An admitted
+transition establishes the original reason once, applies the captured listener
+removals in order, then fires a trusted `abort` Event through the original
+dispatcher. An omitted value creates a distinct native AbortError in the
+signal's Global. An explicit value keeps its native identity.
+
+For a suspended standalone abort, use `DomAbortSignal::resume_abort`. If the
+abort began in a native listener, resume the enclosing dispatch. Its next
+listener waits for the original abort delivery and the signal exposes that
+delivery's receipt through `take_abort_receipt`. Dispatcher teardown releases
+pending delivery and listener-step custody. Guest signal projection and reason
+rooting, dependent signals, timeout and static signal constructors are separate
+work.
+
 ### Hosted Style custody withdrawal
 
 `DomStyleRuntime::withdraw_root_for_hosted_destruction` withdraws an idle bound

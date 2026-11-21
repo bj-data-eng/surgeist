@@ -3806,3 +3806,209 @@ fn hosted_open_addition_establishes_watcher_and_open_removal_destroys_it() {
 fn hosted_watcher_survives_execution_retirement_until_inactive_open_removal() {
     hosted_dialog_watcher_lifetime(true);
 }
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn nested_abort_preserves_the_real_source_request_before_either_suffix() {
+    use std::rc::Rc;
+    use surgeist_runtime::event::{DomAbortProgress, DomEventInit};
+
+    struct Context {
+        source: DomSourceRuntime,
+        pending: Option<DomSourceEventRequest>,
+        calls: Vec<&'static str>,
+    }
+
+    let cancel = AtomicBool::new(false);
+    let (mut session, top, body) = hosted_queue_fixture();
+    let root = {
+        let mut batch = DomBatch::new();
+        let dialog = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        batch.insert_before(&dialog, body, None);
+        session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&dialog)
+            .unwrap()
+            .unwrap()
+    };
+    let mut registry = dispatcher();
+    let mut hosted = session.hosted_execution();
+    let controller = Rc::new(
+        hosted
+            .create_abort_controller(&mut session.dom(), &mut registry, top.global(), 0, &cancel)
+            .unwrap(),
+    );
+    let signal = controller.signal();
+    let abort_type: Vec<_> = "abort".encode_utf16().collect();
+    let outer_type: Vec<_> = "outer".encode_utf16().collect();
+    let flags = DomEventListenerOptions::default();
+    let nested = controller.clone();
+    registry.add_listener(
+        &mut session.dom(), body, &outer_type,
+        DomEventCallback::new(move |dom, registry, context: &mut Context, _| {
+            context.calls.push("outer prefix");
+            let progress = nested.abort(dom, registry, context, None, dispatch_limits(), &AtomicBool::new(false)).unwrap();
+            assert!(matches!(
+                progress,
+                DomAbortProgress::Delivery(DomEventDispatchOutcome::RetainedSourceOperation(id))
+                    if Some(id) == context.pending.as_ref().map(DomSourceEventRequest::operation)
+            ));
+            Ok(())
+        }),
+        flags,
+    ).unwrap();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            signal.event_target(),
+            &abort_type,
+            DomEventCallback::new(move |dom, _, context: &mut Context, _| {
+                context.calls.push("abort prefix");
+                let mut policy = |_: &DomStyleSource| None;
+                let progress = context
+                    .source
+                    .apply(
+                        dom,
+                        DomSourceEdit::show_dialog(root),
+                        source_limits(),
+                        &mut DomSourceServices {
+                            meta: None,
+                            execution_scope: None,
+                            style_policy: &mut policy,
+                            url: None,
+                        },
+                        &AtomicBool::new(false),
+                    )
+                    .unwrap();
+                let DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Event(request),
+                    reason: DomSourceUnavailable::Event,
+                } = progress
+                else {
+                    panic!("expected the native dialog request: {progress:?}")
+                };
+                context.pending = Some(request);
+                Ok(())
+            }),
+            flags,
+        )
+        .unwrap();
+    for (target, kind, label) in [
+        (
+            DomEventTarget::from(signal.event_target()),
+            abort_type.as_slice(),
+            "abort suffix",
+        ),
+        (
+            DomEventTarget::from(body),
+            outer_type.as_slice(),
+            "outer suffix",
+        ),
+        (
+            DomEventTarget::from(root),
+            DomEventType::BEFORE_TOGGLE.code_units(),
+            "dialog event",
+        ),
+    ] {
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                kind,
+                DomEventCallback::new(move |_, _, context: &mut Context, event| {
+                    context.calls.push(label);
+                    if label == "dialog event" {
+                        event.prevent_default();
+                    }
+                    Ok(())
+                }),
+                flags,
+            )
+            .unwrap();
+    }
+    let outer = hosted
+        .create_event(
+            &mut session.dom(),
+            top.global(),
+            &outer_type,
+            DomEventInit::default(),
+            &cancel,
+        )
+        .unwrap();
+    let mut invocation = registry
+        .prepare_dispatch(&mut session.dom(), body, &outer, &cancel)
+        .unwrap();
+    let mut context = Context {
+        source: session.source_execution(),
+        pending: None,
+        calls: Vec::new(),
+    };
+    let progress = invocation
+        .advance(
+            &mut session.dom(),
+            &mut registry,
+            &mut context,
+            dispatch_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let request = context.pending.take().unwrap();
+    assert_eq!(context.calls, ["outer prefix", "abort prefix"]);
+    assert!(
+        matches!(progress, DomEventDispatchOutcome::RetainedSourceOperation(id) if id == request.operation()),
+        "{progress:?}"
+    );
+    let permission = session.source_execution();
+    let receipt = serviced(
+        permission
+            .service_event(
+                &mut session.dom(),
+                &request,
+                &mut registry,
+                &mut context,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert!(receipt.default_prevented());
+    assert!(matches!(
+        resume(&mut session, request.operation()),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    let progress = invocation
+        .advance(
+            &mut session.dom(),
+            &mut registry,
+            &mut context,
+            dispatch_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let DomEventDispatchOutcome::Complete(receipt) = progress else {
+        panic!("missing outer completion: {progress:?}")
+    };
+    assert!(receipt.failures().is_empty());
+    assert_eq!(receipt.callbacks(), 2);
+    let receipt = signal.take_abort_receipt().unwrap().unwrap();
+    assert!(receipt.failures().is_empty());
+    assert_eq!(receipt.callbacks(), 2);
+    assert_eq!(
+        context.calls,
+        [
+            "outer prefix",
+            "abort prefix",
+            "dialog event",
+            "abort suffix",
+            "outer suffix"
+        ]
+    );
+}

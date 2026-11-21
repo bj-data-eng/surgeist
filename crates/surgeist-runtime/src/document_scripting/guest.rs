@@ -1636,6 +1636,9 @@ fn selected_dispatch(
         DomEventDispatchOutcome::RetainedForeignRegistry => {
             Err(DomEventDispatchError::WrongContinuation.into())
         }
+        DomEventDispatchOutcome::RetainedAbortDelivery => {
+            Err(DomEventDispatchError::AbortDeliveryPending.into())
+        }
         DomEventDispatchOutcome::RetainedAfterUnwind => {
             Err(DomEventDispatchError::Abandoned.into())
         }
