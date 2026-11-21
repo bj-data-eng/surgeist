@@ -610,9 +610,11 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
     };
     let child_count = "readChildCount".encode_utf16().collect::<Vec<_>>();
     let detach_source_node_if = "detachIf".encode_utf16().collect::<Vec<_>>();
-    let hooks = || DocumentScriptHooks {
-        child_count: &child_count,
-        detach_source_node_if: &detach_source_node_if,
+    let hooks = || {
+        Some(DocumentScriptHooks {
+            child_count: &child_count,
+            detach_source_node_if: &detach_source_node_if,
+        })
     };
     let native_bindings_are_live = |host: &mut DocumentScriptHost| {
         let permit = host.permit().unwrap();
@@ -718,10 +720,10 @@ fn enable(
                 user_allows: true,
                 automation_allows: true,
             },
-            DocumentScriptHooks {
+            Some(DocumentScriptHooks {
                 child_count: &"readChildCount".encode_utf16().collect::<Vec<_>>(),
                 detach_source_node_if: &"detachIf".encode_utf16().collect::<Vec<_>>(),
-            },
+            }),
         )
         .unwrap()
 }

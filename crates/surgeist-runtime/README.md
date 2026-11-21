@@ -288,7 +288,8 @@ operation.
 
 Hosts can claim the original empty listener registry with
 `DomEventDispatcher::bind` and transfer it through
-`PreparedDocumentScriptHost::enable_with_guest_event_registry`. Runtime
+`PreparedDocumentScriptHost::enable_with_guest_event_registry`. Pass `None` for
+the hooks argument to attach the Window without delegated helper globals. Runtime
 installs `Event` and standalone `EventTarget` before the Window becomes
 visible. The constructors use the native creation Global and clock.
 Standalone dispatch uses the original registry for duplicate, capture, once

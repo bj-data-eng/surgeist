@@ -725,12 +725,13 @@ impl PreparedDocumentScriptHost {
     }
 
     /// Attach an actual engine to the selected native top-level Document.
-    /// Installs the Window relations, CSS namespace, DOMException, and named host services.
+    /// Installs the Window relations, CSS namespace and DOMException.
+    /// Pass `None` to omit delegated host services.
     pub fn enable(
         self,
         target: DomHostedTopLevel,
         policy: HtmlScriptingPolicy,
-        hooks: DocumentScriptHooks<'_>,
+        hooks: Option<DocumentScriptHooks<'_>>,
     ) -> Result<DocumentScriptHost, EnableDocumentScriptFailure> {
         let result = self
             .prepare_engine(target, hooks)
@@ -758,7 +759,7 @@ impl PreparedDocumentScriptHost {
     fn prepare_engine(
         &self,
         target: DomHostedTopLevel,
-        hooks: DocumentScriptHooks<'_>,
+        hooks: Option<DocumentScriptHooks<'_>>,
     ) -> Result<UnpublishedScriptEngine, DocumentScriptError> {
         let owner = &self.native;
         let cancel = &owner.cancellation;
@@ -809,11 +810,17 @@ impl PreparedDocumentScriptHost {
             realm: authority.identity(),
             document: target.document(),
         };
-        let read = child_count_callback(Rc::downgrade(owner), permit.clone());
-        let detach = source::detach_callback(Rc::downgrade(owner), permit.clone());
-        let hook_bytes = size_of_val(&read)
-            .checked_add(size_of_val(&detach))
-            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let hooks = hooks
+            .map(|names| {
+                let read = child_count_callback(Rc::downgrade(owner), permit.clone());
+                let detach = source::detach_callback(Rc::downgrade(owner), permit.clone());
+                size_of_val(&read)
+                    .checked_add(size_of_val(&detach))
+                    .map(|bytes| (names, read, detach, bytes))
+                    .ok_or(DocumentScriptNativeError::RepresentationExhausted)
+            })
+            .transpose()?;
+        let hook_bytes = hooks.as_ref().map_or(0, |(_, _, _, bytes)| *bytes);
         let failure_bytes = FailureSlot::storage_bytes();
         let source_failure_bytes = SourceFailureSlot::storage_bytes();
         let liveness_bytes =
@@ -865,8 +872,10 @@ impl PreparedDocumentScriptHost {
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             let mut dom = session.dom();
-            let hook = hosted
-                .retain_script_payload(&mut dom, hook_bytes, cancel)
+            let hook = hooks
+                .as_ref()
+                .map(|_| hosted.retain_script_payload(&mut dom, hook_bytes, cancel))
+                .transpose()
                 .map_err(DocumentScriptNativeError::from)?;
             let failure = hosted
                 .retain_script_payload(&mut dom, failure_bytes, cancel)
@@ -948,33 +957,35 @@ impl PreparedDocumentScriptHost {
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
-        for (name, callback) in [
-            (hooks.child_count, Callback::new(read)),
-            (hooks.detach_source_node_if, Callback::new(detach)),
-        ] {
-            {
-                let mut session = owner
-                    .session
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                hosted
-                    .admit_script_work(&session.dom(), name.len(), cancel)
-                    .map_err(DocumentScriptNativeError::from)?;
+        if let Some((names, read, detach, _)) = hooks {
+            for (name, callback) in [
+                (names.child_count, Callback::new(read)),
+                (names.detach_source_node_if, Callback::new(detach)),
+            ] {
+                {
+                    let mut session = owner
+                        .session
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    hosted
+                        .admit_script_work(&session.dom(), name.len(), cancel)
+                        .map_err(DocumentScriptNativeError::from)?;
+                }
+                process.execution().in_realm(&realm, |scope| {
+                    let global = scope.global()?;
+                    let hook = scope.function(&callback)?;
+                    scope.define_new_property(
+                        &global,
+                        PropertyKey::String(name),
+                        PropertyDescriptor::Data {
+                            value: &hook,
+                            writable: false,
+                            enumerable: false,
+                            configurable: false,
+                        },
+                    )
+                })?;
             }
-            process.execution().in_realm(&realm, |scope| {
-                let global = scope.global()?;
-                let hook = scope.function(&callback)?;
-                scope.define_new_property(
-                    &global,
-                    PropertyKey::String(name),
-                    PropertyDescriptor::Data {
-                        value: &hook,
-                        writable: false,
-                        enumerable: false,
-                        configurable: false,
-                    },
-                )
-            })?;
         }
         process.execution().in_realm(&realm, |scope| {
             window_relations::install(
@@ -1032,7 +1043,7 @@ struct UnpublishedScriptEngine {
     window_event: Rc<window_event::WindowEvent>,
     window_timers: Option<Rc<window_timers::WindowTimers>>,
     liveness_backing: DomHostedRuntimeRetention,
-    _hook_backing: DomHostedRuntimeRetention,
+    _hook_backing: Option<DomHostedRuntimeRetention>,
 }
 
 impl UnpublishedScriptEngine {
@@ -1171,7 +1182,7 @@ struct ScriptEngine {
     realm: Realm,
     comments: projection::ProjectedComments,
     creations: CreationRealms,
-    _hook_backing: DomHostedRuntimeRetention,
+    _hook_backing: Option<DomHostedRuntimeRetention>,
 }
 
 impl Drop for ScriptEngine {

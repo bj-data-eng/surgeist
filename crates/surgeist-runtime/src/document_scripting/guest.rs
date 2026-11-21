@@ -772,12 +772,13 @@ impl std::error::Error for EnableDocumentGuestEventsFailure {
 impl PreparedDocumentScriptHost {
     /// Attach an engine, take the bound native registry, and install Event
     /// and EventTarget in the private Window before publishing it.
+    /// Pass `None` to omit delegated host services from the Window.
     /// Refusal returns the unpublished owner and restores the registry slot.
     pub fn enable_with_guest_event_registry(
         self,
         target: DomHostedTopLevel,
         policy: HtmlScriptingPolicy,
-        hooks: DocumentScriptHooks<'_>,
+        hooks: Option<DocumentScriptHooks<'_>>,
         registry: &mut Option<DomEventDispatcher<()>>,
         limits: DocumentGuestEventLimits,
     ) -> Result<DocumentScriptHost, EnableDocumentGuestEventsFailure> {
@@ -806,7 +807,7 @@ impl PreparedDocumentScriptHost {
         &self,
         target: DomHostedTopLevel,
         policy: HtmlScriptingPolicy,
-        hooks: DocumentScriptHooks<'_>,
+        hooks: Option<DocumentScriptHooks<'_>>,
         input: &DomEventDispatcher<()>,
         limits: DocumentGuestEventLimits,
     ) -> Result<(ScriptEngine, GuestEventAdmission), DocumentGuestEventError> {

@@ -332,10 +332,10 @@ fn oversized_profile_setup_returns_the_unpublished_owner() {
     };
     let read = units("readChildCount");
     let detach = units("detachIf");
-    let hooks = DocumentScriptHooks {
+    let hooks = Some(DocumentScriptHooks {
         child_count: &read,
         detach_source_node_if: &detach,
-    };
+    });
     let limits = DocumentGuestEventLimits {
         storage_bytes: 192 * 1024,
         work: 10_000,
