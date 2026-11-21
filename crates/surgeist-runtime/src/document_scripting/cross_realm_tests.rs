@@ -40,6 +40,7 @@ mod scoped_registries;
 mod slot;
 mod split_text;
 mod structural_alignment;
+mod table_cell_column;
 mod template_content;
 mod title_text;
 mod toggle_attribute;
@@ -417,6 +418,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     break_elements::break_elements_reflect_canonical_attributes();
     font_element::font_members_reflect_canonical_attributes();
     structural_alignment::structural_alignment_reflects_canonical_attributes();
+    table_cell_column::table_ranged_attributes_read_from_and_write_to_the_native_elements();
     list_compact::list_compact_reflects_canonical_presence();
     param::param_members_reflect_canonical_attributes();
     data_time::data_and_time_reflect_canonical_attributes();
