@@ -2,13 +2,14 @@
 //! Rows use the original issuer's identities; no independent allocator or
 //! Runtime activity/history mirror is admitted here.
 use super::*;
-use crate::internal::store::read_source::HostedReadError;
+use crate::internal::store::read_source::{HostedReadBudget, HostedReadError};
 use std::cell::Cell;
 use std::ops::Deref;
 use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::HtmlAboutBaseUrl;
 
 pub(in crate::internal::store) mod documents;
+mod window_indexed;
 
 #[cfg(test)]
 #[inline]
@@ -1706,128 +1707,37 @@ fn validate_navigable_association(
     Ok(())
 }
 
-impl Dom {
-    /// Visit the Document's current ordinary-tree child navigables and return their count.
-    ///
-    /// The visitor receives each established content navigable in tree order.
-    /// A Document with known absence of a node navigable yields zero. Each reached read
-    /// draws on `work_limit` and calls `admission`. Inside Source, the read also
-    /// borrows the exact current callback scope and its remaining work.
-    ///
-    /// # Errors
-    ///
-    /// Fails on cancellation, work exhaustion, an invalid Document, an
-    /// unavailable hosted association or Source scope, or a refusal from
-    /// `admission` or `visit`. A refusal stops the read immediately. Calls
-    /// already made to the visitor may have had effects.
-    pub fn visit_document_tree_child_navigables<E: From<DomHostedError>>(
-        &self,
-        document: DocumentId,
-        work_limit: u64,
-        mut admission: impl FnMut() -> Result<(), E>,
-        cancel: &AtomicBool,
-        mut visit: impl FnMut(DomHostedNavigable<'_>) -> Result<(), E>,
-    ) -> Result<usize, E> {
-        if document.node().owner() != self.owner {
-            return Err(DomHostedError::from(DomError::ForeignOwner).into());
-        }
-        let source = self
-            .qualify_read_source(cancel)
-            .map_err(DomHostedError::from)?;
-        let validate_scope = || -> Result<(), HostedReadError<E>> {
-            check_cancel(cancel)?;
-            if let Some(source) = &source {
-                source.validate()?;
-            }
-            Ok(())
-        };
-        let mut remaining = work_limit;
-        let mut step = || -> Result<(), HostedReadError<E>> {
-            validate_scope()?;
-            remaining = remaining
-                .checked_sub(1)
-                .ok_or(DomHostedError::WorkLimit { limit: work_limit })?;
-            admission().map_err(HostedReadError::Caller)?;
-            match &source {
-                Some(source) => source.step(cancel)?,
-                None => check_cancel(cancel)?,
-            }
-            Ok(())
-        };
-        let mut read = || -> Result<usize, HostedReadError<E>> {
-            let snapshot = self.snapshot();
-            let root = snapshot.node_with(document.node(), &mut step)?;
-            let DomNodeKind::Document(metadata) = root.kind() else {
-                return Err(DomError::WrongDocument.into());
-            };
-            let mut count = 0usize;
-            self.find_document_tree_child(
-                &snapshot,
-                document,
-                metadata,
-                &mut step,
-                true,
-                |child, _, _| {
-                    visit(child).map_err(HostedReadError::Caller)?;
-                    validate_scope()?;
-                    count = count
-                        .checked_add(1)
-                        .ok_or(DomHostedError::RepresentationExhausted)?;
-                    Ok(false)
-                },
-            )?;
-            Ok(count)
-        };
-        read().map_err(HostedReadError::into_caller)
-    }
+/// The qualified active parent and canonical ordinary child traversal.
+struct DocumentTreeChildren<'dom> {
+    association: Arc<DocumentAssociation>,
+    index: &'dom containers::ContainerIndex,
+    graph: &'dom Graph,
+    parent: &'dom Navigable,
+    document: DocumentId,
+}
 
-    /// Qualify the parent, then search its ordinary-tree content edges on request.
-    pub(in crate::internal::store) fn find_document_tree_child<E, S>(
+impl DocumentTreeChildren<'_> {
+    fn find<E, S>(
         &self,
         snapshot: &DomSnapshot,
-        document: DocumentId,
-        metadata: &DomDocumentMetadata,
         step: &mut S,
-        search_children: bool,
         mut visit: impl FnMut(DomHostedNavigable<'_>, &DomDocumentMetadata, &mut S) -> Result<bool, E>,
     ) -> Result<bool, E>
     where
         E: From<DomError> + From<DomHostedError>,
         S: FnMut() -> Result<(), E>,
     {
-        step()?;
-        let Some(association) = metadata.document_environment().hosted else {
-            return Ok(false);
-        };
-        if matches!(association.phase, DocumentPhase::Retired { .. }) {
-            return Ok(false);
-        }
-        association.validate_live()?;
-        let graph = self
-            .state
-            .hosted_history
-            .as_deref()
-            .ok_or(DomHostedError::UnsupportedProfile)?;
-        let Some(parent) = graph.active_navigable_for_document_with(document, &mut *step)? else {
-            // The live association still needs to be valid after admission.
-            association.validate_live()?;
-            return Ok(false);
-        };
-        let parent = graph.navigable_with(parent, &mut *step)?;
-        let active = graph.entry_with(parent.active, &mut *step)?;
-        step()?;
-        validate_navigable_association(&association, parent)?;
-        if active.document != Some(document) {
-            return Err(DomHostedError::StaleIdentity.into());
-        }
-        if !search_children {
-            return Ok(false);
-        }
-
-        let found = self.state.container_index.find_with(
-            Key::Existing(document.node()),
-            step,
-            |key, step| {
+        let Self {
+            association,
+            graph,
+            parent,
+            document,
+            ..
+        } = self;
+        let document = *document;
+        let found = self
+            .index
+            .find_with(Key::Existing(document.node()), step, |key, step| {
                 let Key::Existing(container) = key else {
                     return Err(DomError::UnavailableCreation.into());
                 };
@@ -1868,11 +1778,131 @@ impl Dom {
                     .ok_or(DomHostedError::UnsupportedProfile)?;
                 validate_navigable_association(&child_association, record)?;
                 visit(DomHostedNavigable { record, active }, metadata, step)
-            },
-        )?;
+            })?;
         step()?;
         association.validate_live()?;
         Ok(found)
+    }
+}
+
+impl Dom {
+    /// Visit the Document's current ordinary-tree child navigables and return their count.
+    ///
+    /// The visitor receives each established content navigable in tree order.
+    /// A Document with known absence of a node navigable yields zero. Each reached read
+    /// draws on `work_limit` and calls `admission`. Inside Source, the read also
+    /// borrows the exact current callback scope and its remaining work.
+    ///
+    /// # Errors
+    ///
+    /// Fails on cancellation, work exhaustion, an invalid Document, an
+    /// unavailable hosted association or Source scope, or a refusal from
+    /// `admission` or `visit`. A refusal stops the read immediately. Calls
+    /// already made to the visitor may have had effects.
+    pub fn visit_document_tree_child_navigables<E: From<DomHostedError>>(
+        &self,
+        document: DocumentId,
+        work_limit: u64,
+        mut admission: impl FnMut() -> Result<(), E>,
+        cancel: &AtomicBool,
+        mut visit: impl FnMut(DomHostedNavigable<'_>) -> Result<(), E>,
+    ) -> Result<usize, E> {
+        if document.node().owner() != self.owner {
+            return Err(DomHostedError::from(DomError::ForeignOwner).into());
+        }
+        let budget =
+            HostedReadBudget::new(self, work_limit, cancel).map_err(DomHostedError::from)?;
+        let mut step = || budget.step(&mut admission);
+        let mut read = || -> Result<usize, HostedReadError<E>> {
+            let snapshot = self.snapshot();
+            let root = snapshot.node_with(document.node(), &mut step)?;
+            let DomNodeKind::Document(metadata) = root.kind() else {
+                return Err(DomError::WrongDocument.into());
+            };
+            let mut count = 0usize;
+            self.find_document_tree_child(
+                &snapshot,
+                document,
+                metadata,
+                &mut step,
+                true,
+                |child, _, _| {
+                    visit(child).map_err(HostedReadError::Caller)?;
+                    budget.validate_scope()?;
+                    count = count
+                        .checked_add(1)
+                        .ok_or(DomHostedError::RepresentationExhausted)?;
+                    Ok(false)
+                },
+            )?;
+            Ok(count)
+        };
+        read().map_err(HostedReadError::into_caller)
+    }
+
+    /// Qualify the parent, then search its ordinary-tree content edges on request.
+    pub(in crate::internal::store) fn find_document_tree_child<E, S>(
+        &self,
+        snapshot: &DomSnapshot,
+        document: DocumentId,
+        metadata: &DomDocumentMetadata,
+        step: &mut S,
+        search_children: bool,
+        visit: impl FnMut(DomHostedNavigable<'_>, &DomDocumentMetadata, &mut S) -> Result<bool, E>,
+    ) -> Result<bool, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+        S: FnMut() -> Result<(), E>,
+    {
+        let children = self.qualify_document_tree_children(document, metadata, step)?;
+        match children {
+            Some(children) if search_children => children.find(snapshot, step, visit),
+            _ => Ok(false),
+        }
+    }
+
+    fn qualify_document_tree_children<E, S>(
+        &self,
+        document: DocumentId,
+        metadata: &DomDocumentMetadata,
+        step: &mut S,
+    ) -> Result<Option<DocumentTreeChildren<'_>>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+        S: FnMut() -> Result<(), E>,
+    {
+        step()?;
+        let Some(association) = metadata.document_environment().hosted else {
+            return Ok(None);
+        };
+        if matches!(association.phase, DocumentPhase::Retired { .. }) {
+            return Ok(None);
+        }
+        association.validate_live()?;
+        let graph = self
+            .state
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        let Some(parent) = graph.active_navigable_for_document_with(document, &mut *step)? else {
+            // The live association still needs to be valid after admission.
+            association.validate_live()?;
+            return Ok(None);
+        };
+        let parent = graph.navigable_with(parent, &mut *step)?;
+        let active = graph.entry_with(parent.active, &mut *step)?;
+        step()?;
+        validate_navigable_association(&association, parent)?;
+        if active.document != Some(document) {
+            return Err(DomHostedError::StaleIdentity.into());
+        }
+        Ok(Some(DocumentTreeChildren {
+            association,
+            index: &self.state.container_index,
+            graph,
+            parent,
+            document,
+        }))
     }
 
     pub fn hosted_navigable(

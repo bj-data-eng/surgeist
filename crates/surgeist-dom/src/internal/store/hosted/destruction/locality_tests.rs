@@ -1502,11 +1502,11 @@ fn window_named_value_selects_the_first_child_before_origin_and_preserves_its_na
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum NamedReadError {
+enum WindowReadError {
     Native(DomHostedError),
     Refused,
 }
-impl From<DomHostedError> for NamedReadError {
+impl From<DomHostedError> for WindowReadError {
     fn from(error: DomHostedError) -> Self {
         Self::Native(error)
     }
@@ -1592,14 +1592,14 @@ fn window_named_value_revalidates_the_live_global_after_element_admission() {
         || {
             steps.set(steps.get() + 1);
             if steps.get() == exact {
-                Err(NamedReadError::Refused)
+                Err(WindowReadError::Refused)
             } else {
                 Ok(())
             }
         },
         &cancel(),
     );
-    assert_eq!(refusal.unwrap_err(), NamedReadError::Refused);
+    assert_eq!(refusal.unwrap_err(), WindowReadError::Refused);
 
     let cancelled = cancel();
     steps.set(0);
@@ -1773,3 +1773,5 @@ fn window_named_value_charges_one_exact_dispatch_scope_across_child_and_element_
     ));
     drop(scope);
 }
+
+mod window_indexed;

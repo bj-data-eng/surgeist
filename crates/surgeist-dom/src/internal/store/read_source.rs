@@ -8,7 +8,7 @@ use crate::internal::{
         event::DomSourceEventRequest,
     },
 };
-use std::sync::Weak;
+use std::{cell::Cell, sync::Weak};
 
 pub(super) struct ReadSource<'dom> {
     work: Arc<CallbackWork>,
@@ -79,6 +79,56 @@ impl<'dom> ReadSource<'dom> {
     pub(super) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.validate()?;
         self.work.step(cancel)
+    }
+}
+
+/// One native child read's local allowance and exact active Source scope.
+pub(super) struct HostedReadBudget<'dom> {
+    source: Option<ReadSource<'dom>>,
+    remaining: Cell<u64>,
+    limit: u64,
+    cancel: &'dom AtomicBool,
+}
+
+impl<'dom> HostedReadBudget<'dom> {
+    pub(super) fn new(
+        dom: &'dom Dom,
+        limit: u64,
+        cancel: &'dom AtomicBool,
+    ) -> Result<Self, DomError> {
+        Ok(Self {
+            source: dom.qualify_read_source(cancel)?,
+            remaining: Cell::new(limit),
+            limit,
+            cancel,
+        })
+    }
+
+    pub(super) fn validate_scope(&self) -> Result<(), DomError> {
+        check_cancel(self.cancel)?;
+        if let Some(source) = &self.source {
+            source.validate()?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn step<E>(
+        &self,
+        admission: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<(), HostedReadError<E>> {
+        self.validate_scope()?;
+        let remaining = self
+            .remaining
+            .get()
+            .checked_sub(1)
+            .ok_or(DomHostedError::WorkLimit { limit: self.limit })?;
+        self.remaining.set(remaining);
+        admission().map_err(HostedReadError::Caller)?;
+        match &self.source {
+            Some(source) => source.step(self.cancel)?,
+            None => check_cancel(self.cancel)?,
+        }
+        Ok(())
     }
 }
 
