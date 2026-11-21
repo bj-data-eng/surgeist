@@ -463,6 +463,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     dialog_state::modal_dialog_accessors_preserve_the_original_queued_toggle();
     dialog_state::dialog_edits_preserve_native_state_on_source_refusal();
     dialog_close::adoption_preserves_the_original_dialog_dispatch();
+    dialog_close::external_source_service_resumes_after_callback_adoption();
     dialog_close::listener_report_refusal_retains_the_original_close();
     marquee::stop_marquee_preserves_native_state_on_source_work_refusal();
     element_mixin::borrowed_accessors_keep_native_includers_across_creation_realms();

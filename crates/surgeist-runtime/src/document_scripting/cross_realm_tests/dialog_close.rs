@@ -5,7 +5,10 @@ use crate::{
     document_scripting::guest::tests::{
         attach_public_nodes_with_registry_and_reports, expose_public_node_for_source_test,
     },
-    internal::element_tasks::DomElementTaskRuntime,
+    internal::{
+        dom_event::{DomEventDispatchOutcome, DomEventResource},
+        element_tasks::DomElementTaskRuntime,
+    },
 };
 use surgeist_dom::source::DomSourcePhase;
 use surgeist_html::values::DocumentString;
@@ -254,4 +257,111 @@ pub(super) fn listener_report_refusal_retains_the_original_close() {
     assert!(dialog.has_close_watcher());
     assert!(!dialog.has_toggle_task_tracker());
     assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+}
+
+pub(super) fn external_source_service_resumes_after_callback_adoption() {
+    let AttachedClose {
+        mut host,
+        target,
+        dialog,
+        tasks,
+        observed,
+    } = setup(4);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            const retrySubject = closeSubject;
+            const retryDestination = document.implementation.createHTMLDocument();
+            let retryEvent, retryFirst = 0, retrySecond = 0, retryIdentity = false;
+            retrySubject.addEventListener('beforetoggle', function (event) {
+                retryFirst++;
+                retryEvent = event;
+                retryDestination.adoptNode(this);
+            });
+            retrySubject.addEventListener('beforetoggle', function (event) {
+                retrySecond++;
+                retryIdentity = event === retryEvent && this === retrySubject &&
+                    event.currentTarget === this && event === globalThis.event &&
+                    this.ownerDocument === retryDestination && this.open;
+                this.open = false;
+            });
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let cancel = host.native.cancellation.clone();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let request = host
+        .with_native(|dom, _, mut source| {
+            let progress = source
+                .apply(
+                    dom,
+                    DomSourceEdit::close_dialog(dialog, Some("unpublished".into())),
+                    SOURCE,
+                    &mut services,
+                    &cancel,
+                )
+                .unwrap();
+            let DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::Event(request),
+                reason: DomSourceUnavailable::Event,
+            } = progress
+            else {
+                panic!("native Close must yield its original beforetoggle: {progress:?}");
+            };
+            request
+        })
+        .unwrap();
+    let mut bounded = EVENT;
+    bounded.dispatch.callbacks = 2;
+    assert!(matches!(
+        host.service_attached_source_event(&permit, &request, bounded)
+            .unwrap(),
+        DomSourceEventServiceProgress::Retained {
+            dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+        }
+    ));
+    let snapshot = host.snapshot().unwrap();
+    let node = snapshot.node(dialog).unwrap();
+    assert_ne!(node.owner_document().unwrap(), target.document());
+    assert_eq!(node.attribute(&"open".into()), Some(&"".into()));
+    assert_eq!(observed.borrow().len(), 1);
+    let continued = host.service_attached_source_event(&permit, &request, EVENT);
+    let Ok(DomSourceEventServiceProgress::Serviced { receipt }) = continued else {
+        panic!("the exact attached cursor must resume after adoption: {continued:?}");
+    };
+    assert_eq!(receipt.callbacks(), 3);
+    assert_eq!(receipt.original_target().node(), Some(dialog));
+    assert!(receipt.failures().is_empty());
+    assert_eq!(observed.borrow().len(), 1);
+    host.with_native(|dom, _, mut source| {
+        assert!(matches!(
+            source.resume(dom, request.operation(), SOURCE, &mut services, &cancel).unwrap(),
+            DomSourceDriveProgress::Complete(done) if done.operation() == request.operation()
+        ));
+        assert!(dom.pending_source_edit().is_none());
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        let checks = evaluate(
+            scope,
+            "retryFirst === 1 && retrySecond === 1 && retryIdentity &&
+             retryEvent.currentTarget === null && globalThis.event === undefined &&
+             !retrySubject.open && retrySubject.returnValue === 'prior'",
+        )?;
+        let expected = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&checks, &expected)?);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+    host.stop().into_session().unwrap();
 }
