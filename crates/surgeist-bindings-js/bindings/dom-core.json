@@ -814,6 +814,16 @@
       "entries": ["HTMLBodyElement.obsolete"]
     },
     {
+      "id": "HTMLFormElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmlformelement",
+      "block": 0,
+      "sha256": "baf591210ea521f6a3d533a29e93384474abf476eb5cf93decc3dfe91598beee",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlformelement",
+      "entries": ["HTMLFormElement"]
+    },
+    {
       "id": "HTMLFrameSetElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlframesetelement",
@@ -6847,6 +6857,181 @@
       "partial": true
     },
     {
+      "id": "HTMLFormElement",
+      "kind": "interface",
+      "name": "HTMLFormElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}, {"name": "LegacyOverrideBuiltIns"}, {"name": "LegacyUnenumerableNamedProperties"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLFormElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect", "value": "accept-charset"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "acceptCharset",
+          "readonly": false,
+          "id": "HTMLFormElement.acceptCharset"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "USVString"},
+          "name": "action",
+          "readonly": false,
+          "id": "HTMLFormElement.action"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "autocomplete",
+          "readonly": false,
+          "id": "HTMLFormElement.autocomplete"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "enctype",
+          "readonly": false,
+          "id": "HTMLFormElement.enctype"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "encoding",
+          "readonly": false,
+          "id": "HTMLFormElement.encoding"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "method",
+          "readonly": false,
+          "id": "HTMLFormElement.method"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLFormElement.name"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "noValidate",
+          "readonly": false,
+          "id": "HTMLFormElement.noValidate"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "target",
+          "readonly": false,
+          "id": "HTMLFormElement.target"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "rel",
+          "readonly": false,
+          "id": "HTMLFormElement.rel"
+        },
+        {
+          "attributes": [{"name": "SameObject"}, {"name": "PutForwards", "value": "value"}, {"name": "Reflect", "value": "rel"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMTokenList"},
+          "name": "relList",
+          "readonly": true,
+          "id": "HTMLFormElement.relList"
+        },
+        {
+          "attributes": [{"name": "SameObject"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "HTMLFormControlsCollection"},
+          "name": "elements",
+          "readonly": true,
+          "id": "HTMLFormElement.elements"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "length",
+          "readonly": true,
+          "id": "HTMLFormElement.length"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "special": "getter",
+          "type": {"kind": "named", "name": "Element"},
+          "arguments": [{"name": "index", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}],
+          "id": "HTMLFormElement.operation:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "special": "getter",
+          "type": {"kind": "union", "members": [{"kind": "named", "name": "RadioNodeList"}, {"kind": "named", "name": "Element"}]},
+          "arguments": [{"name": "name", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "id": "HTMLFormElement.operation:1"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "submit",
+          "arguments": [],
+          "id": "HTMLFormElement.submit:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "requestSubmit",
+          "arguments": [{"name": "submitter", "type": {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLElement"}}, "presence": "optional", "default": {"kind": "null"}}],
+          "id": "HTMLFormElement.requestSubmit:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "reset",
+          "arguments": [],
+          "id": "HTMLFormElement.reset:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "checkValidity",
+          "arguments": [],
+          "id": "HTMLFormElement.checkValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "reportValidity",
+          "arguments": [],
+          "id": "HTMLFormElement.reportValidity:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
       "id": "HTMLFrameSetElement",
       "kind": "interface",
       "name": "HTMLFrameSetElement",
@@ -8436,11 +8621,11 @@
       "requirement": "Source-qualified GlobalEventHandlers definition and its owning native/binding family; not an empty installed interface."
     },
     {
-      "name": "HTMLFormElement",
+      "name": "HTMLFormControlsCollection",
       "kind": "interface",
       "owner": "surgeist-runtime",
-      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlformelement",
-      "requirement": "Pinned HTMLFormElement binding and canonical form-owner wrapper projection."
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlformcontrolscollection",
+      "requirement": "Project one live collection backed by the canonical Form controls, with its pinned indexed and named behavior."
     },
     {
       "name": "HTMLOptionsCollection",
@@ -8478,6 +8663,13 @@
       "owner": "surgeist-html-parser",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-document-object",
       "requirement": "Pin the delegated ParseHTMLUnsafeOptions definition before converting/exposing this external type; the retained source here references it but is not its full defining clause."
+    },
+    {
+      "name": "RadioNodeList",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#radionodelist",
+      "requirement": "Project the live named radio group and its source-defined value from the canonical associated elements."
     },
     {
       "name": "Range",
@@ -14684,6 +14876,306 @@
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
+    },
+    "HTMLFormElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlformelement.constructor.0.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.acceptCharset/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.acceptcharset.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.acceptCharset/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.acceptcharset.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.action/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read the actual current Document URL, base and encoding, and apply the pinned action URL parse and serialization over the Form attribute.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-action"
+      }
+    },
+    "HTMLFormElement.action/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.action.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired action accessor with its USVString setter and synchronous reactions when the qualified URL getter is available.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-action",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLFormElement.autocomplete/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.autocomplete.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "form_autocomplete_keyword_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.autocomplete/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.autocomplete.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.enctype/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.enctype.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "form_enctype_keyword_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.enctype/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.enctype.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.encoding/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.encoding.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "form_enctype_keyword_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.encoding/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.encoding.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.method/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.method.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "form_method_keyword_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.method/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.method.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.name/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.name.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.name/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.name.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.noValidate/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.novalidate.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.noValidate/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.novalidate.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.target/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.target.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.target/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.target.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.rel/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.rel.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.rel/set": {
+      "kind": "native",
+      "adapter": "htmlformelement.rel.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFormElement.relList/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project the same live DOMTokenList over the Form's exact rel content.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-rellist",
+        "issue": 2258
+      },
+      "result_view": "live"
+    },
+    "HTMLFormElement.relList/set": {
+      "kind": "forwarding",
+      "getter": "HTMLFormElement.relList/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLFormElement.elements/get": {
+      "kind": "native",
+      "adapter": "htmlformelement.elements.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Project the current listed controls owned by this Form with the source exclusion for image inputs and canonical tree order.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-elements",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Return the same live HTMLFormControlsCollection and preserve its native element identities and indexing.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-elements",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLFormElement.length/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Return the count of the current canonical members of the Form controls collection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-length",
+        "issue": 2480
+      }
+    },
+    "HTMLFormElement.operation:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Use the actual Form controls collection's native indexed lookup, supported indices and Web IDL property precedence.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-form-element",
+        "issue": 2480
+      }
+    },
+    "HTMLFormElement.operation:1/call": {
+      "kind": "native",
+      "adapter": "htmlformelement.operation.1.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/form.rs", "symbol": "past_names"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Implement live named Form candidates, legacy image fallback and canonical past-name lookup and writeback.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-form-element",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Expose the live named Element or RadioNodeList with LegacyOverrideBuiltIns lookup and nonenumerable named properties.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-form-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLFormElement.submit:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Run canonical submission from the Form, including form-data construction and the qualified navigation or host submission handoff.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-submit",
+        "issue": 1235
+      }
+    },
+    "HTMLFormElement.requestSubmit:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Validate the actual submitter and form ownership, then run canonical validation, submit event and submission using the selected submitter.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-requestsubmit",
+        "issue": 1235
+      }
+    },
+    "HTMLFormElement.reset:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Run the canonical reset event and per-control reset steps with actual Source reaction ordering.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-reset",
+        "issue": 1235
+      }
+    },
+    "HTMLFormElement.checkValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Qualify current form controls and run canonical constraint validation and invalid event handling to determine the Boolean result.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-checkvalidity",
+        "issue": 1235
+      }
+    },
+    "HTMLFormElement.reportValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Use canonical Form constraint validation and report reached failures through the original native invalid-event and presentation services.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-reportvalidity",
+        "issue": 1235
+      }
     },
     "HTMLFrameSetElement.constructor:0/construct": {
       "kind": "native",
