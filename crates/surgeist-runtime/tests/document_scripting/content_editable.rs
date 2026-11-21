@@ -161,7 +161,7 @@ pub(super) fn attached_html_elements_use_native_content_editability() {
     host.stop().into_session().unwrap();
 
     ordinary_ancestry_reopens_after_native_mutation();
-    genuine_design_mode_is_read_from_the_parent_document();
+    design_mode_is_read_from_the_parent_document();
 }
 
 fn ordinary_ancestry_reopens_after_native_mutation() {
@@ -263,7 +263,7 @@ fn ordinary_ancestry_reopens_after_native_mutation() {
     host.stop().into_session().unwrap();
 }
 
-fn genuine_design_mode_is_read_from_the_parent_document() {
+fn design_mode_is_read_from_the_parent_document() {
     let (mut host, _) = prepare_editability_window();
     let permit = host.permit().unwrap();
     let before = host.snapshot().unwrap();
