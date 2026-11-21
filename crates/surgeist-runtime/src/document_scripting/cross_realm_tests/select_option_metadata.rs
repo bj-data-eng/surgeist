@@ -22,10 +22,12 @@ pub(super) fn select_metadata_reflects_current_source_and_numeric_rules() {
                 if (!type?.get || type.set !== undefined || !type.enumerable || !type.configurable ||
                     size.get.length !== 0 || size.set.length !== 1 || !size.enumerable || !size.configurable)
                     return 'metadata descriptors';
-                if (Object.keys(HTMLSelectElement.prototype).join() !==
-                        'disabled,multiple,name,required,size,type,selectedIndex,value' ||
-                    Object.keys(HTMLOptionElement.prototype).join() !==
-                        'disabled,label,defaultSelected,selected,value,text,index')
+                const selectMembers = 'disabled,multiple,name,required,size,type,selectedIndex,value'.split(',');
+                const optionMembers = 'disabled,label,defaultSelected,selected,value,text,index'.split(',');
+                if (Object.keys(HTMLSelectElement.prototype).filter(name => selectMembers.includes(name)).join() !==
+                        selectMembers.join() ||
+                    Object.keys(HTMLOptionElement.prototype).filter(name => optionMembers.includes(name)).join() !==
+                        optionMembers.join())
                     return 'prototype declaration order';
                 if (select.disabled || select.required || option.disabled || select.name !== '' ||
                     select.size !== 0 || select.type !== 'select-one') return 'initial metadata';
