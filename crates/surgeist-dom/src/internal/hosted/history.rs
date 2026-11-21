@@ -21,6 +21,28 @@ impl DomHostedEntryInitialization {
     }
 }
 
+/// The structural insertion that established a hosted child container.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomHostedChildInsertion {
+    pub(crate) document: DocumentId,
+    pub(crate) group: u64,
+    pub(crate) preorder: u64,
+}
+impl DomHostedChildInsertion {
+    /// The exact Document into which the container was inserted.
+    pub const fn document(self) -> DocumentId {
+        self.document
+    }
+    /// The structural insertion group, ordered within this DOM owner.
+    pub const fn group(self) -> u64 {
+        self.group
+    }
+    /// The zero-based shadow-including order among containers in the group.
+    pub const fn preorder(self) -> u64 {
+        self.preorder
+    }
+}
+
 /// One actual captured navigable and its real retained entry collection.
 #[derive(Clone, Copy, Debug)]
 pub struct DomHostedNavigable<'a> {
@@ -36,6 +58,12 @@ impl<'a> DomHostedNavigable<'a> {
     }
     pub fn container(self) -> Option<NodeId> {
         self.record.container
+    }
+    /// The original container insertion retained by this child navigable.
+    ///
+    /// A top-level navigable returns `None`.
+    pub fn container_insertion(self) -> Option<DomHostedChildInsertion> {
+        self.record.insertion
     }
     pub fn active_document(self) -> Option<DocumentId> {
         self.active.document

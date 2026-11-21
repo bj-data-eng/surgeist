@@ -173,6 +173,7 @@ impl Fixture {
                         initialization: DomHostedEntryInitialization::new(key, key),
                         origin,
                         parent: None,
+                        insertion: None,
                         target_name: Some(&name),
                         about_base_url: &about,
                         initiator_origin: None,
@@ -572,11 +573,6 @@ fn insert_absent_src_frame(f: &mut Fixture) -> (NodeId, DomHostedCreation) {
     insert_absent_src_element(f, "frame")
 }
 fn insert_absent_src_element(f: &mut Fixture, local: &str) -> (NodeId, DomHostedCreation) {
-    use crate::{
-        internal::hosted::DomHostedChildStep as Step,
-        internal::hosted::DomInitialPermissionsPolicy, internal::hosted::DomPermissionsPolicyValue,
-        internal::source::DomSourceEdit,
-    };
     let parent = f
         .dom
         .snapshot()
@@ -594,115 +590,7 @@ fn insert_absent_src_element(f: &mut Fixture, local: &str) -> (NodeId, DomHosted
         .created(&ticket)
         .unwrap()
         .unwrap();
-    let mut lease = f
-        .dom
-        .begin_source_edit(
-            DomSourceEdit::insert_before(frame, parent, None),
-            source_limits(),
-            &cancel(),
-        )
-        .unwrap();
-    let DomSourceProgress::Request(DomSourceRequest::HostedChild(child)) =
-        lease.advance(&cancel()).unwrap()
-    else {
-        panic!("actual Frame construction request")
-    };
-    let preparation = lease
-        .prepare_hosted_child(&mut f.source, &child, &cancel())
-        .unwrap();
-    let mut prepared = Some(
-        f.source
-            .seal_child_preparation(&child, &mut Some(preparation), &cancel())
-            .unwrap(),
-    );
-    lease
-        .accept_hosted_child_preparation(&mut f.source, &child, &mut prepared, &cancel())
-        .unwrap();
-    assert!(prepared.is_none());
-    let mut creation = None;
-    for _ in 0..12 {
-        let publication = match lease.hosted_child_step(&child).unwrap() {
-            Step::PermissionsPolicy(request) => {
-                let mut policy = Some(
-                    f.source
-                        .seal_permissions_policy(
-                            request,
-                            DomInitialPermissionsPolicy::new(
-                                DomPermissionsPolicyValue::Enabled,
-                                DomPermissionsPolicyValue::Enabled,
-                            ),
-                            &cancel(),
-                        )
-                        .unwrap(),
-                );
-                lease
-                    .accept_hosted_child_policy(&mut f.source, &child, &mut policy, &cancel())
-                    .unwrap();
-                continue;
-            }
-            Step::NativeExecution(request) => {
-                let global = f.source.issue_global(request, &cancel()).unwrap();
-                f.source
-                    .seal_native_execution(request, global, 200, &cancel())
-                    .unwrap()
-            }
-            Step::MakeActive(request) => f.source.seal_make_active(request, &cancel()).unwrap(),
-            Step::FinishLoading(request) => f
-                .source
-                .seal_finish_loading(request, 300, &cancel())
-                .unwrap(),
-            Step::InitialEntry(request) => {
-                let entry = f.source.issue_entry(request, &cancel()).unwrap();
-                let navigable = f.source.issue_navigable(request, &cancel()).unwrap();
-                f.source
-                    .seal_initial_entry(
-                        request,
-                        entry,
-                        navigable,
-                        &mut Some(DomHostedEntryInitialization::new(uuid(), uuid())),
-                        &cancel(),
-                    )
-                    .unwrap()
-            }
-            Step::QueueHistory(request) => {
-                creation = Some(request.creation());
-                let mut publication =
-                    Some(f.source.seal_child_history(request, &cancel()).unwrap());
-                lease
-                    .accept_hosted_child_history(&mut f.source, &child, &mut publication, &cancel())
-                    .unwrap();
-                assert!(publication.is_none());
-                continue;
-            }
-            Step::NeedsUrl(_) => {
-                // The supported absent-src branch compares real about:blank
-                // inputs against its inclusive ancestor and returns null.
-                lease
-                    .process_hosted_child_attributes(&child, &cancel())
-                    .unwrap();
-                assert!(matches!(
-                    lease.hosted_child_step(&child).unwrap(),
-                    Step::Returned
-                ));
-                break;
-            }
-            _ => panic!("unexpected constructor phase"),
-        };
-        lease
-            .accept_hosted_child_publication(
-                &mut f.source,
-                &child,
-                &mut Some(publication),
-                &cancel(),
-            )
-            .unwrap();
-    }
-    let creation = creation.expect("authentic initial entry and queued history");
-    assert!(matches!(
-        lease.advance(&cancel()).unwrap(),
-        DomSourceProgress::Complete(_)
-    ));
-    drop(lease);
+    let [creation] = drive_native_insertion(f, frame, parent, None);
     assert_eq!(
         f.dom
             .snapshot()
@@ -714,6 +602,101 @@ fn insert_absent_src_element(f: &mut Fixture, local: &str) -> (NodeId, DomHosted
         Some(Some(creation.navigable))
     );
     (frame, creation)
+}
+
+fn drive_absent_src_child(
+    lease: &mut source::operation::DomSourceLease<'_>,
+    source: &mut DomHostedSource,
+    child: &DomHostedChildRequest,
+) -> DomHostedCreation {
+    use crate::{
+        internal::hosted::DomHostedChildStep as Step,
+        internal::hosted::DomInitialPermissionsPolicy, internal::hosted::DomPermissionsPolicyValue,
+    };
+    let preparation = lease
+        .prepare_hosted_child(source, child, &cancel())
+        .unwrap();
+    let mut prepared = Some(
+        source
+            .seal_child_preparation(child, &mut Some(preparation), &cancel())
+            .unwrap(),
+    );
+    lease
+        .accept_hosted_child_preparation(source, child, &mut prepared, &cancel())
+        .unwrap();
+    assert!(prepared.is_none());
+    let mut creation = None;
+    for _ in 0..12 {
+        let publication = match lease.hosted_child_step(child).unwrap() {
+            Step::PermissionsPolicy(request) => {
+                let mut policy = Some(
+                    source
+                        .seal_permissions_policy(
+                            request,
+                            DomInitialPermissionsPolicy::new(
+                                DomPermissionsPolicyValue::Enabled,
+                                DomPermissionsPolicyValue::Enabled,
+                            ),
+                            &cancel(),
+                        )
+                        .unwrap(),
+                );
+                lease
+                    .accept_hosted_child_policy(source, child, &mut policy, &cancel())
+                    .unwrap();
+                continue;
+            }
+            Step::NativeExecution(request) => {
+                let global = source.issue_global(request, &cancel()).unwrap();
+                source
+                    .seal_native_execution(request, global, 200, &cancel())
+                    .unwrap()
+            }
+            Step::MakeActive(request) => source.seal_make_active(request, &cancel()).unwrap(),
+            Step::FinishLoading(request) => {
+                source.seal_finish_loading(request, 300, &cancel()).unwrap()
+            }
+            Step::InitialEntry(request) => {
+                let entry = source.issue_entry(request, &cancel()).unwrap();
+                let navigable = source.issue_navigable(request, &cancel()).unwrap();
+                source
+                    .seal_initial_entry(
+                        request,
+                        entry,
+                        navigable,
+                        &mut Some(DomHostedEntryInitialization::new(uuid(), uuid())),
+                        &cancel(),
+                    )
+                    .unwrap()
+            }
+            Step::QueueHistory(request) => {
+                creation = Some(request.creation());
+                let mut publication = Some(source.seal_child_history(request, &cancel()).unwrap());
+                lease
+                    .accept_hosted_child_history(source, child, &mut publication, &cancel())
+                    .unwrap();
+                assert!(publication.is_none());
+                continue;
+            }
+            Step::NeedsUrl(_) => {
+                // The supported absent-src branch compares real about:blank
+                // inputs against its inclusive ancestor and returns null.
+                lease
+                    .process_hosted_child_attributes(child, &cancel())
+                    .unwrap();
+                assert!(matches!(
+                    lease.hosted_child_step(child).unwrap(),
+                    Step::Returned
+                ));
+                break;
+            }
+            _ => panic!("unexpected constructor phase"),
+        };
+        lease
+            .accept_hosted_child_publication(source, child, &mut Some(publication), &cancel())
+            .unwrap();
+    }
+    creation.expect("authentic initial entry and queued history")
 }
 
 #[test]
@@ -1031,4 +1014,272 @@ fn focused_designation_hosted_frame_and_iframe_are_fresh_and_survive_service_exp
             );
         }
     }
+}
+
+fn native_child_request(
+    lease: &mut source::operation::DomSourceLease<'_>,
+) -> DomHostedChildRequest {
+    match lease.advance(&cancel()).unwrap() {
+        DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => Some(request),
+        _ => None,
+    }
+    .expect("original native child lifecycle request")
+}
+
+fn drive_native_insertion<const N: usize>(
+    f: &mut Fixture,
+    container: NodeId,
+    parent: NodeId,
+    before: Option<NodeId>,
+) -> [DomHostedCreation; N] {
+    let mut lease = f
+        .dom
+        .begin_source_edit(
+            crate::internal::source::DomSourceEdit::insert_before(container, parent, before),
+            source_limits(),
+            &cancel(),
+        )
+        .unwrap();
+    let children = std::array::from_fn(|_| {
+        let request = native_child_request(&mut lease);
+        drive_absent_src_child(&mut lease, &mut f.source, &request)
+    });
+    assert!(matches!(
+        lease.advance(&cancel()).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    children
+}
+
+fn drive_native_removal(f: &mut Fixture, container: NodeId) {
+    let mut lease = f
+        .dom
+        .begin_source_edit(
+            crate::internal::source::DomSourceEdit::detach(container),
+            source_limits(),
+            &cancel(),
+        )
+        .unwrap();
+    let request = native_child_request(&mut lease);
+    lease
+        .prepare_hosted_child_removal(&mut f.source, &request, &cancel())
+        .unwrap();
+    let packet = match lease.hosted_child_step(&request).unwrap() {
+        DomHostedChildStep::Removal(packet) => Some(packet),
+        _ => None,
+    }
+    .expect("original native child removal packet");
+    let mut publication = Some(f.source.seal_child_removal(packet, &cancel()).unwrap());
+    lease
+        .accept_hosted_child_removal(&mut f.source, &request, &mut publication, &cancel())
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel()).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+}
+
+fn complete_native_structure(f: &mut Fixture, edit: crate::internal::source::DomSourceEdit) {
+    let mut lease = f
+        .dom
+        .begin_source_edit(edit, source_limits(), &cancel())
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel()).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+}
+
+#[test]
+fn fragment_child_navigable_links_have_distinct_insertion_groups() {
+    use surgeist_html::values::Namespace;
+
+    let mut f = Fixture::new();
+    let document = f.creation.document;
+    let parent = f
+        .dom
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let closed = batch.create_html_document(document, None);
+    let fragment = batch.create_fragment(&closed);
+    let frame = batch.create_element_ns(&closed, Namespace::html(), "frame");
+    let iframe = batch.create_element_ns(&closed, Namespace::html(), "iframe");
+    batch.insert_before(&frame, &fragment, None);
+    batch.insert_before(&iframe, &fragment, None);
+    let commit = f.dom.apply(batch, &cancel()).unwrap();
+    let [fragment, frame, iframe] =
+        [&fragment, &frame, &iframe].map(|ticket| commit.created(ticket).unwrap().unwrap());
+    assert_eq!(
+        f.dom.snapshot().node(fragment).unwrap().children(),
+        &[frame, iframe]
+    );
+
+    let children = drive_native_insertion::<2>(&mut f, fragment, parent, None);
+    let snapshot = f.dom.snapshot();
+    assert!(snapshot.node(fragment).unwrap().children().is_empty());
+    let [first, second] = std::array::from_fn(|index| {
+        let container = [frame, iframe][index];
+        let navigable = snapshot
+            .hosted_navigable(children[index].navigable)
+            .unwrap();
+        assert_eq!(snapshot.node(container).unwrap().parent(), Some(parent));
+        assert_eq!(navigable.container(), Some(container));
+        let occurrence = navigable.container_insertion().unwrap();
+        assert_eq!(occurrence.document(), document);
+        assert_eq!(occurrence.preorder(), 0);
+        occurrence
+    });
+    assert!(first.group() < second.group());
+}
+
+#[test]
+fn child_insertion_provenance_follows_structural_groups_across_moves_and_reinsertion() {
+    use crate::internal::shadow::DomShadowRootInit;
+    use crate::internal::source::DomSourceEdit;
+    use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
+
+    let mut f = Fixture::new();
+    let (old, old_child) = insert_absent_src_frame(&mut f);
+    let document = f.creation.document;
+    let snapshot = f.dom.snapshot();
+    let parent = snapshot.node(old).unwrap().parent().unwrap();
+    let prior = snapshot
+        .hosted_navigable(old_child.navigable)
+        .unwrap()
+        .container_insertion()
+        .unwrap();
+
+    let mut batch = DomBatch::new();
+    let closed = batch.create_html_document(document, None);
+    let subtree = batch.create_element_ns(&closed, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&subtree, DomShadowRootInit::new(HtmlShadowRootMode::Closed));
+    let light = batch.create_element_ns(&closed, Namespace::html(), "frame");
+    let hidden = batch.create_element_ns(&closed, Namespace::html(), "iframe");
+    batch.insert_before(&light, &subtree, None);
+    batch.insert_before(&hidden, &shadow, None);
+    let commit = f.dom.apply(batch, &cancel()).unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
+    let [subtree, light, hidden] =
+        [&subtree, &light, &hidden].map(|ticket| commit.created(ticket).unwrap().unwrap());
+
+    let before = f.dom.snapshot();
+    let mut refused = DomBatch::new();
+    refused.insert_before(subtree, parent, Some(old.into()));
+    assert_eq!(
+        f.dom.apply(refused, &cancel()).unwrap_err(),
+        DomError::HostedSourceUnavailable
+    );
+    assert_eq!(f.dom.snapshot().stamp(), before.stamp());
+    assert_eq!(f.dom.snapshot().node(subtree).unwrap().parent(), None);
+
+    let [hidden_child, light_child] = drive_native_insertion(&mut f, subtree, parent, Some(old));
+    let snapshot = f.dom.snapshot();
+    let insertion = |snapshot: &DomSnapshot, child: DomHostedCreation| {
+        snapshot
+            .hosted_navigable(child.navigable)
+            .unwrap()
+            .container_insertion()
+            .unwrap()
+    };
+    let hidden_insert = insertion(&snapshot, hidden_child);
+    let light_insert = insertion(&snapshot, light_child);
+    assert_eq!(hidden_insert.document(), document);
+    assert_eq!(light_insert.document(), document);
+    assert_eq!(hidden_insert.group(), prior.group() + 1);
+    assert_eq!(hidden_insert.group(), light_insert.group());
+    assert!(hidden_insert.preorder() < light_insert.preorder());
+    let current_children = |dom: &Dom, document| {
+        let mut found = Vec::new();
+        let count = dom
+            .visit_document_tree_child_navigables(
+                document,
+                100_000,
+                || Ok::<_, DomHostedError>(()),
+                &cancel(),
+                |child| {
+                    found.push((
+                        child.container().unwrap(),
+                        child.container_insertion().unwrap(),
+                    ));
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(count, found.len());
+        found
+    };
+    assert_eq!(
+        current_children(&f.dom, document),
+        [(light, light_insert), (old, prior)]
+    );
+
+    complete_native_structure(
+        &mut f,
+        DomSourceEdit::move_before(old, parent, Some(subtree)),
+    );
+    assert_eq!(
+        current_children(&f.dom, document),
+        [(old, prior), (light, light_insert)]
+    );
+
+    complete_native_structure(
+        &mut f,
+        DomSourceEdit::move_before(light, shadow, Some(hidden)),
+    );
+    assert_eq!(current_children(&f.dom, document), [(old, prior)]);
+    assert_eq!(insertion(&f.dom.snapshot(), light_child), light_insert);
+
+    complete_native_structure(
+        &mut f,
+        DomSourceEdit::move_before(hidden, parent, Some(old)),
+    );
+    assert_eq!(
+        current_children(&f.dom, document),
+        [(hidden, hidden_insert), (old, prior)]
+    );
+
+    drive_native_removal(&mut f, hidden);
+    assert_eq!(current_children(&f.dom, document), [(old, prior)]);
+    assert_eq!(insertion(&f.dom.snapshot(), hidden_child), hidden_insert);
+
+    let [same_document_child] = drive_native_insertion(&mut f, hidden, parent, None);
+    let same_document = insertion(&f.dom.snapshot(), same_document_child);
+    assert_ne!(same_document_child.navigable, hidden_child.navigable);
+    assert_eq!(same_document.document(), document);
+    assert!(same_document.group() > hidden_insert.group());
+    assert_eq!(
+        current_children(&f.dom, document),
+        [(old, prior), (hidden, same_document)]
+    );
+    drive_native_removal(&mut f, hidden);
+
+    let destination = old_child.document;
+    let snapshot = f.dom.snapshot();
+    let destination_parent = snapshot
+        .document(destination)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    complete_native_structure(&mut f, DomSourceEdit::adopt(hidden, destination.node()));
+
+    let [reinserted] = drive_native_insertion(&mut f, hidden, destination_parent, None);
+    assert_ne!(reinserted.navigable, hidden_child.navigable);
+    let current = insertion(&f.dom.snapshot(), reinserted);
+    assert_eq!(current.document(), destination);
+    assert!(current.group() > same_document.group());
+    assert_eq!(current_children(&f.dom, destination), [(hidden, current)]);
+    assert_eq!(current_children(&f.dom, document), [(old, prior)]);
+
+    let stale = DomHostedNavigableId {
+        generation: reinserted.navigable.generation + 1,
+        ..reinserted.navigable
+    };
+    assert!(matches!(
+        f.dom.hosted_navigable(stale),
+        Err(DomHostedError::StaleIdentity)
+    ));
 }

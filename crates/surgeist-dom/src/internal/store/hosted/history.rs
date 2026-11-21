@@ -231,6 +231,7 @@ pub(crate) struct Initial<'a> {
     pub(crate) initialization: DomHostedEntryInitialization,
     pub(crate) origin: crate::internal::document::DomOpaqueOrigin,
     pub(crate) parent: Option<(DomHostedNavigableId, NodeId)>,
+    pub(crate) insertion: Option<DomHostedChildInsertion>,
     pub(crate) target_name: Option<&'a DocumentString>,
     pub(crate) about_base_url: &'a HtmlAboutBaseUrl,
     pub(crate) initiator_origin: Option<&'a crate::internal::document::DomOpaqueOrigin>,
@@ -392,6 +393,7 @@ pub(crate) struct Navigable {
     history_attached: bool,
     pub(crate) former_parent: Option<DomHostedNavigableId>,
     pub(crate) container: Option<NodeId>,
+    pub(crate) insertion: Option<DomHostedChildInsertion>,
     pub(crate) current: DomHostedEntryId,
     pub(crate) active: DomHostedEntryId,
     pub(crate) entries: Arc<Values<DomHostedEntryId>>,
@@ -995,6 +997,7 @@ impl Graph {
             initialization,
             origin,
             parent,
+            insertion,
             target_name,
             about_base_url,
             initiator_origin,
@@ -1041,6 +1044,7 @@ impl Graph {
                     history_attached: parent.is_none(),
                     former_parent: None,
                     container: parent.map(|p| p.1),
+                    insertion,
                     current: creation.entry,
                     active: creation.entry,
                     entries,
@@ -1810,10 +1814,8 @@ impl Dom {
                         return Err(DomError::UnavailableCreation.into());
                     };
                     let candidate = snapshot.node_with(container, &mut *step)?;
-                    let content = candidate
-                        .as_element()
-                        .and_then(|element| element.child_navigable())
-                        .ok_or(DomError::WrongNodeKind)?;
+                    let element = candidate.as_element().ok_or(DomError::WrongNodeKind)?;
+                    let content = element.child_navigable().ok_or(DomError::WrongNodeKind)?;
                     let Some(child) = content else {
                         return Ok(());
                     };
@@ -1826,6 +1828,14 @@ impl Dom {
                     let record = graph.navigable_with(child, &mut *step)?;
                     if record.container != Some(container) {
                         return Err(DomHostedError::StaleIdentity.into());
+                    }
+                    step()?;
+                    let insertion = element
+                        .hosted_insertion()
+                        .ok_or(DomHostedError::MissingPublication)?;
+                    let projection = record.insertion.ok_or(DomHostedError::MissingPublication)?;
+                    if insertion.document != document || projection != insertion {
+                        return Err(DomHostedError::StaleBasis.into());
                     }
                     let active = graph.entry_with(record.active, &mut *step)?;
                     let child_document = active.document.ok_or(DomHostedError::StaleIdentity)?;
@@ -2141,6 +2151,7 @@ pub(in crate::internal::store) mod tests {
                 initialization: DomHostedEntryInitialization::new(key, key),
                 origin: self.origin.clone(),
                 parent: parent.map(|p| (p.navigable, p.document.node())),
+                insertion: None,
                 target_name: parent.is_none().then_some(&self.target_name),
                 about_base_url: &self.about_base_url,
                 initiator_origin: parent.is_some().then_some(&self.origin),

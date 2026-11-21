@@ -7,6 +7,7 @@
 use super::*;
 
 pub(in crate::internal::store) enum Undo {
+    HostedInsertion(u64),
     Method(Option<method::Frame>),
     Registries {
         semantic: Option<Arc<crate::internal::store::registry::Bank>>,
@@ -56,6 +57,7 @@ impl Undo {
     pub(in crate::internal::store) fn restore(self, draft: &mut Draft) {
         match self {
             Self::Method(previous) => draft.method = previous,
+            Self::HostedInsertion(previous) => draft.next_hosted_insertion = previous,
             Self::Registries { semantic, custody } => {
                 draft.registries = semantic;
                 draft.auxiliary.registries = custody;

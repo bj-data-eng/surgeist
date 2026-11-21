@@ -168,16 +168,41 @@ fn build_fixture(unrelated: usize, populated: bool, document_tree: bool) -> Fixt
     ];
     let mut draft = Draft::new(&f.dom, DomBatch::new().owner, &cancel()).unwrap();
     if document_tree {
+        draft
+            .set_hosted_history(Some(graph.clone()), None, &cancel())
+            .unwrap();
         initial_association(&mut draft, &f.source, top);
+    }
+    // This graph-locality fixture establishes its issuer rows directly. Qualify
+    // the pre-content participants in the same canonical structural order.
+    if document_tree {
+        draft
+            .record_hosted_child_insertions(Key::Existing(root), &cancel())
+            .unwrap();
     }
     if populated || !document_tree {
         for (child, container, parent) in children {
-            let mut input = f.input(child, parent);
-            input.parent = parent.map(|parent| (parent.navigable, container));
-            graph = history::Graph::initial(Some(&graph), input, &context).unwrap();
             if document_tree {
                 initial_association(&mut draft, &f.source, child);
+                if let Some(parent) = parent
+                    && parent.document != top.document
+                {
+                    draft
+                        .record_hosted_child_insertions(Key::Existing(container), &cancel())
+                        .unwrap();
+                }
             }
+            let mut input = f.input(child, parent);
+            input.parent = parent.map(|parent| (parent.navigable, container));
+            if populated {
+                let insertion = fixture_insertion(
+                    &mut draft,
+                    parent.map_or(top.document, |p| p.document),
+                    container,
+                );
+                input.insertion = parent.map(|_| insertion);
+            }
+            graph = history::Graph::initial(Some(&graph), input, &context).unwrap();
         }
     }
     draft
@@ -217,6 +242,41 @@ fn build_fixture(unrelated: usize, populated: bool, document_tree: bool) -> Fixt
             vec![]
         },
     }
+}
+
+fn fixture_insertion(
+    draft: &mut Draft,
+    document: DocumentId,
+    container: NodeId,
+) -> DomHostedChildInsertion {
+    let key = Key::Existing(container);
+    if let Some(insertion) = draft
+        .node(key)
+        .unwrap()
+        .element()
+        .unwrap()
+        .language()
+        .hosted_insertion()
+    {
+        return insertion;
+    }
+    let insertion = DomHostedChildInsertion {
+        document,
+        group: draft.next_hosted_insertion,
+        preorder: 0,
+    };
+    draft.next_hosted_insertion += 1;
+    draft
+        .replace_hosted_content(
+            key,
+            Some(crate::internal::element::HostedContent {
+                insertion,
+                navigable: None,
+            }),
+            &cancel(),
+        )
+        .unwrap();
+    insertion
 }
 
 fn initial_association(draft: &mut Draft, source: &DomHostedSource, creation: DomHostedCreation) {
@@ -563,6 +623,7 @@ fn document_tree_children_follow_current_publication_reorder_and_retirement() {
     for (container, child) in [(f.containers[2], f.light), (f.containers[0], f.first)] {
         let mut input = f.inner.input(child, Some(f.top));
         input.parent = Some((f.top.navigable, container));
+        input.insertion = Some(fixture_insertion(&mut draft, f.top.document, container));
         graph = history::Graph::initial(Some(&graph), input, &context).unwrap();
         initial_association(&mut draft, &f.inner.source, child);
         draft
@@ -787,4 +848,50 @@ fn document_tree_child_reads_meter_participants_and_stop_at_the_first_refusal() 
         Err(ReadRefusal::Admission)
     );
     assert!(visited.is_empty());
+}
+
+#[test]
+fn document_tree_child_read_refuses_an_inconsistent_insertion_projection() {
+    let mut f = build_fixture(0, true, true);
+    let container = f.containers[0];
+    let before = f.inner.dom.snapshot();
+    let child = before.hosted_navigable(f.first.navigable).unwrap();
+    let original = child.container_insertion().unwrap();
+    let mut draft = Draft::new(&f.inner.dom, DomBatch::new().owner, &cancel()).unwrap();
+    draft
+        .replace_hosted_content(
+            Key::Existing(container),
+            Some(crate::internal::element::HostedContent {
+                insertion: DomHostedChildInsertion {
+                    group: original.group() + 1,
+                    ..original
+                },
+                navigable: Some(child.id()),
+            }),
+            &cancel(),
+        )
+        .unwrap();
+    let prepared = draft.finish(&f.inner.dom, &cancel()).unwrap();
+    f.inner.dom.publish(prepared, &cancel()).unwrap();
+    let changes = f.inner.dom.changes_since(before.stamp()).unwrap();
+    assert!(
+        changes
+            .changes()
+            .contains(&DomChange::ElementState(container))
+    );
+    let mut visited = false;
+    assert_eq!(
+        f.inner.dom.visit_document_tree_child_navigables(
+            f.top.document,
+            10_000,
+            || Ok::<_, DomHostedError>(()),
+            &cancel(),
+            |_| {
+                visited = true;
+                Ok(())
+            }
+        ),
+        Err(DomHostedError::StaleBasis)
+    );
+    assert!(!visited);
 }

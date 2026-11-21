@@ -1473,6 +1473,11 @@ impl DomSourceLease<'_> {
                         } else {
                             context
                         };
+                        let insertion = operation.draft.child_insertion_for_content(
+                            child.hook.key(),
+                            request.document.document(),
+                            cancel,
+                        )?;
                         let graph = canonical::history::Graph::initial(
                             operation.draft.hosted_history.as_deref(),
                             canonical::history::Initial {
@@ -1483,6 +1488,7 @@ impl DomSourceLease<'_> {
                                 ),
                                 origin: inner.origin.clone(),
                                 parent: Some((request.parent, request.container)),
+                                insertion: Some(insertion),
                                 target_name: target_name.as_ref(),
                                 about_base_url: facts.0.facts.about_base_url(),
                                 initiator_origin: Some(&inner.origin),

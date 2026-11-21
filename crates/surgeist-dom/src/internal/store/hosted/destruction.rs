@@ -230,6 +230,7 @@ mod tests {
             initialization: DomHostedEntryInitialization::new(key, key),
             origin: origin.clone(),
             parent,
+            insertion: None,
             target_name: Some(&name),
             about_base_url: &about,
             initiator_origin: None,
@@ -245,6 +246,20 @@ mod tests {
         let batch = DomBatch::new();
         let mut draft = Draft::new(&f.dom, batch.owner, &c).unwrap();
         draft.set_hosted_history(Some(graph), None, &c).unwrap();
+        draft
+            .replace_hosted_content(
+                Key::Existing(f.container),
+                Some(crate::internal::element::HostedContent {
+                    insertion: DomHostedChildInsertion {
+                        document: parent.document,
+                        group: 0,
+                        preorder: 0,
+                    },
+                    navigable: None,
+                }),
+                &c,
+            )
+            .unwrap();
         draft
             .establish_child_navigable(Key::Existing(f.container), Some(child.navigable), &c)
             .unwrap();

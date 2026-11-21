@@ -572,6 +572,7 @@ impl Draft {
                 next_task,
                 details_intentions,
                 next_details_intention,
+                next_hosted_insertion: self.next_hosted_insertion,
                 nodes: self.public_nodes(),
                 units,
             },
@@ -867,6 +868,7 @@ impl Draft {
         self.created_dirty = bank::Bank::default();
         self.created_dirty_custody = bank::BankCustody::default();
         self.base = rebase.state;
+        self.next_hosted_insertion = self.base.next_hosted_insertion;
         self.base_custody = rebase.custody;
         self.registries = self.base.registries.clone();
         self.hosted_globals = self.base.hosted_globals.clone();

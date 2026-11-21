@@ -280,7 +280,11 @@ impl Draft {
         Ok(matches!(self.node(root)?.kind(), KindRead::Document(_)))
     }
 
-    fn shadow_including_root(&self, mut key: Key, cancel: &AtomicBool) -> Result<Key, DomError> {
+    pub(super) fn shadow_including_root(
+        &self,
+        mut key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
         loop {
             self.effect_step(cancel)?;
             match self.shadow_including_parent(key)? {
@@ -1326,6 +1330,7 @@ impl Draft {
                         if !self.is_private(frame.parent) {
                             self.expose_source_subtree(child, cancel)?;
                         }
+                        self.record_hosted_child_insertions(child, cancel)?;
                         self.slot_insertion(child, frame.parent, limits, cancel)?;
                         frame.index += 1;
                         frame.stage = 1;

@@ -10,8 +10,8 @@
 //! `docs/hosted-documents.md` owns the contract.
 
 pub use crate::internal::hosted::{
-    DomHostedChildHistoryPublication, DomHostedChildHistoryRequest, DomHostedEntry,
-    DomHostedEntryId, DomHostedEntryInitialization, DomHostedEntryRequest,
+    DomHostedChildHistoryPublication, DomHostedChildHistoryRequest, DomHostedChildInsertion,
+    DomHostedEntry, DomHostedEntryId, DomHostedEntryInitialization, DomHostedEntryRequest,
     DomHostedHistoryJobReceipt, DomHostedHistoryJobRequest, DomHostedHistoryStep,
     DomHostedNavigable, DomHostedQueuedHistory,
 };
