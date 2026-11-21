@@ -11,14 +11,16 @@ use surgeist_bindings_js::{
     IntegerKind, IntegerMode, IntegerValue, dom_exception::DomExceptionName,
 };
 use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
+use surgeist_html::attributes::command::HtmlCommandState;
 use surgeist_html::attributes::{
     HtmlClosedByState, HtmlContentEditableState, HtmlHidden, HtmlHiddenState, HtmlTranslate,
 };
 use surgeist_html::bounded::attributes::{
-    HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule, closedby_processing_with,
-    contenteditable_processing_with, contenteditable_setter_state_with, dir_keyword_with,
-    enterkeyhint_keyword_with, form_autocomplete_keyword_with, form_enctype_keyword_with,
-    form_method_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
+    HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule, button_command_readback_with,
+    closedby_processing_with, contenteditable_processing_with, contenteditable_setter_state_with,
+    dir_keyword_with, enterkeyhint_keyword_with, form_autocomplete_keyword_with,
+    form_enctype_keyword_with, form_enctype_override_keyword_with, form_method_keyword_with,
+    form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
     popover_keyword_with, table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
     template_shadow_root_slot_assignment_keyword_with,
@@ -48,9 +50,13 @@ pub(super) enum Reflection {
     Translate,
     Hidden,
     DialogClosedBy,
+    ButtonCommand,
+    ButtonType,
     FormAutocomplete,
     FormEnctype,
     FormMethod,
+    FormEnctypeOverride,
+    FormMethodOverride,
     Popover,
     HeadingOffset,
     TabIndex,
@@ -100,6 +106,7 @@ pub(super) enum Receiver {
     Mathml,
     Template,
     Body,
+    Button,
     Br,
     Hr,
     Data,
@@ -165,6 +172,12 @@ impl Receiver {
             Self::Body => {
                 step()?;
                 html_element_is(node, "HTMLBodyElement")
+            }
+            Self::Button => {
+                step()?;
+                node.as_element().is_some_and(|element| {
+                    !element.has_failed_construction_interface() && element.button_state().is_some()
+                })
             }
             Self::Br => html_element_is(node, "HTMLBRElement"),
             Self::Hr => html_element_is(node, "HTMLHRElement"),
@@ -249,6 +262,7 @@ impl Receiver {
             Self::Mathml => const { &ascii(b"MathMLElement required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Body => const { &ascii(b"HTMLBodyElement required") },
+            Self::Button => const { &ascii(b"HTMLButtonElement required") },
             Self::Br => const { &ascii(b"HTMLBRElement required") },
             Self::Hr => const { &ascii(b"HTMLHRElement required") },
             Self::Data => const { &ascii(b"HTMLDataElement required") },
@@ -468,6 +482,23 @@ impl Capture {
                         };
                         Reflected::Keyword(Some(value.canonical_keyword()))
                     }
+                    Reflection::ButtonCommand => {
+                        let command = button_command_readback_with(
+                            stored.map(|value| value.value()),
+                            |_| read.step(),
+                        )?;
+                        match command.state() {
+                            HtmlCommandState::Standard(keyword) => {
+                                Reflected::Keyword(Some(keyword.canonical_keyword()))
+                            }
+                            HtmlCommandState::Custom | HtmlCommandState::Unknown => {
+                                Reflected::String(command.custom_value().cloned())
+                            }
+                        }
+                    }
+                    Reflection::ButtonType => {
+                        Reflected::Keyword(Some(super::button::type_keyword(read, node, units)?))
+                    }
                     Reflection::FormAutocomplete => {
                         Reflected::Keyword(Some(form_autocomplete_keyword_with(units, |_| {
                             read.step()
@@ -478,6 +509,16 @@ impl Capture {
                     }
                     Reflection::FormMethod => {
                         Reflected::Keyword(Some(form_method_keyword_with(units, |_| read.step())?))
+                    }
+                    Reflection::FormEnctypeOverride => {
+                        Reflected::Keyword(Some(form_enctype_override_keyword_with(units, |_| {
+                            read.step()
+                        })?))
+                    }
+                    Reflection::FormMethodOverride => {
+                        Reflected::Keyword(Some(form_method_override_keyword_with(units, |_| {
+                            read.step()
+                        })?))
                     }
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
@@ -744,6 +785,7 @@ impl Capture {
                     if matches!(
                         receiver,
                         Receiver::Body
+                            | Receiver::Button
                             | Receiver::Dialog
                             | Receiver::Fieldset
                             | Receiver::Form

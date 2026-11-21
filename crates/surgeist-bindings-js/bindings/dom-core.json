@@ -814,6 +814,16 @@
       "entries": ["HTMLBodyElement.obsolete"]
     },
     {
+      "id": "HTMLButtonElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmlbuttonelement",
+      "block": 0,
+      "sha256": "56552e593ab5f8b2bd215b7d1834389fb7155799a323a759cb735543d91d8488",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlbuttonelement",
+      "entries": ["HTMLButtonElement", "HTMLButtonElement.includes.PopoverTargetAttributes"]
+    },
+    {
       "id": "HTMLFieldSetElement.source",
       "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
       "anchor": "htmlfieldsetelement",
@@ -6877,6 +6887,173 @@
       "partial": true
     },
     {
+      "id": "HTMLButtonElement",
+      "kind": "interface",
+      "name": "HTMLButtonElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLButtonElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "command",
+          "readonly": false,
+          "id": "HTMLButtonElement.command"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect", "value": "commandfor"}],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "Element"}},
+          "name": "commandForElement",
+          "readonly": false,
+          "id": "HTMLButtonElement.commandForElement"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLButtonElement.disabled"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLFormElement"}},
+          "name": "form",
+          "readonly": true,
+          "id": "HTMLButtonElement.form"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "USVString"},
+          "name": "formAction",
+          "readonly": false,
+          "id": "HTMLButtonElement.formAction"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "formEnctype",
+          "readonly": false,
+          "id": "HTMLButtonElement.formEnctype"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "formMethod",
+          "readonly": false,
+          "id": "HTMLButtonElement.formMethod"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "formNoValidate",
+          "readonly": false,
+          "id": "HTMLButtonElement.formNoValidate"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "formTarget",
+          "readonly": false,
+          "id": "HTMLButtonElement.formTarget"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLButtonElement.name"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "type",
+          "readonly": false,
+          "id": "HTMLButtonElement.type"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLButtonElement.value"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "willValidate",
+          "readonly": true,
+          "id": "HTMLButtonElement.willValidate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "ValidityState"},
+          "name": "validity",
+          "readonly": true,
+          "id": "HTMLButtonElement.validity"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "validationMessage",
+          "readonly": true,
+          "id": "HTMLButtonElement.validationMessage"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "checkValidity",
+          "arguments": [],
+          "id": "HTMLButtonElement.checkValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "reportValidity",
+          "arguments": [],
+          "id": "HTMLButtonElement.reportValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setCustomValidity",
+          "arguments": [{"name": "error", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "id": "HTMLButtonElement.setCustomValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "NodeList"},
+          "name": "labels",
+          "readonly": true,
+          "id": "HTMLButtonElement.labels"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
       "id": "HTMLFieldSetElement",
       "kind": "interface",
       "name": "HTMLFieldSetElement",
@@ -8796,6 +8973,7 @@
     {"id": "SVGElement.includes.HTMLOrSVGOrMathMLElement", "interface": "SVGElement", "mixin": "HTMLOrSVGOrMathMLElement"},
     {"id": "MathMLElement.includes.HTMLOrSVGOrMathMLElement", "interface": "MathMLElement", "mixin": "HTMLOrSVGOrMathMLElement"},
     {"id": "HTMLBodyElement.includes.WindowEventHandlers", "interface": "HTMLBodyElement", "mixin": "WindowEventHandlers"},
+    {"id": "HTMLButtonElement.includes.PopoverTargetAttributes", "interface": "HTMLButtonElement", "mixin": "PopoverTargetAttributes"},
     {"id": "HTMLFrameSetElement.includes.WindowEventHandlers", "interface": "HTMLFrameSetElement", "mixin": "WindowEventHandlers"}
   ],
   "externals": [
@@ -8905,6 +9083,13 @@
       "owner": "surgeist-html-parser",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-document-object",
       "requirement": "Pin the delegated ParseHTMLUnsafeOptions definition before converting/exposing this external type; the retained source here references it but is not its full defining clause."
+    },
+    {
+      "name": "PopoverTargetAttributes",
+      "kind": "mixin",
+      "owner": "surgeist-runtime",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#popovertargetattributes",
+      "requirement": "Retain the defining mixin and its limited-known-values action. Resolve the scoped live popover target and project the exact nullable Element. Convert the setter's actual nullable Element through DomSourceEdit::set_popover_target_element. Preserve the separate native activation and command dispatch requirements."
     },
     {
       "name": "RadioNodeList",
@@ -15118,6 +15303,338 @@
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
+    },
+    "HTMLButtonElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.command/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.command.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/command.rs", "symbol": "button_command_readback_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.command/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.command.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.commandForElement/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.commandforelement.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/button.rs", "symbol": "explicit_command_for"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/command_targets.rs", "symbol": "associated_element"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Resolve the fresh reflected associated element under the current Source scope, including weak target validity and commandfor identifier fallback.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-button-commandforelement",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the exact nullable associated Element with the attached realm's native wrapper identity.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-button-commandforelement",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLButtonElement.commandForElement/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.commandforelement.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_command_for_element"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Convert a nullable Element with its authentic platform-object brand and project its exact native identity into the Source setter.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-button-commandforelement",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLButtonElement.disabled/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.disabled.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.disabled/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.disabled.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.form/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.form.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/button.rs", "symbol": "form_owner_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/form_owner.rs", "symbol": "read_form_owner"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.formAction/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Resolve the Button's applicable formaction against the current Document URL, base and encoding, including its pinned missing and empty behavior.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-formaction",
+        "issue": 2258
+      }
+    },
+    "HTMLButtonElement.formAction/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formaction.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired URL attribute with its USVString setter through the canonical formaction Source mutation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-formaction",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLButtonElement.formEnctype/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formenctype.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "form_enctype_override_keyword_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.formEnctype/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formenctype.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.formMethod/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formmethod.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "form_method_override_keyword_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.formMethod/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formmethod.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.formNoValidate/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formnovalidate.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.formNoValidate/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formnovalidate.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.formTarget/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formtarget.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.formTarget/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.formtarget.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.name/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.name.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.name/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.name.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.type/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.type.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "button_type_keyword_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/button.rs", "symbol": "type_keyword"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.type/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.type.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.value/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.value.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.value/set": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.value.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLButtonElement.willValidate/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.willvalidate.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "constraint_validation_candidate"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the existing Button candidacy calculation as a bounded observation of the current published Source segment, with exact type, disabled and reached ancestry facts.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Authenticate the attached Button and project its reached candidacy as a Boolean under the original read admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLButtonElement.validity/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.validity.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/button.rs", "symbol": "custom_validity_message"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project live ValidityState from the actual Button constraints and canonical custom error.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validity",
+          "issue": 1235
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLButtonElement.validationMessage/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project the actual Button validation message under current candidacy and the pinned message-selection rules.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validationmessage",
+        "issue": 1235
+      }
+    },
+    "HTMLButtonElement.checkValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Evaluate actual Button candidacy and constraints and dispatch the pinned invalid event only when reached.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-checkvalidity",
+        "issue": 1235
+      }
+    },
+    "HTMLButtonElement.reportValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Evaluate actual Button constraints, dispatch invalid when reached and use the reached native validation reporting service.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-reportvalidity",
+        "issue": 1235
+      }
+    },
+    "HTMLButtonElement.setCustomValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.setcustomvalidity.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the branded Button method with its required DOMString argument and canonical Source custom validity edit.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-setcustomvalidity",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLButtonElement.labels/get": {
+      "kind": "native",
+      "adapter": "htmlbuttonelement.labels.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "control_labels"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the existing Label association calculation in tree order through a bounded observation of the current published Source segment.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the same live labels NodeList with exact supported indices and current node identities.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
     },
     "HTMLFieldSetElement.constructor:0/construct": {
       "kind": "native",

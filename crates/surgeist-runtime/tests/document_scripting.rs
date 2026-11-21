@@ -63,6 +63,8 @@ use surgeist_runtime::{
 
 #[path = "document_scripting/body_reflections.rs"]
 mod body_reflections;
+#[path = "document_scripting/button_attributes.rs"]
+mod button_attributes;
 #[path = "document_scripting/content_editable.rs"]
 mod content_editable;
 #[path = "document_scripting/dialog_close.rs"]
@@ -2434,6 +2436,7 @@ fn main() {
             "form-attributes" => form_attributes::attached_form_settings_reflect_live_native_attributes(),
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
+            "button-attributes" => button_attributes::attached_button_attributes_use_live_submitter_and_form_state(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
@@ -2536,6 +2539,7 @@ fn main() {
     form_attributes::attached_form_settings_reflect_live_native_attributes();
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
     output_values::attached_output_reads_native_values_and_stores_custom_validity();
+    button_attributes::attached_button_attributes_use_live_submitter_and_form_state();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();

@@ -5,11 +5,15 @@
 use surgeist_html::{
     attributes::{
         HtmlButtonSubmitterContext as Context, HtmlButtonType, HtmlButtonTypeState as State,
-        HtmlInputType as Input,
+        HtmlInputType as Input, HtmlStandardCommand, command::HtmlCommandState,
     },
     bounded::attributes::{
-        HtmlButtonSubmitterFact as Fact, button_submitter_context_with, input_submitter_context,
+        HtmlAttributeKeywordRead, HtmlButtonSubmitterFact as Fact, button_command_readback_with,
+        button_submitter_context_with, button_type_keyword_with,
+        form_enctype_override_keyword_with, form_method_override_keyword_with,
+        input_submitter_context,
     },
+    values::DocumentString,
 };
 
 #[test]
@@ -149,4 +153,123 @@ fn the_first_fact_error_is_returned_unchanged_and_ends_the_questions() {
             Fact::CommandforAttributePresent
         ]
     );
+}
+
+#[test]
+fn button_type_readback_composes_content_recognition_with_the_lazy_facts() {
+    let explicit = "SuBmIt".encode_utf16().collect::<Vec<_>>();
+    assert_eq!(
+        button_type_keyword_with(
+            Some(&explicit),
+            |_| Ok::<_, ()>(()),
+            |_| panic!("an explicit submit state needs no contextual fact"),
+        ),
+        Ok("submit")
+    );
+    let invalid = " Submit ".encode_utf16().collect::<Vec<_>>();
+    let mut asked = Vec::new();
+    let result = button_type_keyword_with(
+        Some(&invalid),
+        |_| Ok(()),
+        |fact| {
+            asked.push(fact);
+            match fact {
+                Fact::CommandAttributePresent => Ok(false),
+                Fact::CommandforAttributePresent => Err("the original commandfor refusal"),
+                Fact::ParentIsSelect => panic!("the parent must not be reached"),
+            }
+        },
+    );
+    assert_eq!(result, Err("the original commandfor refusal"));
+    assert_eq!(
+        asked,
+        [
+            Fact::CommandAttributePresent,
+            Fact::CommandforAttributePresent
+        ]
+    );
+    let mut facts = 0;
+    assert_eq!(
+        button_type_keyword_with(
+            None,
+            |_| Err("the original content header refusal"),
+            |_| {
+                facts += 1;
+                Ok(false)
+            },
+        ),
+        Err("the original content header refusal")
+    );
+    assert_eq!(facts, 0);
+}
+
+#[test]
+fn button_command_readback_preserves_intrinsic_states_and_refuses_the_exact_prefix_read() {
+    let standard = DocumentString::from("sHoW-PoPoVeR");
+    let result = button_command_readback_with(Some(&standard), |_| Ok::<_, ()>(())).unwrap();
+    assert_eq!(
+        result.state(),
+        HtmlCommandState::Standard(HtmlStandardCommand::ShowPopover)
+    );
+    assert_eq!(result.custom_value(), None);
+    let malformed = DocumentString::from(" show-popover");
+    for unknown in [None, Some(&malformed)] {
+        let result = button_command_readback_with(unknown, |_| Ok::<_, ()>(())).unwrap();
+        assert_eq!(result.state(), HtmlCommandState::Unknown);
+        assert_eq!(result.custom_value(), None);
+    }
+
+    let raw = DocumentString::from_utf16(vec![45, 45, 0xd800, 0, 0xdc00, 32]);
+    let mut actions = Vec::new();
+    let result = button_command_readback_with(Some(&raw), |action| {
+        actions.push(action);
+        Ok::<_, HtmlAttributeKeywordRead>(())
+    })
+    .unwrap();
+    assert_eq!(result.state(), HtmlCommandState::Custom);
+    assert_eq!(result.custom_value(), Some(&raw));
+    assert_eq!(
+        actions
+            .iter()
+            .filter(|&&action| action == HtmlAttributeKeywordRead::KeywordPair)
+            .count(),
+        2
+    );
+    assert_eq!(actions.last(), Some(&HtmlAttributeKeywordRead::KeywordPair));
+    let mut accepted = actions.len() - 1;
+    assert_eq!(
+        button_command_readback_with(Some(&raw), |action| {
+            if accepted == 0 {
+                return Err(action);
+            }
+            accepted -= 1;
+            Ok(())
+        }),
+        Err(HtmlAttributeKeywordRead::KeywordPair)
+    );
+    assert_eq!(accepted, 0);
+}
+
+#[test]
+fn button_submitter_override_readback_distinguishes_absent_from_present_invalid() {
+    let encoding_default = "application/x-www-form-urlencoded";
+    for (content, method, encoding) in [
+        (None, "", ""),
+        (Some(""), "get", encoding_default),
+        (Some("unknown"), "get", encoding_default),
+        (Some("pOsT"), "post", encoding_default),
+        (Some("MuLtipart/Form-Data"), "get", "multipart/form-data"),
+    ] {
+        let raw = content.map(|value| value.encode_utf16().collect::<Vec<_>>());
+        assert_eq!(
+            form_method_override_keyword_with(raw.as_deref(), |_| Ok::<_, ()>(())),
+            Ok(method),
+            "{content:?}"
+        );
+        assert_eq!(
+            form_enctype_override_keyword_with(raw.as_deref(), |_| Ok::<_, ()>(())),
+            Ok(encoding),
+            "{content:?}"
+        );
+    }
 }
