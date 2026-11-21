@@ -3224,6 +3224,14 @@ fn parsed_document_clone_copies_actual_url_encoding_and_mode_without_parser_or_p
         )
         .unwrap();
     let source_document = installed.document();
+    assert_eq!(
+        dom.snapshot()
+            .document(source_document)
+            .unwrap()
+            .metadata()
+            .require_cookie_averse(),
+        Ok(())
+    );
     let done = source(
         &mut dom,
         DomSourceEdit::clone_node(source_document.node(), true),

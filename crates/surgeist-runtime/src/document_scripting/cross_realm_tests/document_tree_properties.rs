@@ -852,6 +852,12 @@ fn document_tree_accessors_use_registered_function_and_creation_realms() {
                 const color = Object.getOwnPropertyDescriptor(prototype, 'fgColor');
                 const title = Object.getOwnPropertyDescriptor(prototype, 'title');
                 const referrer = Object.getOwnPropertyDescriptor(prototype, 'referrer');
+                const cookie = Object.getOwnPropertyDescriptor(prototype, 'cookie');
+                try { cookie.set.call(originTreeDocument, Symbol()); return 'Symbol accepted by borrowed cookie setter'; }
+                catch (error) { if (!(error instanceof foreignTreeTypeError) || error instanceof TypeError)
+                    return 'cookie conversion uses function realm'; }
+                if (cookie.get.call(originTreeDocument) !== '' || cookie.set.call(document, 'foreign=1') !== undefined)
+                    return 'borrowed cookie access';
                 try { referrer.get.call({}); return 'wrong foreign referrer receiver accepted'; }
                 catch (error) { if (!(error instanceof foreignTreeTypeError) || error instanceof TypeError)
                     return 'referrer uses accessor function realm'; }

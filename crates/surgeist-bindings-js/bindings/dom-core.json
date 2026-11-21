@@ -8402,20 +8402,32 @@
       "requirements": []
     },
     "Document.html.cookie/get": {
-      "kind": "host",
-      "requirement": {
+      "kind": "native",
+      "adapter": "document.cookie.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "require_cookie_averse"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs", "symbol": "document_tree_get"}
+      ],
+      "requirements": [{
         "owner": "surgeist-runtime",
-        "contract": "The origin/storage-partition-qualified cookie service, cookie-enabled and sandbox/security policy, and source getter/setter processing; no in-memory attribute stands in for a cookie jar.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-cookie"
-      }
+        "contract": "The qualified HTTP Document cookie service with origin, storage partition and policy, including the ordered opaque-origin refusal.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-cookie",
+        "issue": 2984
+      }]
     },
     "Document.html.cookie/set": {
-      "kind": "host",
-      "requirement": {
+      "kind": "native",
+      "adapter": "document.cookie.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "require_cookie_averse"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs", "symbol": "document_tree_set"}
+      ],
+      "requirements": [{
         "owner": "surgeist-runtime",
-        "contract": "The origin/storage-partition-qualified cookie service, cookie-enabled and sandbox/security policy, and source getter/setter processing; no in-memory attribute stands in for a cookie jar.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-cookie"
-      }
+        "contract": "The qualified HTTP Document cookie service with origin, storage partition and policy, including receiving the actual non-HTTP set-cookie string.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-cookie",
+        "issue": 2984
+      }]
     },
     "Document.html.lastModified/get": {
       "kind": "host",

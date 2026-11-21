@@ -5,6 +5,7 @@ mod break_elements;
 mod data_time;
 mod declarative_shadow;
 mod details_reflections;
+mod document_cookie;
 mod document_import;
 mod document_legacy_entrypoints;
 mod document_referrer;
@@ -280,7 +281,14 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
         2
     );
     drop(session);
-    super::guest::tests::conversion_admission::conversion_work_precedes_guest_coercion();
+    for assignment in [
+        "conversionText.data = conversionInput",
+        "conversionDocument.cookie = conversionInput",
+    ] {
+        super::guest::tests::conversion_admission::conversion_work_precedes_guest_coercion(
+            assignment,
+        );
+    }
     super::guest::tests::conversion_admission::original_conversion_scopes_report_semantics_without_changing_profile_admission();
     super::guest::tests::conversion_admission::converted_payload_and_receipt_use_the_original_exact_storage_boundary();
     projected_comment_custody_outlives_collection_and_the_origin_realm_token();
@@ -400,6 +408,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     document_title::document_title_observes_ordinary_names_and_creation_boundaries();
     document_title::document_title_preserves_coercion_and_native_reaction_order();
     document_referrer::document_referrer_reads_the_canonical_known_empty_value();
+    document_cookie::cookie_averse_documents_read_empty_and_ignore_assignment();
+    document_cookie::cookie_assignment_preserves_conversion_reentry_and_abrupt_completion();
+    super::guest::tests::conversion_admission::cookie_access_refuses_unfunded_native_observations();
     document_referrer::document_referrer_preserves_creation_defaults_and_refuses_unfunded_reads();
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     slot::slot_members_read_the_canonical_named_assignment();

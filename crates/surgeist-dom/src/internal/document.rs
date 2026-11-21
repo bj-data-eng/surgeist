@@ -691,6 +691,29 @@ impl DomDocumentMetadata {
         }
     }
 
+    /// Qualify the cookie-averse branch using the current context and Document URL.
+    /// Returns [`DomError::HostedSourceUnavailable`] if the branch cannot be proved.
+    pub fn require_cookie_averse(&self) -> Result<(), DomError> {
+        use surgeist_html::security::nonce::HtmlBrowsingContextPresence;
+
+        if self.environment.browsing_context() == HtmlBrowsingContextPresence::Absent {
+            return Ok(());
+        }
+        if matches!(
+            self.cause,
+            DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+        ) && self.hosted_inputs.as_ref().is_some_and(|inputs| {
+            inputs
+                .0
+                .facts
+                .document_url()
+                .is_some_and(|url| url.matches_about_blank())
+        }) {
+            return Ok(());
+        }
+        Err(DomError::HostedSourceUnavailable)
+    }
+
     pub fn origin(&self) -> &DomOpaqueOrigin {
         &self.origin
     }

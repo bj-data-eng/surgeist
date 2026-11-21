@@ -431,6 +431,7 @@ pub fn surgeist_dom::document::DomDocumentMetadata::mode(&self) -> surgeist_html
 pub fn surgeist_dom::document::DomDocumentMetadata::origin(&self) -> &surgeist_dom::document::DomOpaqueOrigin
 pub fn surgeist_dom::document::DomDocumentMetadata::policy_container(&self) -> &surgeist_dom::meta::DomDocumentPolicyContainer
 pub fn surgeist_dom::document::DomDocumentMetadata::referrer(&self) -> core::result::Result<core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>, surgeist_dom::DomError>
+pub fn surgeist_dom::document::DomDocumentMetadata::require_cookie_averse(&self) -> core::result::Result<(), surgeist_dom::DomError>
 pub fn surgeist_dom::document::DomDocumentMetadata::url(&self) -> &surgeist_html::internal::values::document_string::DocumentString
 pub struct surgeist_dom::document::DomNativeInputPlatform
 impl surgeist_dom::document::DomNativeInputPlatform

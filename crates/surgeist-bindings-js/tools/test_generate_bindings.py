@@ -300,8 +300,8 @@ class DescriptionTests(unittest.TestCase):
             ("Document.html.location/set", "adapter", "document.location.set"),
             ("EventListener.handleEvent:0/call", "producers", []),
             ("HTMLElement.lang/set", "adapter", "htmlelement.lang.set"),
-            ("Document.html.cookie/set", "adapter", "document.cookie.set"),
-            ("Document.html.cookie/set", "requirement", []),
+            ("Document.html.lastModified/get", "adapter", "document.lastmodified.get"),
+            ("Document.html.lastModified/get", "requirement", []),
         ]:
             with self.subTest(access=access, field=field):
                 self.setUp()
