@@ -3749,6 +3749,7 @@ pub fn surgeist_dom::tree::DomNode<'a>::contains_with<E: core::convert::From<sur
 pub fn surgeist_dom::tree::DomNode<'a>::data(self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_dom::tree::DomNode<'a>::element_children(self) -> impl core::iter::traits::double_ended::DoubleEndedIterator<Item = surgeist_dom::identity::NodeId> + 'a
 pub fn surgeist_dom::tree::DomNode<'a>::element_index(self) -> core::option::Option<usize>
+pub fn surgeist_dom::tree::DomNode<'a>::fieldset_parent_form_owner_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::form::DomForm<'a>>, E>
 pub fn surgeist_dom::tree::DomNode<'a>::get_attribute_node(self, qualified_name: &surgeist_html::internal::values::document_string::DocumentString) -> core::option::Option<surgeist_dom::tree::DomAttr<'a>>
 pub fn surgeist_dom::tree::DomNode<'a>::get_attribute_node_ns(self, namespace: &surgeist_html::internal::values::Namespace, local_name: &surgeist_html::internal::values::document_string::DocumentString) -> core::option::Option<surgeist_dom::tree::DomAttr<'a>>
 pub fn surgeist_dom::tree::DomNode<'a>::host_including_parent(self) -> core::option::Option<surgeist_dom::identity::NodeId>

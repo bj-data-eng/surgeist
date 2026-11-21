@@ -1,6 +1,7 @@
 //! Live Select and Option members backed by the canonical DOM and Source operations.
 
 use super::{
+    form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
     *,
 };
@@ -8,9 +9,7 @@ use surgeist_bindings_js::{IntegerValue, conversion::declarations};
 use surgeist_dom::source::DomSourceEdit;
 use surgeist_html::bounded::select::select_type_value;
 
-mod form;
 mod strings;
-use form::FormControl;
 use strings::StringMember;
 
 const SELECT_REFLECTIONS: &[reflection::Member] = &[
@@ -66,7 +65,7 @@ pub(super) fn install_select<'scope>(
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
     reflection::install(scope, prototype, capture, Receiver::Select, DISABLED)?;
-    form::install(scope, prototype, capture, FormControl::Select)?;
+    form_owner::install(scope, prototype, capture, FormOwnerGetter::Select)?;
     reflection::install(
         scope,
         prototype,
@@ -101,7 +100,7 @@ pub(super) fn install_option<'scope>(
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
     reflection::install(scope, prototype, capture, Receiver::Option, DISABLED)?;
-    form::install(scope, prototype, capture, FormControl::Option)?;
+    form_owner::install(scope, prototype, capture, FormOwnerGetter::Option)?;
     strings::install(scope, prototype, capture, StringMember::OptionLabel)?;
     reflection::install(
         scope,

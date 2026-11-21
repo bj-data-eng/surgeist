@@ -73,6 +73,8 @@ mod element_projection;
 mod frameset_reflections;
 #[path = "document_scripting/hidden_reflection.rs"]
 mod hidden_reflection;
+#[path = "document_scripting/legend_form.rs"]
+mod legend_form;
 #[path = "document_scripting/script_preparation.rs"]
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
@@ -2412,6 +2414,7 @@ fn main() {
             "translate-reflection" => translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords(),
             "body-reflections" => body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
+            "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
@@ -2504,6 +2507,7 @@ fn main() {
     translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords();
     body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
+    legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();

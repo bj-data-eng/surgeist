@@ -1,4 +1,8 @@
 //! Literal HTML877d Fieldset state, mutation and semantic composition oracles.
+
+#[path = "native_fieldset_state/form_owner.rs"]
+mod form_owner;
+
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     Dom, DomBatch, DomCommit, DomError, DomSnapshot,
