@@ -54,4 +54,5 @@ pub(crate) mod svg_script;
 pub(crate) mod template;
 pub(crate) mod textarea;
 pub(crate) mod top_layer;
+pub(crate) mod tree_walker;
 pub(crate) mod view_transition;

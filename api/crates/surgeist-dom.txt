@@ -512,6 +512,9 @@ pub surgeist_dom::edit::DomChange::SlotSignalCancelled::slot: surgeist_dom::iden
 pub surgeist_dom::edit::DomChange::SourceOperation
 pub surgeist_dom::edit::DomChange::StoredAssignedSlot(surgeist_dom::identity::NodeId)
 pub surgeist_dom::edit::DomChange::TemplateRelations
+pub surgeist_dom::edit::DomChange::TreeWalkerCreated(surgeist_dom::tree::DomTreeWalkerId)
+pub surgeist_dom::edit::DomChange::TreeWalkerCurrent(surgeist_dom::tree::DomTreeWalkerId)
+pub surgeist_dom::edit::DomChange::TreeWalkerRetired(surgeist_dom::tree::DomTreeWalkerId)
 pub surgeist_dom::edit::DomChange::ViewTransition(surgeist_dom::view_transition::DomViewTransitionId)
 pub surgeist_dom::edit::DomChange::ViewTransitionCaptured(surgeist_dom::view_transition::DomViewTransitionSubject)
 pub surgeist_dom::edit::DomChange::ViewTransitionDocument(surgeist_dom::identity::DocumentId)
@@ -2348,6 +2351,7 @@ pub surgeist_dom::limits::DomResource::SlotReferences
 pub surgeist_dom::limits::DomResource::SourceRetainedBytes
 pub surgeist_dom::limits::DomResource::SourceRetainedUnits
 pub surgeist_dom::limits::DomResource::StringCodeUnits
+pub surgeist_dom::limits::DomResource::TreeWalkers
 pub surgeist_dom::limits::DomResource::ViewTransitionCaptureBytes
 pub surgeist_dom::limits::DomResource::ViewTransitionPseudos
 pub surgeist_dom::limits::DomResource::ViewTransitionRecords
@@ -2386,6 +2390,7 @@ pub fn surgeist_dom::limits::DomLimits::select_work(self) -> u64
 pub fn surgeist_dom::limits::DomLimits::slot_assignment_inputs(self) -> usize
 pub fn surgeist_dom::limits::DomLimits::slot_references(self) -> usize
 pub fn surgeist_dom::limits::DomLimits::string_code_units(self) -> usize
+pub fn surgeist_dom::limits::DomLimits::tree_walkers(self) -> usize
 pub fn surgeist_dom::limits::DomLimits::view_transition_pseudos(self) -> usize
 pub fn surgeist_dom::limits::DomLimits::view_transition_records(self) -> usize
 pub fn surgeist_dom::limits::DomLimits::view_transitions(self) -> usize
@@ -2408,6 +2413,7 @@ pub fn surgeist_dom::limits::DomLimits::with_parsed_associations(self, bytes: us
 pub fn surgeist_dom::limits::DomLimits::with_ranges(self, ranges: usize) -> core::result::Result<Self, surgeist_dom::DomError>
 pub fn surgeist_dom::limits::DomLimits::with_select_processing(self, pending_updates: usize, scratch_bytes: usize, work: u64) -> core::result::Result<Self, surgeist_dom::DomError>
 pub fn surgeist_dom::limits::DomLimits::with_select_value_queries(self, capture: surgeist_html_semantics::capture::HtmlCaptureLimits, semantics: surgeist_html_semantics::semantics::HtmlSemanticLimits) -> Self
+pub fn surgeist_dom::limits::DomLimits::with_tree_walkers(self, slots: usize) -> Self
 pub fn surgeist_dom::limits::DomLimits::with_view_transitions(self, transitions: usize, records: usize, pseudos: usize) -> core::result::Result<Self, surgeist_dom::DomError>
 pub struct surgeist_dom::limits::DomNameLimits
 impl surgeist_dom::limits::DomNameLimits
@@ -2429,6 +2435,7 @@ pub fn surgeist_dom::limits::DomUsage::parsed_association_utf16_units(self) -> u
 pub fn surgeist_dom::limits::DomUsage::ranges(self) -> usize
 pub fn surgeist_dom::limits::DomUsage::slot_references(self) -> usize
 pub fn surgeist_dom::limits::DomUsage::string_code_units(self) -> usize
+pub fn surgeist_dom::limits::DomUsage::tree_walkers(self) -> usize
 pub fn surgeist_dom::limits::DomUsage::view_transition_pseudos(self) -> usize
 pub fn surgeist_dom::limits::DomUsage::view_transition_records(self) -> usize
 pub fn surgeist_dom::limits::DomUsage::view_transitions(self) -> usize
@@ -3493,6 +3500,23 @@ pub surgeist_dom::tree::DomNodeKind::Text(&'a surgeist_html::internal::values::d
 pub enum surgeist_dom::tree::DomSiblingDirection
 pub surgeist_dom::tree::DomSiblingDirection::Next
 pub surgeist_dom::tree::DomSiblingDirection::Previous
+pub enum surgeist_dom::tree::DomTreeWalkerDirection
+pub surgeist_dom::tree::DomTreeWalkerDirection::FirstChild
+pub surgeist_dom::tree::DomTreeWalkerDirection::LastChild
+pub surgeist_dom::tree::DomTreeWalkerDirection::NextNode
+pub surgeist_dom::tree::DomTreeWalkerDirection::NextSibling
+pub surgeist_dom::tree::DomTreeWalkerDirection::Parent
+pub surgeist_dom::tree::DomTreeWalkerDirection::PreviousNode
+pub surgeist_dom::tree::DomTreeWalkerDirection::PreviousSibling
+pub enum surgeist_dom::tree::DomTreeWalkerFilter
+pub surgeist_dom::tree::DomTreeWalkerFilter::Callback
+pub surgeist_dom::tree::DomTreeWalkerFilter::None
+pub enum surgeist_dom::tree::DomTreeWalkerProgress<'cancel, A>
+pub surgeist_dom::tree::DomTreeWalkerProgress::Filter(surgeist_dom::tree::DomTreeWalkerFilterRequest<'cancel, A>)
+pub surgeist_dom::tree::DomTreeWalkerProgress::Match(surgeist_dom::tree::DomTreeWalkerMatchRequest<'cancel, A>)
+pub surgeist_dom::tree::DomTreeWalkerProgress::NoMatch
+impl<A> core::fmt::Debug for surgeist_dom::tree::DomTreeWalkerProgress<'_, A>
+pub fn surgeist_dom::tree::DomTreeWalkerProgress<'_, A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomAttr<'a>
 impl<'a> surgeist_dom::tree::DomAttr<'a>
 pub fn surgeist_dom::tree::DomAttr<'a>::id(self) -> surgeist_dom::identity::DomAttrId
@@ -3787,6 +3811,30 @@ pub struct surgeist_dom::tree::DomTreeScope
 impl surgeist_dom::tree::DomTreeScope
 pub fn surgeist_dom::tree::DomTreeScope::host(self) -> core::option::Option<surgeist_dom::identity::NodeId>
 pub fn surgeist_dom::tree::DomTreeScope::root(self) -> surgeist_dom::identity::NodeId
+pub struct surgeist_dom::tree::DomTreeWalker
+impl surgeist_dom::tree::DomTreeWalker
+pub fn surgeist_dom::tree::DomTreeWalker::current_node(self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::tree::DomTreeWalker::filter(self) -> surgeist_dom::tree::DomTreeWalkerFilter
+pub fn surgeist_dom::tree::DomTreeWalker::id(self) -> surgeist_dom::tree::DomTreeWalkerId
+pub fn surgeist_dom::tree::DomTreeWalker::root(self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::tree::DomTreeWalker::what_to_show(self) -> u32
+pub struct surgeist_dom::tree::DomTreeWalkerFilterRequest<'cancel, A>
+impl<'cancel, A> surgeist_dom::tree::DomTreeWalkerFilterRequest<'cancel, A>
+pub fn surgeist_dom::tree::DomTreeWalkerFilterRequest<'cancel, A>::node(&self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::tree::DomTreeWalkerFilterRequest<'cancel, A>::respond<E>(self, dom: &surgeist_dom::Dom, decision: u16) -> core::result::Result<surgeist_dom::tree::DomTreeWalkerProgress<'cancel, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::tree::DomTreeWalkerFilterRequest<'cancel, A>::walker(&self) -> surgeist_dom::tree::DomTreeWalkerId
+impl<A> core::fmt::Debug for surgeist_dom::tree::DomTreeWalkerFilterRequest<'_, A>
+pub fn surgeist_dom::tree::DomTreeWalkerFilterRequest<'_, A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::tree::DomTreeWalkerId
+impl surgeist_dom::tree::DomTreeWalkerId
+pub fn surgeist_dom::tree::DomTreeWalkerId::owner(self) -> surgeist_dom::identity::DomOwnerId
+pub struct surgeist_dom::tree::DomTreeWalkerMatchRequest<'cancel, A>
+impl<A> surgeist_dom::tree::DomTreeWalkerMatchRequest<'_, A>
+pub fn surgeist_dom::tree::DomTreeWalkerMatchRequest<'_, A>::accept<E>(self, dom: &mut surgeist_dom::Dom) -> core::result::Result<surgeist_dom::identity::NodeId, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::tree::DomTreeWalkerMatchRequest<'_, A>::node(&self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::tree::DomTreeWalkerMatchRequest<'_, A>::walker(&self) -> surgeist_dom::tree::DomTreeWalkerId
+impl<A> core::fmt::Debug for surgeist_dom::tree::DomTreeWalkerMatchRequest<'_, A>
+pub fn surgeist_dom::tree::DomTreeWalkerMatchRequest<'_, A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub mod surgeist_dom::url
 pub enum surgeist_dom::url::DomBaseFactsError
 pub surgeist_dom::url::DomBaseFactsError::BasisRevisionMismatch
@@ -4195,6 +4243,7 @@ pub surgeist_dom::DomError::StaleFullscreenExit
 pub surgeist_dom::DomError::StaleNode
 pub surgeist_dom::DomError::StaleNodeIterator
 pub surgeist_dom::DomError::StaleRange
+pub surgeist_dom::DomError::StaleTreeWalker
 pub surgeist_dom::DomError::StaleViewTransition
 pub surgeist_dom::DomError::StaleViewTransitionPseudo
 pub surgeist_dom::DomError::StaleViewTransitionRecord
@@ -4218,6 +4267,8 @@ pub surgeist_dom::DomError::TopLayerAdoptionUnavailable::subject: core::option::
 pub surgeist_dom::DomError::TopLayerAlreadyActive
 pub surgeist_dom::DomError::TopLayerAlreadyActive::document: surgeist_dom::identity::DocumentId
 pub surgeist_dom::DomError::TopLayerAlreadyActive::subject: surgeist_dom::identity::NodeId
+pub surgeist_dom::DomError::TreeWalkerFilterActive
+pub surgeist_dom::DomError::TreeWalkerPublicationUnavailable
 pub surgeist_dom::DomError::UnavailableCreation
 pub surgeist_dom::DomError::ViewTransitionCaptureWorkLimit
 pub surgeist_dom::DomError::ViewTransitionCaptureWorkLimit::limit: u64
@@ -4377,6 +4428,12 @@ pub fn surgeist_dom::Dom::retire_node_iterator(&mut self, id: surgeist_dom::tree
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::create_scoped_registry(&mut self, source: &surgeist_dom::hosted::DomHostedSource, global: surgeist_dom::hosted::DomHostedGlobalId, limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::DomCommit, surgeist_dom::custom_element::DomRegistryId), surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::Dom::prepare_registry_definition<'a>(&'a mut self, source: &'a surgeist_dom::hosted::DomHostedSource, global: surgeist_dom::hosted::DomHostedGlobalId, registry: surgeist_dom::custom_element::DomRegistryId, definition: &surgeist_html_semantics::capture::HtmlCustomElementDefinition, limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::custom_element::DomRegistryDefinitionPreparation<'a>, surgeist_dom::hosted::DomHostedError>
+impl surgeist_dom::Dom
+pub fn surgeist_dom::Dom::create_tree_walker(&mut self, root: surgeist_dom::identity::NodeId, what_to_show: u32, filter: surgeist_dom::tree::DomTreeWalkerFilter, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomTreeWalkerId, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::navigate_tree_walker<'cancel, A, E>(&self, id: surgeist_dom::tree::DomTreeWalkerId, direction: surgeist_dom::tree::DomTreeWalkerDirection, admission: A, cancellation: &'cancel core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomTreeWalkerProgress<'cancel, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::retire_tree_walker(&mut self, id: surgeist_dom::tree::DomTreeWalkerId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::set_tree_walker_current(&mut self, id: surgeist_dom::tree::DomTreeWalkerId, node: surgeist_dom::identity::NodeId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::tree_walker(&self, id: surgeist_dom::tree::DomTreeWalkerId) -> core::result::Result<surgeist_dom::tree::DomTreeWalker, surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::discard_stopped_custom_element_reactions(&mut self, binding: &surgeist_dom::script::DomDocumentScriptBinding) -> core::result::Result<usize, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::has_pending_custom_element_reactions(&self, binding: &surgeist_dom::script::DomDocumentScriptBinding) -> bool

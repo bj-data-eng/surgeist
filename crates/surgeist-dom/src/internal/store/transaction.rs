@@ -117,6 +117,7 @@ pub(in crate::internal::store) enum Undo {
     RetirementsCapacity(custody::Held<Vec<(super::NodeId, super::Key)>>),
     Range(ranges::RangeUndo),
     NodeIterators(super::node_iterator::IteratorUndo),
+    TreeWalkers(super::tree_walker::storage::WalkerUndo),
     ChildList(super::child_list::Undo),
     Transition(super::view_transition::TransitionUndo),
     Inbound(inbound::InboundUndo),
@@ -202,6 +203,7 @@ impl Undo {
             Self::Roles(undo) => undo.restore(&mut draft.role_facts),
             Self::Containers(undo) => undo.restore(&mut draft.containers),
             Self::NodeIterators(undo) => undo.restore(draft),
+            Self::TreeWalkers(undo) => undo.restore(draft),
             Self::ChildList(undo) => undo.restore(draft),
             Self::TicketsLength(len) => draft.tickets.truncate(len),
             Self::TicketsCapacity(before) => {

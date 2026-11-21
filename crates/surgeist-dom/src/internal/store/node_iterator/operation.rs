@@ -75,17 +75,7 @@ where
             if active {
                 return Err(DomError::NodeIteratorFilterActive.into());
             }
-            let bit = match self.node(next.node)?.kind() {
-                DomNodeKind::Element(_) => 0,
-                DomNodeKind::Attr(_) => 1,
-                DomNodeKind::Text(_) => 2,
-                DomNodeKind::ProcessingInstruction(_) => 6,
-                DomNodeKind::Comment(_) => 7,
-                DomNodeKind::Document(_) => 8,
-                DomNodeKind::DocumentType(_) => 9,
-                DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => 10,
-            };
-            if cursor.mask & (1 << bit) != 0 {
+            if cursor.mask & self.node(next.node)?.kind().traversal_mask() != 0 {
                 return Ok(Some(next));
             }
             pointer = next;
@@ -204,7 +194,7 @@ impl<A> DomNodeIteratorMatchRequest<A> {
         }
         dom.require_source_entry(cancel)?;
         let source = dom.dispatch_hosted_read_work(cancel)?;
-        require_same_source(&self.source, source.as_ref())?;
+        CallbackWork::require_same_scope(&self.source, source.as_ref())?;
         if !Weak::ptr_eq(&self.publication, &Arc::downgrade(&dom.state)) {
             return Err(DomError::NodeIteratorPublicationUnavailable.into());
         }
@@ -219,24 +209,6 @@ impl<A> DomNodeIteratorMatchRequest<A> {
         cursor.reference = staged_pointer(self.pointer);
         dom.publish_node_iterator(self.id, cursor, cancel)?;
         Ok(self.pointer.node)
-    }
-}
-
-fn require_same_source(
-    expected: &Option<Weak<CallbackWork>>,
-    active: Option<&Arc<CallbackWork>>,
-) -> Result<(), DomError> {
-    let same_scope = match (expected, active) {
-        (None, None) => true,
-        (Some(expected), Some(active)) => expected
-            .upgrade()
-            .is_some_and(|expected| Arc::ptr_eq(&expected, active)),
-        _ => false,
-    };
-    if same_scope {
-        Ok(())
-    } else {
-        Err(DomError::InvalidSourceEvent)
     }
 }
 
@@ -287,7 +259,7 @@ impl<A> DomNodeIteratorFilterRequest<A> {
         }
         dom.require_source_entry(cancel)?;
         let source = dom.dispatch_hosted_read_work(cancel)?;
-        require_same_source(&self.source, source.as_ref())?;
+        CallbackWork::require_same_scope(&self.source, source.as_ref())?;
         let mut cursor = dom.state.node_iterators.cursor(dom.owner, self.id)?.clone();
         let candidate = cursor
             .live_candidate()

@@ -20,6 +20,22 @@ pub(crate) struct CallbackWork {
     pub(crate) storage: SourceStorage,
 }
 impl CallbackWork {
+    pub(crate) fn require_same_scope(
+        expected: &Option<Weak<Self>>,
+        active: Option<&Arc<Self>>,
+    ) -> Result<(), DomError> {
+        let matches = match (expected, active) {
+            (None, None) => true,
+            (Some(expected), Some(active)) => expected.ptr_eq(&Arc::downgrade(active)),
+            _ => false,
+        };
+        if matches {
+            Ok(())
+        } else {
+            Err(DomError::InvalidSourceEvent)
+        }
+    }
+
     pub(crate) fn new(
         work: Arc<AtomicU64>,
         work_limit: u64,
