@@ -479,6 +479,30 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
             displacement_map,
         )
         .unwrap();
+    let lighting_bounds = Rect::new(9.0, 8.0, 2.0, 1.0);
+    let lighting = crate::lighting::prepare_lighting(
+        crate::lighting::DiffuseLightingInput::new(),
+        crate::lighting::LightingLightInput::Distant {
+            azimuth: 0.0,
+            elevation: 90.0,
+        },
+        crate::filter_model::FilterColorSpace::Srgb,
+        &mut crate::accounting::RenderAccountingContext::default(),
+    )
+    .unwrap();
+    scene.lighting_layer(
+        Layer::new(),
+        lighting,
+        crate::lighting::LightingSource::finite(
+            Scene::new(),
+            crate::filter_domains::FilterDomains::try_new(
+                lighting_bounds,
+                lighting_bounds,
+                lighting_bounds,
+            )
+            .unwrap(),
+        ),
+    );
     scene
         .normalize(
             Capabilities::CURRENT,

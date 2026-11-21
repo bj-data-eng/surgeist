@@ -7,6 +7,8 @@ mod filter_footprint;
 mod filter_grid;
 mod gaussian;
 mod graph;
+mod lighting;
+mod lighting_grid;
 mod lower;
 mod morphology;
 mod native_shadow;
@@ -39,6 +41,7 @@ pub(crate) use filter_footprint::FilterOutputFootprint;
 pub(crate) use gaussian::{
     GaussianAxis, GaussianChannels, GaussianPassFacts, GaussianPurpose, GaussianStage,
 };
+pub(crate) use lighting::{LightingPassFacts, LightingStage};
 pub(crate) use lower::{
     GraphLoweringBlur, GraphLoweringBlurInput, GraphLoweringClipCoverage, GraphLoweringColorFilter,
     GraphLoweringColorOperation, GraphLoweringComposite, GraphLoweringCompositeKind,
@@ -359,6 +362,12 @@ fn bounded_filter_source(
         crate::command::NormalizedForegroundEffect::NativeShadow(value) => Some(value.source),
         crate::command::NormalizedForegroundEffect::Morphology(value) => Some(value.source),
         crate::command::NormalizedForegroundEffect::Displacement(value) => Some(value.source),
+        crate::command::NormalizedForegroundEffect::Lighting(value) => {
+            Some(crate::filter_source::FilterSourceDescriptor::Finite {
+                domains: value.source,
+                edge: crate::filter_model::FilterEdgeMode::None,
+            })
+        }
         _ => None,
     }
 }
@@ -372,6 +381,9 @@ fn filter_grid_owner(
         }
         crate::command::NormalizedForegroundEffect::Morphology(_) => {
             filter_grid::FilterGridOwner::Morphology
+        }
+        crate::command::NormalizedForegroundEffect::Lighting(_) => {
+            filter_grid::FilterGridOwner::Lighting
         }
         _ => filter_grid::FilterGridOwner::Gaussian,
     }

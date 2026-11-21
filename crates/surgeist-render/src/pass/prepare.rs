@@ -27,8 +27,9 @@ use super::super::{
         CompositePassKeyRefs, ConvolutionParameterBytes, ConvolutionPassKeyRefs,
         CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache, DropShadowColorizePassKeyRefs,
         DropShadowParameterBytes, GaussianParameterBytes, GaussianPassKeyRefs,
-        MorphologyParameterBytes, MorphologyPassKeyRefs, NativeShadowParameterBytes,
-        NativeShadowPassKeyRefs, OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
+        LightingParameterBytes, LightingPassKeyRefs, MorphologyParameterBytes,
+        MorphologyPassKeyRefs, NativeShadowParameterBytes, NativeShadowPassKeyRefs,
+        OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
         ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
     },
     texture::EffectTextureDescriptor,
@@ -151,6 +152,9 @@ impl RuntimePassPreparationRequest {
         role!(gaussian_parameters, Gaussian);
         role!(morphology_parameters, Morphology);
         role!(native_shadow_parameters, NativeShadow);
+        if matches!(self.runtime.kind, RuntimePassKind::Lighting(_)) {
+            roles.insert(PassBufferRole::Lighting);
+        }
         role!(offset_parameters, Offset);
         role!(displacement, Displacement);
         role!(convolution_parameters, Convolution);
@@ -160,7 +164,10 @@ impl RuntimePassPreparationRequest {
         role!(blur_edge_parameters, BlurEdge);
         roles
     }
-    fn parameter_layout(&self, account: &Account) -> Result<[(PassBufferRole, Option<usize>); 11]> {
+    fn parameter_layout(
+        &self,
+        account: &Account,
+    ) -> Result<impl Iterator<Item = (PassBufferRole, Option<usize>)>> {
         use PassBufferRole as R;
         let layout = [
             (
@@ -233,6 +240,7 @@ impl RuntimePassPreparationRequest {
                 | RuntimePassKind::Gaussian(_)
                 | RuntimePassKind::Morphology(_)
                 | RuntimePassKind::NativeShadowMerge(_)
+                | RuntimePassKind::Lighting(_)
                 | RuntimePassKind::Offset(_)
                 | RuntimePassKind::Displacement(_)
         );
@@ -263,10 +271,15 @@ impl RuntimePassPreparationRequest {
                 ));
             }
         }
-        Ok(layout)
+        // The lighting parameters live inside the immutable runtime payload.
+        // A stage always has its fixed uniform and other passes have no role
+        // to inspect here.
+        let lighting = matches!(kind, RuntimePassKind::Lighting(_))
+            .then_some((R::Lighting, Some(LightingParameterBytes::SIZE)));
+        Ok(layout.into_iter().chain(lighting))
     }
     pub(super) fn parameter_roles(&self, account: &Account) -> Result<PassBufferRoles> {
-        self.parameter_layout(account)?;
+        let _ = self.parameter_layout(account)?;
         Ok(self.declared_parameter_roles())
     }
 }
@@ -1040,6 +1053,7 @@ fn prepare_runtime_pass_requests(
             }
             _ => None,
         };
+        let lighting = matches!(pass.kind, RuntimePassKind::Lighting(_));
         let displacement = match &pass.kind {
             RuntimePassKind::Displacement(work) => Some(super::displacement::prepare(
                 work,
@@ -1054,8 +1068,9 @@ fn prepare_runtime_pass_requests(
             || gaussian_parameters.is_some()
             || morphology_parameters.is_some()
             || native_shadow_parameters.is_some()
+            || lighting
         {
-            validate_offset_uniform_limits(uniform_limits)?;
+            validate_fixed_uniform_limits(uniform_limits)?;
         }
         if (spatial_uniform.is_some()
             || convolution_parameters.is_some()
@@ -1063,6 +1078,7 @@ fn prepare_runtime_pass_requests(
             || morphology_parameters.is_some()
             || offset_parameters.is_some()
             || native_shadow_parameters.is_some()
+            || lighting
             || displacement.is_some())
             != pass.cache_keys.is_some()
         {
@@ -1101,10 +1117,10 @@ fn prepare_runtime_pass_requests(
     Ok(requests)
 }
 
-fn validate_offset_uniform_limits(limits: &wgpu::Limits) -> Result<()> {
+fn validate_fixed_uniform_limits(limits: &wgpu::Limits) -> Result<()> {
     if limits.max_buffer_size < 256 || limits.max_uniform_buffer_binding_size < 256 {
         return Err(crate::Error::invalid_value(
-            "offset uniform buffer byte length",
+            "native spatial filter uniform buffer byte length",
             256,
             "must fit the selected device buffer and uniform-binding limits",
         ));
@@ -1578,6 +1594,8 @@ pub(super) struct AcquiredGraphBindings {
         PassMap<RuntimePassId, super::displacement::PreparedDisplacementBinding>,
     pub(super) offset_parameter_bindings:
         PassMap<RuntimePassId, PreparedPassBuffer<OffsetParameterBytes>>,
+    pub(super) lighting_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<LightingParameterBytes>>,
     pub(super) native_shadow_parameter_bindings:
         PassMap<RuntimePassId, PreparedPassBuffer<NativeShadowParameterBytes>>,
     pub(super) gaussian_parameter_bindings:
@@ -1680,7 +1698,7 @@ fn acquire_prepared_graph_resources(
         .len()
         .checked_sub(plan.morphology_scratch.assignments.len())
         .ok_or_else(|| preparation_error("scratch assignments exceed logical resource requests"))?;
-    let mut counts = [0usize; 11];
+    let mut counts = [0usize; PassBufferRole::COUNT];
     for pass in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         for (role, size) in pass.parameter_layout(account)? {
@@ -1710,6 +1728,10 @@ fn acquire_prepared_graph_resources(
             offset_parameter_bindings: PassMap::new(
                 account,
                 counts[PassBufferRole::Offset.index()],
+            )?,
+            lighting_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Lighting.index()],
             )?,
             native_shadow_parameter_bindings: PassMap::new(
                 account,
@@ -1831,8 +1853,8 @@ fn acquire_prepared_graph_resources(
     for pass in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         macro_rules! acquire {
-            ($field:ident, $payload:ident, $role:ident) => {
-                if let Some(bytes) = &pass.$payload {
+            ($field:ident, $payload:expr, $role:ident) => {
+                if let Some(bytes) = $payload {
                     account.work(RenderWork::ResourceProbes, 1)?;
                     let buffer = PassBufferCustody::acquire(
                         pass.runtime.id,
@@ -1862,38 +1884,50 @@ fn acquire_prepared_graph_resources(
                 }
             };
         }
-        acquire!(offset_parameter_bindings, offset_parameters, Offset);
+        acquire!(offset_parameter_bindings, &pass.offset_parameters, Offset);
+        if let RuntimePassKind::Lighting(work) = &pass.runtime.kind {
+            let bytes = LightingParameterBytes::from_stage(work);
+            acquire!(lighting_parameter_bindings, Some(&bytes), Lighting);
+        }
         acquire!(
             native_shadow_parameter_bindings,
-            native_shadow_parameters,
+            &pass.native_shadow_parameters,
             NativeShadow
         );
-        acquire!(gaussian_parameter_bindings, gaussian_parameters, Gaussian);
+        acquire!(
+            gaussian_parameter_bindings,
+            &pass.gaussian_parameters,
+            Gaussian
+        );
         acquire!(
             morphology_parameter_bindings,
-            morphology_parameters,
+            &pass.morphology_parameters,
             Morphology
         );
         acquire!(
             color_filter_operation_bindings,
-            color_filter_operations,
+            &pass.color_filter_operations,
             ColorOperation
         );
-        acquire!(spatial_parameter_bindings, spatial_uniform, Spatial);
+        acquire!(spatial_parameter_bindings, &pass.spatial_uniform, Spatial);
         acquire!(
             composite_parameter_bindings,
-            composite_parameters,
+            &pass.composite_parameters,
             Composite
         );
         acquire!(
             css_shadow_parameter_bindings,
-            drop_shadow_parameters,
+            &pass.drop_shadow_parameters,
             CssShadow
         );
-        acquire!(blur_edge_parameter_bindings, blur_edge_parameters, BlurEdge);
+        acquire!(
+            blur_edge_parameter_bindings,
+            &pass.blur_edge_parameters,
+            BlurEdge
+        );
         acquire!(
             convolution_parameter_bindings,
-            convolution_parameters,
+            &pass.convolution_parameters,
             Convolution
         );
         let Some(preparation) = &pass.displacement else {
@@ -2045,6 +2079,20 @@ fn realize_prepared_graph_pass(
                     },
                 )?
                 .require_encoding_ready()?;
+            Ok(None)
+        }
+        RuntimePassKind::Lighting(_) => {
+            update.realize_lighting_pass(
+                device,
+                pass_cache,
+                account,
+                LightingPassKeyRefs {
+                    samplers: keys.samplers(),
+                    layout: keys.layout(),
+                    shader: keys.shader(),
+                    pipeline: keys.pipeline(),
+                },
+            )?;
             Ok(None)
         }
         RuntimePassKind::NativeShadowMerge(_) => {
@@ -3521,18 +3569,18 @@ mod reconstructed_key_accounting_tests {
 
 #[cfg(test)]
 mod offset_uniform_tests {
-    use super::validate_offset_uniform_limits;
+    use super::validate_fixed_uniform_limits;
 
     #[test]
     fn offset_uniform_preflight_requires_each_actual_device_limit_to_cover_256_bytes() {
         let mut limits = wgpu::Limits::downlevel_defaults();
         limits.max_buffer_size = 256;
         limits.max_uniform_buffer_binding_size = 256;
-        validate_offset_uniform_limits(&limits).unwrap();
+        validate_fixed_uniform_limits(&limits).unwrap();
         limits.max_buffer_size = 255;
-        assert!(validate_offset_uniform_limits(&limits).is_err());
+        assert!(validate_fixed_uniform_limits(&limits).is_err());
         limits.max_buffer_size = 256;
         limits.max_uniform_buffer_binding_size = 255;
-        assert!(validate_offset_uniform_limits(&limits).is_err());
+        assert!(validate_fixed_uniform_limits(&limits).is_err());
     }
 }

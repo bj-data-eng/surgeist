@@ -471,6 +471,7 @@ fn runtime_pass_kind(
                 .transpose()?,
         ),
         GraphLoweringPassKind::Offset(offset) => RuntimePassKind::Offset(offset.clone()),
+        GraphLoweringPassKind::Lighting(work) => RuntimePassKind::Lighting(work.clone()),
         GraphLoweringPassKind::NativeShadowMerge(work) => {
             RuntimePassKind::NativeShadowMerge(work.clone())
         }
@@ -839,6 +840,7 @@ const fn runtime_read_role(role: GraphLoweringReadRole) -> RuntimeReadRole {
         GraphLoweringReadRole::DisplacementSource => RuntimeReadRole::DisplacementSource,
         GraphLoweringReadRole::MorphologyPreviousQuery => RuntimeReadRole::MorphologyPreviousQuery,
         GraphLoweringReadRole::OffsetSource => RuntimeReadRole::OffsetSource,
+        GraphLoweringReadRole::LightingSource => RuntimeReadRole::LightingSource,
         GraphLoweringReadRole::NativeShadowOriginal => RuntimeReadRole::NativeShadowOriginal,
         GraphLoweringReadRole::NativeShadowAlpha => RuntimeReadRole::NativeShadowAlpha,
         GraphLoweringReadRole::ConvolutionAuxiliary => RuntimeReadRole::ConvolutionAuxiliary,
@@ -874,6 +876,7 @@ pub(super) const fn shader_binding_role(role: RuntimeReadRole) -> ShaderBindingR
         RuntimeReadRole::DisplacementSource => ShaderBindingRoleKey::DisplacementSource,
         RuntimeReadRole::MorphologyPreviousQuery => ShaderBindingRoleKey::MorphologyPreviousQuery,
         RuntimeReadRole::OffsetSource => ShaderBindingRoleKey::OffsetSource,
+        RuntimeReadRole::LightingSource => ShaderBindingRoleKey::LightingSource,
         RuntimeReadRole::NativeShadowOriginal => ShaderBindingRoleKey::NativeShadowOriginal,
         RuntimeReadRole::NativeShadowAlpha => ShaderBindingRoleKey::NativeShadowAlpha,
         RuntimeReadRole::ConvolutionAuxiliary => ShaderBindingRoleKey::ConvolutionAuxiliary,
@@ -902,7 +905,8 @@ const fn runtime_read_uses_shader_sampler(kind: &RuntimePassKind, role: RuntimeR
         | RuntimePassKind::Morphology(_)
         | RuntimePassKind::Displacement(_)
         | RuntimePassKind::Offset(_)
-        | RuntimePassKind::NativeShadowMerge(_) => false,
+        | RuntimePassKind::NativeShadowMerge(_)
+        | RuntimePassKind::Lighting(_) => false,
         RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { .. },
             ..
@@ -1032,6 +1036,7 @@ pub(super) fn runtime_pass_cache_keys(
                 | RuntimePassKind::Morphology(_)
                 | RuntimePassKind::Offset(_)
                 | RuntimePassKind::NativeShadowMerge(_)
+                | RuntimePassKind::Lighting(_)
                 | RuntimePassKind::Displacement(_)
         ) {
             Some(match result {
@@ -1084,6 +1089,9 @@ fn shader_program(kind: &RuntimePassKind) -> Result<ShaderProgramKey> {
         RuntimePassKind::Displacement(work) => Ok(super::displacement::shader_program(&work.work)),
         RuntimePassKind::Offset(_) => Ok(ShaderProgramKey::Offset),
         RuntimePassKind::NativeShadowMerge(work) => Ok(super::native_shadow::shader_program(work)),
+        RuntimePassKind::Lighting(work) => Ok(ShaderProgramKey::Lighting(
+            super::lighting::shader_stage(work),
+        )),
         RuntimePassKind::BlurHorizontal(Some(blur)) => Ok(ShaderProgramKey::BlurHorizontal {
             source_alpha: blur.input == RuntimeBlurInput::SourceAlpha,
             edge: shader_sampling_edge(blur.edge),
@@ -1141,6 +1149,7 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         RuntimePassKind::ColorFilter(Some(_)) => &[SpatialUniform, ColorFilterOperations],
         RuntimePassKind::Offset(_) => &[ShaderDataBindingKey::OffsetParameters],
         RuntimePassKind::NativeShadowMerge(_) => &[ShaderDataBindingKey::NativeShadowParameters],
+        RuntimePassKind::Lighting(_) => &[ShaderDataBindingKey::LightingParameters],
         RuntimePassKind::Gaussian(operation) => super::gaussian::data_bindings(operation),
         RuntimePassKind::Morphology(_) => &[ShaderDataBindingKey::MorphologyParameters],
         RuntimePassKind::Displacement(work) => {

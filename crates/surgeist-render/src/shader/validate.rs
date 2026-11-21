@@ -236,6 +236,7 @@ fn core_pass_program_sampling(
         | ShaderProgramKey::Morphology { .. }
         | ShaderProgramKey::Displacement { .. }
         | ShaderProgramKey::Offset
+        | ShaderProgramKey::Lighting(_)
         | ShaderProgramKey::NativeShadow { .. }
         | ShaderProgramKey::ColorFilter
         | ShaderProgramKey::BlurHorizontal { .. }
@@ -742,6 +743,73 @@ pub(super) fn validate_offset_pass_keys(
 }
 
 pub(super) fn offset_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct LightingPassDescription {
+    pub(super) target_format: ShaderTextureFormatKey,
+    pub(super) stage: super::ShaderLightingStageKey,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct LightingPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+
+pub(super) fn validate_lighting_pass_keys(
+    keys: LightingPassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<LightingPassDescription> {
+    let ShaderProgramKey::Lighting(stage) = keys.layout.program else {
+        return Err(lighting_cache_error(
+            "lighting requires a concrete shader stage",
+        ));
+    };
+    let target_format = keys.pipeline.target_format;
+    let source_is_exact = match (
+        stage.reads_source(),
+        keys.layout.sampled_textures.as_slice(),
+    ) {
+        (true, [source]) => {
+            binding_visit(observer)?;
+            source.binding_role == ShaderBindingRoleKey::LightingSource
+                && source.source_format == target_format
+        }
+        (false, []) => true,
+        _ => false,
+    };
+    if !source_is_exact
+        || keys.shader.program != keys.layout.program
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[ShaderDataBindingKey::LightingParameters],
+            observer,
+        )?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || keys.shader.working_format != Some(target_format)
+        || keys.shader.output_format != Some(target_format)
+        || !is_working_format(target_format)
+    {
+        return Err(lighting_cache_error(
+            "lighting keys disagree across bindings, stages, or working formats",
+        ));
+    }
+    Ok(LightingPassDescription {
+        target_format,
+        stage,
+    })
+}
+
+pub(super) fn lighting_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
 }
 

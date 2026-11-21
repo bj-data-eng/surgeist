@@ -15,6 +15,7 @@ mod displacement;
 mod finish_custody_tests;
 #[path = "encode/gaussian.rs"]
 mod gaussian;
+mod lighting;
 mod morphology;
 mod native_shadow;
 #[path = "encode/offset.rs"]
@@ -31,11 +32,12 @@ use super::super::{
     shader::{
         BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
         CompositeParameterBytes, ConvolutionParameterBytes, DevicePassCache,
-        DropShadowParameterBytes, GaussianParameterBytes, MorphologyParameterBytes,
-        NativeShadowParameterBytes, OffsetParameterBytes, PassCacheCommitPreparation,
-        PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
-        ProvisionalCompositePassObjects, ProvisionalCorePassObjects,
-        ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate, ShaderCompositePathKey,
+        DropShadowParameterBytes, GaussianParameterBytes, LightingParameterBytes,
+        LightingPassKeyRefs, MorphologyParameterBytes, NativeShadowParameterBytes,
+        OffsetParameterBytes, PassCacheCommitPreparation, PassSpatialUniformBytes,
+        ProvisionalColorFilterPassObjects, ProvisionalCompositePassObjects,
+        ProvisionalCorePassObjects, ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
+        ShaderCompositePathKey, ShaderLightingStageKey,
     },
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloCaptureProof, PendingVelloResourceCommit,
@@ -69,6 +71,9 @@ pub(super) fn filter_step_passes<'a>(
         let count = match step {
             ExecutableFilterStepFacts::Color(_) => 1,
             ExecutableFilterStepFacts::Offset { rebase, .. } => 1 + usize::from(rebase.is_some()),
+            ExecutableFilterStepFacts::Lighting { resample, .. } => {
+                2 + usize::from(resample.is_some())
+            }
             ExecutableFilterStepFacts::Blur { .. } => 2,
             ExecutableFilterStepFacts::DropShadow { .. } => 4,
             ExecutableFilterStepFacts::Convolution { passes, .. }
@@ -90,6 +95,16 @@ pub(super) fn filter_step_passes<'a>(
                         Some(*sample)
                     }
                 }
+                ExecutableFilterStepFacts::Lighting {
+                    resample,
+                    shade,
+                    resolve,
+                    ..
+                } => resample
+                    .iter()
+                    .copied()
+                    .chain([*shade, *resolve])
+                    .nth(index),
                 ExecutableFilterStepFacts::Blur {
                     horizontal,
                     vertical,
@@ -249,6 +264,7 @@ pub(super) enum GraphScheduledEncodingKind {
     Morphology,
     Displacement,
     NativeShadow,
+    Lighting(ShaderLightingStageKey),
     Offset,
     BlurHorizontalRgba,
     BlurVerticalRgba,
@@ -270,6 +286,7 @@ pub(crate) enum ScheduledFilterRawFact {
     Morphology,
     Displacement,
     NativeShadow,
+    Lighting(ShaderLightingStageKey),
     Offset,
     BlurHorizontalRgba,
     BlurVerticalRgba,
@@ -294,6 +311,7 @@ pub(crate) struct CustomSpineEncodingSummary {
     pub(crate) morphology_pass_count: usize,
     pub(crate) morphology_parameters_and_resources_are_exact: bool,
     pub(crate) native_shadow_pass_count: usize,
+    lighting_pass_count: usize,
     pub(crate) native_shadow_parameters_and_resources_are_exact: bool,
     pub(crate) gaussian_parameters_and_resources_are_exact: bool,
     pub(crate) convolution_pass_count: usize,
@@ -368,6 +386,7 @@ struct CustomSpineEncodingProgress {
     morphology_pass_count: usize,
     morphology_parameters_and_resources_are_exact: bool,
     native_shadow_pass_count: usize,
+    lighting_pass_count: usize,
     native_shadow_parameters_and_resources_are_exact: bool,
     gaussian_parameters_and_resources_are_exact: bool,
     convolution_pass_count: usize,
@@ -440,6 +459,7 @@ impl CustomSpineEncodingProgress {
             morphology_pass_count: 0,
             morphology_parameters_and_resources_are_exact: true,
             native_shadow_pass_count: 0,
+            lighting_pass_count: 0,
             native_shadow_parameters_and_resources_are_exact: true,
             gaussian_parameters_and_resources_are_exact: true,
             convolution_pass_count: 0,
@@ -536,6 +556,7 @@ impl CustomSpineEncodingProgress {
             morphology_parameters_and_resources_are_exact: self
                 .morphology_parameters_and_resources_are_exact,
             native_shadow_pass_count: self.native_shadow_pass_count,
+            lighting_pass_count: self.lighting_pass_count,
             native_shadow_parameters_and_resources_are_exact: self
                 .native_shadow_parameters_and_resources_are_exact,
             gaussian_parameters_and_resources_are_exact: self
@@ -691,6 +712,9 @@ fn scheduled_filter_raw_facts(
             GraphScheduledEncodingKind::Morphology => Some(ScheduledFilterRawFact::Morphology),
             GraphScheduledEncodingKind::Displacement => Some(ScheduledFilterRawFact::Displacement),
             GraphScheduledEncodingKind::NativeShadow => Some(ScheduledFilterRawFact::NativeShadow),
+            GraphScheduledEncodingKind::Lighting(stage) => {
+                Some(ScheduledFilterRawFact::Lighting(*stage))
+            }
             GraphScheduledEncodingKind::Offset => Some(ScheduledFilterRawFact::Offset),
             GraphScheduledEncodingKind::BlurHorizontalRgba => {
                 Some(ScheduledFilterRawFact::BlurHorizontalRgba)
@@ -893,6 +917,7 @@ impl CustomSpineEncodingSummary {
             .saturating_add(self.gaussian_pass_count)
             .saturating_add(self.morphology_pass_count)
             .saturating_add(self.native_shadow_pass_count)
+            .saturating_add(self.lighting_pass_count)
             .saturating_add(self.offset_pass_count);
         let exact_base = self.layer_composite_count == 0
             && self.color_filter_count == 0
@@ -953,6 +978,7 @@ impl CustomSpineEncodingSummary {
                 || self.gaussian_pass_count > 0
                 || self.morphology_pass_count > 0
                 || self.native_shadow_pass_count > 0
+                || self.lighting_pass_count > 0
                 || self.offset_pass_count > 0)
             && exact_layers
             && exact_color_filters
@@ -1608,6 +1634,7 @@ struct CompletedReleaseFacts {
     gaussian_buffer: bool,
     morphology_buffer: bool,
     native_shadow_buffer: bool,
+    lighting_buffer: bool,
     displacement: bool,
 }
 
@@ -1636,6 +1663,8 @@ impl CompletedPassReleases {
                 && self
                     .consumed_parameters
                     .contains(PassBufferRole::NativeShadow),
+            lighting_buffer: exact_source
+                && self.consumed_parameters.contains(PassBufferRole::Lighting),
             displacement: exact_source
                 && self
                     .consumed_parameters
@@ -2012,6 +2041,17 @@ fn encode_spatial_filter_full_target_pass_with_samples(
     } else {
         account.work(RenderWork::ImagePasses, 1)?;
     }
+    draw_bounded_spatial_filter(encoder, target, bindings, region, label);
+    Ok(())
+}
+
+fn draw_bounded_spatial_filter(
+    encoder: &mut wgpu::CommandEncoder,
+    target: &wgpu::TextureView,
+    bindings: SpatialPassDrawBindings<'_>,
+    region: GraphRenderRegion,
+    label: &'static str,
+) {
     #[cfg(test)]
     let clear_color = match bindings.target_kind_for_test {
         SpatialPassTargetForTest::Dedicated => wgpu::Color::TRANSPARENT,
@@ -2054,7 +2094,6 @@ fn encode_spatial_filter_full_target_pass_with_samples(
         region.scissor_height,
     );
     pass.draw(0..3, 0..1);
-    Ok(())
 }
 
 fn spatial_filter_full_region_is_exact(region: GraphRenderRegion, extent: PhysicalSize) -> bool {
@@ -2111,6 +2150,9 @@ fn graph_scheduled_encoding_order_is_exact(
             RuntimePassKind::Morphology(_) => GraphScheduledEncodingKind::Morphology,
             RuntimePassKind::Displacement(_) => GraphScheduledEncodingKind::Displacement,
             RuntimePassKind::NativeShadowMerge(_) => GraphScheduledEncodingKind::NativeShadow,
+            RuntimePassKind::Lighting(work) => {
+                GraphScheduledEncodingKind::Lighting(super::lighting::shader_stage(work))
+            }
             RuntimePassKind::Offset(_) => GraphScheduledEncodingKind::Offset,
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
                 RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurHorizontalRgba,
@@ -2624,6 +2666,21 @@ impl<'device> PreparedGraph<'device> {
                     ));
                 }
                 progress.record_custom_completion(GraphScheduledEncodingKind::Displacement)
+            }
+            RuntimePassKind::Lighting(work) => {
+                self.encode_lighting(encoder, request, account)?;
+                let released = self
+                    .complete_custom_spine_pass(request.id, account)?
+                    .prove_for(request);
+                if !released.resources || !released.lighting_buffer {
+                    return Err(preparation_error(
+                        "lighting completion did not resolve exact resource and parameter custody",
+                    ));
+                }
+                progress.lighting_pass_count = progress.lighting_pass_count.saturating_add(1);
+                progress.record_custom_completion(GraphScheduledEncodingKind::Lighting(
+                    super::lighting::shader_stage(work),
+                ))
             }
             RuntimePassKind::NativeShadowMerge(_) => {
                 self.encode_native_shadow(encoder, request, account)?;

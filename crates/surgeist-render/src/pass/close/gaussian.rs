@@ -522,6 +522,10 @@ pub(super) fn composite_footprint_is_exact(
         }
         RuntimePassKind::Displacement(_) => return None,
         RuntimePassKind::Gaussian(_) => return None,
+        RuntimePassKind::Lighting(work) if work.stage() == crate::frame::LightingStage::Resolve => {
+            Some((work.target_plan(), work.output_clip()))
+        }
+        RuntimePassKind::Lighting(_) => return None,
         RuntimePassKind::NativeShadowMerge(work) => Some((
             work.mapping().target_spatial(),
             work.mapping().output_clip(),

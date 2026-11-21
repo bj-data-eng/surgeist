@@ -26,6 +26,29 @@ pub(crate) enum ShaderCompositeKey {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum ShaderLightingStageKey {
+    ResampleBump,
+    Shade,
+    ShadeZeroBump,
+    Resolve,
+}
+
+impl ShaderLightingStageKey {
+    pub(crate) const fn reads_source(self) -> bool {
+        !matches!(self, Self::ShadeZeroBump)
+    }
+
+    pub(super) const fn fragment_entry(self) -> &'static str {
+        match self {
+            Self::ResampleBump => "resample_bump_main",
+            Self::Shade => "shade_main",
+            Self::ShadeZeroBump => "zero_bump_main",
+            Self::Resolve => "resolve_main",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ShaderNativeShadowSourceKey {
     Finite,
     Periodic,
@@ -103,6 +126,7 @@ pub(crate) enum ShaderProgramKey {
         source: ShaderDisplacementSourceKey,
         raw_map: bool,
     },
+    Lighting(ShaderLightingStageKey),
     NativeShadow {
         original: ShaderNativeShadowSourceKey,
         shifted_alpha: bool,
@@ -163,6 +187,7 @@ pub(crate) enum ShaderBindingRoleKey {
     MorphologySource,
     MorphologyPreviousQuery,
     OffsetSource,
+    LightingSource,
     NativeShadowOriginal,
     NativeShadowAlpha,
     ConvolutionAuxiliary,
@@ -288,6 +313,7 @@ pub(crate) enum ShaderDataBindingKey {
     GaussianParameters,
     MorphologyParameters,
     OffsetParameters,
+    LightingParameters,
     NativeShadowParameters,
     ConvolutionWeights,
     ColorFilterOperations,

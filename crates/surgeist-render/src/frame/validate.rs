@@ -21,6 +21,7 @@ pub(super) fn validate_semantic_frame_graph(
     validate_gaussian_metadata(graph, account)?;
     validate_morphology_metadata(graph, account)?;
     validate_displacement_metadata(graph, account, pass_intents.has_displacement)?;
+    validate_lighting_metadata(graph, account)?;
     validate_native_shadow_metadata(graph, account)?;
     if pass_intents.invalid_capture_read {
         return Err(GraphValidationError::InvalidCaptureResult);
@@ -280,6 +281,7 @@ fn validate_pass_intents(
     let mut gaussian_count = 0_usize;
     let mut morphology_count = 0_usize;
     let mut shadow_count = 0_usize;
+    let mut lighting_count = 0_usize;
     let mut facts = PassIntentFacts::default();
     for pass in &graph.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -290,6 +292,7 @@ fn validate_pass_intents(
             SemanticPassIntent::Gaussian(_) => gaussian_count += 1,
             SemanticPassIntent::Offset(_) => offset_count += 1,
             SemanticPassIntent::Displacement(_) => facts.has_displacement = true,
+            SemanticPassIntent::Lighting(_) => lighting_count += 1,
             SemanticPassIntent::VelloCapture { .. } if !pass.reads.is_empty() => {
                 facts.invalid_capture_read = true;
             }
@@ -306,6 +309,9 @@ fn validate_pass_intents(
         return Err(GraphValidationError::InvalidPassArity);
     }
     if shadow_count != graph.native_shadows.len() {
+        return Err(GraphValidationError::InvalidPassArity);
+    }
+    if lighting_count != graph.lighting.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
     if offset_count != graph.offsets.len() {
@@ -631,6 +637,21 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
                         )
                 })
                 .map(|entry| entry.facts.mapping().output_footprint())
+        });
+        let index = ordered_metadata_index(
+            &graph.lighting,
+            producer.index.0,
+            |entry| entry.pass.index.0,
+            account,
+        )?;
+        let expected = expected.or_else(|| {
+            graph
+                .lighting
+                .get(index)
+                .filter(|entry| {
+                    entry.pass == producer && entry.facts.stage() == super::LightingStage::Resolve
+                })
+                .map(|entry| entry.facts.output_footprint())
         });
         if composite.filter_footprint != expected
             || (expected.is_some()
@@ -1744,6 +1765,73 @@ fn validate_displacement_metadata(
                 return Err(GraphValidationError::InvalidPassArity);
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_lighting_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
+    use super::{GraphLoweringSpatialDescriptor, LightingStage as Stage};
+    let mut previous: Option<(&super::LightingPassFacts, SemanticResourceId)> = None;
+    let mut last_index = None;
+    for entry in &graph.lighting {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if last_index.is_some_and(|last| entry.pass.index.0 <= last) {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        last_index = Some(entry.pass.index.0);
+        let facts = &entry.facts;
+        let pass = graph
+            .passes
+            .get(entry.pass.index.as_usize()?)
+            .filter(|pass| pass.id == entry.pass)
+            .ok_or(GraphValidationError::UnknownPass(entry.pass))?;
+        if pass.intent != SemanticPassIntent::Lighting(facts.stage())
+            || pass.reads.len() != usize::from(facts.reads_source())
+        {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        let read = pass.reads.first().copied();
+        match (facts.stage(), previous) {
+            (Stage::ResampleBump, None) if read.is_some() => {}
+            (Stage::Shade, None) if read.is_none() => {}
+            (Stage::Shade | Stage::Resolve, Some((prior, resource)))
+                if matches!(
+                    (prior.stage(), facts.stage()),
+                    (Stage::ResampleBump, Stage::Shade) | (Stage::Shade, Stage::Resolve)
+                ) && read == Some(resource)
+                    && facts.same_operation(prior) => {}
+            _ => return Err(GraphValidationError::InvalidPassArity),
+        }
+        if let Some(read) = read {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let descriptor = graph
+                .resources
+                .get(read.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(read))?
+                .descriptor;
+            if Some(GraphLoweringSpatialDescriptor::from_semantic(descriptor))
+                != facts.source_plan()
+            {
+                return Err(GraphValidationError::InvalidPassResultRole);
+            }
+        }
+        let SemanticPassResult::Resource(result) = pass.result else {
+            return Err(GraphValidationError::InvalidPassArity);
+        };
+        let descriptor = graph
+            .resources
+            .get(result.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownResource(result))?
+            .descriptor;
+        if descriptor.role != SemanticResourceRole::FilterIntermediate
+            || GraphLoweringSpatialDescriptor::from_semantic(descriptor) != facts.target_plan()
+        {
+            return Err(GraphValidationError::InvalidPassResultRole);
+        }
+        previous = (facts.stage() != Stage::Resolve).then_some((facts, result));
+    }
+    if previous.is_some() {
+        return Err(GraphValidationError::InvalidPassArity);
     }
     Ok(())
 }

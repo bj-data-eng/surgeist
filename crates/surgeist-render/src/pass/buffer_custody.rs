@@ -1,6 +1,9 @@
 //! Actual graph parameter backing and its one-way logical permission.
 use super::prepare::{AcquiredGraphBindings, RuntimePassPreparationRequest};
-use super::{close::preparation_error, model::RuntimePassId};
+use super::{
+    close::preparation_error,
+    model::{RuntimePassId, RuntimePassKind},
+};
 use crate::accounting::RenderWork;
 use crate::{
     Result,
@@ -20,8 +23,11 @@ pub(super) enum PassBufferRole {
     Composite,
     CssShadow,
     BlurEdge,
+    Lighting,
 }
 impl PassBufferRole {
+    pub(super) const COUNT: usize = Self::Lighting as usize + 1;
+
     pub(super) const fn index(self) -> usize {
         self as usize
     }
@@ -242,6 +248,32 @@ impl AcquiredGraphBindings {
             Convolution
         );
         match (
+            &request.runtime.kind,
+            self.lighting_parameter_bindings
+                .get(&request.runtime.id, account)?,
+        ) {
+            (RuntimePassKind::Lighting(work), Some(binding)) => {
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if binding.bytes.as_bytes() != work.uniform_bytes() {
+                    return Err(preparation_error(
+                        "lighting binding differs from its admitted bytes",
+                    ));
+                }
+                binding.buffer.active(
+                    request.runtime.id,
+                    PassBufferRole::Lighting,
+                    binding.bytes.as_bytes().len(),
+                    generation,
+                )?;
+            }
+            (kind, None) if !matches!(kind, RuntimePassKind::Lighting(_)) => {}
+            _ => {
+                return Err(preparation_error(
+                    "lighting binding differs from its admitted stage",
+                ));
+            }
+        }
+        match (
             &request.color_filter_operations,
             self.color_filter_operation_bindings
                 .get(&request.runtime.id, account)?,
@@ -308,6 +340,7 @@ impl AcquiredGraphBindings {
         }
         consume!(offset_parameter_bindings, Offset);
         consume!(native_shadow_parameter_bindings, NativeShadow);
+        consume!(lighting_parameter_bindings, Lighting);
         consume!(gaussian_parameter_bindings, Gaussian);
         consume!(morphology_parameter_bindings, Morphology);
         consume!(color_filter_operation_bindings, ColorOperation);
@@ -358,6 +391,7 @@ impl AcquiredGraphBindings {
         }
         check!(offset_parameter_bindings, Offset);
         check!(native_shadow_parameter_bindings, NativeShadow);
+        check!(lighting_parameter_bindings, Lighting);
         check!(gaussian_parameter_bindings, Gaussian);
         check!(morphology_parameter_bindings, Morphology);
         check!(color_filter_operation_bindings, ColorOperation);

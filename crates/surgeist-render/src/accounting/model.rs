@@ -82,7 +82,7 @@ dimensions! {
         /// kernels or packed raster streams.
         SerializedBytes,
         /// Output-scissor area scheduled for filter color conversion, resampling,
-        /// convolution accumulation/finalization, morphology tables/queries, offset,
+        /// convolution accumulation/finalization, lighting, morphology tables/queries, offset,
         /// raw lattice rebase, blur, colorize or shadow-merge passes.
         ScheduledFilterTexels,
         /// Actual scheduled convolution result-grid cells multiplied by taps, across all batches.
@@ -93,6 +93,16 @@ dimensions! {
         /// Native Gaussian scheduled cells times actual coefficient/fetch opportunities,
         /// including exterior transparent samples and periodic reconstruction.
         ScheduledGaussianSamples,
+        /// Bump-alpha load opportunities: four per resample cell and nine per shade
+        /// cell with a textured bump, and zero with a zero bump. Exterior and repeated
+        /// loads participate, independent of hardware texture-cache behavior.
+        ScheduledLightingAlphaSamples,
+        /// Lighting evaluations scheduled for shade-scissor cells, including dark
+        /// geometry, zero reflectivity and the zero-bump route.
+        ScheduledLightingEvaluations,
+        /// Shaded-result load opportunities: four per resolve-scissor cell,
+        /// including repeat loads clamped to the canvas edge.
+        ScheduledLightingResultSamples,
         /// Native shadow merge cells times actual original/shifted-alpha fetch opportunities.
         ScheduledShadowSamples,
         /// Native morphology scheduled fetch opportunities: table builds and
@@ -253,6 +263,7 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::Convolution)
             || self.supported_for(RenderAttemptKind::Offset)
             || self.supported_for(RenderAttemptKind::Gaussian)
+            || self.supported_for(RenderAttemptKind::Lighting)
             || self.supported_for(RenderAttemptKind::Morphology)
             || self.supported_for(RenderAttemptKind::Displacement)
             || self.supported_for(RenderAttemptKind::DisplacementMap)
@@ -262,6 +273,7 @@ impl RenderWork {
         match kind {
             RenderAttemptKind::Offset
             | RenderAttemptKind::Gaussian
+            | RenderAttemptKind::Lighting
             | RenderAttemptKind::Morphology
             | RenderAttemptKind::Displacement
             | RenderAttemptKind::DropShadow => {
@@ -367,6 +379,9 @@ impl RenderWork {
                         | Self::ScheduledConvolutionTaps
                         | Self::ScheduledOffsetSamples
                         | Self::ScheduledGaussianSamples
+                        | Self::ScheduledLightingAlphaSamples
+                        | Self::ScheduledLightingEvaluations
+                        | Self::ScheduledLightingResultSamples
                         | Self::ScheduledMorphologySamples
                         | Self::DisplacementMapByteVisits
                         | Self::DisplacementMapRecordVisits
@@ -1002,6 +1017,8 @@ pub enum RenderAttemptKind {
     Offset,
     /// Standalone resolved native Gaussian admission.
     Gaussian,
+    /// Standalone resolved native diffuse lighting admission.
+    Lighting,
     /// Standalone resolved native displacement parameter admission.
     Displacement,
     /// Standalone immutable native straight-RGBA8 displacement-map admission.
@@ -1117,6 +1134,9 @@ impl RenderWork {
             Self::ScheduledConvolutionTaps => "scheduled convolution taps",
             Self::ScheduledOffsetSamples => "scheduled offset samples",
             Self::ScheduledGaussianSamples => "scheduled gaussian samples",
+            Self::ScheduledLightingAlphaSamples => "scheduled lighting alpha samples",
+            Self::ScheduledLightingEvaluations => "scheduled lighting evaluations",
+            Self::ScheduledLightingResultSamples => "scheduled lighting result samples",
             Self::ScheduledShadowSamples => "scheduled shadow samples",
             Self::ScheduledMorphologySamples => "scheduled morphology samples",
             Self::DisplacementMapByteVisits => "displacement map byte visits",

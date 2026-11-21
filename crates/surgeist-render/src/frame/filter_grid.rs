@@ -18,10 +18,15 @@ pub(super) enum FilterGridOwner {
     Gaussian,
     Morphology,
     Displacement,
+    Lighting,
 }
 impl FilterGridOwner {
     fn mapping_error(self, value: f64) -> Error {
         match self {
+            Self::Lighting => crate::lighting::numeric_error(
+                crate::lighting::LightingNumericPhase::GridMapping,
+                value,
+            ),
             Self::Displacement => crate::displacement::DisplacementPreparationError::Numeric {
                 phase: crate::displacement::DisplacementNumericPhase::GridMapping,
                 value,
@@ -41,6 +46,10 @@ impl FilterGridOwner {
     }
     fn index_error(self, value: f64) -> Error {
         match self {
+            Self::Lighting => crate::lighting::numeric_error(
+                crate::lighting::LightingNumericPhase::GridIndex,
+                value,
+            ),
             Self::Displacement => crate::displacement::DisplacementPreparationError::Numeric {
                 phase: crate::displacement::DisplacementNumericPhase::GridIndex,
                 value,
@@ -60,6 +69,10 @@ impl FilterGridOwner {
     }
     fn sampling_error(self, value: f64) -> Error {
         match self {
+            Self::Lighting => crate::lighting::numeric_error(
+                crate::lighting::LightingNumericPhase::Sampling,
+                value,
+            ),
             Self::Displacement => crate::displacement::DisplacementPreparationError::Numeric {
                 phase: crate::displacement::DisplacementNumericPhase::Sampling,
                 value,

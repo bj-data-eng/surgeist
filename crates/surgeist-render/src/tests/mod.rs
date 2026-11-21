@@ -29,6 +29,8 @@ mod gpu;
 mod image_sampling;
 mod image_sampling_graph;
 mod image_sampling_mask;
+#[cfg(not(target_arch = "wasm32"))]
+mod lighting;
 mod model;
 #[cfg(not(target_arch = "wasm32"))]
 mod morphology;

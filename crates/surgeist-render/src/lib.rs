@@ -41,7 +41,7 @@
 //! | --- | --- |
 //! | [`accounting`] | Accounting contexts, limits, units and reports |
 //! | [`capability`] | Semantic and runtime capability reports |
-//! | [`convolution`], [`gaussian`], [`morphology`], [`displacement`], [`offset`], [`native_shadow`] | Native filter preparation and its typed refusals |
+//! | [`convolution`], [`gaussian`], [`morphology`], [`displacement`], [`lighting`], [`offset`], [`native_shadow`] | Native filter preparation and its typed refusals |
 //! | [`diagnostic`] | Typed diagnostics that an [`Error`] carries |
 //! | [`effect`] | Inputs shared by the filter-primitive modules |
 //! | [`geometry`] | Logical and physical geometry and coordinate spaces |
@@ -66,6 +66,7 @@ pub mod effect;
 pub mod gaussian;
 pub mod geometry;
 pub mod image;
+pub mod lighting;
 pub mod morphology;
 pub mod native_shadow;
 pub mod offset;

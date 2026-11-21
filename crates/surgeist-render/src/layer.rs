@@ -184,6 +184,11 @@ impl Layer {
         self
     }
 
+    pub(crate) fn with_lighting(mut self, lighting: crate::lighting::LightingForeground) -> Self {
+        self.filter = Some(LayerFilter::Lighting(lighting));
+        self
+    }
+
     pub(crate) fn with_displacement(
         mut self,
         displacement: crate::displacement::DisplacementForeground,
@@ -337,6 +342,7 @@ impl Layer {
                 | LayerFilter::Convolution(_)
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
+                | LayerFilter::Lighting(_)
                 | LayerFilter::Morphology(_)
                 | LayerFilter::Displacement(_)
                 | LayerFilter::NativeShadow(_),
@@ -355,6 +361,7 @@ impl Layer {
                 | LayerFilter::Convolution(_)
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
+                | LayerFilter::Lighting(_)
                 | LayerFilter::Morphology(_)
                 | LayerFilter::Displacement(_)
                 | LayerFilter::NativeShadow(_),
@@ -402,6 +409,7 @@ pub(crate) enum LayerFilter {
     Convolution(crate::convolution::PreparedConvolution),
     Offset(crate::offset::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
+    Lighting(crate::lighting::LightingForeground),
     Morphology(crate::morphology::MorphologyForeground),
     Displacement(crate::displacement::DisplacementForeground),
     NativeShadow(crate::native_shadow::DropShadowForeground),
