@@ -131,7 +131,10 @@ impl TableFamily {
         capture: CaptureFunding<'_>,
     ) -> Result<(), DocumentGuestEventError> {
         let members = match self {
-            Self::Table => TABLE_REFLECTIONS,
+            Self::Table => {
+                super::table_part::install_attributes(scope, prototype, capture)?;
+                TABLE_REFLECTIONS
+            }
             Self::Caption => &[ALIGN],
             Self::Section => &[ALIGN, CH, CH_OFF, V_ALIGN],
             Self::Row => {
@@ -145,6 +148,10 @@ impl TableFamily {
             capture,
             Receiver::TableLegacy(self),
             members,
-        )
+        )?;
+        if matches!(self, Self::Table) {
+            super::table_part::install_methods(scope, prototype, capture)?;
+        }
+        Ok(())
     }
 }

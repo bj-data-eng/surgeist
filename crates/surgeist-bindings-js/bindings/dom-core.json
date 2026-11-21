@@ -17966,28 +17966,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_caption"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose a bounded current Source observation of the first direct HTML caption child.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption"
+          "path": "crates/surgeist-dom/src/internal/table_part.rs",
+          "symbol": "html_table_part_with"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Project the canonical nullable HTMLTableCaptionElement wrapper.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "read_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.caption/set": {
       "kind": "native",
@@ -17995,38 +17983,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_caption"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "remove_child"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "insert_before"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Use the first direct HTML caption child and apply the pinned removal and insertion order in the current Source operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "set_html_table_part"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Convert and qualify the nullable HTMLTableCaptionElement on the original Table receiver, then drive the Source edit and CE reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-caption",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.createCaption:0/call": {
       "kind": "native",
@@ -18034,38 +18000,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_caption"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "create_element_ns"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "insert_before"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Return the first direct HTML caption child when present, or create and insert one in the pinned position.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createcaption"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "create_html_table_part_in_attachment"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Drive the canonical Source operation and project the returned HTMLTableCaptionElement wrapper.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createcaption",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.deleteCaption:0/call": {
       "kind": "native",
@@ -18073,33 +18017,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_caption"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "remove_child"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Remove the first direct HTML caption child if present in the current Source operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletecaption"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "delete_html_table_part"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Authenticate the Table receiver and drive the canonical removal and CE reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletecaption",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.tHead/get": {
       "kind": "native",
@@ -18107,28 +18034,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_head"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose a bounded current Source observation of the first direct HTML thead child.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead"
+          "path": "crates/surgeist-dom/src/internal/table_part.rs",
+          "symbol": "html_table_part_with"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Project the canonical nullable HTMLTableSectionElement wrapper.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "read_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.tHead/set": {
       "kind": "native",
@@ -18136,38 +18051,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_head"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "remove_child"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "insert_before"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Use the first direct HTML thead child and apply the pinned removal and insertion order in the current Source operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "set_html_table_part"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Convert and qualify the nullable HTMLTableSectionElement on the original Table receiver, then drive the Source edit and CE reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-thead",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.createTHead:0/call": {
       "kind": "native",
@@ -18175,38 +18068,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_head"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "create_element_ns"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "insert_before"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Return the first direct HTML thead child when present, or create and insert one in the pinned position.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createthead"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "create_html_table_part_in_attachment"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Drive the canonical Source operation and project the returned HTMLTableSectionElement wrapper.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createthead",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.deleteTHead:0/call": {
       "kind": "native",
@@ -18214,33 +18085,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_head"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "remove_child"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Remove the first direct HTML thead child if present in the current Source operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletethead"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "delete_html_table_part"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Authenticate the Table receiver and drive the canonical removal and CE reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletethead",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.tFoot/get": {
       "kind": "native",
@@ -18248,28 +18102,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_foot"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose a bounded current Source observation of the first direct HTML tfoot child.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot"
+          "path": "crates/surgeist-dom/src/internal/table_part.rs",
+          "symbol": "html_table_part_with"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Project the canonical nullable HTMLTableSectionElement wrapper.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "read_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.tFoot/set": {
       "kind": "native",
@@ -18277,38 +18119,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_foot"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "remove_child"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "insert_before"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Use the first direct HTML tfoot child and apply the pinned removal and insertion order in the current Source operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "set_html_table_part"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Convert and qualify the nullable HTMLTableSectionElement on the original Table receiver, then drive the Source edit and CE reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tfoot",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.createTFoot:0/call": {
       "kind": "native",
@@ -18316,38 +18136,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_foot"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "create_element_ns"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "insert_before"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Return the first direct HTML tfoot child when present, or create and insert one in the pinned position.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtfoot"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "create_html_table_part_in_attachment"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Drive the canonical Source operation and project the returned HTMLTableSectionElement wrapper.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtfoot",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.deleteTFoot:0/call": {
       "kind": "native",
@@ -18355,33 +18153,16 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
-        },
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table.rs",
-          "symbol": "table_foot"
-        },
-        {
-          "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/source.rs",
-          "symbol": "remove_child"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Remove the first direct HTML tfoot child if present in the current Source operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletetfoot"
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "delete_html_table_part"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Authenticate the Table receiver and drive the canonical removal and CE reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deletetfoot",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_part.rs",
+          "symbol": "write_table_part"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableElement.tBodies/get": {
       "kind": "native",
