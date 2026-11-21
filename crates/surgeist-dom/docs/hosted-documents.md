@@ -81,6 +81,17 @@ chronology.
 
 [document-tree-children]: https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document-tree-child-navigables
 
+Each published child navigable retains the structural insertion occurrence of its
+actual Frame or Iframe container. The exact Document qualifies the owner's
+insertion group. Containers attached through the same subtree share a group and
+have a relative shadow-including preorder within it. DOM records the group at
+the structural attach before insertion hooks can defer. The same occurrence
+survives child formation and state-preserving moves in that Document. Ordinary
+removal clears the container's current occurrence. Reinsertion records a new
+one in the destination Document. Historical navigable views retain their
+original occurrence. The live ordinary-tree visitor verifies the occurrence
+against the current canonical container edge.
+
 Destruction retires hosted participation without deleting the managed Document
 or its tree. Canonical creation, clone/import, adoption, shadow attachment and
 native fragment installation can still consume its actual metadata, original

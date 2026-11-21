@@ -122,6 +122,29 @@ impl ContainerIndex {
             })?;
         Ok(())
     }
+    fn visit_subtree(
+        &self,
+        header: RootHeader,
+        subtree: Key,
+        order: OrderView<'_>,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
+        mut visit: impl FnMut(Key, &mut dyn FnMut() -> Result<(), DomError>) -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        let mut cursor =
+            self.members
+                .lower_bound(header, subtree, order, Mode::ShadowIncluding, step)?;
+        while let Some(key) = cursor {
+            if !order.descendant(subtree, key, Mode::ShadowIncluding, step)? {
+                break;
+            }
+            step()?;
+            cursor = self
+                .members
+                .after(header, key, order, Mode::ShadowIncluding, step)?;
+            visit(key, step)?;
+        }
+        Ok(())
+    }
     pub fn adopt_custody(
         &self,
         registry: &bank::CustodyRegistry,
@@ -261,19 +284,25 @@ fn select(
         Ok(_) => {}
     }
     let root = order.root(subtree, Mode::ShadowIncluding, edit.step)?;
-    let header = source.header(root);
-    let mut cursor =
-        source
-            .members
-            .lower_bound(header, subtree, order, Mode::ShadowIncluding, edit.step)?;
-    while let Some(key) = cursor {
-        if !order.descendant(subtree, key, Mode::ShadowIncluding, edit.step)? {
-            break;
-        }
-        cursor = source.after(root, key, order, edit.step)?;
-        selected.change(custody, key, Some(key), edit)?;
-    }
-    Ok(())
+    source.visit_subtree(
+        source.header(root),
+        subtree,
+        order,
+        edit.step,
+        |key, step| {
+            selected.change(
+                custody,
+                key,
+                Some(key),
+                &mut Edit {
+                    registry: edit.registry,
+                    admit: edit.admit,
+                    step,
+                },
+            )?;
+            Ok(())
+        },
+    )
 }
 impl Containers {
     pub fn capture(index: &ContainerIndex, custody: &ContainerCustody) -> Self {
@@ -286,6 +315,32 @@ impl Containers {
                 ..Default::default()
             },
         }
+    }
+    pub fn has_participants(&self) -> bool {
+        let roots = &self.current.index.roots;
+        roots.existing.totals().occurrences != 0 || roots.created.totals().occurrences != 0
+    }
+
+    pub fn visit_insertion(
+        &self,
+        root: Key,
+        subtree: Key,
+        draft: &Draft,
+        cancel: &AtomicBool,
+        mut visit: impl FnMut(Key) -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        let mut step = || draft.source_step(cancel);
+        let order = draft.slot_index.order(draft);
+        let root = order.normalize(root);
+        let Some(group) = self.current.index.roots.get_with(root, &mut step)? else {
+            return Ok(());
+        };
+        if order.root(subtree, Mode::ShadowIncluding, &mut step)? != root {
+            return Ok(());
+        }
+        self.current
+            .index
+            .visit_subtree(group.member, subtree, order, &mut step, |key, _| visit(key))
     }
     fn prepare(
         &self,

@@ -36,6 +36,25 @@ fn uuid(last: u16) -> [u16; 36] {
     value
 }
 
+fn staged_child_insertion(
+    lease: &DomSourceLease<'_>,
+    container: NodeId,
+) -> DomHostedChildInsertion {
+    lease
+        .dom
+        .source_operation
+        .as_ref()
+        .unwrap()
+        .draft
+        .node(Key::Existing(container))
+        .unwrap()
+        .element()
+        .unwrap()
+        .language()
+        .hosted_insertion()
+        .unwrap()
+}
+
 #[test]
 fn child_history_publication_cancellation_restores_graph_and_retries_the_original_receipt() {
     let cancel = AtomicBool::new(false);
@@ -90,6 +109,8 @@ fn child_history_publication_cancellation_restores_graph_and_retries_the_origina
     else {
         panic!("actual connected Frame reaches its child constructor");
     };
+    let insertion = staged_child_insertion(&lease, iframe);
+    assert_eq!(insertion.document(), document);
     let preparation = lease
         .prepare_hosted_child(&mut source, &child, &cancel)
         .unwrap();
@@ -156,13 +177,48 @@ fn child_history_publication_cancellation_restores_graph_and_retries_the_origina
             }
             _ => panic!("unexpected child phase before its history handoff"),
         };
+        let at_entry = matches!(
+            lease.hosted_child_step(&child).unwrap(),
+            DomHostedChildStep::InitialEntry(_)
+        );
         let mut value = Some(value);
+        if at_entry {
+            let cancelled = AtomicBool::new(true);
+            let before = lease.snapshot().stamp();
+            assert_eq!(
+                lease.accept_hosted_child_publication(&mut source, &child, &mut value, &cancelled),
+                Err(DomHostedError::Dom(DomError::Cancelled)),
+            );
+            assert!(value.is_some());
+            assert_eq!(lease.snapshot().stamp(), before);
+            assert_eq!(staged_child_insertion(&lease, iframe), insertion);
+        }
         lease
             .accept_hosted_child_publication(&mut source, &child, &mut value, &cancel)
             .unwrap();
         assert!(value.is_none());
     }
     let operation = operation.expect("original constructor reaches QueueHistory");
+    let published = lease.snapshot();
+    let content = published
+        .node(iframe)
+        .unwrap()
+        .as_element()
+        .unwrap()
+        .child_navigable()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        published
+            .state
+            .hosted_history
+            .as_ref()
+            .unwrap()
+            .navigable(content)
+            .unwrap()
+            .insertion,
+        Some(insertion)
+    );
     assert!(publication.is_some());
     let before = lease.snapshot();
     let graph = lease
@@ -356,6 +412,8 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
     else {
         panic!("real hosted child")
     };
+    let insertion = staged_child_insertion(&lease, frame);
+    assert_eq!(insertion.document(), parent_document);
     let preparation = lease
         .prepare_hosted_child(&mut source, &child, &cancel)
         .unwrap();
@@ -432,20 +490,32 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
     ));
     assert!(publication.is_some());
     assert_eq!(lease.snapshot().stamp(), before);
+    assert_eq!(staged_child_insertion(&lease, frame), insertion);
     let spent = lease.status().spent_work();
     drop(lease);
     let mut lease = dom
         .resume_source_edit(operation_id, limits(), &cancel)
         .unwrap();
+    assert_eq!(staged_child_insertion(&lease, frame), insertion);
     lease
         .accept_hosted_child_publication(&mut source, &child, &mut publication, &cancel)
         .unwrap();
     assert!(publication.is_none());
     assert!(lease.status().spent_work() > spent);
+    assert_eq!(staged_child_insertion(&lease, frame), insertion);
     let DomHostedChildStep::MakeActive(request) = lease.hosted_child_step(&child).unwrap() else {
         panic!("published child")
     };
     let snapshot = lease.snapshot();
+    assert_eq!(
+        snapshot
+            .node(frame)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .hosted_insertion(),
+        Some(insertion),
+    );
     let metadata = snapshot.document(request.document()).unwrap();
     let crate::internal::meta::DomDocumentCspState::Associated(value) =
         metadata.metadata().policy_container().csp()

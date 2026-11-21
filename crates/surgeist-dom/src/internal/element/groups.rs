@@ -46,7 +46,8 @@ pub(crate) struct FocusReference<R> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct HostedContent {
-    pub value: crate::internal::hosted::DomHostedNavigableId,
+    pub insertion: crate::internal::hosted::DomHostedChildInsertion,
+    pub navigable: Option<crate::internal::hosted::DomHostedNavigableId>,
 }
 
 /// Only controls newly formed while constructing one Element binding. Existing
@@ -203,7 +204,7 @@ impl<'a> ElementFormation<'a> {
 
     pub(crate) fn hosted(
         &mut self,
-        value: crate::internal::hosted::DomHostedNavigableId,
+        value: HostedContent,
     ) -> Result<Arc<payload::Payload<HostedContent>>, DomError> {
         assert!(
             self.children.hosted.is_none(),
@@ -212,7 +213,7 @@ impl<'a> ElementFormation<'a> {
         let formed = self.form(
             storage::Payload::default(),
             storage::Payload::default(),
-            || Ok(HostedContent { value }),
+            || Ok(value),
         )?;
         self.children.hosted = Some(formed.custody);
         Ok(formed.value)

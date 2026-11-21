@@ -1,10 +1,101 @@
 //! Actual Frame/Iframe child-navigable hooks over the canonical staged owner.
 use super::*;
+use crate::internal::{
+    element::HostedContent,
+    hosted::{DomHostedChildInsertion, DomHostedError},
+};
 use surgeist_html::elements::frame::{
     HtmlFramePostConnectionDecision, HtmlIframePostConnectionDecision,
 };
 
 impl Draft {
+    /// Capture the structural attach before insertion hooks can park or reenter.
+    pub(super) fn record_hosted_child_insertions(
+        &mut self,
+        subtree: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self.hosted_history.is_none() || !self.containers.has_participants() {
+            return Ok(());
+        }
+        self.source_step(cancel)?;
+        let document = self.node(subtree)?.document();
+        let metadata = self.document_metadata(document)?;
+        if metadata.document_environment().browsing_context()
+            != surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
+        {
+            return Ok(());
+        }
+        let mut containers = self.effect_vec();
+        self.containers
+            .visit_insertion(document, subtree, self, cancel, |key| {
+                self.select_reserve(&mut containers, 1, cancel)?;
+                containers.push(key);
+                Ok(())
+            })?;
+        if containers.is_empty() {
+            return Ok(());
+        }
+        let document = DocumentId(self.published_id(document).ok_or(DomError::WrongDocument)?);
+        let group = self.next_hosted_insertion;
+        let next = group
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        if self.prepare_undo(cancel)? {
+            self.record_source_undo_prepared(source::ControlUndo::HostedInsertion(group));
+        }
+        self.next_hosted_insertion = next;
+        for (preorder, &container) in containers.iter().enumerate() {
+            self.source_step(cancel)?;
+            let element = self
+                .node(container)?
+                .element()
+                .ok_or(DomError::WrongNodeKind)?
+                .language();
+            if element.hosted_insertion().is_some() || element.child_navigable() != Some(None) {
+                return Err(DomError::HostedSourceUnavailable);
+            }
+            let preorder =
+                u64::try_from(preorder).map_err(|_| DomError::RepresentationExhausted)?;
+            self.replace_hosted_content(
+                container,
+                Some(HostedContent {
+                    insertion: DomHostedChildInsertion {
+                        document,
+                        group,
+                        preorder,
+                    },
+                    navigable: None,
+                }),
+                cancel,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub(in crate::internal::store) fn child_insertion_for_content(
+        &self,
+        container: Key,
+        document: DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedChildInsertion, DomHostedError> {
+        self.source_step(cancel)?;
+        let node = self.node(container)?;
+        let element = node.element().ok_or(DomError::WrongNodeKind)?.language();
+        let insertion = element
+            .hosted_insertion()
+            .ok_or(DomHostedError::MissingPublication)?;
+        if insertion.document != document
+            || self.published_id(node.document()) != Some(document.node())
+            || self.published_id(self.shadow_including_root(container, cancel)?)
+                != Some(document.node())
+            || element.child_navigable() != Some(None)
+        {
+            return Err(DomHostedError::StaleBasis);
+        }
+        Ok(insertion)
+    }
+
     /// Per-node family decision, after the shared native post-connection list
     /// has established actual current shadow-including connectedness.
     pub(super) fn navigable_post_connection_node(
@@ -81,6 +172,9 @@ impl Draft {
         let destroy = element.child_navigable_presence().is_some_and(
             surgeist_html::elements::frame::HtmlChildNavigablePresence::removal_requires_child_destruction,
         );
+        if !destroy && element.language().hosted_insertion().is_some() {
+            self.establish_child_navigable(key, None, cancel)?;
+        }
         if destroy {
             let navigable = self
                 .element(key)?

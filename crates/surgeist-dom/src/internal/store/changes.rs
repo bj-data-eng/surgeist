@@ -618,6 +618,12 @@ pub(super) fn sparse_difference(
         #[cfg(test)]
         written.pushed::<DomChange>();
     }
+    if old.next_hosted_insertion != new.next_hosted_insertion {
+        source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+        changes.push(DomChange::HostedChildInsertionOrder);
+        #[cfg(test)]
+        written.pushed::<DomChange>();
+    }
     if old.signal_slots != new.signal_slots
         || old.notification_queued != new.notification_queued
         || old.native_tasks != new.native_tasks
@@ -912,6 +918,10 @@ pub(super) fn full_difference(
     {
         source::formation::reserve(&mut changes, 1, budget, cancelled)?;
         changes.push(DomChange::DetailsToggleIntentions);
+    }
+    if old.next_hosted_insertion != new.next_hosted_insertion {
+        source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+        changes.push(DomChange::HostedChildInsertionOrder);
     }
     if old.signal_slots != new.signal_slots
         || old.notification_queued != new.notification_queued

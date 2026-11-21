@@ -25,7 +25,9 @@ pub use queue::{
     DomHostedHistoryStep, DomHostedQueuedHistory,
 };
 mod history;
-pub use history::{DomHostedEntry, DomHostedEntryInitialization, DomHostedNavigable};
+pub use history::{
+    DomHostedChildInsertion, DomHostedEntry, DomHostedEntryInitialization, DomHostedNavigable,
+};
 
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};

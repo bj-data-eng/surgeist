@@ -473,6 +473,7 @@ pub surgeist_dom::edit::DomChange::DocumentInteractiveState(surgeist_dom::identi
 pub surgeist_dom::edit::DomChange::DocumentMeta(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::DocumentRenderBlocking(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::ElementState(surgeist_dom::identity::NodeId)
+pub surgeist_dom::edit::DomChange::HostedChildInsertionOrder
 pub surgeist_dom::edit::DomChange::HostedOperationState
 pub surgeist_dom::edit::DomChange::HostedOperationState::complete: bool
 pub surgeist_dom::edit::DomChange::HostedOperationState::operation: surgeist_dom::hosted::DomHostedOperationId
@@ -1151,6 +1152,11 @@ pub fn surgeist_dom::hosted::history::DomHostedChildHistoryRequest::creation(&se
 pub fn surgeist_dom::hosted::history::DomHostedChildHistoryRequest::operation(&self) -> surgeist_dom::hosted::DomHostedOperationId
 pub fn surgeist_dom::hosted::history::DomHostedChildHistoryRequest::parent_navigable(&self) -> surgeist_dom::hosted::DomHostedNavigableId
 pub fn surgeist_dom::hosted::history::DomHostedChildHistoryRequest::traversable(&self) -> surgeist_dom::hosted::DomHostedNavigableId
+pub struct surgeist_dom::hosted::history::DomHostedChildInsertion
+impl surgeist_dom::hosted::history::DomHostedChildInsertion
+pub const fn surgeist_dom::hosted::history::DomHostedChildInsertion::document(self) -> surgeist_dom::identity::DocumentId
+pub const fn surgeist_dom::hosted::history::DomHostedChildInsertion::group(self) -> u64
+pub const fn surgeist_dom::hosted::history::DomHostedChildInsertion::preorder(self) -> u64
 pub struct surgeist_dom::hosted::history::DomHostedEntry<'a>
 impl<'a> surgeist_dom::hosted::history::DomHostedEntry<'a>
 pub fn surgeist_dom::hosted::history::DomHostedEntry<'a>::about_base_url(self) -> &'a surgeist_html_semantics::base::HtmlAboutBaseUrl
@@ -1193,6 +1199,7 @@ pub fn surgeist_dom::hosted::history::DomHostedNavigable<'a>::active_document(se
 pub fn surgeist_dom::hosted::history::DomHostedNavigable<'a>::active_entry(self) -> surgeist_dom::hosted::history::DomHostedEntryId
 pub fn surgeist_dom::hosted::history::DomHostedNavigable<'a>::browsing_context(self) -> surgeist_dom::hosted::DomHostedBrowsingContextId
 pub fn surgeist_dom::hosted::history::DomHostedNavigable<'a>::container(self) -> core::option::Option<surgeist_dom::identity::NodeId>
+pub fn surgeist_dom::hosted::history::DomHostedNavigable<'a>::container_insertion(self) -> core::option::Option<surgeist_dom::hosted::history::DomHostedChildInsertion>
 pub fn surgeist_dom::hosted::history::DomHostedNavigable<'a>::current_entry(self) -> surgeist_dom::hosted::history::DomHostedEntryId
 pub fn surgeist_dom::hosted::history::DomHostedNavigable<'a>::entries(self) -> &'a [surgeist_dom::hosted::history::DomHostedEntryId]
 pub fn surgeist_dom::hosted::history::DomHostedNavigable<'a>::former_parent(self) -> core::option::Option<surgeist_dom::hosted::DomHostedNavigableId>

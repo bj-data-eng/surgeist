@@ -708,15 +708,40 @@ impl Draft {
         next: Option<crate::internal::hosted::DomHostedNavigableId>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let current = self
+        self.source_step(cancel)?;
+        let element = self
             .node(key)?
             .element()
             .ok_or(DomError::WrongNodeKind)?
-            .child_navigable()
-            .ok_or(DomError::WrongNodeKind)?;
-        if current == next {
-            return Ok(());
-        }
+            .language();
+        let current = element.child_navigable().ok_or(DomError::WrongNodeKind)?;
+        let next = match next {
+            Some(navigable) => {
+                let insertion = element
+                    .hosted_insertion()
+                    .ok_or(DomError::HostedSourceUnavailable)?;
+                if current == Some(navigable) {
+                    return Ok(());
+                }
+                if current.is_some() {
+                    return Err(DomError::HostedSourceUnavailable);
+                }
+                Some(crate::internal::element::HostedContent {
+                    insertion,
+                    navigable: Some(navigable),
+                })
+            }
+            None if element.hosted_insertion().is_none() => return Ok(()),
+            None => None,
+        };
+        self.replace_hosted_content(key, next, cancel)
+    }
+    pub(in crate::internal::store) fn replace_hosted_content(
+        &mut self,
+        key: Key,
+        next: Option<crate::internal::element::HostedContent>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         let registry = self.custody_registry().clone();
         let mut admit = |usage| self.admit_custody_usage(usage, cancel);
         let mut formation = crate::internal::element::ElementFormation::new(
@@ -730,7 +755,7 @@ impl Draft {
         let mut element = self
             .node(key)?
             .element()
-            .expect("validated Element")
+            .ok_or(DomError::WrongNodeKind)?
             .language()
             .clone();
         element.set_hosted_payload(hosted)?;

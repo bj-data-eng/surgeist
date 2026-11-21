@@ -1599,6 +1599,8 @@ pub enum DomChange {
     SlotQueries,
     IntrinsicTasks,
     DetailsToggleIntentions,
+    /// The owner advanced its structural insertion order for hosted child containers.
+    HostedChildInsertionOrder,
     DetailsToggleIntentionCancelled {
         operation: crate::internal::details::DomDetailsToggleIntentionId,
         target: NodeId,
@@ -1968,6 +1970,7 @@ pub(crate) struct State {
     next_task: u64,
     pub(crate) details_intentions: SharedVec<crate::internal::details::DomDetailsToggleIntention>,
     next_details_intention: u64,
+    next_hosted_insertion: u64,
     nodes: usize,
     units: usize,
 }
@@ -1990,6 +1993,7 @@ impl PartialEq for State {
             && self.next_task == other.next_task
             && self.details_intentions == other.details_intentions
             && self.next_details_intention == other.next_details_intention
+            && self.next_hosted_insertion == other.next_hosted_insertion
             && self.nodes == other.nodes
             && self.units == other.units
     }
@@ -2121,6 +2125,7 @@ impl Dom {
             next_task: 0,
             details_intentions: SharedVec::default(),
             next_details_intention: 0,
+            next_hosted_insertion: 0,
             nodes: 0,
             units: 0,
         };
@@ -3078,6 +3083,7 @@ struct Draft {
     families: transaction::family_discovery::Families,
     role_facts: transaction::role_facts::Roles,
     containers: hosted::containers::Containers,
+    next_hosted_insertion: u64,
     private_nodes: usize,
     private_units: usize,
     private_counts: transaction::Counts,
@@ -3615,6 +3621,7 @@ impl Draft {
                 &dom.state.role_facts,
                 &dom.state_custody.role_facts,
             ),
+            next_hosted_insertion: dom.state.next_hosted_insertion,
             containers: hosted::containers::Containers::capture(
                 &dom.state.container_index,
                 &dom.state_custody.containers,

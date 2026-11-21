@@ -793,8 +793,6 @@ impl DomElement {
             _ => None,
         }
     }
-    /// Actual content navigable for Frame/Iframe. Outer None is inapplicable;
-    /// Some(None) is the stored null relationship, not a creation/history proof.
     pub(crate) fn set_hosted_payload(
         &mut self,
         value: Option<Arc<Payload<HostedContent>>>,
@@ -805,9 +803,17 @@ impl DomElement {
         self.hosted = value;
         Ok(())
     }
+    /// The actual Frame or Iframe content navigable.
+    ///
+    /// `None` indicates an inapplicable element family. `Some(None)` records a null edge.
     pub fn child_navigable(&self) -> Option<Option<crate::internal::hosted::DomHostedNavigableId>> {
         matches!(self.family, NativeFamily::Frame | NativeFamily::Iframe(_))
-            .then(|| self.hosted.as_ref().map(|value| value.value.value))
+            .then(|| self.hosted.as_ref().and_then(|value| value.value.navigable))
+    }
+    pub(crate) fn hosted_insertion(
+        &self,
+    ) -> Option<crate::internal::hosted::DomHostedChildInsertion> {
+        self.hosted.as_ref().map(|payload| payload.value.insertion)
     }
     /// Local guards consume this projection of the one canonical relationship.
     pub fn child_navigable_presence(
@@ -898,6 +904,7 @@ impl DomElement {
             && self.focus == other.focus
             && self.nonce == other.nonce
             && self.family == other.family
+            && self.hosted == other.hosted
             && self.fullscreen_flag() == other.fullscreen_flag()
             && self.keyboard_lock_flag() == other.keyboard_lock_flag()
             && self.has_failed_construction_interface() == other.has_failed_construction_interface()

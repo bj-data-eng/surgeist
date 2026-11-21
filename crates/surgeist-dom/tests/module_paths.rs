@@ -94,8 +94,8 @@ use surgeist_dom::hosted::destruction::{
     DomHostedDestructionStep, DomHostedDocumentDestructionProof,
 };
 use surgeist_dom::hosted::history::{
-    DomHostedChildHistoryPublication, DomHostedChildHistoryRequest, DomHostedEntry,
-    DomHostedEntryId, DomHostedEntryInitialization, DomHostedEntryRequest,
+    DomHostedChildHistoryPublication, DomHostedChildHistoryRequest, DomHostedChildInsertion,
+    DomHostedEntry, DomHostedEntryId, DomHostedEntryInitialization, DomHostedEntryRequest,
     DomHostedHistoryJobReceipt, DomHostedHistoryJobRequest, DomHostedHistoryStep,
     DomHostedNavigable, DomHostedQueuedHistory,
 };
