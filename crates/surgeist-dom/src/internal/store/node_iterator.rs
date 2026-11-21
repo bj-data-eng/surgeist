@@ -1,7 +1,7 @@
 //! The canonical cursor bank and its ordinary-tree removal hook.
 
 mod operation;
-mod traversal;
+pub(super) mod traversal;
 pub use operation::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};
 
 use super::*;

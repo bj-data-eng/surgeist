@@ -160,6 +160,29 @@ changes these contextual getters and subsequent ordinary writes through actual
 node-document state; it does not rewrite stored names/attributes. Captured import
 also preserves raw QName/attribute fields while target context controls display.
 
+## Live Document tag-name collections
+
+`Dom::get_elements_by_tag_name` retains the exact Document and UTF-16
+qualified-name query. It admits the entire query backing, including when the
+query is a range of a larger text block. Opening a current read revalidates the
+Document and borrows the canonical tree. Reopen the read after an edit to
+observe the same collection against that edit's publication.
+
+The wildcard selects ordinary descendant elements. An HTML Document folds
+the query's ASCII spelling when it compares an element in the HTML namespace.
+Foreign elements and XML Documents use the exact qualified name. The
+collection follows ordinary child edges in tree order.
+
+Length and item read current membership. Named lookup selects the first
+matching ID or eligible HTML name, and supported-name output retains the
+first occurrence of each exact nonempty value. The read bounds cumulative
+work, shares active Source work admission, and refuses reads after the
+qualifying callback scope closes or its authority retires. Supported-name
+results retain their vector and text occurrences through a separate result
+limit. Source custody remains with each result until it is dropped.
+
+[Pinned qualified-name filter](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L5555-L5584) · [Pinned HTMLCollection](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L3904-L3958).
+
 ## Owned snapshots
 
 `DomSnapshot` owns immutable storage for every managed node, including detached

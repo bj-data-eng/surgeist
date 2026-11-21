@@ -12,14 +12,14 @@ pub(super) enum Direction {
     Previous,
 }
 
-pub(super) trait OrdinaryTree<N: Copy + Eq> {
+pub(in crate::internal::store) trait OrdinaryTree<N: Copy + Eq> {
     type Error: From<DomError>;
     fn position(&self, node: N) -> Result<Option<(N, usize)>, Self::Error>;
     fn child(&self, node: N, ordinal: usize) -> Result<Option<N>, Self::Error>;
     fn last_child(&self, node: N) -> Result<Option<N>, Self::Error>;
 }
 
-pub(super) fn following<N: Copy + Eq, T: OrdinaryTree<N>>(
+pub(in crate::internal::store) fn following<N: Copy + Eq, T: OrdinaryTree<N>>(
     tree: &T,
     root: N,
     mut node: N,

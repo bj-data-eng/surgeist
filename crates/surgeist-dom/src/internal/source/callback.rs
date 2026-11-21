@@ -77,11 +77,15 @@ impl CallbackWork {
         step_ancestors(self.ancestors.as_ref(), cancel)
     }
     pub(crate) fn active(&self) -> bool {
-        self.stage.load(Ordering::Relaxed) == 1
-            && self
-                .scope
-                .lock()
-                .is_ok_and(|scope| scope.upgrade().is_some())
+        self.active_scope().is_some()
+    }
+
+    pub(crate) fn active_scope(&self) -> Option<Weak<DispatchScope>> {
+        if self.stage.load(Ordering::Relaxed) != 1 {
+            return None;
+        }
+        let scope = self.scope.lock().ok()?;
+        (scope.strong_count() != 0).then(|| scope.clone())
     }
 
     pub(crate) fn open_scope(&self) -> Option<Arc<DispatchScope>> {

@@ -237,3 +237,77 @@ fn actual_select_completion_captures_its_select_and_reuses_the_original_authoriz
     assert_eq!(same.operation(), task.operation());
     assert_eq!(same.select(), select);
 }
+
+#[test]
+fn collection_names_keep_output_custody_and_reject_a_revoked_executor() {
+    let (mut dom, _hosted, _, document, root) = fixture();
+    let cancel = AtomicBool::new(false);
+    let custody = crate::internal::dispatch::DomDispatchCustodyLimits::new(
+        64, 4096, 16_000_000, 16_000_000, 4_000_000,
+    )
+    .unwrap();
+    dom.set_limits(dom.limits().with_dispatch_custody(custody))
+        .unwrap();
+    let mut edit = DomBatch::new();
+    edit.set_attribute(root, "id", "first");
+    let dialog = edit.create_element_ns(document, Namespace::html(), "dialog");
+    edit.insert_before(&dialog, root, None);
+    let dialog = dom
+        .apply(edit, &cancel)
+        .unwrap()
+        .created(&dialog)
+        .unwrap()
+        .unwrap();
+    let collection = dom
+        .get_elements_by_tag_name(document, "div".into(), 64, &cancel)
+        .unwrap();
+    let executor = dom.bind_source_event_executor(&cancel).unwrap();
+    let event = {
+        let mut source = dom
+            .begin_source_edit(DomSourceEdit::show_dialog(dialog), limits(), &cancel)
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Event(event)) =
+            source.advance(&cancel).unwrap()
+        else {
+            panic!("the original dialog effect must reach its event");
+        };
+        event
+    };
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    let read = dom
+        .read_tag_name_collection(
+            &collection,
+            crate::tree::DomTagNameCollectionLimits::new(100_000, 8, 64),
+            || Ok::<_, DomError>(()),
+            &cancel,
+        )
+        .unwrap();
+
+    let ledger = dom.custody_registry.ledger();
+    let baseline = ledger.total();
+    let first = read.supported_names().unwrap();
+    let first_backing = ledger.total();
+    let second = read.supported_names().unwrap();
+    let second_backing = ledger.total();
+    assert_eq!(first.as_slice(), ["first".into()]);
+    assert_eq!(second.as_slice(), first.as_slice());
+    assert!(first_backing.bytes() > baseline.bytes());
+    assert!(first_backing.units() > baseline.units());
+    assert_eq!(
+        second_backing.bytes() - first_backing.bytes(),
+        first_backing.bytes() - baseline.bytes()
+    );
+    assert_eq!(
+        second_backing.units() - first_backing.units(),
+        first_backing.units() - baseline.units()
+    );
+    drop(first);
+    assert_eq!(ledger.total(), first_backing);
+    drop(second);
+    assert_eq!(ledger.total(), baseline);
+
+    drop(executor);
+    assert_eq!(read.item(0), Err(DomError::InvalidSourceEvent));
+    drop(scope);
+}
