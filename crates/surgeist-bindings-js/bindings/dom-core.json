@@ -17494,31 +17494,18 @@
       "adapter": "htmlinputelement.maxlength.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "control_length_reflection_with"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project the pinned Input numeric reflection with its exact read fallback and integer admission.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.maxLength/set": {
       "kind": "native",
       "adapter": "htmlinputelement.maxlength.set",
       "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "control_length_setter_value"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the typed Input numeric setter with the pinned conversion, range handling and Source reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.min/get": {
       "kind": "native",
@@ -17542,31 +17529,18 @@
       "adapter": "htmlinputelement.minlength.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "control_length_reflection_with"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project the pinned Input numeric reflection with its exact read fallback and integer admission.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.minLength/set": {
       "kind": "native",
       "adapter": "htmlinputelement.minlength.set",
       "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "control_length_setter_value"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the typed Input numeric setter with the pinned conversion, range handling and Source reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.multiple/get": {
       "kind": "native",
@@ -17672,31 +17646,18 @@
       "adapter": "htmlinputelement.size.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "read_with"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project the pinned Input numeric reflection with its exact read fallback and integer admission.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.size/set": {
       "kind": "native",
       "adapter": "htmlinputelement.size.set",
       "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "setter_value"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the typed Input numeric setter with the pinned conversion, range handling and Source reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.src/get": {
       "kind": "host",
@@ -18295,31 +18256,18 @@
       "adapter": "htmltextareaelement.cols.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/scalar.rs", "symbol": "textarea_cols"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "read_with"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Apply the pinned reflected numeric getter to current native Textarea content and project the exact declared integer.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-cols",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.cols/set": {
       "kind": "native",
       "adapter": "htmltextareaelement.cols.set",
       "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "setter_value"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the typed Textarea reflection with the pinned conversion, range handling and Source reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-cols",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.dirName/get": {
       "kind": "native",
@@ -18368,62 +18316,36 @@
       "adapter": "htmltextareaelement.maxlength.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "control_length_reflection_with"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Apply the pinned reflected numeric getter to current native Textarea content and project the exact declared integer.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-maxlength",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.maxLength/set": {
       "kind": "native",
       "adapter": "htmltextareaelement.maxlength.set",
       "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "control_length_setter_value"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the typed Textarea reflection with the pinned conversion, range handling and Source reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-maxlength",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.minLength/get": {
       "kind": "native",
       "adapter": "htmltextareaelement.minlength.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "control_length_reflection_with"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Apply the pinned reflected numeric getter to current native Textarea content and project the exact declared integer.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-minlength",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.minLength/set": {
       "kind": "native",
       "adapter": "htmltextareaelement.minlength.set",
       "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "control_length_setter_value"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the typed Textarea reflection with the pinned conversion, range handling and Source reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-minlength",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.name/get": {
       "kind": "native",
@@ -18496,31 +18418,18 @@
       "adapter": "htmltextareaelement.rows.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/scalar.rs", "symbol": "textarea_rows"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "read_with"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Apply the pinned reflected numeric getter to current native Textarea content and project the exact declared integer.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-rows",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.rows/set": {
       "kind": "native",
       "adapter": "htmltextareaelement.rows.set",
       "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/control_length.rs", "symbol": "setter_value"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the typed Textarea reflection with the pinned conversion, range handling and Source reactions.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-rows",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.wrap/get": {
       "kind": "native",

@@ -504,6 +504,10 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     input_state::input_source_and_processing_refusals_preserve_native_state();
     input_state::input_reflections_drive_native_range_and_color_processing();
     input_state::input_reflections_propagate_native_processing_refusal();
+    super::guest::tests::numeric_control_admission::integer_reflections_admit_reached_native_units(
+    );
+    super::guest::tests::numeric_control_admission::local_integer_rejection_precedes_source_admission(
+    );
     super::guest::tests::select_string_admission::select_value_admits_native_text_and_its_guest_copy();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();

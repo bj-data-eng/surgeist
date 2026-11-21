@@ -10,6 +10,7 @@ use surgeist_bindings_js::conversion::{
     declarations::html_input_element_value_setter, types::BOOLEAN,
 };
 use surgeist_dom::source::DomSourceEdit;
+use surgeist_html::bounded::attributes::HtmlControlDimensionRule;
 
 const BEFORE_CHECKED: &[reflection::Member] = &[
     (
@@ -103,11 +104,25 @@ const AFTER_INDETERMINATE: &[reflection::Member] = &[
         Reflection::String,
     ),
     (
+        &ascii(b"maxLength"),
+        &ascii(b"get maxLength"),
+        &ascii(b"set maxLength"),
+        &ascii(b"maxlength"),
+        Reflection::ControlLength,
+    ),
+    (
         &ascii(b"min"),
         &ascii(b"get min"),
         &ascii(b"set min"),
         &ascii(b"min"),
         Reflection::String,
+    ),
+    (
+        &ascii(b"minLength"),
+        &ascii(b"get minLength"),
+        &ascii(b"set minLength"),
+        &ascii(b"minlength"),
+        Reflection::ControlLength,
     ),
     (
         &ascii(b"multiple"),
@@ -150,6 +165,13 @@ const AFTER_INDETERMINATE: &[reflection::Member] = &[
         &ascii(b"set required"),
         &ascii(b"required"),
         Reflection::Boolean,
+    ),
+    (
+        &ascii(b"size"),
+        &ascii(b"get size"),
+        &ascii(b"set size"),
+        &ascii(b"size"),
+        Reflection::ControlDimension(HtmlControlDimensionRule::InputSize),
     ),
     (
         &ascii(b"step"),

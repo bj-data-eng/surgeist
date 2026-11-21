@@ -23,6 +23,10 @@ pub use crate::internal::attributes::bounded_rules::{
     translate_processing_with,
 };
 pub use crate::internal::attributes::command::button_command_readback_with;
+pub use crate::internal::attributes::control_length::{
+    HtmlControlDimensionRule, HtmlControlIntegerIndexSize, control_length_reflection_with,
+    control_length_setter_value,
+};
 pub use crate::internal::attributes::hash_name::{HtmlHashNameScan, HtmlHashNameScanStep};
 pub use crate::internal::attributes::image_values::{
     HtmlEmbeddedDimensionApplicability, HtmlEmbeddedDimensionApplicabilityContext,

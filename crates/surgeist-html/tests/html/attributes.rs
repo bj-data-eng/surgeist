@@ -8,6 +8,7 @@ mod cell_spans;
 mod column_spans;
 mod command_validity;
 mod content_attributes;
+mod control_integer_reflection;
 mod control_length;
 mod control_text;
 mod details_name;

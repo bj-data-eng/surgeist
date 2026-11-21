@@ -95,6 +95,8 @@ mod input_state;
 mod legend_form;
 #[path = "document_scripting/marquee.rs"]
 mod marquee;
+#[path = "document_scripting/numeric_control_attributes.rs"]
+mod numeric_control_attributes;
 #[path = "document_scripting/output_values.rs"]
 mod output_values;
 #[path = "document_scripting/script_preparation.rs"]
@@ -2446,6 +2448,7 @@ fn main() {
             "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
+            "numeric-control-attributes" => numeric_control_attributes::attached_controls_reflect_native_integer_attributes(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
@@ -2552,6 +2555,7 @@ fn main() {
     textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state();
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     input_attributes::attached_input_reflections_use_canonical_attributes();
+    numeric_control_attributes::attached_controls_reflect_native_integer_attributes();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();

@@ -231,7 +231,7 @@ nonnegative_rule!(
     Textarea,
     26,
     "attr-textarea-cols",
-    20,
+    super::control_length::TEXTAREA_COLS_DEFAULT as u128,
     true
 );
 nonnegative_rule!(
@@ -240,7 +240,7 @@ nonnegative_rule!(
     Textarea,
     131,
     "attr-textarea-rows",
-    2,
+    super::control_length::TEXTAREA_ROWS_DEFAULT as u128,
     true
 );
 
