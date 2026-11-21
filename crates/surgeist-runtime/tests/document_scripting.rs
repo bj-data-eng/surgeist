@@ -67,6 +67,8 @@ mod body_reflections;
 mod content_editable;
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
+#[path = "document_scripting/element_mixin.rs"]
+mod element_mixin;
 #[path = "document_scripting/element_projection.rs"]
 mod element_projection;
 #[path = "document_scripting/frameset_reflections.rs"]
@@ -2418,6 +2420,7 @@ fn main() {
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
+            "element-mixin" => element_mixin::attached_mixin_accessors_use_their_includers_and_native_state(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
@@ -2512,6 +2515,7 @@ fn main() {
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
+    element_mixin::attached_mixin_accessors_use_their_includers_and_native_state();
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();
