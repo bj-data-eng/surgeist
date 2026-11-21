@@ -877,6 +877,7 @@ fn install_html_members<'scope>(
         "HTMLFontElement" => super::font::install(scope, prototype, capture)?,
         "HTMLFormElement" => super::form::install(scope, prototype, capture)?,
         "HTMLFrameSetElement" => super::frameset::install(scope, prototype, capture)?,
+        "HTMLLabelElement" => super::label::install(scope, prototype, capture)?,
         "HTMLLegendElement" => super::legend::install(scope, prototype, capture)?,
         "HTMLMarqueeElement" => super::marquee::install(scope, prototype, capture)?,
         "HTMLLIElement" => super::li::install(scope, prototype, capture)?,

@@ -199,10 +199,18 @@ pub(super) fn attached_labels_track_their_live_control_and_form() {
         const face = add(faceLabel, 'x-label-face');
         customElements.define('x-label-ordinary', class extends HTMLElement {});
         if (faceLabel.control !== null || faceLabel.form !== null) return 'unqualified custom descendants are not labelable';
-        class Face extends HTMLElement { static formAssociated = true; }
+        let duringUpgrade = null;
+        class Face extends HTMLElement {
+            static formAssociated = true;
+            constructor() {
+                super();
+                duringUpgrade = faceLabel.control;
+            }
+        }
         customElements.define('x-label-face', Face);
-        return face instanceof Face && ordinary.parentNode === faceLabel && faceLabel.control === face &&
-            faceLabel.form === firstForm ? 'ok' : 'successful autonomous FACE is labelable with its stored Form';
+        return face instanceof Face && duringUpgrade === face && ordinary.parentNode === faceLabel &&
+            faceLabel.control === face && faceLabel.form === firstForm ? 'ok' :
+            'the associated FACE is labelable during upgrade and exposes its settled Form afterward';
     })()"#,
     );
 

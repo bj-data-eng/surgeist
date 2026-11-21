@@ -10,7 +10,10 @@ use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
 use surgeist_html::bounded::form::{HtmlFormOwnerLookup, form_owner_lookup};
-use surgeist_html::{elements::form::HtmlNativeFormAssociationKind, vocabulary::KnownHtmlElement};
+use surgeist_html::{
+    elements::form::{HtmlNativeFormAssociationKind, native_labelability_with},
+    vocabulary::KnownHtmlElement,
+};
 
 /// Evidence of the actual association phase at this capture's host revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -967,22 +970,12 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> ControlResult<bool> {
         let kind = self.known(element)?;
         if let Some(kind) = kind {
-            return Ok(if labelable {
-                match kind {
-                    KnownHtmlElement::Button
-                    | KnownHtmlElement::Meter
-                    | KnownHtmlElement::Output
-                    | KnownHtmlElement::Progress
-                    | KnownHtmlElement::Select
-                    | KnownHtmlElement::Textarea => true,
-                    KnownHtmlElement::Input => {
-                        self.control_input_type(element)? != HtmlInputType::Hidden
-                    }
-                    _ => false,
-                }
-            } else {
-                HtmlNativeFormAssociationKind::from_element(kind).is_some()
-            });
+            if labelable {
+                return Ok(native_labelability_with(kind, || {
+                    self.control_input_type(element)
+                })?);
+            }
+            return Ok(HtmlNativeFormAssociationKind::from_element(kind).is_some());
         }
         if !self.html_namespace(element)? {
             return Ok(false);

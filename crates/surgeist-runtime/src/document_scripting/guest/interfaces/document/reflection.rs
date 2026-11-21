@@ -139,6 +139,7 @@ pub(super) enum Receiver {
     Form,
     Frameset,
     Input,
+    Label,
     Legend,
     Marquee,
     Media,
@@ -243,6 +244,10 @@ impl Receiver {
                     !element.has_failed_construction_interface() && element.input_state().is_some()
                 })
             }
+            Self::Label => {
+                step()?;
+                html_element_is(node, "HTMLLabelElement")
+            }
             Self::Legend => {
                 step()?;
                 html_element_is(node, "HTMLLegendElement")
@@ -341,6 +346,7 @@ impl Receiver {
             Self::Form => const { &ascii(b"HTMLFormElement required") },
             Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
             Self::Input => const { &ascii(b"HTMLInputElement required") },
+            Self::Label => const { &ascii(b"HTMLLabelElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
             Self::Media => const { &ascii(b"HTMLMediaElement required") },
@@ -946,6 +952,7 @@ impl Capture {
                             | Receiver::Form
                             | Receiver::Frameset
                             | Receiver::Input
+                            | Receiver::Label
                             | Receiver::Legend
                             | Receiver::Marquee
                             | Receiver::Output

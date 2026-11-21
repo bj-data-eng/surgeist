@@ -402,6 +402,9 @@ native task ingestion and the attached element-task delivery entry.
 HTMLOptGroupElement reflects its own disabled attribute as presence and its
 label attribute as a raw DOMString. Adding or removing disabled reaches the
 native nearest-select and selectedness reset rules through the Source adapter.
+HTMLLabelElement resolves its live labeled control in the ordinary tree and
+projects that control's stored Form owner. Its htmlFor setter reflects the raw
+for attribute through the Source and custom-element reaction adapter.
 HTMLSelectElement reflects disabled, multiple, name, required, and size. Its
 type follows multiple presence, and its reflected size has a zero fallback
 independent of the native display size. It exposes selectedIndex in native option

@@ -40,6 +40,7 @@ mod fragment;
 mod frameset;
 mod html_document;
 mod input;
+mod label;
 mod legacy;
 mod legend;
 mod li;
