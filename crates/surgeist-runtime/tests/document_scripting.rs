@@ -77,6 +77,8 @@ mod document_fragment;
 mod element_mixin;
 #[path = "document_scripting/element_projection.rs"]
 mod element_projection;
+#[path = "document_scripting/fieldset_attributes.rs"]
+mod fieldset_attributes;
 #[path = "document_scripting/form_attributes.rs"]
 mod form_attributes;
 #[path = "document_scripting/frameset_reflections.rs"]
@@ -2428,6 +2430,7 @@ fn main() {
             "translate-reflection" => translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords(),
             "body-reflections" => body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings(),
             "form-attributes" => form_attributes::attached_form_settings_reflect_live_native_attributes(),
+            "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
@@ -2528,6 +2531,7 @@ fn main() {
     translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords();
     body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings();
     form_attributes::attached_form_settings_reflect_live_native_attributes();
+    fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
