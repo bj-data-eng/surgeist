@@ -158,6 +158,7 @@ impl Draft {
             kind,
             KindRead::Element(_)
                 | KindRead::Text(_)
+                | KindRead::CdataSection(_)
                 | KindRead::Comment(_)
                 | KindRead::ProcessingInstruction(_)
         ) {
@@ -165,7 +166,9 @@ impl Draft {
         }
         if matches!(self.node(parent)?.kind(), KindRead::Document(_)) {
             match kind {
-                KindRead::Text(_) => return Err(DomError::HierarchyRequest),
+                KindRead::Text(_) | KindRead::CdataSection(_) => {
+                    return Err(DomError::HierarchyRequest);
+                }
                 KindRead::Element(_) => self.ensure_document_move(parent, before, cancel)?,
                 _ => {}
             }

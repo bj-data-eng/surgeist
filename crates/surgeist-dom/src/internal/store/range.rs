@@ -109,7 +109,9 @@ impl Draft {
         let node = self.node(key)?;
         Ok(match node.kind() {
             KindRead::DocumentType(_) => 0,
-            KindRead::Text(data) | KindRead::Comment(data) => data.len(),
+            KindRead::Text(data) | KindRead::CdataSection(data) | KindRead::Comment(data) => {
+                data.len()
+            }
             KindRead::ProcessingInstruction(data) => data.data().len(),
             _ => node.children().len(),
         })

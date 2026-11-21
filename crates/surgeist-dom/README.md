@@ -2,7 +2,7 @@
 
 `surgeist-dom` owns the canonical live document tree: stable identities, atomic
 edits, immutable snapshots and complete change coverage. It supports native
-Document, Element, DocumentFragment, ShadowRoot, Text, Comment,
+Document, Element, DocumentFragment, ShadowRoot, Text, CDATASection, Comment,
 ProcessingInstruction and DocumentType nodes, with bounded HTML family adapters.
 
 The crate directly consumes HTML language values and decisions, completed

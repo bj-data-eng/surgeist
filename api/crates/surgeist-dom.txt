@@ -522,6 +522,9 @@ pub surgeist_dom::edit::DomChange::ViewTransitionRecord(surgeist_dom::view_trans
 pub enum surgeist_dom::edit::DomDetachedNodeCreation
 pub surgeist_dom::edit::DomDetachedNodeCreation::Attribute(surgeist_html::internal::values::document_string::DocumentString)
 pub surgeist_dom::edit::DomDetachedNodeCreation::AttributeNs(surgeist_html::internal::values::Namespace, surgeist_html::internal::values::document_string::DocumentString)
+pub surgeist_dom::edit::DomDetachedNodeCreation::CdataSection
+pub surgeist_dom::edit::DomDetachedNodeCreation::CdataSection::data: surgeist_html::internal::values::document_string::DocumentString
+pub surgeist_dom::edit::DomDetachedNodeCreation::CdataSection::fallback: surgeist_dom::script::DomCreationRealmFallback
 pub surgeist_dom::edit::DomDetachedNodeCreation::Comment(surgeist_html::internal::values::document_string::DocumentString)
 pub surgeist_dom::edit::DomDetachedNodeCreation::DocumentType
 pub surgeist_dom::edit::DomDetachedNodeCreation::DocumentType::fallback: surgeist_dom::script::DomCreationRealmFallback
@@ -2947,6 +2950,7 @@ pub fn surgeist_dom::source::DomSourceEdit::close_dialog(node: surgeist_dom::ide
 pub fn surgeist_dom::source::DomSourceEdit::construct_document(context: surgeist_dom::script::DomDocumentConstructorContext) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_attribute(document: surgeist_dom::identity::DocumentId, local_name: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_attribute_ns(document: surgeist_dom::identity::DocumentId, namespace: surgeist_html::internal::values::Namespace, qualified_name: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::create_cdata_section(document: surgeist_dom::identity::DocumentId, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_comment(document: surgeist_dom::identity::NodeId, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_document() -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_document_type(document: surgeist_dom::identity::NodeId, name: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, public_id: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, system_id: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
@@ -3489,6 +3493,7 @@ impl<A> core::fmt::Debug for surgeist_dom::tree::DomNodeIteratorProgress<A>
 pub fn surgeist_dom::tree::DomNodeIteratorProgress<A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::tree::DomNodeKind<'a>
 pub surgeist_dom::tree::DomNodeKind::Attr(&'a surgeist_dom::tree::DomAttribute)
+pub surgeist_dom::tree::DomNodeKind::CdataSection(&'a surgeist_html::internal::values::document_string::DocumentString)
 pub surgeist_dom::tree::DomNodeKind::Comment(&'a surgeist_html::internal::values::document_string::DocumentString)
 pub surgeist_dom::tree::DomNodeKind::Document(&'a surgeist_dom::document::DomDocumentMetadata)
 pub surgeist_dom::tree::DomNodeKind::DocumentFragment
@@ -4516,6 +4521,7 @@ pub fn surgeist_dom::DomBatch::clone_node(&mut self, source: impl core::convert:
 pub fn surgeist_dom::DomBatch::construct_document(&mut self, context: surgeist_dom::script::DomDocumentConstructorContext) -> surgeist_dom::edit::CreatedNode
 pub fn surgeist_dom::DomBatch::create_attribute(&mut self, document: impl core::convert::Into<surgeist_dom::edit::NodeOperand>, local_name: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> surgeist_dom::edit::CreatedNode
 pub fn surgeist_dom::DomBatch::create_attribute_ns(&mut self, document: impl core::convert::Into<surgeist_dom::edit::NodeOperand>, namespace: surgeist_html::internal::values::Namespace, qualified_name: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> surgeist_dom::edit::CreatedNode
+pub fn surgeist_dom::DomBatch::create_cdata_section(&mut self, document: impl core::convert::Into<surgeist_dom::edit::NodeOperand>, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> surgeist_dom::edit::CreatedNode
 pub fn surgeist_dom::DomBatch::create_comment(&mut self, document: impl core::convert::Into<surgeist_dom::edit::NodeOperand>, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> surgeist_dom::edit::CreatedNode
 pub fn surgeist_dom::DomBatch::create_detached(&mut self, document: surgeist_dom::identity::DocumentId, creation: surgeist_dom::edit::DomDetachedNodeCreation) -> surgeist_dom::edit::CreatedNode
 pub fn surgeist_dom::DomBatch::create_document(&mut self) -> surgeist_dom::edit::CreatedNode

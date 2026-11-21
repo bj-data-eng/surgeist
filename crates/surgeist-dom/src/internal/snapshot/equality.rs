@@ -125,9 +125,9 @@ fn fields_equal<E: From<DomError>>(
             Ok(equal_text(left.target(), right.target(), &mut step)?
                 && equal_text(left.data(), right.data(), step)?)
         }
-        (Kind::Text(left), Kind::Text(right)) | (Kind::Comment(left), Kind::Comment(right)) => {
-            equal_text(left, right, step)
-        }
+        (Kind::Text(left), Kind::Text(right))
+        | (Kind::CdataSection(left), Kind::CdataSection(right))
+        | (Kind::Comment(left), Kind::Comment(right)) => equal_text(left, right, step),
         (Kind::Attr(left), Kind::Attr(right)) => {
             Ok(left.name().same_expanded_identity(right.name())?
                 && equal_text(left.value(), right.value(), step)?)

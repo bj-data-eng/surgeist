@@ -77,6 +77,29 @@ impl Draft {
         };
         Ok(metadata)
     }
+    pub(super) fn validate_cdata_section(
+        &self,
+        document: Key,
+        data: &DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if self.document_metadata(document)?.class()
+            == crate::internal::document::DomDocumentClass::Html
+        {
+            return Err(DomError::NotSupported);
+        }
+        admit(data.len(), limits.units, DomResource::StringCodeUnits)?;
+        for window in data.code_units().windows(3) {
+            self.source_step(cancel)?;
+            if window == [u16::from(b']'), u16::from(b']'), u16::from(b'>')] {
+                return Err(DomError::InvalidCharacter);
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn construct_document(
         &mut self,
         context: &crate::internal::hosted::DocumentConstructorContext,

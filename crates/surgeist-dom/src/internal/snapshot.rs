@@ -29,18 +29,27 @@ pub enum DomNodeKind<'a> {
     DocumentFragment,
     ShadowRoot(&'a crate::internal::shadow::DomShadowRootState),
     Text(&'a DocumentString),
+    CdataSection(&'a DocumentString),
     Comment(&'a DocumentString),
     ProcessingInstruction(&'a DomProcessingInstruction),
     DocumentType(&'a DomDocumentType),
 }
 
-impl DomNodeKind<'_> {
+impl<'a> DomNodeKind<'a> {
+    pub(crate) fn text_data(self) -> Option<&'a DocumentString> {
+        match self {
+            Self::Text(data) | Self::CdataSection(data) => Some(data),
+            _ => None,
+        }
+    }
+
     /// The NodeFilter bit selected by the DOM node type minus one.
     pub(crate) const fn traversal_mask(self) -> u32 {
         1 << match self {
             Self::Element(_) => 0,
             Self::Attr(_) => 1,
             Self::Text(_) => 2,
+            Self::CdataSection(_) => 3,
             Self::ProcessingInstruction(_) => 6,
             Self::Comment(_) => 7,
             Self::Document(_) => 8,
@@ -563,14 +572,14 @@ impl<'a> DomNode<'a> {
             shadow: false,
         }
     }
-    /// Visit this Text and its contiguous ordinary Text siblings in tree order.
+    /// Visit this Text and its contiguous Text siblings in tree order, including CDATA sections.
     /// Each inspected sibling and canonical lookup is admitted through `step`.
     pub fn visit_contiguous_text_with<E: From<DomError>>(
         self,
         mut step: impl FnMut() -> Result<(), E>,
         mut visit: impl FnMut(&'a DocumentString) -> Result<(), E>,
     ) -> Result<(), E> {
-        let DomNodeKind::Text(value) = self.kind() else {
+        let Some(value) = self.kind().text_data() else {
             return Err(DomError::WrongNodeKind.into());
         };
         let Some(parent) = self.parent() else {
@@ -590,7 +599,7 @@ impl<'a> DomNode<'a> {
         for &sibling in children[..index].iter().rev() {
             step()?;
             let sibling = self.snapshot.node_with(sibling, &mut step)?;
-            if !matches!(sibling.kind(), DomNodeKind::Text(_)) {
+            if sibling.kind().text_data().is_none() {
                 break;
             }
             start -= 1;
@@ -598,7 +607,7 @@ impl<'a> DomNode<'a> {
         for &sibling in &children[start..index] {
             step()?;
             let sibling = self.snapshot.node_with(sibling, &mut step)?;
-            let DomNodeKind::Text(text) = sibling.kind() else {
+            let Some(text) = sibling.kind().text_data() else {
                 return Err(DomError::WrongNodeKind.into());
             };
             visit(text)?;
@@ -607,7 +616,7 @@ impl<'a> DomNode<'a> {
         for (_, &sibling) in siblings {
             step()?;
             let sibling = self.snapshot.node_with(sibling, &mut step)?;
-            let DomNodeKind::Text(text) = sibling.kind() else {
+            let Some(text) = sibling.kind().text_data() else {
                 break;
             };
             visit(text)?;
@@ -615,9 +624,8 @@ impl<'a> DomNode<'a> {
         Ok(())
     }
 
-    /// Visit only ordinary descendant Text payloads, in tree order. The
-    /// receiver, shadow trees hosted by descendants, and hosted Template
-    /// contents are outside the traversal.
+    /// Visit Text and CDATASection descendants on ordinary child edges in tree order.
+    /// Shadow trees and Template contents have separate ownership edges.
     ///
     /// Admit each child edge and canonical lookup page through `step`. The
     /// caller owns any work it does with the borrowed Text. `reserve` receives
@@ -631,7 +639,7 @@ impl<'a> DomNode<'a> {
         mut visit: impl FnMut(&'a DocumentString) -> Result<(), E>,
     ) -> Result<(), E> {
         self.find_descendant_with(step, reserve, |node, _| {
-            if let DomNodeKind::Text(text) = node.kind() {
+            if let Some(text) = node.kind().text_data() {
                 visit(text)?;
             }
             Ok(None::<()>)
@@ -717,7 +725,7 @@ impl<'a> DomNode<'a> {
     {
         for &id in self.children() {
             let child = self.snapshot.node_with(id, &mut step)?;
-            if let DomNodeKind::Text(value) = child.kind() {
+            if let Some(value) = child.kind().text_data() {
                 visit(value, &mut step)?;
             }
         }
@@ -862,6 +870,7 @@ impl<'a> DomNode<'a> {
                 "#document-fragment".into()
             }
             DomNodeKind::Text(_) => "#text".into(),
+            DomNodeKind::CdataSection(_) => "#cdata-section".into(),
             DomNodeKind::Comment(_) => "#comment".into(),
             DomNodeKind::ProcessingInstruction(value) => value.target().clone(),
             DomNodeKind::DocumentType(value) => value.name().clone(),
@@ -1112,7 +1121,9 @@ impl<'a> DomNode<'a> {
     }
     pub fn data(self) -> Option<&'a DocumentString> {
         match self.kind() {
-            DomNodeKind::Text(data) | DomNodeKind::Comment(data) => Some(data),
+            DomNodeKind::Text(data)
+            | DomNodeKind::CdataSection(data)
+            | DomNodeKind::Comment(data) => Some(data),
             DomNodeKind::ProcessingInstruction(value) => Some(value.data()),
             _ => None,
         }

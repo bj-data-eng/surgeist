@@ -478,7 +478,7 @@ fn same_parent_text_move_keeps_two_source_time_direct_text_captures() {
     let s = b.create_element_ns(&d, Namespace::html(), "style");
     b.set_attribute(&s, "type", "text/plain");
     let a = b.create_text(&d, "A");
-    let c = b.create_text(&d, "B");
+    let c = b.create_cdata_section(&d, "B");
     let span = b.create_element_ns(&d, Namespace::html(), "span");
     let nested = b.create_text(&d, "EXCLUDED");
     b.insert_before(&nested, &span, None);

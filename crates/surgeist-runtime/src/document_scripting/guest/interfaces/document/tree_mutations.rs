@@ -27,6 +27,7 @@ impl Receiver {
                 | (
                     Self::CharacterData,
                     GuestNode::Text(_)
+                        | GuestNode::CdataSection(_)
                         | GuestNode::Comment(_)
                         | GuestNode::ProcessingInstruction(_)
                 )

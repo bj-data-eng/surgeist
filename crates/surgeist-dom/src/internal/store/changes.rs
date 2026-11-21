@@ -24,7 +24,9 @@ fn same_language(left: &Node, right: &Node) -> bool {
     match (left, right) {
         (Node::DocumentFragment(_), Node::DocumentFragment(_)) => true,
         (Node::ShadowRoot(a), Node::ShadowRoot(b)) => same_payload(&a.value.state, &b.value.state),
-        (Node::Text(a), Node::Text(b)) => same_payload(&a.value.data, &b.value.data),
+        (Node::Text(a), Node::Text(b)) | (Node::CdataSection(a), Node::CdataSection(b)) => {
+            same_payload(&a.value.data, &b.value.data)
+        }
         (Node::Comment(a), Node::Comment(b)) => same_payload(&a.value.data, &b.value.data),
         (Node::ProcessingInstruction(a), Node::ProcessingInstruction(b)) => {
             same_payload(&a.value.data, &b.value.data)

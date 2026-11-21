@@ -269,6 +269,9 @@ impl Capture {
                                 GuestNode::Text(_) => documents
                                     .character_data
                                     .prototype(character_data::CharacterKind::Text),
+                                GuestNode::CdataSection(_) => {
+                                    &documents.character_data.cdata_section
+                                }
                                 GuestNode::Comment(_) => documents
                                     .character_data
                                     .prototype(character_data::CharacterKind::Comment),
@@ -334,6 +337,7 @@ fn ordinary_clone_kind(kind: DomNodeKind<'_>) -> Result<CloneKind, DocumentGuest
         DomNodeKind::DocumentType(_) => GuestNode::DocumentType,
         DomNodeKind::DocumentFragment => GuestNode::Fragment,
         DomNodeKind::Text(_) => GuestNode::Text,
+        DomNodeKind::CdataSection(_) => GuestNode::CdataSection,
         DomNodeKind::Comment(_) => GuestNode::Comment,
         DomNodeKind::ProcessingInstruction(_) => GuestNode::ProcessingInstruction,
         _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),

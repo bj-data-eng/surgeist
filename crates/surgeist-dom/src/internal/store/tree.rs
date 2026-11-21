@@ -507,14 +507,18 @@ impl Draft {
             };
         }
         match kind {
-            KindRead::Text(_) => return Err(DomError::HierarchyRequest),
+            KindRead::Text(_) | KindRead::CdataSection(_) => {
+                return Err(DomError::HierarchyRequest);
+            }
             KindRead::Comment(_) | KindRead::ProcessingInstruction(_) => return Ok(()),
             KindRead::DocumentFragment | KindRead::ShadowRoot(_) => {
                 let mut elements = 0;
                 for child in self.node(node)?.children().iter() {
                     self.effect_step(cancelled)?;
                     match self.node(child)?.kind() {
-                        KindRead::Text(_) => return Err(DomError::HierarchyRequest),
+                        KindRead::Text(_) | KindRead::CdataSection(_) => {
+                            return Err(DomError::HierarchyRequest);
+                        }
                         KindRead::Element(_) => elements += 1,
                         _ => {}
                     }

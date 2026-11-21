@@ -901,7 +901,9 @@ impl DomSnapshot {
                     }
                     subject
                 }
-                DomNodeKind::Text(data) => builder.add_text(&root, data.clone())?,
+                DomNodeKind::Text(data) | DomNodeKind::CdataSection(data) => {
+                    builder.add_text(&root, data.clone())?
+                }
                 DomNodeKind::Comment(data) => builder.add_comment(&root, data.clone())?,
                 DomNodeKind::ProcessingInstruction(value) => builder.add_processing_instruction(
                     &root,
@@ -990,6 +992,7 @@ impl DomSnapshot {
                     }
                 }
                 DomNodeKind::Text(_)
+                | DomNodeKind::CdataSection(_)
                 | DomNodeKind::Attr(_)
                 | DomNodeKind::Comment(_)
                 | DomNodeKind::ProcessingInstruction(_)
@@ -999,6 +1002,7 @@ impl DomSnapshot {
                 match node.kind() {
                     DomNodeKind::Element(_)
                     | DomNodeKind::Text(_)
+                    | DomNodeKind::CdataSection(_)
                     | DomNodeKind::Comment(_)
                     | DomNodeKind::ProcessingInstruction(_)
                     | DomNodeKind::DocumentType(_) => builder.establish_root(&subject)?,

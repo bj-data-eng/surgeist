@@ -450,8 +450,9 @@ work and backing. V8 owns its execution and heap behavior. Conversion policies
 installed during native setup join the original guest budget on activation.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's
-registered creation realm, including borrowed calls. Native Text and Comment
-use the same exact wrapper custody. `CharacterData` exposes UTF-16 reads and
+registered creation realm, including borrowed calls. `createCDATASection`
+creates a distinct live Text subtype in an XML Document and preserves its
+identity through ordinary DOM edits. `CharacterData` exposes UTF-16 reads and
 edits, with replacements driven by canonical Source under the caller's
 `DocumentGuestEventLimits::source_edits`. Those edits update native Ranges.
 Explicit Source Comment delegation uses the public Comment wrapper when the

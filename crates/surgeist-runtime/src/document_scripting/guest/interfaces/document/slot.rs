@@ -35,7 +35,8 @@ impl SlottableReceiver {
     fn accepts(self, node: GuestNode) -> bool {
         matches!(
             (self, node),
-            (Self::Element, GuestNode::Element(_)) | (Self::Text, GuestNode::Text(_))
+            (Self::Element, GuestNode::Element(_))
+                | (Self::Text, GuestNode::Text(_) | GuestNode::CdataSection(_))
         )
     }
 
@@ -293,7 +294,11 @@ impl Capture {
         for index in 0..count {
             let value = arguments.get(index).ok_or(Error::BackendUnavailable)?;
             let node = match tree::projected_node(scope, value)? {
-                Some(GuestNode::Element(node) | GuestNode::Text(node)) => node,
+                Some(
+                    GuestNode::Element(node)
+                    | GuestNode::Text(node)
+                    | GuestNode::CdataSection(node),
+                ) => node,
                 _ => {
                     return Ok(Completion::Throw(
                         scope.type_error(&ascii(b"Element or Text required"))?,

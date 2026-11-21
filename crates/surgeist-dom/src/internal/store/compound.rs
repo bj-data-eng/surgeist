@@ -221,6 +221,7 @@ impl Draft {
                         kind,
                         transaction::KindRead::Element(_)
                             | transaction::KindRead::Text(_)
+                            | transaction::KindRead::CdataSection(_)
                             | transaction::KindRead::Comment(_)
                             | transaction::KindRead::ProcessingInstruction(_)
                             | transaction::KindRead::DocumentType(_)
@@ -296,7 +297,9 @@ impl Draft {
                 let (value, payload) = source::formation::shared_string(self, value, cancel)?;
                 self.string_replace_all(receiver, value, payload, limits, cancel)
             }
-            transaction::KindRead::Text(current) | transaction::KindRead::Comment(current) => {
+            transaction::KindRead::Text(current)
+            | transaction::KindRead::CdataSection(current)
+            | transaction::KindRead::Comment(current) => {
                 let count = current.len();
                 self.compound_replace_data(receiver, count, value, limits, cancel)
             }

@@ -10,13 +10,17 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<custody::Held<NewNode>, DomError> {
         let text = match incoming.value() {
-            NewNode::Text(text) | NewNode::Comment(text) => text,
+            NewNode::Text(text) | NewNode::CdataSection(text) | NewNode::Comment(text) => text,
             NewNode::Attr(attribute) => attribute.value(),
             _ => return Ok(incoming),
         };
         self.list_block(text, cancel)?;
         // Comment and Attr occurrences are charged by their typed payloads.
-        if matches!(incoming.value(), NewNode::Text(_)) && !retained_occurrence {
+        if matches!(
+            incoming.value(),
+            NewNode::Text(_) | NewNode::CdataSection(_)
+        ) && !retained_occurrence
+        {
             let mut original = source::storage::Payload::default();
             original.listed_string(text)?;
             let original = custody::Usage::new(original.bytes, original.units);

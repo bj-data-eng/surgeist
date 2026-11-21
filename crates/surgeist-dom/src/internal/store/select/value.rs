@@ -283,7 +283,7 @@ impl Draft {
                             .map_err(HtmlControlledOptionValueFailure::into_error)
                     })
                 }
-                transaction::KindRead::Text(value) => {
+                transaction::KindRead::Text(value) | transaction::KindRead::CdataSection(value) => {
                     producer.call(self, cancel, |owner, envelope| {
                         owner
                             .add_text(&document, value, envelope, cancel)

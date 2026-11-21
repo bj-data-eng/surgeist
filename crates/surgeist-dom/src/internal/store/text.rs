@@ -106,7 +106,7 @@ impl Draft {
         Ok(None)
     }
 
-    fn text_span(
+    fn exclusive_text_span(
         &self,
         node: Key,
         cancel: &AtomicBool,
@@ -157,6 +157,7 @@ impl Draft {
                     | transaction::KindRead::Attr(_)
                     | transaction::KindRead::DocumentFragment
                     | transaction::KindRead::ShadowRoot(_)
+                    | transaction::KindRead::CdataSection(_)
                     | transaction::KindRead::Comment(_)
                     | transaction::KindRead::ProcessingInstruction(_)
                     | transaction::KindRead::DocumentType(_) => None,
@@ -173,7 +174,7 @@ impl Draft {
                     }
                     self.remove(node, limits, cancel)?;
                 } else if let Some(length) = length {
-                    let (parent, span, position) = self.text_span(node, cancel)?;
+                    let (parent, span, position) = self.exclusive_text_span(node, cancel)?;
                     let children = self.node(parent)?.children();
                     let mut size = 0usize;
                     for index in span.clone().filter(|index| *index != position) {
@@ -244,7 +245,7 @@ impl Draft {
                     current = self.next_sibling(next);
                 }
                 // Select the source's actual removal set after endpoint transfers.
-                let (parent, span, position) = self.text_span(node, cancel)?;
+                let (parent, span, position) = self.exclusive_text_span(node, cancel)?;
                 let mut nodes = self.effect_vec();
                 self.select_reserve(&mut nodes, span.len().saturating_sub(1), cancel)?;
                 for index in span.filter(|index| *index != position) {
@@ -306,7 +307,9 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         let original = self.node(node)?;
-        let transaction::KindRead::Text(data) = original.kind() else {
+        let (transaction::KindRead::Text(data) | transaction::KindRead::CdataSection(data)) =
+            original.kind()
+        else {
             return Err(DomError::WrongNodeKind);
         };
         if offset > data.len() {
@@ -389,7 +392,9 @@ impl Draft {
             _ => 0,
         };
         let previous = match self.node(node)?.kind() {
-            transaction::KindRead::Text(data) | transaction::KindRead::Comment(data) => data,
+            transaction::KindRead::Text(data)
+            | transaction::KindRead::CdataSection(data)
+            | transaction::KindRead::Comment(data) => data,
             transaction::KindRead::ProcessingInstruction(value) => value.data(),
             _ => return Err(DomError::WrongNodeKind),
         };
@@ -442,6 +447,7 @@ impl Draft {
         );
         let kind = match self.node(node)?.kind() {
             transaction::KindRead::Text(_) => NewNode::Text(value),
+            transaction::KindRead::CdataSection(_) => NewNode::CdataSection(value),
             transaction::KindRead::Comment(_) => NewNode::Comment(value),
             transaction::KindRead::ProcessingInstruction(instruction) => {
                 let instruction = instruction.with_data(&value, formation.as_ref(), cancelled)?;

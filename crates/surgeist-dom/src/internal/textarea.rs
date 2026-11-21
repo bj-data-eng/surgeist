@@ -1,7 +1,7 @@
 //! Native Textarea raw state and bounded API/default-value reads.
 use crate::{
-    internal::identity::NodeId, internal::snapshot::DomNode, internal::snapshot::DomNodeKind,
-    internal::store::DomError, internal::store::DomResource,
+    internal::identity::NodeId, internal::snapshot::DomNode, internal::store::DomError,
+    internal::store::DomResource,
 };
 use std::sync::atomic::AtomicBool;
 use surgeist_html::values::DocumentString;
@@ -156,7 +156,7 @@ impl<'a> DomTextarea<'a> {
         let mut length = 0usize;
         for &child in self.node.children() {
             read.step()?;
-            if let DomNodeKind::Text(text) = self.node.snapshot.node(child)?.kind() {
+            if let Some(text) = self.node.snapshot.node(child)?.kind().text_data() {
                 length = length
                     .checked_add(text.len())
                     .ok_or(DomError::RepresentationExhausted)?;
@@ -167,7 +167,7 @@ impl<'a> DomTextarea<'a> {
         let mut output = output(length, limits.units, None, cancel)?;
         for &child in self.node.children() {
             read.step()?;
-            if let DomNodeKind::Text(text) = self.node.snapshot.node(child)?.kind() {
+            if let Some(text) = self.node.snapshot.node(child)?.kind().text_data() {
                 for &unit in text.code_units() {
                     read.step()?;
                     output.push(unit);

@@ -256,7 +256,9 @@ pub(super) fn node_children(
         Node::Attr(value) => attr_data_dependency(&value.value.data, registry, names, admit),
         Node::DocumentFragment(value) => fragment_dependency(&value.value, registry, admit),
         Node::ShadowRoot(value) => shadow_dependency(&value.value, registry, admit),
-        Node::Text(value) => text_dependency(&value.value, registry, admit),
+        Node::Text(value) | Node::CdataSection(value) => {
+            text_dependency(&value.value, registry, admit)
+        }
         Node::Comment(value) => data_dependency(&value.value.data, registry, admit),
         Node::ProcessingInstruction(value) => data_dependency(&value.value.data, registry, admit),
         Node::DocumentType(value) => data_dependency(&value.value.data, registry, admit),

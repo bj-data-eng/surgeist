@@ -155,7 +155,8 @@ impl Draft {
                     let mut empty = true;
                     for child in self.node(node)?.children().iter() {
                         self.source_step(cancel)?;
-                        if let transaction::KindRead::Text(text) = &self.node(child)?.kind()
+                        if let transaction::KindRead::Text(text)
+                        | transaction::KindRead::CdataSection(text) = &self.node(child)?.kind()
                             && !text.is_empty()
                         {
                             empty = false;

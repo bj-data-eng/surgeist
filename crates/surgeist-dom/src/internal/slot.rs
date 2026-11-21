@@ -22,7 +22,7 @@ impl<'a> From<DomNodeKind<'a>> for TreeKind<'a> {
     fn from(kind: DomNodeKind<'a>) -> Self {
         match kind {
             DomNodeKind::Element(element) => Self::Element(element),
-            DomNodeKind::Text(_) => Self::Text,
+            DomNodeKind::Text(_) | DomNodeKind::CdataSection(_) => Self::Text,
             DomNodeKind::ShadowRoot(state) => Self::ShadowRoot(state),
             _ => Self::Other,
         }
