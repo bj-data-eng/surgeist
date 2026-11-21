@@ -421,7 +421,7 @@ impl<'a> DomNode<'a> {
         let Some(fieldset) = parent.as_fieldset() else {
             return Ok(None);
         };
-        fieldset.node.stored_form_owner_with(step)
+        fieldset.form_owner_with(step)
     }
 
     pub(crate) fn stored_form_owner_with<E: From<DomError>>(

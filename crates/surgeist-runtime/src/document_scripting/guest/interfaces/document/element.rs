@@ -353,6 +353,7 @@ impl ElementBindings {
                 "HTMLDirectoryElement" => {
                     super::list_compact::install_directory(scope, &prototype, capture)?
                 }
+                "HTMLFieldSetElement" => super::fieldset::install(scope, &prototype, capture)?,
                 "HTMLFontElement" => super::font::install(scope, &prototype, capture)?,
                 "HTMLFormElement" => super::form::install(scope, &prototype, capture)?,
                 "HTMLFrameSetElement" => super::frameset::install(scope, &prototype, capture)?,

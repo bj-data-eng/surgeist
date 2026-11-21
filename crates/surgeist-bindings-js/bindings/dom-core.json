@@ -814,6 +814,16 @@
       "entries": ["HTMLBodyElement.obsolete"]
     },
     {
+      "id": "HTMLFieldSetElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmlfieldsetelement",
+      "block": 0,
+      "sha256": "803ced06403966672a8b857cbd9a48774d984463fda3ed4e2b19427d79c2a4d4",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlfieldsetelement",
+      "entries": ["HTMLFieldSetElement"]
+    },
+    {
       "id": "HTMLFormElement.source",
       "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
       "anchor": "htmlformelement",
@@ -6855,6 +6865,109 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLFieldSetElement",
+      "kind": "interface",
+      "name": "HTMLFieldSetElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLFieldSetElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLFieldSetElement.disabled"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLFormElement"}},
+          "name": "form",
+          "readonly": true,
+          "id": "HTMLFieldSetElement.form"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLFieldSetElement.name"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "type",
+          "readonly": true,
+          "id": "HTMLFieldSetElement.type"
+        },
+        {
+          "attributes": [{"name": "SameObject"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "HTMLCollection"},
+          "name": "elements",
+          "readonly": true,
+          "id": "HTMLFieldSetElement.elements"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "willValidate",
+          "readonly": true,
+          "id": "HTMLFieldSetElement.willValidate"
+        },
+        {
+          "attributes": [{"name": "SameObject"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "ValidityState"},
+          "name": "validity",
+          "readonly": true,
+          "id": "HTMLFieldSetElement.validity"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "validationMessage",
+          "readonly": true,
+          "id": "HTMLFieldSetElement.validationMessage"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "checkValidity",
+          "arguments": [],
+          "id": "HTMLFieldSetElement.checkValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "reportValidity",
+          "arguments": [],
+          "id": "HTMLFieldSetElement.reportValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setCustomValidity",
+          "arguments": [{"name": "error", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "id": "HTMLFieldSetElement.setCustomValidity:0"
+        }
+      ],
+      "inherits": "HTMLElement"
     },
     {
       "id": "HTMLFormElement",
@@ -14874,6 +14987,141 @@
       "adapter": "htmlbodyelement.obsolete.background.set",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.disabled/get": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.disabled.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.disabled/set": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.disabled.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.form/get": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.form.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/fieldset.rs", "symbol": "form_owner_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/form_owner.rs", "symbol": "read_form_owner"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.name/get": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.name.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.name/set": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.name.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.type/get": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.type.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.elements/get": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.elements.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the live Fieldset-rooted HTMLCollection with the pinned listed-element filter and current tree order.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fieldset-elements",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the same live HTMLCollection with native member identities, exact supported indices and indexed lookup.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fieldset-elements",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLFieldSetElement.willValidate/get": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.willvalidate.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.validity/get": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.validity.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/fieldset.rs", "symbol": "custom_validity_message"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the same live ValidityState object using the canonical Fieldset custom error and applicable constraint facts.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validity",
+          "issue": 1235
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLFieldSetElement.validationMessage/get": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.validationmessage.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.checkValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.checkvalidity.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.reportValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.reportvalidity.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_observation"}
+      ],
+      "requirements": []
+    },
+    "HTMLFieldSetElement.setCustomValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmlfieldsetelement.setcustomvalidity.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fieldset.rs", "symbol": "fieldset_set_custom_validity"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
       ],
       "requirements": []
     },

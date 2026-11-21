@@ -114,6 +114,7 @@ pub(super) enum Receiver {
     Heading,
     DList,
     Directory,
+    Fieldset,
     Font,
     Form,
     Frameset,
@@ -184,6 +185,13 @@ impl Receiver {
             Self::Heading => html_element_is(node, "HTMLHeadingElement"),
             Self::DList => html_element_is(node, "HTMLDListElement"),
             Self::Directory => super::list_compact::is_directory(node),
+            Self::Fieldset => {
+                step()?;
+                node.as_fieldset().is_some()
+                    && node
+                        .as_element()
+                        .is_some_and(|element| !element.has_failed_construction_interface())
+            }
             Self::Font => super::font::is_font(node),
             Self::Form => {
                 step()?;
@@ -248,6 +256,7 @@ impl Receiver {
             Self::Heading => const { &ascii(b"HTMLHeadingElement required") },
             Self::DList => const { &ascii(b"HTMLDListElement required") },
             Self::Directory => const { &ascii(b"HTMLDirectoryElement required") },
+            Self::Fieldset => const { &ascii(b"HTMLFieldSetElement required") },
             Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Form => const { &ascii(b"HTMLFormElement required") },
             Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
@@ -728,6 +737,7 @@ impl Capture {
                         receiver,
                         Receiver::Body
                             | Receiver::Dialog
+                            | Receiver::Fieldset
                             | Receiver::Form
                             | Receiver::Frameset
                             | Receiver::Legend
