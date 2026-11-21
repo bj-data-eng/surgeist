@@ -602,7 +602,7 @@ class DescriptionTests(unittest.TestCase):
         writer = mappings[setter["id"] + "/call"]
         self.assertFalse(writer["requirements"])
         self.assertEqual({producer["symbol"] for producer in writer["producers"]},
-                         {"barred_control_set_custom_validity", "set_custom_validity"})
+                         {"control_set_custom_validity", "set_custom_validity"})
         for name, issues in [("elements", {1235, 2480}), ("validity", {1235})]:
             with self.subTest(member=name):
                 member = self.member("HTMLFieldSetElement." + name)
@@ -753,6 +753,23 @@ class DescriptionTests(unittest.TestCase):
                     g.emit_conversions(model, arguments)
         default["value"] = 2
         self.rejected("source declaration mismatch: HTMLInputElement.source")
+
+    def test_custom_validity_shares_native_source_with_required_dom_string(self):
+        mappings = self.data["access_mappings"]
+        for name in ["Button", "FieldSet", "Input", "Output", "Select", "TextArea"]:
+            with self.subTest(control=name):
+                identity = f"HTML{name}Element.setCustomValidity:0"
+                self.assertEqual(self.member(identity)["arguments"], [{
+                    "name": "error",
+                    "presence": "required",
+                    "type": {"kind": "named", "name": "DOMString"},
+                }])
+                call = mappings[f"{identity}/call"]
+                self.assertFalse(call["requirements"])
+                self.assertEqual(
+                    {(item["owner"], item["symbol"]) for item in call["producers"]},
+                    {("surgeist-dom", "set_custom_validity"), ("surgeist-runtime", "control_set_custom_validity")},
+                )
 
     def test_control_autocomplete_uses_its_own_pinned_idl_projection(self):
         mappings = self.data["access_mappings"]

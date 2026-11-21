@@ -69,6 +69,8 @@ mod button_attributes;
 mod content_editable;
 #[path = "document_scripting/control_autocomplete.rs"]
 mod control_autocomplete;
+#[path = "document_scripting/control_custom_validity.rs"]
+mod control_custom_validity;
 #[path = "document_scripting/dialog_close.rs"]
 mod dialog_close;
 #[path = "document_scripting/dialog_methods.rs"]
@@ -2452,6 +2454,7 @@ fn main() {
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
             "numeric-control-attributes" => numeric_control_attributes::attached_controls_reflect_native_integer_attributes(),
             "control-autocomplete" => control_autocomplete::attached_controls_project_live_autocomplete(),
+            "control-custom-validity" => control_custom_validity::attached_controls_store_native_custom_validity(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
@@ -2560,6 +2563,7 @@ fn main() {
     input_attributes::attached_input_reflections_use_canonical_attributes();
     numeric_control_attributes::attached_controls_reflect_native_integer_attributes();
     control_autocomplete::attached_controls_project_live_autocomplete();
+    control_custom_validity::attached_controls_store_native_custom_validity();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();

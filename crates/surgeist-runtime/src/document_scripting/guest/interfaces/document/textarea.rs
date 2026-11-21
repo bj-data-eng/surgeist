@@ -1,6 +1,7 @@
 //! Textarea bindings over current native control state and immediate child Text.
 
 use super::{
+    custom_validity::CustomValidityControl,
     form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
     text::TextBuffer,
@@ -256,7 +257,8 @@ pub(super) fn install<'scope>(
         &ascii(b"textLength"),
         &ascii(b"get textLength"),
         TextareaRead::TextLength,
-    )
+    )?;
+    CustomValidityControl::Textarea.install(scope, prototype, capture)
 }
 
 impl Capture {

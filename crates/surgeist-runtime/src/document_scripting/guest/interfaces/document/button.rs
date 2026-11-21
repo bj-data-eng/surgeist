@@ -1,6 +1,7 @@
 //! Local Button attributes over the canonical element and its current Source segment.
 
 use super::{
+    custom_validity::CustomValidityControl,
     element::HTML_NAMESPACE,
     form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
@@ -85,7 +86,8 @@ pub(super) fn install<'scope>(
 ) -> Result<(), DocumentGuestEventError> {
     reflection::install(scope, prototype, capture, Receiver::Button, BEFORE_FORM)?;
     form_owner::install(scope, prototype, capture, FormOwnerGetter::Button)?;
-    reflection::install(scope, prototype, capture, Receiver::Button, AFTER_FORM)
+    reflection::install(scope, prototype, capture, Receiver::Button, AFTER_FORM)?;
+    CustomValidityControl::Button.install(scope, prototype, capture)
 }
 
 pub(super) fn type_keyword(

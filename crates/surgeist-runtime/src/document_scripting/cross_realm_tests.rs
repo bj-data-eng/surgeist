@@ -4,6 +4,7 @@ mod authored_toggle;
 mod break_elements;
 mod button_attributes;
 mod cdata_section;
+mod control_custom_validity;
 mod data_time;
 mod declarative_shadow;
 mod details_reflections;
@@ -495,6 +496,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     select_option_form::select_and_option_form_follow_native_owner();
     form_attributes::form_setters_preserve_native_attributes_on_source_refusal();
     fieldset_attributes::custom_validity_preserves_original_refusal_and_native_message();
+    control_custom_validity::custom_validity_preserves_original_source_refusal();
     button_attributes::button_setters_preserve_native_attributes_on_source_refusal();
     super::guest::tests::output_value_admission::output_default_override_uses_only_the_reached_read(
     );

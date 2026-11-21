@@ -2,6 +2,7 @@
 
 use super::{
     barred_control::BarredControl,
+    custom_validity::CustomValidityControl,
     form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
     *,
@@ -31,5 +32,6 @@ pub(super) fn install<'scope>(
     form_owner::install(scope, prototype, capture, FormOwnerGetter::Fieldset)?;
     reflection::install(scope, prototype, capture, Receiver::Fieldset, &[NAME])?;
     BarredControl::Fieldset.install_type(scope, prototype, capture)?;
-    BarredControl::Fieldset.install_validation(scope, prototype, capture)
+    BarredControl::Fieldset.install_validation(scope, prototype, capture)?;
+    CustomValidityControl::Fieldset.install(scope, prototype, capture)
 }

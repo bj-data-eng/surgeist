@@ -1,6 +1,7 @@
 //! Input reflections and canonical live state on the attached element.
 
 use super::{
+    custom_validity::CustomValidityControl,
     form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
     text::TextBuffer,
@@ -320,6 +321,7 @@ pub(super) fn install<'scope>(
         AFTER_INDETERMINATE,
     )?;
     InputProperty::Value.install(scope, prototype, capture)?;
+    CustomValidityControl::Input.install(scope, prototype, capture)?;
     reflection::install(scope, prototype, capture, Receiver::Input, OBSOLETE)
 }
 
