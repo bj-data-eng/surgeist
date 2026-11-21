@@ -701,6 +701,166 @@ fn hosted(dom: &mut Dom, source: &mut DomHostedSource) -> DomHostedCreation {
 }
 
 #[test]
+fn successful_form_associated_upgrade_publishes_its_actual_form_owner() {
+    use crate::internal::store::source::operation::DomSourceCustomElementUpgrade;
+    use surgeist_html::{
+        elements::native::HtmlCustomElementState,
+        scripting::{HtmlScriptingEngine, HtmlScriptingPolicy},
+        values::HtmlValueInterpreter,
+    };
+    use surgeist_html_semantics::{
+        HtmlCaptureLimits, HtmlCustomElementDefinition, HtmlFormOwnerOrigin,
+        HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits, HtmlSemanticQuery,
+        HtmlSemanticRequest, HtmlSemanticValue,
+    };
+
+    let cancel = cancel();
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let initial = dom.snapshot();
+    let view = initial.document(document).unwrap();
+    let DomRegistryBinding::Registry(registry) = view.metadata().custom_element_registry() else {
+        panic!("expected the actual hosted Global registry");
+    };
+    let root = view.document_element().unwrap();
+    let body = initial.node(root).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let form = batch.create_element(document, "form");
+    let name = "x-upgrade-form-owner";
+    let face = batch.create_element(document, name);
+    batch.insert_before(&form, body, None);
+    batch.insert_before(&face, &form, None);
+    let made = apply(&mut dom, batch);
+    let form = made.created(&form).unwrap().unwrap();
+    let face = made.created(&face).unwrap().unwrap();
+    let facts = HtmlCustomElementDefinition::new(name.into(), name.into(), true, false);
+    let definition = dom
+        .prepare_registry_definition(
+            &issuer,
+            owner.global(),
+            registry,
+            &facts,
+            source_limits(1),
+            &cancel,
+        )
+        .unwrap()
+        .commit()
+        .1;
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel,
+        )
+        .unwrap();
+    let (_, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel,
+        )
+        .unwrap();
+
+    let limits = source_limits(4096);
+    let Some(DomSourceCustomElementUpgrade::Callback {
+        request,
+        scope,
+        receiver_registry_matches,
+    }) = dom
+        .open_custom_element_upgrade(
+            face,
+            (definition, owner.global()),
+            &registration,
+            limits,
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("expected a reached constructor for the original FACE candidate");
+    };
+    assert!(receiver_registry_matches);
+    assert_eq!(request.definition(), definition);
+    dom.source_custom_element_callback_step(request, &registration, &cancel)
+        .unwrap();
+    // The trusted native constructor protocol returns this exact receiver.
+    drop(scope);
+    {
+        let mut lease = dom
+            .resume_source_edit(request.operation(), limits, &cancel)
+            .unwrap();
+        let mut outcome = Some(DomSourceCustomElementOutcome::Returned(face));
+        lease
+            .accept_custom_element_callback(request, &registration, &mut outcome, &cancel)
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("expected the accepted original upgrade to complete");
+        };
+        assert_eq!(done.operation(), request.operation());
+        assert_eq!(
+            done.custom_element_disposition(),
+            Some(DomSourceCustomElementDisposition::Constructed)
+        );
+    }
+    let after = dom.snapshot();
+    let receiver = after.node(face).unwrap();
+    assert_eq!(receiver.parent(), Some(form));
+    let element = receiver.as_element().unwrap();
+    assert_eq!(
+        element.custom_element_state(),
+        HtmlCustomElementState::Custom
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Definition(definition)
+    );
+
+    let captured = after
+        .html_capture(
+            document,
+            None,
+            HtmlCaptureLimits::new(256, 4096, 1024, 65_536, 256, 16, 16, 1_000_000),
+            DomHtmlCaptureLimits::new(256, 1_000_000),
+            &cancel,
+        )
+        .unwrap();
+    let subject = captured.subject(face).unwrap();
+    let report = captured
+        .query(
+            &[HtmlSemanticRequest::new(
+                subject,
+                HtmlSemanticQuery::FormOwner,
+            )],
+            HtmlValueInterpreter::new(4096),
+            HtmlSemanticLimits::new(1_000_000, 4, 128, 64, 1_000_000, 64),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+    let fact = report.results()[0].fact();
+    let HtmlSemanticFact::FormOwner(HtmlSemanticValue::Known(association)) = fact else {
+        panic!("successful FACE upgrade must publish an established Form owner, got {fact:?}");
+    };
+    assert_eq!(
+        association.origin(),
+        HtmlFormOwnerOrigin::EstablishedCurrent
+    );
+    assert_eq!(
+        association.owner().map(|id| captured.node(id).unwrap()),
+        Some(form)
+    );
+}
+
+#[test]
 fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     use surgeist_html_semantics::{HtmlCaptureError, HtmlCustomElementDefinition};
 
