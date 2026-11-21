@@ -97,6 +97,7 @@ pub(super) enum Receiver {
     DList,
     Directory,
     Font,
+    Frameset,
     Li,
     OList,
     UList,
@@ -142,6 +143,10 @@ impl Receiver {
             Self::DList => html_element_is(node, "HTMLDListElement"),
             Self::Directory => super::list_compact::is_directory(node),
             Self::Font => super::font::is_font(node),
+            Self::Frameset => {
+                step()?;
+                super::frameset::is_frameset(node)
+            }
             Self::Li => html_element_is(node, "HTMLLIElement"),
             Self::OList => html_element_is(node, "HTMLOListElement"),
             Self::UList => html_element_is(node, "HTMLUListElement"),
@@ -181,6 +186,7 @@ impl Receiver {
             Self::DList => const { &ascii(b"HTMLDListElement required") },
             Self::Directory => const { &ascii(b"HTMLDirectoryElement required") },
             Self::Font => const { &ascii(b"HTMLFontElement required") },
+            Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
             Self::Li => const { &ascii(b"HTMLLIElement required") },
             Self::OList => const { &ascii(b"HTMLOListElement required") },
             Self::UList => const { &ascii(b"HTMLUListElement required") },
@@ -566,7 +572,7 @@ impl Capture {
                         }
                     }
                 } else {
-                    if matches!(receiver, Receiver::Body) {
+                    if matches!(receiver, Receiver::Body | Receiver::Frameset) {
                         let current = self.callbacks.with_read(&owner, &events, |read, _| {
                             receiver.matches(read.node(id)?, || read.step())
                         })?;
