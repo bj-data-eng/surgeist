@@ -8,13 +8,31 @@ rust-version.workspace = true
 publish = false
 description = "Isolated JavaScript conformance tooling for Surgeist"
 
+[features]
+native-worker = ["dep:sha1", "dep:surgeist-bindings-js", "dep:surgeist-css", "dep:surgeist-dom", "dep:surgeist-html", "dep:surgeist-runtime"]
+
 [dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }
+sha1 = { version = "=0.10.7", optional = true }
+surgeist-bindings-js = { path = "../../crates/surgeist-bindings-js", version = "=0.1.0", optional = true }
+surgeist-css = { path = "../../crates/surgeist-css", version = "=0.1.0", optional = true }
+surgeist-dom = { path = "../../crates/surgeist-dom", version = "=0.1.0", optional = true }
 surgeist-fuzz = { path = "../../crates/surgeist-fuzz", version = "=0.1.0", features = ["execution"] }
+surgeist-html = { path = "../../crates/surgeist-html", version = "=0.1.0", optional = true }
+surgeist-runtime = { path = "../../crates/surgeist-runtime", version = "=0.1.0", features = ["document-scripting"], optional = true }
+
+[[bin]]
+name = "surgeist-js-wpt-worker"
+path = "worker/main.rs"
+required-features = ["native-worker"]
 
 [[test]]
 name = "transport"
 harness = false
+
+[[test]]
+name = "native_window_worker"
+required-features = ["native-worker"]
 
 [lints]
 workspace = true
