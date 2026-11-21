@@ -3626,6 +3626,20 @@ pub(crate) fn parsed_dispatch_requirement<E: From<DomError>>(
     }
 }
 
+struct HostedActivityReadError(RunStop);
+
+impl From<DomError> for HostedActivityReadError {
+    fn from(error: DomError) -> Self {
+        DomHostedError::from(error).into()
+    }
+}
+
+impl From<DomHostedError> for HostedActivityReadError {
+    fn from(error: DomHostedError) -> Self {
+        Self(RunStop::HostedAuthority(error))
+    }
+}
+
 fn listener_target_active(
     dom: &Dom,
     custody: Option<&DomDispatchCustody>,
@@ -3634,8 +3648,19 @@ fn listener_target_active(
 ) -> Result<bool, RunStop> {
     budget.tick()?;
     let snapshot = dom.snapshot();
+    let cancel = budget.cancel;
+    let mut step = || {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(HostedActivityReadError::from(DomError::Cancelled));
+        }
+        budget
+            .tick()
+            .map_err(|work| HostedActivityReadError(work.into()))
+    };
     let (document, global) = match &item.invocation {
         DomEventTarget::Node(node) => {
+            // Resolve the path's original custody row before reading the
+            // selected Document's hosted activity.
             let (custody, row) = custody
                 .zip(item.custody_row)
                 .ok_or(RunStop::HostedAuthority(
@@ -3650,43 +3675,40 @@ fn listener_target_active(
         // check. Positive eligibility below still qualifies current authority.
         DomEventTarget::Global(global) => (
             snapshot
-                .global_document(*global)
-                .map_err(RunStop::HostedAuthority)?,
+                .global_document_with(*global, &mut step)
+                .map_err(|error| error.0)?,
             Some(*global),
         ),
         DomEventTarget::Standalone(target) => (target.document(), Some(target.relevant_global())),
     };
-    budget.tick()?;
-    let document = snapshot
-        .document(document)
-        .map_err(|error| RunStop::HostedAuthority(error.into()))?;
-    if !document
-        .metadata()
-        .document_environment()
-        .has_ever_had_navigable()
-    {
+    let node = snapshot
+        .node_with(document.node(), &mut step)
+        .map_err(|error| error.0)?;
+    let surgeist_dom::tree::DomNodeKind::Document(metadata) = node.kind() else {
+        return Err(RunStop::HostedAuthority(DomError::WrongNodeKind.into()));
+    };
+    if !metadata.document_environment().has_ever_had_navigable() {
         return Ok(true);
     }
-    // This current capture supplies negative activity evidence only. Positive
-    // eligibility additionally requires the actual issuer-qualified owner.
+    // Charge the canonical activity and current association reads before
+    // qualifying any listener, including a once registration.
     if !dom
-        .dispatch_document_fully_active(document.id(), budget.cancel)
-        .map_err(RunStop::HostedAuthority)?
+        .dispatch_document_fully_active_with(document, cancel, &mut step)
+        .map_err(|error| error.0)?
     {
         return Ok(false);
     }
-    budget.tick()?;
     let global = match global {
         None => dom
-            .dispatch_relevant_global(document.id().node(), budget.cancel)
-            .map_err(RunStop::HostedAuthority)?
+            .dispatch_document_relevant_global_with(document, cancel, &mut step)
+            .map_err(|error| error.0)?
             .ok_or(RunStop::HostedAuthority(DomHostedError::StaleIdentity))?,
         Some(global) => global,
     };
     let current = dom
-        .dispatch_global_document(global, budget.cancel)
-        .map_err(RunStop::HostedAuthority)?;
-    if current != document.id() {
+        .dispatch_global_document_with(global, cancel, &mut step)
+        .map_err(|error| error.0)?;
+    if current != document {
         return Err(RunStop::HostedAuthority(DomHostedError::StaleIdentity));
     }
     Ok(true)

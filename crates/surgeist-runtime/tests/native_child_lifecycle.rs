@@ -2149,10 +2149,8 @@ fn hosted_ancestor_activity_needs_dispatch_work_before_selecting_a_once_listener
             .find(|&work| try_first_callback(&mut session, global, work, false))
             .expect("the reached activity and callback must fit in a finite work envelope")
     });
-    assert!(
-        child_first > top_first,
-        "top {top_first}, child {child_first}"
-    );
+    // The additional ancestor reaches one navigable and one active entry.
+    assert_eq!(child_first, top_first + 2);
     assert!(try_first_callback(&mut session, child, child_first, false));
     assert!(try_first_callback(
         &mut session,

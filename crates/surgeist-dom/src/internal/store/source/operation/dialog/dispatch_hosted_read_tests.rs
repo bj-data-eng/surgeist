@@ -1,6 +1,7 @@
 //! Actual affine Source-dispatch qualification, without a fake hosted owner.
 use super::tests::{fixture, limits, request};
 use super::*;
+use crate::internal::hosted::DomHostedError;
 
 #[test]
 fn dispatch_reads_require_the_current_active_scope_and_stop_when_it_drops() {
@@ -21,8 +22,10 @@ fn dispatch_reads_require_the_current_active_scope_and_stop_when_it_drops() {
         None
     );
     assert!(
-        !dom.dispatch_document_fully_active(document, &cancel)
-            .unwrap()
+        !dom.dispatch_document_fully_active_with::<DomHostedError>(document, &cancel, &mut || Ok(
+            ()
+        ))
+        .unwrap()
     );
     assert!(
         dom.source_operation
@@ -37,8 +40,12 @@ fn dispatch_reads_require_the_current_active_scope_and_stop_when_it_drops() {
     );
     drop(scope);
     assert_eq!(
-        dom.dispatch_document_fully_active(document, &cancel)
-            .unwrap_err(),
+        dom.dispatch_document_fully_active_with::<DomHostedError>(
+            document,
+            &cancel,
+            &mut || Ok(())
+        )
+        .unwrap_err(),
         blocked
     );
     let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
@@ -107,8 +114,12 @@ fn expired_executor_foreign_owner_and_canceled_reads_do_not_supply_hosted_author
         crate::internal::hosted::DomHostedError::Dom(DomError::ForeignOwner)
     );
     assert_eq!(
-        dom.dispatch_document_fully_active(document, &AtomicBool::new(true))
-            .unwrap_err(),
+        dom.dispatch_document_fully_active_with::<DomHostedError>(
+            document,
+            &AtomicBool::new(true),
+            &mut || Ok(())
+        )
+        .unwrap_err(),
         crate::internal::hosted::DomHostedError::Dom(DomError::Cancelled)
     );
     drop(executor);
@@ -136,14 +147,77 @@ fn complete_native_document_reads_keep_actual_closed_activity_and_identity_check
             .unwrap()
     );
     assert!(
-        !dom.dispatch_document_fully_active(document, &cancel)
-            .unwrap()
+        !dom.dispatch_document_fully_active_with::<DomHostedError>(document, &cancel, &mut || Ok(
+            ()
+        ))
+        .unwrap()
     );
     let (other, _, _, _, _) = fixture();
     assert_eq!(
         other
-            .dispatch_document_fully_active(document, &cancel)
+            .dispatch_document_fully_active_with::<DomHostedError>(
+                document,
+                &cancel,
+                &mut || Ok(())
+            )
             .unwrap_err(),
         crate::internal::hosted::DomHostedError::Dom(DomError::ForeignOwner)
     );
+}
+
+#[test]
+fn never_hosted_activity_reads_charge_the_actual_source_record() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, executor, document, subject, _) = fixture();
+    let event = request(&mut dom, subject);
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    let spent = &dom
+        .source_operation
+        .as_ref()
+        .unwrap()
+        .callback_observation()
+        .unwrap()
+        .work
+        .work;
+    let mut lookups = 0;
+    dom.state
+        .node_with::<DomError>(dom.owner, document.node(), &mut || {
+            lookups += 1;
+            Ok(())
+        })
+        .unwrap();
+    assert!(lookups > 0);
+    let before_qualification = spent.load(Ordering::Relaxed);
+    let proof = dom.dispatch_hosted_read_work(&cancel).unwrap();
+    assert!(proof.is_some());
+    let qualification = spent.load(Ordering::Relaxed) - before_qualification;
+    let before = spent.load(Ordering::Relaxed);
+    let mut caller = 0;
+    assert!(
+        !dom.dispatch_document_fully_active_with::<DomHostedError>(document, &cancel, &mut || {
+            caller += 1;
+            Ok(())
+        })
+        .unwrap()
+    );
+    assert_eq!(caller, lookups);
+    assert_eq!(
+        spent.load(Ordering::Relaxed) - before,
+        qualification + lookups
+    );
+
+    let before_refusal = spent.load(Ordering::Relaxed);
+    let error = dom
+        .dispatch_document_fully_active_with::<DomHostedError>(document, &cancel, &mut || {
+            cancel.store(true, Ordering::Relaxed);
+            Ok(())
+        })
+        .unwrap_err();
+    assert_eq!(error, DomHostedError::Dom(DomError::Cancelled));
+    assert_eq!(
+        spent.load(Ordering::Relaxed) - before_refusal,
+        qualification
+    );
+    drop(scope);
 }
