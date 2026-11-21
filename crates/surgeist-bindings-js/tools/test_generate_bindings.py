@@ -42,11 +42,11 @@ class DescriptionTests(unittest.TestCase):
                     expected,
                 )
 
-    def test_reflected_integer_defaults_refuse_missing_mistyped_and_out_of_range_values(self):
+    def test_reflected_integer_defaults_refuse_missing_mistyped_and_unrepresentable_values(self):
         invalid = [{"name": "ReflectDefault"}]
         invalid.extend(
             {"name": "ReflectDefault", "value": value}
-            for value in [None, True, False, "1", 1.0, [], {}, -2147483649, 2147483648]
+            for value in [None, True, False, "1", 1.0, [], {}, -2147483649, 4294967296]
         )
         for annotation in invalid:
             with self.subTest(annotation=annotation):
@@ -57,6 +57,55 @@ class DescriptionTests(unittest.TestCase):
                 {"name": "ReflectDefault", "value": 1},
                 {"name": "ReflectDefault", "value": 1},
             ])
+
+    def test_unsigned_long_reflection_renders_an_independent_default_and_clamp(self):
+        member = {
+            "id": "Fixture.span", "kind": "attribute", "name": "span", "readonly": False,
+            "type": {"kind": "named", "name": "unsigned long"},
+            "attributes": [
+                {"name": "Reflect"},
+                {"name": "ReflectDefault", "value": 4294967295},
+                {"name": "ReflectRange", "value": [1, 1000]},
+            ],
+        }
+        self.assertEqual(
+            g.render_member(member, {}),
+            "[Reflect, ReflectDefault=4294967295, ReflectRange=(1, 1000)] "
+            "attribute unsigned long span;",
+        )
+
+    def test_numeric_reflection_annotations_validate_their_member_context(self):
+        for value_type, annotations, reason in [
+            ("long", [{"name": "ReflectDefault", "value": 2147483648}], "reflection default"),
+            ("unsigned long", [{"name": "ReflectDefault", "value": -1}], "reflection default"),
+            ("DOMString", [{"name": "ReflectDefault", "value": 1}], "ReflectDefault requires"),
+            ("long", [{"name": "ReflectRange", "value": [0, 1]}], "ReflectRange requires"),
+            ("unsigned long", [{"name": "ReflectRange", "value": [-1, 1]}], "reflection range bound"),
+            ("unsigned long", [{"name": "ReflectRange", "value": [2, 1]}], "ascending"),
+            ("unsigned long", [{"name": "ReflectRange", "value": [0, 4294967296]}], "reflection range bound"),
+        ]:
+            with self.subTest(value_type=value_type, annotations=annotations):
+                member = {
+                    "id": "Fixture.value", "kind": "attribute", "name": "value", "readonly": False,
+                    "type": {"kind": "named", "name": value_type},
+                    "attributes": [{"name": "Reflect"}, *annotations],
+                }
+                with self.assertRaisesRegex(g.DescriptionError, reason):
+                    g.render_member(member, {})
+
+    def test_unsigned_numeric_reflection_requires_reflect_on_the_same_member(self):
+        for annotation in [
+            {"name": "ReflectDefault", "value": 1},
+            {"name": "ReflectRange", "value": [1, 1000]},
+        ]:
+            with self.subTest(annotation=annotation):
+                member = {
+                    "id": "Fixture.span", "kind": "attribute", "name": "span", "readonly": False,
+                    "type": {"kind": "named", "name": "unsigned long"},
+                    "attributes": [annotation],
+                }
+                with self.assertRaisesRegex(g.DescriptionError, annotation["name"] + " requires"):
+                    g.render_member(member, {})
 
     def test_retained_ol_start_default_and_its_reflection_context_cannot_change(self):
         # Source correspondence validates altered declarations through the real generator.

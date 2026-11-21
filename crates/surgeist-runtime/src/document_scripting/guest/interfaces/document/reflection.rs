@@ -7,9 +7,9 @@ use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING, DOM_STRING_NU
 use surgeist_bindings_js::{IntegerKind, IntegerMode, IntegerValue};
 use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
 use surgeist_html::bounded::attributes::{
-    dir_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
-    popover_keyword_with, template_shadow_root_mode_keyword_with,
-    template_shadow_root_slot_assignment_keyword_with,
+    HtmlTableSpanRule, dir_keyword_with, heading_offset_reflection_with,
+    heading_offset_setter_value, popover_keyword_with, table_cell_scope_keyword_with,
+    template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
 };
 use surgeist_html::bounded::numeric::{
     HtmlNumericParseError, integer_long_work_bound, parse_integer_long,
@@ -30,6 +30,33 @@ pub(super) enum Reflection {
     // Unit policies keep frequently captured reflection metadata compact.
     SignedLongZero,
     SignedLongOne,
+    TableSpan(TableSpan),
+    TableScope,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum TableSpan {
+    CellColumns,
+    CellRows,
+    Column,
+}
+
+impl TableSpan {
+    fn rule(
+        self,
+        node: DomNode<'_>,
+        read: &NativeRead<'_>,
+    ) -> Result<HtmlTableSpanRule, DocumentGuestEventError> {
+        Ok(match self {
+            Self::CellColumns => HtmlTableSpanRule::CellColspan,
+            Self::CellRows => HtmlTableSpanRule::CellRowspan,
+            Self::Column => match super::table_cell_column::html_kind(read, node)? {
+                Some(KnownHtmlElement::Col) => HtmlTableSpanRule::ColSpan,
+                Some(KnownHtmlElement::Colgroup) => HtmlTableSpanRule::ColgroupSpan,
+                _ => return Err(DomError::WrongNodeKind.into()),
+            },
+        })
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -57,13 +84,15 @@ pub(super) enum Receiver {
     Param,
     Pre,
     Slot,
+    TableCell,
+    TableColumn,
 }
 
 impl Receiver {
-    fn matches(
+    pub(super) fn matches(
         self,
         node: DomNode<'_>,
-        step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
     ) -> Result<bool, DocumentGuestEventError> {
         Ok(match self {
             Self::Element => node.as_element().is_some(),
@@ -94,10 +123,18 @@ impl Receiver {
             Self::Param => super::param::is_param(node),
             Self::Pre => return super::pre::is_pre(node, step),
             Self::Slot => super::slot::is_slot(node),
+            Self::TableCell => {
+                step()?;
+                html_element_is(node, "HTMLTableCellElement")
+            }
+            Self::TableColumn => {
+                step()?;
+                html_element_is(node, "HTMLTableColElement")
+            }
         })
     }
 
-    fn error_message(self) -> &'static [u16] {
+    pub(super) fn error_message(self) -> &'static [u16] {
         match self {
             Self::Element => const { &ascii(b"Element required") },
             Self::Html => const { &ascii(b"HTMLElement required") },
@@ -122,6 +159,8 @@ impl Receiver {
             Self::Param => const { &ascii(b"HTMLParamElement required") },
             Self::Pre => const { &ascii(b"HTMLPreElement required") },
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
+            Self::TableCell => const { &ascii(b"HTMLTableCellElement required") },
+            Self::TableColumn => const { &ascii(b"HTMLTableColElement required") },
         }
     }
 }
@@ -231,9 +270,21 @@ impl Capture {
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
                     }
-                    Reflection::HeadingOffset => {
-                        Reflected::Unsigned(heading_offset_reflection_with(units, |_| read.step())?)
+                    Reflection::HeadingOffset => Reflected::Unsigned(u32::from(
+                        heading_offset_reflection_with(units, |_| read.step())?,
+                    )),
+                    Reflection::TableSpan(span) => {
+                        Reflected::Unsigned(u32::from(table_span_value(
+                            span.rule(node, read)?,
+                            stored.map(|value| value.value()),
+                            || read.step(),
+                        )?))
                     }
+                    Reflection::TableScope => Reflected::Keyword(Some(
+                        table_cell_scope_keyword_with(stored.map(|value| value.value()), |_| {
+                            read.step()
+                        })?,
+                    )),
                     Reflection::SignedLongZero => Reflected::Signed(signed_long_value(
                         stored.map(|value| value.value()),
                         0,
@@ -266,7 +317,7 @@ impl Capture {
                 )?),
                 Reflected::Keyword(None) => Some(scope.primitive(Primitive::Null)?),
                 Reflected::Keyword(Some(keyword)) => {
-                    let mut units = [0_u16; 6];
+                    let mut units = [0_u16; b"rowgroup".len()];
                     let units = units
                         .get_mut(..keyword.len())
                         .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
@@ -310,7 +361,10 @@ impl Capture {
                     .as_ref()
                     .map(|value| copy_native_data(&owner, &events, value.as_code_units()))
                     .transpose()?
-            } else if matches!(reflection, Reflection::HeadingOffset) {
+            } else if matches!(
+                reflection,
+                Reflection::HeadingOffset | Reflection::TableSpan(_)
+            ) {
                 let converted = self
                     .callbacks
                     .conversion
@@ -326,11 +380,15 @@ impl Capture {
                     return Err(Error::BackendUnavailable.into());
                 };
                 events.step()?;
-                let value = heading_offset_setter_value(value);
+                let value = if matches!(reflection, Reflection::HeadingOffset) {
+                    heading_offset_setter_value(value)
+                } else {
+                    HtmlTableSpanRule::reflected_setter_value(value)
+                };
                 Some(copy_numeric_attribute(
                     &owner,
                     &events,
-                    NumericAttribute::HeadingOffset(value),
+                    NumericAttribute::Unsigned(value),
                 )?)
             } else if matches!(
                 reflection,
@@ -399,14 +457,14 @@ impl Capture {
 enum Reflected {
     Write,
     Boolean(bool),
-    Unsigned(u8),
+    Unsigned(u32),
     Signed(i32),
     String(Option<DocumentString>),
     Keyword(Option<&'static str>),
 }
 
 enum NumericAttribute {
-    HeadingOffset(u32),
+    Unsigned(u32),
     SignedLong(i32),
 }
 
@@ -430,6 +488,23 @@ fn signed_long_value(
     }
 }
 
+fn table_span_value(
+    rule: HtmlTableSpanRule,
+    raw: Option<&DocumentString>,
+    mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+) -> Result<u16, DocumentGuestEventError> {
+    let work = match raw {
+        Some(raw) => rule
+            .work_bound(raw.len())
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
+        None => 1,
+    };
+    for _ in 0..work {
+        step()?;
+    }
+    Ok(rule.content_value(raw))
+}
+
 fn copy_numeric_attribute(
     owner: &NativeOwner,
     events: &GuestEvents,
@@ -438,7 +513,7 @@ fn copy_numeric_attribute(
     // Typed decimal cases fix the maximum capacity before formatting: a u32
     // has ten digits, and an i32 has at most ten digits plus its minus sign.
     let capacity = match value {
-        NumericAttribute::HeadingOffset(_) => 10,
+        NumericAttribute::Unsigned(_) => 10,
         NumericAttribute::SignedLong(_) => 11,
     };
     let _format_backing = events.reserve(owner, capacity)?;
@@ -450,7 +525,7 @@ fn copy_numeric_attribute(
     }
     events.step()?;
     match value {
-        NumericAttribute::HeadingOffset(value) => write!(&mut text, "{value}"),
+        NumericAttribute::Unsigned(value) => write!(&mut text, "{value}"),
         NumericAttribute::SignedLong(value) => write!(&mut text, "{value}"),
     }
     .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;

@@ -30,6 +30,6 @@ pub use crate::internal::attributes::meta_processing::{
 pub use crate::internal::attributes::navigable_target::HtmlTargetRecovery;
 pub use crate::internal::attributes::scalar::table_span::HtmlTableSpanRule;
 pub use crate::internal::attributes::table_header_scope::bounded_scope::{
-    th_scope_state, th_scope_work_bound,
+    table_cell_scope_keyword_with, th_scope_state, th_scope_work_bound,
 };
 pub use crate::internal::attributes::token_declarations::{HtmlIconSizeCursor, HtmlIconSizeShape};

@@ -44,6 +44,7 @@ mod shadow;
 mod slot;
 mod structural_alignment;
 mod style_policy;
+mod table_cell_column;
 mod template;
 mod text;
 mod title;

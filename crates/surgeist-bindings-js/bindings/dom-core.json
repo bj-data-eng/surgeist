@@ -601,6 +601,54 @@
       ]
     },
     {
+      "id": "HTMLTableCellElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmltablecellelement",
+      "block": 0,
+      "sha256": "bcf89d9e62aaf872b0ec86b058c8deaba947da581fea3791fa4e634bbe0acf08",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmltablecellelement",
+      "entries": [
+        "HTMLTableCellElement"
+      ]
+    },
+    {
+      "id": "HTMLTableCellElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLTableCellElement&#45;partial",
+      "block": 0,
+      "sha256": "30c2332862a6afc618d46f6602fc57fe00b6292a3eba2502f828cd7d1b03ebc4",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLTableCellElement-partial",
+      "entries": [
+        "HTMLTableCellElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLTableColElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmltablecolelement",
+      "block": 0,
+      "sha256": "9dc043f8bb9b39606cf0c8ddc8aad55d2e0eaa12dc688e375f4e586d241cc90c",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmltablecolelement",
+      "entries": [
+        "HTMLTableColElement"
+      ]
+    },
+    {
+      "id": "HTMLTableColElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLTableColElement&#45;partial",
+      "block": 0,
+      "sha256": "56864f7d24a6567995030b411233b5e72f072f1ab9fde1283887c748f1d79b0e",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLTableColElement-partial",
+      "entries": [
+        "HTMLTableColElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLOptGroupElement.source",
       "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
       "anchor": "htmloptgroupelement",
@@ -5058,6 +5106,482 @@
           "name": "type",
           "readonly": false,
           "id": "HTMLLIElement.obsolete.type"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLTableCellElement",
+      "kind": "interface",
+      "name": "HTMLTableCellElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTableCellElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            },
+            {
+              "name": "ReflectDefault",
+              "value": 1
+            },
+            {
+              "name": "ReflectRange",
+              "value": [
+                1,
+                1000
+              ]
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "colSpan",
+          "readonly": false,
+          "id": "HTMLTableCellElement.colSpan"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            },
+            {
+              "name": "ReflectDefault",
+              "value": 1
+            },
+            {
+              "name": "ReflectRange",
+              "value": [
+                0,
+                65534
+              ]
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "rowSpan",
+          "readonly": false,
+          "id": "HTMLTableCellElement.rowSpan"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "headers",
+          "readonly": false,
+          "id": "HTMLTableCellElement.headers"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "long"
+          },
+          "name": "cellIndex",
+          "readonly": true,
+          "id": "HTMLTableCellElement.cellIndex"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "scope",
+          "readonly": false,
+          "id": "HTMLTableCellElement.scope"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "abbr",
+          "readonly": false,
+          "id": "HTMLTableCellElement.abbr"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLTableCellElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLTableCellElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.align"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "axis",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.axis"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "height",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.height"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.width"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "char"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "ch",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.ch"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "charoff"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "chOff",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.chOff"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "noWrap",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.noWrap"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "vAlign",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.vAlign"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "bgColor",
+          "readonly": false,
+          "id": "HTMLTableCellElement.obsolete.bgColor"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLTableColElement",
+      "kind": "interface",
+      "name": "HTMLTableColElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTableColElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            },
+            {
+              "name": "ReflectDefault",
+              "value": 1
+            },
+            {
+              "name": "ReflectRange",
+              "value": [
+                1,
+                1000
+              ]
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "span",
+          "readonly": false,
+          "id": "HTMLTableColElement.span"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLTableColElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLTableColElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLTableColElement.obsolete.align"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "char"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "ch",
+          "readonly": false,
+          "id": "HTMLTableColElement.obsolete.ch"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "charoff"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "chOff",
+          "readonly": false,
+          "id": "HTMLTableColElement.obsolete.chOff"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "vAlign",
+          "readonly": false,
+          "id": "HTMLTableColElement.obsolete.vAlign"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLTableColElement.obsolete.width"
         }
       ],
       "partial": true
@@ -10328,6 +10852,692 @@
       "kind": "native",
       "adapter": "htmllielement.type.set",
       "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.colSpan/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.colspan.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "work_bound"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "content_value"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.colSpan/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.colspan.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "reflected_setter_value"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.rowSpan/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.rowspan.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "work_bound"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "content_value"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.rowSpan/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.rowspan.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "reflected_setter_value"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.headers/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.headers.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.headers/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.headers.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.cellIndex/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.cellindex.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_cell_column.rs",
+          "symbol": "cell_index"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "parent"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "node_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.scope/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.scope.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/table_header_scope.rs",
+          "symbol": "table_cell_scope_keyword_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.scope/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.scope.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.abbr/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.abbr.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.abbr/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.abbr.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.axis/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.axis.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.axis/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.axis.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.height/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.height.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.height/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.height.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.width/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.width.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.width/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.ch/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.ch.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.ch/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.ch.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.chOff/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.choff.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.chOff/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.choff.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.noWrap/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.nowrap.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.noWrap/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.nowrap.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.vAlign/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.valign.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.vAlign/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.valign.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.bgColor/get": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.bgcolor.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableCellElement.obsolete.bgColor/set": {
+      "kind": "native",
+      "adapter": "htmltablecellelement.bgcolor.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.span/get": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.span.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "work_bound"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "content_value"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.span/set": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.span.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "reflected_setter_value"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.ch/get": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.ch.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.ch/set": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.ch.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.chOff/get": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.choff.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.chOff/set": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.choff.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.vAlign/get": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.valign.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.vAlign/set": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.valign.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.width/get": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.width.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTableColElement.obsolete.width/set": {
+      "kind": "native",
+      "adapter": "htmltablecolelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
         {
           "owner": "surgeist-dom",
           "path": "crates/surgeist-dom/src/internal/source.rs",

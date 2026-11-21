@@ -120,10 +120,12 @@ def attributes_shape(items):
         elif item["name"] == "ReflectRange":
             sequence(item.get("value"), "reflection range", nonempty=True)
             require(len(item["value"]) == 2, "reflection range needs two integers")
-            for number in item["value"]:
-                integer(number, "reflection range bound")
+            lower, upper = item["value"]
+            for number in (lower, upper):
+                integer(number, "reflection range bound", 0, 2**32 - 1)
+            require(lower <= upper, "reflection range bounds must be ascending")
         elif item["name"] == "ReflectDefault":
-            integer(item.get("value"), "reflection default", -(2**31), 2**31 - 1)
+            integer(item.get("value"), "reflection default", -(2**31), 2**32 - 1)
         else:
             require("value" not in item, "valueless extended attribute cannot have a value field")
 
@@ -357,9 +359,6 @@ def attributes(items):
             require(value in {"Window", "*"}, "unexpected selected exposure")
         elif name == "PutForwards":
             identifier(value)
-        elif name == "ReflectRange":
-            require(isinstance(value, list) and len(value) == 2 and
-                    all(type(x) is int for x in value), "invalid reflection range")
         elif name == "Reflect" and value is not None:
             require(re.fullmatch(r"[a-z][a-z0-9-]*", value), "invalid reflected attribute name")
             value = json.dumps(value)
@@ -464,19 +463,24 @@ def render_member(member, names):
     require(kind in fields, f"unknown member kind: {kind}")
     required, optional = fields[kind]
     keys(member, {"id", "kind", "attributes"} | required, optional)
-    annotations = {x["name"] for x in member["attributes"]}
+    annotations = {x["name"]: x.get("value") for x in member["attributes"]}
+    value_type = member.get("type", {})
+    reflected_type = (
+        value_type.get("name") if kind == "attribute" and "Reflect" in annotations
+        and value_type.get("kind") == "named" and not value_type.get("attributes") else None
+    )
     if "ReflectDefault" in annotations:
-        # Validate the selected signed-long reflection default contract.
-        value_type = member.get("type", {})
-        require(kind == "attribute" and "Reflect" in annotations
-                and value_type.get("kind") == "named" and value_type.get("name") == "long"
-                and not value_type.get("attributes"),
-                "ReflectDefault requires a reflected long attribute")
+        require(reflected_type in {"long", "unsigned long"},
+                "ReflectDefault requires a reflected long or unsigned long attribute")
+        minimum, maximum = (-(2**31), 2**31 - 1) if reflected_type == "long" else (0, 2**32 - 1)
+        integer(annotations["ReflectDefault"], "reflection default", minimum, maximum)
+    if "ReflectRange" in annotations:
+        require(reflected_type == "unsigned long", "ReflectRange requires a reflected unsigned long attribute")
     if "SameObject" in annotations or "PutForwards" in annotations:
         require(kind == "attribute" and member.get("readonly"), "SameObject/PutForwards requires a readonly attribute")
     require("NewObject" not in annotations or kind == "operation", "NewObject requires an operation")
     require("HTMLConstructor" not in annotations or kind == "constructor", "HTMLConstructor requires a constructor")
-    require(not annotations & {"Exposed", "Serializable", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties", "LegacyNullToEmptyString"}, "extended attribute on the wrong declaration scope")
+    require(not annotations.keys() & {"Exposed", "Serializable", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties", "LegacyNullToEmptyString"}, "extended attribute on the wrong declaration scope")
     prefix = attributes(member["attributes"])
     if "name" in member:
         identifier(member["name"])
