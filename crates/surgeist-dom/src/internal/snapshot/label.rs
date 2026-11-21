@@ -12,7 +12,6 @@ use surgeist_html::{
 };
 
 const FOR: &[u16] = &[0x66, 0x6f, 0x72];
-const ID: &[u16] = &[0x69, 0x64];
 
 enum LabeledControl<'a> {
     Native(DomNode<'a>, KnownHtmlElement),
@@ -101,17 +100,7 @@ impl<'a> DomNode<'a> {
                 return Ok(None);
             }
             let root = self.root_with(false, &mut step)?;
-            let first = if root.matches_label_id(target, &mut step)? {
-                Some(root)
-            } else {
-                root.find_descendant_with(&mut step, reserve, |node, step| {
-                    if node.matches_label_id(target, step)? {
-                        return Ok(Descendant::Found(node));
-                    }
-                    Ok(Descendant::Descend)
-                })?
-            };
-            let Some(first) = first else {
+            let Some(first) = root.element_by_id_with(target, true, &mut step, reserve)? else {
                 return Ok(None);
             };
             return first.as_labeled_control(&mut step);
@@ -123,21 +112,6 @@ impl<'a> DomNode<'a> {
             }
             Ok(Descendant::Descend)
         })
-    }
-
-    fn matches_label_id<E: From<DomError>>(
-        self,
-        target: &[u16],
-        step: &mut impl FnMut() -> Result<(), E>,
-    ) -> Result<bool, E> {
-        step()?;
-        let Some(attributes) = self.attributes() else {
-            return Ok(false);
-        };
-        let Some(id) = attributes.get_null_namespace_attribute_with(ID, &mut *step)? else {
-            return Ok(false);
-        };
-        same_code_units(id.value().code_units(), target, step)
     }
 
     fn as_labeled_control<E: From<DomError>>(

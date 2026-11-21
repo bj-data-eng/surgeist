@@ -49,6 +49,7 @@ mod lists;
 mod marquee;
 mod media;
 mod meta;
+mod non_element_parent;
 mod optgroup;
 mod ordinary;
 mod output;
@@ -413,6 +414,7 @@ impl DocumentPrototypes {
             fragment_callback,
         )?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
+        non_element_parent::install(scope, &document, &fragment, funding.capture)?;
         custom_elements::install_node_getter(
             scope,
             &document,

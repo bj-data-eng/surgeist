@@ -14,6 +14,7 @@ use surgeist_html::values::DocumentString;
 
 mod document_title;
 mod editability;
+mod element_id;
 mod equality;
 mod label;
 mod namespace;

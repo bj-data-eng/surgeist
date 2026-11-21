@@ -347,6 +347,8 @@ Native Documents and ordinary Fragments use their registered creation realm
 on first exposure, including after their original host retires. Ancestry and
 event paths share the same wrapper. The Fragment factory uses the receiver
 Document's realm. The attached Window supplies its own constructor authority.
+Document and DocumentFragment expose getElementById over their current
+ordinary descendants. ShadowRoot inherits the fragment operation.
 `Document.createElement` and `Document.createElementNS` form the canonical
 detached Element and admit its exact wrapper in the receiver's registered
 creation realm before publication. DOM owns name validation, namespace and

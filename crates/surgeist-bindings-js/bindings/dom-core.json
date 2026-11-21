@@ -13064,15 +13064,10 @@
       "requirements": []
     },
     "NonElementParentNode.getElementById:0/call": {
-      "kind": "derived",
-      "algorithm": "nonelementparentnode.getelementbyid_0.call",
-      "owner": "surgeist-dom",
-      "contract": "Select the first ordinary descendant whose nonempty DOM ID matches the exact argument, excluding the root and without piercing shadow trees.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nonelementparentnode",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      "kind": "native",
+      "adapter": "nonelementparentnode.getelementbyid.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/element_id.rs", "symbol": "descendant_element_by_id_with"}
       ],
       "requirements": []
     },
