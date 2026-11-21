@@ -512,6 +512,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     );
     super::guest::tests::numeric_control_admission::local_integer_rejection_precedes_source_admission(
     );
+    super::guest::tests::range_indicator_admission::meter_read_admits_only_its_reached_input();
+    super::guest::tests::range_indicator_admission::progress_max_preserves_source_noop_and_refusal(
+    );
     super::guest::tests::control_autocomplete_admission::autocomplete_read_stops_after_six_reached_tokens();
     super::guest::tests::control_autocomplete_admission::autocomplete_read_releases_working_text_backing(
     );

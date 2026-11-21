@@ -93,6 +93,65 @@ class DescriptionTests(unittest.TestCase):
                 with self.assertRaisesRegex(g.DescriptionError, reason):
                     g.render_member(member, {})
 
+    def test_positive_double_reflection_requires_a_finite_decimal_default(self):
+        default = {"kind": "decimal", "literal": "1.0"}
+        member = {
+            "id": "Fixture.max", "kind": "attribute", "name": "max", "readonly": False,
+            "type": {"kind": "named", "name": "double"},
+            "attributes": [{"name": "ReflectPositive"}, {"name": "ReflectDefault", "value": default}],
+        }
+        self.assertEqual(
+            g.render_member(member, {}),
+            "[ReflectPositive, ReflectDefault=1.0] attribute double max;",
+        )
+        for value_type in ["unsigned long", "DOMString", "unrestricted double"]:
+            with self.subTest(value_type=value_type):
+                member["type"]["name"] = value_type
+                with self.assertRaises(g.DescriptionError):
+                    g.render_member(member, {})
+        member["type"]["name"] = "double"
+        for literal in ["1", "1.0 2", "NaN", "1e999", 1.0]:
+            with self.subTest(literal=literal):
+                default["literal"] = literal
+                with self.assertRaises(g.DescriptionError):
+                    g.render_member(member, {})
+        member["attributes"][-1]["value"] = 1
+        with self.assertRaises(g.DescriptionError):
+            g.render_member(member, {})
+
+    def test_range_indicators_preserve_the_pinned_numeric_declarations(self):
+        mappings = self.data["access_mappings"]
+        for interface, properties in [
+            ("HTMLProgressElement", ["value", "max", "position"]),
+            ("HTMLMeterElement", ["value", "min", "max", "low", "high", "optimum"]),
+        ]:
+            with self.subTest(interface=interface):
+                definition = self.definition(interface)
+                self.assertEqual(definition["inherits"], "HTMLElement")
+                ctor, *members = definition["members"]
+                self.assertEqual(ctor["kind"], "constructor")
+                self.assertEqual([member["name"] for member in members], [*properties, "labels"])
+                for member in members[:-1]:
+                    self.assertEqual(member["type"], {"kind": "named", "name": "double"})
+                    self.assertFalse(mappings[member["id"] + "/get"]["requirements"])
+                    readonly = member["name"] == "position"
+                    self.assertEqual(member["readonly"], readonly)
+                    if readonly:
+                        self.assertNotIn(member["id"] + "/set", mappings)
+                    else:
+                        self.assertFalse(mappings[member["id"] + "/set"]["requirements"])
+                labels = mappings[members[-1]["id"] + "/get"]
+                self.assertEqual(labels["result_view"], "live")
+                self.assertTrue(labels.get("requirements") or labels.get("requirement"))
+        maximum = self.member("HTMLProgressElement.max")
+        self.assertEqual(maximum["attributes"], [
+            {"name": "CEReactions"},
+            {"name": "ReflectPositive"},
+            {"name": "ReflectDefault", "value": {"kind": "decimal", "literal": "1.0"}},
+        ])
+        maximum["attributes"][-1]["value"]["literal"] = "2.0"
+        self.rejected("source declaration mismatch: HTMLProgressElement.source")
+
     def test_unsigned_numeric_reflection_requires_reflect_on_the_same_member(self):
         for annotation in [
             {"name": "ReflectDefault", "value": 1},
