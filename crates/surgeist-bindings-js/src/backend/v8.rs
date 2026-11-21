@@ -7,7 +7,7 @@ use std::thread::ThreadId;
 
 use super::{
     CoercedString, DomExceptionProfile, ObjectPrototype, Operations, PropertyDefinition,
-    PropertyDescriptor, PropertyKey,
+    PropertyDescriptor, PropertyKey, RealmProfile, WindowInterface,
 };
 use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
@@ -23,6 +23,7 @@ mod callback_object;
 mod native_object;
 #[cfg(test)]
 mod tests;
+mod window;
 
 static OWNER_THREAD: OnceLock<ThreadId> = OnceLock::new();
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -30,6 +31,8 @@ static NEXT_OWNER: AtomicU64 = AtomicU64::new(0);
 
 const ERROR_CONSTRUCTOR_FIELD: usize = 6;
 const DOM_EXCEPTION_PROFILE_FIELD: usize = 7;
+const WINDOW_PROTOTYPE_FIELD: usize = 8;
+const WINDOW_EVENT_TARGET_PROTOTYPE_FIELD: usize = 9;
 
 struct ActiveOwner;
 
@@ -202,6 +205,7 @@ struct Roots {
     callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
     interrupt: v8::IsolateHandle,
     dom_exception_key: v8::Global<v8::Private>,
+    declared_constructor_key: v8::Global<v8::Private>,
     cleanup_interrupt: Cell<bool>,
     // Completed empty frames release only at owned post-SDK reaping boundaries.
     callback_frames: PanicRecords,
@@ -527,10 +531,14 @@ impl Engine {
             .map_err(|_| Error::IdentityExhausted)?;
         let mut isolate = v8::Isolate::new(Default::default());
         isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
-        let dom_exception_key = {
+        let (dom_exception_key, declared_constructor_key) = {
             v8::scope!(let scope, &mut isolate);
-            let key = v8::Private::new(scope, None);
-            v8::Global::new(scope, key)
+            let dom_exception = v8::Private::new(scope, None);
+            let declared_constructor = v8::Private::new(scope, None);
+            (
+                v8::Global::new(scope, dom_exception),
+                v8::Global::new(scope, declared_constructor),
+            )
         };
         let roots = Rc::new(Roots {
             owner: Rc::new(OwnerState::new(owner)),
@@ -542,6 +550,7 @@ impl Engine {
             callbacks: RefCell::new(BTreeMap::new()),
             interrupt: isolate.thread_safe_handle(),
             dom_exception_key,
+            declared_constructor_key,
             cleanup_interrupt: Cell::new(false),
             callback_frames: PanicRecords::default(),
             panic_payloads: PanicRecords::default(),
@@ -649,6 +658,7 @@ impl super::Engine for Engine {
 
     fn create_realm_with_backing(
         &mut self,
+        profile: RealmProfile,
         backing: Option<Rc<crate::RealmBacking>>,
     ) -> Result<Realm, Error> {
         // Funding may execute caller code; revalidate before materialization.
@@ -669,7 +679,17 @@ impl super::Engine for Engine {
         }));
         let pinned = std::pin::pin!(v8::HandleScope::new(&mut self.isolate));
         let scope = &mut pinned.init();
-        let context = v8::Context::new(scope, Default::default());
+        let window = match profile {
+            RealmProfile::Plain => None,
+            RealmProfile::Window => Some(window::Templates::new(scope)?),
+        };
+        let context = v8::Context::new(
+            scope,
+            v8::ContextOptions {
+                global_template: window.as_ref().map(|window| window.global_template(scope)),
+                ..Default::default()
+            },
+        );
         let intrinsics = {
             let scope = &mut v8::ContextScope::new(scope, context);
             let reflect_key = v8::String::new(scope, "Reflect").ok_or(Error::BackendUnavailable)?;
@@ -704,7 +724,12 @@ impl super::Engine for Engine {
             let bind = pristine_method(scope, function_prototype, "bind")?;
             let construct = pristine_method(scope, reflect, "construct")?;
             let template = v8::ObjectTemplate::new(scope);
-            if !template.set_internal_field_count(DOM_EXCEPTION_PROFILE_FIELD + 1) {
+            let fields = if window.is_some() {
+                WINDOW_EVENT_TARGET_PROTOTYPE_FIELD + 1
+            } else {
+                DOM_EXCEPTION_PROFILE_FIELD + 1
+            };
+            if !template.set_internal_field_count(fields) {
                 return Err(Error::BackendUnavailable);
             }
             let intrinsics = template
@@ -719,6 +744,15 @@ impl super::Engine for Engine {
                 || !intrinsics.set_internal_field(ERROR_CONSTRUCTOR_FIELD, error_constructor.into())
             {
                 return Err(Error::BackendUnavailable);
+            }
+            if let Some(window) = window {
+                let (prototype, target) = window.open(scope)?;
+                if !intrinsics.set_internal_field(WINDOW_PROTOTYPE_FIELD, prototype.into())
+                    || !intrinsics
+                        .set_internal_field(WINDOW_EVENT_TARGET_PROTOTYPE_FIELD, target.into())
+                {
+                    return Err(Error::BackendUnavailable);
+                }
             }
             v8::Global::new(scope, intrinsics)
         };
@@ -1004,6 +1038,10 @@ impl Entered<'_, '_, '_> {
                         .build(scope)
                         .ok_or(Error::BackendUnavailable)?;
                     let handler = private_handler(scope, "construct", trap)?;
+                    let key = v8::Local::new(scope, &roots.declared_constructor_key);
+                    if handler.set_private(scope, key, function.into()) != Some(true) {
+                        return Err(Error::BackendUnavailable);
+                    }
                     let proxy = v8::Proxy::new(scope, function.into(), handler)
                         .ok_or(Error::BackendUnavailable)?;
                     // Never expose the private target through its default prototype.
@@ -1058,6 +1096,21 @@ impl Entered<'_, '_, '_> {
 }
 
 impl Operations for Entered<'_, '_, '_> {
+    fn window_interface(&mut self) -> Result<WindowInterface, Error> {
+        self.attempt(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, intrinsics| {
+                let window = captured_value(scope, intrinsics, WINDOW_PROTOTYPE_FIELD)?;
+                let prototype =
+                    captured_value(scope, intrinsics, WINDOW_EVENT_TARGET_PROTOTYPE_FIELD)?;
+                Ok(WindowInterface {
+                    prototype: roots.retain(scope, realm, window)?,
+                    event_target_prototype: roots.retain(scope, realm, prototype)?,
+                })
+            },
+        )
+    }
+
     fn realm_key(&self) -> RealmKey {
         self.realm
     }
@@ -1328,6 +1381,24 @@ impl Operations for Entered<'_, '_, '_> {
                     .is_ok_and(|object| object.is_constructor()),
             )
         })
+    }
+
+    fn qualify_window_event_target(
+        &mut self,
+        constructor: &Root,
+        prototype: &Root,
+    ) -> Result<(), Error> {
+        self.validate_root(constructor)?;
+        self.validate_root(prototype)?;
+        self.attempt(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, _intrinsics| {
+                let constructor = roots.local(scope, constructor)?;
+                let prototype = roots.local(scope, prototype)?;
+                let key = v8::Local::new(scope, &roots.declared_constructor_key);
+                window::qualify_event_target(scope, constructor, prototype, key, realm)
+            },
+        )
     }
 
     fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error> {
@@ -1784,9 +1855,9 @@ impl Operations for Entered<'_, '_, '_> {
         &mut self,
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn std::any::Any>,
-        reference: Option<(u32, &Root)>,
+        slot: Option<super::NativeProjectionSlot<'_>>,
     ) -> Result<Root, Error> {
-        self.project_payload(prototype, payload, reference)
+        self.project_payload(prototype, payload, slot)
     }
 
     fn project_retained_native_object(

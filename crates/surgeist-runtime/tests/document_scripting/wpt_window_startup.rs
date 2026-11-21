@@ -12,7 +12,18 @@ pub(super) fn starts_unmodified_harness_with_native_timers() {
     let script: Vec<_> = harness.encode_utf16().collect();
 
     for expected_seconds in [10, 60] {
-        let (mut session, top) = setup();
+        let mut dom = native_dom();
+        let recipients =
+            surgeist_dom::event::DomEventRecipientLimits::new(32, 16_000_000, 16_000_000, 100_000)
+                .unwrap();
+        dom.set_limits(
+            dom.limits()
+                .with_event_recipients(recipients)
+                .with_meta_processing_work(100_000),
+        )
+        .unwrap();
+        let mut session = DomSession::new(dom, limits()).unwrap();
+        let (_, top) = create(&mut session);
         if expected_seconds == 60 {
             let snapshot = session.snapshot();
             let html = snapshot.node(top.document().node()).unwrap().children()[0];
@@ -75,7 +86,15 @@ pub(super) fn starts_unmodified_harness_with_native_timers() {
                 String::from_utf16(&message).unwrap()
             );
         }
-        startup.unwrap();
+        if let Err(error) = startup {
+            use std::error::Error as _;
+            let mut cause = error.source();
+            while let Some(error) = cause {
+                eprintln!("{error:?}");
+                cause = error.source();
+            }
+            panic!("Window harness startup failed: {error:?}");
+        }
         let progress = host.service_window_timer(&permit).unwrap();
         let WindowTimerProgress::Waiting(remaining) = progress else {
             panic!("expected the original harness timeout to be scheduled: {progress:?}");
@@ -87,6 +106,103 @@ pub(super) fn starts_unmodified_harness_with_native_timers() {
             remaining <= expected + tolerance && remaining + elapsed + tolerance >= expected,
             "expected {expected:?}, observed {remaining:?} after {elapsed:?}"
         );
+        println!("Runtime Window harness scheduled {expected_seconds} s without delivering load");
+        exercise_live_meta_collection(&mut host, &permit, top.document(), expected_seconds == 60);
         assert!(host.stop().into_session().is_ok());
     }
+}
+
+fn exercise_live_meta_collection(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    document: DocumentId,
+    populated: bool,
+) {
+    let base = usize::from(populated);
+    host.in_document(permit, |scope| {
+        let script = format!(
+            r#"Number((() => {{
+            const list = document.getElementsByTagName("MeTa");
+            globalThis.startupMetaList = list;
+            const length = Object.getOwnPropertyDescriptor(HTMLCollection.prototype, "length").get;
+            try {{ length.call(Object.create(HTMLCollection.prototype)); return false; }}
+            catch (error) {{ if (!(error instanceof TypeError)) return false; }}
+            return list instanceof HTMLCollection && list.length === {base} &&
+                list.item({base}) === null && list[{base}] === undefined;
+        }})())"#
+        );
+        assert_script_number(scope, &script, 1.0)
+    })
+    .unwrap();
+
+    let (head, first, second) = host
+        .with_native(|dom, _, _| {
+            let snapshot = dom.snapshot();
+            let html = snapshot.node(document.node()).unwrap().children()[0];
+            let head = snapshot.node(html).unwrap().children()[0];
+            let mut edit = DomBatch::new();
+            let first = edit.create_element_ns(document, Namespace::html(), "meta");
+            let second = edit.create_element_ns(document, Namespace::html(), "meta");
+            edit.set_attribute(&first, "id", "held-first");
+            edit.set_attribute(&second, "id", "held-second");
+            edit.set_attribute(&first, "name", "ordinary");
+            edit.insert_before(&first, head, None);
+            edit.insert_before(&second, head, None);
+            let receipt = dom.apply(edit, &cancel()).unwrap();
+            (
+                head,
+                receipt.created(&first).unwrap().unwrap(),
+                receipt.created(&second).unwrap().unwrap(),
+            )
+        })
+        .unwrap();
+    host.in_document(permit, |scope| {
+        let script = format!(
+            r#"Number(startupMetaList.length === {} &&
+            startupMetaList[{base}] === document.getElementById("held-first") &&
+            startupMetaList.item({base}) === startupMetaList[{base}] &&
+            startupMetaList[{base}].name === "ordinary" &&
+            startupMetaList[{base}].content === "" &&
+            startupMetaList[{}] === document.getElementById("held-second"))"#,
+            base + 2,
+            base + 1
+        );
+        assert_script_number(scope, &script, 1.0)
+    })
+    .unwrap();
+
+    host.with_native(|dom, _, _| {
+        let mut edit = DomBatch::new();
+        edit.insert_before(
+            second,
+            head,
+            Some(surgeist_dom::edit::NodeOperand::Existing(first)),
+        );
+        edit.set_attribute(second, "content", "updated");
+        dom.apply(edit, &cancel()).unwrap();
+    })
+    .unwrap();
+    host.in_document(permit, |scope| {
+        let script = format!(
+            r#"Number(startupMetaList[{base}].content === "updated" &&
+            startupMetaList[{base}] === document.getElementById("held-second"))"#
+        );
+        assert_script_number(scope, &script, 1.0)
+    })
+    .unwrap();
+
+    host.with_native(|dom, _, _| {
+        let mut edit = DomBatch::new();
+        edit.detach(first);
+        edit.detach(second);
+        dom.apply(edit, &cancel()).unwrap();
+    })
+    .unwrap();
+    host.in_document(permit, |scope| {
+        let script = format!(
+            "Number(startupMetaList.length === {base} && startupMetaList[{base}] === undefined)"
+        );
+        assert_script_number(scope, &script, 1.0)
+    })
+    .unwrap();
 }

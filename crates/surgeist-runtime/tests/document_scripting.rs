@@ -2475,6 +2475,8 @@ fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "window-event-target-lookup" => window_document::window_resolves_the_inherited_event_target_operations(),
+            "window-properties-full" => window_document::window_properties_full_assignment_regression(),
             "wpt-window-startup" => wpt_window_startup::starts_unmodified_harness_with_native_timers(),
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
             "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),

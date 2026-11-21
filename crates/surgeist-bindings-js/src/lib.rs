@@ -256,6 +256,10 @@ pub struct Execution<'process> {
     engine: &'process mut dyn backend::Engine,
 }
 
+/// A Window-shaped realm during host installation. Only a completed
+/// installation yields the ordinary execution capability for this realm.
+pub struct PendingWindowRealm(Realm);
+
 impl Drop for Execution<'_> {
     fn drop(&mut self) {
         self.engine.reap();
@@ -268,12 +272,119 @@ impl Execution<'_> {
         self.engine.create_realm()
     }
 
+    /// Prepare the attached Window and its immutable prototype chain without
+    /// making the realm available for ordinary execution.
+    pub fn prepare_window_realm(&mut self) -> Result<PendingWindowRealm, Error> {
+        self.engine
+            .create_realm_profile(backend::RealmProfile::Window)
+            .map(PendingWindowRealm)
+    }
+
+    /// Enter a private Window during host installation.
+    pub fn in_pending_window_realm<T>(
+        &mut self,
+        pending: &PendingWindowRealm,
+        install: impl for<'scope> FnOnce(&mut Scope<'scope>) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        self.in_realm(&pending.0, install)
+    }
+
+    /// Bind the installed EventTarget constructor to the Window interface.
+    /// The installer receives the reserved EventTarget prototype and must
+    /// return the same-realm constructor it installed on the global. A failed
+    /// installation does not yield a realm capability.
+    pub fn finish_window_realm<T, E: From<Error>>(
+        &mut self,
+        pending: PendingWindowRealm,
+        install: impl for<'scope> FnOnce(
+            &mut Scope<'scope>,
+            &Value<'scope>,
+        ) -> Result<(Value<'scope>, T), E>,
+    ) -> Result<(Realm, T), E> {
+        let result = self.in_pending_window_realm(&pending, |scope| {
+            let interface = scope.operations.window_interface()?;
+            let window_prototype = scope.import(&interface.prototype)?;
+            let prototype = scope.import(&interface.event_target_prototype)?;
+            let (parent, value) = match install(scope, &prototype) {
+                Ok(result) => result,
+                Err(error) => return Ok(Err(error)),
+            };
+            scope
+                .operations
+                .qualify_window_event_target(&parent.root, &prototype.root)?;
+            let global = scope.global()?;
+            let prototype_key = &b"prototype".map(u16::from);
+            let name = &b"Window".map(u16::from);
+            let constructor = ConstructorCallback::bounded(
+                0,
+                // The interface always refuses before consulting NewTarget.
+                |_| Err(Error::BackendUnavailable),
+                |scope, _| {
+                    Ok(ConstructorCompletion::Throw(
+                        scope.type_error(&b"Illegal constructor".map(u16::from))?,
+                    ))
+                },
+            );
+            let window = scope.constructor(&constructor, FunctionMetadata { name, length: 0 })?;
+            scope.set_prototype(&window, ObjectPrototype::Object(&parent))?;
+            scope.define_property(
+                &window,
+                PropertyKey::String(prototype_key),
+                PropertyDescriptor::Data {
+                    value: &window_prototype,
+                    writable: false,
+                    enumerable: false,
+                    configurable: false,
+                },
+            )?;
+            scope.define_new_property(
+                &window_prototype,
+                PropertyKey::String(&b"constructor".map(u16::from)),
+                PropertyDescriptor::Data {
+                    value: &window,
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                },
+            )?;
+            scope.define_new_property(
+                &global,
+                PropertyKey::String(name),
+                PropertyDescriptor::Data {
+                    value: &window,
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                },
+            )?;
+            Ok(Ok(value))
+        })??;
+        Ok((pending.0, result))
+    }
+
     /// Admit initial realm setup using ordinary owned backing before a policy
     /// is installed. Existing policies are refused before the funder is called;
     /// later realms use [`Self::create_realm`] and its installed admission.
     /// Backing follows both external realm tokens and guest-retained contexts.
     pub fn create_realm_funded<B: 'static, E: From<Error>>(
         &mut self,
+        fund: impl FnOnce(preparation::Request) -> Result<B, E>,
+    ) -> Result<Realm, E> {
+        self.create_funded_realm(backend::RealmProfile::Plain, fund)
+    }
+
+    /// Admit the initial Window template realm before establishing a guest policy.
+    pub fn prepare_window_realm_funded<B: 'static, E: From<Error>>(
+        &mut self,
+        fund: impl FnOnce(preparation::Request) -> Result<B, E>,
+    ) -> Result<PendingWindowRealm, E> {
+        self.create_funded_realm(backend::RealmProfile::Window, fund)
+            .map(PendingWindowRealm)
+    }
+
+    fn create_funded_realm<B: 'static, E: From<Error>>(
+        &mut self,
+        profile: backend::RealmProfile,
         fund: impl FnOnce(preparation::Request) -> Result<B, E>,
     ) -> Result<Realm, E> {
         self.engine.prepare_realm()?;
@@ -288,7 +399,7 @@ impl Execution<'_> {
         let backing = fund(preparation::Request::Realm { bytes })?;
         Ok(self
             .engine
-            .create_realm_with_backing(Some(RealmBacking::new(backing)))?)
+            .create_realm_with_backing(profile, Some(RealmBacking::new(backing)))?)
     }
 
     /// Runs fallible Rust binding operations in a validated realm. The chosen

@@ -153,14 +153,47 @@ impl<'scope> Scope<'scope> {
         reference: &Value<'scope>,
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<Value<'scope>, E> {
-        self.project_payload(prototype, payload, Some((slot, &reference.root)), admit)
+        self.project_payload(
+            prototype,
+            payload,
+            Some(crate::backend::NativeProjectionSlot::Traced(
+                slot,
+                &reference.root,
+            )),
+            admit,
+        )
+    }
+
+    /// Project a native object with provider-backed indexed reads.
+    ///
+    /// The getter receives the actual holder and a numeric index. Undefined
+    /// leaves the property unhandled. This selects an indexed read handler.
+    pub fn project_native_object_with_indexed_reads<
+        T: 'static,
+        Storage: 'static,
+        E: From<Error>,
+    >(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        payload: T,
+        getter: &Value<'scope>,
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Value<'scope>, E> {
+        self.project_payload(
+            prototype,
+            payload,
+            Some(crate::backend::NativeProjectionSlot::IndexedRead(
+                &getter.root,
+            )),
+            admit,
+        )
     }
 
     fn project_payload<T: 'static, Storage: 'static, E: From<Error>>(
         &mut self,
         prototype: ObjectPrototype<'_, 'scope>,
         payload: T,
-        reference: Option<(u32, &crate::Root)>,
+        slot: Option<crate::backend::NativeProjectionSlot<'_>>,
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<Value<'scope>, E> {
         self.check_active()?;
@@ -168,7 +201,7 @@ impl<'scope> Scope<'scope> {
         let root = self.operations.project_native_object(
             prototype.input(),
             Rc::new(NativeObject::new(payload, backing)),
-            reference,
+            slot,
         )?;
         Ok(self.value(root))
     }

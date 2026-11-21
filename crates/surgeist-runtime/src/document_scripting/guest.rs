@@ -826,7 +826,7 @@ impl PreparedDocumentScriptHost {
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             input.qualify_guest_registry(&session.dom())?;
         }
-        let mut script = self.prepare_engine(target, hooks)?;
+        let script = self.prepare_engine(target, hooks, super::ScriptRealmKind::Window)?;
         let mut admission = GuestEventAdmission::prepare(
             &self.native,
             input,
@@ -843,11 +843,9 @@ impl PreparedDocumentScriptHost {
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
         )?;
         admission.preparation = Some(script.preparation.controller().clone());
-        admission.public = Some(PublicEventBindings::install(
-            &mut script,
-            &self.native,
-            &admission,
-        )?);
+        let (script, public) =
+            PublicEventBindings::install_window(script, &self.native, &admission)?;
+        admission.public = Some(public);
         let engine = script.publish(&self.native, policy)?;
         engine.registration.observe_custom_element_reactions()?;
         Ok((engine, admission))

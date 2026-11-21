@@ -72,6 +72,7 @@ mod table_cell_column;
 mod table_legacy;
 mod table_part;
 mod table_row_index;
+mod tag_collection;
 mod template;
 mod text;
 mod textarea;
@@ -419,6 +420,7 @@ impl DocumentPrototypes {
         )?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         non_element_parent::install(scope, &document, &fragment, funding.capture)?;
+        tag_collection::install(scope, &document, funding)?;
         custom_elements::install_node_getter(
             scope,
             &document,

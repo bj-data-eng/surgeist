@@ -192,11 +192,14 @@ impl PublicEventBindings {
         self.document.reap_nodes(process, retired);
     }
 
-    pub(super) fn install(
-        script: &mut UnpublishedScriptEngine,
+    pub(super) fn install_window(
+        mut script: UnpublishedScriptEngine,
         owner: &Rc<NativeOwner>,
         admission: &GuestEventAdmission,
-    ) -> Result<Self, DocumentGuestEventError> {
+    ) -> Result<(UnpublishedScriptEngine, Self), DocumentGuestEventError> {
+        let super::super::PreparedScriptRealm::Window(pending) = script.realm else {
+            return Err(DocumentGuestEventError::RegistryState);
+        };
         let permit = DocumentScriptPermit {
             realm: script.authority.identity(),
             document: script.target.document(),
@@ -218,23 +221,28 @@ impl PublicEventBindings {
         let conversion_host = script
             .preparation
             .conversion_host(ConversionOrigin::General);
-        script
-            .process
-            .execution()
-            .in_realm(&script.realm, |scope| {
-                Ok(Self::install_in_realm(
-                    scope,
-                    owner,
-                    permit,
-                    admission,
-                    (inbox, registry, global),
-                    conversion_host,
-                ))
-            })?
+        let (realm, public) =
+            script
+                .process
+                .execution()
+                .finish_window_realm(pending, |scope, target| {
+                    Self::install_in_realm(
+                        scope,
+                        target,
+                        owner,
+                        permit,
+                        admission,
+                        (inbox, registry, global),
+                        conversion_host,
+                    )
+                })?;
+        script.realm = super::super::PreparedScriptRealm::Ready(realm);
+        Ok((script, public))
     }
 
-    fn install_in_realm(
-        scope: &mut Scope<'_>,
+    fn install_in_realm<'scope>(
+        scope: &mut Scope<'scope>,
+        target: &Value<'scope>,
         owner: &Rc<NativeOwner>,
         permit: DocumentScriptPermit,
         admission: &GuestEventAdmission,
@@ -244,7 +252,7 @@ impl PublicEventBindings {
             DomHostedGlobalId,
         ),
         conversion_host: crate::document_scripting::preparation::NativeConversionHost,
-    ) -> Result<Self, DocumentGuestEventError> {
+    ) -> Result<(Value<'scope>, Self), DocumentGuestEventError> {
         let fund = |bytes| {
             admission
                 .budget
@@ -384,7 +392,7 @@ impl PublicEventBindings {
             &ascii(b"get isTrusted"),
         )?;
 
-        let target = install_target_prototype(scope, &capture_origin)?;
+        install_target_operations(scope, target, &capture_origin)?;
 
         install_event_interface(scope, Interface::Event, &event, &capture)?;
         let toggle_event = toggle_event::install(scope, &event, &capture)?;
@@ -393,12 +401,13 @@ impl PublicEventBindings {
         let violation = security_policy_violation::install(scope, &event, &capture)?;
         let violation = scope.callback_object(&violation)?;
         let security_policy_violation = scope.retain_callback_object(violation, fund)?;
-        install_event_interface(scope, Interface::Target, &target, &capture_origin)?;
+        let constructor =
+            install_event_interface(scope, Interface::Target, target, &capture_origin)?;
         let observed = scope.callback_object(&event)?;
         let document = document::DocumentBindings::install(
             scope,
             document_id,
-            &target,
+            target,
             inbox,
             &capture,
             (&admission.budget, owner),
@@ -408,7 +417,7 @@ impl PublicEventBindings {
             },
         )?;
         let event = scope.retain_callback_object(observed, fund)?;
-        let observed = scope.callback_object(&target)?;
+        let observed = scope.callback_object(target)?;
         let target = scope.retain_callback_object(observed, fund_origin)?;
         let observed = scope.callback_object(&trusted)?;
         let trusted = scope.retain_callback_object(observed, fund)?;
@@ -468,24 +477,27 @@ impl PublicEventBindings {
                     .and_then(|bytes| bytes.checked_add(dom_exception_metadata_bytes))
                     .ok_or(DocumentScriptNativeError::StorageLimit)?,
             )?;
-        Ok(Self {
-            callbacks,
-            window,
-            trusted_types,
-            event,
-            toggle_event,
-            security_policy_violation,
-            target,
-            trusted,
-            dispatch_in_attachment,
-            backup_reaction_job,
-            backup_reactions_scheduled: Cell::new(false),
-            document,
-            custom_elements,
-            scoped_registries: RefCell::default(),
-            origins: RefCell::new(None),
-            origin_cost,
-        })
+        Ok((
+            constructor,
+            Self {
+                callbacks,
+                window,
+                trusted_types,
+                event,
+                toggle_event,
+                security_policy_violation,
+                target,
+                trusted,
+                dispatch_in_attachment,
+                backup_reaction_job,
+                backup_reactions_scheduled: Cell::new(false),
+                document,
+                custom_elements,
+                scoped_registries: RefCell::default(),
+                origins: RefCell::new(None),
+                origin_cost,
+            },
+        ))
     }
 
     pub(super) fn origin_installation_cost(&self) -> (usize, u64) {
@@ -669,7 +681,16 @@ fn install_target_prototype<'scope>(
     capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
 ) -> Result<Value<'scope>, DocumentGuestEventError> {
     let target = scope.object(ObjectPrototype::Default)?;
-    listener_methods::install(scope, &target, capture)?;
+    install_target_operations(scope, &target, capture)?;
+    Ok(target)
+}
+
+fn install_target_operations<'scope>(
+    scope: &mut Scope<'scope>,
+    target: &Value<'scope>,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<(), DocumentGuestEventError> {
+    listener_methods::install(scope, target, capture)?;
     let dispatch = capture(size_of::<Capture>())?;
     let dispatch_name = &ascii(b"dispatchEvent");
     let method = scope.fixed_arity_function(
@@ -681,14 +702,14 @@ fn install_target_prototype<'scope>(
     )?;
     define_data(
         scope,
-        &target,
+        target,
         PropertyKey::String(dispatch_name),
         &method,
         true,
         true,
         true,
     )?;
-    Ok(target)
+    Ok(())
 }
 
 fn install_event_interface<'scope>(
@@ -696,7 +717,7 @@ fn install_event_interface<'scope>(
     kind: Interface,
     prototype: &Value<'scope>,
     capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
-) -> Result<(), DocumentGuestEventError> {
+) -> Result<Value<'scope>, DocumentGuestEventError> {
     let fallback = capture(size_of::<(Capture, Interface)>())?;
     let constructor = constructor_capture(capture, size_of::<(Capture, Interface)>())?;
     let (name, length, prefix) = kind.declaration();
@@ -739,7 +760,7 @@ fn install_event_interface<'scope>(
     }
     let global = scope.global()?;
     document::install_interface(scope, &global, name, &constructor, prototype)?;
-    Ok(())
+    Ok(constructor)
 }
 
 enum SourceReadRequest<'a> {

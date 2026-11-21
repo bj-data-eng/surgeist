@@ -9,6 +9,7 @@ use crate::{Error, ExceptionPhase, RealmKey, Root};
 
 use super::callback_object::creation_context;
 use super::{Entered, ObjectPrototype, Roots, prototype_value};
+use crate::backend::NativeProjectionSlot;
 
 struct Entry {
     object: v8::Weak<v8::Object>,
@@ -28,13 +29,38 @@ struct PreparedObject {
     entry: Rc<Entry>,
 }
 
+fn indexed_read<'scope>(
+    scope: &mut v8::PinScope<'scope, '_>,
+    index: u32,
+    arguments: v8::PropertyCallbackArguments<'scope>,
+    mut result: v8::ReturnValue<'_>,
+) -> v8::Intercepted {
+    let holder = arguments.holder();
+    let Some(getter) = holder
+        .get_internal_field(scope, 2)
+        .and_then(|data| v8::Local::<v8::Value>::try_from(data).ok())
+        .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+    else {
+        return v8::Intercepted::kNo;
+    };
+    let index = v8::Integer::new_from_unsigned(scope, index);
+    match getter.call(scope, holder.into(), &[index.into()]) {
+        Some(value) if value.is_undefined() => v8::Intercepted::kNo,
+        Some(value) => {
+            result.set(value);
+            v8::Intercepted::kYes
+        }
+        None => v8::Intercepted::kYes,
+    }
+}
+
 fn prepare_payload<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     roots: &Rc<Roots>,
     realm: RealmKey,
     prototype: impl FnOnce(&v8::PinScope<'s, '_>) -> Result<v8::Local<'s, v8::Value>, Error>,
     payload: Rc<dyn Any>,
-    reference: Option<(u32, &Root)>,
+    slot: Option<NativeProjectionSlot<'_>>,
     funding: Option<crate::preparation::Guard>,
 ) -> Result<PreparedObject, Error> {
     let mut root = match funding {
@@ -49,7 +75,15 @@ fn prepare_payload<'s>(
         .ok_or(Error::IdentityExhausted)?;
     bank.next.set(index);
     let template = v8::ObjectTemplate::new(scope);
-    if !template.set_internal_field_count(2) {
+    let fields = if matches!(slot, Some(NativeProjectionSlot::IndexedRead(_))) {
+        template.set_indexed_property_handler(
+            v8::IndexedPropertyHandlerConfiguration::new().getter(indexed_read),
+        );
+        3
+    } else {
+        2
+    };
+    if !template.set_internal_field_count(fields) {
         return Err(Error::BackendUnavailable);
     }
     let object = template
@@ -66,14 +100,24 @@ fn prepare_payload<'s>(
     {
         return Err(Error::BackendUnavailable);
     }
-    if let Some((slot, reference)) = reference {
-        let value = roots.local(scope, reference)?;
-        if !value.is_object() {
-            return Err(Error::ExpectedObject);
+    match slot {
+        Some(NativeProjectionSlot::Traced(slot, reference)) => {
+            let value = roots.local(scope, reference)?;
+            if !value.is_object() {
+                return Err(Error::ExpectedObject);
+            }
+            if references.set_index(scope, slot, value) != Some(true) {
+                return Err(Error::BackendUnavailable);
+            }
         }
-        if references.set_index(scope, slot, value) != Some(true) {
-            return Err(Error::BackendUnavailable);
+        Some(NativeProjectionSlot::IndexedRead(getter)) => {
+            let getter = v8::Local::<v8::Function>::try_from(roots.local(scope, getter)?)
+                .map_err(|_| Error::ExpectedObject)?;
+            if !object.set_internal_field(2, getter.into()) {
+                return Err(Error::BackendUnavailable);
+            }
         }
+        None => {}
     }
     let root = root.retain(scope, realm, object.into())?;
     let retired = Rc::new(Cell::new(false));
@@ -164,10 +208,10 @@ impl Entered<'_, '_, '_> {
         &mut self,
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
-        reference: Option<(u32, &Root)>,
+        slot: Option<NativeProjectionSlot<'_>>,
     ) -> Result<Root, Error> {
         let PreparedObject { index, root, entry } =
-            self.prepare_payload(prototype, payload, reference, None)?;
+            self.prepare_payload(prototype, payload, slot, None)?;
         self.roots
             .native_objects
             .entries
@@ -243,7 +287,7 @@ impl Entered<'_, '_, '_> {
         &mut self,
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
-        reference: Option<(u32, &Root)>,
+        slot: Option<NativeProjectionSlot<'_>>,
         funding: Option<crate::preparation::Guard>,
     ) -> Result<PreparedObject, Error> {
         self.observe(ExceptionPhase::Prototype, |scope, roots, realm, _| {
@@ -253,7 +297,7 @@ impl Entered<'_, '_, '_> {
                 realm,
                 |scope| prototype_value(scope, roots, prototype),
                 payload,
-                reference,
+                slot,
                 funding,
             )
         })
