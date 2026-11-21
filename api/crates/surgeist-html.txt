@@ -2528,6 +2528,7 @@ pub fn surgeist_html::bounded::attributes::template_shadow_root_mode_keyword_wit
 pub fn surgeist_html::bounded::attributes::template_shadow_root_slot_assignment_keyword_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<&'static str, E>
 pub fn surgeist_html::bounded::attributes::th_scope_state(raw: core::option::Option<&surgeist_html::values::DocumentString>) -> surgeist_html::attributes::table_header_scope::HtmlTableHeaderScopeState
 pub fn surgeist_html::bounded::attributes::th_scope_work_bound(input_units: usize) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::attributes::translate_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlTranslateState, E>
 pub mod surgeist_html::bounded::construction
 pub enum surgeist_html::bounded::construction::HtmlConstructionBank
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Associations

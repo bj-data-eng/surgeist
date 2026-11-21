@@ -1437,8 +1437,8 @@ enum_rule!(POPOVER, HtmlPopoverState, Popover, Context::Global, [119], "attr-pop
     ["auto" => ("auto", HtmlPopoverState::Keyword(HtmlPopover::Auto)),
      "manual" => ("manual", HtmlPopoverState::Keyword(HtmlPopover::Manual)),
      "hint" => ("hint", HtmlPopoverState::Keyword(HtmlPopover::Hint))]);
-enum_rule!(TRANSLATE, HtmlTranslateState, Translate, Context::Global, [165], "attr-translate",
-    Some(HtmlTranslateState::Inherit), Some(HtmlTranslateState::Inherit), Some(HtmlTranslateState::Keyword(HtmlTranslate::Yes)),
+total_enum_rule!(TRANSLATE, TRANSLATE_DEFAULTS, HtmlTranslateState, Translate, Context::Global, [165], "attr-translate",
+    HtmlTranslateState::Inherit, HtmlTranslateState::Inherit, Some(HtmlTranslateState::Keyword(HtmlTranslate::Yes)),
     ["yes" => ("yes", HtmlTranslateState::Keyword(HtmlTranslate::Yes)),
      "no" => ("no", HtmlTranslateState::Keyword(HtmlTranslate::No))]);
 enum_rule!(SPELLCHECK, HtmlSpellcheckState, Spellcheck, Context::Global, [148], "attr-spellcheck",
@@ -3021,6 +3021,15 @@ pub(crate) mod bounded_rules {
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<&'static str, E> {
         reflected_keyword_with(&INPUTMODE, raw, admit).map(|keyword| keyword.unwrap_or(""))
+    }
+
+    /// Selects the intrinsic translate state from the exact null-namespace value.
+    /// Missing and invalid values inherit. Empty content selects yes.
+    pub fn translate_processing_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlTranslateState, E> {
+        total_enum_value_with(&TRANSLATE, &TRANSLATE_DEFAULTS, raw, admit)
     }
 
     /// Selects the intrinsic hidden state from the exact null-namespace value.

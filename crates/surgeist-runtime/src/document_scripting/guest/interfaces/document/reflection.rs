@@ -8,7 +8,9 @@ use surgeist_bindings_js::{
     IntegerKind, IntegerMode, IntegerValue, dom_exception::DomExceptionName,
 };
 use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
-use surgeist_html::attributes::{HtmlContentEditableState, HtmlHidden, HtmlHiddenState};
+use surgeist_html::attributes::{
+    HtmlContentEditableState, HtmlHidden, HtmlHiddenState, HtmlTranslate,
+};
 use surgeist_html::bounded::attributes::{
     HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule,
     contenteditable_processing_with, contenteditable_setter_state_with, dir_keyword_with,
@@ -25,6 +27,7 @@ use surgeist_html::bounded::select::{
 };
 use surgeist_html::values::Namespace;
 use surgeist_html::vocabulary::KnownHtmlElement;
+use surgeist_html_semantics::HtmlTranslationMode;
 
 #[derive(Clone, Copy)]
 pub(super) enum Reflection {
@@ -34,6 +37,7 @@ pub(super) enum Reflection {
     Mode,
     SlotAssignment,
     Direction,
+    Translate,
     Hidden,
     Popover,
     HeadingOffset,
@@ -323,8 +327,12 @@ impl Capture {
                 if write {
                     return Ok(Some(Reflected::Write));
                 }
-                let attrs = node.attributes().ok_or(DomError::WrongNodeKind)?;
-                let stored = attrs.get_null_namespace_attribute_with(attribute, || read.step())?;
+                let stored = if matches!(reflection, Reflection::Translate) {
+                    None
+                } else {
+                    let attrs = node.attributes().ok_or(DomError::WrongNodeKind)?;
+                    attrs.get_null_namespace_attribute_with(attribute, || read.step())?
+                };
                 let units = stored.map(|value| value.value().code_units());
                 Ok(Some(match reflection {
                     Reflection::Boolean => Reflected::Boolean(stored.is_some()),
@@ -340,6 +348,11 @@ impl Capture {
                     Reflection::Direction => {
                         Reflected::Keyword(Some(dir_keyword_with(units, |_| read.step())?))
                     }
+                    Reflection::Translate => Reflected::Boolean(
+                        read.snapshot
+                            .html_translation_mode_with(id, || read.step())?
+                            == HtmlTranslationMode::Enabled,
+                    ),
                     Reflection::Hidden => match hidden_processing_with(units, |_| read.step())? {
                         HtmlHiddenState::NotHidden => Reflected::Boolean(false),
                         HtmlHiddenState::Keyword(HtmlHidden::Hidden) => Reflected::Boolean(true),
@@ -428,13 +441,25 @@ impl Capture {
             };
             let value = if matches!(reflection, Reflection::Hidden) {
                 self.prepare_hidden_attribute(scope, &owner, &events, id, input)?
-            } else if matches!(reflection, Reflection::Boolean) {
+            } else if matches!(reflection, Reflection::Boolean | Reflection::Translate) {
                 let converted = self
                     .callbacks
                     .conversion
                     .run(scope, |cx| cx.value(&BOOLEAN, input))
                     .map_err(Error::from)?;
-                if *converted.get() {
+                if matches!(reflection, Reflection::Translate) {
+                    scope.check_active()?;
+                    self.callbacks
+                        .with_read(&owner, &events, |read, _| read.node(id).map(drop))?;
+                    let keyword = if *converted.get() {
+                        HtmlTranslate::Yes
+                    } else {
+                        HtmlTranslate::No
+                    };
+                    let mut units = [0; MAX_KEYWORD_UNITS];
+                    let units = keyword_units(keyword.canonical_keyword(), &mut units)?;
+                    Some(copy_native_data(&owner, &events, units)?)
+                } else if *converted.get() {
                     Some(copy_native_data(&owner, &events, &[])?)
                 } else {
                     None

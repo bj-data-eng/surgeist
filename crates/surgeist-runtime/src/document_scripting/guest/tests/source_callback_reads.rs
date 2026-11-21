@@ -35,6 +35,24 @@ pub(in crate::document_scripting) fn editable_ancestry_queries_consume_the_enclo
     );
 }
 
+pub(in crate::document_scripting) fn translation_queries_consume_the_enclosing_attribute_source() {
+    queries_consume_the_enclosing_attribute_source(
+        "sourceReadProbe.translate === false",
+        20_000,
+        |batch, document| {
+            let root = batch.create_element_ns(document, Namespace::html(), "section");
+            batch.set_attribute_ns(&root, Namespace::none(), "translate", "no");
+            let mut parent = root;
+            for _ in 0..10 {
+                let child = batch.create_element_ns(document, Namespace::html(), "div");
+                batch.insert_before(&child, &parent, None);
+                parent = child;
+            }
+            parent
+        },
+    );
+}
+
 fn queries_consume_the_enclosing_attribute_source(
     predicate: &str,
     source_work: u64,

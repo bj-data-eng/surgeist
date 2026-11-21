@@ -1609,6 +1609,8 @@ pub surgeist_html_semantics::HtmlTimeElementValueOrigin::DatetimeAttribute
 pub enum surgeist_html_semantics::HtmlTranslationMode
 pub surgeist_html_semantics::HtmlTranslationMode::Disabled
 pub surgeist_html_semantics::HtmlTranslationMode::Enabled
+impl surgeist_html_semantics::HtmlTranslationMode
+pub const fn surgeist_html_semantics::HtmlTranslationMode::from_attribute(state: surgeist_html::internal::attributes::HtmlTranslateState) -> core::option::Option<Self>
 pub enum surgeist_html_semantics::HtmlUsedAutocapitalizationBranch
 pub surgeist_html_semantics::HtmlUsedAutocapitalizationBranch::Control
 pub surgeist_html_semantics::HtmlUsedAutocapitalizationBranch::EditingHost

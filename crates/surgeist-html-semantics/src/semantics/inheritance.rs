@@ -373,6 +373,17 @@ pub enum HtmlTranslationMode {
     Enabled,
     Disabled,
 }
+impl HtmlTranslationMode {
+    /// Select a local mode from an HTML element's intrinsic translation state.
+    /// `None` continues the ordinary parent Element walk.
+    pub const fn from_attribute(state: HtmlTranslateState) -> Option<Self> {
+        match state {
+            HtmlTranslateState::Keyword(HtmlTranslate::Yes) => Some(Self::Enabled),
+            HtmlTranslateState::Keyword(HtmlTranslate::No) => Some(Self::Disabled),
+            HtmlTranslateState::Inherit => None,
+        }
+    }
+}
 /// Source-computed level, including HTML's saturation at nine.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlComputedHeadingLevel(u8);
@@ -594,18 +605,12 @@ impl<'a> HtmlSemanticSession<'a> {
                     .interpreter
                     .translate(element.name(), raw)
                     .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
-                match report
+                let state = report
                     .intrinsic()
                     .copied()
-                    .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?
-                {
-                    HtmlTranslateState::Keyword(HtmlTranslate::Yes) => {
-                        return Ok(HtmlSemanticValue::Known(HtmlTranslationMode::Enabled));
-                    }
-                    HtmlTranslateState::Keyword(HtmlTranslate::No) => {
-                        return Ok(HtmlSemanticValue::Known(HtmlTranslationMode::Disabled));
-                    }
-                    HtmlTranslateState::Inherit => {}
+                    .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
+                if let Some(mode) = HtmlTranslationMode::from_attribute(state) {
+                    return Ok(HtmlSemanticValue::Known(mode));
                 }
             }
             current = match self.parent(node)? {

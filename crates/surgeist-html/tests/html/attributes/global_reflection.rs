@@ -304,3 +304,45 @@ fn hidden_setter_preserves_typed_alternatives_and_first_refusal() {
         assert_eq!(remaining, 0);
     }
 }
+
+#[test]
+fn translate_uses_exact_content_keywords_and_preserves_read_refusal() {
+    use surgeist_html::attributes::{HtmlTranslate, HtmlTranslateState};
+    use surgeist_html::bounded::attributes::translate_processing_with;
+
+    let raw_cases = [
+        (None, HtmlTranslateState::Inherit),
+        (Some(""), HtmlTranslateState::Keyword(HtmlTranslate::Yes)),
+        (Some("YeS"), HtmlTranslateState::Keyword(HtmlTranslate::Yes)),
+        (Some("nO"), HtmlTranslateState::Keyword(HtmlTranslate::No)),
+        (Some("YES "), HtmlTranslateState::Inherit),
+        (Some("yes\0"), HtmlTranslateState::Inherit),
+    ];
+    for (raw, expected) in raw_cases {
+        let units = raw.map(|text| text.encode_utf16().collect::<Vec<_>>());
+        assert_eq!(
+            translate_processing_with(units.as_deref(), |_| Ok::<_, Infallible>(())).unwrap(),
+            expected
+        );
+    }
+    let exact_units = [0xd800, 0, 0xdc00];
+    assert_eq!(
+        translate_processing_with(Some(&exact_units), |_| Ok::<_, Infallible>(())).unwrap(),
+        HtmlTranslateState::Inherit
+    );
+
+    // The value header, both keyword headers and both code-unit pairs are reached.
+    let no = b"No".map(u16::from);
+    for (available, expected) in [
+        (5usize, Ok(HtmlTranslateState::Keyword(HtmlTranslate::No))),
+        (4, Err("refused")),
+    ] {
+        let mut remaining = available;
+        let read = translate_processing_with(Some(&no), |_| {
+            remaining = remaining.checked_sub(1).ok_or("refused")?;
+            Ok(())
+        });
+        assert_eq!(read, expected);
+        assert_eq!(remaining, 0);
+    }
+}

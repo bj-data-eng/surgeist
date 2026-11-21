@@ -370,6 +370,12 @@ fn html_reflection_setters_admit_the_native_change_before_publication() {
         ),
         ("inert", "inert", "limitedReflection.inert = true", &[][..]),
         (
+            "translate",
+            "translate",
+            "limitedReflection.translate = false",
+            &b"no".map(u16::from)[..],
+        ),
+        (
             "hidden",
             "hidden",
             "limitedReflection.hidden = 'UNTIL-FOUND'",
