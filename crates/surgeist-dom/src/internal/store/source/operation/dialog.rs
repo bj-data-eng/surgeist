@@ -1176,6 +1176,17 @@ impl Dom {
         }
         Ok(payload)
     }
+    pub(in crate::internal::store) fn admit_collection_output_usage(
+        &self,
+        usage: custody::Usage,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let mut total = self.source_observation_external(cancel)?;
+        total.add_bytes(usage.bytes())?;
+        total.add_units(usage.units())?;
+        self.admit_source_observers(total, cancel)
+    }
+
     pub(super) fn source_observation_total(
         &self,
         extra: storage::Payload,

@@ -469,6 +469,10 @@ fn active_source_owns_search_work_and_suspended_operations_cannot_escape_it() {
         .created(&dialog)
         .unwrap()
         .unwrap();
+    let collection = dom
+        .get_elements_by_tag_name(document, "*".into(), 128, &cancel)
+        .unwrap();
+    let collection_limits = surgeist_dom::tree::DomTagNameCollectionLimits::new(100_000, 16, 1024);
     let limits = DomSourceLimits::new(32_000_000, 1_000_000, 1_000_000, 64, 4096, 4096, 4);
     let executor = dom.bind_source_event_executor(&cancel).unwrap();
     let event = {
@@ -504,13 +508,46 @@ fn active_source_owns_search_work_and_suspended_operations_cannot_escape_it() {
         dom.pending_source_edit().unwrap().spent_work() - before,
         admitted.get() + 1
     );
+    let collection_work = Cell::new(0);
+    let before = dom.pending_source_edit().unwrap().spent_work();
+    {
+        let read = dom
+            .read_tag_name_collection(
+                &collection,
+                collection_limits,
+                || {
+                    collection_work.set(collection_work.get() + 1);
+                    Ok::<_, DomError>(())
+                },
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(read.item(0).unwrap(), Some(root));
+    }
+    assert!(collection_work.get() > 0);
+    assert_eq!(
+        dom.pending_source_edit().unwrap().spent_work() - before,
+        collection_work.get() + 1
+    );
+
     let pending = filter(
         navigate(&dom, filtered, Direction::FirstChild, &cancel),
         first,
     );
     dom.set_tree_walker_current(filtered, branch, &cancel)
         .unwrap();
-    drop(scope);
+    {
+        let read = dom
+            .read_tag_name_collection(
+                &collection,
+                collection_limits,
+                || Ok::<_, DomError>(()),
+                &cancel,
+            )
+            .unwrap();
+        drop(scope);
+        assert_eq!(read.item(0), Err(DomError::InvalidSourceEvent));
+    }
     let mut permit = Some(permit);
     let mut outcome = Some(
         executor

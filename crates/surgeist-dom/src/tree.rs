@@ -10,6 +10,8 @@
 //! filter, request and progress types drive its traversal.
 //! `DomTreeWalkerId` and `DomTreeWalker` describe a separate live walker with a
 //! settable current node and source-defined navigation in seven directions.
+//! `DomTagNameCollection` retains one exact Document and tag-name query.
+//! Qualify a new `DomTagNameCollectionRead` to read its current members.
 //!
 //! Views are immutable and keep the snapshot lifetime; reading creates no node. A
 //! NodeIterator starts before its root, walks ordinary tree order within the root, and
@@ -28,7 +30,10 @@ pub use crate::internal::snapshot::{
     DomDocument, DomDocumentPosition, DomNamespaceUri, DomNode, DomNodeKind, DomSiblingDirection,
     DomTagName, DomTreeOrder, DomTreeScope,
 };
-pub use crate::internal::store::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};
+pub use crate::internal::store::{
+    DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomTagNameCollection,
+    DomTagNameCollectionLimits, DomTagNameCollectionRead,
+};
 pub use crate::internal::store::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};
 pub use crate::internal::tree_walker::{
     DomTreeWalker, DomTreeWalkerDirection, DomTreeWalkerFilter, DomTreeWalkerId,
