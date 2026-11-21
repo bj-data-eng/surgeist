@@ -522,3 +522,6 @@ fn stale_optional_host_basis_is_rejected_before_a_table_capture_is_published() {
     let report = run(&c, g.table);
     assert_eq!((model(&report).width(), model(&report).height()), (3, 2));
 }
+
+#[path = "native_semantic_tables/row_indexes.rs"]
+mod row_indexes;
