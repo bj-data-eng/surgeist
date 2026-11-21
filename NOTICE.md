@@ -468,6 +468,12 @@ identify the selected files and retained authorship, and its
 attribution. They use the preserved
 [BSD-3-Clause license](crates/surgeist-css-parser/tests/corpus/wpt/source/LICENSE.md).
 
+The optional JavaScript conformance tool retains the unmodified upstream
+test harness and two EventTarget test files. Its
+[fixture inventory](tools/surgeist-js-wpt/fixtures/wpt/README.md) records the
+commit, source file identities and exact Window variants. These files use the
+[BSD-3-Clause license](licenses/web-platform-tests/LICENSE.md).
+
 * License: [BSD-3-Clause](licenses/web-platform-tests/LICENSE.md), with [CC0-1.0](licenses/web-platform-tests/legalcode.txt) for individually dedicated source material
 * Homepage: [Web Platform Tests](https://web-platform-tests.org)
 * Source authors and individual dedications: [upstream notices](licenses/web-platform-tests/NOTICE.md)
