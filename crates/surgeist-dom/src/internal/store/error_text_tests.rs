@@ -221,6 +221,21 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "the NodeIterator is stale",
         ),
         (
+            "StaleTreeWalker",
+            DomError::StaleTreeWalker,
+            "the TreeWalker is stale",
+        ),
+        (
+            "TreeWalkerFilterActive",
+            DomError::TreeWalkerFilterActive,
+            "the TreeWalker filter is already running",
+        ),
+        (
+            "TreeWalkerPublicationUnavailable",
+            DomError::TreeWalkerPublicationUnavailable,
+            "the TreeWalker publication is unavailable",
+        ),
+        (
             "StaleChildListObserver",
             DomError::StaleChildListObserver,
             "the child-list observer is stale",
@@ -1030,6 +1045,9 @@ variants! {
     TopLayerAdoptionUnavailable named,
     StaleRange unit,
     StaleNodeIterator unit,
+    StaleTreeWalker unit,
+    TreeWalkerFilterActive unit,
+    TreeWalkerPublicationUnavailable unit,
     StaleChildListObserver unit,
     ChildListPublicationUnavailable unit,
     ChildListDeliveryActive unit,
@@ -1294,6 +1312,7 @@ fn every_resource_is_named_by_a_distinct_phrase() {
         DomResource::FullscreenEvents,
         DomResource::Ranges,
         DomResource::NodeIterators,
+        DomResource::TreeWalkers,
         DomResource::ChildListObservers,
         DomResource::ChildListRegistrations,
         DomResource::ChildListRecords,
@@ -1345,7 +1364,7 @@ fn every_resource_is_named_by_a_distinct_phrase() {
         DomResource::MetaColorSchemeRetainedBytes,
         DomResource::MetaThemeColorScratch,
     ];
-    assert_eq!(all.len(), 61);
+    assert_eq!(all.len(), 62);
     let mut phrases = std::collections::BTreeSet::new();
     for resource in all {
         let text = DomError::ResourceLimit { resource, limit: 1 }.to_string();

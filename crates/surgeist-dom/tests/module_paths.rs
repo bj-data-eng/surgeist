@@ -223,7 +223,8 @@ use surgeist_dom::tree::{
     DomNodeFilterDecision, DomNodeIterator, DomNodeIteratorFilter, DomNodeIteratorFilterRequest,
     DomNodeIteratorId, DomNodeIteratorMatchRequest, DomNodeIteratorProgress, DomNodeKind,
     DomProcessingInstruction, DomQualifiedName, DomSiblingDirection, DomTagName, DomTreeOrder,
-    DomTreeScope,
+    DomTreeScope, DomTreeWalker, DomTreeWalkerDirection, DomTreeWalkerFilter,
+    DomTreeWalkerFilterRequest, DomTreeWalkerId, DomTreeWalkerMatchRequest, DomTreeWalkerProgress,
 };
 use surgeist_dom::url::{
     DomBase, DomBaseFactsError, DomBaseResponse, DomEncodingUrlFactsError, DomFrozenBase,

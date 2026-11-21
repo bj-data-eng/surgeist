@@ -469,6 +469,7 @@ impl Draft {
         )?;
         let ranges = self.finish_ranges(&id, cancel)?;
         let iterators = self.finish_node_iterators(participant_id, cancel)?;
+        let walkers = self.finish_tree_walkers(cancel)?;
         let child_lists = self.finish_child_lists(participant_id, cancel)?;
         let mut created_ranges = Vec::new();
         source::formation::reserve(
@@ -557,6 +558,7 @@ impl Draft {
                 slots,
                 ranges: ranges.ranges,
                 node_iterators: iterators.value,
+                tree_walkers: walkers.value,
                 child_lists: child_lists.value,
                 incomplete_source: None,
                 incomplete_hosted: dom.state.incomplete_hosted,
@@ -582,6 +584,7 @@ impl Draft {
                 slots: slots_custody,
                 ranges: ranges.custody,
                 node_iterators: iterators.custody,
+                tree_walkers: walkers.custody,
                 child_lists: child_lists.custody,
                 inbound: inbound_custody,
                 controls: controls.custody,
@@ -609,6 +612,7 @@ impl Draft {
             self.ranges.touched(),
         )?;
         self.node_iterator_changes(&dom.state, state, &mut changes, budget, cancel)?;
+        self.tree_walker_changes(&dom.state, state, &mut changes, budget, cancel)?;
         if child_lists.changed {
             source::formation::reserve(&mut changes, 1, budget, cancel)?;
             changes.push(DomChange::ChildListObservation);
@@ -794,7 +798,7 @@ impl Draft {
                 state_frontiers: candidate.frontiers,
                 root_debit: candidate.retained,
                 semantic_changed,
-                iterator_state_changed: iterators.state_changed,
+                traversal_state_changed: iterators.state_changed || walkers.state_changed,
                 owner: self.owner.clone(),
                 node_outputs,
                 node_output_kinds,
@@ -896,6 +900,7 @@ impl Draft {
             .mark_published(&self.base.container_index, &self.base_custody.containers);
         self.ranges = super::ranges::Ranges::new(&self.base, &self.base_custody);
         self.node_iterators = node_iterator::DraftIterators::new(&self.base, &self.base_custody);
+        self.tree_walkers = tree_walker::storage::DraftWalkers::new(&self.base, &self.base_custody);
         self.child_lists = None;
         let base = self.base.clone();
         let custody = self.base_custody.clone();

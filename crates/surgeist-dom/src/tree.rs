@@ -1,5 +1,5 @@
 //! The read model of the canonical tree: documents, nodes, elements, names, attributes
-//! and node iteration.
+//! and live node traversal.
 //!
 //! A `DomSnapshot` hands out checked views: `DomDocument`, `DomNode`, `DomElement`,
 //! `DomAttr`, `DomNamedNodeMap`, `DomDocumentType` and `DomProcessingInstruction`. Names
@@ -8,6 +8,8 @@
 //! root. `DomNodeIteratorId` identifies a live NodeIterator cursor of the owner,
 //! `DomNodeIterator` is that cursor's public state at the time it was read, and the
 //! filter, request and progress types drive its traversal.
+//! `DomTreeWalkerId` and `DomTreeWalker` describe a separate live walker with a
+//! settable current node and source-defined navigation in seven directions.
 //!
 //! Views are immutable and keep the snapshot lifetime; reading creates no node. A
 //! NodeIterator starts before its root, walks ordinary tree order within the root, and
@@ -27,3 +29,8 @@ pub use crate::internal::snapshot::{
     DomTagName, DomTreeOrder, DomTreeScope,
 };
 pub use crate::internal::store::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};
+pub use crate::internal::store::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};
+pub use crate::internal::tree_walker::{
+    DomTreeWalker, DomTreeWalkerDirection, DomTreeWalkerFilter, DomTreeWalkerId,
+    DomTreeWalkerProgress,
+};

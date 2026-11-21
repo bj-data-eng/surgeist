@@ -34,6 +34,22 @@ pub enum DomNodeKind<'a> {
     DocumentType(&'a DomDocumentType),
 }
 
+impl DomNodeKind<'_> {
+    /// The NodeFilter bit selected by the DOM node type minus one.
+    pub(crate) const fn traversal_mask(self) -> u32 {
+        1 << match self {
+            Self::Element(_) => 0,
+            Self::Attr(_) => 1,
+            Self::Text(_) => 2,
+            Self::ProcessingInstruction(_) => 6,
+            Self::Comment(_) => 7,
+            Self::Document(_) => 8,
+            Self::DocumentType(_) => 9,
+            Self::DocumentFragment | Self::ShadowRoot(_) => 10,
+        }
+    }
+}
+
 /// Owned immutable state, including detached nodes and all documents.
 #[derive(Clone, Debug)]
 pub struct DomSnapshot {

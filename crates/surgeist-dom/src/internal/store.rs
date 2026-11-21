@@ -82,11 +82,13 @@ mod name_registry;
 mod navigable;
 mod node_iterator;
 mod node_retirement;
+mod tree_walker;
 pub use node_iterator::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};
 pub use node_retirement::{
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
     DomNodeRetirementWatch, DomWatchedNode,
 };
+pub use tree_walker::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};
 #[cfg(test)]
 mod error_text_tests;
 #[cfg(test)]
@@ -145,6 +147,7 @@ pub enum DomResource {
     FullscreenEvents,
     Ranges,
     NodeIterators,
+    TreeWalkers,
     ChildListObservers,
     ChildListRegistrations,
     ChildListRecords,
@@ -278,6 +281,9 @@ pub enum DomError {
     },
     StaleRange,
     StaleNodeIterator,
+    StaleTreeWalker,
+    TreeWalkerFilterActive,
+    TreeWalkerPublicationUnavailable,
     StaleChildListObserver,
     ChildListPublicationUnavailable,
     ChildListDeliveryActive,
@@ -541,6 +547,9 @@ impl std::fmt::Display for DomError {
             Self::TopLayerAdoptionUnavailable { .. } => f.write_str("top-layer state cannot be adopted into the receiving Document"),
             Self::StaleRange => f.write_str("the Range is stale"),
             Self::StaleNodeIterator => f.write_str("the NodeIterator is stale"),
+            Self::StaleTreeWalker => f.write_str("the TreeWalker is stale"),
+            Self::TreeWalkerFilterActive => f.write_str("the TreeWalker filter is already running"),
+            Self::TreeWalkerPublicationUnavailable => f.write_str("the TreeWalker publication is unavailable"),
             Self::StaleChildListObserver => f.write_str("the child-list observer is stale"),
             Self::ChildListPublicationUnavailable => f.write_str("the child-list observation publication is unavailable"),
             Self::ChildListDeliveryActive => f.write_str("child-list observation delivery is already active"),
@@ -721,6 +730,7 @@ const fn resource_text(resource: DomResource) -> &'static str {
         DomResource::FullscreenEvents => "fullscreen events",
         DomResource::Ranges => "ranges",
         DomResource::NodeIterators => "node iterators",
+        DomResource::TreeWalkers => "tree walkers",
         DomResource::ChildListObservers => "child-list observers",
         DomResource::ChildListRegistrations => "child-list registrations",
         DomResource::ChildListRecords => "child-list records",
@@ -811,6 +821,9 @@ impl std::error::Error for DomError {
             | Self::TopLayerAdoptionUnavailable { .. }
             | Self::StaleRange
             | Self::StaleNodeIterator
+            | Self::StaleTreeWalker
+            | Self::TreeWalkerFilterActive
+            | Self::TreeWalkerPublicationUnavailable
             | Self::StaleChildListObserver
             | Self::ChildListPublicationUnavailable
             | Self::ChildListDeliveryActive
@@ -965,6 +978,7 @@ pub struct DomLimits {
     fullscreen_events: usize,
     ranges: usize,
     node_iterators: usize,
+    tree_walkers: usize,
     child_list_observation: crate::internal::child_list::DomChildListObservationLimits,
     dispatch_custody: crate::internal::dispatch::DomDispatchCustodyLimits,
     event_recipients: crate::internal::event::DomEventRecipientLimits,
@@ -1070,6 +1084,14 @@ impl DomLimits {
     pub fn node_iterators(self) -> usize {
         self.node_iterators
     }
+    /// Maximum retained TreeWalker slots, including vacant and exhausted slots.
+    pub fn with_tree_walkers(mut self, slots: usize) -> Self {
+        self.tree_walkers = slots;
+        self
+    }
+    pub fn tree_walkers(self) -> usize {
+        self.tree_walkers
+    }
     pub fn with_child_list_observation(
         mut self,
         limits: crate::internal::child_list::DomChildListObservationLimits,
@@ -1166,6 +1188,7 @@ impl DomLimits {
             fullscreen_events: 0,
             ranges: 0,
             node_iterators: 0,
+            tree_walkers: 0,
             child_list_observation:
                 crate::internal::child_list::DomChildListObservationLimits::default(),
             dispatch_custody: crate::internal::dispatch::DomDispatchCustodyLimits::default(),
@@ -1442,6 +1465,7 @@ pub struct DomUsage {
     parsed_association_units: usize,
     ranges: usize,
     node_iterators: usize,
+    tree_walkers: usize,
     meta_color_scheme_bytes: usize,
     autofocus_candidates: usize,
     slot_references: usize,
@@ -1466,6 +1490,9 @@ impl DomUsage {
     }
     pub fn node_iterators(self) -> usize {
         self.node_iterators
+    }
+    pub fn tree_walkers(self) -> usize {
+        self.tree_walkers
     }
     pub const fn meta_color_scheme_retained_bytes(self) -> usize {
         self.meta_color_scheme_bytes
@@ -1509,6 +1536,9 @@ pub enum DomChange {
     NodeIteratorCreated(crate::internal::node_iterator::DomNodeIteratorId),
     NodeIteratorReference(crate::internal::node_iterator::DomNodeIteratorId),
     NodeIteratorRetired(crate::internal::node_iterator::DomNodeIteratorId),
+    TreeWalkerCreated(crate::internal::tree_walker::DomTreeWalkerId),
+    TreeWalkerCurrent(crate::internal::tree_walker::DomTreeWalkerId),
+    TreeWalkerRetired(crate::internal::tree_walker::DomTreeWalkerId),
     ChildListObservation,
     RangeBoundary(crate::internal::range::DomRangeId),
     RangeRetired(crate::internal::range::DomRangeId),
@@ -1897,6 +1927,7 @@ pub(crate) struct State {
     details_targets: transaction::queues::CanonicalTargets,
     pub(crate) ranges: bank::Bank<crate::internal::range::Slot<NodeId>>,
     node_iterators: node_iterator::Iterators,
+    tree_walkers: tree_walker::storage::Walkers,
     child_lists: Option<Arc<child_list::Published>>,
     pub(crate) incomplete_source: Option<crate::internal::source::DomSourceOperationId>,
     pub(crate) incomplete_hosted: Option<crate::internal::hosted::DomHostedOperationId>,
@@ -1918,6 +1949,7 @@ impl PartialEq for State {
     fn eq(&self, other: &Self) -> bool {
         self.ranges == other.ranges
             && self.node_iterators == other.node_iterators
+            && self.tree_walkers == other.tree_walkers
             && self.child_lists == other.child_lists
             && self.incomplete_source == other.incomplete_source
             && self.incomplete_hosted == other.incomplete_hosted
@@ -2047,6 +2079,7 @@ impl Dom {
             details_targets: transaction::queues::CanonicalTargets::default(),
             ranges: bank::Bank::default(),
             node_iterators: node_iterator::Iterators::default(),
+            tree_walkers: tree_walker::storage::Walkers::default(),
             child_lists: None,
             incomplete_source: None,
             incomplete_hosted: None,
@@ -2132,6 +2165,7 @@ impl Dom {
                 .filter(|slot| slot.record.is_some())
                 .count(),
             node_iterators: self.state.node_iterators.live_slots(),
+            tree_walkers: self.state.tree_walkers.live_slots(),
             meta_color_scheme_bytes: self
                 .state
                 .slots
@@ -2200,6 +2234,11 @@ impl Dom {
             self.state.node_iterators.retained_slots(),
             limits.node_iterators,
             DomResource::NodeIterators,
+        )?;
+        admit(
+            self.state.tree_walkers.retained_slots(),
+            limits.tree_walkers,
+            DomResource::TreeWalkers,
         )?;
         if let Some(child_lists) = &self.state.child_lists {
             child_lists.admit(limits.child_list_observation)?;
@@ -2505,7 +2544,7 @@ impl Dom {
             state_frontiers: _,
             root_debit: _,
             semantic_changed: _,
-            iterator_state_changed,
+            traversal_state_changed,
             signal_ack,
             native_ack,
             details_ack,
@@ -2587,7 +2626,7 @@ impl Dom {
             },
             || source::formation::step(formation.as_ref(), cancelled),
         )?;
-        let (state, state_custody) = if changed || iterator_state_changed {
+        let (state, state_custody) = if changed || traversal_state_changed {
             let state = Arc::new(state);
             #[cfg(test)]
             if scale_metrics::ENABLED {
@@ -2923,6 +2962,7 @@ struct Draft {
     fullscreen_work_custody: Option<crate::internal::fullscreen::DomFullscreenExitId>,
     ranges: transaction::ranges::Ranges,
     node_iterators: node_iterator::DraftIterators,
+    tree_walkers: tree_walker::storage::DraftWalkers,
     child_lists: Option<Arc<child_list::Version>>,
     range_tickets: Vec<crate::internal::range::DomRangeId>,
     range_tickets_charge: custody::Debit,
@@ -3067,7 +3107,7 @@ struct Prepared {
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: Vec<DomChange>,
     semantic_changed: bool,
-    iterator_state_changed: bool,
+    traversal_state_changed: bool,
     allocation_ids: source::AllocationIds,
     signal_ack: Option<transaction::queues::QueueAck<Key, NodeId>>,
     native_ack: Option<transaction::queues::QueueAck<select::Pending, select::Task<NodeId>>>,
@@ -3401,6 +3441,7 @@ impl Draft {
             transaction::queues::CancelledDetails::empty(&registry, &mut admit_initial)?;
         let ranges = transaction::ranges::Ranges::new(&dom.state, &dom.state_custody);
         let node_iterators = node_iterator::DraftIterators::new(&dom.state, &dom.state_custody);
+        let tree_walkers = tree_walker::storage::DraftWalkers::new(&dom.state, &dom.state_custody);
         Ok(Self {
             base: dom.state.clone(),
             event_recipients: dom.event_recipients.clone(),
@@ -3421,6 +3462,7 @@ impl Draft {
             _header_custody: header,
             ranges,
             node_iterators,
+            tree_walkers,
             child_lists: None,
             range_tickets: Vec::new(),
             range_tickets_charge,
