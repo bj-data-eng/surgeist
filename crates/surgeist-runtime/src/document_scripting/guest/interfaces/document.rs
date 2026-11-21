@@ -33,7 +33,6 @@ mod li;
 mod list_compact;
 mod lists;
 mod meta;
-mod node_iterator;
 mod optgroup;
 mod ordinary;
 mod param;
@@ -49,6 +48,7 @@ mod table_cell_column;
 mod template;
 mod text;
 mod title;
+mod traversal;
 pub(super) mod tree;
 mod tree_mutations;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
@@ -308,7 +308,7 @@ pub(super) struct DocumentPrototypes {
     fragment: RetainedCallbackObject,
     shadow: RetainedCallbackObject,
     attr: RetainedCallbackObject,
-    iterator: RetainedCallbackObject,
+    traversal: traversal::Prototypes,
     character_data: character_data::CharacterBindings,
 }
 
@@ -429,7 +429,7 @@ impl DocumentPrototypes {
         let attr = attr::install(scope, node, constructor, funding)?;
         let document_type = document_type::install(scope, node, constructor, &document, funding)?;
         let implementation = dom_implementation::install(scope, &document, funding)?;
-        let iterator = node_iterator::install(scope, &document, funding)?;
+        let traversal = traversal::install(scope, &document, funding)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&xml_document)?;
@@ -447,7 +447,7 @@ impl DocumentPrototypes {
                 fragment: retained_fragment,
                 shadow: retained_shadow,
                 attr,
-                iterator,
+                traversal,
                 character_data,
             },
             document,

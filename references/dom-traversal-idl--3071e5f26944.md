@@ -54,3 +54,25 @@ callback interface NodeFilter {
   unsigned short acceptNode(Node node);
 };
 ```
+
+## <a id="interface-treewalker"></a>TreeWalker
+
+Source: [TreeWalker](https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-treewalker).
+
+```webidl
+[Exposed=Window]
+interface TreeWalker {
+  [SameObject] readonly attribute Node root;
+  readonly attribute unsigned long whatToShow;
+  readonly attribute NodeFilter? filter;
+           attribute Node currentNode;
+
+  Node? parentNode();
+  Node? firstChild();
+  Node? lastChild();
+  Node? previousSibling();
+  Node? nextSibling();
+  Node? previousNode();
+  Node? nextNode();
+};
+```

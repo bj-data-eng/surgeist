@@ -1,15 +1,39 @@
 //! Defers native cursor retirement until the originating DOM can be borrowed.
 
 use super::*;
-use surgeist_dom::{Dom, tree::DomNodeIteratorId};
+use surgeist_dom::{
+    Dom,
+    tree::{DomNodeIteratorId, DomTreeWalkerId},
+};
+
+#[derive(Clone, Copy)]
+pub(super) enum CursorId {
+    Iterator(DomNodeIteratorId),
+    Walker(DomTreeWalkerId),
+}
+
+impl CursorId {
+    fn retire(self, dom: &mut Dom, cleanup: &AtomicBool) -> Result<(), DomError> {
+        match self {
+            Self::Iterator(id) => match dom.retire_node_iterator(id, cleanup) {
+                Err(DomError::StaleNodeIterator) => Ok(()),
+                result => result,
+            },
+            Self::Walker(id) => match dom.retire_tree_walker(id, cleanup) {
+                Err(DomError::StaleTreeWalker) => Ok(()),
+                result => result,
+            },
+        }
+    }
+}
 
 #[derive(Default)]
-pub(super) struct IteratorRetirements {
+pub(super) struct Retirements {
     head: Cell<Option<Box<Record>>>,
 }
 
 pub(super) struct Record {
-    id: Option<DomNodeIteratorId>,
+    id: Option<CursorId>,
     next: Option<Box<Record>>,
     _backing: guest::GuestBacking,
 }
@@ -24,8 +48,8 @@ impl Record {
     }
 }
 
-impl IteratorRetirements {
-    pub(super) fn enqueue(&self, id: DomNodeIteratorId, mut record: Box<Record>) {
+impl Retirements {
+    pub(super) fn enqueue(&self, id: CursorId, mut record: Box<Record>) {
         record.id = Some(id);
         record.next = self.head.take();
         self.head.set(Some(record));
@@ -36,14 +60,11 @@ impl IteratorRetirements {
         // or refused script entry. A busy native owner retains the current record.
         let cleanup = AtomicBool::new(false);
         while let Some(mut record) = self.head.take() {
-            if let Some(id) = record.id {
-                match dom.retire_node_iterator(id, &cleanup) {
-                    Ok(()) | Err(DomError::StaleNodeIterator) => {}
-                    Err(error) => {
-                        self.head.set(Some(record));
-                        return Err(error);
-                    }
-                }
+            if let Some(id) = record.id
+                && let Err(error) = id.retire(dom, &cleanup)
+            {
+                self.head.set(Some(record));
+                return Err(error);
             }
             self.head.set(record.next.take());
         }
@@ -51,7 +72,7 @@ impl IteratorRetirements {
     }
 }
 
-impl Drop for IteratorRetirements {
+impl Drop for Retirements {
     fn drop(&mut self) {
         let head = self.head.get_mut();
         while let Some(mut record) = head.take() {

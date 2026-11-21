@@ -33,9 +33,9 @@ use crate::{
 };
 
 pub(crate) mod guest;
-mod iterator_retirement;
 mod preparation;
 mod projection;
+mod traversal_retirement;
 pub use guest::{
     DocumentCspViolationProgress, DocumentGuestAccounting, DocumentGuestAccountingReport,
     DocumentGuestConstructorException, DocumentGuestCustomElementCallback,
@@ -265,7 +265,7 @@ struct NativeOwner {
     pending_constructor: RefCell<Option<Box<guest::PendingConstructor>>>,
     pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
     pending_style: Cell<Option<(surgeist_dom::source::DomSourceOperationId, RealmId)>>,
-    iterator_retirements: iterator_retirement::IteratorRetirements,
+    traversal_retirements: traversal_retirement::Retirements,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
@@ -514,7 +514,7 @@ impl NativeOwner {
         }
         if let Some(attachment) = native.attachment.get() {
             let mut dom = native.session.get_mut().dom();
-            if native.iterator_retirements.reap(dom.raw_mut()).is_err() {
+            if native.traversal_retirements.reap(dom.raw_mut()).is_err() {
                 return Err(owner);
             }
             native
@@ -674,7 +674,7 @@ impl PreparedDocumentScriptHost {
                 pending_constructor: RefCell::new(None),
                 pending_attribute: RefCell::new(None),
                 pending_style: Cell::new(None),
-                iterator_retirements: iterator_retirement::IteratorRetirements::default(),
+                traversal_retirements: traversal_retirement::Retirements::default(),
                 trusted_types_reports: RefCell::new(None),
                 cancellation,
                 storage_limit,
@@ -1305,7 +1305,7 @@ impl DocumentScriptHost {
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             if session.read_dom().pending_source_edit().is_none() {
                 self.native
-                    .iterator_retirements
+                    .traversal_retirements
                     .reap(session.dom().raw_mut())
                     .map_err(DocumentScriptNativeError::from)?;
             }

@@ -1,4 +1,4 @@
-use super::{evaluate, hosted_session_with_dom_limits};
+use super::{Error, PropertyKey, evaluate, hosted_session_with_dom_limits};
 use crate::document_scripting::guest::tests::attach_public_nodes;
 use std::sync::{Arc, atomic::AtomicBool};
 
@@ -34,6 +34,8 @@ pub(super) fn the_factory_exposes_a_live_cursor_and_standard_prototype() {
                 const current = Object.getOwnPropertyDescriptor(TreeWalker.prototype, 'currentNode');
                 try { current.get.call(Object.create(walk)); return 'forged TreeWalker receiver'; }
                 catch (error) { if (!(error instanceof TypeError)) return 'TreeWalker getter brand'; }
+                try { NodeIterator.prototype.nextNode.call(walk); return 'walker accepted as iterator'; }
+                catch (error) { if (!(error instanceof TypeError)) return 'separate cursor brands'; }
                 if (walk.firstChild() !== left || walk.nextNode() !== leaf || walk.parentNode() !== left ||
                     walk.nextSibling() !== right || walk.previousSibling() !== left || walk.parentNode() !== root ||
                     walk.lastChild() !== right || walk.previousNode() !== leaf || walk.currentNode !== leaf ||
@@ -136,4 +138,73 @@ pub(super) fn other_unsigned_short_results_follow_each_navigation_algorithm() {
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
         Ok(())
     }).unwrap();
+}
+
+pub(super) fn filter_errors_use_the_callbacks_associated_realm() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) =
+        hosted_session_with_dom_limits(&cancel, 0, 0, |limits| limits.with_tree_walkers(1));
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted.create_headless_host(&mut dom, &cancel).unwrap();
+        hosted.create_top_level(&mut dom, owner, &cancel).unwrap()
+    };
+    let mut host = attach_public_nodes(session, target, cancel, 200_000, 2_000_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    let (filter, error_constructor) = {
+        let engine = host.engine.as_mut().unwrap();
+        let realm = engine
+            .creations
+            .find(origin.global(), || Ok::<_, Error>(()))
+            .unwrap()
+            .unwrap();
+        engine
+            .process
+            .execution()
+            .in_realm(realm, |scope| {
+                let filter = evaluate(scope, "({ acceptNode: 7 })")?;
+                let error = evaluate(scope, "TypeError")?;
+                Ok((scope.retain(&filter), scope.retain(&error)))
+            })
+            .unwrap()
+    };
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        for (name, root) in [
+            ("foreignWalkerFilter", filter),
+            ("foreignWalkerError", error_constructor),
+        ] {
+            let key: Vec<_> = name.encode_utf16().collect();
+            let input = scope.import(&root)?;
+            scope.set(&global, PropertyKey::String(&key), &input)?;
+        }
+        let result = evaluate(
+            scope,
+            r#"
+            (() => {
+                const root = document.createElement('div');
+                const child = root.appendChild(document.createTextNode('text'));
+                const walk = document.createTreeWalker(root, undefined, foreignWalkerFilter);
+                try { walk.nextNode(); return 'noncallable callback accepted'; }
+                catch (error) {
+                    if (!(error instanceof foreignWalkerError) || error instanceof TypeError ||
+                        walk.currentNode !== root) return 'callback operation error realm';
+                }
+                foreignWalkerFilter.acceptNode = () => Symbol();
+                try { walk.nextNode(); return 'invalid callback result accepted'; }
+                catch (error) {
+                    if (!(error instanceof foreignWalkerError) || error instanceof TypeError ||
+                        walk.currentNode !== root) return 'callback result conversion realm';
+                }
+                foreignWalkerFilter.acceptNode = node => node === child ? 1 : 3;
+                return walk.nextNode() === child ? 'ok' : 'canonical callback output';
+            })()
+        "#,
+        )?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        Ok(())
+    })
+    .unwrap();
 }

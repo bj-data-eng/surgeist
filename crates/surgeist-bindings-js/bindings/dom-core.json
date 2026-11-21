@@ -2,6 +2,18 @@
   "schema": 1,
   "sources": [
     {
+      "id": "TreeWalker.source",
+      "path": "references/dom-traversal-idl--3071e5f26944.md",
+      "anchor": "interface-treewalker",
+      "block": 0,
+      "sha256": "e7175e68429e7bf95c928991d6fd51e1fbf7191d80a3ea6623528bac2fabe676",
+      "revision": "3071e5f269448350fdea79bb284eedaf17bc431e",
+      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-treewalker",
+      "entries": [
+        "TreeWalker"
+      ]
+    },
+    {
       "id": "NodeIterator.source",
       "path": "references/dom-traversal-idl--3071e5f26944.md",
       "anchor": "interface-nodeiterator",
@@ -870,6 +882,168 @@
     }
   ],
   "declarations": [
+    {
+      "id": "TreeWalker",
+      "kind": "interface",
+      "name": "TreeWalker",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "id": "TreeWalker.root",
+          "kind": "attribute",
+          "name": "root",
+          "type": {
+            "kind": "named",
+            "name": "Node"
+          },
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "readonly": true
+        },
+        {
+          "id": "TreeWalker.whatToShow",
+          "kind": "attribute",
+          "name": "whatToShow",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "TreeWalker.filter",
+          "kind": "attribute",
+          "name": "filter",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "NodeFilter"
+            }
+          },
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "TreeWalker.currentNode",
+          "kind": "attribute",
+          "name": "currentNode",
+          "type": {
+            "kind": "named",
+            "name": "Node"
+          },
+          "attributes": [],
+          "readonly": false
+        },
+        {
+          "id": "TreeWalker.parentNode:0",
+          "kind": "operation",
+          "name": "parentNode",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "TreeWalker.firstChild:0",
+          "kind": "operation",
+          "name": "firstChild",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "TreeWalker.lastChild:0",
+          "kind": "operation",
+          "name": "lastChild",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "TreeWalker.previousSibling:0",
+          "kind": "operation",
+          "name": "previousSibling",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "TreeWalker.nextSibling:0",
+          "kind": "operation",
+          "name": "nextSibling",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "TreeWalker.previousNode:0",
+          "kind": "operation",
+          "name": "previousNode",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "TreeWalker.nextNode:0",
+          "kind": "operation",
+          "name": "nextNode",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "attributes": [],
+          "arguments": []
+        }
+      ]
+    },
     {
       "id": "NodeIterator",
       "kind": "interface",
@@ -7167,13 +7341,6 @@
       "requirement": "Pin the delegated SetHTMLOptions definition before converting/exposing this external type; the retained source here references it but is not its full defining clause."
     },
     {
-      "name": "TreeWalker",
-      "kind": "interface",
-      "owner": "surgeist-dom",
-      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-treewalker",
-      "requirement": "Source-qualified TreeWalker definition and its owning native/binding family; not an empty installed interface."
-    },
-    {
       "name": "TrustedHTML",
       "kind": "interface",
       "owner": "surgeist-html",
@@ -7217,6 +7384,170 @@
     }
   ],
   "access_mappings": {
+    "TreeWalker.root/get": {
+      "kind": "native",
+      "adapter": "treewalker.root.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "tree_walker"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/tree_walker.rs",
+          "symbol": "root"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.whatToShow/get": {
+      "kind": "native",
+      "adapter": "treewalker.whattoshow.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "tree_walker"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/tree_walker.rs",
+          "symbol": "what_to_show"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.filter/get": {
+      "kind": "native",
+      "adapter": "treewalker.filter.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "tree_walker"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/tree_walker.rs",
+          "symbol": "filter"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.currentNode/get": {
+      "kind": "native",
+      "adapter": "treewalker.currentnode.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "tree_walker"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/tree_walker.rs",
+          "symbol": "current_node"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.currentNode/set": {
+      "kind": "native",
+      "adapter": "treewalker.currentnode.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "set_tree_walker_current"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.parentNode:0/call": {
+      "kind": "native",
+      "adapter": "treewalker.parentnode.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "navigate_tree_walker"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.firstChild:0/call": {
+      "kind": "native",
+      "adapter": "treewalker.firstchild.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "navigate_tree_walker"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.lastChild:0/call": {
+      "kind": "native",
+      "adapter": "treewalker.lastchild.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "navigate_tree_walker"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.previousSibling:0/call": {
+      "kind": "native",
+      "adapter": "treewalker.previoussibling.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "navigate_tree_walker"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.nextSibling:0/call": {
+      "kind": "native",
+      "adapter": "treewalker.nextsibling.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "navigate_tree_walker"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.previousNode:0/call": {
+      "kind": "native",
+      "adapter": "treewalker.previousnode.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "navigate_tree_walker"
+        }
+      ],
+      "requirements": []
+    },
+    "TreeWalker.nextNode:0/call": {
+      "kind": "native",
+      "adapter": "treewalker.nextnode.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "navigate_tree_walker"
+        }
+      ],
+      "requirements": []
+    },
     "NodeIterator.root/get": {
       "kind": "native",
       "adapter": "nodeiterator.root.get",
@@ -8072,14 +8403,14 @@
     "Document.createTreeWalker:0/call": {
       "kind": "native",
       "adapter": "document.createtreewalker.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "An actual createTreeWalker cursor with canonical root/current traversal position, whatToShow and filter decisions, including removal maintenance and callback reentry rules of its selected traversal family.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-document-createtreewalker"
+          "path": "crates/surgeist-dom/src/internal/store/tree_walker.rs",
+          "symbol": "create_tree_walker"
         }
-      ]
+      ],
+      "requirements": []
     },
     "DOMImplementation.createDocumentType:0/call": {
       "kind": "native",
