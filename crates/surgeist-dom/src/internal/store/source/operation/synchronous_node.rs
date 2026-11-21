@@ -1,5 +1,6 @@
 //! Synchronous Source creation and retirement custody for its node output.
 
+use super::super::reactions::DomCustomElementReactionKind;
 use super::*;
 use crate::{
     internal::store::DomNodeRetirementInbox, internal::store::DomNodeRetirementLimits,
@@ -93,13 +94,14 @@ pub(super) enum SynchronousNode<'a> {
     CustomElementResult(NodeWatch<'a>),
 }
 
-/// The exact registration and its retained disconnection callback lookup.
+/// The exact registration and its retained callback lookup for shadow removal.
 /// The lookup must use the original definition identity and cannot enter guest code.
 pub struct DomShadowReactionRoute<'a> {
     registration: &'a crate::internal::hosted::DomDocumentScriptRegistration,
     queue: Option<crate::internal::store::source::reactions::DomSynchronousReactionQueue>,
     has_callback: &'a mut dyn FnMut(
         crate::internal::registry::DomRegistryDefinitionId,
+        DomCustomElementReactionKind<'_>,
     ) -> Result<bool, DomError>,
 }
 
@@ -109,6 +111,7 @@ impl<'a> DomShadowReactionRoute<'a> {
         queue: Option<crate::internal::store::source::reactions::DomSynchronousReactionQueue>,
         has_callback: &'a mut dyn FnMut(
             crate::internal::registry::DomRegistryDefinitionId,
+            DomCustomElementReactionKind<'_>,
         ) -> Result<bool, DomError>,
     ) -> Self {
         Self {

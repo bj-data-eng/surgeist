@@ -359,8 +359,9 @@ current canonical association. Registries support `define`, `get`, `getName`,
 `whenDefined`, `upgrade` and `initialize`. Explicit factories
 can synchronously construct autonomous and customized built-in elements, and
 native edits deliver their supported lifecycle reactions. Promise handlers
-run at an explicit guest checkpoint. Form-associated definitions refuse
-before publication while their canonical form lifecycle is pending.
+run at an explicit guest checkpoint. The Global registry admits autonomous
+form-associated definitions and delivers canonical Form owner and disabledness
+callbacks. Scoped registries refuse form-associated definitions before publication.
 Parser-triggered execution is pending.
 Native ShadowRoots inherit DocumentFragment and expose their canonical host,
 mode, focus delegation, slot assignment, clonability and serializability.

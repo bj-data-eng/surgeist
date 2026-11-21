@@ -801,7 +801,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<RetiredNode, DomError> {
         let key = self.live_key(key);
-        self.require_reaction_receiver_retirement(key, cancel)?;
+        self.require_reaction_settled_for_retirement(key, cancel)?;
         self.materialize_node(key, cancel)?;
         let counts = self
             .counts

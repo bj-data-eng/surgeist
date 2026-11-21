@@ -87,6 +87,8 @@ mod element_mixin;
 mod element_projection;
 #[path = "document_scripting/fieldset_attributes.rs"]
 mod fieldset_attributes;
+#[path = "document_scripting/form_associated_custom_elements.rs"]
+mod form_associated_custom_elements;
 #[path = "document_scripting/form_attributes.rs"]
 mod form_attributes;
 #[path = "document_scripting/frameset_reflections.rs"]
@@ -2453,6 +2455,7 @@ fn main() {
             "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
             "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
             "custom-element-construction" => native_window_defines_and_constructs_custom_elements(),
+            "form-associated-custom-elements" => form_associated_custom_elements::attached_form_associated_custom_elements_deliver_native_reactions(),
             "window-length" => window_length::attached_window_length_tracks_current_native_children(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "content-editable" => content_editable::attached_html_elements_use_native_content_editability(),
@@ -2568,6 +2571,7 @@ fn main() {
     native_window_event_observes_its_live_standalone_dispatch();
     native_window_registers_and_removes_guest_event_listeners();
     native_window_defines_and_constructs_custom_elements();
+    form_associated_custom_elements::attached_form_associated_custom_elements_deliver_native_reactions();
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
     window_length::attached_window_length_tracks_current_native_children();

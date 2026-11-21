@@ -173,6 +173,10 @@ pub surgeist_dom::custom_element::DomCustomElementReactionKind::AttributeChanged
 pub surgeist_dom::custom_element::DomCustomElementReactionKind::Connected
 pub surgeist_dom::custom_element::DomCustomElementReactionKind::ConnectedMove
 pub surgeist_dom::custom_element::DomCustomElementReactionKind::Disconnected
+pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormAssociated
+pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormAssociated::form: core::option::Option<surgeist_dom::identity::NodeId>
+pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormDisabled
+pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormDisabled::disabled: bool
 pub surgeist_dom::custom_element::DomCustomElementReactionKind::Upgrade
 pub enum surgeist_dom::custom_element::DomElementDefinition
 pub surgeist_dom::custom_element::DomElementDefinition::Definition(surgeist_dom::custom_element::DomRegistryDefinitionId)
@@ -252,7 +256,7 @@ impl surgeist_dom::custom_element::DomRegistryId
 pub const fn surgeist_dom::custom_element::DomRegistryId::owner(self) -> surgeist_dom::identity::DomOwnerId
 pub struct surgeist_dom::custom_element::DomShadowReactionRoute<'a>
 impl<'a> surgeist_dom::custom_element::DomShadowReactionRoute<'a>
-pub fn surgeist_dom::custom_element::DomShadowReactionRoute<'a>::new(registration: &'a surgeist_dom::script::DomDocumentScriptRegistration, queue: core::option::Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>, has_callback: &'a mut dyn core::ops::function::FnMut(surgeist_dom::custom_element::DomRegistryDefinitionId) -> core::result::Result<bool, surgeist_dom::DomError>) -> Self
+pub fn surgeist_dom::custom_element::DomShadowReactionRoute<'a>::new(registration: &'a surgeist_dom::script::DomDocumentScriptRegistration, queue: core::option::Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>, has_callback: &'a mut dyn core::ops::function::FnMut(surgeist_dom::custom_element::DomRegistryDefinitionId, surgeist_dom::custom_element::DomCustomElementReactionKind<'_>) -> core::result::Result<bool, surgeist_dom::DomError>) -> Self
 pub struct surgeist_dom::custom_element::DomSourceCustomElementCallbackScope<'registration>
 pub struct surgeist_dom::custom_element::DomSourceCustomElementRequest
 impl surgeist_dom::custom_element::DomSourceCustomElementRequest

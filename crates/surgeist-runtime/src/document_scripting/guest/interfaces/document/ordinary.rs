@@ -725,6 +725,7 @@ impl OrdinaryBindings {
             Option<Rc<ActiveReactionQueue>>,
             &mut bool,
         ),
+        form_callbacks: Option<&Capture>,
     ) -> Result<Option<Rc<ActiveReactionQueue>>, DocumentGuestEventError> {
         let registration = owner
             .attachment
@@ -827,12 +828,28 @@ impl OrdinaryBindings {
                 pending.upgrade_callbacks = callbacks;
             }
             self.finish_customized_constructor(scope, owner, events, &mut pending)?;
-            Ok(pending.upgrade_callbacks.take())
+            Ok(())
         })();
-        if result.is_err() {
+        if let Err(error) = result {
             owner.keep_constructor_result(pending);
+            return Err(error);
         }
-        result
+        let queue = pending.upgrade_callbacks.take();
+        if let (Some(capture), Some(queue)) = (form_callbacks, queue.as_ref())
+            && let Err(error) = capture.take_upgrade_form_reactions(
+                scope,
+                (owner, events),
+                &pending.registration,
+                pending.request,
+                queue,
+            )
+        {
+            // Constructor Source has settled. Prepared callbacks and unacknowledged
+            // native facts remain in their respective stopped queues.
+            owner.keep_stopped_reaction_queue(queue.clone());
+            return Err(error);
+        }
+        Ok(queue)
     }
 
     fn open_customized_callback<'scope, 'registration>(

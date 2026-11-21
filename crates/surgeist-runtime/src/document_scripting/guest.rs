@@ -391,6 +391,10 @@ pub enum DocumentGuestCustomElementCallback {
     ConnectedMove,
     /// A change of owner Document.
     Adopted,
+    /// A change of the form-associated element's Form owner.
+    FormAssociated,
+    /// A change of the form-associated element's effective disabledness.
+    FormDisabled,
 }
 
 /// The original exception from a custom-element lifecycle callback.

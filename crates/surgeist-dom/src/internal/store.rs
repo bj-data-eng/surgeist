@@ -505,7 +505,7 @@ pub enum DomError {
     InUseAttribute,
     InvalidDestruction,
     /// The original live script attachment must settle a routed reaction
-    /// before its native receiver can be retired.
+    /// before the reaction's receiver or required Form argument can be retired.
     CustomElementReactionPending(NodeId),
     IndexSize,
     Cancelled,
@@ -697,7 +697,7 @@ impl std::fmt::Display for DomError {
             Self::NotFound => f.write_str("the requested node or relation was not found"),
             Self::InUseAttribute => f.write_str("the Attr is already in use by another Element"),
             Self::InvalidDestruction => f.write_str("the node is attached or is a Document or ShadowRoot, so it cannot be destroyed directly"),
-            Self::CustomElementReactionPending(..) => f.write_str("a routed custom element reaction must settle before the receiver can be retired"),
+            Self::CustomElementReactionPending(..) => f.write_str("a routed custom element reaction must settle before a node needed for delivery can be retired"),
             Self::IndexSize => f.write_str("the index is out of range"),
             Self::Cancelled => f.write_str("the operation was cancelled"),
             Self::ResourceLimit { resource, limit } => write!(

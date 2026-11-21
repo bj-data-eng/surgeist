@@ -1,4 +1,5 @@
 //! Ordered custom-element reactions from committed native mutation steps.
+use super::super::control::form_associated::Change;
 use super::*;
 use std::{collections::LinkedList, sync::Mutex};
 
@@ -22,6 +23,14 @@ pub enum DomCustomElementReactionKind<'a> {
         old_document: crate::internal::identity::DocumentId,
         new_document: crate::internal::identity::DocumentId,
     },
+    /// The exact Form owner reached by the edit, or null after losing that owner.
+    FormAssociated {
+        form: Option<NodeId>,
+    },
+    /// The effective disabled state reached by the edit.
+    FormDisabled {
+        disabled: bool,
+    },
     AttributeChanged {
         local_name: &'a [u16],
         old_value: Option<&'a [u16]>,
@@ -31,14 +40,20 @@ pub enum DomCustomElementReactionKind<'a> {
 }
 
 #[derive(Clone, Debug)]
-enum ReactionKind<D> {
+enum ReactionKind<I> {
     Upgrade,
     Connected,
     Disconnected,
     ConnectedMove,
     Adopted {
-        old_document: D,
-        new_document: D,
+        old_document: I,
+        new_document: I,
+    },
+    FormAssociated {
+        form: Option<I>,
+    },
+    FormDisabled {
+        disabled: bool,
     },
     AttributeChanged {
         local_name: DocumentString,
@@ -52,7 +67,7 @@ enum ReactionKind<D> {
 struct Reaction {
     element: NodeId,
     definition: crate::internal::registry::DomRegistryDefinitionId,
-    kind: ReactionKind<crate::internal::identity::DocumentId>,
+    kind: ReactionKind<NodeId>,
     delivered: bool,
 }
 
@@ -67,8 +82,14 @@ impl Reaction {
                 old_document,
                 new_document,
             } => DomCustomElementReactionKind::Adopted {
-                old_document: *old_document,
-                new_document: *new_document,
+                old_document: crate::internal::identity::DocumentId(*old_document),
+                new_document: crate::internal::identity::DocumentId(*new_document),
+            },
+            ReactionKind::FormAssociated { form } => {
+                DomCustomElementReactionKind::FormAssociated { form: *form }
+            }
+            ReactionKind::FormDisabled { disabled } => DomCustomElementReactionKind::FormDisabled {
+                disabled: *disabled,
             },
             ReactionKind::AttributeChanged {
                 local_name,
@@ -342,9 +363,9 @@ impl Inbox {
         Ok(None)
     }
 
-    fn requires_live_receiver(
+    fn requires_live_node(
         &self,
-        receiver: NodeId,
+        node: NodeId,
         mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<bool, DomError> {
         for slot in self.lock().iter() {
@@ -356,7 +377,13 @@ impl Inbox {
                 SlotState::Ready(batch) if batch.routed_pending != 0 => {
                     for fact in &batch.facts {
                         step()?;
-                        if !fact.delivered && fact.element == receiver {
+                        if !fact.delivered
+                            && (fact.element == node
+                                || matches!(
+                                    fact.kind,
+                                    ReactionKind::FormAssociated { form: Some(form) } if form == node
+                                ))
+                        {
                             return Ok(true);
                         }
                     }
@@ -469,6 +496,7 @@ impl Publication {
         scope: Option<DomSynchronousReactionQueue>,
         mut has_callback: impl FnMut(
             crate::internal::registry::DomRegistryDefinitionId,
+            DomCustomElementReactionKind<'_>,
         ) -> Result<bool, DomError>,
         formation: &formation::Formation,
         cancel: &AtomicBool,
@@ -493,10 +521,15 @@ impl Publication {
             }
             let keep = (|| {
                 formation.step(cancel)?;
-                if !matches!(fact.kind, ReactionKind::Disconnected) {
-                    return Err(DomError::InvalidSourceOperation);
+                let fact = fact.view();
+                match fact.kind {
+                    DomCustomElementReactionKind::Disconnected
+                    | DomCustomElementReactionKind::FormAssociated { .. }
+                    | DomCustomElementReactionKind::FormDisabled { .. } => {
+                        has_callback(fact.definition, fact.kind)
+                    }
+                    _ => Err(DomError::InvalidSourceOperation),
                 }
-                has_callback(fact.definition)
             })();
             match keep {
                 Ok(keep) => keep,
@@ -529,12 +562,12 @@ impl Publication {
 }
 
 impl Draft {
-    pub(in crate::internal::store) fn require_reaction_receiver_retirement(
+    pub(in crate::internal::store) fn require_reaction_settled_for_retirement(
         &self,
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let Some(receiver) = self.published_id(key) else {
+        let Some(node) = self.published_id(key) else {
             return Ok(());
         };
         let Some(registration) = self
@@ -548,11 +581,13 @@ impl Draft {
             return Ok(());
         };
         if self.node(key)?.element().is_some_and(|element| {
-            element.language().custom_element_state()
-                == surgeist_html::elements::native::HtmlCustomElementState::Custom
-        }) && inbox.requires_live_receiver(receiver, || self.source_step(cancel))?
+            let element = element.language();
+            element.form_state().is_some()
+                || element.custom_element_state()
+                    == surgeist_html::elements::native::HtmlCustomElementState::Custom
+        }) && inbox.requires_live_node(node, || self.source_step(cancel))?
         {
-            return Err(DomError::CustomElementReactionPending(receiver));
+            return Err(DomError::CustomElementReactionPending(node));
         }
         Ok(())
     }
@@ -793,6 +828,32 @@ impl Draft {
         Ok(())
     }
 
+    pub(in crate::internal::store) fn record_form_associated_custom_reaction(
+        &mut self,
+        change: Change,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !self.captures_custom_element_reactions() {
+            return Ok(());
+        }
+        let (key, kind) = match change {
+            Change::Owner { element, owner } => {
+                (element, ReactionKind::FormAssociated { form: owner })
+            }
+            Change::Disabled { element, disabled } => {
+                (element, ReactionKind::FormDisabled { disabled })
+            }
+        };
+        self.source_step(cancel)?;
+        let element = self.node(key)?.element().ok_or(DomError::WrongNodeKind)?;
+        let crate::internal::element::DomElementDefinition::Definition(definition) =
+            element.language().custom_element_definition()
+        else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        self.record_custom_element_reaction(key, definition, kind, cancel)
+    }
+
     fn record_custom_element_reaction(
         &mut self,
         key: Key,
@@ -874,12 +935,14 @@ impl Draft {
                         old_document,
                         new_document,
                     } => ReactionKind::Adopted {
-                        old_document: crate::internal::identity::DocumentId(resolve(
-                            *old_document,
-                        )?),
-                        new_document: crate::internal::identity::DocumentId(resolve(
-                            *new_document,
-                        )?),
+                        old_document: resolve(*old_document)?,
+                        new_document: resolve(*new_document)?,
+                    },
+                    ReactionKind::FormAssociated { form } => ReactionKind::FormAssociated {
+                        form: form.map(resolve).transpose()?,
+                    },
+                    ReactionKind::FormDisabled { disabled } => ReactionKind::FormDisabled {
+                        disabled: *disabled,
                     },
                     ReactionKind::AttributeChanged {
                         local_name,
