@@ -7,7 +7,7 @@ use std::rc::{Rc, Weak};
 use std::sync::{Arc, atomic::AtomicBool};
 
 use surgeist_bindings_js::{
-    Callback, Completion, EngineKind, Error, HostFailureSlot, Primitive, Process,
+    Callback, Completion, EngineKind, Error, HeapObservation, HostFailureSlot, Primitive, Process,
     PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Scope,
     css::{self, CssNamespaceLimits},
     dom_exception::{self, DomExceptionLimits},
@@ -1542,6 +1542,20 @@ impl DocumentScriptHost {
         let result = engine.process.execution().checkpoint();
         engine.settle_engine_cleanup(&attachment.realm);
         Ok(result?)
+    }
+
+    /// Observe the heap of the current attached document's execution owner.
+    pub fn observe_engine_heap(
+        &mut self,
+        permit: &DocumentScriptPermit,
+    ) -> Result<HeapObservation, DocumentScriptError> {
+        self.check_permit(permit)?;
+        self.observe()?;
+        let engine = self
+            .engine
+            .as_mut()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        Ok(engine.process.execution().observe_heap()?)
     }
 
     /// Historical native snapshot; it carries no live script authority.

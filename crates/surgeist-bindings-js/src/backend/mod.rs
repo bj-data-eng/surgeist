@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
 use crate::{
-    Callback, ConstructorCallback, Error, FunctionMetadata, Intrinsic, Primitive,
+    Callback, ConstructorCallback, Error, FunctionMetadata, HeapObservation, Intrinsic, Primitive,
     PrototypeResolver, Realm, RealmKey, Root, ValueKind, WellKnownSymbol,
 };
 
@@ -71,6 +71,7 @@ pub(crate) fn validate_array_length(length: usize) -> Result<(), Error> {
 /// Heap lifecycle, separate from operations on an already entered realm.
 pub(crate) trait Engine {
     fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
+    fn observe_heap(&mut self) -> Result<HeapObservation, Error>;
     fn prepare_realm(&mut self) -> Result<(), Error>;
     fn create_realm_with_backing(
         &mut self,

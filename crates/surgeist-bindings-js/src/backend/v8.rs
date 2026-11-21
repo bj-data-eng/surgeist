@@ -621,6 +621,19 @@ impl super::Engine for Engine {
     fn owner_state(&self) -> Rc<OwnerState> {
         self.roots.owner.clone()
     }
+
+    fn observe_heap(&mut self) -> Result<crate::HeapObservation, Error> {
+        self.roots.available()?;
+        if self.isolate.is_execution_terminating() {
+            return Err(Error::Terminated);
+        }
+        let stats = self.isolate.get_heap_statistics();
+        Ok(crate::HeapObservation {
+            used_bytes: stats.used_heap_size(),
+            limit_bytes: stats.heap_size_limit(),
+        })
+    }
+
     fn prepare_realm(&mut self) -> Result<(), Error> {
         self.roots.available()?;
         if self.isolate.is_execution_terminating() {

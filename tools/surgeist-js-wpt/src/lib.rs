@@ -4,8 +4,10 @@
 mod protocol;
 
 pub use protocol::{
-    FixtureId, FixtureUrlError, GuestDiagnostic, HarnessResult, HarnessStatus, ProtocolError,
-    Subtest, SubtestStatus, WorkerFailure, WorkerResult, read_request, write_report,
+    EngineResourceEvidence, FixtureId, FixtureUrlError, GuestDiagnostic, HarnessResult,
+    HarnessStatus, HeapSample, NativeLedgerUsage, NativeResourceEvidence, ProtocolError, Subtest,
+    SubtestStatus, WorkerFailure, WorkerReport, WorkerResources, WorkerResult, read_request,
+    write_report,
 };
 pub use surgeist_fuzz::execution::{
     CleanupStatus, ExecutionCapabilities, ExecutionError, MemoryPolicy, OutputStream, ProcessExit,
@@ -22,7 +24,7 @@ use surgeist_fuzz::execution::{WorkerSpec, execute};
 /// A reply is exposed only after successful transport and verified cleanup.
 #[derive(Debug)]
 pub enum Report {
-    Received(WorkerResult),
+    Received(WorkerReport),
     ProtocolFailure(ProtocolError),
     TransportFailed,
 }
@@ -32,6 +34,8 @@ pub enum Report {
 pub struct Run {
     pub fixture: FixtureId,
     pub process: ProcessOutcome,
+    pub process_memory_policy: MemoryPolicy,
+    pub process_capabilities: ExecutionCapabilities,
     pub report: Report,
 }
 
@@ -103,6 +107,8 @@ pub fn run(
     Ok(Run {
         fixture: fixture.clone(),
         process,
+        process_memory_policy: limits.memory(),
+        process_capabilities: execution_capabilities(),
         report,
     })
 }
