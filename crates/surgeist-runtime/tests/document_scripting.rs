@@ -75,6 +75,8 @@ mod standard_window;
 mod text_comment;
 #[path = "document_scripting/window_document.rs"]
 mod window_document;
+#[path = "document_scripting/window_length.rs"]
+mod window_length;
 #[path = "document_scripting/window_timers.rs"]
 mod window_timers;
 
@@ -2380,6 +2382,7 @@ fn main() {
             "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
             "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
             "custom-element-construction" => native_window_defines_and_constructs_custom_elements(),
+            "window-length" => window_length::attached_window_length_tracks_current_native_children(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
@@ -2467,6 +2470,7 @@ fn main() {
     native_window_defines_and_constructs_custom_elements();
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
+    window_length::attached_window_length_tracks_current_native_children();
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();
