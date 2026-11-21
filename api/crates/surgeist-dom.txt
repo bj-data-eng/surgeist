@@ -1317,6 +1317,11 @@ pub surgeist_dom::hosted::DomInitialPermissionsPolicyProfile::FullscreenAndFocus
 pub enum surgeist_dom::hosted::DomPermissionsPolicyValue
 pub surgeist_dom::hosted::DomPermissionsPolicyValue::Disabled
 pub surgeist_dom::hosted::DomPermissionsPolicyValue::Enabled
+pub enum surgeist_dom::hosted::DomWindowNamedValue
+pub surgeist_dom::hosted::DomWindowNamedValue::Child(surgeist_dom::hosted::DomHostedBrowsingContextId)
+pub surgeist_dom::hosted::DomWindowNamedValue::Collection(surgeist_dom::tree::DomHtmlCollection)
+pub surgeist_dom::hosted::DomWindowNamedValue::Element(surgeist_dom::identity::NodeId)
+pub surgeist_dom::hosted::DomWindowNamedValue::Unsupported
 pub struct surgeist_dom::hosted::DomHostedBrowsingContextId
 impl surgeist_dom::hosted::DomHostedBrowsingContextId
 pub const fn surgeist_dom::hosted::DomHostedBrowsingContextId::source(self) -> surgeist_dom::hosted::DomHostedSourceId
@@ -4528,6 +4533,7 @@ impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::get_elements_by_tag_name(&self, document: surgeist_dom::identity::DocumentId, qualified_name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlCollection, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::read_html_collection<'dom, A, E>(&'dom self, collection: &'dom surgeist_dom::tree::DomHtmlCollection, limits: surgeist_dom::tree::DomHtmlCollectionLimits, admission: A, cancel: &'dom core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlCollectionRead<'dom, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::window_named_elements<A, E>(&self, document: surgeist_dom::identity::DocumentId, name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, work_limit: u64, admission: A, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomWindowNamedElements, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::window_named_value<E: core::convert::From<surgeist_dom::hosted::DomHostedError>>(&self, global: surgeist_dom::hosted::DomHostedGlobalId, name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, work_limit: u64, admission: impl core::ops::function::Fn() -> core::result::Result<(), E>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomWindowNamedValue, E>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::global_document(&self, global: surgeist_dom::hosted::DomHostedGlobalId) -> core::result::Result<surgeist_dom::identity::DocumentId, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::Dom::relevant_global(&self, node: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_dom::hosted::DomHostedGlobalId>, surgeist_dom::hosted::DomHostedError>

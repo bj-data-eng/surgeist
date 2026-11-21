@@ -2,9 +2,13 @@ use std::cell::Cell;
 use std::ops::ControlFlow;
 
 use super::node_iterator::traversal::{OrdinaryTree, following};
-use super::{read_source::ReadSource, *};
+use super::{
+    read_source::{HostedReadError, ReadSource},
+    *,
+};
 use crate::internal::{
     document::DomDocumentClass,
+    hosted::{DomHostedBrowsingContextId, DomHostedEntry, DomHostedError, DomHostedGlobalId},
     names::{in_html_namespace_with, qualified_equals_with, same_code_units},
     snapshot::{DomNode, DomNodeKind},
 };
@@ -62,6 +66,25 @@ pub enum DomWindowNamedElements {
     Element(NodeId),
     /// At least two Elements match. The collection remains live across edits.
     Collection(DomHtmlCollection),
+}
+
+/// The current native value of an exact Window property name.
+#[derive(Debug)]
+pub enum DomWindowNamedValue {
+    /// The current Window has no native value for the name.
+    Unsupported,
+    /// The first matching child's native browsing context.
+    Child(DomHostedBrowsingContextId),
+    /// The one matching Element.
+    Element(NodeId),
+    /// A live collection of the matching Elements.
+    Collection(DomHtmlCollection),
+}
+
+enum ElementMatches {
+    Absent,
+    One(NodeId),
+    Multiple,
 }
 
 /// Finite work and supported-name output for one collection read.
@@ -214,21 +237,128 @@ impl Dom {
             return Ok(DomWindowNamedElements::Absent);
         }
 
-        let mut first = None;
-        let second = read.walk(|node| {
-            if first.is_some() {
-                return Ok(ControlFlow::Break(()));
-            }
-            first = Some(node.id());
-            Ok(ControlFlow::Continue(()))
-        })?;
-        if second.is_some() {
-            return Ok(DomWindowNamedElements::Collection(collection));
+        Ok(match read.first_two_matches()? {
+            ElementMatches::Absent => DomWindowNamedElements::Absent,
+            ElementMatches::One(node) => DomWindowNamedElements::Element(node),
+            ElementMatches::Multiple => DomWindowNamedElements::Collection(collection),
+        })
+    }
+
+    /// Resolve one exact name against the actual current hosted Window.
+    ///
+    /// The first ordinary child with the exact active target name takes
+    /// precedence. Its origin or an independent Element contributor must
+    /// support the name. When only Elements match, multiple matches return
+    /// a live collection rooted at the Window's associated Document.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first invalid hosted identity, Source or caller refusal,
+    /// cancellation, or exhausted work or query backing. Both searches share
+    /// one work allowance and one active Source scope.
+    pub fn window_named_value<E: From<DomHostedError>>(
+        &self,
+        global: DomHostedGlobalId,
+        name: DocumentString,
+        max_retained_query_units: usize,
+        work_limit: u64,
+        admission: impl Fn() -> Result<(), E>,
+        cancel: &AtomicBool,
+    ) -> Result<DomWindowNamedValue, E> {
+        if global.source.owner != self.owner {
+            return Err(DomHostedError::ForeignSource.into());
         }
-        Ok(first.map_or(
-            DomWindowNamedElements::Absent,
-            DomWindowNamedElements::Element,
-        ))
+        let read = || -> Result<DomWindowNamedValue, HostedReadError<E>> {
+            let source = self.qualify_read_source(cancel)?;
+            let meter = Meter {
+                cancellation: cancel,
+                admission: || admission().map_err(HostedReadError::Caller),
+                source,
+                work_limit,
+                work: Cell::new(0),
+            };
+            let (document, metadata, _) =
+                self.dispatch_global_document_metadata_with(global, &mut || meter.step())?;
+            admit(
+                name.retained_units(),
+                max_retained_query_units,
+                DomResource::HtmlCollectionQueryUnits,
+            )?;
+            if name.is_empty() {
+                return Ok(DomWindowNamedValue::Unsupported);
+            }
+
+            let snapshot = self.snapshot();
+            let mut first = None;
+            self.find_document_tree_child(
+                &snapshot,
+                document,
+                metadata,
+                &mut || meter.step(),
+                |child, child_document, step| {
+                    step()?;
+                    let entry = DomHostedEntry {
+                        record: child.active,
+                    };
+                    let Some(target) = entry.target_name().filter(|target| !target.is_empty())
+                    else {
+                        return Ok(false);
+                    };
+                    if !same_code_units(target.code_units(), name.code_units(), &mut *step)? {
+                        return Ok(false);
+                    }
+                    step()?;
+                    first = Some((
+                        child.browsing_context(),
+                        child_document.origin() == metadata.origin(),
+                    ));
+                    Ok(true)
+                },
+            )?;
+            if let Some((context, true)) = first {
+                return Ok(DomWindowNamedValue::Child(context));
+            }
+
+            let collection = DomHtmlCollection {
+                document,
+                filter: Filter::WindowName(name),
+            };
+            let elements = DomHtmlCollectionRead {
+                dom: self,
+                snapshot,
+                collection: &collection,
+                class: metadata.class(),
+                meter,
+                limits: DomHtmlCollectionLimits::new(work_limit, 0, 0),
+            };
+            let matches = if first.is_some() {
+                elements
+                    .item(0)?
+                    .map_or(ElementMatches::Absent, ElementMatches::One)
+            } else {
+                elements.first_two_matches()?
+            };
+            // The caller can expire the hosted issuer at any admission step.
+            elements.meter.step()?;
+            metadata
+                .document_environment()
+                .hosted
+                .ok_or(DomHostedError::StaleIdentity)?
+                .validate_live()?;
+            Ok(match (first, matches) {
+                (_, ElementMatches::Absent) => DomWindowNamedValue::Unsupported,
+                (Some((context, _)), _) => DomWindowNamedValue::Child(context),
+                (None, ElementMatches::One(node)) => DomWindowNamedValue::Element(node),
+                (None, ElementMatches::Multiple) => DomWindowNamedValue::Collection(collection),
+            })
+        };
+        read().map_err(|error| match error {
+            HostedReadError::Hosted(DomHostedError::Dom(DomError::WorkLimit {
+                resource: DomResource::HtmlCollectionWork,
+                limit,
+            })) => DomHostedError::WorkLimit { limit }.into(),
+            other => other.into_caller(),
+        })
     }
 
     /// Revalidate the collection's Document against the current read authority.
@@ -357,6 +487,22 @@ where
             };
         }
         Ok(None)
+    }
+
+    fn first_two_matches(&self) -> Result<ElementMatches, E> {
+        let mut first = None;
+        let second = self.walk(|node| {
+            if first.is_some() {
+                return Ok(ControlFlow::Break(()));
+            }
+            first = Some(node.id());
+            Ok(ControlFlow::Continue(()))
+        })?;
+        if second.is_some() {
+            Ok(ElementMatches::Multiple)
+        } else {
+            Ok(first.map_or(ElementMatches::Absent, ElementMatches::One))
+        }
     }
 
     /// Count every represented element in the current ordinary tree.

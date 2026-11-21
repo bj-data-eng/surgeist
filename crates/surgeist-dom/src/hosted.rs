@@ -29,3 +29,5 @@ pub use crate::internal::hosted::{
     DomHostedSourceId, DomHostedSourceRevision, DomHostedTopLevelPreparation,
     DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
 };
+
+pub use crate::internal::store::DomWindowNamedValue;

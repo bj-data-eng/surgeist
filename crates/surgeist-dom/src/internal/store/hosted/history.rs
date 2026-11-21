@@ -2,6 +2,7 @@
 //! Rows use the original issuer's identities; no independent allocator or
 //! Runtime activity/history mirror is admitted here.
 use super::*;
+use crate::internal::store::read_source::HostedReadError;
 use std::cell::Cell;
 use std::ops::Deref;
 use surgeist_html::values::DocumentString;
@@ -1687,25 +1688,6 @@ impl DomSnapshot {
     }
 }
 
-// Storage and graph APIs retain their own failures, and caller errors bypass
-// both conversions until the public read returns.
-enum ChildReadError<E> {
-    Hosted(DomHostedError),
-    Caller(E),
-}
-
-impl<E> From<DomHostedError> for ChildReadError<E> {
-    fn from(error: DomHostedError) -> Self {
-        Self::Hosted(error)
-    }
-}
-
-impl<E> From<DomError> for ChildReadError<E> {
-    fn from(error: DomError) -> Self {
-        Self::Hosted(error.into())
-    }
-}
-
 fn validate_navigable_association(
     association: &DocumentAssociation,
     record: &Navigable,
@@ -1752,7 +1734,7 @@ impl Dom {
         let source = self
             .qualify_read_source(cancel)
             .map_err(DomHostedError::from)?;
-        let validate_scope = || -> Result<(), ChildReadError<E>> {
+        let validate_scope = || -> Result<(), HostedReadError<E>> {
             check_cancel(cancel)?;
             if let Some(source) = &source {
                 source.validate()?;
@@ -1760,111 +1742,132 @@ impl Dom {
             Ok(())
         };
         let mut remaining = work_limit;
-        let mut step = || -> Result<(), ChildReadError<E>> {
+        let mut step = || -> Result<(), HostedReadError<E>> {
             validate_scope()?;
             remaining = remaining
                 .checked_sub(1)
                 .ok_or(DomHostedError::WorkLimit { limit: work_limit })?;
-            admission().map_err(ChildReadError::Caller)?;
+            admission().map_err(HostedReadError::Caller)?;
             match &source {
                 Some(source) => source.step(cancel)?,
                 None => check_cancel(cancel)?,
             }
             Ok(())
         };
-        let mut read = || -> Result<usize, ChildReadError<E>> {
+        let mut read = || -> Result<usize, HostedReadError<E>> {
             let snapshot = self.snapshot();
             let root = snapshot.node_with(document.node(), &mut step)?;
             let DomNodeKind::Document(metadata) = root.kind() else {
                 return Err(DomError::WrongDocument.into());
             };
-            step()?;
-            let Some(association) = metadata.document_environment().hosted else {
-                return Ok(0);
-            };
-            if matches!(association.phase, DocumentPhase::Retired { .. }) {
-                return Ok(0);
-            }
-            association.validate_live()?;
-            let graph = self
-                .state
-                .hosted_history
-                .as_deref()
-                .ok_or(DomHostedError::UnsupportedProfile)?;
-            let Some(parent) = graph.active_navigable_for_document_with(document, &mut step)?
-            else {
-                // The live association still needs to be valid after admission.
-                association.validate_live()?;
-                return Ok(0);
-            };
-            let parent = graph.navigable_with(parent, &mut step)?;
-            let active = graph.entry_with(parent.active, &mut step)?;
-            step()?;
-            validate_navigable_association(&association, parent)?;
-            if active.document != Some(document) {
-                return Err(DomHostedError::StaleIdentity.into());
-            }
-
             let mut count = 0usize;
-            self.state.container_index.visit_with(
-                Key::Existing(document.node()),
+            self.find_document_tree_child(
+                &snapshot,
+                document,
+                metadata,
                 &mut step,
-                |key, step| {
-                    let Key::Existing(container) = key else {
-                        return Err(DomError::UnavailableCreation.into());
-                    };
-                    let candidate = snapshot.node_with(container, &mut *step)?;
-                    let element = candidate.as_element().ok_or(DomError::WrongNodeKind)?;
-                    let content = element.child_navigable().ok_or(DomError::WrongNodeKind)?;
-                    let Some(child) = content else {
-                        return Ok(());
-                    };
-                    if candidate.root_with(false, &mut *step)?.id() != document.node() {
-                        return Ok(());
-                    }
-                    if child.source != parent.id.source {
-                        return Err(DomHostedError::ForeignSource.into());
-                    }
-                    let record = graph.navigable_with(child, &mut *step)?;
-                    if record.container != Some(container) {
-                        return Err(DomHostedError::StaleIdentity.into());
-                    }
-                    step()?;
-                    let insertion = element
-                        .hosted_insertion()
-                        .ok_or(DomHostedError::MissingPublication)?;
-                    let projection = record.insertion.ok_or(DomHostedError::MissingPublication)?;
-                    if insertion.document != document || projection != insertion {
-                        return Err(DomHostedError::StaleBasis.into());
-                    }
-                    let active = graph.entry_with(record.active, &mut *step)?;
-                    let child_document = active.document.ok_or(DomHostedError::StaleIdentity)?;
-                    let child_node = snapshot.node_with(child_document.node(), &mut *step)?;
-                    let DomNodeKind::Document(metadata) = child_node.kind() else {
-                        return Err(DomError::WrongDocument.into());
-                    };
-                    step()?;
-                    let child_association = metadata
-                        .document_environment()
-                        .hosted
-                        .ok_or(DomHostedError::UnsupportedProfile)?;
-                    validate_navigable_association(&child_association, record)?;
-                    visit(DomHostedNavigable { record, active }).map_err(ChildReadError::Caller)?;
+                |child, _, _| {
+                    visit(child).map_err(HostedReadError::Caller)?;
                     validate_scope()?;
                     count = count
                         .checked_add(1)
                         .ok_or(DomHostedError::RepresentationExhausted)?;
-                    Ok(())
+                    Ok(false)
                 },
             )?;
-            step()?;
-            association.validate_live()?;
             Ok(count)
         };
-        read().map_err(|error| match error {
-            ChildReadError::Hosted(error) => error.into(),
-            ChildReadError::Caller(error) => error,
-        })
+        read().map_err(HostedReadError::into_caller)
+    }
+
+    /// Walk the qualified ordinary-tree content edges until a caller accepts one.
+    pub(in crate::internal::store) fn find_document_tree_child<E, S>(
+        &self,
+        snapshot: &DomSnapshot,
+        document: DocumentId,
+        metadata: &DomDocumentMetadata,
+        step: &mut S,
+        mut visit: impl FnMut(DomHostedNavigable<'_>, &DomDocumentMetadata, &mut S) -> Result<bool, E>,
+    ) -> Result<bool, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+        S: FnMut() -> Result<(), E>,
+    {
+        step()?;
+        let Some(association) = metadata.document_environment().hosted else {
+            return Ok(false);
+        };
+        if matches!(association.phase, DocumentPhase::Retired { .. }) {
+            return Ok(false);
+        }
+        association.validate_live()?;
+        let graph = self
+            .state
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        let Some(parent) = graph.active_navigable_for_document_with(document, &mut *step)? else {
+            // The live association still needs to be valid after admission.
+            association.validate_live()?;
+            return Ok(false);
+        };
+        let parent = graph.navigable_with(parent, &mut *step)?;
+        let active = graph.entry_with(parent.active, &mut *step)?;
+        step()?;
+        validate_navigable_association(&association, parent)?;
+        if active.document != Some(document) {
+            return Err(DomHostedError::StaleIdentity.into());
+        }
+
+        let found = self.state.container_index.find_with(
+            Key::Existing(document.node()),
+            step,
+            |key, step| {
+                let Key::Existing(container) = key else {
+                    return Err(DomError::UnavailableCreation.into());
+                };
+                let candidate = snapshot.node_with(container, &mut *step)?;
+                let element = candidate.as_element().ok_or(DomError::WrongNodeKind)?;
+                let content = element.child_navigable().ok_or(DomError::WrongNodeKind)?;
+                let Some(child) = content else {
+                    return Ok(false);
+                };
+                if candidate.root_with(false, &mut *step)?.id() != document.node() {
+                    return Ok(false);
+                }
+                if child.source != parent.id.source {
+                    return Err(DomHostedError::ForeignSource.into());
+                }
+                let record = graph.navigable_with(child, &mut *step)?;
+                if record.container != Some(container) {
+                    return Err(DomHostedError::StaleIdentity.into());
+                }
+                step()?;
+                let insertion = element
+                    .hosted_insertion()
+                    .ok_or(DomHostedError::MissingPublication)?;
+                let projection = record.insertion.ok_or(DomHostedError::MissingPublication)?;
+                if insertion.document != document || projection != insertion {
+                    return Err(DomHostedError::StaleBasis.into());
+                }
+                let active = graph.entry_with(record.active, &mut *step)?;
+                let child_document = active.document.ok_or(DomHostedError::StaleIdentity)?;
+                let child_node = snapshot.node_with(child_document.node(), &mut *step)?;
+                let DomNodeKind::Document(metadata) = child_node.kind() else {
+                    return Err(DomError::WrongDocument.into());
+                };
+                step()?;
+                let child_association = metadata
+                    .document_environment()
+                    .hosted
+                    .ok_or(DomHostedError::UnsupportedProfile)?;
+                validate_navigable_association(&child_association, record)?;
+                visit(DomHostedNavigable { record, active }, metadata, step)
+            },
+        )?;
+        step()?;
+        association.validate_live()?;
+        Ok(found)
     }
 
     pub fn hosted_navigable(

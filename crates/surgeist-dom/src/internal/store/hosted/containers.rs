@@ -107,20 +107,18 @@ impl ContainerIndex {
         self.members
             .after(self.header(root), key, order, Mode::ShadowIncluding, step)
     }
-    /// Visit the existing group in order without recomparing its members.
-    pub fn visit_with<E: From<DomError>, S: FnMut() -> Result<(), E>>(
+    /// Find an accepted participant in stored order without recomparing members.
+    pub fn find_with<E: From<DomError>, S: FnMut() -> Result<(), E>>(
         &self,
         root: Key,
         step: &mut S,
-        mut visit: impl FnMut(Key, &mut S) -> Result<(), E>,
-    ) -> Result<(), E> {
+        visit: impl FnMut(Key, &mut S) -> Result<bool, E>,
+    ) -> Result<bool, E> {
         step()?;
-        self.members
-            .find_with(self.header(root), step, |key, step| {
-                visit(key, step)?;
-                Ok(false)
-            })?;
-        Ok(())
+        Ok(self
+            .members
+            .find_with(self.header(root), step, visit)?
+            .is_some())
     }
     fn visit_subtree(
         &self,

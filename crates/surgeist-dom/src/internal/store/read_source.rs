@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::internal::{
-    hosted::{DocumentAssociation, ScriptRegistration},
+    hosted::{DocumentAssociation, DomHostedError, ScriptRegistration},
     source::{
         callback::{CallbackWork, DispatchScope},
         event::DomSourceEventRequest,
@@ -79,5 +79,33 @@ impl<'dom> ReadSource<'dom> {
     pub(super) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.validate()?;
         self.work.step(cancel)
+    }
+}
+
+// Storage and graph APIs retain their own failures, and caller errors bypass
+// both conversions until the public read returns.
+pub(in crate::internal::store) enum HostedReadError<E> {
+    Hosted(DomHostedError),
+    Caller(E),
+}
+
+impl<E> From<DomHostedError> for HostedReadError<E> {
+    fn from(error: DomHostedError) -> Self {
+        Self::Hosted(error)
+    }
+}
+
+impl<E> From<DomError> for HostedReadError<E> {
+    fn from(error: DomError) -> Self {
+        Self::Hosted(error.into())
+    }
+}
+
+impl<E: From<DomHostedError>> HostedReadError<E> {
+    pub(in crate::internal::store) fn into_caller(self) -> E {
+        match self {
+            Self::Hosted(error) => error.into(),
+            Self::Caller(error) => error,
+        }
     }
 }

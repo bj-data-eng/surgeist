@@ -92,6 +92,18 @@ one in the destination Document. Historical navigable views retain their
 original occurrence. The live ordinary-tree visitor verifies the occurrence
 against the current canonical container edge.
 
+
+`Dom::window_named_value` qualifies the current Window Global and reads the
+origin of its associated Document. It finds the first ordinary-tree child
+whose active Entry carries the exact nonempty target name. A same-origin
+child supplies its browsing context. A cross-origin first child supplies its
+context when an independent Element supports the name. If there is no matching
+child, the native result follows the Window Element filter and can return a
+live HTML collection. The child and Element reads share one allowance and
+one current Source scope.
+
+[Pinned Window child names and named value](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L98078-L98229) · [Pinned Window settings origin](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L98546-L98549).
+
 Destruction retires hosted participation without deleting the managed Document
 or its tree. Canonical creation, clone/import, adoption, shadow attachment and
 native fragment installation can still consume its actual metadata, original
