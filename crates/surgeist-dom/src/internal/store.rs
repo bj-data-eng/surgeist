@@ -53,6 +53,7 @@ pub(crate) mod empty_sequence_observation;
 pub(crate) mod event;
 mod focus;
 mod form;
+mod form_associated_disabled;
 mod fullscreen;
 mod history;
 pub(crate) mod hosted;
@@ -1631,6 +1632,16 @@ pub enum DomChange {
     AttrOwner(crate::internal::identity::DomAttrId),
     Attributes(NodeId),
     ElementState(NodeId),
+    /// One effective Form owner transition from a published Source segment.
+    FormAssociatedCustomElementOwner {
+        element: NodeId,
+        owner: Option<NodeId>,
+    },
+    /// One effective disabledness transition from a published Source segment.
+    FormAssociatedCustomElementDisabled {
+        element: NodeId,
+        disabled: bool,
+    },
     NodeDocument(NodeId),
     Parent(NodeId),
     Children(NodeId),
@@ -2984,6 +2995,7 @@ struct Draft {
     pending_scoped_documents:
         Option<select::ScratchVec<(crate::internal::registry::DomRegistryId, Key)>>,
     custom_element_reactions: Option<source::reactions::ReactionFacts>,
+    form_associated_custom_changes: Option<select::ScratchVec<control::form_associated::Change>>,
     script_registration: Option<Arc<crate::internal::hosted::ScriptRegistration>>,
     event_recipients: Option<Arc<event::Owner>>,
     inline_membership: Option<inline_style::Membership>,
@@ -3526,6 +3538,7 @@ impl Draft {
             document_environment: dom.document_environment.clone(),
             script_registration: dom.script_registration.as_ref().map(|slot| slot.0.clone()),
             custom_element_reactions: None,
+            form_associated_custom_changes: None,
             input_processing: input_processing::InputProcessing::new(
                 dom.limits.input_scratch,
                 dom.limits.input_work,
@@ -3734,6 +3747,7 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         if let Some(parent) = self.node(node)?.parent() {
+            let legend = self.capture_form_associated_legend_fence(node, parent, cancelled)?;
             self.range_pre_remove(node, parent, cancelled)?;
             self.node_iterator_pre_remove(node, parent, cancelled)?;
             let siblings = if !suppress_record && self.may_observe_child_list() {
@@ -3756,6 +3770,7 @@ impl Draft {
             let mut fields = self.common_fields_mut(node, cancelled)?;
             fields.parent = None;
             fields.commit(cancelled)?;
+            self.refresh_form_associated_disabled_tree_change(node, legend, cancelled)?;
             self.slot_removal(node, parent, limits, cancelled)?;
             self.push_effect(
                 select::Effect::Tree(tree::Frame::RemovedParent {
@@ -4301,12 +4316,14 @@ impl Draft {
                         let binding = options
                             .registry
                             .unwrap_or_else(|| metadata.custom_element_registry());
-                        if let Some(definition) = self.lookup_creation_definition(
-                            binding,
-                            &name,
-                            options.is.as_ref(),
-                            cancelled,
-                        )? {
+                        if let Some((definition, form_associated)) = self
+                            .lookup_creation_definition(
+                                binding,
+                                &name,
+                                options.is.as_ref(),
+                                cancelled,
+                            )?
+                        {
                             let document = DocumentId(
                                 self.published_id(document)
                                     .ok_or(DomError::InvalidSourceOperation)?,
@@ -4320,6 +4337,7 @@ impl Draft {
                                 document,
                                 name,
                                 definition,
+                                form_associated,
                                 global: self
                                     .resolve_creation_global(
                                         Key::Existing(document.node()),

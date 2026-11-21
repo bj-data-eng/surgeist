@@ -80,6 +80,12 @@ impl Draft {
             self.source_step(cancel)?;
             let Ok(node) = self.node(key) else { continue };
             let clear_owner = node.control_owner() == Some(retired);
+            let face = node.element().is_some_and(|element| {
+                element
+                    .language()
+                    .form_associated_custom_disabled()
+                    .is_some()
+            });
             let form = node.form_past_names().is_some();
             if clear_owner {
                 {
@@ -87,11 +93,15 @@ impl Draft {
                     fields.control_owner = None;
                     fields.commit(cancel)
                 }?;
-                self.input_radio_normalize(
-                    key,
-                    surgeist_html::elements::input::HtmlRadioTrigger::FormOwner,
-                    cancel,
-                )?;
+                if face {
+                    self.record_form_associated_owner_change(key, Some(retired), None, cancel)?;
+                } else {
+                    self.input_radio_normalize(
+                        key,
+                        surgeist_html::elements::input::HtmlRadioTrigger::FormOwner,
+                        cancel,
+                    )?;
+                }
             }
             if form {
                 self.remove_form_aliases(key, retired, cancel)?;

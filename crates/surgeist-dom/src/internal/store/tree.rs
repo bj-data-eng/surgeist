@@ -1317,6 +1317,8 @@ impl Draft {
                                 .position(|key| key == reference)
                                 .expect("retained reference")
                         });
+                        let legend =
+                            self.capture_form_associated_legend_fence(child, frame.parent, cancel)?;
                         self.relations_insert(
                             frame.parent,
                             transaction::RelationField::Children,
@@ -1330,6 +1332,7 @@ impl Draft {
                         if !self.is_private(frame.parent) {
                             self.expose_source_subtree(child, cancel)?;
                         }
+                        self.refresh_form_associated_disabled_tree_change(child, legend, cancel)?;
                         self.record_hosted_child_insertions(child, cancel)?;
                         self.slot_insertion(child, frame.parent, limits, cancel)?;
                         frame.index += 1;

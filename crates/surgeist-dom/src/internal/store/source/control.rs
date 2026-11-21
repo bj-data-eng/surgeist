@@ -402,6 +402,7 @@ impl Draft {
 /// belong to the inverse journal; numerical work/peaks are deliberately absent.
 pub(in crate::internal::store) struct Snapshot {
     reaction_facts: Option<usize>,
+    form_associated_custom_changes: Option<usize>,
     scoped_documents: Option<usize>,
     fullscreen_exit: Option<fullscreen::exit::Frame>,
     hosted_pending: Option<operation::hosted::ChildHook>,
@@ -424,6 +425,10 @@ impl Snapshot {
                 .custom_element_reactions
                 .as_ref()
                 .map(super::reactions::ReactionFacts::len),
+            form_associated_custom_changes: draft
+                .form_associated_custom_changes
+                .as_ref()
+                .map(|changes| changes.len()),
             scoped_documents: draft
                 .pending_scoped_documents
                 .as_ref()
@@ -456,6 +461,14 @@ impl Snapshot {
                 }
             }
             None => draft.custom_element_reactions = None,
+        }
+        match self.form_associated_custom_changes {
+            Some(len) => {
+                if let Some(changes) = &mut draft.form_associated_custom_changes {
+                    changes.truncate(len);
+                }
+            }
+            None => draft.form_associated_custom_changes = None,
         }
         self.input.preserve_spent(&draft.input_processing);
         draft.input_processing = self.input;

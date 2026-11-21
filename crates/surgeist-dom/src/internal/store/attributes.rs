@@ -1286,6 +1286,12 @@ impl Draft {
         self.reflected_attribute_change(node, changed, cancelled)?;
         self.slot_attribute(node, changed, old_value, limits, cancelled)?;
         self.control_attribute_change(node, changed, old_value, cancelled)?;
+        self.form_associated_disabled_attribute_change(
+            node,
+            changed,
+            old_value.is_some() != new_value.is_some(),
+            cancelled,
+        )?;
         self.select_attribute(node, changed, change, limits, cancelled)?;
         self.details_attribute_change(node, changed, old_value, new_value, limits, cancelled)?;
         if let Some(operation) = self.dialog_attribute_operation(

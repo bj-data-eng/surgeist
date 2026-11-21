@@ -473,6 +473,12 @@ pub surgeist_dom::edit::DomChange::DocumentInteractiveState(surgeist_dom::identi
 pub surgeist_dom::edit::DomChange::DocumentMeta(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::DocumentRenderBlocking(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::ElementState(surgeist_dom::identity::NodeId)
+pub surgeist_dom::edit::DomChange::FormAssociatedCustomElementDisabled
+pub surgeist_dom::edit::DomChange::FormAssociatedCustomElementDisabled::disabled: bool
+pub surgeist_dom::edit::DomChange::FormAssociatedCustomElementDisabled::element: surgeist_dom::identity::NodeId
+pub surgeist_dom::edit::DomChange::FormAssociatedCustomElementOwner
+pub surgeist_dom::edit::DomChange::FormAssociatedCustomElementOwner::element: surgeist_dom::identity::NodeId
+pub surgeist_dom::edit::DomChange::FormAssociatedCustomElementOwner::owner: core::option::Option<surgeist_dom::identity::NodeId>
 pub surgeist_dom::edit::DomChange::HostedChildInsertionOrder
 pub surgeist_dom::edit::DomChange::HostedOperationState
 pub surgeist_dom::edit::DomChange::HostedOperationState::complete: bool

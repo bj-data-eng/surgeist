@@ -16,6 +16,7 @@ struct Facts {
     root: Key,
     owner: Option<Key>,
     form_present: bool,
+    form_associated_custom: bool,
     radio: bool,
     name: Option<DocumentString>,
     name_usage: custody::Usage,
@@ -31,6 +32,7 @@ impl Facts {
             && self.root == other.root
             && self.owner == other.owner
             && self.form_present == other.form_present
+            && self.form_associated_custom == other.form_associated_custom
             && self.radio == other.radio
             && match (&self.name, &other.name) {
                 (Some(a), Some(b)) => a.shares_storage_with(b),
@@ -63,6 +65,7 @@ const GROUPS: [GroupKind; 3] = [GroupKind::Document, GroupKind::Tree, GroupKind:
 /// Lease-free canonical derived state. Full Key equality qualifies every fact.
 #[derive(Clone, Debug, Default)]
 pub(in crate::internal::store) struct ControlIndex {
+    form_associated_custom_count: usize,
     owner: Option<DomOwnerId>,
     existing: bank::Bank<Facts>,
     created: bank::Bank<Facts>,
@@ -560,6 +563,21 @@ impl Version {
         } {
             return Ok(false);
         }
+        let before_face = old
+            .as_ref()
+            .is_some_and(|old| old.value().form_associated_custom);
+        let after_face = next
+            .as_ref()
+            .is_some_and(|next| next.form_associated_custom);
+        if before_face != after_face {
+            let count = self.index.form_associated_custom_count;
+            self.index.form_associated_custom_count = if after_face {
+                count.checked_add(1)
+            } else {
+                count.checked_sub(1)
+            }
+            .ok_or(DomError::RepresentationExhausted)?;
+        }
         if let Some(old) = &old {
             for kind in GROUPS {
                 self.membership(old.value(), kind, false, edit)?;
@@ -772,7 +790,10 @@ impl Controls {
 }
 
 fn listed(kind: KindRead<'_>) -> bool {
-    matches!(kind, KindRead::Element(element) if element.native_control().is_some_and(|(_,kind)|kind.listed()))
+    matches!(kind, KindRead::Element(element) if
+        element.native_control().is_some_and(|(_, kind)| kind.listed())
+        || element.language().form_associated_custom_disabled().is_some()
+    )
 }
 fn attributes_same(a: KindRead<'_>, b: KindRead<'_>) -> bool {
     match (a, b) {
@@ -781,6 +802,10 @@ fn attributes_same(a: KindRead<'_>, b: KindRead<'_>) -> bool {
     }
 }
 impl Draft {
+    pub(in crate::internal::store) fn has_form_associated_custom_controls(&self) -> bool {
+        self.controls.current.index.form_associated_custom_count != 0
+    }
+
     fn control_facts(
         &self,
         key: Key,
@@ -839,6 +864,10 @@ impl Draft {
             root: self.live_key(root),
             owner: fields.control_owner().map(|key| self.live_key(key)),
             form_present,
+            form_associated_custom: element
+                .language()
+                .form_associated_custom_disabled()
+                .is_some(),
             radio: input.is_some_and(|input| {
                 input.input_type() == surgeist_html::attributes::HtmlInputType::Radio
             }),
@@ -1041,6 +1070,7 @@ impl Draft {
             },
             owner: None,
             form_present: true,
+            form_associated_custom: false,
             radio: false,
             name: None,
             name_usage: custody::Usage::ZERO,
@@ -1074,6 +1104,7 @@ impl Draft {
             root: cached.root,
             owner: cached.owner,
             form_present: false,
+            form_associated_custom: false,
             radio: true,
             name: Some(name.clone()),
             name_usage: custody::Usage::ZERO,
@@ -1107,6 +1138,7 @@ mod tests {
             root: Key::Created(root),
             owner: owner.map(Key::Created),
             form_present,
+            form_associated_custom: false,
             radio,
             name,
             name_usage: custody::Usage::new(payload.bytes, payload.units),
@@ -1376,6 +1408,7 @@ mod tests {
             root: Key::Created(1),
             owner: None,
             form_present: true,
+            form_associated_custom: false,
             radio: true,
             name: Some(name),
             name_usage: custody::Usage::new(

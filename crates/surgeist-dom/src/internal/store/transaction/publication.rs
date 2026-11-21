@@ -629,6 +629,7 @@ impl Draft {
         #[cfg(test)]
         changes_written.extended::<DomChange>(transition_count);
         drop(changes_debit);
+        self.append_form_associated_custom_changes(&allocated_ids, &mut changes, budget, cancel)?;
         self.append_origin_changes(&dom.state, state, &touched, &mut changes, budget, cancel)?;
         if let Some(images) = &self.cancelled_images {
             for item in images.iter() {
@@ -856,6 +857,7 @@ impl Draft {
         self.media_removals = None;
         self.media_hook_index = 0;
         self.custom_element_reactions = None;
+        self.form_associated_custom_changes = None;
         self.pending_scoped_documents = None;
         self.inline_recording = rebase.inline_recording;
         // Old provisional records release before their matching root custody.
