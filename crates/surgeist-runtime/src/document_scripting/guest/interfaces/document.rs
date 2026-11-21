@@ -21,6 +21,7 @@ mod body;
 mod break_elements;
 mod button;
 mod character_data;
+mod custom_validity;
 mod data_time;
 mod details;
 mod dialog;

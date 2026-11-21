@@ -960,6 +960,7 @@ pub(in crate::document_scripting) fn native_document_and_fragment_use_their_regi
         )
     })
     .unwrap();
+    fund_guest_operation_after_setup(&host);
     let engine = host.engine.as_mut().unwrap();
     let registered = engine
         .creations

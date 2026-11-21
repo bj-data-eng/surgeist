@@ -10274,12 +10274,13 @@
       }
     },
     "HTMLSelectElement.setCustomValidity:0/call": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind the converted error string to the native Select custom validity message.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-setcustomvalidity"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.setcustomvalidity.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/custom_validity.rs", "symbol": "control_set_custom_validity"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.showPicker:0/call": {
       "kind": "host",
@@ -16410,16 +16411,10 @@
       "kind": "native",
       "adapter": "htmlbuttonelement.setcustomvalidity.call",
       "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/custom_validity.rs", "symbol": "control_set_custom_validity"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the branded Button method with its required DOMString argument and canonical Source custom validity edit.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-setcustomvalidity",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLButtonElement.labels/get": {
       "kind": "native",
@@ -16574,7 +16569,7 @@
       "kind": "native",
       "adapter": "htmlfieldsetelement.setcustomvalidity.call",
       "producers": [
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_set_custom_validity"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/custom_validity.rs", "symbol": "control_set_custom_validity"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
       ],
       "requirements": []
@@ -17065,7 +17060,7 @@
       "kind": "native",
       "adapter": "htmloutputelement.setcustomvalidity.call",
       "producers": [
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/barred_control.rs", "symbol": "barred_control_set_custom_validity"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/custom_validity.rs", "symbol": "control_set_custom_validity"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
       ],
       "requirements": []
@@ -17891,16 +17886,10 @@
       "kind": "native",
       "adapter": "htmlinputelement.setcustomvalidity.call",
       "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/custom_validity.rs", "symbol": "control_set_custom_validity"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the branded Input method using the required DOMString and canonical Source custom validity edit.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-setcustomvalidity",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.labels/get": {
       "kind": "native",
@@ -18535,16 +18524,10 @@
       "kind": "native",
       "adapter": "htmltextareaelement.setcustomvalidity.call",
       "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/custom_validity.rs", "symbol": "control_set_custom_validity"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the branded Textarea method with its required DOMString argument and canonical Source custom validity edit.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-setcustomvalidity",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.labels/get": {
       "kind": "native",

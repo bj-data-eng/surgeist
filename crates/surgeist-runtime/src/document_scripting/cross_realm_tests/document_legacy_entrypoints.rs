@@ -322,6 +322,7 @@ fn legacy_methods_and_alias_keep_registered_realms() {
             Ok(())
         }).unwrap();
     }
+    super::super::guest::tests::fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, "HTMLDocument === Document && HTMLDocument !== foreignLegacyAlias && foreignLegacyAlias === foreignLegacyDocument")?;
         assert!(scope.boolean(&result)?);

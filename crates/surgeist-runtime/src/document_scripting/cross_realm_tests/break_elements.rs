@@ -373,6 +373,7 @@ fn break_reflections_keep_registered_creation_realms_after_adoption() {
         dom.apply(batch, &cancel).unwrap();
     })
     .unwrap();
+    super::super::guest::tests::fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"
             originBR.ownerDocument === document && originHR.ownerDocument === document &&

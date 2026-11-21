@@ -2,6 +2,7 @@
 
 use super::{
     barred_control::BarredControl,
+    custom_validity::CustomValidityControl,
     form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
     text::{TextBuffer, collect_text},
@@ -106,7 +107,8 @@ pub(super) fn install<'scope>(
             },
         )?;
     }
-    BarredControl::Output.install_validation(scope, prototype, capture)
+    BarredControl::Output.install_validation(scope, prototype, capture)?;
+    CustomValidityControl::Output.install(scope, prototype, capture)
 }
 
 impl Capture {

@@ -385,6 +385,7 @@ fn font_reflections_keep_creation_and_accessor_realms_after_adoption() {
         dom.apply(batch, &cancel).unwrap();
     })
     .unwrap();
+    super::super::guest::tests::fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"
             originFont === savedOriginFont && originFont.ownerDocument === document &&

@@ -1,6 +1,7 @@
 //! Live Select and Option members backed by the canonical DOM and Source operations.
 
 use super::{
+    custom_validity::CustomValidityControl,
     form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
     *,
@@ -98,7 +99,8 @@ pub(super) fn install_select<'scope>(
         &ascii(b"get selectedIndex"),
         &ascii(b"set selectedIndex"),
     )?;
-    strings::install(scope, prototype, capture, StringMember::SelectValue)
+    strings::install(scope, prototype, capture, StringMember::SelectValue)?;
+    CustomValidityControl::Select.install(scope, prototype, capture)
 }
 
 pub(super) fn install_option<'scope>(
