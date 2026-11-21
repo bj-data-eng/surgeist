@@ -21,6 +21,7 @@ mod break_elements;
 mod character_data;
 mod data_time;
 mod details;
+mod dialog;
 mod document_type;
 mod dom_implementation;
 pub(super) use character_data::copy_native_data;

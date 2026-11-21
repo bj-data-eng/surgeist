@@ -1479,8 +1479,8 @@ enum_rule!(SHADOWROOTSLOTASSIGNMENT, HtmlSlotAssignment, Shadowrootslotassignmen
     Some(HtmlSlotAssignment::Named), Some(HtmlSlotAssignment::Named), None,
     ["named" => ("named", HtmlSlotAssignment::Named), "manual" => ("manual", HtmlSlotAssignment::Manual)]);
 
-enum_rule!(CLOSEDBY, HtmlClosedByState, Closedby, Context::Elements(&[KnownHtmlElement::Dialog]), [23], "attr-dialog-closedby",
-    Some(HtmlClosedByState::Auto), Some(HtmlClosedByState::Auto), None,
+total_enum_rule!(CLOSEDBY, CLOSEDBY_DEFAULTS, HtmlClosedByState, Closedby, Context::Elements(&[KnownHtmlElement::Dialog]), [23], "attr-dialog-closedby",
+    HtmlClosedByState::Auto, HtmlClosedByState::Auto, None,
     ["any" => ("any", HtmlClosedByState::Keyword(HtmlClosedBy::Any)),
      "closerequest" => ("closerequest", HtmlClosedByState::Keyword(HtmlClosedBy::CloseRequest)),
      "none" => ("none", HtmlClosedByState::Keyword(HtmlClosedBy::None))]);
@@ -3021,6 +3021,17 @@ pub(crate) mod bounded_rules {
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<&'static str, E> {
         reflected_keyword_with(&INPUTMODE, raw, admit).map(|keyword| keyword.unwrap_or(""))
+    }
+
+    /// Selects the intrinsic closedby state from exact null-namespace content.
+    ///
+    /// Missing, empty and invalid values use Auto. The caller supplies the
+    /// current modal state when resolving Auto for a Dialog.
+    pub fn closedby_processing_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlClosedByState, E> {
+        total_enum_value_with(&CLOSEDBY, &CLOSEDBY_DEFAULTS, raw, admit)
     }
 
     /// Selects the intrinsic translate state from the exact null-namespace value.

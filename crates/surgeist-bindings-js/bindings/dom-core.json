@@ -729,6 +729,16 @@
       ]
     },
     {
+      "id": "HTMLDialogElement.source",
+      "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
+      "anchor": "htmldialogelement",
+      "block": 0,
+      "sha256": "e385a9d380a3153fd0e178b3f56b8c3f7e8fbe8ba8b34b6fa7b6ed24405ea119",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmldialogelement",
+      "entries": ["HTMLDialogElement"]
+    },
+    {
       "id": "HTMLFontElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlfontelement",
@@ -6317,6 +6327,77 @@
           "name": "open",
           "readonly": false,
           "id": "HTMLDetailsElement.open"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLDialogElement",
+      "kind": "interface",
+      "name": "HTMLDialogElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLDialogElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "open",
+          "readonly": false,
+          "id": "HTMLDialogElement.open"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "returnValue",
+          "readonly": false,
+          "id": "HTMLDialogElement.returnValue"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "closedBy",
+          "readonly": false,
+          "id": "HTMLDialogElement.closedBy"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "show",
+          "arguments": [],
+          "id": "HTMLDialogElement.show:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "showModal",
+          "arguments": [],
+          "id": "HTMLDialogElement.showModal:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "close",
+          "arguments": [{"name": "returnValue", "type": {"kind": "named", "name": "DOMString"}, "presence": "optional"}],
+          "id": "HTMLDialogElement.close:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "requestClose",
+          "arguments": [{"name": "returnValue", "type": {"kind": "named", "name": "DOMString"}, "presence": "optional"}],
+          "id": "HTMLDialogElement.requestClose:0"
         }
       ],
       "inherits": "HTMLElement"
@@ -14001,6 +14082,150 @@
         }
       ],
       "requirements": []
+    },
+    "HTMLDialogElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmldialogelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLDialogElement.open/get": {
+      "kind": "native",
+      "adapter": "htmldialogelement.open.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLDialogElement.open/set": {
+      "kind": "native",
+      "adapter": "htmldialogelement.open.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLDialogElement.returnValue/get": {
+      "kind": "native",
+      "adapter": "htmldialogelement.returnvalue.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/dialog.rs", "symbol": "return_value"}
+      ],
+      "requirements": []
+    },
+    "HTMLDialogElement.returnValue/set": {
+      "kind": "native",
+      "adapter": "htmldialogelement.returnvalue.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_dialog_return_value"}
+      ],
+      "requirements": []
+    },
+    "HTMLDialogElement.closedBy/get": {
+      "kind": "native",
+      "adapter": "htmldialogelement.closedby.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "closedby_processing_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/elements/dialog.rs", "symbol": "computed_dialog_closed_by"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/dialog.rs", "symbol": "is_modal"}
+      ],
+      "requirements": []
+    },
+    "HTMLDialogElement.closedBy/set": {
+      "kind": "native",
+      "adapter": "htmldialogelement.closedby.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLDialogElement.show:0/call": {
+      "kind": "native",
+      "adapter": "htmldialogelement.show.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "show_dialog"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the authenticated guest method with its IDL arguments and reactions. Service the reached synchronous Source event in the active realm before returning the original completion.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-show",
+          "issue": 3044
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Run the reached native nonmodal showing, watcher, focus and queued Toggle effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-show",
+          "issue": 1225
+        }
+      ]
+    },
+    "HTMLDialogElement.showModal:0/call": {
+      "kind": "native",
+      "adapter": "htmldialogelement.showmodal.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "show_modal_dialog"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the authenticated guest method with its IDL arguments and reactions. Service the reached synchronous Source event in the active realm before returning the original completion.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-showmodal",
+          "issue": 3044
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Run the reached native modal top-layer, watcher, focus and queued Toggle effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-showmodal",
+          "issue": 1225
+        }
+      ]
+    },
+    "HTMLDialogElement.close:0/call": {
+      "kind": "native",
+      "adapter": "htmldialogelement.close.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "close_dialog"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the authenticated guest method with its IDL arguments and reactions. Service the reached synchronous Source event in the active realm before returning the original completion.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-close",
+          "issue": 3044
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Run the reached native close, focus restoration, top-layer removal and queued Toggle and Close effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-close",
+          "issue": 1225
+        }
+      ]
+    },
+    "HTMLDialogElement.requestClose:0/call": {
+      "kind": "native",
+      "adapter": "htmldialogelement.requestclose.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "request_close_dialog"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the authenticated guest method with its IDL arguments and reactions. Service the reached synchronous Source event in the active realm before returning the original completion.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-requestclose",
+          "issue": 3044
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Run the reached native close watcher activation, cancel dispatch and conditional close lifecycle.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-requestclose",
+          "issue": 1225
+        }
+      ]
     },
     "HTMLFontElement.constructor:0/construct": {
       "kind": "native",

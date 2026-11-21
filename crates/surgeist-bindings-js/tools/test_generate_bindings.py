@@ -509,6 +509,34 @@ class DescriptionTests(unittest.TestCase):
         self.member("HTMLMarqueeElement.scrollAmount")["attributes"][-1]["value"] = 0
         self.rejected("source declaration mismatch: HTMLMarqueeElement.source")
 
+    def test_dialog_state_and_uninstalled_methods_preserve_the_primary_declaration(self):
+        dialog = self.definition("HTMLDialogElement")
+        self.assertEqual(dialog["inherits"], "HTMLElement")
+        constructor, opened, value, closed_by, *methods = dialog["members"]
+        self.assertEqual(constructor["id"], "HTMLDialogElement.constructor:0")
+        self.assertEqual([member["name"] for member in [opened, value, closed_by]],
+                         ["open", "returnValue", "closedBy"])
+        self.assertEqual(opened["attributes"], [{"name": "CEReactions"}, {"name": "Reflect"}])
+        self.assertEqual(value["type"]["name"], "DOMString")
+        self.assertEqual(value["attributes"], [])
+        self.assertEqual(closed_by["attributes"], [{"name": "CEReactions"}, {"name": "ReflectSetter"}])
+        self.assertEqual([method["name"] for method in methods],
+                         ["show", "showModal", "close", "requestClose"])
+        for method in methods:
+            with self.subTest(method=method["name"]):
+                self.assertEqual(method["type"]["name"], "undefined")
+                self.assertEqual(method["attributes"], [{"name": "CEReactions"}])
+                arguments = method["arguments"]
+                if method["name"] in {"close", "requestClose"}:
+                    self.assertEqual(arguments, [{"name": "returnValue", "presence": "optional",
+                                                 "type": {"kind": "named", "name": "DOMString"}}])
+                else:
+                    self.assertFalse(arguments)
+                mapping = self.data["access_mappings"][method["id"] + "/call"]
+                self.assertEqual({entry["issue"] for entry in mapping["requirements"]}, {3044, 1225})
+        closed_by["attributes"][-1]["name"] = "Reflect"
+        self.rejected("source declaration mismatch: HTMLDialogElement.source")
+
     def test_selected_pi_constructor_and_factory_are_both_described(self):
         pi = self.member("ProcessingInstruction.constructor:0")
         self.assertEqual(pi["arguments"][0]["name"], "target")

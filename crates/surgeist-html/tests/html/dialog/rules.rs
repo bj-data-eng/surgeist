@@ -318,6 +318,64 @@ fn wrong_terminal_and_unfulfilled_replies_preserve_the_exact_pending_phase() {
 }
 
 #[test]
+fn bounded_closedby_recognizes_exact_units_and_preserves_the_first_refusal() {
+    use HtmlClosedByState::{Auto, Keyword};
+    use std::convert::Infallible;
+    use surgeist_html::bounded::attributes::{
+        HtmlAttributeKeywordRead::{KeywordHeader, KeywordPair, ValueHeader},
+        closedby_processing_with,
+    };
+
+    for (raw, expected) in [
+        (None, Auto),
+        (Some(""), Auto),
+        (Some("auto"), Auto),
+        (Some(" any"), Auto),
+        (Some("any\0"), Auto),
+        (Some("AnY"), Keyword(HtmlClosedBy::Any)),
+        (Some("ClOsErEqUeSt"), Keyword(HtmlClosedBy::CloseRequest)),
+        (Some("nOnE"), Keyword(HtmlClosedBy::None)),
+    ] {
+        let units = raw.map(|text| text.encode_utf16().collect::<Vec<_>>());
+        assert_eq!(
+            closedby_processing_with(units.as_deref(), |_| Ok::<_, Infallible>(())),
+            Ok(expected)
+        );
+    }
+    let exact = [u16::from(b'a'), 0xd800, u16::from(b'y')];
+    assert_eq!(
+        closedby_processing_with(Some(&exact), |_| Ok::<_, Infallible>(())),
+        Ok(Auto)
+    );
+    assert_eq!(closedby_processing_with(None, Err), Err(ValueHeader));
+
+    // The value header, the skipped Any header, then the Close Request
+    // header and each of its 12 code units are reached.
+    let request = b"ClOsErEqUeSt".map(u16::from);
+    let mut expected = vec![ValueHeader, KeywordHeader, KeywordHeader];
+    expected.extend([KeywordPair; 12]);
+    for allowed in [expected.len() - 1, expected.len()] {
+        let mut seen = Vec::new();
+        let result = closedby_processing_with(Some(&request), |operation| {
+            if seen.len() == allowed {
+                return Err(operation);
+            }
+            seen.push(operation);
+            Ok(())
+        });
+        assert_eq!(seen, expected[..allowed]);
+        assert_eq!(
+            result,
+            if allowed == expected.len() {
+                Ok(Keyword(HtmlClosedBy::CloseRequest))
+            } else {
+                Err(KeywordPair)
+            }
+        );
+    }
+}
+
+#[test]
 fn closed_by_auto_and_watcher_enable_use_actual_modal_and_force_values() {
     assert_eq!(
         computed_dialog_closed_by(HtmlClosedByState::Auto, false),

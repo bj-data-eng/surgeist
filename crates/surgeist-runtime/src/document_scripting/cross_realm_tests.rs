@@ -6,6 +6,7 @@ mod cdata_section;
 mod data_time;
 mod declarative_shadow;
 mod details_reflections;
+mod dialog_state;
 mod document_cookie;
 mod document_import;
 mod document_legacy_entrypoints;
@@ -136,7 +137,16 @@ fn hosted_session_with_dom(
     source_jobs: usize,
     dom: Dom,
 ) -> (DomSession, DomHostedTopLevel) {
-    let mut session = DomSession::new(
+    let mut session = scripting_session(dom, source_jobs);
+    let mut hosted = session.hosted_execution();
+    let mut dom = session.dom();
+    let owner = hosted.create_host(&mut dom, cancel).unwrap();
+    let target = hosted.create_top_level(&mut dom, owner, cancel).unwrap();
+    (session, target)
+}
+
+fn scripting_session(dom: Dom, source_jobs: usize) -> DomSession {
+    DomSession::new(
         dom,
         DomSessionLimits {
             authored_events: DomEventStorageLimits {
@@ -175,12 +185,7 @@ fn hosted_session_with_dom(
             },
         },
     )
-    .unwrap();
-    let mut hosted = session.hosted_execution();
-    let mut dom = session.dom();
-    let owner = hosted.create_host(&mut dom, cancel).unwrap();
-    let target = hosted.create_top_level(&mut dom, owner, cancel).unwrap();
-    (session, target)
+    .unwrap()
 }
 
 #[test]
@@ -454,6 +459,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     list_reflections::list_members_reflect_canonical_attributes();
     details_reflections::details_members_reflect_canonical_attributes();
     details_reflections::details_properties_preserve_native_and_web_idl_contracts();
+    dialog_state::modal_dialog_accessors_preserve_the_original_queued_toggle();
+    dialog_state::dialog_setters_preserve_native_state_on_source_refusal();
     marquee::stop_marquee_preserves_native_state_on_source_work_refusal();
     element_mixin::borrowed_accessors_keep_native_includers_across_creation_realms();
     element_mixin::mixin_setters_preserve_native_state_on_source_refusal();

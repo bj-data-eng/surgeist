@@ -12,10 +12,10 @@ use surgeist_bindings_js::{
 };
 use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
 use surgeist_html::attributes::{
-    HtmlContentEditableState, HtmlHidden, HtmlHiddenState, HtmlTranslate,
+    HtmlClosedByState, HtmlContentEditableState, HtmlHidden, HtmlHiddenState, HtmlTranslate,
 };
 use surgeist_html::bounded::attributes::{
-    HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule,
+    HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule, closedby_processing_with,
     contenteditable_processing_with, contenteditable_setter_state_with, dir_keyword_with,
     enterkeyhint_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
@@ -31,6 +31,7 @@ use surgeist_html::bounded::numeric::{
 use surgeist_html::bounded::select::{
     select_size_reflection_setter_value, select_size_reflection_with,
 };
+use surgeist_html::elements::dialog::computed_dialog_closed_by;
 use surgeist_html::values::Namespace;
 use surgeist_html::vocabulary::KnownHtmlElement;
 use surgeist_html_semantics::HtmlTranslationMode;
@@ -45,6 +46,7 @@ pub(super) enum Reflection {
     Direction,
     Translate,
     Hidden,
+    DialogClosedBy,
     Popover,
     HeadingOffset,
     ContentEditable,
@@ -97,6 +99,7 @@ pub(super) enum Receiver {
     Hr,
     Data,
     Details,
+    Dialog,
     OptGroup,
     Option,
     Select,
@@ -159,6 +162,13 @@ impl Receiver {
             Self::Hr => html_element_is(node, "HTMLHRElement"),
             Self::Data => html_element_is(node, "HTMLDataElement"),
             Self::Details => html_element_is(node, "HTMLDetailsElement"),
+            Self::Dialog => {
+                step()?;
+                node.as_dialog().is_some()
+                    && node
+                        .as_element()
+                        .is_some_and(|element| !element.has_failed_construction_interface())
+            }
             Self::OptGroup => html_element_is(node, "HTMLOptGroupElement"),
             Self::Option => html_element_is(node, "HTMLOptionElement"),
             Self::Select => html_element_is(node, "HTMLSelectElement"),
@@ -215,6 +225,7 @@ impl Receiver {
             Self::Hr => const { &ascii(b"HTMLHRElement required") },
             Self::Data => const { &ascii(b"HTMLDataElement required") },
             Self::Details => const { &ascii(b"HTMLDetailsElement required") },
+            Self::Dialog => const { &ascii(b"HTMLDialogElement required") },
             Self::OptGroup => const { &ascii(b"HTMLOptGroupElement required") },
             Self::Option => const { &ascii(b"HTMLOptionElement required") },
             Self::Select => const { &ascii(b"HTMLSelectElement required") },
@@ -413,6 +424,18 @@ impl Capture {
                             Reflected::Keyword(Some(keyword.canonical_keyword()))
                         }
                     },
+                    Reflection::DialogClosedBy => {
+                        let state = closedby_processing_with(units, |_| read.step())?;
+                        let value = match state {
+                            HtmlClosedByState::Keyword(keyword) => keyword,
+                            HtmlClosedByState::Auto => {
+                                read.step()?;
+                                let dialog = node.as_dialog().ok_or(DomError::WrongNodeKind)?;
+                                computed_dialog_closed_by(state, dialog.is_modal())
+                            }
+                        };
+                        Reflected::Keyword(Some(value.canonical_keyword()))
+                    }
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
                     }
@@ -664,7 +687,11 @@ impl Capture {
                 } else {
                     if matches!(
                         receiver,
-                        Receiver::Body | Receiver::Frameset | Receiver::Legend | Receiver::Marquee
+                        Receiver::Body
+                            | Receiver::Dialog
+                            | Receiver::Frameset
+                            | Receiver::Legend
+                            | Receiver::Marquee
                     ) {
                         let current = self.callbacks.with_read(&owner, &events, |read, _| {
                             receiver.matches(read.node(id)?, || read.step())
