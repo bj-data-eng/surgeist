@@ -241,3 +241,28 @@ fn observe_event_target_subtests(
         "Both upstream EventTarget assertions passed while harness completion remained pending"
     );
 }
+
+pub(super) fn refuses_unsupported_html_collection_index_assignment() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        const list = document.getElementsByTagName("meta");
+        if (list.length !== 0 || list[0] !== undefined || Object.hasOwn(list, "0")) {
+            return "expected an unsupported index in the original empty HTMLCollection";
+        }
+        const assigned = Reflect.set({}, "0", "unexpected", list);
+        const ownsIndex = Object.hasOwn(list, "0");
+        if (assigned || ownsIndex) {
+            return "HTMLCollection must refuse own index creation through an alternate target"
+                + "; Reflect.set returned " + assigned + ", own index " + ownsIndex;
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}
