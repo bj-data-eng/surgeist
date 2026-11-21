@@ -9,9 +9,9 @@ Select finite retained-slot capacity with `DomLimits::with_ranges`; its default
 is zero. Vacant and generation-exhausted slots count toward that capacity.
 `create_range` starts both boundaries at the actual Document's offset zero
 and resolves its batch ticket only after successful publication. Start/end
-setters use exact UTF-16 offsets for Text, Comment and PI, ordinary child counts
-for other admitted containers, and the DOM-prescribed opposite-endpoint
-collapse. DocumentType cannot be a boundary container.
+setters use exact UTF-16 offsets for Text, CDATASection, Comment and PI. They use
+ordinary child counts for other admitted containers and apply the DOM-prescribed
+opposite-endpoint collapse. DocumentType cannot be a boundary container.
 
 Each controlled native or initial-hosted Document starts with a known empty
 native active-Range association. Unavailable imported state remains explicit.
@@ -44,8 +44,8 @@ bindings, selection events, editing and focus execution.
 
 `DomBatch::split_text` returns a real `CreatedNode` ticket; completion of
 `DomSourceEdit::split_text` returns its new Text through `DomSourceOutput::Node`.
-Both follow DOM3071's split algorithm at exact UTF-16 offsets, including isolated
-surrogates and zero/end offsets. The new Text uses the actual current owner
+Both split Text or CDATASection at exact UTF-16 offsets, including isolated
+surrogates and zero/end offsets. The new ordinary Text uses the current owner
 Document's creation Global. Its insertion and hooks precede the special live
 Range transfers and deletion from the original Text. Parent boundaries exactly
 after the original Text move past the inserted Text; detached splits instead
@@ -53,15 +53,15 @@ retain their Range containers and apply ordinary deletion clamping.
 
 Source retains one original split through service refusal, lease drop and
 cancellation after publication. Ordinary batches retain their atomic external
-service refusal. The represented family is Text: CDATASection is not currently
-represented or emulated.
+service refusal. The original node keeps its kind and identity.
 
 ## Text normalization
 
 `DomBatch::normalize` and `DomSourceEdit::normalize` visit ordinary descendants
-in tree order. The receiver is excluded, so normalizing a Text does not remove
-or rewrite that Text. Empty descendant Text is removed; each nonempty Text
-receives the exact concatenated data from its contiguous exclusive Text
+in tree order. Normalization visits only exclusive Text descendants and leaves
+CDATASection nodes in place, including empty ones. Empty descendant Text is
+removed. Each nonempty exclusive Text receives the exact concatenated data
+from its contiguous exclusive Text
 neighbors. After replacement and its hooks, current following siblings supply
 the special Range transfers into the surviving Text, including parent offsets
 at those siblings' indices. The selected contiguous neighbors are then removed
@@ -69,8 +69,7 @@ in source order. Their detached identities and data remain available.
 
 Only ordinary child edges participate. A shadow tree or Template contents is
 normalized when supplied as the receiver, not through its host's ownership
-edge. The represented Text family is exclusive Text; the separate CDATASection
-family remains outside the native surface selected by the foundation contract.
+edge. Whole-text reads use contiguous Text and CDATASection siblings.
 Already single nonempty descendant Text still runs the source's replace-data
 hook with empty appended data. Source retains its actual append, Range and
 removal stages across service refusal, lease drop and cancellation after

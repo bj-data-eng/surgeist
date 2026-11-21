@@ -632,7 +632,9 @@ impl Draft {
             if let Some(budget) = &formation
                 && !matches!(
                     original.kind(),
-                    transaction::KindRead::Text(_) | transaction::KindRead::Comment(_)
+                    transaction::KindRead::Text(_)
+                        | transaction::KindRead::CdataSection(_)
+                        | transaction::KindRead::Comment(_)
                 )
             {
                 budget.retain_payload(
@@ -647,6 +649,9 @@ impl Draft {
                 | transaction::KindRead::ShadowRoot(_) => return Err(DomError::WrongNodeKind),
                 transaction::KindRead::DocumentFragment => NewNode::DocumentFragment,
                 transaction::KindRead::Text(value) => NewNode::Text(
+                    source::formation::share_listed(value, formation.as_ref(), cancel)?,
+                ),
+                transaction::KindRead::CdataSection(value) => NewNode::CdataSection(
                     source::formation::share_listed(value, formation.as_ref(), cancel)?,
                 ),
                 transaction::KindRead::Comment(value) => NewNode::Comment(

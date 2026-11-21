@@ -1899,6 +1899,7 @@ pub(in crate::internal::store) enum NewNode {
     DocumentFragment,
     ShadowRoot(crate::internal::shadow::DomShadowRootState),
     Text(DocumentString),
+    CdataSection(DocumentString),
     Comment(DocumentString),
     ProcessingInstruction(crate::internal::node_values::DomProcessingInstruction),
     DocumentType(crate::internal::node_values::DomDocumentType),
@@ -4157,6 +4158,9 @@ impl Draft {
                 } else {
                     key
                 };
+                if let Creation::CdataSection { data, .. } = kind {
+                    self.validate_cdata_section(document, data, limits, cancelled)?;
+                }
                 let nodes = self
                     .nodes
                     .checked_add(1)
@@ -4189,7 +4193,9 @@ impl Draft {
                         .len()
                         .saturating_sub(1)
                         .checked_add(namespace.uri().map_or(0, DocumentString::len)),
-                    Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
+                    Creation::Text(data)
+                    | Creation::CdataSection { data, .. }
+                    | Creation::Comment(data) => Some(data.len()),
                     Creation::ProcessingInstruction { target, data, .. } => {
                         target.len().checked_add(data.len())
                     }
@@ -4317,6 +4323,10 @@ impl Draft {
                         fallback: Some(fallback),
                         ..
                     }
+                    | Creation::CdataSection {
+                        fallback: Some(fallback),
+                        ..
+                    }
                     | Creation::ProcessingInstruction {
                         fallback: Some(fallback),
                         ..
@@ -4346,6 +4356,13 @@ impl Draft {
                         metadata_formation.as_ref(),
                         cancelled,
                     )?),
+                    Creation::CdataSection { data, .. } => {
+                        NewNode::CdataSection(source::formation::share_listed(
+                            data,
+                            metadata_formation.as_ref(),
+                            cancelled,
+                        )?)
+                    }
                     Creation::Comment(data) => NewNode::Comment(source::formation::share_listed(
                         data,
                         metadata_formation.as_ref(),
@@ -4700,7 +4717,7 @@ fn new_kind_units(kind: &NewNode) -> Result<usize, DomError> {
         NewNode::Document(v) => v.units().ok_or(DomError::RepresentationExhausted),
         NewNode::Element(v) => v.units().ok_or(DomError::RepresentationExhausted),
         NewNode::Attr(v) => v.logical_units().ok_or(DomError::RepresentationExhausted),
-        NewNode::Text(v) | NewNode::Comment(v) => Ok(v.len()),
+        NewNode::Text(v) | NewNode::CdataSection(v) | NewNode::Comment(v) => Ok(v.len()),
         NewNode::ProcessingInstruction(v) => v.units().ok_or(DomError::RepresentationExhausted),
         NewNode::DocumentType(v) => v.units().ok_or(DomError::RepresentationExhausted),
         NewNode::DocumentFragment | NewNode::ShadowRoot(_) => Ok(0),

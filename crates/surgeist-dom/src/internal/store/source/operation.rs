@@ -1159,7 +1159,7 @@ impl Operation {
         let mut length = 0usize;
         for child in n.children() {
             self.draft.source_step(cancel)?;
-            if let DomNodeKind::Text(s) = state.node(self.id.owner, *child)?.kind() {
+            if let Some(s) = state.node(self.id.owner, *child)?.kind().text_data() {
                 length = length
                     .checked_add(s.len())
                     .ok_or(DomError::RepresentationExhausted)?;
@@ -1265,7 +1265,7 @@ impl Operation {
         let mut copied = transaction::CopyObservation::default();
         for child in n.children() {
             self.draft.source_step(cancel)?;
-            if let DomNodeKind::Text(s) = state.node(self.id.owner, *child)?.kind() {
+            if let Some(s) = state.node(self.id.owner, *child)?.kind().text_data() {
                 for unit in s.code_units() {
                     self.draft.source_step(cancel)?;
                     text.push(*unit);

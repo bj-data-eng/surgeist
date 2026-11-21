@@ -583,6 +583,10 @@ pub enum DomDetachedNodeCreation {
     AttributeNs(Namespace, DocumentString),
     Fragment,
     Text(DocumentString),
+    CdataSection {
+        data: DocumentString,
+        fallback: crate::internal::hosted::DomCreationRealmFallback,
+    },
     Comment(DocumentString),
     ProcessingInstruction {
         target: DocumentString,
@@ -609,6 +613,13 @@ impl DomDetachedNodeCreation {
             }
             Self::Fragment => DomSourceEdit::create_fragment(document.node()),
             Self::Text(data) => DomSourceEdit::create_text(document.node(), data),
+            Self::CdataSection { data, fallback } => DomSourceEdit::create(
+                Creation::CdataSection {
+                    data,
+                    fallback: Some(fallback),
+                },
+                Some(document.into()),
+            ),
             Self::Comment(data) => DomSourceEdit::create_comment(document.node(), data),
             Self::ProcessingInstruction {
                 target,
@@ -1019,15 +1030,15 @@ impl DomSourceEdit {
             },
         }
     }
-    /// Normalize descendant Text through one retained source invocation, including
-    /// each real append/removal hook and the special live Range transfers.
+    /// Normalize exclusive Text descendants through one retained source invocation.
+    /// The call includes append and removal hooks and the live Range transfers.
     pub fn normalize(node: NodeId) -> Self {
         Self {
             command: Command::Normalize(node.into()),
         }
     }
-    /// Split Text at an exact UTF-16 offset under one original Source invocation.
-    /// Completion returns the actual new Text through `DomSourceOutput::Node`.
+    /// Split Text or CDATASection at a UTF-16 offset in one Source invocation.
+    /// Completion returns the new ordinary Text through `DomSourceOutput::Node`.
     pub fn split_text(node: NodeId, offset: usize) -> Self {
         Self {
             command: Command::SplitText {
@@ -1451,6 +1462,19 @@ impl DomSourceEdit {
     /// Request one `create_text` operation on the canonical owner.
     pub fn create_text(document: NodeId, data: impl Into<DocumentString>) -> Self {
         Self::create(Creation::Text(data.into()), Some(document.into()))
+    }
+    /// Creates a detached CDATA section in an XML document, validating the initial data at execution.
+    pub fn create_cdata_section(
+        document: crate::internal::identity::DocumentId,
+        data: impl Into<DocumentString>,
+    ) -> Self {
+        Self::create(
+            Creation::CdataSection {
+                data: data.into(),
+                fallback: None,
+            },
+            Some(document.node().into()),
+        )
     }
     /// Request one `create_comment` operation on the canonical owner.
     pub fn create_comment(document: NodeId, data: impl Into<DocumentString>) -> Self {

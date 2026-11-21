@@ -433,7 +433,7 @@ impl Walker<'_> {
                 self.fixed(&v.value.state, "shadow.data");
                 self.container(&v.value.children);
             }
-            Node::Text(v) => {
+            Node::Text(v) | Node::CdataSection(v) => {
                 self.root(v, "node.text");
                 let mut raw = Raw::default();
                 self.listed_text(&mut raw, &v.value.data.value.value);
@@ -509,7 +509,7 @@ pub(in crate::internal::store) fn slot_payload(slot: &Slot) -> custody::Usage {
         Node::Attr(_) => size_of::<Target<canonical::AttrNode<NodeId>>>(),
         Node::DocumentFragment(_) => size_of::<Target<canonical::FragmentNode<NodeId>>>(),
         Node::ShadowRoot(_) => size_of::<Target<canonical::ShadowNode<NodeId>>>(),
-        Node::Text(_) => size_of::<Target<canonical::TextNode<NodeId>>>(),
+        Node::Text(_) | Node::CdataSection(_) => size_of::<Target<canonical::TextNode<NodeId>>>(),
         Node::Comment(_) => size_of::<Target<canonical::CommentNode<NodeId>>>(),
         Node::ProcessingInstruction(_) => {
             size_of::<Target<canonical::ProcessingInstructionNode<NodeId>>>()

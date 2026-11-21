@@ -1054,6 +1054,30 @@ fn install(
     .unwrap()
 }
 
+#[test]
+fn foreign_html_tokenizer_cdata_is_installed_as_ordinary_text() {
+    let (mut dom, environment) = setup();
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><svg><![CDATA[<lit>]]></svg>",
+    ));
+    let installed = install(&mut dom, report, environment);
+    let snapshot = installed.snapshot();
+    let svg = snapshot
+        .node(installed.root())
+        .unwrap()
+        .tree_order()
+        .map(|id| snapshot.node(id).unwrap())
+        .find(|node| node.node_name() == DocumentString::from("svg"))
+        .unwrap();
+    let &[child] = svg.children() else {
+        panic!("expected one HTML tokenizer text node");
+    };
+    assert!(matches!(
+        snapshot.node(child).unwrap().kind(),
+        DomNodeKind::Text(data) if data == &DocumentString::from("<lit>")
+    ));
+}
+
 fn fragment_fixture(local: &str) -> (Dom, DomHtmlCapture, DocumentId, NodeId) {
     use surgeist_html_semantics::HtmlCaptureLimits;
     let (mut dom, _) = setup();

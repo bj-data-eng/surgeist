@@ -1666,6 +1666,7 @@ impl Dom {
                     cancelled,
                 )?,
                 transaction::KindRead::Text(_)
+                | transaction::KindRead::CdataSection(_)
                 | transaction::KindRead::Attr(_)
                 | transaction::KindRead::Comment(_)
                 | transaction::KindRead::ProcessingInstruction(_)

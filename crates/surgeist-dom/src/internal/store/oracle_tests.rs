@@ -308,7 +308,9 @@ fn full_usage(dom: &Dom) -> DomUsage {
                     + attr.name().local_name().len()
                     + attr.value().len()
             }
-            DomNodeKind::Text(value) | DomNodeKind::Comment(value) => value.len(),
+            DomNodeKind::Text(value)
+            | DomNodeKind::CdataSection(value)
+            | DomNodeKind::Comment(value) => value.len(),
             DomNodeKind::ProcessingInstruction(pi) => pi.units().unwrap(),
             DomNodeKind::DocumentType(doctype) => doctype.units().unwrap(),
             DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => 0,
@@ -396,7 +398,9 @@ fn ancestor_path(state: &State, owner: DomOwnerId, mut id: NodeId) -> Vec<NodeId
 fn boundary_length(state: &State, owner: DomOwnerId, id: NodeId) -> usize {
     let node = state.node(owner, id).unwrap();
     match &node.kind() {
-        DomNodeKind::Text(value) | DomNodeKind::Comment(value) => value.len(),
+        DomNodeKind::Text(value)
+        | DomNodeKind::CdataSection(value)
+        | DomNodeKind::Comment(value) => value.len(),
         DomNodeKind::ProcessingInstruction(pi) => pi.data().len(),
         _ => node.children().len(),
     }
@@ -1065,7 +1069,10 @@ fn assert_slot_names(owner: DomOwnerId, state: &State) {
         } else {
             None
         };
-        let light = if matches!(node.kind(), DomNodeKind::Element(_) | DomNodeKind::Text(_)) {
+        let light = if matches!(
+            node.kind(),
+            DomNodeKind::Element(_) | DomNodeKind::Text(_) | DomNodeKind::CdataSection(_)
+        ) {
             node.parent().and_then(|parent|{
                 let host=state.node(owner,parent).unwrap();
                 let shadow=host.shadow_root().and_then(|root|state.node(owner,root).ok())?;
@@ -1776,7 +1783,7 @@ fn validate_full_state(owner: DomOwnerId, state: &State) {
             assert!(assigned.insert(*target), "unique stored assigned nodes");
             assert!(matches!(
                 state.node(owner, *target).unwrap().kind(),
-                DomNodeKind::Element(_) | DomNodeKind::Text(_)
+                DomNodeKind::Element(_) | DomNodeKind::Text(_) | DomNodeKind::CdataSection(_)
             ));
         }
         if let Some(slot) = node.manual_slot() {

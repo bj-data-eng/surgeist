@@ -172,6 +172,7 @@ enum NativeProjection {
     Fragment,
     ShadowRoot,
     Character(CharacterKind),
+    CdataSection,
     ProcessingInstruction,
     Element(ElementInterface),
     Attr(DomAttrId),
@@ -878,6 +879,7 @@ impl PublicEventBindings {
                             | DomNodeKind::DocumentFragment
                             | DomNodeKind::ShadowRoot(_)
                             | DomNodeKind::Text(_)
+                            | DomNodeKind::CdataSection(_)
                             | DomNodeKind::Comment(_)
                             | DomNodeKind::ProcessingInstruction(_)
                             | DomNodeKind::Element(_)
@@ -906,6 +908,9 @@ impl PublicEventBindings {
                     }
                     if matches!(node.kind(), DomNodeKind::ProcessingInstruction(_)) {
                         return Ok((origin, attached, NativeProjection::ProcessingInstruction));
+                    }
+                    if matches!(node.kind(), DomNodeKind::CdataSection(_)) {
+                        return Ok((origin, attached, NativeProjection::CdataSection));
                     }
                     if matches!(node.kind(), DomNodeKind::DocumentFragment) {
                         return Ok((origin, attached, NativeProjection::Fragment));
@@ -983,6 +988,11 @@ impl PublicEventBindings {
                     scope,
                     kind.project(node),
                     documents.character_data.prototype(kind),
+                ),
+                NativeProjection::CdataSection => watch(
+                    scope,
+                    GuestNode::CdataSection(node),
+                    &documents.character_data.cdata_section,
                 ),
                 NativeProjection::ProcessingInstruction => watch(
                     scope,

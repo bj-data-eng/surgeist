@@ -232,6 +232,7 @@ pub(in crate::document_scripting::guest) enum GuestNode {
     Fragment(NodeId),
     ShadowRoot(NodeId),
     Text(NodeId),
+    CdataSection(NodeId),
     Comment(NodeId),
     ProcessingInstruction(NodeId),
     Element(NodeId),
@@ -246,6 +247,7 @@ impl GuestNode {
             | Self::Fragment(id)
             | Self::ShadowRoot(id)
             | Self::Text(id)
+            | Self::CdataSection(id)
             | Self::Comment(id)
             | Self::ProcessingInstruction(id)
             | Self::Element(id)
@@ -260,6 +262,7 @@ impl GuestNode {
             (Self::Fragment(_), DomNodeKind::DocumentFragment) => Ok(11.0),
             (Self::ShadowRoot(_), DomNodeKind::ShadowRoot(_)) => Ok(11.0),
             (Self::Text(_), DomNodeKind::Text(_)) => Ok(3.0),
+            (Self::CdataSection(_), DomNodeKind::CdataSection(_)) => Ok(4.0),
             (Self::Comment(_), DomNodeKind::Comment(_)) => Ok(8.0),
             (Self::ProcessingInstruction(_), DomNodeKind::ProcessingInstruction(_)) => Ok(7.0),
             (Self::Element(_), DomNodeKind::Element(_)) => Ok(1.0),

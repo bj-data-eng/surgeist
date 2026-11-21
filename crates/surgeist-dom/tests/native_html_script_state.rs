@@ -161,6 +161,9 @@ fn only_nonempty_immediate_text_counts_without_unicode_repair_or_trimming() {
     let units = b.create_element_ns(d, Namespace::html(), "script");
     let raw = b.create_text(d, DocumentString::from_utf16(vec![0, 0xd800]));
     b.insert_before(&raw, &units, None);
+    let cdata = b.create_element_ns(d, Namespace::html(), "script");
+    let raw = b.create_cdata_section(d, DocumentString::from_utf16(vec![0xd800]));
+    b.insert_before(&raw, &cdata, None);
     let nested = b.create_element_ns(d, Namespace::html(), "script");
     let span = b.create_element_ns(d, Namespace::html(), "span");
     let text = b.create_text(d, "descendant");
@@ -168,7 +171,7 @@ fn only_nonempty_immediate_text_counts_without_unicode_repair_or_trimming() {
     b.insert_before(&span, &nested, None);
     let comment = b.create_comment(d, "not source text");
     b.insert_before(&comment, &nested, None);
-    for node in [&empty, &whitespace, &units, &nested] {
+    for node in [&empty, &whitespace, &units, &cdata, &nested] {
         b.insert_before(node, root, None);
     }
     let c = apply(&mut dom, b);
@@ -176,7 +179,7 @@ fn only_nonempty_immediate_text_counts_without_unicode_repair_or_trimming() {
     for t in [&empty, &nested] {
         fresh(&s, c.created(t).unwrap().unwrap());
     }
-    for t in [&whitespace, &units] {
+    for t in [&whitespace, &units, &cdata] {
         let state = script(&s, c.created(t).unwrap().unwrap());
         assert_eq!(flags(state), [true, true, false, false, false]);
         assert_eq!(state.script_type(), Some(Kind::Classic));

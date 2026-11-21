@@ -242,6 +242,7 @@ pub(crate) enum Node {
     DocumentFragment(Arc<Payload<FragmentNode<NodeId>>>),
     ShadowRoot(Arc<Payload<ShadowNode<NodeId>>>),
     Text(Arc<Payload<TextNode<NodeId>>>),
+    CdataSection(Arc<Payload<TextNode<NodeId>>>),
     Comment(Arc<Payload<CommentNode<NodeId>>>),
     ProcessingInstruction(Arc<Payload<ProcessingInstructionNode<NodeId>>>),
     DocumentType(Arc<Payload<DocumentTypeNode<NodeId>>>),
@@ -254,7 +255,7 @@ macro_rules! common {
             Node::Attr($n) => $body,
             Node::DocumentFragment($n) => $body,
             Node::ShadowRoot($n) => $body,
-            Node::Text($n) => $body,
+            Node::Text($n) | Node::CdataSection($n) => $body,
             Node::Comment($n) => $body,
             Node::ProcessingInstruction($n) => $body,
             Node::DocumentType($n) => $body,
@@ -289,6 +290,7 @@ impl Node {
             Self::DocumentFragment(_) => DomNodeKind::DocumentFragment,
             Self::ShadowRoot(n) => DomNodeKind::ShadowRoot(&n.value.state.value),
             Self::Text(n) => DomNodeKind::Text(&n.value.data.value.value),
+            Self::CdataSection(n) => DomNodeKind::CdataSection(&n.value.data.value.value),
             Self::Comment(n) => DomNodeKind::Comment(&n.value.data.value.value),
             Self::ProcessingInstruction(n) => {
                 DomNodeKind::ProcessingInstruction(&n.value.data.value)
@@ -373,7 +375,7 @@ impl Node {
     pub(crate) fn slottable(&self) -> Option<&Slottable<NodeId>> {
         match self {
             Self::Element(n) => n.value.slottable.as_ref().map(|v| &v.value),
-            Self::Text(n) => n.value.slottable.as_ref().map(|v| &v.value),
+            Self::Text(n) | Self::CdataSection(n) => n.value.slottable.as_ref().map(|v| &v.value),
             _ => None,
         }
     }
@@ -800,7 +802,9 @@ impl PartialEq for Node {
             (Self::Attr(a), Self::Attr(b)) => same_payload(a, b),
             (Self::DocumentFragment(a), Self::DocumentFragment(b)) => same_payload(a, b),
             (Self::ShadowRoot(a), Self::ShadowRoot(b)) => same_payload(a, b),
-            (Self::Text(a), Self::Text(b)) => same_payload(a, b),
+            (Self::Text(a), Self::Text(b)) | (Self::CdataSection(a), Self::CdataSection(b)) => {
+                same_payload(a, b)
+            }
             (Self::Comment(a), Self::Comment(b)) => same_payload(a, b),
             (Self::ProcessingInstruction(a), Self::ProcessingInstruction(b)) => same_payload(a, b),
             (Self::DocumentType(a), Self::DocumentType(b)) => same_payload(a, b),

@@ -34,8 +34,8 @@ without wrapping; a destroyed slot whose generation is exhausted is retired.
 
 The supported mutations insert/move nodes, transfer a fragment's children in
 order, replace a child, adopt within the same store, detach, destroy detached
-non-Document/non-ShadowRoot subtrees, including their owned shadow and Template contents trees, and replace Text/Comment/PI data using UTF-16 code-unit
-offsets. Documents reject Text children and accept at most one Element and one
+non-Document/non-ShadowRoot subtrees, including their owned shadow and Template contents trees, and replace CharacterData using UTF-16 code-unit offsets.
+Documents reject Text and CDATASection children and accept at most one Element and one
 doctype, with the doctype preceding the Element. Elements and fragments accept
 Elements and CharacterData. Doctypes cannot be inserted into them or have children.
 A fragment is emptied by insertion and never becomes an ordinary child.
@@ -73,6 +73,13 @@ The owner keeps a bounded weak index; tokens and snapshots retain their values
 after owner destruction. Same-owner copies reuse tokens, while cross-owner
 imports resolve destination tokens without changing the text. Attribute values,
 prefixes and ordinary text are not mandatory atoms.
+
+`create_cdata_section` creates a distinct CDATASection in an XML Document.
+Factory validation refuses an HTML Document before scanning for the `]]>`
+delimiter. CharacterData edits and clone/import preserve current data exactly.
+CDATASection participates in child and descendant text content and exposes
+`#cdata-section` as its name. NodeIterator and TreeWalker select node type 4
+with the `SHOW_CDATA_SECTION` mask bit.
 
 PI construction validates the target using the DOM-delegated XML Name
 production and rejects initial data containing `?>`. It does not apply HTML's

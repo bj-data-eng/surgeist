@@ -80,7 +80,9 @@ impl Capture {
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
     ) -> Result<Completion<'scope>, Error> {
-        let Some(GuestNode::Text(node)) = tree::projected_node(scope, arguments.receiver())? else {
+        let Some(GuestNode::Text(node) | GuestNode::CdataSection(node)) =
+            tree::projected_node(scope, arguments.receiver())?
+        else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Text required"))?,
             ));

@@ -201,6 +201,7 @@ pub(in crate::internal::store) enum DraftNode {
     DocumentFragment(custody::Held<Box<FragmentFields>>),
     ShadowRoot(custody::Held<Box<ShadowFields>>),
     Text(custody::Held<Box<TextFields>>),
+    CdataSection(custody::Held<Box<TextFields>>),
     Comment(custody::Held<Box<CommentFields>>),
     ProcessingInstruction(custody::Held<Box<ProcessingInstructionFields>>),
     DocumentType(custody::Held<Box<DocumentTypeFields>>),
@@ -213,7 +214,7 @@ macro_rules! common {
             DraftNode::Attr($n) => $e,
             DraftNode::DocumentFragment($n) => $e,
             DraftNode::ShadowRoot($n) => $e,
-            DraftNode::Text($n) => $e,
+            DraftNode::Text($n) | DraftNode::CdataSection($n) => $e,
             DraftNode::Comment($n) => $e,
             DraftNode::ProcessingInstruction($n) => $e,
             DraftNode::DocumentType($n) => $e,
@@ -274,7 +275,7 @@ impl DraftNode {
     pub fn slottable(&self) -> Option<&Group<Slottable<NodeId>, Slottable<Key>>> {
         match self {
             Self::Element(n) => n.value().slottable.as_ref(),
-            Self::Text(n) => n.value().slottable.as_ref(),
+            Self::Text(n) | Self::CdataSection(n) => n.value().slottable.as_ref(),
             _ => None,
         }
     }
@@ -283,7 +284,7 @@ impl DraftNode {
     ) -> Option<&mut Option<Group<Slottable<NodeId>, Slottable<Key>>>> {
         match self {
             Self::Element(n) => Some(&mut n.value_mut().slottable),
-            Self::Text(n) => Some(&mut n.value_mut().slottable),
+            Self::Text(n) | Self::CdataSection(n) => Some(&mut n.value_mut().slottable),
             _ => None,
         }
     }
@@ -605,7 +606,12 @@ impl DraftNode {
                     })
                 })?)
             }
-            Node::Text(n) => {
+            Node::Text(n) | Node::CdataSection(n) => {
+                let constructor = if matches!(node, Node::CdataSection(_)) {
+                    Self::CdataSection
+                } else {
+                    Self::Text
+                };
                 let data = controlled(&n.value.data, registry, &mut admit)?;
                 let slottable = n
                     .value
@@ -613,7 +619,7 @@ impl DraftNode {
                     .as_ref()
                     .map(|v| captured(v, registry, &mut admit))
                     .transpose()?;
-                Self::Text(boxed(registry, &mut admit, || {
+                constructor(boxed(registry, &mut admit, || {
                     Ok(TextFields {
                         common: common(&n.value.common),
                         data,
@@ -938,7 +944,12 @@ impl DraftNode {
                     })
                 })?)
             }
-            NewNode::Text(value) => {
+            NewNode::Text(value) | NewNode::CdataSection(value) => {
+                let constructor = if matches!(input.value(), NewNode::CdataSection(_)) {
+                    Self::CdataSection
+                } else {
+                    Self::Text
+                };
                 let mut extra = storage::Payload::default();
                 extra.listed_string(value)?;
                 let data = fresh_language(
@@ -949,13 +960,13 @@ impl DraftNode {
                     &mut admit,
                     None,
                     |v| {
-                        let NewNode::Text(value) = v else {
+                        let (NewNode::Text(value) | NewNode::CdataSection(value)) = v else {
                             unreachable!("Text input")
                         };
                         CharacterData { value }
                     },
                 )?;
-                Self::Text(boxed(registry, &mut admit, || {
+                constructor(boxed(registry, &mut admit, || {
                     Ok(TextFields {
                         common,
                         data,

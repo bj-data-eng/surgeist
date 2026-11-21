@@ -7,7 +7,7 @@ impl<'a> From<transaction::KindRead<'a>> for slot::TreeKind<'a> {
     fn from(kind: transaction::KindRead<'a>) -> Self {
         match kind {
             transaction::KindRead::Element(element) => Self::Element(element.language()),
-            transaction::KindRead::Text(_) => Self::Text,
+            transaction::KindRead::Text(_) | transaction::KindRead::CdataSection(_) => Self::Text,
             transaction::KindRead::ShadowRoot(state) => Self::ShadowRoot(state),
             _ => Self::Other,
         }

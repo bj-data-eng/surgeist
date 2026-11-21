@@ -292,6 +292,7 @@ pub(in crate::internal::store) fn new_kind(
         NewNode::DocumentFragment => DomNodeKind::DocumentFragment,
         NewNode::ShadowRoot(value) => DomNodeKind::ShadowRoot(value),
         NewNode::Text(value) => DomNodeKind::Text(value),
+        NewNode::CdataSection(value) => DomNodeKind::CdataSection(value),
         NewNode::Comment(value) => DomNodeKind::Comment(value),
         NewNode::ProcessingInstruction(value) => DomNodeKind::ProcessingInstruction(value),
         NewNode::DocumentType(value) => DomNodeKind::DocumentType(value),
@@ -309,6 +310,7 @@ pub(in crate::internal::store) fn kind_read(
         transaction::KindRead::DocumentFragment => DomNodeKind::DocumentFragment,
         transaction::KindRead::ShadowRoot(value) => DomNodeKind::ShadowRoot(value),
         transaction::KindRead::Text(value) => DomNodeKind::Text(value),
+        transaction::KindRead::CdataSection(value) => DomNodeKind::CdataSection(value),
         transaction::KindRead::Comment(value) => DomNodeKind::Comment(value),
         transaction::KindRead::ProcessingInstruction(value) => {
             DomNodeKind::ProcessingInstruction(value)
@@ -330,7 +332,9 @@ pub(in crate::internal::store) fn kind(
         }
         DomNodeKind::Element(element) => payload.append(element.retained_payload(&mut step)?)?,
         DomNodeKind::Attr(value) => payload.append(value.retained_payload()?)?,
-        DomNodeKind::Text(string) | DomNodeKind::Comment(string) => payload.string(string)?,
+        DomNodeKind::Text(string)
+        | DomNodeKind::CdataSection(string)
+        | DomNodeKind::Comment(string) => payload.string(string)?,
         DomNodeKind::ProcessingInstruction(pi) => {
             payload.append(pi.retained_payload(&mut step)?)?
         }
@@ -488,7 +492,9 @@ pub(in crate::internal::store) fn commands(
                 ..
             } => payload.string(value)?,
             Command::Create { kind, .. } => match kind {
-                Creation::Text(value) | Creation::Comment(value) => payload.string(value)?,
+                Creation::Text(value)
+                | Creation::CdataSection { data: value, .. }
+                | Creation::Comment(value) => payload.string(value)?,
                 Creation::Element { name, options, .. } => {
                     match name {
                         crate::internal::source::DomElementCreationName::Local(name) => {

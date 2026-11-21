@@ -26,8 +26,8 @@ runs the shared replace-all removal/insertion continuation. Hierarchy checking,
 adoption, native hooks and Range maintenance retain their canonical owners.
 
 `set_text_content` replaces all children of Element/DocumentFragment, including
-ShadowRoot; an empty string creates no replacement Text. Text, Comment and PI use
-replace-data. Document and DocumentType explicitly do nothing. Attr uses the
+ShadowRoot. An empty string creates no replacement Text. Text, CDATASection,
+Comment and PI use replace-data. Document and DocumentType do nothing. Attr uses the
 same existing-attribute value operation and verification as `Attr.value`.
 
 `insert_adjacent_text` creates Text before interpreting the four ASCII

@@ -643,7 +643,7 @@ impl Draft {
             parent: value.parent.map(map),
         };
         macro_rules! root {
-            ($variant:ident, $ty:ty, $value:expr, $dependency:expr) => {{
+            ($constructor:expr, $ty:ty, $value:expr, $dependency:expr) => {{
                 // A root belongs to exactly one Slot materialization. Keep its
                 // admitted body affine until that Slot seals; independently
                 // shared language and feature children keep their own custody.
@@ -663,7 +663,7 @@ impl Draft {
                     .into_unregistered();
                 let (value, debit) = formed.into_parts();
                 ProjectedNode {
-                    value: custody::Held::new(Node::$variant(value), debit),
+                    value: custody::Held::new($constructor(value), debit),
                     dependency,
                 }
             }};
@@ -682,7 +682,7 @@ impl Draft {
                     EncodingGroup::Known(value) => EncodingUrl::Known(value.value.clone()),
                 };
                 root!(
-                    Document,
+                    Node::Document,
                     DocumentNode<NodeId>,
                     DocumentNode {
                         common: common(&value.common),
@@ -779,7 +779,7 @@ impl Draft {
                     )?,
                 };
                 root!(
-                    Element,
+                    Node::Element,
                     ElementNode<NodeId>,
                     ElementNode {
                         common: common(&value.common),
@@ -803,7 +803,7 @@ impl Draft {
                 let value = value.value();
                 let children = self.project_node_sequence(value.children.as_ref(), &map, cancel)?;
                 root!(
-                    DocumentFragment,
+                    Node::DocumentFragment,
                     FragmentNode<NodeId>,
                     FragmentNode {
                         common: common(&value.common),
@@ -821,7 +821,7 @@ impl Draft {
                 let value = value.value();
                 let children = self.project_node_sequence(value.children.as_ref(), &map, cancel)?;
                 root!(
-                    ShadowRoot,
+                    Node::ShadowRoot,
                     ShadowNode<NodeId>,
                     ShadowNode {
                         common: common(&value.common),
@@ -836,11 +836,16 @@ impl Draft {
                     )
                 )
             }
-            DraftNode::Text(value) => {
+            node @ (DraftNode::Text(value) | DraftNode::CdataSection(value)) => {
+                let constructor = if matches!(node, DraftNode::CdataSection(_)) {
+                    Node::CdataSection
+                } else {
+                    Node::Text
+                };
                 let value = value.value();
                 let slottable = self.project_slottable(value.slottable.as_ref(), &map, cancel)?;
                 root!(
-                    Text,
+                    constructor,
                     TextNode<NodeId>,
                     TextNode {
                         common: common(&value.common),
@@ -853,7 +858,7 @@ impl Draft {
             DraftNode::Comment(value) => {
                 let value = value.value();
                 root!(
-                    Comment,
+                    Node::Comment,
                     CommentNode<NodeId>,
                     CommentNode {
                         common: common(&value.common),
@@ -869,7 +874,7 @@ impl Draft {
             DraftNode::ProcessingInstruction(value) => {
                 let value = value.value();
                 root!(
-                    ProcessingInstruction,
+                    Node::ProcessingInstruction,
                     ProcessingInstructionNode<NodeId>,
                     ProcessingInstructionNode {
                         common: common(&value.common),
@@ -885,7 +890,7 @@ impl Draft {
             DraftNode::DocumentType(value) => {
                 let value = value.value();
                 root!(
-                    DocumentType,
+                    Node::DocumentType,
                     DocumentTypeNode<NodeId>,
                     DocumentTypeNode {
                         common: common(&value.common),
@@ -901,7 +906,7 @@ impl Draft {
             DraftNode::Attr(value) => {
                 let value = value.value();
                 root!(
-                    Attr,
+                    Node::Attr,
                     AttrNode<NodeId>,
                     AttrNode {
                         common: common(&value.common),

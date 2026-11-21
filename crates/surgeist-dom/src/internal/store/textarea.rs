@@ -89,7 +89,9 @@ impl Draft {
         let mut length = 0usize;
         for child in self.node(key)?.children().iter() {
             self.source_step(cancel)?;
-            if let transaction::KindRead::Text(text) = &self.node(child)?.kind() {
+            if let transaction::KindRead::Text(text) | transaction::KindRead::CdataSection(text) =
+                &self.node(child)?.kind()
+            {
                 length = length
                     .checked_add(text.len())
                     .ok_or(DomError::RepresentationExhausted)?;
@@ -106,7 +108,9 @@ impl Draft {
             crate::internal::textarea::output(length, limits.units, formation.as_ref(), cancel)?;
         for child in self.node(key)?.children().iter() {
             self.source_step(cancel)?;
-            if let transaction::KindRead::Text(text) = &self.node(child)?.kind() {
+            if let transaction::KindRead::Text(text) | transaction::KindRead::CdataSection(text) =
+                &self.node(child)?.kind()
+            {
                 for unit in text.code_units() {
                     self.source_step(cancel)?;
                     output.push(*unit);

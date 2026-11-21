@@ -1389,6 +1389,7 @@ impl OrdinaryBindings {
                         | DomDetachedNodeCreation::AttributeNs(..) => GuestNode::Attr,
                         DomDetachedNodeCreation::Fragment => GuestNode::Fragment,
                         DomDetachedNodeCreation::Text(_) => GuestNode::Text,
+                        DomDetachedNodeCreation::CdataSection { .. } => GuestNode::CdataSection,
                         DomDetachedNodeCreation::Comment(_) => GuestNode::Comment,
                         DomDetachedNodeCreation::ProcessingInstruction { .. } => {
                             GuestNode::ProcessingInstruction

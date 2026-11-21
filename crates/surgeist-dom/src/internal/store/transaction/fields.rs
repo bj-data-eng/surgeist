@@ -137,7 +137,7 @@ impl FieldUndo {
                 Self::ShadowState(std::mem::replace(&mut n.value_mut().state, value))
             }
             Self::Text(value) => {
-                let DraftNode::Text(n) = node else {
+                let (DraftNode::Text(n) | DraftNode::CdataSection(n)) = node else {
                     unreachable!("Text field")
                 };
                 Self::Text(std::mem::replace(&mut n.value_mut().data, value))
@@ -875,7 +875,7 @@ scalar_guard!(
     Overlay::Slottable,
     |n| if matches!(
         n.kind(),
-        super::KindRead::Element(_) | super::KindRead::Text(_)
+        super::KindRead::Element(_) | super::KindRead::Text(_) | super::KindRead::CdataSection(_)
     ) {
         Ok(Slottable {
             manual_slot: n.manual_slot(),
@@ -1110,22 +1110,26 @@ impl Draft {
         self.materialize_node(key, cancel)?;
         let undo = self.prepare_undo(cancel)?;
         match incoming.value() {
-            NewNode::Text(v) | NewNode::Comment(v) => {
-                let text = matches!(incoming.value(), NewNode::Text(_));
-                if text != matches!(self.node(key)?.kind(), super::KindRead::Text(_)) {
-                    return Err(DomError::WrongNodeKind);
-                }
+            NewNode::Text(v) | NewNode::CdataSection(v) | NewNode::Comment(v) => {
+                let (cdata, text) = match (incoming.value(), self.node(key)?.kind()) {
+                    (NewNode::Text(_), super::KindRead::Text(_)) => (false, true),
+                    (NewNode::CdataSection(_), super::KindRead::CdataSection(_)) => (true, true),
+                    (NewNode::Comment(_), super::KindRead::Comment(_)) => (false, false),
+                    _ => return Err(DomError::WrongNodeKind),
+                };
                 let mut extra = source::storage::Payload::default();
                 extra.listed_string(v)?;
                 let value = super::staged::fresh_language(
                     incoming,
-                    if text { true } else { retained },
+                    text || retained,
                     source::storage::typed::<CharacterData>(extra)?,
                     self.custody_registry(),
                     &mut |usage| self.admit_custody_usage(usage, cancel),
                     None,
                     |kind| match kind {
-                        NewNode::Text(value) | NewNode::Comment(value) => CharacterData { value },
+                        NewNode::Text(value)
+                        | NewNode::CdataSection(value)
+                        | NewNode::Comment(value) => CharacterData { value },
                         _ => unreachable!("character data input"),
                     },
                 )?;
@@ -1138,10 +1142,13 @@ impl Draft {
                     key,
                     custody::Held::new(value, debit),
                     |value| {
-                        if text {
-                            Overlay::Text(&value.value.value.value)
+                        let value = &value.value.value.value;
+                        if cdata {
+                            Overlay::CdataSection(value)
+                        } else if text {
+                            Overlay::Text(value)
                         } else {
-                            Overlay::Comment(&value.value.value.value)
+                            Overlay::Comment(value)
                         }
                     },
                     |_draft, _key, incoming, _| {

@@ -8307,14 +8307,8 @@
     "Document.createCDATASection:0/call": {
       "kind": "native",
       "adapter": "document.createcdatasection.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Canonical CDATASection node kind and creation validation (including the HTML-Document and terminator refusals), exact data/node-document identity and Text inheritance.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-document-createcdatasection"
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_cdata_section"}],
+      "requirements": []
     },
     "Document.createComment:0/call": {
       "kind": "native",

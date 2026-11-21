@@ -86,6 +86,10 @@ pub(crate) enum Creation {
         name: DocumentString,
     },
     Text(DocumentString),
+    CdataSection {
+        data: DocumentString,
+        fallback: Option<crate::internal::hosted::DomCreationRealmFallback>,
+    },
     Comment(DocumentString),
     ProcessingInstruction {
         target: DocumentString,
@@ -698,12 +702,12 @@ impl DomBatch {
         });
         ticket
     }
-    /// Normalize descendant Text nodes through the canonical append/Range/remove
-    /// algorithm. The receiver itself is excluded; removed Text stays detached.
+    /// Normalize exclusive Text descendants and maintain their live Ranges.
+    /// Removed Text nodes remain available as detached nodes.
     pub fn normalize(&mut self, node: impl Into<NodeOperand>) {
         self.commands.push(Command::Normalize(node.into()));
     }
-    /// Split one Text at an exact UTF-16 offset, returning the new Text's ticket.
+    /// Split Text or CDATASection at a UTF-16 offset, returning an ordinary Text ticket.
     /// Insertion, special Range transfers and data deletion remain one atomic edit.
     pub fn split_text(&mut self, node: impl Into<NodeOperand>, offset: usize) -> CreatedNode {
         let ticket = self.ticket();
@@ -1040,6 +1044,20 @@ impl DomBatch {
     ) -> CreatedNode {
         self.create(Creation::Text(data.into()), Some(document.into()))
     }
+    /// Creates a detached CDATA section in an XML document, validating the initial data at apply.
+    pub fn create_cdata_section(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        data: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(
+            Creation::CdataSection {
+                data: data.into(),
+                fallback: None,
+            },
+            Some(document.into()),
+        )
+    }
     pub fn create_comment(
         &mut self,
         document: impl Into<NodeOperand>,
@@ -1261,8 +1279,8 @@ impl DomBatch {
         self.commands.push(Command::Destroy(node.into()));
     }
     /// CharacterData replacement using UTF-16 code-unit offsets and counts.
-    /// An excessive count truncates to the remaining length; offset past the
-    /// end is IndexSize. The operation accepts Text, Comment and PI. PI data
+    /// An excessive count truncates to the remaining length. An offset past the
+    /// end is IndexSize. Text, CDATASection, Comment and PI are accepted. PI data
     /// edits recompute pseudo-attributes without repeating creation validation.
     pub fn replace_data(
         &mut self,

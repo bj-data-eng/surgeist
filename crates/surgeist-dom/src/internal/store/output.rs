@@ -82,7 +82,9 @@ impl Draft {
         loop {
             self.source_step(cancel)?;
             let node = self.node(key)?;
-            if let transaction::KindRead::Text(text) = &node.kind() {
+            if let transaction::KindRead::Text(text) | transaction::KindRead::CdataSection(text) =
+                &node.kind()
+            {
                 visit(text)?;
             }
             if let Some(child) = node.children().first() {

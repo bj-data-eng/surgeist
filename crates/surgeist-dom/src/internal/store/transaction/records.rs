@@ -171,6 +171,7 @@ pub(in crate::internal::store) enum KindRead<'a> {
     DocumentFragment,
     ShadowRoot(&'a crate::internal::shadow::DomShadowRootState),
     Text(&'a DocumentString),
+    CdataSection(&'a DocumentString),
     Comment(&'a DocumentString),
     ProcessingInstruction(&'a crate::internal::node_values::DomProcessingInstruction),
     DocumentType(&'a crate::internal::node_values::DomDocumentType),
@@ -343,6 +344,7 @@ pub(in crate::internal::store) enum Overlay<'a> {
     ShadowState(&'a crate::internal::shadow::DomShadowRootState),
     ProcessingInstruction(&'a crate::internal::node_values::DomProcessingInstruction),
     Text(&'a DocumentString),
+    CdataSection(&'a DocumentString),
     Comment(&'a DocumentString),
     Slottable(&'a canonical::Slottable<Key>),
     Shadow(&'a Option<Key>),
@@ -465,6 +467,7 @@ impl<'a> NodeRead<'a> {
                 Overlay::ProcessingInstruction(v) => return KindRead::ProcessingInstruction(v),
                 Overlay::ShadowState(v) => return KindRead::ShadowRoot(v),
                 Overlay::Text(v) => return KindRead::Text(v),
+                Overlay::CdataSection(v) => return KindRead::CdataSection(v),
                 Overlay::Comment(v) => return KindRead::Comment(v),
                 _ => {}
             }
@@ -477,6 +480,7 @@ impl<'a> NodeRead<'a> {
                 DomNodeKind::DocumentFragment => KindRead::DocumentFragment,
                 DomNodeKind::ShadowRoot(v) => KindRead::ShadowRoot(v),
                 DomNodeKind::Text(v) => KindRead::Text(v),
+                DomNodeKind::CdataSection(v) => KindRead::CdataSection(v),
                 DomNodeKind::Comment(v) => KindRead::Comment(v),
                 DomNodeKind::ProcessingInstruction(v) => KindRead::ProcessingInstruction(v),
                 DomNodeKind::DocumentType(v) => KindRead::DocumentType(v),
@@ -490,6 +494,9 @@ impl<'a> NodeRead<'a> {
                 DraftNode::DocumentFragment(_) => KindRead::DocumentFragment,
                 DraftNode::ShadowRoot(v) => KindRead::ShadowRoot(&v.value().state.value.value),
                 DraftNode::Text(v) => KindRead::Text(&v.value().data.value.value.value),
+                DraftNode::CdataSection(v) => {
+                    KindRead::CdataSection(&v.value().data.value.value.value)
+                }
                 DraftNode::Comment(v) => KindRead::Comment(&v.value().data.value.value.value),
                 DraftNode::ProcessingInstruction(v) => {
                     KindRead::ProcessingInstruction(&v.value().data.value.value)
@@ -1289,7 +1296,7 @@ impl<'a> NodeRead<'a> {
             KindRead::Document(v) => v.units(),
             KindRead::Element(v) => v.language().units(),
             KindRead::Attr(v) => v.logical_units(),
-            KindRead::Text(v) | KindRead::Comment(v) => Some(v.len()),
+            KindRead::Text(v) | KindRead::CdataSection(v) | KindRead::Comment(v) => Some(v.len()),
             KindRead::ProcessingInstruction(v) => v.units(),
             KindRead::DocumentType(v) => v.units(),
             _ => Some(0),
@@ -1327,6 +1334,7 @@ pub(in crate::internal::store) enum FrozenNodeInput {
     DocumentFragment,
     ShadowRoot(Controlled<crate::internal::shadow::DomShadowRootState>),
     Text(Controlled<canonical::CharacterData>),
+    CdataSection(Controlled<canonical::CharacterData>),
     Comment(Controlled<canonical::CharacterData>),
     ProcessingInstruction(Controlled<crate::internal::node_values::DomProcessingInstruction>),
     DocumentType(Controlled<crate::internal::node_values::DomDocumentType>),
@@ -1350,6 +1358,7 @@ impl FrozenNodeInput {
             Self::DocumentFragment => KindRead::DocumentFragment,
             Self::ShadowRoot(v) => KindRead::ShadowRoot(&v.value.value),
             Self::Text(v) => KindRead::Text(&v.value.value.value),
+            Self::CdataSection(v) => KindRead::CdataSection(&v.value.value.value),
             Self::Comment(v) => KindRead::Comment(&v.value.value.value),
             Self::ProcessingInstruction(v) => KindRead::ProcessingInstruction(&v.value.value),
             Self::DocumentType(v) => KindRead::DocumentType(&v.value.value),
@@ -1386,6 +1395,9 @@ impl NodeRead<'_> {
                     Frozen::ShadowRoot(controlled(&n.value.state, registry, &mut admit)?)
                 }
                 Node::Text(n) => Frozen::Text(controlled(&n.value.data, registry, &mut admit)?),
+                Node::CdataSection(n) => {
+                    Frozen::CdataSection(controlled(&n.value.data, registry, &mut admit)?)
+                }
                 Node::Comment(n) => {
                     Frozen::Comment(controlled(&n.value.data, registry, &mut admit)?)
                 }
@@ -1408,6 +1420,7 @@ impl NodeRead<'_> {
                 DraftNode::DocumentFragment(_) => Frozen::DocumentFragment,
                 DraftNode::ShadowRoot(n) => Frozen::ShadowRoot(n.value().state.clone()),
                 DraftNode::Text(n) => Frozen::Text(n.value().data.clone()),
+                DraftNode::CdataSection(n) => Frozen::CdataSection(n.value().data.clone()),
                 DraftNode::Comment(n) => Frozen::Comment(n.value().data.clone()),
                 DraftNode::ProcessingInstruction(n) => {
                     Frozen::ProcessingInstruction(n.value().data.clone())

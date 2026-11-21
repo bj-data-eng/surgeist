@@ -1,6 +1,7 @@
 //! Text and Comment creation and CharacterData access over the canonical DOM.
 
 use super::*;
+mod cdata_section;
 mod mutations;
 mod split_text;
 use surgeist_bindings_js::{
@@ -67,6 +68,7 @@ impl CharacterKind {
 pub(super) struct CharacterBindings {
     text: RetainedCallbackObject,
     comment: RetainedCallbackObject,
+    pub(super) cdata_section: RetainedCallbackObject,
     pub(super) processing_instruction: RetainedCallbackObject,
 }
 
@@ -125,7 +127,7 @@ impl CharacterBindings {
             &names,
             funding.capture,
         )?;
-        let text = Self::install_kind(
+        let (text_constructor, text_prototype) = Self::install_kind(
             scope,
             &interface,
             &prototype,
@@ -134,7 +136,9 @@ impl CharacterBindings {
             funding,
             constructors,
         )?;
-        let comment = Self::install_kind(
+        let observed = scope.callback_object(&text_prototype)?;
+        let text = scope.retain_callback_object(observed, funding.retain)?;
+        let (_, comment_prototype) = Self::install_kind(
             scope,
             &interface,
             &prototype,
@@ -142,6 +146,14 @@ impl CharacterBindings {
             CharacterKind::Comment,
             funding,
             constructors,
+        )?;
+        let observed = scope.callback_object(&comment_prototype)?;
+        let comment = scope.retain_callback_object(observed, funding.retain)?;
+        let cdata_section = cdata_section::install(
+            scope,
+            document,
+            (&text_constructor, &text_prototype),
+            funding,
         )?;
         let constructor = processing_instruction::constructor(funding.capture)?;
         let (_, instruction) = install_derived_interface(
@@ -172,6 +184,7 @@ impl CharacterBindings {
         Ok(Self {
             text,
             comment,
+            cdata_section,
             processing_instruction,
         })
     }
@@ -184,7 +197,7 @@ impl CharacterBindings {
         kind: CharacterKind,
         funding: &OriginInterfaceFunding<'_>,
         constructors: Option<CaptureFunding<'_>>,
-    ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
+    ) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
         let callback = if let Some(capture) = constructors {
             let fallback = capture(size_of::<(Capture, CharacterKind)>())?;
             let construct = constructor_capture(capture, size_of::<(Capture, CharacterKind)>())?;
@@ -202,7 +215,7 @@ impl CharacterBindings {
         } else {
             illegal_constructor(funding.capture)?
         };
-        let (_, prototype) = install_derived_interface(
+        let (constructor, prototype) = install_derived_interface(
             scope,
             parent_prototype,
             parent_constructor,
@@ -239,8 +252,7 @@ impl CharacterBindings {
             true,
             true,
         )?;
-        let observed = scope.callback_object(&prototype)?;
-        scope.retain_callback_object(observed, funding.retain)
+        Ok((constructor, prototype))
     }
 
     pub(super) fn prototype(&self, kind: CharacterKind) -> &RetainedCallbackObject {
@@ -490,6 +502,7 @@ impl Capture {
             let node = read.node(id.node())?;
             match (id, node.kind()) {
                 (GuestNode::Text(_), DomNodeKind::Text(data))
+                | (GuestNode::CdataSection(_), DomNodeKind::CdataSection(data))
                 | (GuestNode::Comment(_), DomNodeKind::Comment(data)) => Ok(data.clone()),
                 (
                     GuestNode::ProcessingInstruction(_),
@@ -511,7 +524,10 @@ fn character_receiver<'scope>(
         .filter(|id| {
             matches!(
                 id,
-                GuestNode::Text(_) | GuestNode::Comment(_) | GuestNode::ProcessingInstruction(_)
+                GuestNode::Text(_)
+                    | GuestNode::CdataSection(_)
+                    | GuestNode::Comment(_)
+                    | GuestNode::ProcessingInstruction(_)
             )
         }))
 }
