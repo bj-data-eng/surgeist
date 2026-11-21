@@ -4962,6 +4962,12 @@ pub fn surgeist_html::elements::media::HtmlMediaValueCursor<'a>::advance(&mut se
 pub fn surgeist_html::elements::media::HtmlMediaValueCursor<'a>::new(units: core::option::Option<&'a [u16]>) -> Self
 pub fn surgeist_html::elements::media::HtmlMediaValueCursor<'a>::next_action(&self) -> surgeist_html::elements::media::HtmlMediaCursorAction
 pub fn surgeist_html::elements::media::HtmlMediaValueCursor<'a>::result(&self) -> core::option::Option<surgeist_html::elements::media::HtmlMediaValue>
+pub struct surgeist_html::elements::media::HtmlUnloadedMediaState
+impl surgeist_html::elements::media::HtmlUnloadedMediaState
+pub const fn surgeist_html::elements::media::HtmlUnloadedMediaState::can_autoplay(self) -> bool
+pub const fn surgeist_html::elements::media::HtmlUnloadedMediaState::initial(self) -> surgeist_html::elements::media::HtmlInitialMediaState
+pub const fn surgeist_html::elements::media::HtmlUnloadedMediaState::new(initial: surgeist_html::elements::media::HtmlInitialMediaState) -> Self
+pub const fn surgeist_html::elements::media::HtmlUnloadedMediaState::pause(&mut self)
 pub mod surgeist_html::elements::native
 pub enum surgeist_html::elements::native::HtmlCommonScope
 pub surgeist_html::elements::native::HtmlCommonScope::Element

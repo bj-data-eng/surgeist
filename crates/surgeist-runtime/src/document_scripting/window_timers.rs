@@ -613,7 +613,7 @@ impl DocumentScriptHost {
         let result = engine.process.execution().in_realm(&engine.realm, |scope| {
             Ok(timers.fire(&self.native, scope, due))
         });
-        engine.settle_engine_cleanup(&attachment.realm);
+        engine.settle_engine_cleanup(&self.native, &attachment.realm);
         let exception = result??;
         match self.checkpoint() {
             Ok(()) => Ok(WindowTimerProgress::Fired {

@@ -719,7 +719,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let document = self.node(root)?.document();
-        let flagged = self.fullscreen_removing_members(root, cancel)?;
+        let flagged = self.removing_members(root, old_parent, cancel)?;
         let mut pending = source::effects::ScratchStack::new(self);
         pending.push(root, self, cancel)?;
         self.push_effect(
@@ -742,6 +742,55 @@ impl Draft {
             cancel,
         )?;
         self.run_effects(limits, cancel)
+    }
+
+    fn removing_members(
+        &mut self,
+        root: Key,
+        old_parent: Key,
+        cancel: &AtomicBool,
+    ) -> Result<select::ScratchVec<Key>, DomError> {
+        let mut pending = self.effect_vec();
+        let mut flagged = self.effect_vec();
+        self.select_reserve(&mut pending, 1, cancel)?;
+        pending.push((root, true));
+        // The ordinary old parent is shared by all media in this removal.
+        let mut former_document = None;
+        while let Some((key, ordinary)) = pending.pop() {
+            self.source_step(cancel)?;
+            let node = self.node(key)?;
+            if matches!(node.kind(), KindRead::Element(element) if element.fullscreen_flag()) {
+                self.select_reserve(&mut flagged, 1, cancel)?;
+                flagged.push(key);
+            }
+            let media = ordinary
+                && matches!(node.kind(), KindRead::Element(element) if element.initial_media_state().is_some());
+            self.select_reserve(&mut pending, node.children().len(), cancel)?;
+            for child in node.children().iter().rev() {
+                self.source_step(cancel)?;
+                pending.push((child, ordinary));
+            }
+            if let Some(shadow) = node.shadow_root() {
+                self.select_reserve(&mut pending, 1, cancel)?;
+                pending.push((shadow, false));
+            }
+            if media {
+                let document = match former_document {
+                    Some(known) => known,
+                    None => {
+                        let root = crate::internal::slot::root(self, old_parent, cancel)?;
+                        let document = matches!(self.node(root)?.kind(), KindRead::Document(_))
+                            .then_some(root);
+                        former_document = Some(document);
+                        document
+                    }
+                };
+                if let Some(document) = document {
+                    self.record_media_removal(key, root, old_parent, document, cancel)?;
+                }
+            }
+        }
+        Ok(flagged)
     }
 
     fn former_ordinary_document(
@@ -1144,13 +1193,7 @@ impl Draft {
                             KindRead::Element(element)
                                 if element.initial_media_state().is_some() =>
                             {
-                                let old_document =
-                                    self.former_ordinary_document(key, root, parent, &mut || {
-                                        self.effect_step(cancel)
-                                    })?;
-                                if old_document.is_some() {
-                                    return Err(DomError::MediaRemovalStableStateUnavailable);
-                                }
+                                self.reach_media_removal(key, root, parent, cancel)?;
                             }
                             _ => (),
                         },

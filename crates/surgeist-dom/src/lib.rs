@@ -81,6 +81,7 @@
 //! | [`installation::meta`] | Pending Meta associations of a parsed report. |
 //! | [`installation::style`] | Pending Style stylesheet associations of a parsed report: prefix, notification, sheet, subject, successor and terminal. |
 //! | [`limits`] | Finite admission policy for one DOM owner and its usage accounting. |
+//! | [`media`] | Unloaded media observations and the stable-state removal continuation. |
 //! | [`meta`] | Meta element state, document policy and CSP, and the native Meta composition. |
 //! | [`range`] | Ranges, their boundaries and operands, and the designMode range transition. |
 //! | [`script`] | HTML and SVG Script state, Document scripting registration and the Document constructor. |
@@ -180,6 +181,7 @@ pub mod hosted;
 pub mod identity;
 pub mod installation;
 pub mod limits;
+pub mod media;
 pub mod meta;
 pub mod range;
 pub mod script;

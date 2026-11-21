@@ -915,7 +915,9 @@ fn family(
             }
             match media.disposition() {
                 HtmlParseMediaDisposition::Unloaded => NativeFamily::Media {
-                    initial: media.initial(),
+                    state: surgeist_html::elements::media::HtmlUnloadedMediaState::new(
+                        media.initial(),
+                    ),
                     automatic_track_selection_performed: true,
                 },
                 HtmlParseMediaDisposition::AwaitingStackExit => return Err(unavailable()),

@@ -3747,3 +3747,138 @@ impl SvgRemovalFixture {
         removed
     }
 }
+
+#[test]
+fn media_removal_is_admitted_with_the_first_style_source_prefix_once() {
+    use surgeist_html::elements::style::HtmlStyleUpdateAction;
+    use surgeist_html::values::Namespace;
+
+    let (mut dom, _host, document) = constructor();
+    let cancel = cancel();
+    let scheduler = dom.bind_media_stable_state(1, &cancel).unwrap();
+    let ordinary_parent = dom
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap_or(document.node());
+    let mut setup = DomBatch::new();
+    let section = setup.create_element_ns(document, Namespace::html(), "section");
+    setup.insert_before(&section, ordinary_parent, None);
+    let section = dom
+        .apply(setup, &cancel)
+        .unwrap()
+        .created(&section)
+        .unwrap()
+        .unwrap();
+    let (root, sheet, attached) =
+        style_resource(&mut dom, document, section, document.node(), false);
+
+    let mut setup = DomBatch::new();
+    let media = setup.create_element_ns(document, Namespace::html(), "audio");
+    setup.insert_before(&media, section, None);
+    let media = dom
+        .apply(setup, &cancel)
+        .unwrap()
+        .created(&media)
+        .unwrap()
+        .unwrap();
+    let request = {
+        let mut source = dom
+            .begin_source_edit(DomSourceEdit::detach(section), source_limits(), &cancel)
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+            source.advance(&cancel).unwrap()
+        else {
+            panic!("the earlier Style child must reach its original removing hook");
+        };
+        assert_eq!(
+            request.action(),
+            crate::internal::style::DomStyleAction::Update(
+                HtmlStyleUpdateAction::RemoveAssociatedSheet
+            )
+        );
+        request
+    };
+    assert_eq!(dom.snapshot().node(section).unwrap().parent(), None);
+    let original = scheduler.next_to_schedule(&dom).unwrap().unwrap();
+    assert_eq!(original.target(), media);
+    assert_eq!(original.former_document(), document);
+
+    let mut source = dom
+        .resume_source_edit(request.source().operation(), source_limits(), &cancel)
+        .unwrap();
+    let removal = source
+        .qualify_cssom(&request, root.root(), &attached)
+        .unwrap();
+    let mut batch = root
+        .batch(CssomEditGuard::from_snapshot(&attached))
+        .unwrap();
+    batch.remove_sheet(&sheet).unwrap();
+    let commit = root.commit(&mut Some(batch)).unwrap();
+    source
+        .accept_cssom_publication(&removal, commit, root.snapshot().unwrap(), None)
+        .unwrap();
+    assert!(matches!(
+        source.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(source);
+
+    assert_eq!(
+        scheduler.run_native(&mut dom, &cancel).unwrap(),
+        Some(original)
+    );
+    assert_eq!(scheduler.run_native(&mut dom, &cancel).unwrap(), None);
+    assert_eq!(
+        dom.snapshot()
+            .node(media)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .media_can_autoplay(),
+        Some(false)
+    );
+}
+
+#[test]
+fn first_media_hook_does_not_reserve_a_later_siblings_continuation_early() {
+    use surgeist_html::elements::style::HtmlStyleUpdateAction;
+    use surgeist_html::values::Namespace;
+
+    let (mut dom, _host, document) = constructor();
+    let cancel = cancel();
+    let scheduler = dom.bind_media_stable_state(1, &cancel).unwrap();
+    let ordinary_parent = dom
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap_or(document.node());
+    let mut setup = DomBatch::new();
+    let section = setup.create_element_ns(document, Namespace::html(), "section");
+    let audio = setup.create_element_ns(document, Namespace::html(), "audio");
+    setup.insert_before(&section, ordinary_parent, None);
+    setup.insert_before(&audio, &section, None);
+    let section = dom
+        .apply(setup, &cancel)
+        .unwrap()
+        .created(&section)
+        .unwrap()
+        .unwrap();
+    let _associated_style = style_resource(&mut dom, document, section, document.node(), false);
+    let mut setup = DomBatch::new();
+    let video = setup.create_element_ns(document, Namespace::html(), "video");
+    setup.insert_before(&video, section, None);
+    dom.apply(setup, &cancel).unwrap();
+
+    let before = dom.snapshot().stamp();
+    let mut edit = DomBatch::new();
+    edit.detach(section);
+    assert_eq!(
+        dom.apply(edit, &cancel).unwrap_err(),
+        DomError::StyleCompositionRequired(HtmlStyleUpdateAction::RemoveAssociatedSheet)
+    );
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert_eq!(scheduler.next_to_schedule(&dom).unwrap(), None);
+}

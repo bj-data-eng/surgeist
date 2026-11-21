@@ -629,6 +629,7 @@ impl Dom {
                 revision,
                 history,
                 active_task,
+                media_removals,
                 inline_styles,
                 ..
             } = self;
@@ -656,6 +657,7 @@ impl Dom {
                 revision,
                 history,
                 active_task,
+                media_removals,
                 inline_index: Some(index),
                 inline_objects: Some(objects),
             }

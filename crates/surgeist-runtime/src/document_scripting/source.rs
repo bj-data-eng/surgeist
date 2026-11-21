@@ -311,7 +311,7 @@ fn call_guest(
             engine, native, attachment, handler, request, delegated, limits,
         );
         drop(active);
-        engine.settle_engine_cleanup(&attachment.realm);
+        engine.settle_engine_cleanup(native, &attachment.realm);
         return result;
     }
     let pin_bytes = Some(projection::ProjectedComments::pin_bytes());
@@ -442,6 +442,7 @@ fn call_guest(
             }
         };
         execution.in_realm(receiving_realm, |scope| {
+            native.schedule_media_removals(scope)?;
             let handler = scope.import(handler)?;
             let Some(object) = comments.object(key) else {
                 return refuse(
@@ -462,7 +463,7 @@ fn call_guest(
         })
     })();
     drop(active);
-    engine.settle_engine_cleanup(&attachment.realm);
+    engine.settle_engine_cleanup(native, &attachment.realm);
     result
 }
 
@@ -477,6 +478,7 @@ fn call_public_guest(
 ) -> Result<(), Error> {
     let events = engine.guest_events.as_ref().ok_or(Error::ExpiredIdentity)?;
     engine.process.execution().in_realm(&engine.realm, |scope| {
+        native.schedule_media_removals(scope)?;
         let qualified = (|| {
             let mut session = native
                 .session

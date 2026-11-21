@@ -535,6 +535,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::attached_object_listeners_look_up_handle_event_when_invoked();
     super::guest::tests::attached_window_event_follows_the_listener_invocation();
     super::guest::tests::attached_window_event_clears_on_terminal_listener_refusal();
+    super::guest::tests::cancelled_media_job_releases_only_abandoned_guest_custody();
     super::guest::tests::attached_guest_dispatch_restores_the_outer_window_event();
     super::guest::tests::direct_guest_dispatch_preserves_reports_and_object_custody();
     super::guest::tests::nested_guest_reports_keep_observation_order_and_depth();

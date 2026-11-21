@@ -2366,6 +2366,7 @@ fn main() {
         match scenario.as_str() {
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
             "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),
+            "media-removal-stable-state" => standard_window::guest_media_removal_reaches_the_owning_checkpoint(),
             "native-window-relations" => native_window_exposes_canonical_top_level_relations(),
             "native-window-relation-controls" => {
                 native_window_relation_custody_and_collision();
@@ -2454,6 +2455,7 @@ fn main() {
     }
     standard_window::window_without_host_hooks_uses_standard_globals();
     standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal();
+    standard_window::guest_media_removal_reaches_the_owning_checkpoint();
     native_window_exposes_canonical_top_level_relations();
     native_window_relation_custody_and_collision();
     native_window_relation_refusal_retains_the_first_typed_cause();

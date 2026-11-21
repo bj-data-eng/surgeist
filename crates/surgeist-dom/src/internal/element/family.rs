@@ -62,7 +62,7 @@ pub(crate) enum NativeFamily {
     Picture,
     Source,
     Media {
-        initial: surgeist_html::elements::media::HtmlInitialMediaState,
+        state: surgeist_html::elements::media::HtmlUnloadedMediaState,
         automatic_track_selection_performed: bool,
     },
     Hyperlink,
@@ -145,7 +145,7 @@ impl NativeFamily {
             attributes,
             content,
         } = change;
-        if let Self::Media { initial, .. } = self {
+        if let Self::Media { state, .. } = self {
             let resource = if attribute_is(name, KnownHtmlAttribute::Src, budget, cancel)? {
                 Some(KnownHtmlAttribute::Src)
             } else if attribute_is(name, KnownHtmlAttribute::Poster, budget, cancel)? {
@@ -165,7 +165,7 @@ impl NativeFamily {
                         break;
                     }
                 }
-                if let Some(effect) = initial.attribute_resource_effect(
+                if let Some(effect) = state.initial().attribute_resource_effect(
                     resource,
                     value
                         .as_ref()

@@ -2,7 +2,7 @@
 
 pub use crate::internal::elements::canvas::{HtmlCanvasBitmapDimension, HtmlCanvasNoneState};
 pub use crate::internal::elements::media::native::{
-    HtmlInitialMediaState, HtmlMediaResourceEffect,
+    HtmlInitialMediaState, HtmlMediaResourceEffect, HtmlUnloadedMediaState,
 };
 pub use crate::internal::elements::media::{
     HtmlMediaCursorAction, HtmlMediaValue, HtmlMediaValueClass, HtmlMediaValueCursor,

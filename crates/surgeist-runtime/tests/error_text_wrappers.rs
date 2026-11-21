@@ -126,6 +126,12 @@ fn session_creation_failures_name_the_owner_that_refused() {
                 DomSessionCreateFailure::Hosted(DomHostedRuntimeError::Busy),
                 "session creation was refused by the hosted lifecycle owner",
             ),
+            (
+                DomSessionCreateFailure::MediaStableState(
+                    DomError::MediaRemovalStableStateUnavailable,
+                ),
+                "session creation was refused by the media stable-state owner",
+            ),
         ],
         |error| match error {
             DomSessionCreateFailure::Events(_) => 0,
@@ -134,6 +140,7 @@ fn session_creation_failures_name_the_owner_that_refused() {
             DomSessionCreateFailure::Parsed(_) => 3,
             DomSessionCreateFailure::ElementTasks(_) => 4,
             DomSessionCreateFailure::Hosted(_) => 5,
+            DomSessionCreateFailure::MediaStableState(_) => 6,
         },
         |_| true,
         &[],

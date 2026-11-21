@@ -679,10 +679,13 @@ started beforetoggle retains authentic dispatch; cancellation and the next
 required live read keep their distinct outcomes.
 
 At task completion, the native loop checks the canonical checkpoint state.
-Pending Slot work cannot be delivered by this native loop: it retains
-the started task and its delivered-event progress with `CheckpointUnavailable`. An actually empty bank
-can complete the native checkpoint. This does not implement mutation observers,
-JavaScript jobs or Slot delivery.
+Pending Slot work or media removals retain the started task and its delivered
+event progress with `CheckpointUnavailable`. The native Session can run pending
+media continuations through `DomSession::media_checkpoint_step`. An attached
+document script host assigns them to its guest microtask queue before script
+entry resumes. Terminal heap cleanup releases its scheduled continuations
+and preserves native work the heap never scheduled. When the relevant work
+has settled, the native task can finish without dispatching the event again.
 
 The canonical DOM holds a weak binding to the actual task owner. Its live
 storage projection remains part of every applicable Source admission after the

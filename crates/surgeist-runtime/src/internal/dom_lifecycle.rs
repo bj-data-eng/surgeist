@@ -1970,6 +1970,7 @@ impl NativeTaskRunning {
         if snapshot.incomplete_source_operation().is_some()
             || snapshot.incomplete_hosted_operation().is_some()
             || !snapshot.pending_slot_signals().is_empty()
+            || dom.raw().has_pending_media_removals()
         {
             return Err(DomHostedRuntimeError::CheckpointUnavailable);
         }

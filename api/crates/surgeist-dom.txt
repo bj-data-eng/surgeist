@@ -2337,6 +2337,8 @@ pub surgeist_dom::limits::DomResource::InlineStyleStorage
 pub surgeist_dom::limits::DomResource::InlineStyleWork
 pub surgeist_dom::limits::DomResource::InputProcessingScratch
 pub surgeist_dom::limits::DomResource::ManagedNodes
+pub surgeist_dom::limits::DomResource::MediaRemovalContinuations
+pub surgeist_dom::limits::DomResource::MediaRemovalWork
 pub surgeist_dom::limits::DomResource::MetaAtomicOutputs
 pub surgeist_dom::limits::DomResource::MetaAtomicRetainedBytes
 pub surgeist_dom::limits::DomResource::MetaAtomicRetainedUnits
@@ -2453,6 +2455,18 @@ pub fn surgeist_dom::limits::DomUsage::tree_walkers(self) -> usize
 pub fn surgeist_dom::limits::DomUsage::view_transition_pseudos(self) -> usize
 pub fn surgeist_dom::limits::DomUsage::view_transition_records(self) -> usize
 pub fn surgeist_dom::limits::DomUsage::view_transitions(self) -> usize
+pub mod surgeist_dom::media
+pub struct surgeist_dom::media::DomMediaRemoval
+impl surgeist_dom::media::DomMediaRemoval
+pub const fn surgeist_dom::media::DomMediaRemoval::former_document(self) -> surgeist_dom::identity::DocumentId
+pub const fn surgeist_dom::media::DomMediaRemoval::target(self) -> surgeist_dom::identity::NodeId
+pub struct surgeist_dom::media::DomMediaStableState
+impl surgeist_dom::media::DomMediaStableState
+pub fn surgeist_dom::media::DomMediaStableState::discard_scheduled(&self, dom: &mut surgeist_dom::Dom) -> core::result::Result<(), surgeist_dom::DomError>
+pub fn surgeist_dom::media::DomMediaStableState::mark_scheduled(&self, dom: &mut surgeist_dom::Dom, removal: surgeist_dom::media::DomMediaRemoval) -> core::result::Result<(), surgeist_dom::DomError>
+pub fn surgeist_dom::media::DomMediaStableState::next_to_schedule(&self, dom: &surgeist_dom::Dom) -> core::result::Result<core::option::Option<surgeist_dom::media::DomMediaRemoval>, surgeist_dom::DomError>
+pub fn surgeist_dom::media::DomMediaStableState::run_native(&self, dom: &mut surgeist_dom::Dom, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::media::DomMediaRemoval>, surgeist_dom::DomError>
+pub fn surgeist_dom::media::DomMediaStableState::run_scheduled(&self, dom: &mut surgeist_dom::Dom, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::media::DomMediaRemoval>, surgeist_dom::DomError>
 pub mod surgeist_dom::meta
 pub enum surgeist_dom::meta::DomDocumentCspState<'a>
 pub surgeist_dom::meta::DomDocumentCspState::Associated(&'a surgeist_html::internal::security::csp_policy::transition::HtmlCspAssociation)
@@ -3626,6 +3640,7 @@ pub fn surgeist_dom::tree::DomElement::input_state(&self) -> core::option::Optio
 pub fn surgeist_dom::tree::DomElement::keyboard_lock_flag(&self) -> bool
 pub fn surgeist_dom::tree::DomElement::marquee_state(&self) -> core::option::Option<surgeist_html::internal::elements::marquee::HtmlMarqueeState>
 pub fn surgeist_dom::tree::DomElement::media_automatic_track_selection_performed(&self) -> core::option::Option<bool>
+pub fn surgeist_dom::tree::DomElement::media_can_autoplay(&self) -> core::option::Option<bool>
 pub fn surgeist_dom::tree::DomElement::name(&self) -> &surgeist_dom::tree::DomQualifiedName
 pub fn surgeist_dom::tree::DomElement::nonce(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_dom::tree::DomElement::option_state(&self) -> core::option::Option<surgeist_dom::form::select::DomOptionState>
@@ -4397,6 +4412,9 @@ pub fn surgeist_dom::Dom::begin_source_edit_with_inline_styles(&mut self, edit: 
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::bind_element_task_source(&mut self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::task::DomElementTaskSource, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::has_element_task_source(&self) -> bool
+impl surgeist_dom::Dom
+pub fn surgeist_dom::Dom::bind_media_stable_state(&mut self, max_pending: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::media::DomMediaStableState, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::has_pending_media_removals(&self) -> bool
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::bind_name(&mut self, text: &surgeist_html::internal::values::document_string::DocumentString, cancelled: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNameAtom, surgeist_dom::DomError>
 impl surgeist_dom::Dom
