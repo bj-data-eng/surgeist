@@ -258,22 +258,6 @@ impl ElementBindings {
             &element,
             capture,
         )?;
-        super::reflection::install(
-            scope,
-            &html,
-            capture,
-            super::reflection::Receiver::Html,
-            HTML_REFLECTIONS,
-        )?;
-        super::reflection::install_is_content_editable(scope, &html, capture)?;
-        super::reflection::install(
-            scope,
-            &html,
-            capture,
-            super::reflection::Receiver::Html,
-            &[INPUT_MODE_REFLECTION],
-        )?;
-        super::element_mixin::install(scope, &html, capture, super::reflection::Receiver::Html)?;
         let (media_constructor, media) = install_html_constructor(
             scope,
             &global,
@@ -327,79 +311,6 @@ impl ElementBindings {
                 parent,
                 capture,
             )?;
-            match interface {
-                "HTMLBodyElement" => super::body::install(scope, &prototype, capture)?,
-                "HTMLButtonElement" => super::button::install(scope, &prototype, capture)?,
-                "HTMLBRElement" => super::break_elements::install_br(scope, &prototype, capture)?,
-                "HTMLHRElement" => super::break_elements::install_hr(scope, &prototype, capture)?,
-                "HTMLCanvasElement" => super::canvas::install(scope, &prototype, capture)?,
-                "HTMLDataElement" => super::data_time::install_data(scope, &prototype, capture)?,
-                "HTMLDetailsElement" => super::details::install(scope, &prototype, capture)?,
-                "HTMLDialogElement" => super::dialog::install(scope, &prototype, capture)?,
-                "HTMLInputElement" => super::input::install(scope, &prototype, capture)?,
-                "HTMLOptGroupElement" => super::optgroup::install(scope, &prototype, capture)?,
-                "HTMLOutputElement" => super::output::install(scope, &prototype, capture)?,
-                "HTMLOptionElement" => super::select::install_option(scope, &prototype, capture)?,
-                "HTMLSelectElement" => super::select::install_select(scope, &prototype, capture)?,
-                "HTMLTextAreaElement" => super::textarea::install(scope, &prototype, capture)?,
-                "HTMLTimeElement" => super::data_time::install_time(scope, &prototype, capture)?,
-                "HTMLDivElement" => {
-                    super::structural_alignment::install_div(scope, &prototype, capture)?
-                }
-                "HTMLParagraphElement" => {
-                    super::structural_alignment::install_paragraph(scope, &prototype, capture)?
-                }
-                "HTMLHeadingElement" => {
-                    super::structural_alignment::install_heading(scope, &prototype, capture)?
-                }
-                "HTMLDListElement" => {
-                    super::list_compact::install_dlist(scope, &prototype, capture)?
-                }
-                "HTMLDirectoryElement" => {
-                    super::list_compact::install_directory(scope, &prototype, capture)?
-                }
-                "HTMLFieldSetElement" => super::fieldset::install(scope, &prototype, capture)?,
-                "HTMLFontElement" => super::font::install(scope, &prototype, capture)?,
-                "HTMLFormElement" => super::form::install(scope, &prototype, capture)?,
-                "HTMLFrameSetElement" => super::frameset::install(scope, &prototype, capture)?,
-                "HTMLLegendElement" => super::legend::install(scope, &prototype, capture)?,
-                "HTMLMarqueeElement" => super::marquee::install(scope, &prototype, capture)?,
-                "HTMLLIElement" => super::li::install(scope, &prototype, capture)?,
-                "HTMLOListElement" => super::lists::install_ol(scope, &prototype, capture)?,
-                "HTMLUListElement" => super::lists::install_ul(scope, &prototype, capture)?,
-                "HTMLMenuElement" => super::lists::install_menu(scope, &prototype, capture)?,
-                "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
-                "HTMLParamElement" => super::param::install(scope, &prototype, capture)?,
-                "HTMLPreElement" => super::pre::install(scope, &prototype, capture)?,
-                "HTMLProgressElement" => {
-                    super::range_indicator::install_progress(scope, &prototype, capture)?
-                }
-                "HTMLMeterElement" => {
-                    super::range_indicator::install_meter(scope, &prototype, capture)?
-                }
-                "HTMLTableElement" => {
-                    super::table_legacy::TableFamily::Table.install(scope, &prototype, capture)?
-                }
-                "HTMLTableCaptionElement" => {
-                    super::table_legacy::TableFamily::Caption.install(scope, &prototype, capture)?
-                }
-                "HTMLTableSectionElement" => {
-                    super::table_legacy::TableFamily::Section.install(scope, &prototype, capture)?
-                }
-                "HTMLTableRowElement" => {
-                    super::table_legacy::TableFamily::Row.install(scope, &prototype, capture)?
-                }
-                "HTMLTableCellElement" => {
-                    super::table_cell_column::install_cell(scope, &prototype, capture)?
-                }
-                "HTMLTableColElement" => {
-                    super::table_cell_column::install_column(scope, &prototype, capture)?
-                }
-                "HTMLSlotElement" => super::slot::install(scope, &prototype, capture)?,
-                "HTMLTemplateElement" => super::template::install(scope, &prototype, capture)?,
-                "HTMLTitleElement" => super::title::install(scope, &prototype, capture)?,
-                _ => (),
-            }
             let prototype = scope.callback_object(&prototype)?;
             let constructor = scope.callback_object(&constructor)?;
             classes.push(HtmlPrototype {
@@ -904,6 +815,107 @@ fn install_named<'scope>(
     install(scope, global, units, parent_constructor, parent, capture)
 }
 
+fn install_html_members<'scope>(
+    scope: &mut Scope<'scope>,
+    interface: &'static str,
+    constructor: &Value<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    match interface {
+        "HTMLElement" => {
+            super::reflection::install(
+                scope,
+                prototype,
+                capture,
+                super::reflection::Receiver::Html,
+                HTML_REFLECTIONS,
+            )?;
+            super::reflection::install_is_content_editable(scope, prototype, capture)?;
+            super::reflection::install(
+                scope,
+                prototype,
+                capture,
+                super::reflection::Receiver::Html,
+                &[INPUT_MODE_REFLECTION],
+            )?;
+            super::element_mixin::install(
+                scope,
+                prototype,
+                capture,
+                super::reflection::Receiver::Html,
+            )?;
+        }
+        "HTMLMediaElement" => super::media::install(scope, constructor, prototype, capture)?,
+        "HTMLBodyElement" => super::body::install(scope, prototype, capture)?,
+        "HTMLButtonElement" => super::button::install(scope, prototype, capture)?,
+        "HTMLBRElement" => super::break_elements::install_br(scope, prototype, capture)?,
+        "HTMLHRElement" => super::break_elements::install_hr(scope, prototype, capture)?,
+        "HTMLCanvasElement" => super::canvas::install(scope, prototype, capture)?,
+        "HTMLDataElement" => super::data_time::install_data(scope, prototype, capture)?,
+        "HTMLDetailsElement" => super::details::install(scope, prototype, capture)?,
+        "HTMLDialogElement" => super::dialog::install(scope, prototype, capture)?,
+        "HTMLInputElement" => super::input::install(scope, prototype, capture)?,
+        "HTMLOptGroupElement" => super::optgroup::install(scope, prototype, capture)?,
+        "HTMLOutputElement" => super::output::install(scope, prototype, capture)?,
+        "HTMLOptionElement" => super::select::install_option(scope, prototype, capture)?,
+        "HTMLSelectElement" => super::select::install_select(scope, prototype, capture)?,
+        "HTMLTextAreaElement" => super::textarea::install(scope, prototype, capture)?,
+        "HTMLTimeElement" => super::data_time::install_time(scope, prototype, capture)?,
+        "HTMLDivElement" => super::structural_alignment::install_div(scope, prototype, capture)?,
+        "HTMLParagraphElement" => {
+            super::structural_alignment::install_paragraph(scope, prototype, capture)?
+        }
+        "HTMLHeadingElement" => {
+            super::structural_alignment::install_heading(scope, prototype, capture)?
+        }
+        "HTMLDListElement" => super::list_compact::install_dlist(scope, prototype, capture)?,
+        "HTMLDirectoryElement" => {
+            super::list_compact::install_directory(scope, prototype, capture)?
+        }
+        "HTMLFieldSetElement" => super::fieldset::install(scope, prototype, capture)?,
+        "HTMLFontElement" => super::font::install(scope, prototype, capture)?,
+        "HTMLFormElement" => super::form::install(scope, prototype, capture)?,
+        "HTMLFrameSetElement" => super::frameset::install(scope, prototype, capture)?,
+        "HTMLLegendElement" => super::legend::install(scope, prototype, capture)?,
+        "HTMLMarqueeElement" => super::marquee::install(scope, prototype, capture)?,
+        "HTMLLIElement" => super::li::install(scope, prototype, capture)?,
+        "HTMLOListElement" => super::lists::install_ol(scope, prototype, capture)?,
+        "HTMLUListElement" => super::lists::install_ul(scope, prototype, capture)?,
+        "HTMLMenuElement" => super::lists::install_menu(scope, prototype, capture)?,
+        "HTMLMetaElement" => super::meta::install(scope, prototype, capture)?,
+        "HTMLParamElement" => super::param::install(scope, prototype, capture)?,
+        "HTMLPreElement" => super::pre::install(scope, prototype, capture)?,
+        "HTMLProgressElement" => {
+            super::range_indicator::install_progress(scope, prototype, capture)?
+        }
+        "HTMLMeterElement" => super::range_indicator::install_meter(scope, prototype, capture)?,
+        "HTMLTableElement" => {
+            super::table_legacy::TableFamily::Table.install(scope, prototype, capture)?
+        }
+        "HTMLTableCaptionElement" => {
+            super::table_legacy::TableFamily::Caption.install(scope, prototype, capture)?
+        }
+        "HTMLTableSectionElement" => {
+            super::table_legacy::TableFamily::Section.install(scope, prototype, capture)?
+        }
+        "HTMLTableRowElement" => {
+            super::table_legacy::TableFamily::Row.install(scope, prototype, capture)?
+        }
+        "HTMLTableCellElement" => {
+            super::table_cell_column::install_cell(scope, prototype, capture)?
+        }
+        "HTMLTableColElement" => {
+            super::table_cell_column::install_column(scope, prototype, capture)?
+        }
+        "HTMLSlotElement" => super::slot::install(scope, prototype, capture)?,
+        "HTMLTemplateElement" => super::template::install(scope, prototype, capture)?,
+        "HTMLTitleElement" => super::title::install(scope, prototype, capture)?,
+        _ => (),
+    }
+    Ok(())
+}
+
 fn install_html_constructor<'scope>(
     scope: &mut Scope<'scope>,
     global: &Value<'scope>,
@@ -928,10 +940,8 @@ fn install_html_constructor<'scope>(
     );
     let (constructor, prototype) =
         prepare_constructor(scope, units, parent_constructor, parent, &callback)?;
-    if interface == "HTMLMediaElement" {
-        // Web IDL installs the interface's members before its constructor link.
-        super::media::install(scope, &constructor, &prototype, capture)?;
-    }
+    // Web IDL installs the interface's members before its constructor link.
+    install_html_members(scope, interface, &constructor, &prototype, capture)?;
     install_interface(scope, global, units, &constructor, &prototype)?;
     Ok((constructor, prototype))
 }
