@@ -28,7 +28,7 @@ PRIMITIVES = {"undefined", "boolean", "byte", "octet", "short", "unsigned short"
               "long", "unsigned long", "long long", "unsigned long long", "float",
               "unrestricted float", "double", "unrestricted double", "DOMString",
               "USVString", "ByteString", "object", "any"}
-REFLECTED_GETTERS = {"Reflect", "ReflectNonNegative", "ReflectPositiveWithFallback"}
+REFLECTED_GETTERS = {"Reflect", "ReflectURL", "ReflectNonNegative", "ReflectPositiveWithFallback"}
 REFLECTION_ATTRIBUTES = REFLECTED_GETTERS | {"ReflectSetter"}
 ATTRIBUTES = {"Exposed", "Serializable", "SameObject", "NewObject", "CEReactions", "Unscopable",
               "PutForwards", "LegacyNullToEmptyString", "LegacyUnenumerableNamedProperties",
@@ -490,6 +490,8 @@ def render_member(member, names):
         value_type.get("name") if reflection & REFLECTED_GETTERS
         and value_type.get("kind") == "named" and not value_type.get("attributes") else None
     )
+    if "ReflectURL" in reflection:
+        require(reflected_type == "USVString", "ReflectURL requires a USVString attribute")
     if "ReflectNonNegative" in reflection:
         require(reflected_type == "long", "ReflectNonNegative requires a long attribute")
     if "ReflectPositiveWithFallback" in reflection:
@@ -1149,7 +1151,11 @@ def emit_conversions(model, arguments=(), selected_setters=()):
                 if output == "ImportNodeArgument":
                     expression = "ImportNodeArgument::Subtree(" + expression + ")"
             elif kind == "integer":
-                expression = "IntegerValue::" + {"unsigned long": "UnsignedLong"}[arg["type"]["name"]] + "(" + str(default["value"]) + ")"
+                require(argument_type in {"long", "unsigned long"}, "unsupported declared integer default")
+                tag, minimum, maximum = (("Long", -(2**31), 2**31 - 1) if argument_type == "long"
+                                         else ("UnsignedLong", 0, 2**32 - 1))
+                integer(default["value"], "integer argument default", minimum, maximum)
+                expression = "IntegerValue::" + tag + "(" + str(default["value"]) + ")"
             elif kind == "string":
                 if argument_type == "DOMString":
                     expression = "DomString::new(Vec::new())"

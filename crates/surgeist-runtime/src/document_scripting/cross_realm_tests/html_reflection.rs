@@ -85,6 +85,7 @@ pub(super) fn heading_offset_reflects_the_distinct_getter_and_setter_ranges() {
         dom.apply(batch, &AtomicBool::new(false)).unwrap();
     })
     .unwrap();
+    super::super::guest::tests::fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let actual = evaluate(scope, "headingElement.headingOffset === 8 && headingElement.getAttributeNS(null,'headingoffset') === ' +99tail'")?;
         let yes = scope.primitive(Primitive::Boolean(true))?;

@@ -338,6 +338,7 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
     ] {
         expose_public_node_for_source_test(&mut host, &permit, node, name);
     }
+    super::super::guest::tests::fund_guest_operation_after_setup(&host);
     let result = host.in_document(&permit, |scope| {
         let prototype = scope.import(&origin_prototype)?;
         let global = scope.global()?;

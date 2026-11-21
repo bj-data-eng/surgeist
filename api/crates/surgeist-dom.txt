@@ -926,9 +926,12 @@ pub struct surgeist_dom::form::DomInput<'a>
 impl<'a> surgeist_dom::form::DomInput<'a>
 pub fn surgeist_dom::form::DomInput<'a>::explicit_popover_target(self) -> core::option::Option<surgeist_dom::identity::NodeId>
 pub fn surgeist_dom::form::DomInput<'a>::form_owner(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
+pub fn surgeist_dom::form::DomInput<'a>::form_owner_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::form::DomForm<'a>>, E>
 pub fn surgeist_dom::form::DomInput<'a>::id(self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::form::DomInput<'a>::input_type_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::internal::attributes::HtmlInputType, E>
 pub fn surgeist_dom::form::DomInput<'a>::state(self) -> &'a surgeist_dom::form::DomInputState
 pub fn surgeist_dom::form::DomInput<'a>::value(self) -> &'a [u16]
+pub fn surgeist_dom::form::DomInput<'a>::value_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<&'a [u16], E>
 pub struct surgeist_dom::form::DomInputState
 impl surgeist_dom::form::DomInputState
 pub fn surgeist_dom::form::DomInputState::current_value(&self) -> &surgeist_html::internal::values::document_string::DocumentString

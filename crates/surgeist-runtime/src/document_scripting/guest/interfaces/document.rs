@@ -37,6 +37,7 @@ mod form_owner;
 mod fragment;
 mod frameset;
 mod html_document;
+mod input;
 mod legacy;
 mod legend;
 mod li;

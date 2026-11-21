@@ -864,6 +864,16 @@
       "entries": ["HTMLOutputElement"]
     },
     {
+      "id": "HTMLInputElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmlinputelement",
+      "block": 0,
+      "sha256": "a31544c1bd0ebe4b3914e5c6a338293d3f2e8f806c884c3639661e3f19853edc",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlinputelement",
+      "entries": ["HTMLInputElement", "HTMLInputElement.includes.PopoverTargetAttributes"]
+    },
+    {
       "id": "HTMLLegendElement.source",
       "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
       "anchor": "htmllegendelement",
@@ -7502,6 +7512,461 @@
       "inherits": "HTMLElement"
     },
     {
+      "id": "HTMLInputElement",
+      "kind": "interface",
+      "name": "HTMLInputElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLInputElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "accept",
+          "readonly": false,
+          "id": "HTMLInputElement.accept"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "alpha",
+          "readonly": false,
+          "id": "HTMLInputElement.alpha"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "alt",
+          "readonly": false,
+          "id": "HTMLInputElement.alt"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "autocomplete",
+          "readonly": false,
+          "id": "HTMLInputElement.autocomplete"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect", "value": "checked"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "defaultChecked",
+          "readonly": false,
+          "id": "HTMLInputElement.defaultChecked"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "checked",
+          "readonly": false,
+          "id": "HTMLInputElement.checked"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "colorSpace",
+          "readonly": false,
+          "id": "HTMLInputElement.colorSpace"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "dirName",
+          "readonly": false,
+          "id": "HTMLInputElement.dirName"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLInputElement.disabled"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLFormElement"}},
+          "name": "form",
+          "readonly": true,
+          "id": "HTMLInputElement.form"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "FileList"}},
+          "name": "files",
+          "readonly": false,
+          "id": "HTMLInputElement.files"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "USVString"},
+          "name": "formAction",
+          "readonly": false,
+          "id": "HTMLInputElement.formAction"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "formEnctype",
+          "readonly": false,
+          "id": "HTMLInputElement.formEnctype"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "formMethod",
+          "readonly": false,
+          "id": "HTMLInputElement.formMethod"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "formNoValidate",
+          "readonly": false,
+          "id": "HTMLInputElement.formNoValidate"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "formTarget",
+          "readonly": false,
+          "id": "HTMLInputElement.formTarget"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "height",
+          "readonly": false,
+          "id": "HTMLInputElement.height"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "indeterminate",
+          "readonly": false,
+          "id": "HTMLInputElement.indeterminate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLDataListElement"}},
+          "name": "list",
+          "readonly": true,
+          "id": "HTMLInputElement.list"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "max",
+          "readonly": false,
+          "id": "HTMLInputElement.max"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectNonNegative"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "long"},
+          "name": "maxLength",
+          "readonly": false,
+          "id": "HTMLInputElement.maxLength"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "min",
+          "readonly": false,
+          "id": "HTMLInputElement.min"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectNonNegative"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "long"},
+          "name": "minLength",
+          "readonly": false,
+          "id": "HTMLInputElement.minLength"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "multiple",
+          "readonly": false,
+          "id": "HTMLInputElement.multiple"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLInputElement.name"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "pattern",
+          "readonly": false,
+          "id": "HTMLInputElement.pattern"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "placeholder",
+          "readonly": false,
+          "id": "HTMLInputElement.placeholder"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "readOnly",
+          "readonly": false,
+          "id": "HTMLInputElement.readOnly"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "required",
+          "readonly": false,
+          "id": "HTMLInputElement.required"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "size",
+          "readonly": false,
+          "id": "HTMLInputElement.size"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectURL"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "USVString"},
+          "name": "src",
+          "readonly": false,
+          "id": "HTMLInputElement.src"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "step",
+          "readonly": false,
+          "id": "HTMLInputElement.step"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "type",
+          "readonly": false,
+          "id": "HTMLInputElement.type"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect", "value": "value"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "defaultValue",
+          "readonly": false,
+          "id": "HTMLInputElement.defaultValue"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]},
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLInputElement.value"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "object"}},
+          "name": "valueAsDate",
+          "readonly": false,
+          "id": "HTMLInputElement.valueAsDate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unrestricted double"},
+          "name": "valueAsNumber",
+          "readonly": false,
+          "id": "HTMLInputElement.valueAsNumber"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLInputElement.width"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "stepUp",
+          "arguments": [{"name": "n", "type": {"kind": "named", "name": "long"}, "presence": "optional", "default": {"kind": "integer", "value": 1}}],
+          "id": "HTMLInputElement.stepUp:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "stepDown",
+          "arguments": [{"name": "n", "type": {"kind": "named", "name": "long"}, "presence": "optional", "default": {"kind": "integer", "value": 1}}],
+          "id": "HTMLInputElement.stepDown:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "willValidate",
+          "readonly": true,
+          "id": "HTMLInputElement.willValidate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "ValidityState"},
+          "name": "validity",
+          "readonly": true,
+          "id": "HTMLInputElement.validity"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "validationMessage",
+          "readonly": true,
+          "id": "HTMLInputElement.validationMessage"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "checkValidity",
+          "arguments": [],
+          "id": "HTMLInputElement.checkValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "reportValidity",
+          "arguments": [],
+          "id": "HTMLInputElement.reportValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setCustomValidity",
+          "arguments": [{"name": "error", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "id": "HTMLInputElement.setCustomValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "NodeList"}},
+          "name": "labels",
+          "readonly": true,
+          "id": "HTMLInputElement.labels"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "select",
+          "arguments": [],
+          "id": "HTMLInputElement.select:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "unsigned long"}},
+          "name": "selectionStart",
+          "readonly": false,
+          "id": "HTMLInputElement.selectionStart"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "unsigned long"}},
+          "name": "selectionEnd",
+          "readonly": false,
+          "id": "HTMLInputElement.selectionEnd"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "DOMString"}},
+          "name": "selectionDirection",
+          "readonly": false,
+          "id": "HTMLInputElement.selectionDirection"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setRangeText",
+          "arguments": [{"name": "replacement", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "id": "HTMLInputElement.setRangeText:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setRangeText",
+          "arguments": [{"name": "replacement", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}, {"name": "start", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}, {"name": "end", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}, {"name": "selectionMode", "type": {"kind": "named", "name": "SelectionMode"}, "presence": "optional", "default": {"kind": "string", "value": "preserve"}}],
+          "id": "HTMLInputElement.setRangeText:1"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "setSelectionRange",
+          "arguments": [{"name": "start", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}, {"name": "end", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}, {"name": "direction", "type": {"kind": "named", "name": "DOMString"}, "presence": "optional"}],
+          "id": "HTMLInputElement.setSelectionRange:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "showPicker",
+          "arguments": [],
+          "id": "HTMLInputElement.showPicker:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
       "id": "HTMLLegendElement",
       "kind": "interface",
       "name": "HTMLLegendElement",
@@ -9264,6 +9729,7 @@
     {"id": "MathMLElement.includes.HTMLOrSVGOrMathMLElement", "interface": "MathMLElement", "mixin": "HTMLOrSVGOrMathMLElement"},
     {"id": "HTMLBodyElement.includes.WindowEventHandlers", "interface": "HTMLBodyElement", "mixin": "WindowEventHandlers"},
     {"id": "HTMLButtonElement.includes.PopoverTargetAttributes", "interface": "HTMLButtonElement", "mixin": "PopoverTargetAttributes"},
+    {"id": "HTMLInputElement.includes.PopoverTargetAttributes", "interface": "HTMLInputElement", "mixin": "PopoverTargetAttributes"},
     {"id": "HTMLFrameSetElement.includes.WindowEventHandlers", "interface": "HTMLFrameSetElement", "mixin": "WindowEventHandlers"}
   ],
   "externals": [
@@ -9380,6 +9846,20 @@
       "owner": "surgeist-runtime",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#popovertargetattributes",
       "requirement": "Retain the defining mixin and its limited-known-values action. Resolve the scoped live popover target and project the exact nullable Element. Convert the setter's actual nullable Element through DomSourceEdit::set_popover_target_element. Preserve the separate native activation and command dispatch requirements."
+    },
+    {
+      "name": "FileList",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://w3c.github.io/FileAPI/#filelist-section",
+      "requirement": "Retain the source-backed FileList interface and actual File custody, supported indices and wrapper identity for the current Input selection."
+    },
+    {
+      "name": "HTMLDataListElement",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmldatalistelement",
+      "requirement": "Retain the defining interface and its live options collection. Use authentic native DataList identity for Input's nullable list result."
     },
     {
       "name": "RadioNodeList",
@@ -16571,6 +17051,1262 @@
         }
       ],
       "result_view": "live"
+    },
+    "HTMLInputElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlinputelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.accept/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.accept.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input accept reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.accept/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.accept.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input accept reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.alpha/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.alpha.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input alpha reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.alpha/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.alpha.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input alpha reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.alt/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.alt.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input alt reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.alt/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.alt.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input alt reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.autocomplete/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.autocomplete.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/autocomplete.rs", "symbol": "control_autocomplete"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/autocomplete.rs", "symbol": "control_autocomplete_controlled"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Observe the existing Input autofill IDL processing and reached actual type and Form facts under current Source admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the actual autofill IDL value on the branded attached Input.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.autocomplete/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.autocomplete.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired branded Input autocomplete accessor with its raw Source setter.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.defaultChecked/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.defaultchecked.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.defaultChecked/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.defaultchecked.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.checked/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.checked.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/input.rs", "symbol": "read_input_property"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/input.rs", "symbol": "checkedness"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.checked/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.checked.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/input.rs", "symbol": "write_input_property"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_input_checked"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.colorSpace/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.colorspace.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/input_colorspace.rs", "symbol": "input_colorspace_for_input"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the pinned Input colorSpace readback from reached type and current exact content with original admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.colorSpace/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.colorspace.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired Input colorSpace Source setter with its pinned reflection.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.dirName/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.dirname.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.dirName/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.dirname.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.disabled/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.disabled.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.disabled/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.disabled.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.form/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.form.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "form_owner_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/form_owner.rs", "symbol": "read_form_owner"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.files/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.files.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selected_files"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide selected File custody and actual current selection beyond the admitted native empty fact.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-files",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the stable nullable FileList for the actual current Input type and selected Files.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-files",
+          "issue": 2258
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLInputElement.files/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Supply authentic nullable FileList conversion and the canonical selected Files operation, preserving null and inapplicable type behavior.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-files",
+        "issue": 2258
+      }
+    },
+    "HTMLInputElement.formAction/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Resolve the Input's applicable formaction against the current Document URL, base and encoding including the pinned missing and empty behavior.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-formaction",
+        "issue": 2258
+      }
+    },
+    "HTMLInputElement.formAction/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formaction.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired Input URL reflection with its USVString setter through canonical Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-formaction",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.formEnctype/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formenctype.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "form_enctype_override_keyword_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install this branded Input submitter override read from its own exact attribute without applying effective Form settings.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attributes-for-form-submission",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.formEnctype/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formenctype.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired raw DOMString Input override setter through canonical Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attributes-for-form-submission",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.formMethod/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formmethod.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "form_method_override_keyword_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install this branded Input submitter override read from its own exact attribute without applying effective Form settings.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attributes-for-form-submission",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.formMethod/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formmethod.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired raw DOMString Input override setter through canonical Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attributes-for-form-submission",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.formNoValidate/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formnovalidate.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input formNoValidate reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.formNoValidate/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formnovalidate.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input formNoValidate reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.formTarget/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formtarget.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input formTarget reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.formTarget/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.formtarget.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input formTarget reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.height/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.height.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "input_type"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "image_history"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Resolve the reached Input image dimension with current rendering, resource and markup facts, and project the exact IDL unsigned long.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.height/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.height.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired Input dimension setter with unsigned long conversion and canonical Source reflection.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.indeterminate/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.indeterminate.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/input.rs", "symbol": "read_input_property"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/input.rs", "symbol": "indeterminate"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.indeterminate/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.indeterminate.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/input.rs", "symbol": "write_input_property"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_input_indeterminate"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.list/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.list.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "input_suggestions_source"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "input_list_applies"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose native Input suggestions-source resolution with the current Source segment's type, ordinary scope and first ID match.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the exact nullable branded DataList wrapper from the reached association.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.max/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.max.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input max reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.max/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.max.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input max reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.maxLength/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.maxlength.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the pinned Input numeric reflection with its exact read fallback and integer admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.maxLength/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.maxlength.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the typed Input numeric setter with the pinned conversion, range handling and Source reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.min/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.min.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input min reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.min/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.min.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input min reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.minLength/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.minlength.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the pinned Input numeric reflection with its exact read fallback and integer admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.minLength/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.minlength.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the typed Input numeric setter with the pinned conversion, range handling and Source reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.multiple/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.multiple.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.multiple/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.multiple.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.name/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.name.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.name/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.name.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.pattern/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.pattern.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input pattern reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.pattern/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.pattern.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input pattern reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.placeholder/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.placeholder.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.placeholder/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.placeholder.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.readOnly/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.readonly.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.readOnly/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.readonly.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.required/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.required.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.required/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.required.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.size/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.size.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs", "symbol": "parse_nonnegative_integer_capped"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the pinned Input numeric reflection with its exact read fallback and integer admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.size/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.size.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the typed Input numeric setter with the pinned conversion, range handling and Source reactions.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.src/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Resolve the Input src URL under current Document URL, base and encoding with pinned URL reflection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+        "issue": 2258
+      }
+    },
+    "HTMLInputElement.src/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.src.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired Input src URL reflection with exact USVString conversion and canonical Source effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.step/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.step.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input step reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.step/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.step.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the actual branded Input step reflection through exact null-namespace content and Source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.type/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.type.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "input_type_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "HtmlInputType"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.type/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.type.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.defaultValue/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.defaultvalue.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.defaultValue/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.defaultvalue.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.value/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.value.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/input.rs", "symbol": "read_input_property"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "value_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/input.rs", "symbol": "readback"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.value/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.value.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/input.rs", "symbol": "write_input_property"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_input_value"}
+      ],
+      "requirements": []
+    },
+    "HTMLInputElement.valueAsDate/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project the current representation as an authentic nullable ECMAScript Date under the applicable Input type's conversion.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-valueasdate",
+        "issue": 2258
+      }
+    },
+    "HTMLInputElement.valueAsDate/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Convert the Date or null against actual Input type and apply its canonical range, applicability, and native value effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-valueasdate",
+        "issue": 2258
+      }
+    },
+    "HTMLInputElement.valueAsNumber/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project the actual type's numeric conversion or NaN using current native value.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-valueasnumber",
+        "issue": 2258
+      }
+    },
+    "HTMLInputElement.valueAsNumber/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Apply the current Input type's numeric conversion, NaN clearing and pinned exception semantics to the canonical value.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-valueasnumber",
+        "issue": 2258
+      }
+    },
+    "HTMLInputElement.width/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.width.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "input_type"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "image_history"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Resolve the reached Input image dimension with current rendering, resource and markup facts, and project the exact IDL unsigned long.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.width/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.width.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the paired Input dimension setter with unsigned long conversion and canonical Source reflection.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.stepUp:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Apply canonical Input step-up with actual type, allowed step, bounds, current value and original typed refusal.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-stepup",
+        "issue": 1235
+      }
+    },
+    "HTMLInputElement.stepDown:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Apply canonical Input step-down with actual type, allowed step, bounds, current value and original typed refusal.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-stepdown",
+        "issue": 1235
+      }
+    },
+    "HTMLInputElement.willValidate/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.willvalidate.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "constraint_validation_candidate"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the existing Input candidacy calculation in a bounded current Source observation, with reached type, disabled, readonly and ancestry facts.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Authenticate the attached Input and project reached candidacy under the original read admission.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.validity/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.validity.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "custom_validity_message"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project live ValidityState from actual current Input constraints and canonical custom error.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validity",
+          "issue": 1235
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLInputElement.validationMessage/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project the actual Input validation message under reached candidacy and pinned message selection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validationmessage",
+        "issue": 1235
+      }
+    },
+    "HTMLInputElement.checkValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Evaluate actual Input candidacy and constraints and dispatch invalid when reached.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-checkvalidity",
+        "issue": 1235
+      }
+    },
+    "HTMLInputElement.reportValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Evaluate the actual Input constraint result, dispatch invalid and use the reached native validation reporting service.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-reportvalidity",
+        "issue": 1235
+      }
+    },
+    "HTMLInputElement.setCustomValidity:0/call": {
+      "kind": "native",
+      "adapter": "htmlinputelement.setcustomvalidity.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_custom_validity"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Install the branded Input method using the required DOMString and canonical Source custom validity edit.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-setcustomvalidity",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.labels/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.labels.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "control_labels"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the existing Label association and type applicability in tree order through a bounded current Source observation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the same live labels NodeList with exact supported indices when applicable and the pinned null otherwise.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+          "issue": 2480
+        }
+      ],
+      "result_view": "live"
+    },
+    "HTMLInputElement.select:0/call": {
+      "kind": "native",
+      "adapter": "htmlinputelement.select.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the canonical Input select-all Source command over its actual applicable type and selection, with pinned change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.selectionStart/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.selectionstart.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Observe the actual current Input selection start through bounded native read admission, including the pinned null for inapplicable types.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.selectionStart/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.selectionstart.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the native Input selection start setter with actual type qualification, clamping and change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.selectionEnd/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.selectionend.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Observe the actual current Input selection end through bounded native read admission, including the pinned null for inapplicable types.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.selectionEnd/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.selectionend.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the native Input selection end setter with actual type qualification, clamping and change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.selectionDirection/get": {
+      "kind": "native",
+      "adapter": "htmlinputelement.selectiondirection.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Observe the actual current Input selection direction through bounded native read admission, including the pinned null for inapplicable types.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.selectionDirection/set": {
+      "kind": "native",
+      "adapter": "htmlinputelement.selectiondirection.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the native Input selection direction setter with actual type qualification, clamping and change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.setRangeText:0/call": {
+      "kind": "native",
+      "adapter": "htmlinputelement.setrangetext.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the canonical Input range replacement over the actual applicable type and current selection with pinned value and selection changes.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.setRangeText:1/call": {
+      "kind": "native",
+      "adapter": "htmlinputelement.setrangetext.1.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the canonical Input range replacement with explicit endpoints and SelectionMode, pinned refusal and actual value and selection changes.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.setSelectionRange:0/call": {
+      "kind": "native",
+      "adapter": "htmlinputelement.setselectionrange.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "selection"}
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Add the canonical Input set-selection-range Source command with current type, actual bounds, direction and change effects.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 1235
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
+          "issue": 2258
+        }
+      ]
+    },
+    "HTMLInputElement.showPicker:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Drive the actual Input picker with current type, mutability, user activation, relevant origin, and host services.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-showpicker",
+        "issue": 2258
+      }
     },
     "HTMLLegendElement.constructor:0/construct": {
       "kind": "native",
