@@ -153,6 +153,33 @@ class DescriptionTests(unittest.TestCase):
         for path, output in g.generate(self.data).items():
             self.assertEqual(output, path.read_text(encoding="utf-8"))
 
+    def test_option_factory_preserves_omitted_value_without_a_default(self):
+        option = self.definition("HTMLOptionElement")
+        factory = next(a["value"] for a in option["attributes"] if a["name"] == "LegacyFactoryFunction")
+        value = next(argument for argument in factory["arguments"] if argument["name"] == "value")
+        value["default"] = {"kind": "string", "value": ""}
+        self.rejected("source declaration mismatch: HTMLOptionElement.source")
+
+    def test_option_factory_requires_structured_arguments(self):
+        option = self.definition("HTMLOptionElement")
+        factory = next(a["value"] for a in option["attributes"] if a["name"] == "LegacyFactoryFunction")
+        factory["arguments"] = {"text": "DOMString"}
+        self.rejected("arguments must be an array")
+
+    def test_select_indexed_setter_and_option_factory_require_distinct_mappings(self):
+        for key in ("HTMLSelectElement.operation:0/index-set", "HTMLOptionElement.Option/factory"):
+            with self.subTest(key=key):
+                self.setUp()
+                del self.data["access_mappings"][key]
+                self.rejected("indexed setter and legacy factory")
+
+    def test_unnamed_select_indexed_setter_cannot_be_mapped_as_callable(self):
+        mappings = self.data["access_mappings"]
+        mappings["HTMLSelectElement.operation:0/call"] = mappings.pop(
+            "HTMLSelectElement.operation:0/index-set"
+        )
+        self.rejected("indexed setter and legacy factory")
+
     def test_node_filter_legacy_constants_cannot_be_dropped_from_pinned_idl(self):
         # The exact declaration is the artifact contract: even obsolete SHOW
         # constants remain part of the pinned NodeFilter interface object.

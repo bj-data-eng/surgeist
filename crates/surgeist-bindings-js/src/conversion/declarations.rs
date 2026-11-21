@@ -1763,6 +1763,61 @@ pub fn toggle_event_constructor_0_type() -> Argument<Type<DomString>> {
     )
 }
 
+/// Selected argument `HTMLSelectElement.item:0/index` (not overload selection).
+pub fn html_select_element_item_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLSelectElement.item:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLSelectElement.namedItem:0/name` (not overload selection).
+pub fn html_select_element_named_item_0_name() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLSelectElement.namedItem:0/name",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLSelectElement.remove:1/index` (not overload selection).
+pub fn html_select_element_remove_1_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLSelectElement.remove:1/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLSelectElement.operation:0/index` (not overload selection).
+pub fn html_select_element_operation_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLSelectElement.operation:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLSelectElement.setCustomValidity:0/error` (not overload selection).
+pub fn html_select_element_set_custom_validity_0_error() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLSelectElement.setCustomValidity:0/error",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected setter conversion for `CharacterData.data`.
 pub fn character_data_data_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
@@ -1816,4 +1871,14 @@ pub fn document_obsolete_alink_color_setter() -> Type<DomString> {
 /// Selected setter conversion for `Document.obsolete.bgColor`.
 pub fn document_obsolete_bg_color_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLSelectElement.selectedIndex`.
+pub fn html_select_element_selected_index_setter() -> IntegerType {
+    IntegerType::new(IntegerKind::Long, IntegerMode::Wrap)
+}
+
+/// Selected setter conversion for `HTMLOptionElement.selected`.
+pub fn html_option_element_selected_setter() -> Type<bool> {
+    types::BOOLEAN
 }

@@ -598,16 +598,16 @@ pub(in crate::internal::store) struct Change {
     pub previous: bool,
 }
 impl Members {
-    fn get(
+    fn get<E: From<DomError>>(
         &self,
         id: MemberId,
-        step: &mut dyn FnMut() -> Result<(), DomError>,
-    ) -> Result<Link, DomError> {
+        step: &mut dyn FnMut() -> Result<(), E>,
+    ) -> Result<Link, E> {
         step()?;
         self.nodes
             .get_with(id.0, &mut || step())?
             .copied()
-            .ok_or(DomError::StaleNode)
+            .ok_or_else(|| DomError::StaleNode.into())
     }
     fn height(&self, id: Option<MemberId>) -> u8 {
         id.and_then(|id| self.nodes.get(id.0))
@@ -824,6 +824,37 @@ impl Members {
                     .and_then(|id| self.get(id, step).map(|v| v.key))
             })
             .transpose()
+    }
+    /// Find the first matching position in the group's stored order. Stack depth
+    /// follows the balanced member tree, independently of DOM ancestry depth.
+    pub fn position_with<E: From<DomError>, S: FnMut() -> Result<(), E>>(
+        &self,
+        root: RootHeader,
+        step: &mut S,
+        mut matches: impl FnMut(Key, &mut S) -> Result<bool, E>,
+    ) -> Result<Option<usize>, E> {
+        fn scan<E: From<DomError>, S: FnMut() -> Result<(), E>>(
+            members: &Members,
+            id: Option<MemberId>,
+            position: &mut usize,
+            step: &mut S,
+            matches: &mut impl FnMut(Key, &mut S) -> Result<bool, E>,
+        ) -> Result<Option<usize>, E> {
+            let Some(id) = id else { return Ok(None) };
+            let link = members.get(id, step)?;
+            if let Some(found) = scan(members, link.left, position, step, matches)? {
+                return Ok(Some(found));
+            }
+            if matches(link.key, step)? {
+                return Ok(Some(*position));
+            }
+            *position = position
+                .checked_add(1)
+                .ok_or(DomError::RepresentationExhausted)?;
+            scan(members, link.right, position, step, matches)
+        }
+        let mut position = 0;
+        scan(self, root.0, &mut position, step, &mut matches)
     }
     fn contains_by(
         &self,

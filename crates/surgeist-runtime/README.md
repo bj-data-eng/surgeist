@@ -398,6 +398,11 @@ native task ingestion and the attached element-task delivery entry.
 HTMLOptGroupElement reflects its own disabled attribute as presence and its
 label attribute as a raw DOMString. Adding or removing disabled reaches the
 native nearest-select and selectedness reset rules through the Source adapter.
+HTMLSelectElement reflects multiple and exposes selectedIndex in native option
+order, returning −1 for an empty selection. HTMLOptionElement exposes selected
+and index from the current DOM and reflects defaultSelected through the
+selected attribute. Source applies selectedness changes and their native
+selectedcontent effects.
 HTMLOListElement reflects reversed and compact as attribute presence, type as a
 raw DOMString, and start as a signed long with default one for missing, invalid
 or out-of-range content. The start getter remains independent of a reversed

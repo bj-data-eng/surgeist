@@ -879,6 +879,30 @@
       "entries": [
         "Document.obsolete"
       ]
+    },
+    {
+      "id": "HTMLSelectElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmlselectelement",
+      "block": 0,
+      "sha256": "8f0759fe5dae54066d277a70760cf9c4e2f3efdf3e69b723d8a80848c92a6719",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlselectelement",
+      "entries": [
+        "HTMLSelectElement"
+      ]
+    },
+    {
+      "id": "HTMLOptionElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmloptionelement",
+      "block": 0,
+      "sha256": "e1d9e090eebdcc3b700725b152d0c7137de6f77594a0cb0fe668c2d31918c573",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmloptionelement",
+      "entries": [
+        "HTMLOptionElement"
+      ]
     }
   ],
   "declarations": [
@@ -7201,6 +7225,720 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLSelectElement",
+      "kind": "interface",
+      "name": "HTMLSelectElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLSelectElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "autocomplete",
+          "readonly": false,
+          "id": "HTMLSelectElement.autocomplete"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLSelectElement.disabled"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "HTMLFormElement"
+            }
+          },
+          "name": "form",
+          "readonly": true,
+          "id": "HTMLSelectElement.form"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "multiple",
+          "readonly": false,
+          "id": "HTMLSelectElement.multiple"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLSelectElement.name"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "required",
+          "readonly": false,
+          "id": "HTMLSelectElement.required"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            },
+            {
+              "name": "ReflectDefault",
+              "value": 0
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "size",
+          "readonly": false,
+          "id": "HTMLSelectElement.size"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "type",
+          "readonly": true,
+          "id": "HTMLSelectElement.type"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLOptionsCollection"
+          },
+          "name": "options",
+          "readonly": true,
+          "id": "HTMLSelectElement.options"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "length",
+          "readonly": false,
+          "id": "HTMLSelectElement.length"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "HTMLOptionElement"
+            }
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "unsigned long"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "item",
+          "special": "getter",
+          "id": "HTMLSelectElement.item:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "HTMLOptionElement"
+            }
+          },
+          "arguments": [
+            {
+              "name": "name",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "namedItem",
+          "id": "HTMLSelectElement.namedItem:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "element",
+              "type": {
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "named",
+                    "name": "HTMLOptionElement"
+                  },
+                  {
+                    "kind": "named",
+                    "name": "HTMLOptGroupElement"
+                  }
+                ]
+              },
+              "presence": "required"
+            },
+            {
+              "name": "before",
+              "type": {
+                "kind": "nullable",
+                "inner": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "named",
+                      "name": "HTMLElement"
+                    },
+                    {
+                      "kind": "named",
+                      "name": "long"
+                    }
+                  ]
+                }
+              },
+              "presence": "optional",
+              "default": {
+                "kind": "null"
+              }
+            }
+          ],
+          "name": "add",
+          "id": "HTMLSelectElement.add:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [],
+          "name": "remove",
+          "id": "HTMLSelectElement.remove:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "long"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "remove",
+          "id": "HTMLSelectElement.remove:1"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "unsigned long"
+              },
+              "presence": "required"
+            },
+            {
+              "name": "option",
+              "type": {
+                "kind": "nullable",
+                "inner": {
+                  "kind": "named",
+                  "name": "HTMLOptionElement"
+                }
+              },
+              "presence": "required"
+            }
+          ],
+          "special": "setter",
+          "id": "HTMLSelectElement.operation:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLCollection"
+          },
+          "name": "selectedOptions",
+          "readonly": true,
+          "id": "HTMLSelectElement.selectedOptions"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "long"
+          },
+          "name": "selectedIndex",
+          "readonly": false,
+          "id": "HTMLSelectElement.selectedIndex"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLSelectElement.value"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "willValidate",
+          "readonly": true,
+          "id": "HTMLSelectElement.willValidate"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "ValidityState"
+          },
+          "name": "validity",
+          "readonly": true,
+          "id": "HTMLSelectElement.validity"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "validationMessage",
+          "readonly": true,
+          "id": "HTMLSelectElement.validationMessage"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "arguments": [],
+          "name": "checkValidity",
+          "id": "HTMLSelectElement.checkValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "arguments": [],
+          "name": "reportValidity",
+          "id": "HTMLSelectElement.reportValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "error",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "setCustomValidity",
+          "id": "HTMLSelectElement.setCustomValidity:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [],
+          "name": "showPicker",
+          "id": "HTMLSelectElement.showPicker:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "NodeList"
+          },
+          "name": "labels",
+          "readonly": true,
+          "id": "HTMLSelectElement.labels"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLOptionElement",
+      "kind": "interface",
+      "name": "HTMLOptionElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        },
+        {
+          "name": "LegacyFactoryFunction",
+          "value": {
+            "name": "Option",
+            "arguments": [
+              {
+                "name": "text",
+                "type": {
+                  "kind": "named",
+                  "name": "DOMString"
+                },
+                "presence": "optional",
+                "default": {
+                  "kind": "string",
+                  "value": ""
+                }
+              },
+              {
+                "name": "value",
+                "type": {
+                  "kind": "named",
+                  "name": "DOMString"
+                },
+                "presence": "optional"
+              },
+              {
+                "name": "defaultSelected",
+                "type": {
+                  "kind": "named",
+                  "name": "boolean"
+                },
+                "presence": "optional",
+                "default": {
+                  "kind": "boolean",
+                  "value": false
+                }
+              },
+              {
+                "name": "selected",
+                "type": {
+                  "kind": "named",
+                  "name": "boolean"
+                },
+                "presence": "optional",
+                "default": {
+                  "kind": "boolean",
+                  "value": false
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLOptionElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLOptionElement.disabled"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "HTMLFormElement"
+            }
+          },
+          "name": "form",
+          "readonly": true,
+          "id": "HTMLOptionElement.form"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "label",
+          "readonly": false,
+          "id": "HTMLOptionElement.label"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect",
+              "value": "selected"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "defaultSelected",
+          "readonly": false,
+          "id": "HTMLOptionElement.defaultSelected"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "selected",
+          "readonly": false,
+          "id": "HTMLOptionElement.selected"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLOptionElement.value"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "text",
+          "readonly": false,
+          "id": "HTMLOptionElement.text"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "long"
+          },
+          "name": "index",
+          "readonly": true,
+          "id": "HTMLOptionElement.index"
+        }
+      ],
+      "inherits": "HTMLElement"
     }
   ],
   "includes": [
@@ -7297,6 +8035,20 @@
       "requirement": "Source-qualified GlobalEventHandlers definition and its owning native/binding family; not an empty installed interface."
     },
     {
+      "name": "HTMLFormElement",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlformelement",
+      "requirement": "Pinned HTMLFormElement binding and canonical form-owner wrapper projection."
+    },
+    {
+      "name": "HTMLOptionsCollection",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmloptionscollection",
+      "requirement": "Pinned live HTMLOptionsCollection wrapper with canonical option membership and legacy indexed and named properties under #2480."
+    },
+    {
       "name": "HTMLScriptElement",
       "kind": "interface",
       "owner": "surgeist-dom",
@@ -7381,9 +8133,474 @@
       "owner": "surgeist-bindings-js",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlallcollection",
       "requirement": "Source-qualified HTMLAllCollection legacy platform-object behavior and its native collection provider remain prerequisites; this external type is not installed by declaration retention."
+    },
+    {
+      "name": "ValidityState",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#validitystate",
+      "requirement": "Pinned ValidityState binding backed by live native constraint validation."
     }
   ],
   "access_mappings": {
+    "HTMLSelectElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlselectelement.constructor.construct",
+      "producers": [{"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}],
+      "requirements": []
+    },
+    "HTMLSelectElement.autocomplete/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the HTML autofill IDL processing for the select autocomplete getter.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fe-autocomplete"
+      }
+    },
+    "HTMLSelectElement.autocomplete/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the reflected autocomplete setter to the native Source attribute path.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fe-autocomplete"
+      }
+    },
+    "HTMLSelectElement.disabled/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind null-namespace disabled attribute presence on the native Select.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-disabled"
+      }
+    },
+    "HTMLSelectElement.disabled/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind boolean reflection through the native Source attribute path and its Select attribute hooks.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-disabled"
+      }
+    },
+    "HTMLSelectElement.form/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project the actual native form owner through the HTMLFormElement wrapper.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fae-form"
+      }
+    },
+    "HTMLSelectElement.multiple/get": {
+      "kind": "native",
+      "adapter": "htmlselectelement.multiple.get",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "requirements": []
+    },
+    "HTMLSelectElement.multiple/set": {
+      "kind": "native",
+      "adapter": "htmlselectelement.multiple.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/select.rs",
+          "symbol": "select_attribute"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSelectElement.name/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the native null-namespace name content attribute as a reflected DOMString.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-name"
+      }
+    },
+    "HTMLSelectElement.name/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind name reflection through the native Source attribute path.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-name"
+      }
+    },
+    "HTMLSelectElement.required/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind null-namespace required attribute presence on the native Select.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-required"
+      }
+    },
+    "HTMLSelectElement.required/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind boolean reflection through the native Source attribute path and its Select attribute hooks.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-required"
+      }
+    },
+    "HTMLSelectElement.size/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind reflected unsigned long parsing with the declared zero default.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-size"
+      }
+    },
+    "HTMLSelectElement.size/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind unsigned long reflection through the native Source attribute path, including Select reset behavior on attribute changes.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-size"
+      }
+    },
+    "HTMLSelectElement.type/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Project select-multiple or select-one from the current multiple content attribute.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-type"
+      }
+    },
+    "HTMLSelectElement.options/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Provide the same live HTMLOptionsCollection object backed by the canonical Select option list and its legacy platform object behavior.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-options",
+        "issue": 2480
+      },
+      "result_view": "live"
+    },
+    "HTMLSelectElement.length/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Expose the canonical HTMLOptionsCollection length through its Select forwarding binding.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-length",
+        "issue": 2480
+      }
+    },
+    "HTMLSelectElement.length/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Apply the HTMLOptionsCollection length setter through native Source option insertion and removal.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-length",
+        "issue": 2480
+      }
+    },
+    "HTMLSelectElement.item:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Return the canonical Option at the requested index, including the Select object's legacy indexed getter.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-item",
+        "issue": 2480
+      }
+    },
+    "HTMLSelectElement.namedItem:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Apply HTMLOptionsCollection named lookup over the current option list and project the actual Option.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-nameditem",
+        "issue": 2480
+      }
+    },
+    "HTMLSelectElement.add:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Resolve the declared element and before unions, then apply the HTMLOptionsCollection insertion algorithm through native Source.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-add",
+        "issue": 2480
+      }
+    },
+    "HTMLSelectElement.remove:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Install the Select overload dispatcher with the inherited ChildNode detach path for zero arguments.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-remove"
+      }
+    },
+    "HTMLSelectElement.remove:1/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Dispatch the converted indexed overload to the HTMLOptionsCollection native Source removal algorithm.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-remove",
+        "issue": 2480
+      }
+    },
+    "HTMLSelectElement.operation:0/index-set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Provide the legacy Select indexed setter and forward the indexed assignment to the HTMLOptionsCollection native Source algorithm.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-setter",
+        "issue": 2480
+      }
+    },
+    "HTMLSelectElement.selectedOptions/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Provide the same live HTMLCollection over currently selected Options in canonical option-list order, with legacy collection behavior.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-selectedoptions",
+        "issue": 2480
+      },
+      "result_view": "live"
+    },
+    "HTMLSelectElement.selectedIndex/get": {
+      "kind": "native",
+      "adapter": "htmlselectelement.selectedindex.get",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "selected_index_with"}],
+      "requirements": []
+    },
+    "HTMLSelectElement.selectedIndex/set": {
+      "kind": "native",
+      "adapter": "htmlselectelement.selectedindex.set",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_select_selected_index"}],
+      "requirements": []
+    },
+    "HTMLSelectElement.value/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the first selected Option's native value, including HTML option text fallback, or the empty string.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-value"
+      }
+    },
+    "HTMLSelectElement.value/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the existing native set_select_value Source edit and its first-match selectedness and dirtiness effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-value"
+      }
+    },
+    "HTMLSelectElement.willValidate/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the native candidate-for-constraint-validation determination.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate"
+      }
+    },
+    "HTMLSelectElement.validity/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Provide a ValidityState object driven by the native Select's constraint validation.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validity"
+      }
+    },
+    "HTMLSelectElement.validationMessage/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the native Select constraint-validation message.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-validationmessage"
+      }
+    },
+    "HTMLSelectElement.checkValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Run native constraint validation and dispatch the invalid event when required.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-checkvalidity"
+      }
+    },
+    "HTMLSelectElement.reportValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Run native constraint validation and report uncanceled failures through the host presentation path.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-reportvalidity"
+      }
+    },
+    "HTMLSelectElement.setCustomValidity:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind the converted error string to the native Select custom validity message.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-setcustomvalidity"
+      }
+    },
+    "HTMLSelectElement.showPicker:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Apply the native picker eligibility and activation steps before invoking the actual host picker.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-showpicker"
+      }
+    },
+    "HTMLSelectElement.labels/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-bindings-js",
+        "contract": "Provide the live NodeList of the Select's associated labels and its legacy indexed behavior.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
+        "issue": 2480
+      },
+      "result_view": "live"
+    },
+    "HTMLOptionElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmloptionelement.constructor.construct",
+      "producers": [{"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}],
+      "requirements": []
+    },
+    "HTMLOptionElement.disabled/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind reflected disabled attribute presence, independently of the Option's effective disabledness.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-disabled"
+      }
+    },
+    "HTMLOptionElement.disabled/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind boolean reflection through native Source so disabledness dependencies update.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-disabled"
+      }
+    },
+    "HTMLOptionElement.form/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Resolve the associated Select's actual form owner and project its HTMLFormElement wrapper.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-form"
+      }
+    },
+    "HTMLOptionElement.label/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Apply the HTML label getter's content attribute and native option-text fallback.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-label"
+      }
+    },
+    "HTMLOptionElement.label/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind label reflection through native Source.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-label"
+      }
+    },
+    "HTMLOptionElement.defaultSelected/get": {
+      "kind": "native",
+      "adapter": "htmloptionelement.defaultselected.get",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "requirements": []
+    },
+    "HTMLOptionElement.defaultSelected/set": {
+      "kind": "native",
+      "adapter": "htmloptionelement.defaultselected.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/select.rs",
+          "symbol": "select_attribute"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOptionElement.selected/get": {
+      "kind": "native",
+      "adapter": "htmloptionelement.selected.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "option_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/control_values.rs",
+          "symbol": "selectedness"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOptionElement.selected/set": {
+      "kind": "native",
+      "adapter": "htmloptionelement.selected.set",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_option_selected"}],
+      "requirements": []
+    },
+    "HTMLOptionElement.value/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the value content attribute or the HTML option-text fallback through an admitted native read.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
+      }
+    },
+    "HTMLOptionElement.value/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Bind value reflection through native Source.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
+      }
+    },
+    "HTMLOptionElement.text/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the native HTML option-text collection and whitespace processing through an admitted read.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-text"
+      }
+    },
+    "HTMLOptionElement.text/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Replace the Option's children through native Source using the converted text.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-text"
+      }
+    },
+    "HTMLOptionElement.index/get": {
+      "kind": "native",
+      "adapter": "htmloptionelement.index.get",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "index_with"}],
+      "requirements": []
+    },
+    "HTMLOptionElement.Option/factory": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Install the Window legacy Option factory with its own defaults and omission handling, constructing the actual native Option and initializing its text, value, default selection, and live selectedness.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option"
+      }
+    },
     "TreeWalker.root/get": {
       "kind": "native",
       "adapter": "treewalker.root.get",
