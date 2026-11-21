@@ -5,7 +5,9 @@ use super::{
     text::TextBuffer,
     *,
 };
-use surgeist_bindings_js::conversion::types::DOM_STRING;
+use surgeist_bindings_js::conversion::{
+    ArgumentValue, declarations::html_dialog_element_close_0_return_value, types::DOM_STRING,
+};
 use surgeist_dom::source::DomSourceEdit;
 
 const OPEN: reflection::Member = (
@@ -55,10 +57,85 @@ pub(super) fn install<'scope>(
             configurable: true,
         },
     )?;
-    reflection::install(scope, prototype, capture, Receiver::Dialog, &[CLOSED_BY])
+    reflection::install(scope, prototype, capture, Receiver::Dialog, &[CLOSED_BY])?;
+    let close = capture(size_of::<Capture>())?;
+    let name = &ascii(b"close");
+    let callable = scope.bounded_function(
+        &Callback::new(move |scope, arguments| close.dialog_close(scope, arguments)),
+        FunctionMetadata { name, length: 0 },
+        1,
+    )?;
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::String(name),
+        &callable,
+        true,
+        true,
+        true,
+    )?;
+    Ok(())
 }
 
 impl Capture {
+    fn dialog_close<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let receiver = Receiver::Dialog;
+        let Some(GuestNode::Element(id)) = tree::projected_node(scope, arguments.receiver())?
+        else {
+            return Ok(Completion::Throw(
+                scope.type_error(receiver.error_message())?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            events.step()?;
+            let matches_receiver = || {
+                self.callbacks.with_read(&owner, &events, |read, _| {
+                    receiver.matches(read.node(id)?, || read.step())
+                })
+            };
+            if !matches_receiver()? {
+                return Ok(Completion::Throw(
+                    scope.type_error(receiver.error_message())?,
+                ));
+            }
+            let descriptor = html_dialog_element_close_0_return_value();
+            let converted = self
+                .callbacks
+                .conversion
+                .run(scope, |conversion| {
+                    conversion.argument(&descriptor, arguments.get(descriptor.index()))
+                })
+                .map_err(Error::from)?;
+            scope.check_active()?;
+            if !matches_receiver()? {
+                return Ok(Completion::Throw(
+                    scope.type_error(receiver.error_message())?,
+                ));
+            }
+            let (value, _backing) = match converted.get() {
+                ArgumentValue::Missing => (None, None),
+                ArgumentValue::Present(value) => {
+                    let (value, backing) =
+                        copy_native_data(&owner, &events, value.as_code_units())?;
+                    (Some(value), Some(backing))
+                }
+            };
+            self.apply_tree_edit(
+                scope,
+                &owner,
+                &events,
+                DomSourceEdit::close_dialog(id, value),
+                Completion::Undefined,
+            )
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
     fn dialog_return_value<'scope>(
         &self,
         scope: &mut Scope<'scope>,

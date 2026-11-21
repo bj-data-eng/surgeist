@@ -1777,7 +1777,7 @@ fn read_child_count<'scope>(
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let status = match native.active_event_request() {
-            Some(request) => native.qualify_event(attachment, &mut session, &request)?,
+            Some(request) => native.qualify_callback_event(attachment, &mut session, &request)?,
             None => native.observe(attachment, &mut session)?.status(),
         };
         if status != HtmlScriptingStatus::Enabled {

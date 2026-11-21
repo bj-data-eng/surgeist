@@ -509,7 +509,7 @@ class DescriptionTests(unittest.TestCase):
         self.member("HTMLMarqueeElement.scrollAmount")["attributes"][-1]["value"] = 0
         self.rejected("source declaration mismatch: HTMLMarqueeElement.source")
 
-    def test_dialog_state_and_uninstalled_methods_preserve_the_primary_declaration(self):
+    def test_dialog_state_and_native_methods_preserve_the_primary_declaration(self):
         dialog = self.definition("HTMLDialogElement")
         self.assertEqual(dialog["inherits"], "HTMLElement")
         constructor, opened, value, closed_by, *methods = dialog["members"]
@@ -533,7 +533,13 @@ class DescriptionTests(unittest.TestCase):
                 else:
                     self.assertFalse(arguments)
                 mapping = self.data["access_mappings"][method["id"] + "/call"]
-                self.assertEqual({entry["issue"] for entry in mapping["requirements"]}, {3044, 1225})
+                issues = {entry["issue"] for entry in mapping["requirements"]}
+                if method["name"] == "close":
+                    self.assertEqual(issues, {1225})
+                    self.assertEqual({producer["symbol"] for producer in mapping["producers"]},
+                                     {"close_dialog", "dialog_close", "service_guest_source_event"})
+                else:
+                    self.assertEqual(issues, {2258, 1225})
         closed_by["attributes"][-1]["name"] = "Reflect"
         self.rejected("source declaration mismatch: HTMLDialogElement.source")
 

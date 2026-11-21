@@ -6,7 +6,7 @@ use crate::{
     internal::dom_source::DomSourceRuntimeError,
 };
 use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
-use surgeist_dom::source::{DomSourceEdit, DomSourceStatus};
+use surgeist_dom::source::{DomSourceEdit, DomSourceRequest, DomSourceStatus};
 
 mod clone;
 mod comparison;
@@ -359,8 +359,8 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        result: Result<DomSourceDriveProgress, DomSourceDriveError>,
-        (parent, pending): (
+        mut result: Result<DomSourceDriveProgress, DomSourceDriveError>,
+        (parent, mut pending): (
             Option<surgeist_dom::source::DomSourceOperationId>,
             Option<DomSourceStatus>,
         ),
@@ -374,6 +374,43 @@ impl Capture {
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         owner.schedule_media_removals(scope)?;
+        let limits = events.limits.source_edits;
+        while let Ok(DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(request),
+            ..
+        }) = &result
+        {
+            let operation = request.operation();
+            if Some(operation) == parent {
+                return Err(DocumentGuestEventError::SourcePending(operation));
+            }
+            events.service_guest_source_event(owner, scope, request)?;
+            result = {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                session.source_execution().resume(
+                    &mut session.dom(),
+                    operation,
+                    limits,
+                    &mut guest_source_services(&mut |_| None),
+                    &owner.cancellation,
+                )
+            };
+            owner.finish_guest_tree_policies(
+                &mut result,
+                limits,
+                scope.realm_authority()?.identity(),
+            )?;
+            owner.schedule_media_removals(scope)?;
+            pending = owner
+                .session
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?
+                .read_dom()
+                .pending_source_edit();
+        }
         match result.map(guest_source_terminal) {
             Ok(Some(Ok(done))) => {
                 let reactions = self.drain_native_reactions(scope, owner, events, done.operation());

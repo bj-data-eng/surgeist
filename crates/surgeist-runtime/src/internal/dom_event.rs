@@ -1151,6 +1151,11 @@ impl<C> DomEventDispatcher<C> {
         matches!(self.association, RegistryAssociation::Bound(_))
     }
     #[cfg(feature = "document-scripting")]
+    pub(crate) fn registry_identity(&self) -> u64 {
+        self.owner.id
+    }
+
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn qualify_guest_registry(
         &self,
         dom: &DomEventDom<'_>,

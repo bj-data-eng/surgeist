@@ -372,10 +372,24 @@ impl DomSourceRuntime {
     }
 
     #[cfg(feature = "document-scripting")]
+    pub(crate) fn has_started_attached_event(
+        &self,
+        request: &surgeist_dom::event::DomSourceEventRequest,
+        document: surgeist_dom::identity::DocumentId,
+        dispatcher: &DomEventDispatcher<()>,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomSourceRuntimeError> {
+        self.events
+            .has_started_attached_event(request, document, dispatcher, cancel)
+            .map_err(DomSourceRuntimeError::SourceEvent)
+    }
+
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn service_attached_event(
         &self,
         dom: &mut DomEventDom<'_>,
         request: &surgeist_dom::event::DomSourceEventRequest,
+        document: surgeist_dom::identity::DocumentId,
         dispatcher: &mut DomEventDispatcher<()>,
         (limits, usage): (
             DomSourceEventServiceLimits,
@@ -393,6 +407,7 @@ impl DomSourceRuntime {
                     limits,
                     crate::internal::dom_event::DispatchHost::AttachedNative,
                     usage,
+                    Some(document),
                 ),
                 cancel,
             )

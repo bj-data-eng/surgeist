@@ -22,7 +22,7 @@ use surgeist_dom::{
         DomSourceEventOutcome, DomSourceEventPublication, DomSourceEventRequest,
         DomSourceEventRetention,
     },
-    identity::DomOwnerId,
+    identity::{DocumentId, DomOwnerId},
     source::DomSourceLimits,
 };
 
@@ -165,7 +165,16 @@ enum Phase {
         publication: Option<DomSourceEventPublication>,
     },
 }
+#[cfg(feature = "document-scripting")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct AttachedDispatch {
+    document: DocumentId,
+    registry: u64,
+}
+
 struct Job {
+    #[cfg(feature = "document-scripting")]
+    attached: Option<AttachedDispatch>,
     next: Option<Rc<RefCell<Job>>>,
     request: DomSourceEventRequest,
     event: EventInvocationOwner,
@@ -326,6 +335,8 @@ impl State {
             dom.source_event_time(request)?,
         );
         let job = Rc::new(RefCell::new(Job {
+            #[cfg(feature = "document-scripting")]
+            attached: None,
             next: None,
             request: request.clone(),
             event: match request.kind() {
@@ -602,6 +613,37 @@ impl SourceEventRuntime {
             .raise_source_event_limits(request, limits, cancel)?;
         Ok(())
     }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn has_started_attached_event<C>(
+        &self,
+        request: &DomSourceEventRequest,
+        document: DocumentId,
+        dispatcher: &DomEventDispatcher<C>,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomSourceEventRuntimeError> {
+        let original = self
+            .state
+            .upgrade()
+            .ok_or(DomSourceEventRuntimeError::ExpiredOwner)?;
+        let mut state = original
+            .try_borrow_mut()
+            .map_err(|_| DomSourceEventRuntimeError::Busy)?;
+        if state.owner != document.node().owner() {
+            return Err(DomSourceEventRuntimeError::ForeignOwner);
+        }
+        let authority = AttachedDispatch {
+            document,
+            registry: dispatcher.registry_identity(),
+        };
+        Ok(state
+            .find(request.identity(), cancel)?
+            .job
+            .is_some_and(|job| {
+                let row = job.borrow();
+                row.attached == Some(authority) && row.event.has_started()
+            }))
+    }
+
     pub(crate) fn service_event<C>(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -616,7 +658,12 @@ impl SourceEventRuntime {
             request,
             dispatcher,
             context,
-            (limits, DispatchHost::Source, &mut DispatchUsage::default()),
+            (
+                limits,
+                DispatchHost::Source,
+                &mut DispatchUsage::default(),
+                None,
+            ),
             cancel,
         )
     }
@@ -627,10 +674,11 @@ impl SourceEventRuntime {
         request: &DomSourceEventRequest,
         dispatcher: &mut DomEventDispatcher<C>,
         context: &mut C,
-        (limits, host, usage): (
+        (limits, host, usage, _attached_document): (
             DomSourceEventServiceLimits,
             DispatchHost,
             &mut DispatchUsage,
+            Option<DocumentId>,
         ),
         cancel: &AtomicBool,
     ) -> Result<DomSourceEventServiceProgress, DomSourceEventRuntimeError> {
@@ -650,6 +698,26 @@ impl SourceEventRuntime {
         let job = original
             .borrow_mut()
             .job(dom.raw(), request, cancel, self.storage.clone())?;
+        #[cfg(feature = "document-scripting")]
+        let new_attachment = {
+            let row = job.borrow();
+            let registry = dispatcher.registry_identity();
+            let attached =
+                _attached_document.map(|document| AttachedDispatch { document, registry });
+            if let Some(previous) = row.attached
+                && (previous.registry != registry
+                    || attached.is_some_and(|attempt| attempt != previous))
+            {
+                return Err(DomSourceEventRuntimeError::Dispatch(
+                    DomEventDispatchError::WrongContinuation,
+                ));
+            }
+            if row.event.has_started() {
+                None
+            } else {
+                attached
+            }
+        };
         let delivered = matches!(job.borrow().phase, Phase::Delivered { .. });
         if !delivered {
             let (event, scope, funding) = {
@@ -700,20 +768,28 @@ impl SourceEventRuntime {
                 let scope = state.executor.enter_dispatch(dom.raw(), permit, cancel)?;
                 (row.event.dispatch_observation(), scope, funding)
             };
-            let outcome = dispatcher
-                .deliver_with_usage(
-                    dom.raw_mut(),
-                    context,
-                    &event,
-                    DispatchCall {
-                        limits: limits.dispatch,
-                        cancel,
-                        host,
-                        funding,
-                    },
-                    usage,
-                )
-                .map_err(DomSourceEventRuntimeError::Dispatch)?;
+            let delivery = dispatcher.deliver_with_usage(
+                dom.raw_mut(),
+                context,
+                &event,
+                DispatchCall {
+                    limits: limits.dispatch,
+                    cancel,
+                    host,
+                    funding,
+                },
+                usage,
+            );
+            #[cfg(feature = "document-scripting")]
+            if let Some(authority) = new_attachment {
+                let mut row = job.borrow_mut();
+                // A permit may exist before native path admission. Retain
+                // the attachment only after this dispatcher actually starts.
+                if row.event.has_started() {
+                    row.attached = Some(authority);
+                }
+            }
+            let outcome = delivery.map_err(DomSourceEventRuntimeError::Dispatch)?;
             if let DomEventDispatchOutcome::HostInvocation(invocation) = &outcome {
                 invocation
                     .retain_source_scope(scope)
