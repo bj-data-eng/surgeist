@@ -443,6 +443,22 @@ class DescriptionTests(unittest.TestCase):
         include["mixin"] = "GlobalEventHandlers"
         self.rejected("source declaration mismatch: HTMLFrameSetElement.source")
 
+    def test_legend_keeps_readonly_nullable_form_and_plain_alignment(self):
+        legend = self.definition("HTMLLegendElement")
+        self.assertEqual(legend["inherits"], "HTMLElement")
+        self.assertEqual([member["id"] for member in legend["members"]],
+                         ["HTMLLegendElement.constructor:0", "HTMLLegendElement.form"])
+        form = self.member("HTMLLegendElement.form")
+        self.assertTrue(form["readonly"])
+        self.assertEqual(form["type"],
+                         {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLFormElement"}})
+        align = self.member("HTMLLegendElement.obsolete.align")
+        self.assertEqual(align["attributes"], [{"name": "CEReactions"}, {"name": "Reflect"}])
+        self.assertEqual(g.conversion_type(align["type"], g.lower_values(self.data)),
+                         ("DomString", "Type<DomString>", "types::DOM_STRING"))
+        form["type"] = form["type"]["inner"]
+        self.rejected("source declaration mismatch: HTMLLegendElement.source")
+
     def test_selected_pi_constructor_and_factory_are_both_described(self):
         pi = self.member("ProcessingInstruction.constructor:0")
         self.assertEqual(pi["arguments"][0]["name"], "target")

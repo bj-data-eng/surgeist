@@ -397,6 +397,48 @@ impl<'a> DomNode<'a> {
             .and_then(DomElement::fieldset_state)
             .map(|_| crate::internal::fieldset::DomFieldset { node: self })
     }
+    /// Read the stored Form owner of this node's immediate ordinary Fieldset parent.
+    ///
+    /// Other parents and missing associations yield `None`. The result belongs
+    /// to this published snapshot, including during an unfinished Source edit.
+    /// A live caller qualifies its access to that segment. `step` admits the
+    /// parent relation, Fieldset classification, stored association and reached lookups.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first admission or lookup failure, or
+    /// [`DomError::WrongNodeKind`] if a stored owner is not a native Form.
+    pub fn fieldset_parent_form_owner_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<crate::internal::form::DomForm<'a>>, E> {
+        step()?;
+        let Some(parent) = self.ordinary_parent_element(&mut step)? else {
+            return Ok(None);
+        };
+        step()?;
+        let Some(fieldset) = parent.as_fieldset() else {
+            return Ok(None);
+        };
+        fieldset.node.stored_form_owner_with(step)
+    }
+
+    pub(crate) fn stored_form_owner_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<crate::internal::form::DomForm<'a>>, E> {
+        step()?;
+        self.node
+            .control_owner()
+            .map(|owner| {
+                self.snapshot
+                    .node_with(owner, &mut step)?
+                    .as_form()
+                    .ok_or_else(|| DomError::WrongNodeKind.into())
+            })
+            .transpose()
+    }
+
     pub fn as_button(self) -> Option<crate::internal::button::DomButton<'a>> {
         self.as_element()
             .and_then(DomElement::button_state)

@@ -794,6 +794,26 @@
       "entries": ["HTMLFrameSetElement", "HTMLFrameSetElement.includes.WindowEventHandlers"]
     },
     {
+      "id": "HTMLLegendElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmllegendelement",
+      "block": 0,
+      "sha256": "e619702cd058619bdfe5727f5b792405c11b2c70dbf008907563e9765fb1cfd6",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllegendelement",
+      "entries": ["HTMLLegendElement"]
+    },
+    {
+      "id": "HTMLLegendElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLLegendElement&#45;partial",
+      "block": 0,
+      "sha256": "05017c301c61bb5771241f336a60de81655738e3fe59998055df82fb9056e003",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLegendElement-partial",
+      "entries": ["HTMLLegendElement.obsolete"]
+    },
+    {
       "id": "ElementContentEditable.source",
       "path": "references/html-editability--877d6146487f.md",
       "anchor": "",
@@ -6747,6 +6767,46 @@
       "inherits": "HTMLElement"
     },
     {
+      "id": "HTMLLegendElement",
+      "kind": "interface",
+      "name": "HTMLLegendElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLLegendElement.constructor:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "HTMLFormElement"}},
+          "name": "form",
+          "readonly": true,
+          "id": "HTMLLegendElement.form"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLLegendElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLLegendElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLLegendElement.obsolete.align"
+        }
+      ],
+      "partial": true
+    },
+    {
       "id": "ElementContentEditable",
       "kind": "mixin",
       "name": "ElementContentEditable",
@@ -8294,7 +8354,7 @@
       "adapter": "htmlselectelement.form.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "form_owner_with"},
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/select/form.rs", "symbol": "read_select_family_form"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/form_owner.rs", "symbol": "read_form_owner"}
       ],
       "requirements": []
     },
@@ -8594,7 +8654,7 @@
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/select.rs", "symbol": "form_owner_with"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/select.rs", "symbol": "nearest_option_select_with"},
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/select/form.rs", "symbol": "read_select_family_form"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/form_owner.rs", "symbol": "read_form_owner"}
       ],
       "requirements": []
     },
@@ -14285,6 +14345,38 @@
     "HTMLFrameSetElement.rows/set": {
       "kind": "native",
       "adapter": "htmlframesetelement.rows.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLLegendElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmllegendelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLLegendElement.form/get": {
+      "kind": "native",
+      "adapter": "htmllegendelement.form.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "fieldset_parent_form_owner_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLLegendElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmllegendelement.obsolete.align.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLLegendElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmllegendelement.obsolete.align.set",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],

@@ -347,6 +347,7 @@ impl ElementBindings {
                 }
                 "HTMLFontElement" => super::font::install(scope, &prototype, capture)?,
                 "HTMLFrameSetElement" => super::frameset::install(scope, &prototype, capture)?,
+                "HTMLLegendElement" => super::legend::install(scope, &prototype, capture)?,
                 "HTMLLIElement" => super::li::install(scope, &prototype, capture)?,
                 "HTMLOListElement" => super::lists::install_ol(scope, &prototype, capture)?,
                 "HTMLUListElement" => super::lists::install_ul(scope, &prototype, capture)?,

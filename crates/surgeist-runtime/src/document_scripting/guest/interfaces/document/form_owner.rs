@@ -1,18 +1,20 @@
-//! Select and Option form owners from the canonical published DOM segment.
+//! Control and Legend form observations from the published DOM segment.
 
-use super::super::{reflection::Receiver, *};
+use super::{reflection::Receiver, *};
 
 #[derive(Clone, Copy)]
-pub(super) enum FormControl {
+pub(super) enum FormOwnerGetter {
     Select,
     Option,
+    Legend,
 }
 
-impl FormControl {
+impl FormOwnerGetter {
     fn receiver(self) -> Receiver {
         match self {
             Self::Select => Receiver::Select,
             Self::Option => Receiver::Option,
+            Self::Legend => Receiver::Legend,
         }
     }
 }
@@ -21,30 +23,28 @@ pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
-    control: FormControl,
+    member: FormOwnerGetter,
 ) -> Result<(), DocumentGuestEventError> {
-    let get = capture(size_of::<(Capture, FormControl)>())?;
+    let get = capture(size_of::<(Capture, FormOwnerGetter)>())?;
     install_getter(
         scope,
         prototype,
         &ascii(b"form"),
         &ascii(b"get form"),
         true,
-        Callback::new(move |scope, arguments| {
-            get.read_select_family_form(scope, arguments, control)
-        }),
+        Callback::new(move |scope, arguments| get.read_form_owner(scope, arguments, member)),
     )?;
     Ok(())
 }
 
 impl Capture {
-    fn read_select_family_form<'scope>(
+    fn read_form_owner<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
-        control: FormControl,
+        member: FormOwnerGetter,
     ) -> Result<Completion<'scope>, Error> {
-        let receiver = control.receiver();
+        let receiver = member.receiver();
         let Some(GuestNode::Element(id)) = tree::projected_node(scope, arguments.receiver())?
         else {
             return Ok(Completion::Throw(
@@ -58,15 +58,18 @@ impl Capture {
                 if !receiver.matches(node, || read.step())? {
                     return Ok(None);
                 }
-                let owner = match control {
-                    FormControl::Select => node
+                let owner = match member {
+                    FormOwnerGetter::Select => node
                         .as_select()
                         .ok_or(DomError::WrongNodeKind)?
                         .form_owner_with(|| read.step())?,
-                    FormControl::Option => node
+                    FormOwnerGetter::Option => node
                         .as_option()
                         .ok_or(DomError::WrongNodeKind)?
                         .form_owner_with(|| read.step())?,
+                    FormOwnerGetter::Legend => {
+                        node.fieldset_parent_form_owner_with(|| read.step())?
+                    }
                 };
                 Ok(Some(owner.map(|form| form.id())))
             })?;

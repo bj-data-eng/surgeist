@@ -62,20 +62,9 @@ impl<'a> DomSelect<'a> {
     /// caller must separately qualify access to the current segment.
     pub fn form_owner_with<E: From<DomError>>(
         self,
-        mut step: impl FnMut() -> Result<(), E>,
+        step: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<DomForm<'a>>, E> {
-        step()?;
-        self.node
-            .node
-            .control_owner()
-            .map(|owner| {
-                self.node
-                    .snapshot
-                    .node_with(owner, &mut step)?
-                    .as_form()
-                    .ok_or_else(|| DomError::WrongNodeKind.into())
-            })
-            .transpose()
+        self.node.stored_form_owner_with(step)
     }
     /// Read the first selected Option's zero-based position in the canonical option list.
     ///
