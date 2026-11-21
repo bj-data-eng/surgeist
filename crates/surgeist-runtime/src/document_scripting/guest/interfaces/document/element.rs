@@ -76,6 +76,13 @@ const HTML_REFLECTIONS: &[super::reflection::Member] = &[
         super::reflection::Reflection::String,
     ),
     (
+        &ascii(b"translate"),
+        &ascii(b"get translate"),
+        &ascii(b"set translate"),
+        &ascii(b"translate"),
+        super::reflection::Reflection::Translate,
+    ),
+    (
         &ascii(b"dir"),
         &ascii(b"get dir"),
         &ascii(b"set dir"),

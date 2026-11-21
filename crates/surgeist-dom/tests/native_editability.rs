@@ -81,7 +81,7 @@ use surgeist_dom::{
     capture::DomHtmlCapture,
     identity::{DocumentId, NodeId},
 };
-use surgeist_html_semantics::HtmlSemanticMissing;
+use surgeist_html_semantics::{HtmlSemanticMissing, HtmlTranslationMode};
 
 fn owner() -> Dom {
     Dom::new(
@@ -100,6 +100,65 @@ fn owner() -> Dom {
     )
     .unwrap()
 }
+
+#[test]
+fn native_translation_mode_follows_ordinary_elements_and_reopens_current_state() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "section");
+    let foreign = batch.create_element_ns(&document, Namespace::svg(), "g");
+    let child = batch.create_element_ns(&document, Namespace::html(), "span");
+    batch.set_attribute(&root, "translate", "NO");
+    batch.set_attribute(&foreign, "translate", "yes");
+    batch.set_attribute(&child, "translate", " no");
+    batch.insert_before(&root, &document, None);
+    batch.insert_before(&foreign, &root, None);
+    batch.insert_before(&child, &foreign, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let document = commit.document(&document).unwrap();
+    let child = commit.created(&child).unwrap().unwrap();
+    let foreign = commit.created(&foreign).unwrap().unwrap();
+    let old = dom.snapshot();
+    let mode = |snapshot: &DomSnapshot, node| {
+        snapshot.html_translation_mode_with(node, || Ok::<_, DomError>(()))
+    };
+    assert_eq!(mode(&old, child), Ok(HtmlTranslationMode::Disabled));
+    assert_eq!(mode(&old, foreign), Ok(HtmlTranslationMode::Disabled));
+    assert_eq!(mode(&old, document.node()), Err(DomError::WrongNodeKind));
+
+    let mut steps = 0;
+    let refused = old.html_translation_mode_with(child, || {
+        steps += 1;
+        if steps == 3 {
+            Err(DomError::Cancelled)
+        } else {
+            Ok(())
+        }
+    });
+    assert_eq!(refused, Err(DomError::Cancelled));
+    assert_eq!(steps, 3);
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(child, "translate", "");
+    dom.apply(batch, &cancel).unwrap();
+    assert_eq!(
+        mode(&dom.snapshot(), child),
+        Ok(HtmlTranslationMode::Enabled)
+    );
+    assert_eq!(mode(&old, child), Ok(HtmlTranslationMode::Disabled));
+
+    let mut batch = DomBatch::new();
+    batch.remove_attribute(child, "translate");
+    batch.detach(child);
+    dom.apply(batch, &cancel).unwrap();
+    assert_eq!(
+        mode(&dom.snapshot(), child),
+        Ok(HtmlTranslationMode::Enabled)
+    );
+}
+
 fn capture(snapshot: &DomSnapshot, document: DocumentId) -> DomHtmlCapture {
     snapshot
         .html_capture(

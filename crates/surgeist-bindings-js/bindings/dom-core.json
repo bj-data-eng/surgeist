@@ -11604,12 +11604,7 @@
       "kind": "native",
       "adapter": "htmlelement.translate.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {
-          "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics.rs",
-          "symbol": "TranslationMode"
-        }
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/translation.rs", "symbol": "html_translation_mode_with"}
       ],
       "requirements": []
     },
@@ -11617,12 +11612,11 @@
       "kind": "derived",
       "algorithm": "htmlelement.translate.set",
       "owner": "surgeist-html",
-      "contract": "Apply the translate IDL setter canonical spelling/value branch to its translate content attribute, using actual native set/remove hooks; its computed/inherited getter remains a separate native semantic query.",
+      "contract": "Convert to IDL Boolean. Set the null-namespace translate attribute to the canonical yes or no spelling through the native edit and its synchronous reactions.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-translate",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlTranslate"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
     },

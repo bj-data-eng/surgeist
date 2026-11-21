@@ -18,6 +18,7 @@ pub use crate::internal::attributes::bounded_rules::{
     input_submitter_context, inputmode_keyword_with, popover_keyword_with,
     referrerpolicy_processing_with, stylesheet_link_context_work_bound,
     template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
+    translate_processing_with,
 };
 pub use crate::internal::attributes::hash_name::{HtmlHashNameScan, HtmlHashNameScanStep};
 pub use crate::internal::attributes::image_values::{
