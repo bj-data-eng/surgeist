@@ -1777,7 +1777,7 @@ fn enable_public_nodes(
                 // Semantic fixtures fund two full realm installations and
                 // their callback frames. Admission tests reserve against the
                 // measured costs of their specific operations.
-                storage_bytes: 640 * 1024,
+                storage_bytes: 656 * 1024,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),

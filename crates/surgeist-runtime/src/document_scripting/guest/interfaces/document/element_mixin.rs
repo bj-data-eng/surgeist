@@ -1,4 +1,4 @@
-//! Nonce and autofocus operations installed on each including interface.
+//! Nonce, autofocus and tabIndex installed on each including interface.
 
 use super::{
     reflection::{self, Receiver, Reflection},
@@ -8,14 +8,22 @@ use super::{
 use surgeist_bindings_js::conversion::types::DOM_STRING;
 use surgeist_dom::source::DomSourceEdit;
 
-const AUTOFOCUS: reflection::Member = (
-    &ascii(b"autofocus"),
-    &ascii(b"get autofocus"),
-    &ascii(b"set autofocus"),
-    &ascii(b"autofocus"),
-    Reflection::Boolean,
-);
-
+const REFLECTIONS: &[reflection::Member] = &[
+    (
+        &ascii(b"autofocus"),
+        &ascii(b"get autofocus"),
+        &ascii(b"set autofocus"),
+        &ascii(b"autofocus"),
+        Reflection::Boolean,
+    ),
+    (
+        &ascii(b"tabIndex"),
+        &ascii(b"get tabIndex"),
+        &ascii(b"set tabIndex"),
+        &ascii(b"tabindex"),
+        Reflection::TabIndex,
+    ),
+];
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
@@ -50,7 +58,7 @@ pub(super) fn install<'scope>(
             configurable: true,
         },
     )?;
-    reflection::install(scope, prototype, capture, receiver, &[AUTOFOCUS])
+    reflection::install(scope, prototype, capture, receiver, REFLECTIONS)
 }
 
 impl Capture {

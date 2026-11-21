@@ -148,6 +148,7 @@ pub(super) fn mixin_setters_preserve_native_state_on_source_refusal() {
     for script in [
         "limitedMixin.nonce = 'changed'",
         "limitedMixin.autofocus = true",
+        "limitedMixin.tabIndex = -1",
     ] {
         let cancel = Arc::new(AtomicBool::new(false));
         let (mut session, target) = hosted_session(&cancel, 0);
@@ -156,6 +157,7 @@ pub(super) fn mixin_setters_preserve_native_state_on_source_refusal() {
         batch.set_attribute_ns(&subject, Namespace::none(), "nonce", "public");
         batch.set_nonce(&subject, "private");
         batch.set_attribute_ns(&subject, Namespace::none(), "autofocus", "authored");
+        batch.set_attribute_ns(&subject, Namespace::none(), "tabindex", "+7tail");
         let subject = session
             .dom()
             .apply(batch, &cancel)
@@ -186,6 +188,7 @@ pub(super) fn mixin_setters_preserve_native_state_on_source_refusal() {
             node.attribute(&"autofocus".into()),
             Some(&"authored".into())
         );
+        assert_eq!(node.attribute(&"tabindex".into()), Some(&"+7tail".into()));
         host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
             .unwrap();
         host.stop().into_session().unwrap();
