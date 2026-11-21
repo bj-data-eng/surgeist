@@ -4,7 +4,7 @@ use crate::{
     internal::fullscreen::DomFullscreenEvent, internal::fullscreen::DomFullscreenEventBatch,
     internal::fullscreen::DomFullscreenEventKind, internal::fullscreen::DomFullscreenExitFact,
     internal::fullscreen::DomFullscreenExitId, internal::fullscreen::DomFullscreenExitReturn,
-    internal::fullscreen::DomFullscreenExitStatus,
+    internal::fullscreen::DomFullscreenExitStatus, internal::hosted::DomHostedError,
 };
 
 #[derive(Clone, Copy)]
@@ -97,7 +97,9 @@ impl Draft {
             .ok_or_else(|| {
                 self.fullscreen_composition(document, DomFullscreenExitFact::NodeNavigable)
             })?
-            .active_navigable_for_document_with(id, || self.source_step(cancel).map_err(Into::into))
+            .active_navigable_for_document_with(id, || {
+                self.source_step(cancel).map_err(DomHostedError::from)
+            })
             .map_err(|e| match e {
                 crate::internal::hosted::DomHostedError::Dom(e) => e,
                 _ => self.fullscreen_composition(document, DomFullscreenExitFact::NodeNavigable),
@@ -155,7 +157,9 @@ impl Draft {
             }
             let nav = self.fullscreen_node_navigable(current, cancel)?;
             let nav = graph
-                .navigable_with(nav, || self.source_step(cancel).map_err(Into::into))
+                .navigable_with(nav, || {
+                    self.source_step(cancel).map_err(DomHostedError::from)
+                })
                 .map_err(|e| match e {
                     crate::internal::hosted::DomHostedError::Dom(e) => e,
                     _ => self.fullscreen_composition(current, DomFullscreenExitFact::NodeNavigable),
@@ -187,21 +191,25 @@ impl Draft {
         }
         let nav = self.fullscreen_node_navigable(document, cancel)?;
         let nav = graph
-            .navigable_with(nav, || self.source_step(cancel).map_err(Into::into))
+            .navigable_with(nav, || {
+                self.source_step(cancel).map_err(DomHostedError::from)
+            })
             .map_err(|e| match e {
                 crate::internal::hosted::DomHostedError::Dom(e) => e,
                 _ => self.fullscreen_composition(document, DomFullscreenExitFact::TopLevelDocument),
             })?;
         let top = graph
             .navigable_with(nav.traversable, || {
-                self.source_step(cancel).map_err(Into::into)
+                self.source_step(cancel).map_err(DomHostedError::from)
             })
             .map_err(|e| match e {
                 crate::internal::hosted::DomHostedError::Dom(e) => e,
                 _ => self.fullscreen_composition(document, DomFullscreenExitFact::TopLevelDocument),
             })?;
         let top_document = graph
-            .entry_with(top.active, || self.source_step(cancel).map_err(Into::into))
+            .entry_with(top.active, || {
+                self.source_step(cancel).map_err(DomHostedError::from)
+            })
             .map_err(|e| match e {
                 crate::internal::hosted::DomHostedError::Dom(e) => e,
                 _ => self.fullscreen_composition(document, DomFullscreenExitFact::TopLevelDocument),

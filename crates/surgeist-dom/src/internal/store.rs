@@ -83,6 +83,7 @@ mod name_registry;
 mod navigable;
 mod node_iterator;
 mod node_retirement;
+mod read_source;
 mod tag_name_collection;
 mod tree_walker;
 pub use node_iterator::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};

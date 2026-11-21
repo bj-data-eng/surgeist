@@ -65,6 +65,22 @@ retained sandbox flags; declared-origin policy processing separately consumes
 the source-selected raw sandbox attribute. Later attribute edits do not rewrite
 an already completed Document policy.
 
+
+`Dom::visit_document_tree_child_navigables` visits the live content navigable
+of each Frame or Iframe in a Document's ordinary tree, in tree order. It visits
+the actual navigable and browsing-context identities and returns the count on
+success. A Document with no node navigable has count zero. Detached containers,
+shadow descendants, Template contents and containers in a child Document fall
+outside this tree. The read follows the canonical container index and charges
+reached work to the caller's allowance. During a Source callback it also draws
+on the exact active scope's remaining work. Cancellation, stale identity,
+unavailable authority and caller refusals interrupt the traversal. The order
+serves the [document-tree child navigable collection][document-tree-children].
+WindowProxy indexed access separately depends on container insertion
+chronology.
+
+[document-tree-children]: https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document-tree-child-navigables
+
 Destruction retires hosted participation without deleting the managed Document
 or its tree. Canonical creation, clone/import, adoption, shadow attachment and
 native fragment installation can still consume its actual metadata, original

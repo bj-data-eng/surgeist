@@ -121,13 +121,13 @@ fn document_outer_discovery_clear_is_bounded_and_retires_only_matching_rows() {
         }
         assert_eq!(
             changed
-                .active_navigable_for_document_with(first.document, || Ok(()))
+                .active_navigable_for_document_with(first.document, || Ok::<_, DomHostedError>(()))
                 .unwrap(),
             None
         );
         assert_eq!(
             captured
-                .active_navigable_for_document_with(first.document, || Ok(()))
+                .active_navigable_for_document_with(first.document, || Ok::<_, DomHostedError>(()))
                 .unwrap(),
             Some(first.navigable)
         );

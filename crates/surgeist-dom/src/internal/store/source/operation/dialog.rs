@@ -882,11 +882,11 @@ impl Dom {
         }
         Ok(Some(work.clone()))
     }
-    pub(in crate::internal::store) fn qualify_collection_read(
+    pub(in crate::internal::store) fn qualify_read_source(
         &self,
         cancel: &AtomicBool,
-    ) -> Result<Option<crate::internal::store::tag_name_collection::ReadSource<'_>>, DomError> {
-        use crate::internal::store::tag_name_collection::{ReadAuthority, ReadSource};
+    ) -> Result<Option<crate::internal::store::read_source::ReadSource<'_>>, DomError> {
+        use crate::internal::store::read_source::{ReadAuthority, ReadSource};
 
         let Some(work) = self.dispatch_hosted_read_work(cancel)? else {
             return Ok(None);

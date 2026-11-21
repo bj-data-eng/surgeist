@@ -129,7 +129,10 @@ impl Child {
             .ok_or(DomError::HostedSourceUnavailable)?;
         let parent_row = graph
             .navigable_with(parent, || {
-                operation.draft.source_step(cancel).map_err(Into::into)
+                operation
+                    .draft
+                    .source_step(cancel)
+                    .map_err(DomHostedError::from)
             })
             .map_err(|error| match error {
                 DomHostedError::Dom(error) => error,
@@ -314,14 +317,20 @@ impl DomSourceLease<'_> {
         while let Some(id) = current {
             operation.draft.source_step(cancel)?;
             let nav = graph.navigable_with(id, || {
-                operation.draft.source_step(cancel).map_err(Into::into)
+                operation
+                    .draft
+                    .source_step(cancel)
+                    .map_err(DomHostedError::from)
             })?;
             if nav.retired {
                 return Err(DomHostedError::StaleIdentity);
             }
             let active = graph
                 .entry_with(nav.active, || {
-                    operation.draft.source_step(cancel).map_err(Into::into)
+                    operation
+                        .draft
+                        .source_step(cancel)
+                        .map_err(DomHostedError::from)
                 })?
                 .document
                 .ok_or(DomHostedError::StaleIdentity)?;
@@ -932,11 +941,11 @@ impl DomSourceLease<'_> {
             .as_deref()
             .ok_or(DomHostedError::UnsupportedProfile)?;
         let top = graph.navigable_with(request.traversable, || {
-            op.draft.source_step(cancel).map_err(Into::into)
+            op.draft.source_step(cancel).map_err(DomHostedError::from)
         })?;
         let top_document = graph
             .entry_with(top.active, || {
-                op.draft.source_step(cancel).map_err(Into::into)
+                op.draft.source_step(cancel).map_err(DomHostedError::from)
             })?
             .document
             .ok_or(DomHostedError::StaleIdentity)?;
@@ -1159,12 +1168,12 @@ impl Draft {
             .as_deref()
             .ok_or(DomHostedError::WrongPhase)?;
         let parent_nav = parent_graph.navigable_with(parent.navigable, || {
-            self.source_step(cancel).map_err(Into::into)
+            self.source_step(cancel).map_err(DomHostedError::from)
         })?;
         if parent_nav.traversable != parent.traversable
             || parent_graph
                 .entry_with(parent_nav.active, || {
-                    self.source_step(cancel).map_err(Into::into)
+                    self.source_step(cancel).map_err(DomHostedError::from)
                 })?
                 .document
                 != Some(parent.document.document())
@@ -1337,7 +1346,10 @@ impl DomSourceLease<'_> {
                             .as_deref()
                             .ok_or(DomHostedError::UnsupportedProfile)?;
                         let parent = graph.navigable_with(request.parent, || {
-                            operation.draft.source_step(cancel).map_err(Into::into)
+                            operation
+                                .draft
+                                .source_step(cancel)
+                                .map_err(DomHostedError::from)
                         })?;
                         if parent.retiring || parent.retired {
                             return Err(DomHostedError::StaleIdentity);
