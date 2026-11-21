@@ -4709,6 +4709,8 @@ impl surgeist_dom::DomSnapshot
 pub fn surgeist_dom::DomSnapshot::html_capture(&self, document: surgeist_dom::identity::DocumentId, host: core::option::Option<&surgeist_dom::capture::DomHostCapture>, capture_limits: surgeist_html_semantics::capture::HtmlCaptureLimits, adapter_limits: surgeist_dom::capture::DomHtmlCaptureLimits, cancellation: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::capture::DomHtmlCapture, surgeist_dom::capture::DomHtmlCaptureError>
 pub fn surgeist_dom::DomSnapshot::with_document_scripting(&self, scripting: surgeist_dom::script::DomDocumentScriptingObservation) -> core::result::Result<surgeist_dom::capture::DomScriptingCapture<'_>, surgeist_dom::capture::DomHtmlCaptureError>
 impl surgeist_dom::DomSnapshot
+pub fn surgeist_dom::DomSnapshot::html_is_content_editable_with<E: core::convert::From<surgeist_dom::DomError>>(&self, id: surgeist_dom::identity::NodeId, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
+impl surgeist_dom::DomSnapshot
 pub fn surgeist_dom::DomSnapshot::pending_slot_signals(&self) -> &[surgeist_dom::identity::NodeId]
 pub fn surgeist_dom::DomSnapshot::slot(&self, id: surgeist_dom::identity::NodeId) -> core::result::Result<surgeist_dom::shadow::DomSlot<'_>, surgeist_dom::DomError>
 pub fn surgeist_dom::DomSnapshot::slot_notification_queued(&self) -> bool

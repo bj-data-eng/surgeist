@@ -87,6 +87,12 @@ kernel. The explicit subject/work limits also bound this fact formation and its
 producer validation independently per formation. No cumulative producer budget
 or external spellcheck default is inferred. Explicit spellcheck attributes can
 answer; policy-dependent defaults remain missing until supplied by their owner.
+
+`DomSnapshot::html_is_content_editable_with` uses the same HTML editability
+rules on the exact snapshot. It follows only ordinary parents and reads
+design mode from a reached direct Document parent. The caller funds each
+reached observation with its work and Source scope.
+
 `DomBatch::set_design_mode` and `DomSourceEdit::set_design_mode` execute the
 HTML-owned setter against this same state. Keywords are ASCII case-insensitive
 without trimming. A false-to-on transition enables the Document, reads its actual

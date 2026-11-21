@@ -61,6 +61,8 @@ use surgeist_runtime::{
     style::DomStyleRuntimeLimits,
 };
 
+#[path = "document_scripting/content_editable.rs"]
+mod content_editable;
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
 #[path = "document_scripting/element_projection.rs"]
@@ -537,9 +539,19 @@ fn prepare_event_window_with(
 }
 
 fn attach_event_window(
+    session: DomSession,
+    top: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
+) -> (DocumentScriptHost, DomHostedTopLevel) {
+    attach_event_window_with_work(session, top, cancellation, 10_000, configure)
+}
+
+fn attach_event_window_with_work(
     mut session: DomSession,
     top: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,
+    adapter_work: u64,
     configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
 ) -> (DocumentScriptHost, DomHostedTopLevel) {
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
@@ -563,7 +575,7 @@ fn attach_event_window(
                 // These interface scenarios include the full native prototype
                 // graph and exercise behavior with guest storage headroom.
                 storage_bytes: 512 * 1024,
-                work: 10_000,
+                work: adapter_work,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
                 source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
@@ -2387,6 +2399,7 @@ fn main() {
             "custom-element-construction" => native_window_defines_and_constructs_custom_elements(),
             "window-length" => window_length::attached_window_length_tracks_current_native_children(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
+            "content-editable" => content_editable::attached_html_elements_use_native_content_editability(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
@@ -2474,6 +2487,7 @@ fn main() {
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
     window_length::attached_window_length_tracks_current_native_children();
+    content_editable::attached_html_elements_use_native_content_editability();
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();

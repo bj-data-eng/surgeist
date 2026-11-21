@@ -117,7 +117,28 @@ const HTML_REFLECTIONS: &[super::reflection::Member] = &[
         &ascii(b"headingreset"),
         super::reflection::Reflection::Boolean,
     ),
+    (
+        &ascii(b"contentEditable"),
+        &ascii(b"get contentEditable"),
+        &ascii(b"set contentEditable"),
+        &ascii(b"contenteditable"),
+        super::reflection::Reflection::ContentEditable,
+    ),
+    (
+        &ascii(b"enterKeyHint"),
+        &ascii(b"get enterKeyHint"),
+        &ascii(b"set enterKeyHint"),
+        &ascii(b"enterkeyhint"),
+        super::reflection::Reflection::EnterKeyHint,
+    ),
 ];
+const INPUT_MODE_REFLECTION: super::reflection::Member = (
+    &ascii(b"inputMode"),
+    &ascii(b"get inputMode"),
+    &ascii(b"set inputMode"),
+    &ascii(b"inputmode"),
+    super::reflection::Reflection::InputMode,
+);
 
 const OBSOLETE_SPECIAL: &[(&str, &str)] = &[
     ("dir", "HTMLDirectoryElement"),
@@ -223,6 +244,14 @@ impl ElementBindings {
             capture,
             super::reflection::Receiver::Html,
             HTML_REFLECTIONS,
+        )?;
+        super::reflection::install_is_content_editable(scope, &html, capture)?;
+        super::reflection::install(
+            scope,
+            &html,
+            capture,
+            super::reflection::Receiver::Html,
+            &[INPUT_MODE_REFLECTION],
         )?;
         let (media_constructor, media) = install_html_constructor(
             scope,

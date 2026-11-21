@@ -77,7 +77,7 @@ fn native_fresh_document_design_mode_disables_implicit_editing_host() {
 }
 
 use surgeist_dom::{
-    DomSnapshot,
+    DomError, DomSnapshot,
     capture::DomHtmlCapture,
     identity::{DocumentId, NodeId},
 };
@@ -261,6 +261,34 @@ fn ordinary_editability_does_not_cross_shadow_or_template_boundaries_and_survive
     let template_child = done.created(&template_child).unwrap().unwrap();
     let snapshot = dom.snapshot();
     let stamp = snapshot.stamp();
+    for (node, expected) in [
+        (host, true),
+        (child, true),
+        (blocked, false),
+        (detached, true),
+        (shadow_child, false),
+        (template_child, false),
+    ] {
+        assert_eq!(
+            snapshot.html_is_content_editable_with(node, || Ok::<_, DomError>(())),
+            Ok(expected)
+        );
+    }
+    assert_eq!(
+        snapshot.html_is_content_editable_with(foreign, || Ok::<_, DomError>(())),
+        Err(DomError::WrongNodeKind)
+    );
+    let mut steps = 0;
+    let refused = snapshot.html_is_content_editable_with(child, || {
+        steps += 1;
+        if steps == 3 {
+            Err(DomError::Cancelled)
+        } else {
+            Ok(())
+        }
+    });
+    assert_eq!(refused, Err(DomError::Cancelled));
+    assert_eq!(steps, 3);
     for c in [capture(&snapshot, d), with_slots(capture(&snapshot, d))] {
         for node in [host, detached] {
             assert_eq!(
@@ -309,7 +337,8 @@ fn explicit_spellcheck_and_contenteditable_mutation_preserve_old_captures_withou
     let done = dom.apply(b, &cancel).unwrap();
     let d = done.document(&d).unwrap();
     let e = done.created(&e).unwrap().unwrap();
-    let old = capture(&dom.snapshot(), d);
+    let old_snapshot = dom.snapshot();
+    let old = capture(&old_snapshot, d);
     assert!(matches!(
         fact(&old, e, HtmlSemanticQuery::Spellcheck),
         HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Missing(
@@ -321,6 +350,11 @@ fn explicit_spellcheck_and_contenteditable_mutation_preserve_old_captures_withou
         b.set_attribute(e, "spellcheck", value);
         b.set_attribute(e, "contenteditable", "plaintext-only");
         dom.apply(b, &cancel).unwrap();
+        assert_eq!(
+            dom.snapshot()
+                .html_is_content_editable_with(e, || Ok::<_, DomError>(())),
+            Ok(true)
+        );
         let current = capture(&dom.snapshot(), d);
         assert_eq!(
             fact(&current, e, HtmlSemanticQuery::Spellcheck),
@@ -351,6 +385,10 @@ fn explicit_spellcheck_and_contenteditable_mutation_preserve_old_captures_withou
     assert_eq!(
         fact(&old, e, HtmlSemanticQuery::EditingHost),
         HtmlSemanticFact::EditingHost(HtmlSemanticValue::Known(false))
+    );
+    assert_eq!(
+        old_snapshot.html_is_content_editable_with(e, || Ok::<_, DomError>(())),
+        Ok(false)
     );
     assert!(matches!(
         fact(&old, e, HtmlSemanticQuery::Spellcheck),
