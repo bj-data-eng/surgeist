@@ -340,13 +340,11 @@ impl ClipRecipe {
                 "normalization changed concrete source geometry or coordinate-space tag",
             );
         }
-        let Some(report) = context.last_attempt() else {
-            return violated(
-                CLIP,
-                "clip-accounting-report-missing",
-                "public concrete clip normalization published no accounting report",
-            );
-        };
+        let report =
+            match crate::standalone_attempt(&context, CLIP, "clip-accounting-report-missing")? {
+                Ok(report) => report,
+                Err(outcome) => return Ok(outcome),
+            };
         let usage = report.usage();
         if let ClipSource::Path(points) = &self.geometry
             && usage.work(render::accounting::RenderWork::PathElementVisits)

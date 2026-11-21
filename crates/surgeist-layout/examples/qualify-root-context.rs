@@ -3,58 +3,21 @@
 
 #[path = "../tests/bin/surgeist-layout-generate/adapter.rs"]
 mod adapter;
-#[path = "../tests/layout/browser_parity/atomic_paragraph_metrics.rs"]
-mod atomic_paragraph_metrics;
+#[path = "../tests/layout/browser_parity_modules.rs"]
+mod browser_parity_modules;
+use browser_parity_modules::*;
 #[path = "../tests/bin/surgeist-layout-generate/browser_profile.rs"]
 mod browser_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/capture_helper_identity.rs"]
-mod capture_helper_identity;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/empty_line_br_font_band_profile.rs"]
-mod empty_line_br_font_band_profile;
 #[path = "../tests/bin/surgeist-layout-generate/envelope.rs"]
 mod envelope;
-#[path = "../tests/layout/browser_parity/fixture_variants.rs"]
-mod fixture_variants;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/fri07_intrinsic_flex_profile.rs"]
-mod fri07_intrinsic_flex_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/fri08_grid_lanes_text_profile.rs"]
-mod fri08_grid_lanes_text_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/fri08_wrapped_subgrid_profile.rs"]
-mod fri08_wrapped_subgrid_profile;
-#[path = "../tests/layout/browser_parity/grid_alignment_reference.rs"]
-mod grid_alignment_reference;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]
-mod horizontal_br_font_band_profile;
 #[path = "../tests/bin/surgeist-layout-generate/measurement.rs"]
 mod measurement;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/original_block_axes_profile.rs"]
-mod original_block_axes_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/original_flex_axes_profile.rs"]
-mod original_flex_axes_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/original_flex_parent_profile.rs"]
-mod original_flex_parent_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/original_grid_axes_profile.rs"]
-mod original_grid_axes_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/original_inline_subgrid_profile.rs"]
-mod original_inline_subgrid_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/original_relative_rtl_subgrid_profile.rs"]
-mod original_relative_rtl_subgrid_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/original_subgrid_axes_profile.rs"]
-mod original_subgrid_axes_profile;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
-mod original_subgrid_body_profile;
 #[path = "../tests/layout/browser_parity/support.rs"]
 pub mod parity_support;
-#[path = "../tests/layout/browser_parity/pinned_font.rs"]
-mod pinned_font;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage_profile.rs"]
-mod prepared_atomic_percentage_profile;
 #[path = "../tests/bin/surgeist-layout-generate/source_owner.rs"]
 mod source_owner;
 #[path = "qualify-root-context/support.rs"]
 mod support;
-#[path = "../tests/bin/surgeist-layout-generate/measurement/vertical_br_font_band_profile.rs"]
-mod vertical_br_font_band_profile;
 #[path = "../tests/bin/surgeist-layout-generate/xml.rs"]
 mod xml;
 

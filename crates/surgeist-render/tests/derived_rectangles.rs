@@ -8,9 +8,10 @@ use surgeist_render::{
 };
 
 use surgeist_render::{
-    Error, ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
-    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
-    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderResource,
+    Error, ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptStatus, accounting::RenderLimits,
+    accounting::RenderPhase, accounting::RenderPhaseFilter, accounting::RenderProfile,
+    accounting::RenderQuantity, accounting::RenderRefusalReason, accounting::RenderResource,
     accounting::RenderWork, capability::Capabilities, geometry::Radii, geometry::Rect,
     geometry::Size, paint::Color, scene::Scene, style::decoration::BoxDecorationBreak,
     style::decoration::BoxDecorationFragment, style::decoration::BoxDecorationInput,
@@ -219,14 +220,20 @@ fn repeat_numeric_failure_keeps_one_emission_releases_backing_and_allows_retry()
         assert_clean_numeric_failure(&context);
         let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::RepeatTiles), 1);
-        // Three generated positions plus two maximum-coordinate proofs per
-        // attempted tile: one valid tile, then one invalid tile.
-        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 7);
+        // The extreme X axis uses the general origin calculation: four
+        // bounds checks, 35 origin visits, eight count visits, a capacity
+        // check, and six visits for two positions. Y intersects once in
+        // eight visits. The grid counts and two tile proofs add two and four.
+        let coordinates = (4 + 35 + 8 + 1 + 6) + 8 + 2 + 4;
+        assert_eq!(
+            report.usage().work(RenderWork::CoordinateVisits),
+            coordinates
+        );
         assert_eq!(
             report
                 .phase_usage(RenderPhase::Repeat)
                 .work(RenderWork::CoordinateVisits),
-            7
+            coordinates
         );
         let repeat =
             ImageRepeatPlan::try_new(BackgroundRepeat::repeat(), Capabilities::CURRENT).unwrap();
@@ -242,7 +249,13 @@ fn repeat_numeric_failure_keeps_one_emission_releases_backing_and_allows_retry()
         );
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RepeatTiles), 4);
-        assert_eq!(usage.work(RenderWork::CoordinateVisits), 12);
+        // Each aligned axis uses four bounds, four origin, eight count, one
+        // capacity, and six position visits. Add two grid visits and two
+        // maximum proofs per emitted tile.
+        assert_eq!(
+            usage.work(RenderWork::CoordinateVisits),
+            2 * (4 + 4 + 8 + 1 + 6) + 2 + 4 * 2
+        );
         assert!(usage.work(RenderWork::PreparedTransferredBytes) > 0);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
@@ -313,25 +326,42 @@ fn outline_failure_preserves_first_command_work_and_retry_returns_exact_bounds()
 }
 
 #[test]
-fn repeat_maximum_proof_limit_refuses_before_emitting_unproved_tile() {
-    let limits = RenderLimits::new()
-        .with_work_limit(RenderWork::CoordinateVisits, 5)
-        .unwrap();
-    let mut context =
-        RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+fn repeat_coordinate_limits_refuse_before_emitting_unproved_tile() {
     let repeat =
         ImageRepeatPlan::try_new(BackgroundRepeat::repeat(), Capabilities::CURRENT).unwrap();
-    let error = repeat
-        .resolve(ordinary_placement(), &mut context)
-        .unwrap_err();
-    assert!(error.accounting_diagnostic().is_some());
-    let report = context.last_attempt().unwrap().attempt().unwrap();
-    assert_eq!(report.status(), RenderAttemptStatus::Refused);
-    assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 4);
-    assert_eq!(report.usage().work(RenderWork::RepeatTiles), 0);
-    assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
-    assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
-    assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+    let planned = 2 * (4 + 4 + 8 + 1 + 6) + 2;
+    // Keep the original low cap, which now refuses the first axis's next
+    // origin visit. Independently admit the whole plan with one unit left
+    // to prove the two maxima are an atomic charge before tile emission.
+    for (limit, current, amount) in [(5, 5, 1), (planned + 1, planned, 2)] {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::CoordinateVisits, limit)
+            .unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let error = repeat
+            .resolve(ordinary_placement(), &mut context)
+            .unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("expected coordinate work refusal, got {error:?}");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::CoordinateVisits)
+        );
+        assert_eq!((refusal.current(), refusal.amount()), (current, amount));
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+        let terminal = context.last_attempt().unwrap();
+        assert_eq!(terminal.cleanup_fault(), None);
+        let report = terminal.attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Refused);
+        assert_eq!(report.refusal(), Some(refusal));
+        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), current);
+        assert_eq!(report.usage().work(RenderWork::RepeatTiles), 0);
+        assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+        assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+    }
 }
 
 #[test]
@@ -400,8 +430,9 @@ fn background_placement_failure_accounts_maximum_proof_without_emitting_output()
             1
         );
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
-        // Placement proof2, no-repeat positions2, repeat-tile proof2.
-        assert_eq!(usage.work(RenderWork::CoordinateVisits), 6);
+        // Two placement maxima, eight visits for each no-repeat axis, two
+        // grid count visits, and two maxima for the emitted tile.
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 2 + 2 * 8 + 2 + 2);
         assert_eq!(usage.work(RenderWork::RepeatTiles), 1);
         assert_eq!(usage.work(RenderWork::CommandsEmitted), 1);
     }
