@@ -77,13 +77,18 @@ pub(super) fn select_metadata_reflects_current_source_and_numeric_rules() {
                 try { size.set.call(option, {valueOf() {coerced = true; return 1;}}); return 'wrong receiver'; }
                 catch (error) { if (!(error instanceof TypeError) || coerced) return 'brand before coercion'; }
                 const reset = document.createElement('select');
-                reset.size = 2;
+                reset.setAttributeNS(null, 'size', '2147483648');
                 const first = reset.appendChild(document.createElement('option'));
                 const second = reset.appendChild(document.createElement('option'));
-                if (reset.selectedIndex !== -1) return 'larger native display size';
+                if (reset.size !== 0 || reset.selectedIndex !== -1)
+                    return 'reflected size is independent of native display size';
                 reset.size = {valueOf() {reset.insertBefore(second, first); return 1;}};
                 if (reset.size !== 1 || reset.selectedIndex !== 0 || first.selected || !second.selected)
                     return 'original size hook after conversion reentry';
+                reset.selectedIndex = -1;
+                second.disabled = true;
+                if (reset.selectedIndex !== 1 || !first.selected || second.selected)
+                    return 'original disabledness hook';
                 return 'ok';
             })()
         "#)?;

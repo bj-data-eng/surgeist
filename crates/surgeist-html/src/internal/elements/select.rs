@@ -1,6 +1,50 @@
 //! Select decisions from HTML 877d6146487f, without a tree or mutation owner.
 
-use crate::vocabulary::KnownHtmlElement;
+use crate::{
+    internal::microsyntax::numeric::try_parse_nonnegative_integer_capped_steps,
+    values::DocumentString, vocabulary::KnownHtmlElement,
+};
+
+const MAX_REFLECTED_SIZE: u32 = 2_147_483_647;
+
+/// Read the reflected unsigned-long size. HTML non-negative integer recovery
+/// admits each reached step. Missing, malformed and out-of-range values read as
+/// zero. The display-size algorithm independently uses the content attribute.
+pub fn select_size_reflection_with<E>(
+    raw: Option<&DocumentString>,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<u32, E> {
+    let Some(raw) = raw else { return Ok(0) };
+    // Saturate one above the reflected range to distinguish overflow from
+    // the largest accepted value without accumulating an unbounded integer.
+    let parsed = try_parse_nonnegative_integer_capped_steps(
+        raw.code_units(),
+        MAX_REFLECTED_SIZE as usize + 1,
+        &mut step,
+    )?;
+    Ok(parsed
+        .ok()
+        .and_then(|value| u32::try_from(value).ok())
+        .map_or(0, select_size_reflection_setter_value))
+}
+
+/// Select the content value after Web IDL unsigned-long conversion.
+pub const fn select_size_reflection_setter_value(value: u32) -> u32 {
+    if value <= MAX_REFLECTED_SIZE {
+        value
+    } else {
+        0
+    }
+}
+
+/// Select's type string from the current presence of its multiple attribute.
+pub const fn select_type_value(multiple: bool) -> &'static str {
+    if multiple {
+        "select-multiple"
+    } else {
+        "select-one"
+    }
+}
 
 /// HTML display-size fallback for an absent or failed size attribute.
 /// A successfully recovered zero is not a fallback. This is not size IDL.
@@ -837,6 +881,53 @@ impl HtmlSelectFirstSelectedCursor {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod reflection_tests {
+    use super::*;
+    use std::convert::Infallible;
+
+    #[test]
+    fn reflected_size_admits_recovery_and_uses_zero_outside_the_range() {
+        for (raw, expected) in [
+            (" \t+7tail", 7),
+            ("-1", 0),
+            ("-0", 0),
+            ("2147483647", 2_147_483_647),
+            ("2147483648", 0),
+            ("99999999999999999999", 0),
+        ] {
+            let raw = DocumentString::from(raw);
+            let mut work = 0;
+            let accepted = select_size_reflection_with(Some(&raw), || {
+                work += 1;
+                Ok::<_, Infallible>(())
+            });
+            assert_eq!(accepted.unwrap(), expected);
+            assert!(work > 0, "nonempty size input must require admission");
+            let mut left = work - 1;
+            let refused = select_size_reflection_with(Some(&raw), || {
+                if left == 0 {
+                    return Err("first refusal");
+                }
+                left -= 1;
+                Ok(())
+            });
+            assert_eq!(refused, Err("first refusal"));
+        }
+        assert_eq!(
+            select_size_reflection_with(Some(&DocumentString::from("")), || Err("unused")),
+            Ok(0)
+        );
+        assert_eq!(select_size_reflection_with(None, || Err("unused")), Ok(0));
+        assert_eq!(
+            select_size_reflection_setter_value(2_147_483_647),
+            2_147_483_647
+        );
+        assert_eq!(select_size_reflection_setter_value(2_147_483_648), 0);
+        assert_eq!(select_size_reflection_setter_value(u32::MAX), 0);
     }
 }
 

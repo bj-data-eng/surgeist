@@ -14,6 +14,9 @@ use surgeist_html::bounded::attributes::{
 use surgeist_html::bounded::numeric::{
     HtmlNumericParseError, integer_long_work_bound, parse_integer_long,
 };
+use surgeist_html::bounded::select::{
+    select_size_reflection_setter_value, select_size_reflection_with,
+};
 use surgeist_html::values::Namespace;
 use surgeist_html::vocabulary::KnownHtmlElement;
 
@@ -30,6 +33,7 @@ pub(super) enum Reflection {
     // Unit policies keep frequently captured reflection metadata compact.
     SignedLongZero,
     SignedLongOne,
+    SelectSize,
     TableSpan(TableSpan),
     TableScope,
 }
@@ -301,6 +305,10 @@ impl Capture {
                         1,
                         || read.step(),
                     )?),
+                    Reflection::SelectSize => Reflected::Unsigned(select_size_reflection_with(
+                        stored.map(|value| value.value()),
+                        || read.step(),
+                    )?),
                 }))
             })?;
             let Some(value) = value else {
@@ -369,7 +377,7 @@ impl Capture {
                     .transpose()?
             } else if matches!(
                 reflection,
-                Reflection::HeadingOffset | Reflection::TableSpan(_)
+                Reflection::HeadingOffset | Reflection::SelectSize | Reflection::TableSpan(_)
             ) {
                 let converted = self
                     .callbacks
@@ -386,10 +394,10 @@ impl Capture {
                     return Err(Error::BackendUnavailable.into());
                 };
                 events.step()?;
-                let value = if matches!(reflection, Reflection::HeadingOffset) {
-                    heading_offset_setter_value(value)
-                } else {
-                    HtmlTableSpanRule::reflected_setter_value(value)
+                let value = match reflection {
+                    Reflection::HeadingOffset => heading_offset_setter_value(value),
+                    Reflection::SelectSize => select_size_reflection_setter_value(value),
+                    _ => HtmlTableSpanRule::reflected_setter_value(value),
                 };
                 Some(copy_numeric_attribute(
                     &owner,

@@ -28,8 +28,15 @@ pub(in crate::document_scripting) mod tree_walker_admission;
 pub(in crate::document_scripting) mod trusted_policy;
 
 pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &DocumentScriptHost) {
+    set_guest_work_remaining(host, 0);
+}
+
+pub(in crate::document_scripting) fn set_guest_work_remaining(
+    host: &DocumentScriptHost,
+    work: u64,
+) {
     let events = host.guest_events().unwrap();
-    events.budget.set_work_remaining(0);
+    events.budget.set_work_remaining(work);
 }
 
 pub(in crate::document_scripting) fn guest_backing_used(host: &DocumentScriptHost) -> usize {

@@ -6,15 +6,54 @@ use super::{
 };
 use surgeist_bindings_js::{IntegerValue, conversion::declarations};
 use surgeist_dom::source::DomSourceEdit;
+use surgeist_html::bounded::select::select_type_value;
 
 mod strings;
 use strings::StringMember;
 
-const SELECT_REFLECTIONS: &[reflection::Member] = &[(
-    &ascii(b"multiple"),
-    &ascii(b"get multiple"),
-    &ascii(b"set multiple"),
-    &ascii(b"multiple"),
+const SELECT_REFLECTIONS: &[reflection::Member] = &[
+    (
+        &ascii(b"disabled"),
+        &ascii(b"get disabled"),
+        &ascii(b"set disabled"),
+        &ascii(b"disabled"),
+        Reflection::Boolean,
+    ),
+    (
+        &ascii(b"multiple"),
+        &ascii(b"get multiple"),
+        &ascii(b"set multiple"),
+        &ascii(b"multiple"),
+        Reflection::Boolean,
+    ),
+    (
+        &ascii(b"name"),
+        &ascii(b"get name"),
+        &ascii(b"set name"),
+        &ascii(b"name"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"required"),
+        &ascii(b"get required"),
+        &ascii(b"set required"),
+        &ascii(b"required"),
+        Reflection::Boolean,
+    ),
+    (
+        &ascii(b"size"),
+        &ascii(b"get size"),
+        &ascii(b"set size"),
+        &ascii(b"size"),
+        Reflection::SelectSize,
+    ),
+];
+
+const OPTION_DISABLED: &[reflection::Member] = &[(
+    &ascii(b"disabled"),
+    &ascii(b"get disabled"),
+    &ascii(b"set disabled"),
+    &ascii(b"disabled"),
     Reflection::Boolean,
 )];
 
@@ -38,6 +77,15 @@ pub(super) fn install_select<'scope>(
         Receiver::Select,
         SELECT_REFLECTIONS,
     )?;
+    let get = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"type"),
+        &ascii(b"get type"),
+        true,
+        Callback::new(move |scope, arguments| get.read_select_type(scope, arguments)),
+    )?;
     install_selected_property(
         scope,
         prototype,
@@ -55,6 +103,7 @@ pub(super) fn install_option<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    reflection::install(scope, prototype, capture, Receiver::Option, OPTION_DISABLED)?;
     strings::install(scope, prototype, capture, StringMember::OptionLabel)?;
     reflection::install(
         scope,
@@ -155,6 +204,47 @@ fn install_selected_property<'scope>(
 }
 
 impl Capture {
+    fn read_select_type<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let receiver = Receiver::Select;
+        let Some(GuestNode::Element(id)) = tree::projected_node(scope, arguments.receiver())?
+        else {
+            return Ok(Completion::Throw(
+                scope.type_error(receiver.error_message())?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let multiple = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(id)?;
+                if !receiver.matches(node, || read.step())? {
+                    return Ok(None);
+                }
+                let attributes = node.attributes().ok_or(DomError::WrongNodeKind)?;
+                let attr = attributes
+                    .get_null_namespace_attribute_with(&ascii(b"multiple"), || read.step())?;
+                Ok(Some(attr.is_some()))
+            })?;
+            let Some(multiple) = multiple else {
+                return Ok(Completion::Throw(
+                    scope.type_error(receiver.error_message())?,
+                ));
+            };
+            let name = select_type_value(multiple);
+            Ok(Completion::Return(self.copy_name_units(
+                scope,
+                &owner,
+                &events,
+                name.len(),
+                name.encode_utf16(),
+            )?))
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
     fn read_selected_index<'scope>(
         &self,
         scope: &mut Scope<'scope>,

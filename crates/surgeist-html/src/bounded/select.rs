@@ -8,5 +8,6 @@ pub use crate::internal::elements::select::{
     HtmlSelectSetterAction, HtmlSelectSetterCursor, HtmlSelectSetterReply,
     HtmlSelectedcontentAncestorAction, HtmlSelectedcontentAncestors, HtmlSelectedcontentUpdate,
     option_disabled_ancestor, select_display_size_default, select_option_rule,
+    select_size_reflection_setter_value, select_size_reflection_with, select_type_value,
     selectedcontent_update,
 };

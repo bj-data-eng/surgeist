@@ -398,12 +398,15 @@ native task ingestion and the attached element-task delivery entry.
 HTMLOptGroupElement reflects its own disabled attribute as presence and its
 label attribute as a raw DOMString. Adding or removing disabled reaches the
 native nearest-select and selectedness reset rules through the Source adapter.
-HTMLSelectElement reflects multiple and exposes selectedIndex in native option
-order, returning −1 for an empty selection. HTMLOptionElement exposes selected
-and index from the current DOM and reflects defaultSelected through the
-selected attribute. Source applies selectedness changes and their native
-selectedcontent effects. Select.value reads the first selected Option and
-assigns through the native first-match selection edit. Option.value and label
+HTMLSelectElement reflects disabled, multiple, name, required, and size. Its
+type follows multiple presence, and its reflected size has a zero fallback
+independent of the native display size. It exposes selectedIndex in native option
+order, returning −1 for an empty selection. HTMLOptionElement reflects its own
+disabled attribute and exposes selected and index from the current DOM. Its
+defaultSelected reflects the selected attribute. Source applies selectedness
+changes and their native selectedcontent effects. Select.value reads the first
+selected Option and assigns through the native first-match selection edit.
+Option.value and label
 prefer their own attributes and use the same HTML-aware text as Option.text
 when those attributes are absent. Assigning Option.text replaces its ordinary
 children with the converted string through Source.
