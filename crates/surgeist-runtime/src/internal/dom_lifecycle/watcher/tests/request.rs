@@ -477,6 +477,35 @@ fn insert_initial_child(
     let child = snapshot.hosted_navigable(navigable).unwrap();
     (container, child.global(), child.active_document().unwrap())
 }
+
+#[test]
+fn initial_hosted_document_referrer_survives_tree_edits_and_resets_on_clone() {
+    let (mut session, top, body, _) = fixture();
+    let (container, _, child) = insert_initial_child(&mut session, top.document(), body, "iframe");
+    let before = session.snapshot();
+    let creator = before.document(top.document()).unwrap().metadata();
+    assert_eq!(creator.referrer(), Ok(None));
+    let original = before.document(child).unwrap().metadata();
+    let expected = DocumentString::from("about:blank");
+    assert_eq!(creator.url(), &expected);
+    assert_eq!(original.referrer(), Ok(Some(&expected)));
+
+    drop(apply(
+        &mut session,
+        DomSourceEdit::set_native_attribute(container, "id", "renamed"),
+    ));
+    let done = apply(&mut session, DomSourceEdit::clone_node(child.node(), false));
+    let Some(surgeist_dom::source::DomSourceOutput::Document(clone)) = done.output() else {
+        panic!("canonical child Document clone must publish its own identity");
+    };
+    let after = session.snapshot();
+    let current = after.document(child).unwrap().metadata();
+    let copied = after.document(clone).unwrap().metadata();
+    assert_eq!(current.referrer(), original.referrer());
+    assert_eq!(copied.url(), current.url());
+    assert_eq!(copied.referrer(), Ok(None));
+}
+
 #[test]
 fn canceled_request_history_capture_uses_shadow_tree_order_and_actual_child_documents() {
     let (mut session, top, body, subject) = fixture();

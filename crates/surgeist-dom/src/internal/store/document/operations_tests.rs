@@ -3240,6 +3240,15 @@ fn parsed_document_clone_copies_actual_url_encoding_and_mode_without_parser_or_p
         &DocumentString::from("https://example.test/source/")
     );
     assert_eq!(metadata.encoding(), &DocumentString::from("windows-1252"));
+    assert_eq!(
+        snapshot
+            .document(source_document)
+            .unwrap()
+            .metadata()
+            .referrer(),
+        Ok(None)
+    );
+    assert_eq!(metadata.referrer(), Ok(None));
     assert_eq!(metadata.content_type(), &DocumentString::from("text/html"));
     assert_eq!(metadata.mode(), HtmlDocumentMode::Quirks);
     assert_eq!(metadata.origin(), &origin);

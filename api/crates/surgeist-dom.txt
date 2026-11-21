@@ -430,6 +430,7 @@ pub fn surgeist_dom::document::DomDocumentMetadata::meta_theme_color(&self) -> &
 pub fn surgeist_dom::document::DomDocumentMetadata::mode(&self) -> surgeist_html::internal::construction::HtmlDocumentMode
 pub fn surgeist_dom::document::DomDocumentMetadata::origin(&self) -> &surgeist_dom::document::DomOpaqueOrigin
 pub fn surgeist_dom::document::DomDocumentMetadata::policy_container(&self) -> &surgeist_dom::meta::DomDocumentPolicyContainer
+pub fn surgeist_dom::document::DomDocumentMetadata::referrer(&self) -> core::result::Result<core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>, surgeist_dom::DomError>
 pub fn surgeist_dom::document::DomDocumentMetadata::url(&self) -> &surgeist_html::internal::values::document_string::DocumentString
 pub struct surgeist_dom::document::DomNativeInputPlatform
 impl surgeist_dom::document::DomNativeInputPlatform

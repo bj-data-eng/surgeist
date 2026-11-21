@@ -1231,6 +1231,7 @@ fn contextual_disabled_script_prefix_and_style_keep_distinct_actual_parser_histo
     assert_eq!(metadata.url(), &DocumentString::from("about:blank"));
     assert_eq!(metadata.encoding(), &DocumentString::from("UTF-8"));
     assert!(!metadata.allow_declarative_shadow_roots());
+    assert_eq!(metadata.referrer(), Ok(None));
     assert_eq!(
         metadata.creation_cause(),
         &DomDocumentCreationCause::ParsedFragmentParser
@@ -2752,6 +2753,7 @@ fn nested_template_owners_share_actual_inert_document_and_svg_parser_cause_survi
     let inert_metadata = result.snapshot().document(inert).unwrap().metadata();
     assert_eq!(inert_metadata.url(), &DocumentString::from("about:blank"));
     assert_eq!(inert_metadata.encoding(), &DocumentString::from("UTF-8"));
+    assert_eq!(inert_metadata.referrer(), Ok(None));
     assert!(matches!(
         inert_metadata.creation_cause(),
         DomDocumentCreationCause::ParsedTemplateOwner

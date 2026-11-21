@@ -8389,12 +8389,17 @@
       }
     },
     "Document.html.referrer/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "The original Document referrer serialization with its absent-referrer branch, supplied by document creation/loading provenance rather than metadata URL.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-referrer"
-      }
+      "kind": "native",
+      "adapter": "document.referrer.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "referrer"},
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "document_referrer"
+        }
+      ],
+      "requirements": []
     },
     "Document.html.cookie/get": {
       "kind": "host",

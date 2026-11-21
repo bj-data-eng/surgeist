@@ -851,6 +851,12 @@ fn document_tree_accessors_use_registered_function_and_creation_realms() {
                 const dir = Object.getOwnPropertyDescriptor(prototype, 'dir');
                 const color = Object.getOwnPropertyDescriptor(prototype, 'fgColor');
                 const title = Object.getOwnPropertyDescriptor(prototype, 'title');
+                const referrer = Object.getOwnPropertyDescriptor(prototype, 'referrer');
+                try { referrer.get.call({}); return 'wrong foreign referrer receiver accepted'; }
+                catch (error) { if (!(error instanceof foreignTreeTypeError) || error instanceof TypeError)
+                    return 'referrer uses accessor function realm'; }
+                if (referrer.get.call(originTreeDocument) !== '' || referrer.get.call(document) !== '')
+                    return 'referrer uses actual Document receiver';
                 dir.set.call(originTreeDocument, 'RTL');
                 color.set.call(originTreeDocument, 'foreign\ud800\0');
                 const mainTitle = document.title;
