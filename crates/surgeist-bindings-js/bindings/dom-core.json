@@ -14151,18 +14151,14 @@
       "kind": "native",
       "adapter": "htmldialogelement.show.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "show_dialog"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "show_dialog"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dialog.rs", "symbol": "dialog_method"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/source_event.rs", "symbol": "service_guest_source_event"}
       ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "Install the authenticated guest method with its IDL arguments and reactions using the active-realm synchronous Source event service.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-show",
-          "issue": 2258
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Run the reached native nonmodal showing, watcher, focus and queued Toggle effects.",
+          "contract": "Supply reached positive focusing and presentation services for the original nonmodal Dialog Source operation.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-show",
           "issue": 1225
         }
@@ -14172,18 +14168,14 @@
       "kind": "native",
       "adapter": "htmldialogelement.showmodal.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "show_modal_dialog"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "show_modal_dialog"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dialog.rs", "symbol": "dialog_method"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/source_event.rs", "symbol": "service_guest_source_event"}
       ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "Install the authenticated guest method with its IDL arguments and reactions using the active-realm synchronous Source event service.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-showmodal",
-          "issue": 2258
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Run the reached native modal top-layer, watcher, focus and queued Toggle effects.",
+          "contract": "Supply reached positive focusing and presentation services for the original modal Dialog Source operation.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-showmodal",
           "issue": 1225
         }
@@ -14194,13 +14186,13 @@
       "adapter": "htmldialogelement.close.call",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "close_dialog"},
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dialog.rs", "symbol": "dialog_close"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dialog.rs", "symbol": "dialog_method"},
         {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/source_event.rs", "symbol": "service_guest_source_event"}
       ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "Run the reached native close, focus restoration, top-layer removal and queued Toggle and Close effects.",
+          "contract": "Supply reached previous-focus restoration and platform presentation services for the original Close operation.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-close",
           "issue": 1225
         }
@@ -14210,18 +14202,14 @@
       "kind": "native",
       "adapter": "htmldialogelement.requestclose.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "request_close_dialog"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "request_close_dialog"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dialog.rs", "symbol": "dialog_method"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/source_event.rs", "symbol": "service_guest_source_event"}
       ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "Install the authenticated guest method with its IDL arguments and reactions using the active-realm synchronous Source event service.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-requestclose",
-          "issue": 2258
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Run the reached native close watcher activation, cancel dispatch and conditional close lifecycle.",
+          "contract": "Supply reached previous-focus restoration and platform presentation services when the original close watcher selects Close.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dialog-requestclose",
           "issue": 1225
         }

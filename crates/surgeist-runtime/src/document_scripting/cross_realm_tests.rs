@@ -7,6 +7,7 @@ mod data_time;
 mod declarative_shadow;
 mod details_reflections;
 mod dialog_close;
+mod dialog_methods;
 mod dialog_state;
 mod document_cookie;
 mod document_import;
@@ -466,6 +467,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     dialog_close::fresh_external_source_requires_the_original_document();
     dialog_close::external_source_service_resumes_after_callback_adoption();
     dialog_close::listener_report_refusal_retains_the_original_close();
+    dialog_methods::show_retains_the_reached_native_focusing_request();
     marquee::stop_marquee_preserves_native_state_on_source_work_refusal();
     element_mixin::borrowed_accessors_keep_native_includers_across_creation_realms();
     element_mixin::mixin_setters_preserve_native_state_on_source_refusal();

@@ -247,6 +247,9 @@ pub(super) fn dialog_edits_preserve_native_state_on_source_refusal() {
         "limitedDialog.returnValue = 'changed'",
         "limitedDialog.closedBy = 'any'",
         "limitedDialog.close('changed')",
+        "limitedDialog.show()",
+        "limitedDialog.showModal()",
+        "limitedDialog.requestClose('changed')",
     ] {
         let cancel = Arc::new(AtomicBool::new(false));
         let (mut session, target) = hosted_session(&cancel, 0);
