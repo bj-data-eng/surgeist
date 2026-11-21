@@ -23,7 +23,7 @@ pub(super) fn select_and_option_form_follow_native_owner() {
                         return 'readonly form descriptors';
                 }
                 if (Object.keys(HTMLSelectElement.prototype).join() !==
-                        'disabled,form,multiple,name,required,size,type,selectedIndex,value' ||
+                        'autocomplete,disabled,form,multiple,name,required,size,type,selectedIndex,value' ||
                     Object.keys(HTMLOptionElement.prototype).join() !==
                         'disabled,form,label,defaultSelected,selected,value,text,index')
                     return 'form declaration order';

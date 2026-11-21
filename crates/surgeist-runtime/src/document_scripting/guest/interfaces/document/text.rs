@@ -233,6 +233,55 @@ pub(super) struct TextBuffer {
 }
 
 impl TextBuffer {
+    /// Fill one admitted output buffer. The producer admits its own writes.
+    pub(super) fn build_exact(
+        read: &NativeRead<'_>,
+        length: usize,
+        fill: impl FnOnce(
+            &mut dyn FnMut(u16) -> Result<(), DocumentGuestEventError>,
+        ) -> Result<(), DocumentGuestEventError>,
+    ) -> Result<Self, DocumentGuestEventError> {
+        let mut output = if length == 0 {
+            Self::default()
+        } else {
+            Self::reserve_exact(read, length)?
+        };
+        fill(&mut |unit| {
+            if output.units.len() == length {
+                return Err(DocumentScriptNativeError::RepresentationExhausted.into());
+            }
+            output.units.push(unit);
+            Ok(())
+        })?;
+        if output.units.len() != length {
+            return Err(DocumentScriptNativeError::RepresentationExhausted.into());
+        }
+        Ok(output)
+    }
+
+    fn reserve_exact(
+        read: &NativeRead<'_>,
+        capacity: usize,
+    ) -> Result<Self, DocumentGuestEventError> {
+        let bytes = capacity
+            .checked_mul(size_of::<u16>())
+            .ok_or(Error::StringTooLong)?;
+        let backing = read.reserve(bytes)?;
+        let source_units = read.retain_text_units(capacity)?;
+        let mut units = Vec::new();
+        units
+            .try_reserve_exact(capacity)
+            .map_err(|_| Error::Allocation)?;
+        if units.capacity() != capacity {
+            return Err(Error::Allocation.into());
+        }
+        Ok(Self {
+            units,
+            _backing: Some(backing),
+            _source_units: source_units,
+        })
+    }
+
     pub(super) fn code_units(&self) -> &[u16] {
         &self.units
     }
@@ -257,27 +306,12 @@ impl TextBuffer {
             .ok_or(Error::StringTooLong)?;
         if length > self.units.capacity() {
             let capacity = length.max(self.units.capacity().saturating_mul(2));
-            let bytes = capacity
-                .checked_mul(size_of::<u16>())
-                .ok_or(Error::StringTooLong)?;
-            let backing = read.reserve(bytes)?;
-            let source_units = read.retain_text_units(capacity)?;
-            let mut units = Vec::new();
-            units
-                .try_reserve_exact(capacity)
-                .map_err(|_| Error::Allocation)?;
-            if units.capacity() != capacity {
-                return Err(Error::Allocation.into());
-            }
+            let mut next = Self::reserve_exact(read, capacity)?;
             for &unit in &self.units {
                 read.step()?;
-                units.push(unit);
+                next.units.push(unit);
             }
-            *self = Self {
-                units,
-                _backing: Some(backing),
-                _source_units: source_units,
-            };
+            *self = next;
         }
         for &unit in data {
             read.step()?;

@@ -9,10 +9,13 @@ use crate::internal::accounting::{
     aggregate_tariffs, autocomplete_limits, classify, wide,
 };
 use crate::{
-    internal::microsyntax::tokens::DeclaredKeyword,
     internal::microsyntax::tokens::HtmlSpaceSeparatedTokens,
-    internal::microsyntax::tokens::HtmlSpaceToken, internal::microsyntax::tokens::HtmlTokenError,
+    internal::microsyntax::tokens::HtmlSpaceToken,
+    internal::microsyntax::tokens::HtmlTokenError,
     internal::microsyntax::tokens::declared_keyword,
+    internal::microsyntax::tokens::{
+        DeclaredKeyword, HtmlSpaceTokenCursor, HtmlSpaceTokenStep, ascii_lowercase,
+    },
 };
 use std::{error::Error, fmt};
 use surgeist_ledger::{
@@ -980,12 +983,30 @@ impl Error for HtmlAutocompleteSectionError {
 }
 
 fn section_prefix(value: &DocumentString) -> bool {
-    value.code_units().get(..8).is_some_and(|units| {
-        units
-            .iter()
-            .zip(b"section-")
-            .all(|(&unit, &byte)| ascii_case_insensitive_unit(unit, byte))
-    })
+    match section_prefix_with(value.code_units(), &mut |_| {
+        Ok::<_, std::convert::Infallible>(())
+    }) {
+        Ok(matches) => matches,
+        Err(never) => match never {},
+    }
+}
+
+fn section_prefix_with<E>(
+    value: &[u16],
+    work: &mut impl FnMut(usize) -> Result<(), E>,
+) -> Result<bool, E> {
+    const PREFIX: &[u8] = b"section-";
+    work(1)?;
+    let Some(units) = value.get(..PREFIX.len()) else {
+        return Ok(false);
+    };
+    for (unit, byte) in units.iter().zip(PREFIX) {
+        work(1)?;
+        if !ascii_case_insensitive_unit(*unit, *byte) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 impl HtmlAutocompleteSection {
@@ -1676,16 +1697,179 @@ fn default_state(
     })
 }
 
-fn identity(value: &DocumentString) -> Option<HtmlAutofillFieldIdentity> {
-    if let Some(setting) = setting(value) {
-        return Some(HtmlAutofillFieldIdentity::Setting(setting));
+fn recognize_keyword<E, T>(
+    units: &[u16],
+    keywords: impl IntoIterator<Item = (T, &'static str)>,
+    work: &mut impl FnMut(usize) -> Result<(), E>,
+) -> Result<Option<T>, E> {
+    for (value, spelling) in keywords {
+        if keyword_spelling_matches_with(units, spelling, false, &mut |_| work(1))? {
+            return Ok(Some(value));
+        }
     }
-    if let Some(field) = HtmlAutofillField::from_keyword(value) {
-        return Some(HtmlAutofillFieldIdentity::Detail(field));
+    Ok(None)
+}
+
+fn identify<E>(
+    units: &[u16],
+    work: &mut impl FnMut(usize) -> Result<(), E>,
+) -> Result<Option<HtmlAutofillFieldIdentity>, E> {
+    if let Some(setting) = recognize_keyword(
+        units,
+        FORM_AUTOCOMPLETE
+            .keywords
+            .iter()
+            .map(|keyword| (keyword.state, keyword.spelling)),
+        work,
+    )? {
+        return Ok(Some(HtmlAutofillFieldIdentity::Setting(setting)));
     }
-    ascii_keyword(value, WEBAUTHN).then_some(HtmlAutofillFieldIdentity::Credential(
-        HtmlAutocompleteCredential::Webauthn,
-    ))
+    if let Some(field) = detail_field(units, work)? {
+        return Ok(Some(HtmlAutofillFieldIdentity::Detail(field)));
+    }
+    Ok(
+        keyword_spelling_matches_with(units, WEBAUTHN, false, &mut |_| work(1))?.then_some(
+            HtmlAutofillFieldIdentity::Credential(HtmlAutocompleteCredential::Webauthn),
+        ),
+    )
+}
+
+fn detail_field<E>(
+    units: &[u16],
+    work: &mut impl FnMut(usize) -> Result<(), E>,
+) -> Result<Option<HtmlAutofillField>, E> {
+    recognize_keyword(
+        units,
+        HtmlAutofillField::ALL
+            .iter()
+            .map(|&field| (field, field.canonical_keyword())),
+        work,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum ProcessingTokens<'a> {
+    Materialized(&'a [HtmlSpaceToken]),
+    Borrowed(&'a [&'a [u16]]),
+}
+
+impl<'a> ProcessingTokens<'a> {
+    fn len(self) -> usize {
+        match self {
+            Self::Materialized(tokens) => tokens.len(),
+            Self::Borrowed(tokens) => tokens.len(),
+        }
+    }
+
+    fn units(self, index: usize) -> &'a [u16] {
+        // The shared driver only selects indices strictly below len().
+        match self {
+            Self::Materialized(tokens) => tokens[index].value().code_units(),
+            Self::Borrowed(tokens) => tokens[index],
+        }
+    }
+}
+
+enum ProcessingPart {
+    Final(usize),
+    CredentialDetail(usize),
+    Contact(HtmlAutocompleteContactHint),
+    Mode(HtmlAutocompleteMode),
+    Section(usize),
+}
+
+enum ProcessingDecision {
+    Default(HtmlAutocompleteDefaultReason),
+    Setting(HtmlFormAutocomplete),
+    Value {
+        field: HtmlAutofillFieldIdentity,
+        last: usize,
+    },
+}
+
+fn process_tokens<E>(
+    tokens: ProcessingTokens<'_>,
+    mantle: HtmlAutocompleteMantle,
+    mut work: impl FnMut(usize) -> Result<(), E>,
+    mut prepend: impl FnMut(ProcessingPart) -> Result<(), E>,
+) -> Result<ProcessingDecision, E> {
+    use HtmlAutocompleteDefaultReason as D;
+    use ProcessingDecision as Decision;
+    work(1)?;
+    let Some(last) = tokens.len().checked_sub(1) else {
+        return Ok(Decision::Default(D::EmptyTokens));
+    };
+    let Some(field) = identify(tokens.units(last), &mut work)? else {
+        return Ok(Decision::Default(D::UnrecognizedFinalToken));
+    };
+    if let HtmlAutofillFieldIdentity::Setting(setting) = field {
+        return Ok(if last != 0 {
+            Decision::Default(D::SettingWithExtraTokens)
+        } else if mantle == HtmlAutocompleteMantle::Anchor {
+            Decision::Default(D::SettingOnAnchor)
+        } else {
+            Decision::Setting(setting)
+        });
+    }
+
+    // A contextual report admits each materialization effect here, before
+    // any subsequent fallible recognition. An IDL-only caller records parts.
+    let output = Decision::Value { field, last };
+    let mut index = last;
+    let mut detail = match field {
+        HtmlAutofillFieldIdentity::Detail(field) => Some(field),
+        _ => None,
+    };
+    prepend(ProcessingPart::Final(last))?;
+    if matches!(field, HtmlAutofillFieldIdentity::Credential(_)) && index != 0 {
+        index -= 1;
+        detail = detail_field(tokens.units(index), &mut work)?;
+        if detail.is_none() {
+            return Ok(Decision::Default(D::InvalidCredentialPrefix));
+        }
+        prepend(ProcessingPart::CredentialDetail(index))?;
+        // The final credential remains the field. The preceding detail
+        // contributes to the IDL value and determines contact category.
+    }
+    if index != 0 {
+        index -= 1;
+        if detail.is_some_and(|field| field.category() == HtmlAutofillFieldCategory::Contact)
+            && let Some(hint) = recognize_keyword(
+                tokens.units(index),
+                HtmlAutocompleteContactHint::ALL
+                    .iter()
+                    .map(|&hint| (hint, hint.canonical_keyword())),
+                &mut work,
+            )?
+        {
+            prepend(ProcessingPart::Contact(hint))?;
+            if index == 0 {
+                return Ok(output);
+            }
+            index -= 1;
+        }
+        if let Some(hint) = recognize_keyword(
+            tokens.units(index),
+            HtmlAutocompleteMode::ALL
+                .iter()
+                .map(|&hint| (hint, hint.canonical_keyword())),
+            &mut work,
+        )? {
+            prepend(ProcessingPart::Mode(hint))?;
+            if index == 0 {
+                return Ok(output);
+            }
+            index -= 1;
+        }
+        if index != 0 {
+            return Ok(Decision::Default(D::ExtraLeadingTokens));
+        }
+        if !section_prefix_with(tokens.units(index), &mut work)? {
+            return Ok(Decision::Default(D::UnrecognizedLeadingToken));
+        }
+        prepend(ProcessingPart::Section(index))?;
+    }
+    Ok(output)
 }
 
 fn process(
@@ -1706,140 +1890,315 @@ fn process_inner(
     mantle: HtmlAutocompleteMantle,
     storage: &mut Materialization<impl ScopeLedger<HtmlWork, HtmlResource>>,
 ) -> Result<HtmlAutocompleteProcessingState, HtmlAutocompleteMaterializationError> {
-    use HtmlAutocompleteDefaultReason as D;
     let Some(tokens) = tokens else {
-        return Ok(default_state(mantle, D::MissingAttribute));
+        return Ok(default_state(
+            mantle,
+            HtmlAutocompleteDefaultReason::MissingAttribute,
+        ));
     };
     let tokens = tokens.tokens();
-    let Some(last) = tokens.last() else {
-        return Ok(default_state(mantle, D::EmptyTokens));
-    };
-    let Some(field_identity) = identity(last.value()) else {
-        return Ok(default_state(mantle, D::UnrecognizedFinalToken));
-    };
-    if let HtmlAutofillFieldIdentity::Setting(setting) = field_identity {
-        if tokens.len() != 1 {
-            return Ok(default_state(mantle, D::SettingWithExtraTokens));
+    let mut output = ProcessingOutput::default();
+    let decision = process_tokens(
+        ProcessingTokens::Materialized(tokens),
+        mantle,
+        |_| Ok(()),
+        |part| output.prepend(part, tokens, storage),
+    )?;
+    use ProcessingDecision as Decision;
+    match decision {
+        Decision::Default(reason) => Ok(default_state(mantle, reason)),
+        Decision::Setting(setting) => {
+            let field = storage.keyword(setting.canonical_keyword())?;
+            Ok(HtmlAutocompleteProcessingState::Processed(
+                HtmlAutocompleteProcessed {
+                    field_identity: HtmlAutofillFieldIdentity::Setting(setting),
+                    idl_value: field.clone(),
+                    field,
+                    mode: None,
+                    contact: None,
+                    scope: HtmlSpaceSeparatedTokens::from_vec(Vec::new()),
+                    credential: HtmlAutocompleteCredentialOutcome::NotAssigned,
+                },
+            ))
         }
-        if mantle == HtmlAutocompleteMantle::Anchor {
-            return Ok(default_state(mantle, D::SettingOnAnchor));
-        }
-        let field = storage.keyword(setting.canonical_keyword())?;
-        return Ok(HtmlAutocompleteProcessingState::Processed(
-            HtmlAutocompleteProcessed {
-                field_identity,
-                idl_value: field.clone(),
-                field,
-                mode: None,
-                contact: None,
-                scope: HtmlSpaceSeparatedTokens::from_vec(Vec::new()),
-                credential: HtmlAutocompleteCredentialOutcome::NotAssigned,
-            },
-        ));
+        Decision::Value { field, last } => output.finish(field, tokens[last].value(), storage),
     }
-    let mut index = tokens.len() - 1;
-    let mut detail = match field_identity {
-        HtmlAutofillFieldIdentity::Detail(field) => Some(field),
-        _ => None,
-    };
-    let mut output = ProcessingOutput {
-        field_identity,
-        field: last.value().clone(),
-        mode: None,
-        contact: None,
-        scope: Vec::new(),
-        credential: HtmlAutocompleteCredentialOutcome::Null,
-        idl: Vec::new(),
-    };
-    storage.prepend(&mut output.idl, last.clone(), StoragePurpose::Scratch)?;
-    if matches!(field_identity, HtmlAutofillFieldIdentity::Credential(_)) {
-        output.credential =
-            HtmlAutocompleteCredentialOutcome::Credential(HtmlAutocompleteCredential::Webauthn);
-        if index != 0 {
-            index -= 1;
-            detail = HtmlAutofillField::from_keyword(tokens[index].value());
-            if detail.is_none() {
-                return Ok(default_state(mantle, D::InvalidCredentialPrefix));
-            }
-            storage.prepend(
-                &mut output.idl,
-                tokens[index].clone(),
-                StoragePurpose::Scratch,
-            )?;
-        }
-        // Literal selected pin: field remains the original final credential
-        // token. Category changes for contact processing, not field identity.
-    }
-    if index != 0 {
-        index -= 1;
-        if detail.is_some_and(|field| field.category() == HtmlAutofillFieldCategory::Contact)
-            && let Some(hint) = HtmlAutocompleteContactHint::from_keyword(tokens[index].value())
-        {
-            output.contact = Some(hint);
-            let token = hint
-                .declared()
-                .copy(|units, count| storage.reserve(units, count, StoragePurpose::Output))?;
-            storage.prepend(&mut output.scope, token.clone(), StoragePurpose::Output)?;
-            storage.prepend(&mut output.idl, token, StoragePurpose::Scratch)?;
-            if index == 0 {
-                return output.finish(storage);
-            }
-            index -= 1;
-        }
-        if let Some(hint) = HtmlAutocompleteMode::from_keyword(tokens[index].value()) {
-            output.mode = Some(hint);
-            let token = hint
-                .declared()
-                .copy(|units, count| storage.reserve(units, count, StoragePurpose::Output))?;
-            storage.prepend(&mut output.scope, token.clone(), StoragePurpose::Output)?;
-            storage.prepend(&mut output.idl, token, StoragePurpose::Scratch)?;
-            if index == 0 {
-                return output.finish(storage);
-            }
-            index -= 1;
-        }
-        if index != 0 {
-            return Ok(default_state(mantle, D::ExtraLeadingTokens));
-        }
-        if !section_prefix(tokens[0].value()) {
-            return Ok(default_state(mantle, D::UnrecognizedLeadingToken));
-        }
-        let section = tokens[0].units().copy(true, |units, count| {
-            storage.reserve(units, count, StoragePurpose::Output)
-        })?;
-        storage.prepend(&mut output.scope, section.clone(), StoragePurpose::Output)?;
-        storage.prepend(&mut output.idl, section, StoragePurpose::Scratch)?;
-    }
-    output.finish(storage)
 }
 
+#[derive(Default)]
 struct ProcessingOutput {
-    field_identity: HtmlAutofillFieldIdentity,
-    field: DocumentString,
     mode: Option<HtmlAutocompleteMode>,
     contact: Option<HtmlAutocompleteContactHint>,
     scope: Vec<HtmlSpaceToken>,
-    credential: HtmlAutocompleteCredentialOutcome,
     idl: Vec<HtmlSpaceToken>,
 }
+
 impl ProcessingOutput {
+    fn prepend(
+        &mut self,
+        part: ProcessingPart,
+        tokens: &[HtmlSpaceToken],
+        storage: &mut Materialization<impl ScopeLedger<HtmlWork, HtmlResource>>,
+    ) -> Result<(), HtmlAutocompleteMaterializationError> {
+        let token = match part {
+            ProcessingPart::Final(index) | ProcessingPart::CredentialDetail(index) => {
+                return storage.prepend(
+                    &mut self.idl,
+                    tokens[index].clone(),
+                    StoragePurpose::Scratch,
+                );
+            }
+            ProcessingPart::Contact(hint) => {
+                self.contact = Some(hint);
+                hint.declared()
+                    .copy(|units, count| storage.reserve(units, count, StoragePurpose::Output))?
+            }
+            ProcessingPart::Mode(hint) => {
+                self.mode = Some(hint);
+                hint.declared()
+                    .copy(|units, count| storage.reserve(units, count, StoragePurpose::Output))?
+            }
+            ProcessingPart::Section(index) => {
+                tokens[index].units().copy(true, |units, count| {
+                    storage.reserve(units, count, StoragePurpose::Output)
+                })?
+            }
+        };
+        storage.prepend(&mut self.scope, token.clone(), StoragePurpose::Output)?;
+        storage.prepend(&mut self.idl, token, StoragePurpose::Scratch)
+    }
+
     fn finish(
         self,
+        field_identity: HtmlAutofillFieldIdentity,
+        field: &DocumentString,
         storage: &mut Materialization<impl ScopeLedger<HtmlWork, HtmlResource>>,
     ) -> Result<HtmlAutocompleteProcessingState, HtmlAutocompleteMaterializationError> {
         let idl_value = storage.idl(&self.idl)?;
+        let credential = match field_identity {
+            HtmlAutofillFieldIdentity::Credential(credential) => {
+                HtmlAutocompleteCredentialOutcome::Credential(credential)
+            }
+            _ => HtmlAutocompleteCredentialOutcome::Null,
+        };
         Ok(HtmlAutocompleteProcessingState::Processed(
             HtmlAutocompleteProcessed {
-                field_identity: self.field_identity,
-                field: self.field,
+                field_identity,
+                field: field.clone(),
                 mode: self.mode,
                 contact: self.contact,
                 scope: HtmlSpaceSeparatedTokens::from_vec(self.scope),
-                credential: self.credential,
+                credential,
                 idl_value,
             },
         ))
     }
+}
+
+/// The qualified native control whose autocomplete IDL value is requested.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlAutocompleteControl {
+    /// Input uses its actual type and selects Anchor only in the Hidden state.
+    Input(HtmlInputType),
+    /// Select uses the expectation mantle.
+    Select,
+    /// Textarea uses the expectation mantle.
+    Textarea,
+}
+
+impl HtmlAutocompleteControl {
+    fn mantle(self) -> HtmlAutocompleteMantle {
+        match self {
+            Self::Input(HtmlInputType::Hidden) => HtmlAutocompleteMantle::Anchor,
+            Self::Input(_) | Self::Select | Self::Textarea => HtmlAutocompleteMantle::Expectation,
+        }
+    }
+}
+
+/// The exact autocomplete getter output, borrowing only reached raw tokens.
+///
+/// This value owns no allocation or tree authority. Its IDL default is empty
+/// and requires no Form owner. Contextual author reports are separate.
+#[derive(Debug)]
+pub struct HtmlAutocompleteIdl<'a>(IdlValue<'a>);
+
+#[derive(Debug)]
+enum IdlValue<'a> {
+    Empty,
+    Setting(HtmlFormAutocomplete),
+    Detail {
+        scope: IdlScope<'a>,
+        last: &'a [u16],
+    },
+}
+
+#[derive(Debug, Default)]
+struct IdlScope<'a> {
+    section: Option<&'a [u16]>,
+    mode: Option<HtmlAutocompleteMode>,
+    contact: Option<HtmlAutocompleteContactHint>,
+    credential_detail: Option<&'a [u16]>,
+}
+
+enum IdlFragment<'a> {
+    Raw(&'a [u16]),
+    Lowercase(&'a [u16]),
+    Keyword(&'static str),
+}
+
+impl IdlFragment<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Raw(units) | Self::Lowercase(units) => units.len(),
+            Self::Keyword(keyword) => keyword.len(),
+        }
+    }
+}
+
+impl HtmlAutocompleteIdl<'_> {
+    fn fragments(&self) -> [Option<IdlFragment<'_>>; 5] {
+        use IdlFragment as Fragment;
+        match &self.0 {
+            IdlValue::Empty => [None, None, None, None, None],
+            IdlValue::Setting(setting) => [
+                Some(Fragment::Keyword(setting.canonical_keyword())),
+                None,
+                None,
+                None,
+                None,
+            ],
+            IdlValue::Detail { scope, last } => [
+                scope.section.map(Fragment::Lowercase),
+                scope
+                    .mode
+                    .map(|mode| Fragment::Keyword(mode.canonical_keyword())),
+                scope
+                    .contact
+                    .map(|contact| Fragment::Keyword(contact.canonical_keyword())),
+                scope.credential_detail.map(Fragment::Raw),
+                Some(Fragment::Raw(last)),
+            ],
+        }
+    }
+
+    /// The exact output length, including single spaces between emitted tokens.
+    pub fn code_units_len(&self) -> Option<usize> {
+        self.fragments().into_iter().flatten().enumerate().try_fold(
+            0_usize,
+            |total, (index, fragment)| {
+                total
+                    .checked_add(usize::from(index != 0))?
+                    .checked_add(fragment.len())
+            },
+        )
+    }
+
+    /// Emit the exact IDL UTF-16 under caller work and output custody.
+    ///
+    /// `step` admits each output unit, including retained raw reads, ASCII
+    /// lowercasing and inserted spaces, before the unit is read or emitted.
+    /// The first refusal from either callback is returned unchanged.
+    pub fn visit_code_units_with<E>(
+        &self,
+        mut step: impl FnMut() -> Result<(), E>,
+        mut emit: impl FnMut(u16) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for (index, fragment) in self.fragments().into_iter().flatten().enumerate() {
+            if index != 0 {
+                step()?;
+                emit(u16::from(b' '))?;
+            }
+            match fragment {
+                IdlFragment::Raw(units) => {
+                    for unit in units {
+                        step()?;
+                        emit(*unit)?;
+                    }
+                }
+                IdlFragment::Lowercase(units) => {
+                    for unit in units {
+                        step()?;
+                        emit(ascii_lowercase(*unit))?;
+                    }
+                }
+                IdlFragment::Keyword(keyword) => {
+                    for byte in keyword.as_bytes() {
+                        step()?;
+                        emit(u16::from(*byte))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Determine the autocomplete IDL value from exact content and qualified control.
+///
+/// The getter uses Expectation outside the contextual Input processing domain
+/// as well. A sixth token rules out every successful IDL value. There is no
+/// allocation and no Form lookup. `work` admits each reached tokenizer action,
+/// vocabulary comparison and other fixed processing read.
+///
+/// # Errors
+///
+/// Returns the first work refusal unchanged.
+pub fn control_autocomplete_idl_with<'a, E>(
+    raw: Option<&'a [u16]>,
+    control: HtmlAutocompleteControl,
+    mut work: impl FnMut(usize) -> Result<(), E>,
+) -> Result<HtmlAutocompleteIdl<'a>, E> {
+    work(HtmlSpaceTokenCursor::BEGIN_WORK)?;
+    let Some(raw) = raw else {
+        return Ok(HtmlAutocompleteIdl(IdlValue::Empty));
+    };
+    let mut cursor = HtmlSpaceTokenCursor::new(raw);
+    // Section, mode, contact, detail and final credential is the longest
+    // successful form. Additional tokens only affect contextual diagnostics.
+    let mut tokens = [&[][..]; 5];
+    let mut len = 0;
+    loop {
+        work(HtmlSpaceTokenCursor::STEP_WORK)?;
+        match cursor.step() {
+            HtmlSpaceTokenStep::Continue => {}
+            HtmlSpaceTokenStep::Done => break,
+            HtmlSpaceTokenStep::Token { start, end } => {
+                let Some(slot) = tokens.get_mut(len) else {
+                    return Ok(HtmlAutocompleteIdl(IdlValue::Empty));
+                };
+                *slot = &raw[start..end];
+                len += 1;
+            }
+        }
+    }
+    let tokens = &tokens[..len];
+    let mut scope = IdlScope::default();
+    let decision = process_tokens(
+        ProcessingTokens::Borrowed(tokens),
+        control.mantle(),
+        work,
+        |part| {
+            match part {
+                ProcessingPart::Final(_) => {}
+                ProcessingPart::CredentialDetail(index) => {
+                    scope.credential_detail = Some(tokens[index])
+                }
+                ProcessingPart::Contact(hint) => scope.contact = Some(hint),
+                ProcessingPart::Mode(hint) => scope.mode = Some(hint),
+                ProcessingPart::Section(index) => scope.section = Some(tokens[index]),
+            }
+            Ok(())
+        },
+    )?;
+    let output = match decision {
+        ProcessingDecision::Default(_) => IdlValue::Empty,
+        ProcessingDecision::Setting(setting) => IdlValue::Setting(setting),
+        ProcessingDecision::Value { last, .. } => IdlValue::Detail {
+            scope,
+            last: tokens[last],
+        },
+    };
+    Ok(HtmlAutocompleteIdl(output))
 }
 
 impl HtmlValueInterpreter {
@@ -2033,11 +2392,12 @@ impl HtmlValueInterpreter {
         let syntax = tokens
             .as_ref()
             .map_or(HtmlAutocompleteSyntaxState::Missing, syntax);
-        let mantle = match (known, state) {
-            (KnownHtmlElement::Input, None) => None,
-            (KnownHtmlElement::Input, Some(HtmlInputType::Hidden)) => {
-                Some(HtmlAutocompleteMantle::Anchor)
+        let mantle = match known {
+            KnownHtmlElement::Input => {
+                state.map(|state| HtmlAutocompleteControl::Input(state).mantle())
             }
+            KnownHtmlElement::Select => Some(HtmlAutocompleteControl::Select.mantle()),
+            KnownHtmlElement::Textarea => Some(HtmlAutocompleteControl::Textarea.mantle()),
             _ => Some(HtmlAutocompleteMantle::Expectation),
         };
         let context_author = context_author(known, raw, state, &syntax, tokens.as_ref());

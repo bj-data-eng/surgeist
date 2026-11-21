@@ -754,6 +754,20 @@ class DescriptionTests(unittest.TestCase):
         default["value"] = 2
         self.rejected("source declaration mismatch: HTMLInputElement.source")
 
+    def test_control_autocomplete_uses_its_own_pinned_idl_projection(self):
+        mappings = self.data["access_mappings"]
+        for interface in ["HTMLInputElement", "HTMLSelectElement", "HTMLTextAreaElement"]:
+            with self.subTest(interface=interface):
+                identity = f"{interface}.autocomplete"
+                member = self.member(identity)
+                self.assertEqual(member["attributes"], [{"name": "CEReactions"}, {"name": "ReflectSetter"}])
+                getter = mappings[f"{identity}/get"]
+                setter = mappings[f"{identity}/set"]
+                self.assertFalse(getter["requirements"])
+                self.assertFalse(setter["requirements"])
+                self.assertIn("control_autocomplete_idl_with", [item["symbol"] for item in getter["producers"]])
+                self.assertIn("set_attribute_ns", [item["symbol"] for item in setter["producers"]])
+
     def test_integer_controls_name_the_live_reflection_and_source_providers(self):
         mappings = self.data["access_mappings"]
         for interface, dimensions in [("HTMLInputElement", ["size"]), ("HTMLTextAreaElement", ["cols", "rows"])]:

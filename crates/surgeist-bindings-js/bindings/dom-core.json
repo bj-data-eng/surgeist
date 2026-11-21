@@ -9989,20 +9989,23 @@
       "requirements": []
     },
     "HTMLSelectElement.autocomplete/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the HTML autofill IDL processing for the select autocomplete getter.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fe-autocomplete"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.autocomplete.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/autocomplete.rs", "symbol": "control_autocomplete_idl_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.autocomplete/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Bind the reflected autocomplete setter to the native Source attribute path.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fe-autocomplete"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.autocomplete.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.disabled/get": {
       "kind": "native",
@@ -17149,39 +17152,21 @@
       "kind": "native",
       "adapter": "htmlinputelement.autocomplete.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/autocomplete.rs", "symbol": "control_autocomplete"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/autocomplete.rs", "symbol": "control_autocomplete_controlled"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/input.rs", "symbol": "input_type_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/autocomplete.rs", "symbol": "control_autocomplete_idl_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Observe the existing Input autofill IDL processing and reached actual type and Form facts under current Source admission.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
-          "issue": 1235
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project the actual autofill IDL value on the branded attached Input.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.autocomplete/set": {
       "kind": "native",
       "adapter": "htmlinputelement.autocomplete.set",
       "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the paired branded Input autocomplete accessor with its raw Source setter.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.defaultChecked/get": {
       "kind": "native",
@@ -18217,39 +18202,20 @@
       "kind": "native",
       "adapter": "htmltextareaelement.autocomplete.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/autocomplete.rs", "symbol": "control_autocomplete"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/autocomplete.rs", "symbol": "control_autocomplete_controlled"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/autocomplete.rs", "symbol": "control_autocomplete_idl_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Observe the existing Textarea autofill IDL processing and reached Form owner facts under current Source admission.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
-          "issue": 1235
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project the actual autofill IDL value on the branded attached Textarea.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.autocomplete/set": {
       "kind": "native",
       "adapter": "htmltextareaelement.autocomplete.set",
       "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Install the paired branded Textarea autocomplete accessor with its raw Source setter.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.cols/get": {
       "kind": "native",

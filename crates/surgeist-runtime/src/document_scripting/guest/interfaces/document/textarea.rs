@@ -13,6 +13,7 @@ use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
 use surgeist_html::bounded::attributes::HtmlControlDimensionRule;
 
 const BEFORE_FORM: &[reflection::Member] = &[
+    reflection::CONTROL_AUTOCOMPLETE,
     (
         &ascii(b"cols"),
         &ascii(b"get cols"),
