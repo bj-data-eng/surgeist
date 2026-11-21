@@ -461,6 +461,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     optgroup_selection::optgroup_disabled_resets_through_foreign_wrappers_but_stops_at_html_barriers();
     optgroup_selection::optgroup_disabled_keeps_the_first_select_work_refusal();
     select_selectedness::selectedness_uses_live_native_option_order();
+    select_selectedness::selectedness_accessors_use_their_creation_realm();
+    optgroup_selection::selectedness_bindings_publish_native_selection_and_content();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();
     pre_width::pre_width_family_preserves_native_and_web_idl_contracts();

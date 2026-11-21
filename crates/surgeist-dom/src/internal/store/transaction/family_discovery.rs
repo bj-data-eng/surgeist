@@ -396,6 +396,45 @@ fn fact(
 }
 
 impl FamilyIndex {
+    pub fn find_option_with<E: From<DomError>, S: FnMut() -> Result<(), E>>(
+        &self,
+        select: NodeId,
+        step: &mut S,
+        mut matches: impl FnMut(NodeId, &mut S) -> Result<bool, E>,
+    ) -> Result<Option<usize>, E> {
+        let key = Key::Existing(select);
+        self.qualified(key)?;
+        let Some(group) = self.options.get_with(key, step)? else {
+            return Ok(None);
+        };
+        self.members
+            .position_with(group.members, step, |key, step| {
+                let Key::Existing(id) = key else {
+                    return Err(DomError::SelectProtocol.into());
+                };
+                matches(id, step)
+            })
+    }
+    pub fn option_index_with<E: From<DomError>>(
+        &self,
+        option: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, E> {
+        let key = Key::Existing(option);
+        self.qualified(key)?;
+        let fact = self
+            .facts
+            .get_with(key, step)?
+            .filter(|fact| fact.kind == Kind::Option)
+            .ok_or(DomError::SelectProtocol)?;
+        let select = match fact.select {
+            Some(Key::Existing(select)) => select,
+            None => return Ok(0),
+            Some(Key::Created(_)) => return Err(DomError::SelectProtocol.into()),
+        };
+        self.find_option_with(select, step, |id, _| Ok(id == option))?
+            .ok_or_else(|| DomError::SelectProtocol.into())
+    }
     fn qualified(&self, key: Key) -> Result<(), DomError> {
         if let Key::Existing(id) = key
             && self.owner.is_some_and(|owner| owner != id.owner)

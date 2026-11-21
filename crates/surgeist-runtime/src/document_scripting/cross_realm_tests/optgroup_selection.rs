@@ -173,6 +173,36 @@ pub(super) fn optgroup_disabled_presence_changes_reset_selection_and_selectedcon
     fixture.finish();
 }
 
+pub(super) fn selectedness_bindings_publish_native_selection_and_content() {
+    let mut fixture = SelectFixture::new(&[]);
+    expose_public_node_for_source_test(
+        &mut fixture.host,
+        &fixture.permit,
+        fixture.select,
+        "nativeSelect",
+    );
+    expose_public_node_for_source_test(
+        &mut fixture.host,
+        &fixture.permit,
+        fixture.fallback,
+        "nativeOption",
+    );
+    fixture.run("nativeSelect.selectedIndex = 1").unwrap();
+    fixture.assert_selection([false, true], Some("fallback option"));
+    fixture
+        .run(
+            "if (nativeSelect.selectedIndex !== 1 || nativeOption.index !== 1 ||
+                 !nativeOption.selected || nativeOption.defaultSelected)
+                throw new Error('guest observation disagrees with the native selection');",
+        )
+        .unwrap();
+    fixture.run("nativeOption.selected = false").unwrap();
+    fixture.assert_selection([true, false], Some("group option"));
+    fixture.run("nativeSelect.selectedIndex = -1").unwrap();
+    fixture.assert_selection([false, false], None);
+    fixture.finish();
+}
+
 // HTML877d 58829..58861 stops at HTML datalist, hr, option, or a second
 // ancestor optgroup. A foreign element with the same name has no such effect.
 pub(super) fn optgroup_disabled_resets_through_foreign_wrappers_but_stops_at_html_barriers() {

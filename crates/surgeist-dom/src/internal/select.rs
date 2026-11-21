@@ -1,5 +1,5 @@
 //! Native select-family values and explicit intrinsic task checkpoint.
-use crate::{internal::identity::NodeId, internal::snapshot::DomNode};
+use crate::internal::{identity::NodeId, snapshot::DomNode, store::DomError};
 
 /// Native Select scalars; form identity remains on the canonical node.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -54,6 +54,20 @@ impl<'a> DomSelect<'a> {
         self.node.snapshot.require_complete_source()?;
         Ok(self.node.node.control_owner())
     }
+    /// Read the first selected Option's zero-based position in the canonical option list.
+    ///
+    /// Returns `None` for an empty selection in the captured published segment.
+    /// Each reached index lookup and selectedness read uses `step`. A live
+    /// caller must separately qualify its access to the current segment.
+    pub fn selected_index_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<usize>, E> {
+        self.node
+            .snapshot
+            .state
+            .selected_index_with(self.id(), &mut step)
+    }
 }
 #[derive(Clone, Copy, Debug)]
 pub struct DomOption<'a> {
@@ -73,6 +87,20 @@ impl DomOption<'_> {
     pub fn cached_select(self) -> Result<Option<NodeId>, crate::internal::store::DomError> {
         self.node.snapshot.require_complete_source()?;
         Ok(self.node.node.option_select())
+    }
+    /// Read this Option's zero-based position in its canonical option list.
+    ///
+    /// Returns zero when the Option belongs to no list in the captured published
+    /// segment. Each reached membership and order lookup uses `step`. A live
+    /// caller must separately qualify its access to the current segment.
+    pub fn index_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, E> {
+        self.node
+            .snapshot
+            .state
+            .option_index_with(self.id(), &mut step)
     }
 }
 #[derive(Clone, Copy, Debug)]

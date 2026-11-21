@@ -27,6 +27,31 @@ use surgeist_html::{
 
 pub(in crate::internal::store) use source::scratch::ScratchVec;
 
+impl State {
+    pub(crate) fn selected_index_with<E: From<DomError>>(
+        &self,
+        select: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<usize>, E> {
+        self.family_index
+            .find_option_with(select, step, |id, step| {
+                let state = self
+                    .node_with(select.owner, id, step)?
+                    .element()
+                    .and_then(DomElement::option_state)
+                    .ok_or(DomError::SelectProtocol)?;
+                Ok(state.flags().selectedness())
+            })
+    }
+    pub(crate) fn option_index_with<E: From<DomError>>(
+        &self,
+        option: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, E> {
+        self.family_index.option_index_with(option, step)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Task<K> {
     Update {

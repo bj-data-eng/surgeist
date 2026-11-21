@@ -40,6 +40,7 @@ mod parent_node;
 mod pre;
 mod processing_instruction;
 mod reflection;
+mod select;
 mod shadow;
 mod slot;
 mod structural_alignment;

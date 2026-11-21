@@ -31,7 +31,11 @@ PRIMITIVES = {"undefined", "boolean", "byte", "octet", "short", "unsigned short"
 ATTRIBUTES = {"Exposed", "Serializable", "SameObject", "NewObject", "CEReactions", "Unscopable",
               "PutForwards", "LegacyNullToEmptyString", "LegacyUnenumerableNamedProperties",
               "LegacyUnforgeable", "LegacyOverrideBuiltIns", "LegacyLenientThis",
-              "HTMLConstructor", "Reflect", "ReflectSetter", "ReflectRange", "ReflectDefault"}
+              "HTMLConstructor", "LegacyFactoryFunction", "Reflect", "ReflectSetter", "ReflectRange",
+              "ReflectDefault"}
+SELECTED_SETTER_CONVERSIONS = {
+    "HTMLTitleElement.text", "HTMLSelectElement.selectedIndex", "HTMLOptionElement.selected",
+}
 TOKEN = re.compile(r'\s+|//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|'
                    r'0[xX][0-9A-Fa-f]+|[A-Za-z_][A-Za-z_0-9]*|[0-9]+|\.\.\.|[^\w\s]', re.ASCII)
 
@@ -115,6 +119,11 @@ def attributes_shape(items):
         text(item["name"], "extended attribute name")
         if item["name"] in {"Exposed", "PutForwards"}:
             text(item.get("value"), "extended attribute value")
+        elif item["name"] == "LegacyFactoryFunction":
+            value = item.get("value")
+            keys(value, ["name", "arguments"])
+            identifier(value["name"])
+            arguments_shape(value["arguments"])
         elif item["name"] == "Reflect" and "value" in item:
             text(item["value"], "reflected attribute name")
         elif item["name"] == "ReflectRange":
@@ -167,6 +176,17 @@ def default_shape(value):
             raise DescriptionError("unknown default kind")
 
 
+def arguments_shape(items):
+    sequence(items, "arguments")
+    for arg in items:
+        keys(arg, ["name", "type", "presence"], ["default"])
+        identifier(arg["name"])
+        type_shape(arg["type"])
+        text(arg["presence"], "argument presence")
+        if "default" in arg:
+            default_shape(arg["default"])
+
+
 def member_shape(member):
     keys(member, ["id", "kind", "attributes"],
          ["name", "type", "readonly", "arguments", "special", "static", "value", "default", "required"])
@@ -187,14 +207,7 @@ def member_shape(member):
     if "default" in member:
         default_shape(member["default"])
     if "arguments" in member:
-        sequence(member["arguments"], "arguments")
-        for arg in member["arguments"]:
-            keys(arg, ["name", "type", "presence"], ["default"])
-            identifier(arg["name"])
-            type_shape(arg["type"])
-            text(arg["presence"], "argument presence")
-            if "default" in arg:
-                default_shape(arg["default"])
+        arguments_shape(member["arguments"])
 
 
 def producer_shape(producer):
@@ -341,7 +354,7 @@ def tokens(text):
     return output
 
 
-def attributes(items):
+def attributes(items, names=None):
     attributes_shape(items)
     values = []
     seen = set()
@@ -351,7 +364,7 @@ def attributes(items):
         require(name in ATTRIBUTES and name not in seen, f"unknown/duplicate extended attribute: {name}")
         seen.add(name)
         value = item.get("value")
-        if name in {"Exposed", "PutForwards", "ReflectRange", "ReflectDefault"}:
+        if name in {"Exposed", "PutForwards", "ReflectRange", "ReflectDefault", "LegacyFactoryFunction"}:
             require(value is not None, f"{name} requires a value")
         elif name != "Reflect":
             require(value is None, f"{name} takes no value")
@@ -363,7 +376,10 @@ def attributes(items):
             require(re.fullmatch(r"[a-z][a-z0-9-]*", value), "invalid reflected attribute name")
             value = json.dumps(value)
         suffix = ""
-        if isinstance(value, list):
+        if name == "LegacyFactoryFunction":
+            require(names is not None, "LegacyFactoryFunction requires interface scope")
+            suffix = "=" + value["name"] + "(" + arguments(value["arguments"], names) + ")"
+        elif isinstance(value, list):
             suffix = "=(" + ", ".join(map(str, value)) + ")"
         elif name == "ReflectDefault":
             suffix = "=" + str(value)
@@ -517,11 +533,12 @@ def render_definition(definition, names):
         boolean(definition["partial"], "partial")
     kind = definition["kind"]
     require(kind in {"interface", "mixin", "callback_interface", "dictionary", "enumeration", "typedef", "namespace"}, "unknown definition kind")
-    prefix = attributes(definition["attributes"])
     require(not definition.get("partial", False) or kind in {"interface", "mixin"}, "invalid partial definition")
-    require(all(x["name"] in {"Exposed", "Serializable", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties"} for x in definition["attributes"]), "member attribute on a definition")
+    require(all(x["name"] in {"Exposed", "Serializable", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties", "LegacyFactoryFunction"} for x in definition["attributes"]), "member attribute on a definition")
     require(kind == "interface" or all(x["name"] != "Serializable" for x in definition["attributes"]),
             "Serializable requires an interface")
+    factory_scope = kind == "interface" and not definition.get("partial", False)
+    prefix = attributes(definition["attributes"], names if factory_scope else None)
     if kind == "typedef":
         keys(definition, ["id", "kind", "name", "attributes", "type"])
         return prefix + "typedef " + render_type(definition["type"], names) + " " + definition["name"] + ";"
@@ -557,6 +574,8 @@ def mapping_keys(member):
     if member["kind"] == "constructor":
         return [member["id"] + "/construct"]
     if member["kind"] == "operation":
+        if member.get("special") == "setter" and "name" not in member:
+            return [member["id"] + "/index-set"]
         return [member["id"] + "/call"]
     if member["kind"] == "attribute":
         result = [member["id"] + "/get"]
@@ -646,8 +665,12 @@ def validate(data, root=ROOT):
                 f"source declaration mismatch: {unit['id']}")
         covered.extend(unit["entries"])
     require(len(covered) == len(set(covered)) and set(covered) == set(rendered), "source coverage is not exactly once")
-    expected = {key for member in members.values() for key in mapping_keys(member)}
-    require(set(data["access_mappings"]) == expected, "access mappings must cover each accessor/constructor/overload exactly")
+    factories = {d["id"] + "." + a["value"]["name"] + "/factory"
+                 for d in definitions.values() for a in d["attributes"]
+                 if a["name"] == "LegacyFactoryFunction"}
+    expected = factories | {key for member in members.values() for key in mapping_keys(member)}
+    require(set(data["access_mappings"]) == expected,
+            "access mappings must cover each accessor/constructor/overload, indexed setter and legacy factory exactly")
     callback_members = {m["id"] for d in definitions.values() if d["kind"] == "callback_interface" for m in d["members"]}
     for key, mapping in data["access_mappings"].items():
         require(mapping.get("result_view", "value") in {"value", "live", "static", "sequence"}, "invalid result projection")
@@ -657,15 +680,16 @@ def validate(data, root=ROOT):
         elif mapping["kind"] == "derived":
             require(re.fullmatch(r"[a-z][a-z0-9_.]*", mapping["algorithm"]), "invalid derived algorithm ID")
         member_id, access = key.rsplit("/", 1)
-        member = members[member_id]
-        forwarding = next((a["value"] for a in member["attributes"] if a["name"] == "PutForwards"), None)
+        member = members[member_id] if access != "factory" else None
+        annotations = member["attributes"] if member is not None else ()
+        forwarding = next((a["value"] for a in annotations if a["name"] == "PutForwards"), None)
         if access == "set" and forwarding:
             require(mapping["kind"] == "forwarding", "PutForwards setter must use guest forwarding")
             require(mapping["getter"] == member_id + "/get" and mapping["target"] == forwarding,
                     "forwarding does not match the declared getter/target")
         else:
             require(mapping["kind"] != "forwarding", "forwarding without a declared PutForwards setter")
-        if member_id in callback_members:
+        if member is not None and member_id in callback_members:
             require(mapping["kind"] == "callback" and mapping["operation"] == member["name"],
                     "callback-interface operation requires the guest invocation protocol")
             require(any(d["name"] == mapping["interface"] and d["kind"] == "callback_interface" and member in d["members"] for d in definitions.values()), "wrong callback interface")
@@ -976,7 +1000,7 @@ def lower_selected_setters(data, model):
         for member in declaration.get("members", []):
             if (member["kind"] != "attribute" or member["readonly"]
                     or (not member["type"].get("attributes")
-                        and member["id"] != "HTMLTitleElement.text")):
+                        and member["id"] not in SELECTED_SETTER_CONVERSIONS)):
                 continue
             info = conversion_type(member["type"], model)
             if info is not None:
