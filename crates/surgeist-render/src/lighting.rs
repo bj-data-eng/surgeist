@@ -1,8 +1,9 @@
-//! Native diffuse lighting for finite layer sources.
+//! Native diffuse and specular lighting for finite layer sources.
 //!
 //! Admitted lighting shades the source alpha as a height field in local
-//! primitive units. Supply one light with [`prepare_lighting`], then attach the
-//! admitted operation and a finite [`LightingSource`] through
+//! primitive units. Supply one light with [`prepare_lighting`] for diffuse
+//! reflectivity or [`prepare_specular_lighting`] for specular highlights.
+//! Attach the admitted operation and a finite [`LightingSource`] through
 //! [`Scene::lighting_layer`]. The source, filter and primitive-result rectangles
 //! stay independent, and even an empty source can illuminate a flat plane.
 
@@ -10,18 +11,34 @@ use crate::{
     Error, Result,
     accounting::{Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork},
     effect::{FilterColorSpace, FilterDomains},
+    error::PrimitiveOperation,
     number_text::Number,
     paint::Color,
     scene::Scene,
 };
 
-/// Resolved lighting input awaiting intrinsic validation.
+/// Resolved diffuse lighting input awaiting intrinsic validation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DiffuseLightingInput {
-    surface_scale: f64,
+    surface: LightingSurfaceInput,
     constant: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LightingSurfaceInput {
+    surface_scale: f64,
     kernel: Option<[f64; 2]>,
     lighting_color: Color,
+}
+
+impl LightingSurfaceInput {
+    const fn new() -> Self {
+        Self {
+            surface_scale: 1.0,
+            kernel: None,
+            lighting_color: Color::rgba(1.0, 1.0, 1.0, 1.0),
+        }
+    }
 }
 
 impl DiffuseLightingInput {
@@ -29,17 +46,15 @@ impl DiffuseLightingInput {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            surface_scale: 1.0,
+            surface: LightingSurfaceInput::new(),
             constant: 1.0,
-            kernel: None,
-            lighting_color: Color::rgba(1.0, 1.0, 1.0, 1.0),
         }
     }
 
     /// Sets the signed height associated with unit source alpha.
     #[must_use]
     pub const fn with_surface_scale(mut self, scale: f64) -> Self {
-        self.surface_scale = scale;
+        self.surface.surface_scale = scale;
         self
     }
 
@@ -62,19 +77,91 @@ impl DiffuseLightingInput {
     /// spacing on both axes after validation.
     #[must_use]
     pub const fn with_kernel_unit_lengths(mut self, x: f64, y: f64) -> Self {
-        self.kernel = Some([x, y]);
+        self.surface.kernel = Some([x, y]);
         self
     }
 
     /// Sets the straight numeric-sRGB light color. Lighting uses its RGB channels.
     #[must_use]
     pub const fn with_lighting_color(mut self, color: Color) -> Self {
-        self.lighting_color = color;
+        self.surface.lighting_color = color;
         self
     }
 }
 
 impl Default for DiffuseLightingInput {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Resolved specular lighting input awaiting intrinsic validation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpecularLightingInput {
+    surface: LightingSurfaceInput,
+    constant: f64,
+    exponent: f64,
+}
+
+impl SpecularLightingInput {
+    /// Sets unit height scale, specular reflectivity and exponent, with white light and default spacing.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            surface: LightingSurfaceInput::new(),
+            constant: 1.0,
+            exponent: 1.0,
+        }
+    }
+
+    /// Sets the signed height associated with unit source alpha.
+    #[must_use]
+    pub const fn with_surface_scale(mut self, scale: f64) -> Self {
+        self.surface.surface_scale = scale;
+        self
+    }
+
+    /// Sets the nonnegative specular reflectivity.
+    #[must_use]
+    pub const fn with_specular_constant(mut self, constant: f64) -> Self {
+        self.constant = constant;
+        self
+    }
+
+    /// Sets the finite material exponent, which preparation clamps to `1..=128`.
+    ///
+    /// This exponent controls the highlight and is independent of spot focus.
+    #[must_use]
+    pub const fn with_specular_exponent(mut self, exponent: f64) -> Self {
+        self.exponent = exponent;
+        self
+    }
+
+    /// Sets the same kernel spacing in local primitive units on both axes.
+    #[must_use]
+    pub const fn with_kernel_unit_length(self, length: f64) -> Self {
+        self.with_kernel_unit_lengths(length, length)
+    }
+
+    /// Sets independent horizontal and vertical kernel spacings in local primitive units.
+    ///
+    /// An explicit pair containing a nonpositive value selects the default
+    /// spacing on both axes after validation.
+    #[must_use]
+    pub const fn with_kernel_unit_lengths(mut self, x: f64, y: f64) -> Self {
+        self.surface.kernel = Some([x, y]);
+        self
+    }
+
+    /// Sets the straight numeric-sRGB light color. Lighting uses its RGB channels.
+    #[must_use]
+    pub const fn with_lighting_color(mut self, color: Color) -> Self {
+        self.surface.lighting_color = color;
+        self
+    }
+}
+
+impl Default for SpecularLightingInput {
     fn default() -> Self {
         Self::new()
     }
@@ -177,7 +264,7 @@ impl Default for SpotLightInput {
     }
 }
 
-/// Finite scene content and the source, filter and output domains for diffuse lighting.
+/// Finite scene content and the source, filter and output domains for lighting.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LightingSource {
     scene: Scene,
@@ -214,6 +301,7 @@ pub struct PreparedLighting {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum LightingMaterial {
     Diffuse { constant: f64 },
+    Specular { constant: f64, exponent: f64 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -249,9 +337,28 @@ impl PreparedLighting {
         self.surface_scale
     }
 
-    pub(crate) const fn diffuse_constant(self) -> f64 {
+    pub(crate) const fn constant(self) -> f64 {
         match self.material {
-            LightingMaterial::Diffuse { constant } => constant,
+            LightingMaterial::Diffuse { constant }
+            | LightingMaterial::Specular { constant, .. } => constant,
+        }
+    }
+
+    pub(crate) const fn material_exponent(self) -> Option<f64> {
+        match self.material {
+            LightingMaterial::Diffuse { .. } => None,
+            LightingMaterial::Specular { exponent, .. } => Some(exponent),
+        }
+    }
+
+    pub(crate) const fn primitive_operation(self) -> PrimitiveOperation {
+        match self.material {
+            LightingMaterial::Diffuse { .. } => {
+                PrimitiveOperation::GpuDiffuseLightingFilterExecution
+            }
+            LightingMaterial::Specular { .. } => {
+                PrimitiveOperation::GpuSpecularLightingFilterExecution
+            }
         }
     }
 
@@ -283,6 +390,10 @@ pub enum LightingParameter {
     SurfaceScale,
     /// Nonnegative diffuse reflectivity.
     DiffuseConstant,
+    /// Nonnegative specular reflectivity.
+    SpecularConstant,
+    /// Specular material exponent.
+    MaterialExponent,
     /// Horizontal kernel spacing.
     KernelUnitLengthX,
     /// Vertical kernel spacing.
@@ -333,7 +444,7 @@ pub enum LightingNumericPhase {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LightingPreparationError {
-    /// A reached value is nonfinite or the diffuse reflectivity is negative.
+    /// A reached value is nonfinite or the material reflectivity is negative.
     InvalidParameter {
         /// Parameter being validated.
         parameter: LightingParameter,
@@ -354,6 +465,8 @@ impl LightingParameter {
         match self {
             Self::SurfaceScale => "surface scale",
             Self::DiffuseConstant => "diffuse constant",
+            Self::SpecularConstant => "specular constant",
+            Self::MaterialExponent => "material exponent",
             Self::KernelUnitLengthX => "horizontal kernel spacing",
             Self::KernelUnitLengthY => "vertical kernel spacing",
             Self::Azimuth => "azimuth",
@@ -431,31 +544,84 @@ pub fn prepare_lighting(
     color_space: FilterColorSpace,
     accounting: &mut RenderAccountingContext,
 ) -> Result<PreparedLighting> {
+    prepare_lighting_with(input.surface, light, color_space, accounting, |account| {
+        Ok(LightingMaterial::Diffuse {
+            constant: inspect_reflectivity(
+                input.constant,
+                LightingParameter::DiffuseConstant,
+                account,
+            )?,
+        })
+    })
+}
+
+/// Admits specular lighting and its selected light through central accounting.
+///
+/// Preparation checks height scale, reflectivity and material exponent before
+/// any explicit kernel spacing and light parameters. A finite material
+/// exponent is clamped to `1..=128`, independently of spot focus. Grid spacing
+/// and light color follow the same rules as [`prepare_lighting`].
+///
+/// # Errors
+///
+/// Returns an accounting error when admission is refused, or a
+/// [`LightingPreparationError`] diagnostic if a reached parameter is invalid
+/// or the spot axis is unrepresentable.
+pub fn prepare_specular_lighting(
+    input: SpecularLightingInput,
+    light: LightingLightInput,
+    color_space: FilterColorSpace,
+    accounting: &mut RenderAccountingContext,
+) -> Result<PreparedLighting> {
+    prepare_lighting_with(input.surface, light, color_space, accounting, |account| {
+        Ok(LightingMaterial::Specular {
+            constant: inspect_reflectivity(
+                input.constant,
+                LightingParameter::SpecularConstant,
+                account,
+            )?,
+            exponent: inspect_exponent(
+                input.exponent,
+                LightingParameter::MaterialExponent,
+                account,
+            )?,
+        })
+    })
+}
+
+fn prepare_lighting_with(
+    surface: LightingSurfaceInput,
+    light: LightingLightInput,
+    color_space: FilterColorSpace,
+    accounting: &mut RenderAccountingContext,
+    admit_material: impl FnOnce(&Account) -> Result<LightingMaterial>,
+) -> Result<PreparedLighting> {
     accounting.run(
         RenderAttemptKind::Lighting,
         RenderPhase::Preparation,
         |account| {
             account.phase(RenderPhase::Preparation, || {
                 account.work(RenderWork::FilterOperationVisits, 1)?;
-                prepare_lighting_in(input, light, color_space, account)
+                prepare_lighting_in(surface, light, color_space, admit_material, account)
             })
         },
     )
 }
 
 fn prepare_lighting_in(
-    input: DiffuseLightingInput,
+    surface: LightingSurfaceInput,
     light: LightingLightInput,
     color_space: FilterColorSpace,
+    admit_material: impl FnOnce(&Account) -> Result<LightingMaterial>,
     account: &Account,
 ) -> Result<PreparedLighting> {
     let surface_scale = inspect(
-        input.surface_scale,
+        surface.surface_scale,
         LightingParameter::SurfaceScale,
         account,
     )?;
-    let constant = inspect(input.constant, LightingParameter::DiffuseConstant, account)?;
-    let kernel = if let Some([x, y]) = input.kernel {
+    let material = admit_material(account)?;
+    let kernel = if let Some([x, y]) = surface.kernel {
         let x = inspect(x, LightingParameter::KernelUnitLengthX, account)?;
         let y = inspect(y, LightingParameter::KernelUnitLengthY, account)?;
         if x > 0.0 && y > 0.0 {
@@ -469,16 +635,16 @@ fn prepare_lighting_in(
     let light = prepare_light(light, account)?;
     account.work(RenderWork::CoordinateVisits, 3)?;
     let rgb = [
-        input.lighting_color.r(),
-        input.lighting_color.g(),
-        input.lighting_color.b(),
+        surface.lighting_color.r(),
+        surface.lighting_color.g(),
+        surface.lighting_color.b(),
     ];
     // The validated source channels are finite and in range. Alpha has no
     // lighting meaning. Absolute value only changes signed zeros here.
     let [r, g, b] = rgb.map(f32::abs);
     Ok(PreparedLighting {
         surface_scale,
-        material: LightingMaterial::Diffuse { constant },
+        material,
         kernel,
         lighting_color: Color::rgba(r, g, b, 1.0),
         color_space,
@@ -512,7 +678,8 @@ fn prepare_light(input: LightingLightInput, account: &Account) -> Result<Prepare
         LightingLightInput::Spot(spot) => {
             let position = inspect_xyz(spot.position, POSITION_PARAMETERS, account)?;
             let target = inspect_xyz(spot.points_at, TARGET_PARAMETERS, account)?;
-            let exponent = inspect(spot.exponent, LightingParameter::SpotExponent, account)?;
+            let exponent =
+                inspect_exponent(spot.exponent, LightingParameter::SpotExponent, account)?;
             let cone_angle = spot
                 .cone_angle
                 .map(|angle| inspect(angle, LightingParameter::Cone, account))
@@ -521,7 +688,7 @@ fn prepare_light(input: LightingLightInput, account: &Account) -> Result<Prepare
             Ok(PreparedLight::Spot {
                 position,
                 direction: spot_direction(position, target, cone_angle == Some(0.0), account)?,
-                exponent: exponent.clamp(1.0, 128.0),
+                exponent,
                 cone_angle,
             })
         }
@@ -530,10 +697,26 @@ fn prepare_light(input: LightingLightInput, account: &Account) -> Result<Prepare
 
 fn inspect(value: f64, parameter: LightingParameter, account: &Account) -> Result<f64> {
     account.work(RenderWork::CoordinateVisits, 1)?;
-    if !value.is_finite() || (parameter == LightingParameter::DiffuseConstant && value < 0.0) {
+    if !value.is_finite() {
         return Err(LightingPreparationError::InvalidParameter { parameter, value }.into());
     }
     Ok(canonical_zero(value))
+}
+
+fn inspect_reflectivity(
+    value: f64,
+    parameter: LightingParameter,
+    account: &Account,
+) -> Result<f64> {
+    let value = inspect(value, parameter, account)?;
+    if value < 0.0 {
+        return Err(LightingPreparationError::InvalidParameter { parameter, value }.into());
+    }
+    Ok(value)
+}
+
+fn inspect_exponent(value: f64, parameter: LightingParameter, account: &Account) -> Result<f64> {
+    Ok(inspect(value, parameter, account)?.clamp(1.0, 128.0))
 }
 
 fn inspect_xyz(

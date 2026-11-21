@@ -46,9 +46,9 @@ capture above an alpha-only Gaussian, finite displacement and colored flood. It
 keeps independent stage domains, working color, bounded outer composition and
 atomic resource lifetime.
 
-Prepared [native diffuse lighting](docs/lighting.md) shades the alpha of a
-finite Scene with a distant, point, or spot light. Its filter grid supports
-explicit kernel spacing and stays anchored when the result is cropped.
+Prepared [native lighting](docs/lighting.md) uses the alpha of a finite Scene
+for diffuse or specular shading with a distant, point, or spot light. Its
+filter grid supports explicit spacing and stays anchored as the result is cropped.
 
 Prepared [native offset](docs/offset.md) translates the captured input inside
 independent source, filter and result domains. It preserves numeric
@@ -169,7 +169,7 @@ and the full first-success walkthrough.
 | [Native convolution](docs/convolution.md) | Prepare and execute resolved convolution with explicit domains, grids and numeric policy. |
 | [Native morphology](docs/morphology.md) | Erode or dilate premultiplied components with resolved radii, independent domains and authentic source declarations. |
 | [Native displacement](docs/displacement.md) | Displace authentic first inputs with native straight-byte maps, independent domains and explicit numeric policy. |
-| [Native diffuse lighting](docs/lighting.md) | Light a finite bump-map Scene with a resolved distant, point, or spot light. |
+| [Native lighting](docs/lighting.md) | Apply diffuse or specular shading to a finite bump-map Scene. |
 | [Native resolved drop shadow](docs/native-shadow.md) | Blur alpha, displace its finite result and merge the unchanged original above a colored shadow. |
 | [Native offset](docs/offset.md) | Translate finite captured images with independent clipping and resolved reconstruction intent. |
 | [Explanation](docs/explanation.md) | Understand execution routes, publication, precision, and ownership. |

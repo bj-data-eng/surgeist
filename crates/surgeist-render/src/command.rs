@@ -1403,7 +1403,7 @@ impl NormalizedLayer {
                     account.work(RenderWork::FilterOperationVisits, 1)?;
                     capabilities.ensure_supported(UnsupportedPrimitive::new(
                         PrimitiveFamily::Filters,
-                        PrimitiveOperation::GpuDiffuseLightingFilterExecution,
+                        lighting.operation.primitive_operation(),
                     ))?;
                     NormalizedForegroundEffect::Lighting(*lighting)
                 }

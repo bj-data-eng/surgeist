@@ -138,6 +138,10 @@ impl LightingPassFacts {
     pub(crate) fn same_operation(&self, other: &Self) -> bool {
         self.0.plan.same_allocation(&other.0.plan)
     }
+
+    pub(crate) fn primitive_operation(&self) -> crate::diagnostic::PrimitiveOperation {
+        self.0.plan.operation.primitive_operation()
+    }
 }
 
 fn contradictory_lighting_source() -> crate::Error {
@@ -165,6 +169,7 @@ struct LightingUniform {
     source_offset: [i32; 2],
     light_anchor: [i32; 2],
     height_anchor: f32,
+    material_exponent: f32,
 }
 
 impl LightingUniform {
@@ -189,7 +194,10 @@ impl LightingUniform {
                 }
             }
         }
-        self.surface_material[3] = uploaded(operation.diffuse_constant(), Phase::ColorProduct)?;
+        self.surface_material[3] = uploaded(operation.constant(), Phase::ColorProduct)?;
+        if let Some(exponent) = operation.material_exponent() {
+            self.material_exponent = uploaded(exponent, Phase::ColorProduct)?;
+        }
 
         account.work(RenderWork::CoordinateVisits, 3)?;
         match operation.light() {
@@ -331,7 +339,7 @@ impl LightingUniform {
                 anchor_x as u32,
                 anchor_y as u32,
                 self.height_anchor.to_bits(),
-                0,
+                self.material_exponent.to_bits(),
             ],
         ];
         let mut bytes = [0; 256];

@@ -400,7 +400,7 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
     let mut has_native_shadow = false;
     let mut has_morphology = false;
     let mut has_displacement = false;
-    let mut has_lighting = false;
+    let mut lighting = None;
 
     for pass in graph.lowering_view(account)?.passes(account)?.iter() {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -417,7 +417,9 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
             GraphLoweringPassKind::NativeShadowMerge(_) => has_native_shadow = true,
             GraphLoweringPassKind::Morphology(_) => has_morphology = true,
             GraphLoweringPassKind::Displacement(_) => has_displacement = true,
-            GraphLoweringPassKind::Lighting(_) => has_lighting = true,
+            GraphLoweringPassKind::Lighting(pass) => {
+                lighting.get_or_insert_with(|| pass.primitive_operation());
+            }
             GraphLoweringPassKind::BlurHorizontal(Some(_))
             | GraphLoweringPassKind::BlurVertical(Some(_)) => has_blur = true,
             GraphLoweringPassKind::DropShadowColorize(Some(_)) => has_drop_shadow = true,
@@ -460,11 +462,8 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
             PrimitiveFamily::Filters,
             PrimitiveOperation::GpuDisplacementFilterExecution,
         ))
-    } else if has_lighting {
-        Some((
-            PrimitiveFamily::Filters,
-            PrimitiveOperation::GpuDiffuseLightingFilterExecution,
-        ))
+    } else if let Some(lighting) = lighting {
+        Some((PrimitiveFamily::Filters, lighting))
     } else if has_morphology {
         Some((
             PrimitiveFamily::Filters,

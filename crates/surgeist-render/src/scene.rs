@@ -231,7 +231,7 @@ impl Scene {
         Ok(self)
     }
 
-    /// Appends native diffuse lighting, replacing the layer's foreground effect.
+    /// Appends admitted native lighting, replacing the layer's foreground effect.
     ///
     /// Moves the finite source's children into the layer, preserving its outer
     /// transform, isolation, clip, mask, opacity and composition. Supported
