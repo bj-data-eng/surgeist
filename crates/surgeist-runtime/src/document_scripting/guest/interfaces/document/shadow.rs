@@ -6,7 +6,10 @@ use surgeist_bindings_js::{
     declarations::{ShadowRootMode, SlotAssignmentMode},
     dom_exception::DomExceptionName,
 };
-use surgeist_dom::shadow::DomShadowRootInit;
+use surgeist_dom::{
+    custom_element::{DomCustomElementReactionKind, DomRegistryDefinitionId},
+    shadow::DomShadowRootInit,
+};
 use surgeist_html::construction::{
     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
 };
@@ -182,14 +185,15 @@ impl Capture {
             })?;
             let enclosing_queue = owner.active_synchronous_reactions.get();
             let mut callback_failure = None;
-            let mut has_callback = |definition| {
-                public
-                    .has_disconnected_callback(&events, definition)
-                    .map_err(|error| {
-                        callback_failure = Some(error);
-                        DomError::InvalidSourceOperation
-                    })
-            };
+            let mut has_callback =
+                |definition: DomRegistryDefinitionId, kind: DomCustomElementReactionKind<'_>| {
+                    public
+                        .has_shadow_removal_callback(&events, definition, kind)
+                        .map_err(|error| {
+                            callback_failure = Some(error);
+                            DomError::InvalidSourceOperation
+                        })
+                };
             let settle_reaction_route = |scope: &mut Scope<'scope>, reactions: bool| {
                 if !reactions {
                     return Ok(());

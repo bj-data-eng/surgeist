@@ -9,7 +9,8 @@ use surgeist_bindings_js::{
 use surgeist_dom::{
     DomSnapshot,
     custom_element::{
-        DomRegistryBinding, DomRegistryDefinitionId, DomRegistryId, DomSourceCustomElementRequest,
+        DomCustomElementReactionKind, DomRegistryBinding, DomRegistryDefinitionId, DomRegistryId,
+        DomSourceCustomElementRequest,
     },
     identity::NodeId,
     script::DomDocumentScriptRegistration,
@@ -21,11 +22,18 @@ use surgeist_html_semantics::HtmlCustomElementDefinition;
 const INTERFACE: &[u16] = &ascii(b"CustomElementRegistry");
 
 impl PublicEventBindings {
-    pub(super) fn has_disconnected_callback(
+    pub(super) fn has_shadow_removal_callback(
         &self,
         events: &GuestEvents,
         definition: DomRegistryDefinitionId,
+        kind: DomCustomElementReactionKind<'_>,
     ) -> Result<bool, DocumentGuestEventError> {
+        let slot = match kind {
+            DomCustomElementReactionKind::Disconnected => 1,
+            DomCustomElementReactionKind::FormAssociated { .. } => FORM_ASSOCIATED_CALLBACK,
+            DomCustomElementReactionKind::FormDisabled { .. } => FORM_DISABLED_CALLBACK,
+            _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
+        };
         self.with_registry_step(
             || events.step(),
             |registry| registry.id == definition.registry(),
@@ -40,7 +48,7 @@ impl PublicEventBindings {
                     .get(definition.ordinal())
                     .filter(|row| row.id == definition)
                     .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                Ok(row.callbacks[1].is_some())
+                Ok(row.callbacks[slot].is_some())
             },
         )
     }
@@ -318,10 +326,13 @@ const FORM: [&[u16]; 4] = [
     &ascii(b"formStateRestoreCallback"),
 ];
 const CALLBACK_COUNT: usize = LIFECYCLE.len() + FORM.len();
+const FORM_ASSOCIATED_CALLBACK: usize = LIFECYCLE.len();
+const FORM_DISABLED_CALLBACK: usize = LIFECYCLE.len() + 2;
 
 struct Definition {
     interface: &'static str,
     customized: bool,
+    form_associated: bool,
     id: DomRegistryDefinitionId,
     name: DocumentString,
     constructor: RetainedCallbackObject,
@@ -1079,7 +1090,7 @@ impl Capture {
                 return Ok(registry_type_error(scope)?);
             };
             drop(running);
-            if read.form {
+            if read.form && registry.scoped {
                 return Ok(registry_not_supported(scope)?);
             }
             let observed_attributes = read
@@ -1190,6 +1201,7 @@ impl Capture {
                 Definition {
                     interface,
                     customized: local.is_some(),
+                    form_associated: read.form && local.is_none(),
                     id,
                     name,
                     constructor,
@@ -1372,6 +1384,47 @@ impl Capture {
         result
     }
 
+    pub(in crate::document_scripting::guest::interfaces) fn take_upgrade_form_reactions<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        registration: &DomDocumentScriptRegistration,
+        request: DomSourceCustomElementRequest,
+        queue: &ActiveReactionQueue,
+    ) -> Result<(), DocumentGuestEventError> {
+        loop {
+            let inspections = registration.custom_element_reaction_segments();
+            let work =
+                u64::try_from(inspections).map_err(|_| DocumentGuestEventError::WorkLimit)?;
+            events.charge_work(work)?;
+            let Some(mut batch) =
+                registration.take_custom_element_reactions(request.operation(), inspections)?
+            else {
+                return Ok(());
+            };
+            while let Some(fact) = batch.front() {
+                if fact.element != queue.receiver
+                    || fact.definition != request.definition()
+                    || !matches!(
+                        fact.kind,
+                        DomCustomElementReactionKind::FormAssociated { .. }
+                            | DomCustomElementReactionKind::FormDisabled { .. }
+                    )
+                {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                }
+                if let Some(callback) = self.prepare_native_callback(scope, owner, events, fact)? {
+                    queue
+                        .reactions
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?
+                        .push_back(QueuedReaction::Callback(callback));
+                }
+                batch.acknowledge_front();
+            }
+        }
+    }
+
     fn take_routed_reactions<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -1411,33 +1464,41 @@ impl Capture {
         accepted: &mut bool,
     ) -> Result<Option<Rc<ActiveReactionQueue>>, DocumentGuestEventError> {
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-        let (global, constructor, interface, initial_attribute, connected, observed) =
-            self.callbacks.with_read(owner, events, |read, _| {
-                public.with_registry(
-                    read,
-                    |registry| registry.id == definition.registry(),
-                    |registry| {
-                        read.step()?;
-                        let rows = registry
-                            .definitions
-                            .try_borrow()
-                            .map_err(|_| DocumentScriptNativeError::Busy)?;
-                        let row = rows
-                            .rows
-                            .get(definition.ordinal())
-                            .filter(|row| row.id == definition)
-                            .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                        Ok((
-                            registry.global,
-                            row.constructor.clone(),
-                            row.interface,
-                            row.callbacks[4].clone(),
-                            row.callbacks[0].clone(),
-                            row.observed.clone(),
-                        ))
-                    },
-                )
-            })?;
+        let (
+            global,
+            constructor,
+            interface,
+            form_associated,
+            initial_attribute,
+            connected,
+            observed,
+        ) = self.callbacks.with_read(owner, events, |read, _| {
+            public.with_registry(
+                read,
+                |registry| registry.id == definition.registry(),
+                |registry| {
+                    read.step()?;
+                    let rows = registry
+                        .definitions
+                        .try_borrow()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    let row = rows
+                        .rows
+                        .get(definition.ordinal())
+                        .filter(|row| row.id == definition)
+                        .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                    Ok((
+                        registry.global,
+                        row.constructor.clone(),
+                        row.interface,
+                        row.form_associated,
+                        row.callbacks[4].clone(),
+                        row.callbacks[0].clone(),
+                        row.observed.clone(),
+                    ))
+                },
+            )
+        })?;
         let realm = constructor.associated_realm().identity();
         let constructor = scope.open_callback_object(&constructor)?;
         self.invoke_upgrade_candidate(
@@ -1450,6 +1511,7 @@ impl Capture {
                 constructor: &constructor,
                 interface,
                 realm,
+                form_associated,
                 initial_attribute: initial_attribute.as_ref(),
                 connected: connected.as_ref(),
                 observed: observed.as_deref(),
@@ -1469,6 +1531,7 @@ impl Capture {
             constructor,
             interface,
             realm,
+            form_associated,
             initial_attribute,
             connected,
             observed,
@@ -1603,13 +1666,14 @@ impl Capture {
                 None,
             )?));
         }
-        let queue = self.prepare_callback_queue(owner, events, node, callbacks)?;
+        let queue = self.prepare_callback_queue(owner, events, node, callbacks, form_associated)?;
         public.document.ordinary.upgrade_existing(
             scope,
             (owner, events),
             (node, id, global),
             (constructor, interface, realm),
             (&receiver, queue, accepted),
+            form_associated.then_some(self),
         )
     }
 
@@ -1619,8 +1683,9 @@ impl Capture {
         events: &GuestEvents,
         receiver: NodeId,
         reactions: LinkedList<QueuedReaction>,
+        awaits_form_reactions: bool,
     ) -> Result<Option<Rc<ActiveReactionQueue>>, DocumentGuestEventError> {
-        if reactions.is_empty() {
+        if reactions.is_empty() && !awaits_form_reactions {
             return Ok(None);
         }
         Ok(Some(ActiveReactionQueue::new(
@@ -1644,6 +1709,14 @@ impl Capture {
             Kind::Disconnected => (DocumentGuestCustomElementCallback::Disconnected, 1),
             Kind::ConnectedMove => (DocumentGuestCustomElementCallback::ConnectedMove, 2),
             Kind::Adopted { .. } => (DocumentGuestCustomElementCallback::Adopted, 3),
+            Kind::FormAssociated { .. } => (
+                DocumentGuestCustomElementCallback::FormAssociated,
+                FORM_ASSOCIATED_CALLBACK,
+            ),
+            Kind::FormDisabled { .. } => (
+                DocumentGuestCustomElementCallback::FormDisabled,
+                FORM_DISABLED_CALLBACK,
+            ),
             _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
         };
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
@@ -1744,11 +1817,22 @@ impl Capture {
                     document(new_document)?,
                 ]))
             }
+            Kind::FormAssociated { form } => {
+                let value = match form {
+                    Some(id) => public.project_node(scope, owner, events, id)?,
+                    None => scope.primitive(Primitive::Null)?,
+                };
+                Some(ReactionArguments::Form([value]))
+            }
+            Kind::FormDisabled { disabled } => Some(ReactionArguments::Form([
+                scope.primitive(Primitive::Boolean(disabled))?
+            ])),
             _ => None,
         };
         let arguments = arguments.as_ref().map(|arguments| match arguments {
             ReactionArguments::Attribute(values) => ReactionArguments::Attribute(values.each_ref()),
             ReactionArguments::Adoption(values) => ReactionArguments::Adoption(values.each_ref()),
+            ReactionArguments::Form(values) => ReactionArguments::Form(values.each_ref()),
         });
         Ok(Some(CallbackReaction::prepare(
             scope,
@@ -1936,6 +2020,7 @@ struct UpgradeDefinition<'a, 'scope> {
     constructor: &'a Value<'scope>,
     interface: &'static str,
     realm: RealmId,
+    form_associated: bool,
     initial_attribute: Option<&'a RetainedCallbackObject>,
     connected: Option<&'a RetainedCallbackObject>,
     observed: Option<&'a ObservedAttributes>,
@@ -2066,6 +2151,7 @@ impl<T> ReactionList<T> {
 enum ReactionArguments<T> {
     Attribute([T; 4]),
     Adoption([T; 2]),
+    Form([T; 1]),
 }
 
 impl<T> ReactionArguments<T> {
@@ -2083,6 +2169,7 @@ impl<T> ReactionArguments<T> {
             Self::Adoption([old, new]) => {
                 ReactionArguments::Adoption([project(old)?, project(new)?])
             }
+            Self::Form([value]) => ReactionArguments::Form([project(value)?]),
         })
     }
 
@@ -2090,6 +2177,7 @@ impl<T> ReactionArguments<T> {
         match self {
             Self::Attribute(values) => values,
             Self::Adoption(values) => values,
+            Self::Form(values) => values,
         }
     }
 }
@@ -2130,6 +2218,9 @@ impl CallbackReaction {
                 }
                 ReactionArguments::Adoption(values) => {
                     ReactionArguments::Adoption(values.map(|value| scope.retain(value)))
+                }
+                ReactionArguments::Form(values) => {
+                    ReactionArguments::Form(values.map(|value| scope.retain(value)))
                 }
             }),
             _backing: backing,

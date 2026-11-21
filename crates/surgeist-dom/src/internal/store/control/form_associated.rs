@@ -127,7 +127,8 @@ impl Draft {
             changes.push(change);
         }
         self.form_associated_custom_changes = Some(changes);
-        result
+        result?;
+        self.record_form_associated_custom_reaction(change, cancel)
     }
 
     pub(in crate::internal::store) fn append_form_associated_custom_changes(

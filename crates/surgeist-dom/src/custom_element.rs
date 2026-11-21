@@ -7,8 +7,8 @@
 //! one. `DomCustomElementReaction` is one reaction occurrence in the order the edit
 //! reached it, `DomCustomElementReactions` one published segment's reactions,
 //! `DomSynchronousReactionQueue` a synchronous element queue minted by a script
-//! registration, and `DomShadowReactionRoute` a registration with its disconnection
-//! callback lookup. The `DomSourceCustomElement*` types are the Source continuation for
+//! registration, and `DomShadowReactionRoute` a registration with its callback lookup
+//! for shadow removal. The `DomSourceCustomElement*` types are the Source continuation for
 //! constructor, upgrade and callback work, and `DomWatchedElementCreation` and
 //! `DomWatchedCustomElementResult` report a factory's creation with retirement custody.
 //!

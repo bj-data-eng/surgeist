@@ -77,28 +77,37 @@ pub(in crate::document_scripting) fn expose_reaction_work_exhaustion(
     .unwrap();
 }
 
-pub(in crate::document_scripting) fn form_associated_definition_refuses_before_publication() {
+pub(in crate::document_scripting) fn scoped_form_associated_definition_refuses_before_publication()
+{
     let mut host = public_node_host(20_000, 200_000);
     let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "(globalThis.scopedFormRegistry = new CustomElementRegistry()) instanceof CustomElementRegistry")
+    }).unwrap();
     let before = host.snapshot().unwrap().stamp();
     host.in_document(&permit, |scope| {
-        assert_guest(scope, r#"(() => {
+        assert_guest(
+            scope,
+            r#"(() => {
             const name = 'x-form-associated';
+            const registry = scopedFormRegistry;
             const reads = [];
-            const waiting = customElements.whenDefined(name);
+            const waiting = registry.whenDefined(name);
             class FormAssociated extends HTMLElement {
                 static get formAssociated() { reads.push('form'); return true; }
                 get formAssociatedCallback() { reads.push('callback'); return () => {}; }
             }
-            try { customElements.define(name, FormAssociated); }
+            try { registry.define(name, FormAssociated); }
             catch (error) {
                 return error instanceof DOMException && error.name === 'NotSupportedError' &&
-                    customElements.get(name) === undefined && customElements.whenDefined(name) === waiting &&
+                    registry.get(name) === undefined && registry.whenDefined(name) === waiting &&
                     reads.join(',') === 'form,callback';
             }
             return false;
-        })()"#)
-    }).unwrap();
+        })()"#,
+        )
+    })
+    .unwrap();
     assert_eq!(host.snapshot().unwrap().stamp(), before);
     assert!(host.stop().into_session().is_ok());
 }
@@ -1198,6 +1207,89 @@ pub(in crate::document_scripting) fn insertion_upgrade_keeps_only_unentered_call
     assert_eq!(
         stopped
             .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
+pub(in crate::document_scripting) fn stopped_upgrade_retains_initial_callbacks_and_native_form_facts()
+ {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    let entered = Rc::new(Cell::new(false));
+    expose_reaction_work_exhaustion(&mut host, &permit, Rc::clone(&entered));
+    let receiver = host
+        .in_document(&permit, |scope| {
+            let receiver = scope.evaluate(&units(
+                r#"
+                const owner = document.createElement('form');
+                const fieldset = document.createElement('fieldset');
+                fieldset.disabled = true;
+                const stoppedFace = document.createElement('x-stopped-face');
+                stoppedFace.setAttribute('data-observed', 'present');
+                document.documentElement.appendChild(owner);
+                owner.appendChild(fieldset);
+                fieldset.appendChild(stoppedFace);
+                stoppedFace;
+                "#,
+            ))?;
+            projected_node_id(scope, &receiver)
+        })
+        .unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+                customElements.define('x-stopped-face', class extends HTMLElement {
+                    static formAssociated = true;
+                    static observedAttributes = ['data-observed'];
+                    constructor() { super(); exhaustReactionWork(); }
+                    attributeChangedCallback() { this.id = 'attribute-entered'; }
+                    connectedCallback() { this.id = 'connected-entered'; }
+                    formAssociatedCallback() { this.id = 'owner-entered'; }
+                    formDisabledCallback() { this.id = 'disabled-entered'; }
+                });
+                "#,
+            ))
+            .map(drop)
+    });
+    assert!(entered.get());
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("retaining form callbacks must refuse after constructor completion");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
+    let snapshot = host.snapshot().unwrap();
+    let element = snapshot.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(
+        element.custom_element_state(),
+        surgeist_html::elements::native::HtmlCustomElementState::Custom
+    );
+    let mut stopped = host.stop();
+    assert_eq!(
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
             .unwrap(),
         0
     );

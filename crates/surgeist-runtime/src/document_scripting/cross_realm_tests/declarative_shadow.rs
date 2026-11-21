@@ -656,6 +656,224 @@ pub(super) fn verify_declarative_shadow_reuse() {
     }
     verify_mode_mismatch_precedes_realm_qualification();
     verify_cloned_declarative_shadow_remains_reusable();
+    verify_form_associated_shadow_reuse();
+}
+
+fn verify_form_associated_shadow_reuse() {
+    use super::super::guest::tests::expose_public_node_for_source_test;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let document = target.document();
+    let (parsed_document, host_node) = {
+        let hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let context = hosted
+            .with_current_top_level(&mut dom, target, &cancel, |source, dom| {
+                source
+                    .document_constructor_context(dom.raw(), target.global(), &cancel)
+                    .map_err(DomHostedRuntimeError::Dom)
+            })
+            .unwrap();
+        let mut batch = DomBatch::new();
+        let parsed_document = batch.construct_document(context);
+        let host_node = batch.create_element_ns(&parsed_document, Namespace::html(), "div");
+        batch.insert_before(&host_node, &parsed_document, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        (
+            commit.document(&parsed_document).unwrap(),
+            commit.created(&host_node).unwrap().unwrap(),
+        )
+    };
+    let (capture, report) = fragment(
+        &session.snapshot(),
+        parsed_document,
+        host_node,
+        "<template shadowrootmode=open><form id=shadow-owner></form><fieldset disabled></fieldset></template>",
+        &cancel,
+    );
+    let installed = session
+        .install_parsed_html_fragment(
+            report,
+            &capture,
+            DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000),
+            &cancel,
+        )
+        .unwrap();
+    let tree = installed.snapshot();
+    let root = tree.node(host_node).unwrap().hosted_shadow_root().unwrap();
+    let [form, fieldset]: [NodeId; 2] = tree.node(root).unwrap().children().try_into().unwrap();
+
+    let body = tree
+        .node(tree.document(document).unwrap().document_element().unwrap())
+        .unwrap()
+        .children()[1];
+    let mut connect = DomBatch::new();
+    connect.adopt(host_node, document);
+    connect.insert_before(host_node, body, None);
+    session.dom().apply(connect, &cancel).unwrap();
+
+    let mut host = attach_window(session, target, cancel);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, host_node, "faceShadowHost");
+    let observe = |host: &mut DocumentScriptHost, script: &str| {
+        host.in_document(&permit, |scope| {
+            let value = evaluate(scope, script)?;
+            assert_eq!(String::from_utf16(&scope.to_utf16(&value)?).unwrap(), "ok");
+            Ok(())
+        })
+        .unwrap();
+    };
+    observe(
+        &mut host,
+        r#"(() => {
+        const root = faceShadowHost.shadowRoot;
+        const form = root.firstChild;
+        const fieldset = root.lastChild;
+        const calls = [];
+        class ShadowFace extends HTMLElement {
+            static formAssociated = true;
+            formAssociatedCallback(owner) { calls.push(['owner', this, owner]); }
+            formDisabledCallback(disabled) { calls.push(['disabled', this, disabled]); }
+            disconnectedCallback() {
+                calls.push(['disconnect', this, this.parentNode, this.isConnected]);
+                // Reuse detaches the intact Fieldset, so this is the first
+                // mutation that actually removes its inherited disabledness.
+                fieldset.removeChild(this);
+                calls.push(['move-returned', this, this.parentNode]);
+            }
+        }
+        const name = 'x-shadow-form-participant';
+        customElements.define(name, ShadowFace);
+        const face = document.createElement(name);
+        if (!(face instanceof ShadowFace) || calls.length !== 0) return 'detached FACE setup';
+        face.setAttribute('form', 'shadow-owner');
+        fieldset.appendChild(face);
+        const owner = calls.find(entry => entry[0] === 'owner');
+        const disabled = calls.find(entry => entry[0] === 'disabled');
+        if (!face.isConnected || calls.length !== 2 || owner?.[1] !== face || owner[2] !== form ||
+            disabled?.[1] !== face || disabled[2] !== true) {
+            return 'same-shadow Form identity and inherited disabledness at insertion';
+        }
+        globalThis.shadowFaceProbe = {root, form, fieldset, face, calls};
+        return 'ok';
+    })()"#,
+    );
+
+    let before = host.snapshot().unwrap();
+    assert!(before.shadow_root(root).unwrap().state().declarative());
+    let [face]: [NodeId; 1] = before
+        .node(fieldset)
+        .unwrap()
+        .children()
+        .try_into()
+        .unwrap();
+    assert_shadow_face_state(&before, document, face, Some(form), true);
+
+    observe(
+        &mut host,
+        r#"(() => {
+        const {root, form, fieldset, face, calls} = shadowFaceProbe;
+        calls.length = 0;
+        Promise.resolve().then(() => calls.push(['before']));
+        if (faceShadowHost.attachShadow({mode: 'open'}) !== root ||
+            faceShadowHost.shadowRoot !== root || root.firstChild !== null ||
+            form.parentNode !== null || fieldset.parentNode !== null ||
+            face.parentNode !== fieldset || face.isConnected || calls.length !== 0) {
+            return 'real reuse commits removal and defers the FACE reaction queue';
+        }
+        Promise.resolve().then(() => calls.push(['after']));
+        return 'ok';
+    })()"#,
+    );
+    let prefix = host.snapshot().unwrap();
+    assert!(!prefix.shadow_root(root).unwrap().state().declarative());
+    assert!(prefix.node(root).unwrap().children().is_empty());
+    assert_eq!(prefix.node(form).unwrap().parent(), None);
+    assert_eq!(prefix.node(fieldset).unwrap().children(), [face]);
+    assert_shadow_face_state(&prefix, document, face, None, true);
+
+    host.checkpoint().unwrap();
+    observe(
+        &mut host,
+        r#"(() => {
+        const {face, fieldset, calls} = shadowFaceProbe;
+        const expected = [
+            ['before'],
+            ['owner', face, null],
+            ['disconnect', face, fieldset, false],
+            ['disabled', face, false],
+            ['move-returned', face, null],
+            ['after'],
+        ];
+        return calls.length === expected.length && calls.every((entry, index) =>
+            entry.length === expected[index].length &&
+            entry.every((value, argument) => value === expected[index][argument])) ? 'ok' :
+            'original FACE owner loss precedes disconnect and the nested edit changes disabledness once';
+    })()"#,
+    );
+    let settled = host.snapshot().unwrap();
+    assert!(settled.node(fieldset).unwrap().children().is_empty());
+    assert_eq!(settled.node(face).unwrap().parent(), None);
+    assert_shadow_face_state(&settled, document, face, None, false);
+    assert!(
+        host.take_guest_custom_element_callback_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    host.stop().into_session().unwrap();
+}
+
+fn assert_shadow_face_state(
+    snapshot: &DomSnapshot,
+    document: DocumentId,
+    face: NodeId,
+    expected_owner: Option<NodeId>,
+    disabled: bool,
+) {
+    use surgeist_html::values::HtmlValueInterpreter;
+    use surgeist_html_semantics::{
+        HtmlFormOwnerOrigin, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
+        HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,
+    };
+
+    let captured = snapshot
+        .html_capture(
+            document,
+            None,
+            HtmlCaptureLimits::new(128, 4096, 256, 32768, 128, 16, 16, 16_777_216),
+            DomHtmlCaptureLimits::new(128, 1_000_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    let subject = captured.subject(face).unwrap();
+    let report = captured
+        .query(
+            &[
+                HtmlSemanticRequest::new(subject.clone(), HtmlSemanticQuery::FormOwner),
+                HtmlSemanticRequest::new(subject, HtmlSemanticQuery::Disabledness),
+            ],
+            HtmlValueInterpreter::new(4096),
+            HtmlSemanticLimits::new(1_000_000, 4, 128, 64, 1_000_000, 64),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+    let HtmlSemanticFact::FormOwner(HtmlSemanticValue::Known(owner)) = report.results()[0].fact()
+    else {
+        panic!(
+            "expected the committed shadow FACE owner, got {:?}",
+            report.results()[0].fact()
+        );
+    };
+    assert_eq!(owner.origin(), HtmlFormOwnerOrigin::EstablishedCurrent);
+    assert_eq!(
+        owner.owner().map(|id| captured.node(id).unwrap()),
+        expected_owner
+    );
+    assert_eq!(
+        report.results()[1].fact(),
+        &HtmlSemanticFact::Disabledness(HtmlSemanticValue::Known(disabled))
+    );
 }
 
 fn verify_cloned_declarative_shadow_remains_reusable() {

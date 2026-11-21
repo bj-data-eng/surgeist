@@ -172,6 +172,8 @@ pub surgeist_runtime::document_scripting::DocumentGuestCustomElementCallback::At
 pub surgeist_runtime::document_scripting::DocumentGuestCustomElementCallback::Connected
 pub surgeist_runtime::document_scripting::DocumentGuestCustomElementCallback::ConnectedMove
 pub surgeist_runtime::document_scripting::DocumentGuestCustomElementCallback::Disconnected
+pub surgeist_runtime::document_scripting::DocumentGuestCustomElementCallback::FormAssociated
+pub surgeist_runtime::document_scripting::DocumentGuestCustomElementCallback::FormDisabled
 #[non_exhaustive] pub enum surgeist_runtime::document_scripting::DocumentGuestEventError
 pub surgeist_runtime::document_scripting::DocumentGuestEventError::Accounting(surgeist_ledger::Error<surgeist_runtime::document_scripting::DocumentGuestWork, surgeist_runtime::document_scripting::DocumentGuestResource>)
 pub surgeist_runtime::document_scripting::DocumentGuestEventError::CallbackRealmUnavailable

@@ -234,6 +234,57 @@ pub(super) fn attached_form_associated_custom_elements_deliver_native_reactions(
             .unwrap()
             .is_none()
     );
+    observe(
+        &mut host,
+        &permit,
+        r#"(() => {
+        const {form, fieldset} = faceProbe;
+        const name = 'x-face-callback-throws';
+        const original = fieldset.appendChild(document.createElement(name));
+        const calls = [];
+        const failure = {};
+        globalThis.faceCallbackFailure = failure;
+        class ThrowingFormCallback extends HTMLElement {
+            static formAssociated = true;
+            formAssociatedCallback(owner) {
+                calls.push(['owner', this, owner]);
+                throw failure;
+            }
+            formDisabledCallback(disabled) {
+                calls.push(['disabled', this, disabled]);
+            }
+        }
+        customElements.define(name, ThrowingFormCallback);
+        return calls.length === 2 && calls[0][0] === 'owner' &&
+            calls[0][1] === original && calls[0][2] === form &&
+            calls[1][0] === 'disabled' && calls[1][1] === original && calls[1][2] === true ?
+            'ok' : 'throwing Form association callback must leave the following disabled reaction live';
+    })()"#,
+    );
+    let reported = host
+        .take_guest_custom_element_callback_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        reported.callback,
+        surgeist_runtime::document_scripting::DocumentGuestCustomElementCallback::FormAssociated
+    );
+    let with_callback = host.snapshot().unwrap();
+    let receiver = with_callback.node(fieldset).unwrap().children()[2];
+    assert_eq!(reported.receiver, receiver);
+    assert_face_state(&with_callback, top.document(), receiver, Some(form), true);
+    host.in_document(&permit, |scope| {
+        let original = scope.evaluate(&"faceCallbackFailure".encode_utf16().collect::<Vec<_>>())?;
+        let report = scope.import(reported.exception.value())?;
+        assert!(scope.strict_equals(&original, &report)?);
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        host.take_guest_custom_element_callback_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
     host.stop().into_session().unwrap();
 }
 
