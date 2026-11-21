@@ -1018,6 +1018,7 @@ pub(super) enum Effect {
     MetaCsp(super::meta::CspInsertion),
     Style(style::Frame),
     XmlDocument(super::document::XmlDocumentFrame),
+    DocumentTitle(super::compound::document_title::Frame),
     ChildrenChanged {
         parent: Key,
         stage: u8,
@@ -1107,6 +1108,7 @@ impl Effect {
                 frame.retained_payload(step)
             }
             Self::XmlDocument(frame) => frame.retained_payload(step),
+            Self::DocumentTitle(frame) => frame.retained_payload(step),
             Self::Output(frame) => frame.retained_payload(step),
             Self::Setter {
                 edit: crate::internal::select::Edit::Value(value),
@@ -1151,6 +1153,7 @@ impl EffectFrame {
             Effect::MetaCsp(frame) => Effect::MetaCsp(*frame),
             Effect::Style(frame) => Effect::Style(*frame),
             Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
+            Effect::DocumentTitle(frame) => Effect::DocumentTitle(frame.clone()),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
                 parent: *parent,
                 stage: *stage,
@@ -1257,6 +1260,7 @@ impl Draft {
                 | Effect::Setter { .. }
                 | Effect::Clone(_)
                 | Effect::XmlDocument(_)
+                | Effect::DocumentTitle(_)
                 | Effect::AttributeSuffix(_)
                 | Effect::AfterScriptAttribute(_)
         ));
@@ -1405,6 +1409,9 @@ impl Draft {
                         self.finish_meta_insertion(frame.subject, frame.document, limits, cancel)?
                     }
                     Effect::Style(frame) => self.style_effect(frame, cancel)?,
+                    Effect::DocumentTitle(frame) => {
+                        self.document_title_effect(frame, payload, limits, cancel)?
+                    }
                     Effect::XmlDocument(frame) => {
                         self.xml_document_effect(frame, payload, limits, cancel)?
                     }

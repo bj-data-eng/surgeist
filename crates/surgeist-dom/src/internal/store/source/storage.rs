@@ -428,7 +428,8 @@ pub(in crate::internal::store) fn commands(
                         }
                     }
                 }
-                crate::internal::compound::Edit::TextContent { value, .. } => {
+                crate::internal::compound::Edit::TextContent { value, .. }
+                | crate::internal::compound::Edit::DocumentTitle { value, .. } => {
                     payload.string(value)?
                 }
                 crate::internal::compound::Edit::AdjacentElement { position, .. } => {

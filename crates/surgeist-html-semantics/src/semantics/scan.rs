@@ -15,6 +15,7 @@ use surgeist_html::accounting::{
     HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlLedgerOutcome, HtmlLimits,
     HtmlResource, HtmlWork, aggregate_tariffs, classify,
 };
+use surgeist_html::values::DocumentString;
 use surgeist_html::vocabulary::KnownHtmlElement;
 use surgeist_ledger::{Change, Error, Operation, Scope, Tariff, Tariffs};
 
@@ -46,16 +47,25 @@ pub(super) fn namespace_is_with<E>(
     expected: &str,
     mut charge: impl FnMut(usize) -> Result<(), E>,
 ) -> Result<bool, E> {
-    charge(1)?;
-    let Some(uri) = element.name().namespace().uri() else {
+    name_part_is_with(
+        || element.name().namespace().uri(),
+        expected.as_bytes(),
+        || charge(1),
+    )
+}
+
+pub(super) fn name_part_is_with<'a, E>(
+    actual: impl FnOnce() -> Option<&'a DocumentString>,
+    expected: &[u8],
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    step()?;
+    let Some(actual) = actual().filter(|actual| actual.len() == expected.len()) else {
         return Ok(false);
     };
-    if uri.len() != expected.len() {
-        return Ok(false);
-    }
-    for (unit, byte) in uri.code_units().iter().zip(expected.bytes()) {
-        charge(1)?;
-        if *unit != u16::from(byte) {
+    for (&unit, &byte) in actual.code_units().iter().zip(expected) {
+        step()?;
+        if unit != u16::from(byte) {
             return Ok(false);
         }
     }

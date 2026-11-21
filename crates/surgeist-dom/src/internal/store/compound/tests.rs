@@ -708,3 +708,5 @@ fn original_compound_style_request_survives_drop_and_cancellation_then_finishes_
             .is_none()
     );
 }
+
+mod document_title;

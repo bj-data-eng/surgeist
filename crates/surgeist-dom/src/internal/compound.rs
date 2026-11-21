@@ -1,6 +1,8 @@
 //! Normalized operands for one named DOM tree-mutation invocation.
 use crate::{
-    internal::batch::Command, internal::identity::NodeId, internal::source::DomSourceEdit,
+    internal::batch::Command,
+    internal::identity::{DocumentId, NodeId},
+    internal::source::DomSourceEdit,
 };
 use surgeist_html::values::DocumentString;
 
@@ -34,6 +36,10 @@ pub(crate) enum Variadic {
 }
 #[derive(Clone, Debug)]
 pub(crate) enum Edit {
+    DocumentTitle {
+        document: DocumentId,
+        value: DocumentString,
+    },
     Variadic {
         receiver: NodeId,
         method: Variadic,
@@ -57,6 +63,7 @@ pub(crate) enum Edit {
 impl Edit {
     pub(crate) fn receiver(&self) -> NodeId {
         match self {
+            Self::DocumentTitle { document, .. } => document.node(),
             Self::Variadic { receiver, .. }
             | Self::TextContent { receiver, .. }
             | Self::AdjacentElement { receiver, .. }
@@ -65,6 +72,12 @@ impl Edit {
     }
 }
 impl DomSourceEdit {
+    /// Set Document.title through one canonical native Source invocation.
+    pub fn set_document_title(document: DocumentId, value: DocumentString) -> Self {
+        Self {
+            command: Command::Compound(Edit::DocumentTitle { document, value }),
+        }
+    }
     fn variadic(receiver: NodeId, method: Variadic, nodes: Vec<DomNodeOrString>) -> Self {
         Self {
             command: Command::Compound(Edit::Variadic {

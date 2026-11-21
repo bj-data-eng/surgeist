@@ -46,7 +46,7 @@ pub(super) fn document_tree_properties_select_and_forward_native_attributes() {
                 if (!(document instanceof Document) || document.documentElement !== expectedHtml ||
                     expectedHtml.localName !== 'html' || expectedHead.localName !== 'head' ||
                     expectedBody.localName !== 'body') return 'native document fixture';
-                for (const member of ['head', 'body', 'dir', 'fgColor', 'linkColor', 'vlinkColor', 'alinkColor', 'bgColor']) {
+                for (const member of ['head', 'body', 'dir', 'title', 'fgColor', 'linkColor', 'vlinkColor', 'alinkColor', 'bgColor']) {
                     const descriptor = Object.getOwnPropertyDescriptor(Document.prototype, member);
                     if (typeof descriptor?.get !== 'function') return 'document missing tree accessors';
                     if (!descriptor.enumerable || !descriptor.configurable || descriptor.get.length !== 0 ||
@@ -850,8 +850,15 @@ fn document_tree_accessors_use_registered_function_and_creation_realms() {
                     return 'body adoption preserves wrapper creation realm';
                 const dir = Object.getOwnPropertyDescriptor(prototype, 'dir');
                 const color = Object.getOwnPropertyDescriptor(prototype, 'fgColor');
+                const title = Object.getOwnPropertyDescriptor(prototype, 'title');
                 dir.set.call(originTreeDocument, 'RTL');
                 color.set.call(originTreeDocument, 'foreign\ud800\0');
+                const mainTitle = document.title;
+                const exact = '\t foreign\udc00\0  title ';
+                title.set.call(originTreeDocument, exact);
+                if (title.get.call(originTreeDocument) !== 'foreign\udc00\0 title' ||
+                    foreignHead.lastChild?.text !== exact || document.title !== mainTitle)
+                    return 'borrowed title uses receiver Document';
                 const value = color.get.call(originTreeDocument);
                 return dir.get.call(originTreeDocument) === 'rtl' && value === 'foreign\ud800\0' &&
                     value.length === 9 && value.charCodeAt(7) === 0xd800 && value.charCodeAt(8) === 0 &&

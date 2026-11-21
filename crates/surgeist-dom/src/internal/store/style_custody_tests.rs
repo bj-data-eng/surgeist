@@ -717,3 +717,5 @@ fn refused_style_replacement_releases_its_actual_partial_custody() {
             .same_owner(&owners[0])
     );
 }
+
+mod document_title;

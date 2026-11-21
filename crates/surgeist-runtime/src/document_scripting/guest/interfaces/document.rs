@@ -397,6 +397,7 @@ impl DocumentPrototypes {
         tree::install_import(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         html_document::install(scope, &document, funding.capture)?;
+        title::install_document(scope, &document, funding.capture)?;
         legacy::install(scope, &document, funding.capture)?;
         let document_names = tree_mutations::unscopables(scope, &document)?;
         parent_node::install(

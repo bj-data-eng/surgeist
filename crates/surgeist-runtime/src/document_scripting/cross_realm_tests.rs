@@ -7,6 +7,7 @@ mod declarative_shadow;
 mod details_reflections;
 mod document_import;
 mod document_legacy_entrypoints;
+mod document_title;
 mod document_tree_properties;
 mod document_type;
 mod dom_implementation;
@@ -394,6 +395,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     template_content::template_content_reaches_parsed_and_retired_native_contents();
     template_content::template_attributes_reflect_the_live_native_element();
     title_text::title_text_uses_direct_native_children_and_original_replacement();
+    document_title::document_title_selects_and_updates_the_live_title();
+    document_title::document_title_observes_ordinary_names_and_creation_boundaries();
+    document_title::document_title_preserves_coercion_and_native_reaction_order();
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     slot::slot_members_read_the_canonical_named_assignment();
     break_elements::break_elements_reflect_canonical_attributes();
