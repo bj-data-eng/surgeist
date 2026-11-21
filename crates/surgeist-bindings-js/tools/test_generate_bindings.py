@@ -410,6 +410,23 @@ class DescriptionTests(unittest.TestCase):
         self.assertEqual(self.member("Node.nodeValue")["type"]["kind"], "nullable")
 
 
+    def test_body_partial_lowers_five_null_to_empty_setters_and_raw_background(self):
+        body = self.definition("HTMLBodyElement.obsolete")
+        self.assertEqual([member["name"] for member in body["members"]],
+                         ["text", "link", "vLink", "aLink", "bgColor", "background"])
+        model = g.lower_values(self.data)
+        selected = {identity: info for identity, _, info in g.lower_selected_setters(self.data, model)}
+        for member in body["members"][:-1]:
+            with self.subTest(member=member["name"]):
+                self.assertEqual(selected[member["id"]],
+                                 ("DomString", "Type<DomString>", "types::DOM_STRING_NULL_TO_EMPTY"))
+        background = body["members"][-1]
+        self.assertEqual(g.conversion_type(background["type"], model),
+                         ("DomString", "Type<DomString>", "types::DOM_STRING"))
+        self.assertNotIn(background["id"], selected)
+        background["type"]["attributes"] = [{"name": "LegacyNullToEmptyString"}]
+        self.rejected("source declaration mismatch: HTMLBodyElement.obsolete.source")
+
     def test_selected_pi_constructor_and_factory_are_both_described(self):
         pi = self.member("ProcessingInstruction.constructor:0")
         self.assertEqual(pi["arguments"][0]["name"], "target")

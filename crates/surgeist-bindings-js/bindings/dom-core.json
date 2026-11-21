@@ -774,6 +774,16 @@
       "entries": ["HTMLBodyElement", "HTMLBodyElement.includes.WindowEventHandlers"]
     },
     {
+      "id": "HTMLBodyElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLBodyElement&#45;partial",
+      "block": 0,
+      "sha256": "1a0763aa3ed038b9d4cddd0f66f646477015bdfd828d8c68e4346027a0b4889a",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLBodyElement-partial",
+      "entries": ["HTMLBodyElement.obsolete"]
+    },
+    {
       "id": "ElementContentEditable.source",
       "path": "references/html-editability--877d6146487f.md",
       "anchor": "",
@@ -6637,6 +6647,63 @@
         }
       ],
       "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLBodyElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLBodyElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]},
+          "name": "text",
+          "readonly": false,
+          "id": "HTMLBodyElement.obsolete.text"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]},
+          "name": "link",
+          "readonly": false,
+          "id": "HTMLBodyElement.obsolete.link"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]},
+          "name": "vLink",
+          "readonly": false,
+          "id": "HTMLBodyElement.obsolete.vLink"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]},
+          "name": "aLink",
+          "readonly": false,
+          "id": "HTMLBodyElement.obsolete.aLink"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]},
+          "name": "bgColor",
+          "readonly": false,
+          "id": "HTMLBodyElement.obsolete.bgColor"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "background",
+          "readonly": false,
+          "id": "HTMLBodyElement.obsolete.background"
+        }
+      ],
+      "partial": true
     },
     {
       "id": "ElementContentEditable",
@@ -14044,6 +14111,102 @@
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-body-element"
         }
       ]
+    },
+    "HTMLBodyElement.obsolete.text/get": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.text.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.text/set": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.text.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.link/get": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.link.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.link/set": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.link.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.vLink/get": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.vlink.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.vLink/set": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.vlink.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.aLink/get": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.alink.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.aLink/set": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.alink.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.bgColor/get": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.bgcolor.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.bgColor/set": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.bgcolor.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.background/get": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.background.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLBodyElement.obsolete.background/set": {
+      "kind": "native",
+      "adapter": "htmlbodyelement.obsolete.background.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "ElementContentEditable.contentEditable/get": {
       "kind": "derived",

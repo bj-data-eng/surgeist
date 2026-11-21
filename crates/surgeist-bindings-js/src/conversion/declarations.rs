@@ -1854,6 +1854,31 @@ pub fn html_font_element_color_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
 }
 
+/// Selected setter conversion for `HTMLBodyElement.obsolete.text`.
+pub fn html_body_element_obsolete_text_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLBodyElement.obsolete.link`.
+pub fn html_body_element_obsolete_link_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLBodyElement.obsolete.vLink`.
+pub fn html_body_element_obsolete_v_link_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLBodyElement.obsolete.aLink`.
+pub fn html_body_element_obsolete_a_link_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLBodyElement.obsolete.bgColor`.
+pub fn html_body_element_obsolete_bg_color_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
 /// Selected setter conversion for `Document.obsolete.fgColor`.
 pub fn document_obsolete_fg_color_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
