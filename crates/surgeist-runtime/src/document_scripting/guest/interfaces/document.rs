@@ -28,6 +28,7 @@ pub(super) mod element;
 mod element_factory;
 mod font;
 mod fragment;
+mod frameset;
 mod html_document;
 mod legacy;
 mod li;

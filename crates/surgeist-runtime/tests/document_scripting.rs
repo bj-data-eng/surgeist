@@ -69,6 +69,8 @@ mod content_editable;
 mod document_fragment;
 #[path = "document_scripting/element_projection.rs"]
 mod element_projection;
+#[path = "document_scripting/frameset_reflections.rs"]
+mod frameset_reflections;
 #[path = "document_scripting/hidden_reflection.rs"]
 mod hidden_reflection;
 #[path = "document_scripting/script_preparation.rs"]
@@ -2409,6 +2411,7 @@ fn main() {
             "hidden-reflection" => hidden_reflection::attached_hidden_reflects_the_native_attribute_and_web_idl_union(),
             "translate-reflection" => translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords(),
             "body-reflections" => body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings(),
+            "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
@@ -2500,6 +2503,7 @@ fn main() {
     hidden_reflection::attached_hidden_reflects_the_native_attribute_and_web_idl_union();
     translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords();
     body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings();
+    frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();

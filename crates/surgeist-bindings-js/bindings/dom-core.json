@@ -784,6 +784,16 @@
       "entries": ["HTMLBodyElement.obsolete"]
     },
     {
+      "id": "HTMLFrameSetElement.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "htmlframesetelement",
+      "block": 0,
+      "sha256": "cbbf2545fde3d114e2495551547df7b68c58f5867a5e21444546549c12b9273d",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlframesetelement",
+      "entries": ["HTMLFrameSetElement", "HTMLFrameSetElement.includes.WindowEventHandlers"]
+    },
+    {
       "id": "ElementContentEditable.source",
       "path": "references/html-editability--877d6146487f.md",
       "anchor": "",
@@ -6706,6 +6716,37 @@
       "partial": true
     },
     {
+      "id": "HTMLFrameSetElement",
+      "kind": "interface",
+      "name": "HTMLFrameSetElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLFrameSetElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "cols",
+          "readonly": false,
+          "id": "HTMLFrameSetElement.cols"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "rows",
+          "readonly": false,
+          "id": "HTMLFrameSetElement.rows"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
       "id": "ElementContentEditable",
       "kind": "mixin",
       "name": "ElementContentEditable",
@@ -8035,7 +8076,8 @@
     {"id": "HTMLElement.includes.GlobalEventHandlers", "interface": "HTMLElement", "mixin": "GlobalEventHandlers"},
     {"id": "HTMLElement.includes.ElementContentEditable", "interface": "HTMLElement", "mixin": "ElementContentEditable"},
     {"id": "HTMLElement.includes.HTMLOrSVGOrMathMLElement", "interface": "HTMLElement", "mixin": "HTMLOrSVGOrMathMLElement"},
-    {"id": "HTMLBodyElement.includes.WindowEventHandlers", "interface": "HTMLBodyElement", "mixin": "WindowEventHandlers"}
+    {"id": "HTMLBodyElement.includes.WindowEventHandlers", "interface": "HTMLBodyElement", "mixin": "WindowEventHandlers"},
+    {"id": "HTMLFrameSetElement.includes.WindowEventHandlers", "interface": "HTMLFrameSetElement", "mixin": "WindowEventHandlers"}
   ],
   "externals": [
     {
@@ -14203,6 +14245,46 @@
     "HTMLBodyElement.obsolete.background/set": {
       "kind": "native",
       "adapter": "htmlbodyelement.obsolete.background.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFrameSetElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlframesetelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLFrameSetElement.cols/get": {
+      "kind": "native",
+      "adapter": "htmlframesetelement.cols.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFrameSetElement.cols/set": {
+      "kind": "native",
+      "adapter": "htmlframesetelement.cols.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLFrameSetElement.rows/get": {
+      "kind": "native",
+      "adapter": "htmlframesetelement.rows.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLFrameSetElement.rows/set": {
+      "kind": "native",
+      "adapter": "htmlframesetelement.rows.set",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],

@@ -427,6 +427,22 @@ class DescriptionTests(unittest.TestCase):
         background["type"]["attributes"] = [{"name": "LegacyNullToEmptyString"}]
         self.rejected("source declaration mismatch: HTMLBodyElement.obsolete.source")
 
+    def test_frameset_primary_preserves_plain_strings_and_window_event_mixin(self):
+        frameset = self.definition("HTMLFrameSetElement")
+        self.assertEqual(frameset["inherits"], "HTMLElement")
+        ctor, cols, rows = frameset["members"]
+        self.assertEqual(ctor["id"], "HTMLFrameSetElement.constructor:0")
+        self.assertEqual([cols["name"], rows["name"]], ["cols", "rows"])
+        model = g.lower_values(self.data)
+        for member in [cols, rows]:
+            with self.subTest(member=member["name"]):
+                self.assertEqual(g.conversion_type(member["type"], model),
+                                 ("DomString", "Type<DomString>", "types::DOM_STRING"))
+        include = next(item for item in self.data["includes"] if item["interface"] == "HTMLFrameSetElement")
+        self.assertEqual(include["mixin"], "WindowEventHandlers")
+        include["mixin"] = "GlobalEventHandlers"
+        self.rejected("source declaration mismatch: HTMLFrameSetElement.source")
+
     def test_selected_pi_constructor_and_factory_are_both_described(self):
         pi = self.member("ProcessingInstruction.constructor:0")
         self.assertEqual(pi["arguments"][0]["name"], "target")
