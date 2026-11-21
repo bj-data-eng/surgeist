@@ -16,8 +16,9 @@ use surgeist_html::attributes::{
     HtmlClosedByState, HtmlContentEditableState, HtmlHidden, HtmlHiddenState, HtmlTranslate,
 };
 use surgeist_html::bounded::attributes::{
-    HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule, button_command_readback_with,
-    closedby_processing_with, contenteditable_processing_with, contenteditable_setter_state_with,
+    HtmlControlDimensionRule, HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule,
+    button_command_readback_with, closedby_processing_with, contenteditable_processing_with,
+    contenteditable_setter_state_with, control_length_reflection_with, control_length_setter_value,
     dir_keyword_with, enterkeyhint_keyword_with, form_autocomplete_keyword_with,
     form_enctype_keyword_with, form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
@@ -69,6 +70,8 @@ pub(super) enum Reflection {
     // Unit policies keep frequently captured reflection metadata compact.
     SignedLongZero,
     SignedLongOne,
+    ControlLength,
+    ControlDimension(HtmlControlDimensionRule),
     SelectSize,
     MarqueeUnsigned(HtmlMarqueeUnsignedReflection),
     MarqueeLoop,
@@ -590,6 +593,12 @@ impl Capture {
                         1,
                         || read.step(),
                     )?),
+                    Reflection::ControlLength => {
+                        Reflected::Signed(control_length_reflection_with(units, |_| read.step())?)
+                    }
+                    Reflection::ControlDimension(rule) => {
+                        Reflected::Unsigned(rule.read_with(units, |_| read.step())?)
+                    }
                     Reflection::SelectSize => Reflected::Unsigned(select_size_reflection_with(
                         stored.map(|value| value.value()),
                         || read.step(),
@@ -679,6 +688,7 @@ impl Capture {
                 reflection,
                 Reflection::HeadingOffset
                     | Reflection::SelectSize
+                    | Reflection::ControlDimension(_)
                     | Reflection::TableSpan(_)
                     | Reflection::MarqueeUnsigned(_)
             ) {
@@ -700,6 +710,22 @@ impl Capture {
                 let value = match reflection {
                     Reflection::HeadingOffset => heading_offset_setter_value(value),
                     Reflection::SelectSize => select_size_reflection_setter_value(value),
+                    Reflection::ControlDimension(rule) => {
+                        let current = self.callbacks.with_read(&owner, &events, |read, _| {
+                            receiver.matches(read.node(id)?, || read.step())
+                        })?;
+                        if !current {
+                            return Ok(Completion::Throw(
+                                scope.type_error(receiver.error_message())?,
+                            ));
+                        }
+                        let Ok(value) = rule.setter_value(value) else {
+                            return Ok(Completion::Throw(
+                                scope.dom_exception(DomExceptionName::IndexSizeError, &[])?,
+                            ));
+                        };
+                        value
+                    }
                     Reflection::MarqueeUnsigned(rule) => {
                         let current = self.callbacks.with_read(&owner, &events, |read, _| {
                             receiver.matches(read.node(id)?, || read.step())
@@ -722,6 +748,7 @@ impl Capture {
                 reflection,
                 Reflection::SignedLongZero
                     | Reflection::SignedLongOne
+                    | Reflection::ControlLength
                     | Reflection::MarqueeLoop
                     | Reflection::TabIndex
             ) {
@@ -739,7 +766,7 @@ impl Capture {
                 let IntegerValue::Long(value) = *converted.get() else {
                     return Err(Error::BackendUnavailable.into());
                 };
-                if matches!(reflection, Reflection::TabIndex) {
+                if matches!(reflection, Reflection::TabIndex | Reflection::ControlLength) {
                     let current = self.callbacks.with_read(&owner, &events, |read, _| {
                         receiver.matches(read.node(id)?, || read.step())
                     })?;
@@ -749,7 +776,15 @@ impl Capture {
                         ));
                     }
                 }
-                let value = if matches!(reflection, Reflection::MarqueeLoop) {
+                let value = if matches!(reflection, Reflection::ControlLength) {
+                    events.step()?;
+                    let Ok(value) = control_length_setter_value(value) else {
+                        return Ok(Completion::Throw(
+                            scope.dom_exception(DomExceptionName::IndexSizeError, &[])?,
+                        ));
+                    };
+                    value
+                } else if matches!(reflection, Reflection::MarqueeLoop) {
                     let Some(change) = self.callbacks.with_read(&owner, &events, |read, _| {
                         let node = read.node(id)?;
                         if !receiver.matches(node, || read.step())? {

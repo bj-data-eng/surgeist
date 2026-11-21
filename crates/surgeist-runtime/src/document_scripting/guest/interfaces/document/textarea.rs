@@ -10,8 +10,16 @@ use surgeist_bindings_js::conversion::{
     declarations::html_text_area_element_value_setter, types::DOM_STRING,
 };
 use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
+use surgeist_html::bounded::attributes::HtmlControlDimensionRule;
 
 const BEFORE_FORM: &[reflection::Member] = &[
+    (
+        &ascii(b"cols"),
+        &ascii(b"get cols"),
+        &ascii(b"set cols"),
+        &ascii(b"cols"),
+        Reflection::ControlDimension(HtmlControlDimensionRule::TextareaCols),
+    ),
     (
         &ascii(b"dirName"),
         &ascii(b"get dirName"),
@@ -29,6 +37,20 @@ const BEFORE_FORM: &[reflection::Member] = &[
 ];
 
 const AFTER_FORM: &[reflection::Member] = &[
+    (
+        &ascii(b"maxLength"),
+        &ascii(b"get maxLength"),
+        &ascii(b"set maxLength"),
+        &ascii(b"maxlength"),
+        Reflection::ControlLength,
+    ),
+    (
+        &ascii(b"minLength"),
+        &ascii(b"get minLength"),
+        &ascii(b"set minLength"),
+        &ascii(b"minlength"),
+        Reflection::ControlLength,
+    ),
     (
         &ascii(b"name"),
         &ascii(b"get name"),
@@ -56,6 +78,13 @@ const AFTER_FORM: &[reflection::Member] = &[
         &ascii(b"set required"),
         &ascii(b"required"),
         Reflection::Boolean,
+    ),
+    (
+        &ascii(b"rows"),
+        &ascii(b"get rows"),
+        &ascii(b"set rows"),
+        &ascii(b"rows"),
+        Reflection::ControlDimension(HtmlControlDimensionRule::TextareaRows),
     ),
     (
         &ascii(b"wrap"),

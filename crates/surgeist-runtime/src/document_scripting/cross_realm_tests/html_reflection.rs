@@ -9,6 +9,7 @@ pub(super) fn heading_offset_reflects_the_distinct_getter_and_setter_ranges() {
     let (session, target) = hosted_session(&cancel, 0);
     let mut host = attach_public_nodes(session, target, cancel, 8_000, 200_000);
     let permit = host.permit().unwrap();
+    super::super::guest::tests::fund_guest_operation_after_setup(&host);
     let element = host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"(() => {
             const d = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'headingOffset');

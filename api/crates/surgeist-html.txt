@@ -2403,6 +2403,13 @@ pub enum surgeist_html::bounded::attributes::HtmlButtonSubmitterFact
 pub surgeist_html::bounded::attributes::HtmlButtonSubmitterFact::CommandAttributePresent
 pub surgeist_html::bounded::attributes::HtmlButtonSubmitterFact::CommandforAttributePresent
 pub surgeist_html::bounded::attributes::HtmlButtonSubmitterFact::ParentIsSelect
+pub enum surgeist_html::bounded::attributes::HtmlControlDimensionRule
+pub surgeist_html::bounded::attributes::HtmlControlDimensionRule::InputSize
+pub surgeist_html::bounded::attributes::HtmlControlDimensionRule::TextareaCols
+pub surgeist_html::bounded::attributes::HtmlControlDimensionRule::TextareaRows
+impl surgeist_html::bounded::attributes::HtmlControlDimensionRule
+pub fn surgeist_html::bounded::attributes::HtmlControlDimensionRule::read_with<E>(self, raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlIntegerAttributeRead) -> core::result::Result<(), E>) -> core::result::Result<u32, E>
+pub const fn surgeist_html::bounded::attributes::HtmlControlDimensionRule::setter_value(self, value: u32) -> core::result::Result<u32, surgeist_html::bounded::attributes::HtmlControlIntegerIndexSize>
 pub enum surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability
 pub surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability::Applicable
 pub surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability::DifferentContext
@@ -2479,6 +2486,10 @@ impl surgeist_html::bounded::attributes::HtmlAutocompleteMaterialized
 pub fn surgeist_html::bounded::attributes::HtmlAutocompleteMaterialized::into_parts(self) -> (surgeist_html::attributes::autocomplete::HtmlAutocompleteReport, surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationUsage)
 pub fn surgeist_html::bounded::attributes::HtmlAutocompleteMaterialized::report(&self) -> &surgeist_html::attributes::autocomplete::HtmlAutocompleteReport
 pub const fn surgeist_html::bounded::attributes::HtmlAutocompleteMaterialized::usage(&self) -> surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationUsage
+pub struct surgeist_html::bounded::attributes::HtmlControlIntegerIndexSize
+impl core::error::Error for surgeist_html::bounded::attributes::HtmlControlIntegerIndexSize
+impl core::fmt::Display for surgeist_html::bounded::attributes::HtmlControlIntegerIndexSize
+pub fn surgeist_html::bounded::attributes::HtmlControlIntegerIndexSize::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::attributes::HtmlHashNameScan<'raw>
 impl<'raw> surgeist_html::bounded::attributes::HtmlHashNameScan<'raw>
 pub const surgeist_html::bounded::attributes::HtmlHashNameScan<'raw>::BEGIN_WORK: usize
@@ -2507,6 +2518,8 @@ pub fn surgeist_html::bounded::attributes::button_type_keyword_with<E>(raw: core
 pub fn surgeist_html::bounded::attributes::closedby_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlClosedByState, E>
 pub fn surgeist_html::bounded::attributes::contenteditable_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlContentEditableState, E>
 pub fn surgeist_html::bounded::attributes::contenteditable_setter_state_with<E>(raw: &[u16], admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::attributes::HtmlContentEditableState>, E>
+pub fn surgeist_html::bounded::attributes::control_length_reflection_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlIntegerAttributeRead) -> core::result::Result<(), E>) -> core::result::Result<i32, E>
+pub const fn surgeist_html::bounded::attributes::control_length_setter_value(value: i32) -> core::result::Result<i32, surgeist_html::bounded::attributes::HtmlControlIntegerIndexSize>
 pub fn surgeist_html::bounded::attributes::crossorigin_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlCrossOriginState, E>
 pub fn surgeist_html::bounded::attributes::dir_keyword_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<&'static str, E>
 pub fn surgeist_html::bounded::attributes::embedded_dimension_applicability(element: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, context: core::option::Option<surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicabilityContext>) -> surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability

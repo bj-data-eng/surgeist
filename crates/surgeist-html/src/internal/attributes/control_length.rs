@@ -1,12 +1,15 @@
 //! Input size, control length bounds, reflected getters and initial-text author checks.
 //!
 //! Content processing does not implement rendering, current/dirty control values,
-//! user editing, constraint validation, WebIDL setters or DOM mutation. WHATWG
-//! source attribution is in `licenses/whatwg/NOTICE.md`.
+//! user editing, constraint validation or DOM mutation. The bounded IDL
+//! reflection decisions consume already-converted setter values. WHATWG source
+//! attribution is in `licenses/whatwg/NOTICE.md`.
 
-use super::*;
+use super::{bounded_rules::HtmlIntegerAttributeRead, *};
 use crate::{
-    internal::microsyntax::numeric::HtmlNonNegativeInteger,
+    internal::microsyntax::numeric::{
+        HtmlNonNegativeInteger, try_parse_nonnegative_integer_capped_steps,
+    },
     internal::values::interpretation::HtmlDefinedAuthorState,
     internal::values::interpretation::HtmlDefinedValueReport,
     internal::values::interpretation::HtmlValueFailure,
@@ -14,6 +17,114 @@ use crate::{
     internal::values::interpretation::HtmlValueReport,
 };
 use std::{cmp::Ordering, error::Error, fmt};
+
+// The signed-long range bounds both signed and positive unsigned reflection.
+const MAX_REFLECTED_INTEGER: u32 = i32::MAX as u32;
+const CONTROL_LENGTH_FALLBACK: i32 = -1;
+const INPUT_SIZE_DEFAULT: u32 = 20;
+pub(super) const TEXTAREA_COLS_DEFAULT: u32 = 20;
+pub(super) const TEXTAREA_ROWS_DEFAULT: u32 = 2;
+
+/// A converted numeric setter value requires a DOM IndexSizeError.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlControlIntegerIndexSize;
+
+impl fmt::Display for HtmlControlIntegerIndexSize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("the converted integer is below the control setter's minimum")
+    }
+}
+
+impl Error for HtmlControlIntegerIndexSize {}
+
+/// Selects the local reflection policy for one positive control dimension.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlControlDimensionRule {
+    /// Input size defaults to 20 and refuses a converted zero.
+    InputSize,
+    /// Textarea columns default to 20, including on a converted zero.
+    TextareaCols,
+    /// Textarea rows default to 2, including on a converted zero.
+    TextareaRows,
+}
+
+impl HtmlControlDimensionRule {
+    const fn fallback(self) -> u32 {
+        match self {
+            Self::InputSize => INPUT_SIZE_DEFAULT,
+            Self::TextareaCols => TEXTAREA_COLS_DEFAULT,
+            Self::TextareaRows => TEXTAREA_ROWS_DEFAULT,
+        }
+    }
+
+    /// Reflect the recovered positive signed-range integer or this member's fallback.
+    ///
+    /// Each reached read is admitted before it is performed. The first admission
+    /// failure is returned unchanged.
+    pub fn read_with<E>(
+        self,
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlIntegerAttributeRead) -> Result<(), E>,
+    ) -> Result<u32, E> {
+        let recovered = control_integer_reflection_with(raw, admit)?;
+        Ok(recovered
+            .filter(|&value| value > 0)
+            .map_or(self.fallback(), |value| value as u32))
+    }
+
+    /// Select the reflected content value after Web IDL unsigned-long conversion.
+    ///
+    /// Only Input size rejects a converted zero. Other values outside the
+    /// positive signed range select this member's fallback.
+    pub const fn setter_value(self, value: u32) -> Result<u32, HtmlControlIntegerIndexSize> {
+        if value == 0 && matches!(self, Self::InputSize) {
+            return Err(HtmlControlIntegerIndexSize);
+        }
+        Ok(if value > 0 && value <= MAX_REFLECTED_INTEGER {
+            value
+        } else {
+            self.fallback()
+        })
+    }
+}
+
+/// Reflect maxlength or minlength from exact raw content, with a fallback of −1.
+///
+/// Each reached read is admitted before it is performed. The first admission
+/// failure is returned unchanged.
+pub fn control_length_reflection_with<E>(
+    raw: Option<&[u16]>,
+    admit: impl FnMut(HtmlIntegerAttributeRead) -> Result<(), E>,
+) -> Result<i32, E> {
+    Ok(control_integer_reflection_with(raw, admit)?.unwrap_or(CONTROL_LENGTH_FALLBACK))
+}
+
+/// Select the reflected length after Web IDL signed-long conversion.
+///
+/// Negative values require IndexSizeError. Zero and positive values are retained.
+pub const fn control_length_setter_value(value: i32) -> Result<i32, HtmlControlIntegerIndexSize> {
+    if value < 0 {
+        Err(HtmlControlIntegerIndexSize)
+    } else {
+        Ok(value)
+    }
+}
+
+fn control_integer_reflection_with<E>(
+    raw: Option<&[u16]>,
+    mut admit: impl FnMut(HtmlIntegerAttributeRead) -> Result<(), E>,
+) -> Result<Option<i32>, E> {
+    admit(HtmlIntegerAttributeRead::ValueHeader)?;
+    let Some(raw) = raw else { return Ok(None) };
+    // A cap one above the signed-long maximum keeps overflow distinguishable.
+    let recovered = try_parse_nonnegative_integer_capped_steps(
+        raw,
+        MAX_REFLECTED_INTEGER as usize + 1,
+        &mut || admit(HtmlIntegerAttributeRead::IntegerUnit),
+    )?;
+    admit(HtmlIntegerAttributeRead::ResultSelection)?;
+    Ok(recovered.ok().and_then(|value| i32::try_from(value).ok()))
+}
 
 /// Admission is per supplied value, before any name/context or syntax processing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -151,7 +262,7 @@ impl IntegerObservation {
             }
             HtmlValueRecoveryState::Value(value) => {
                 if let Ok(value) = value.to_u64()
-                    && value <= 2_147_483_647
+                    && value <= u64::from(MAX_REFLECTED_INTEGER)
                 {
                     return Some((value as u32, HtmlControlGetterOrigin::Recovered));
                 }
@@ -287,7 +398,7 @@ impl HtmlInputSizeReport {
             if origin == HtmlControlGetterOrigin::Recovered {
                 value
             } else {
-                20
+                INPUT_SIZE_DEFAULT
             }
         })
     }
@@ -338,7 +449,7 @@ impl HtmlControlLengthReport {
             if origin == HtmlControlGetterOrigin::Recovered {
                 value as i32
             } else {
-                -1
+                CONTROL_LENGTH_FALLBACK
             }
         })
     }

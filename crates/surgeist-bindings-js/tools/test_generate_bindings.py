@@ -754,6 +754,26 @@ class DescriptionTests(unittest.TestCase):
         default["value"] = 2
         self.rejected("source declaration mismatch: HTMLInputElement.source")
 
+    def test_integer_controls_name_the_live_reflection_and_source_providers(self):
+        mappings = self.data["access_mappings"]
+        for interface, dimensions in [("HTMLInputElement", ["size"]), ("HTMLTextAreaElement", ["cols", "rows"])]:
+            for name in ["maxLength", "minLength"] + dimensions:
+                with self.subTest(interface=interface, member=name):
+                    getter = mappings[f"{interface}.{name}/get"]
+                    setter = mappings[f"{interface}.{name}/set"]
+                    self.assertFalse(getter["requirements"])
+                    self.assertFalse(setter["requirements"])
+                    self.assertEqual({item["owner"] for item in getter["producers"]},
+                                     {"surgeist-dom", "surgeist-html"})
+                    self.assertEqual({item["owner"] for item in setter["producers"]},
+                                     {"surgeist-dom", "surgeist-html"})
+                    self.assertIn("set_attribute_ns", [item["symbol"] for item in setter["producers"]])
+                    length = name in ["maxLength", "minLength"]
+                    getter_symbol = "control_length_reflection_with" if length else "read_with"
+                    setter_symbol = "control_length_setter_value" if length else "setter_value"
+                    self.assertIn(getter_symbol, [item["symbol"] for item in getter["producers"]])
+                    self.assertIn(setter_symbol, [item["symbol"] for item in setter["producers"]])
+
     def test_input_local_reflections_retain_the_native_producers_and_obsolete_partial(self):
         obsolete = self.definition("HTMLInputElement.obsolete")
         self.assertTrue(obsolete["partial"])
