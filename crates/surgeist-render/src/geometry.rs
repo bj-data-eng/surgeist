@@ -219,21 +219,15 @@ pub(crate) fn validate_rect_maxima(rect: Rect, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Converts the logical rectangle to Kurbo without loss.
-impl From<Rect> for kurbo::Rect {
-    fn from(rect: Rect) -> Self {
-        let max = rect.max();
-        Self::new(rect.x(), rect.y(), max.x(), max.y())
+impl Rect {
+    /// Converts the logical rectangle to Kurbo without loss.
+    pub(crate) fn to_kurbo(self) -> kurbo::Rect {
+        let max = self.max();
+        kurbo::Rect::new(self.x(), self.y(), max.x(), max.y())
     }
-}
 
-/// Validates a Kurbo rectangle as a logical [`Rect`].
-///
-/// Conversion rejects negative or non-finite dimensions and non-finite derived maxima.
-impl TryFrom<kurbo::Rect> for Rect {
-    type Error = Error;
-
-    fn try_from(rect: kurbo::Rect) -> Result<Self> {
+    /// Rejects negative or non-finite dimensions and non-finite derived maxima.
+    pub(crate) fn try_from_kurbo(rect: kurbo::Rect) -> Result<Self> {
         Self::try_new(rect.x0, rect.y0, rect.width(), rect.height())
     }
 }
@@ -457,8 +451,11 @@ impl Transform {
     }
 
     pub(crate) fn then_in(self, next: Self, account: &Account) -> Result<Self> {
-        let product =
-            crate::vello_engine::geometry::affine_product(next.into(), self.into(), account)?;
+        let product = crate::vello_engine::geometry::affine_product(
+            next.to_kurbo(),
+            self.to_kurbo(),
+            account,
+        )?;
         Self::try_new_in(product.as_coeffs(), account)
     }
 
@@ -485,10 +482,10 @@ impl Default for Transform {
     }
 }
 
-/// Converts this finite logical transform to the equivalent Kurbo affine transform.
-impl From<Transform> for kurbo::Affine {
-    fn from(transform: Transform) -> Self {
-        Self::new(transform.as_array())
+impl Transform {
+    /// Converts this finite logical transform to the equivalent Kurbo affine transform.
+    pub(crate) fn to_kurbo(self) -> kurbo::Affine {
+        kurbo::Affine::new(self.as_array())
     }
 }
 

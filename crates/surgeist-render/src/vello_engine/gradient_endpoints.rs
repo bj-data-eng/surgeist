@@ -45,15 +45,9 @@ impl PadEndpoints {
         let last_offset = if last_magnitude == 0 { 0 } else { last_bits };
         // Each native color conversion processes exactly four scalar channels.
         account.work(RenderWork::CoordinateVisits, 4)?;
-        let first_color = peniko::Color::from(first.1)
-            .premultiply()
-            .to_rgba8()
-            .to_u32();
+        let first_color = first.1.to_peniko().premultiply().to_rgba8().to_u32();
         account.work(RenderWork::CoordinateVisits, 4)?;
-        let last_color = peniko::Color::from(last.1)
-            .premultiply()
-            .to_rgba8()
-            .to_u32();
+        let last_color = last.1.to_peniko().premultiply().to_rgba8().to_u32();
         Ok(Self {
             first: first_offset,
             last: last_offset,

@@ -1224,10 +1224,10 @@ impl RenderStrokeShape {
         };
 
         Ok(match shape.kind() {
-            ShapeKind::Rect(rect) => Self::Rect(kurbo::Rect::from(*rect).inflate(offset, offset)),
+            ShapeKind::Rect(rect) => Self::Rect(rect.to_kurbo().inflate(offset, offset)),
             ShapeKind::RoundedRect { rect, radii } => {
                 let radii = offset_radii(*radii, offset);
-                let rect = kurbo::Rect::from(*rect).inflate(offset, offset);
+                let rect = rect.to_kurbo().inflate(offset, offset);
                 Self::RoundedRect(kurbo_rounded_rect(
                     Rect::new(rect.x0, rect.y0, rect.width(), rect.height()),
                     radii,
@@ -1720,7 +1720,7 @@ fn union_bounds(a: OffscreenBounds, b: OffscreenBounds) -> Result<OffscreenBound
 }
 
 fn kurbo_bounds(bounds: kurbo::Rect) -> Result<OffscreenBounds> {
-    OffscreenBounds::try_new(Rect::try_from(bounds)?)
+    OffscreenBounds::try_new(Rect::try_from_kurbo(bounds)?)
 }
 
 fn ensure_paint_supported(paint: &Paint, capabilities: Capabilities) -> Result<()> {
@@ -1747,7 +1747,7 @@ fn solid_shadow_color(paint: &Paint) -> Result<Color> {
 
 pub(crate) fn kurbo_rounded_rect(rect: Rect, radii: Radii) -> kurbo::RoundedRect {
     kurbo::RoundedRect::from_rect(
-        rect.into(),
+        rect.to_kurbo(),
         kurbo::RoundedRectRadii::new(
             radii.top_left(),
             radii.top_right(),

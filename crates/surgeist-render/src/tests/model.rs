@@ -449,7 +449,7 @@ fn rect_try_from_kurbo_rejects_invalid_bounds() {
         y1: 1.0,
     };
 
-    assert!(Rect::try_from(rect).is_err());
+    assert!(Rect::try_from_kurbo(rect).is_err());
 }
 
 #[test]

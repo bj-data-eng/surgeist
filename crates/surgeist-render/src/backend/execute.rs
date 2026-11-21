@@ -206,7 +206,7 @@ impl Backend {
         let prepared = stage.scene.prepare_raster(
             RasterParameters::try_new(
                 stage.target.extent,
-                peniko::Color::from(stage.base_color),
+                stage.base_color.to_peniko(),
                 stage.antialiasing,
             )?,
             account,

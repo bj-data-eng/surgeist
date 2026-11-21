@@ -63,7 +63,7 @@ pub(super) fn prepare(
         let stops = match RepeatingStops::borrow(gradient.stops())? {
             RepeatingStops::Single(stop) => {
                 account.work(RenderWork::GradientStopVisits, 1)?;
-                return Ok(FrameBrush::solid(stop.color().into()));
+                return Ok(FrameBrush::solid(stop.color().to_peniko()));
             }
             RepeatingStops::Multiple(stops) => stops,
         };
@@ -175,10 +175,9 @@ pub(super) fn prepare(
             let quotient = scalar(&account, || difference / span)?;
             let offset = scalar(&account, || quotient as f32)?;
             account.work(RenderWork::CoordinateVisits, 4)?;
-            normalized.append_slot()?.write(peniko::ColorStop::from((
-                offset,
-                peniko::Color::from(stop.color()),
-            )));
+            normalized
+                .append_slot()?
+                .write(peniko::ColorStop::from((offset, stop.color().to_peniko())));
         }
         let program = if hinted {
             let endpoints = PadEndpoints::new(
@@ -462,7 +461,9 @@ fn solid_average(
     rule: Average,
     account: &Account,
 ) -> Result<FrameBrush> {
-    Ok(FrameBrush::solid(average(stops, rule, account)?.into()))
+    Ok(FrameBrush::solid(
+        average(stops, rule, account)?.to_peniko(),
+    ))
 }
 
 fn average(stops: &MultipleStops<'_>, rule: Average, account: &Account) -> Result<Color> {
@@ -1364,7 +1365,7 @@ mod tests {
     #[test]
     fn radial_weighted_averages_precede_unused_native_pattern_capacity() {
         let account = Account::for_test();
-        let expected: peniko::Color = color(1.0 / 3.0, 2.0 / 3.0, 0.0, 3.0 / 8.0).into();
+        let expected = color(1.0 / 3.0, 2.0 / 3.0, 0.0, 3.0 / 8.0).to_peniko();
         // The center cannot narrow to native coordinates. A positive period
         // of 4/16 pixel still selects the weighted integral, while selected
         // zero height does so even though the unused width*span overflows.
@@ -1390,7 +1391,7 @@ mod tests {
 
     #[test]
     fn zero_height_and_unresolved_positive_cycles_keep_the_actual_weights() {
-        let expected: peniko::Color = color(1.0 / 3.0, 2.0 / 3.0, 0.0, 3.0 / 8.0).into();
+        let expected = color(1.0 / 3.0, 2.0 / 3.0, 0.0, 3.0 / 8.0).to_peniko();
         let account = Account::for_test();
         for height in [0.0, 0.001] {
             let gradient =
@@ -1438,7 +1439,7 @@ mod tests {
         // Uniform endpoint weights 1/4,1/2,1/4 give premul (1/4,1/4,0,1/2).
         assert_eq!(
             solid(&prepare(&gradient, kurbo::Affine::IDENTITY, &Account::for_test()).unwrap()),
-            peniko::Color::from(color(0.5, 0.5, 0.0, 0.5)),
+            color(0.5, 0.5, 0.0, 0.5).to_peniko(),
         );
     }
 
@@ -1558,7 +1559,7 @@ mod tests {
                         Some(RenderAccountingError::Refused(refusal))
                     );
                 } else {
-                    assert_eq!(solid(&result.unwrap()), peniko::Color::from(expected));
+                    assert_eq!(solid(&result.unwrap()), expected.to_peniko());
                     assert_eq!(attempt.refusal(), None);
                 }
                 let usage = attempt.usage();

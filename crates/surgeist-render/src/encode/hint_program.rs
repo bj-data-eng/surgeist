@@ -510,9 +510,7 @@ mod tests {
     fn native(stops: &[GradientStop]) -> Vec<peniko::ColorStop> {
         stops
             .iter()
-            .map(|stop| {
-                peniko::ColorStop::from((stop.position() as f32, peniko::Color::from(stop.color())))
-            })
+            .map(|stop| peniko::ColorStop::from((stop.position() as f32, stop.color().to_peniko())))
             .collect()
     }
     fn mixed_hint_stops() -> [GradientStop; 6] {

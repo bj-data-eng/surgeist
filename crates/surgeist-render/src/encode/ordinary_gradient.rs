@@ -524,14 +524,14 @@ pub(super) fn prepare(
     account.work(RenderWork::GradientStopVisits, 1)?;
     let first = supplied[0];
     if supplied.len() == 1 {
-        return Ok(FrameBrush::solid(first.color().into()));
+        return Ok(FrameBrush::solid(first.color().to_peniko()));
     }
     account.work(RenderWork::GradientStopVisits, 1)?;
     let last = supplied[supplied.len() - 1];
     account.work(RenderWork::CoordinateVisits, 2)?;
     let (a, b) = (first.position(), last.position());
     if matches!(field_geometry, OrdinaryGeometry::Radial { .. }) && scalar(account, || b <= 0.0)? {
-        return Ok(FrameBrush::solid(last.color().into()));
+        return Ok(FrameBrush::solid(last.color().to_peniko()));
     }
     let range = if scalar(account, || a == b)? {
         None
@@ -575,10 +575,9 @@ pub(super) fn prepare(
         previous = Some((position, offset));
         // Native Color copies the four already validated source channels.
         account.work(RenderWork::CoordinateVisits, 4)?;
-        stops.append_slot()?.write(peniko::ColorStop::from((
-            offset,
-            peniko::Color::from(stop.color()),
-        )));
+        stops
+            .append_slot()?
+            .write(peniko::ColorStop::from((offset, stop.color().to_peniko())));
     }
     let program = if let Some(range) = range.filter(|_| hinted) {
         Some(hint_program::prepare(
@@ -620,10 +619,9 @@ pub(super) fn horizontal_carrier_stops(
             scalar(account, || quotient as f32)?
         };
         account.work(RenderWork::CoordinateVisits, 4)?;
-        carrier.append_slot()?.write(peniko::ColorStop::from((
-            offset,
-            peniko::Color::from(stop.color()),
-        )));
+        carrier
+            .append_slot()?
+            .write(peniko::ColorStop::from((offset, stop.color().to_peniko())));
     }
     Ok(carrier)
 }
@@ -698,14 +696,14 @@ fn prepare_horizontal_distance(
     account.work(RenderWork::GradientStopVisits, 1)?;
     let first = supplied[0];
     if supplied.len() == 1 {
-        return Ok(FrameBrush::solid(first.color().into()));
+        return Ok(FrameBrush::solid(first.color().to_peniko()));
     }
     account.work(RenderWork::GradientStopVisits, 1)?;
     let last = supplied[supplied.len() - 1];
     account.work(RenderWork::CoordinateVisits, 2)?;
     let (a, b) = (first.position(), last.position());
     if scalar(account, || b <= 0.0)? {
-        return Ok(FrameBrush::solid(last.color().into()));
+        return Ok(FrameBrush::solid(last.color().to_peniko()));
     }
     if scalar(account, || a == b)? {
         let (native, brush, shift) = realize_with_fallback(

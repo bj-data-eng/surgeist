@@ -1139,7 +1139,7 @@ fn assert_matrix_render_command_order(
     };
     assert_eq!(
         border_shape,
-        &command::RenderStrokeShape::Rect(kurbo::Rect::from(areas.border_box()))
+        &command::RenderStrokeShape::Rect(areas.border_box().to_kurbo())
     );
     assert_eq!(border_stroke.width, 2.0);
     assert_eq!(border_paint, &command::RenderPaint::Color(Color::BLACK));
