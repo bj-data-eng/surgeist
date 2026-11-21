@@ -155,6 +155,8 @@ mod window_document;
 mod window_length;
 #[path = "document_scripting/window_timers.rs"]
 mod window_timers;
+#[path = "document_scripting/wpt_window_startup.rs"]
+mod wpt_window_startup;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -2473,6 +2475,7 @@ fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "wpt-window-startup" => wpt_window_startup::starts_unmodified_harness_with_native_timers(),
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
             "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),
             "media-removal-stable-state" => standard_window::guest_media_removal_reaches_the_owning_checkpoint(),
