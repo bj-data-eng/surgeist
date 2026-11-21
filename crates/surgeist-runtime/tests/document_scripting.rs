@@ -93,6 +93,8 @@ mod form_associated_custom_elements;
 mod form_attributes;
 #[path = "document_scripting/frameset_reflections.rs"]
 mod frameset_reflections;
+#[path = "document_scripting/get_element_by_id.rs"]
+mod get_element_by_id;
 #[path = "document_scripting/hidden_reflection.rs"]
 mod hidden_reflection;
 #[path = "document_scripting/html_prototype_order.rs"]
@@ -2478,6 +2480,7 @@ fn main() {
             "control-autocomplete" => control_autocomplete::attached_controls_project_live_autocomplete(),
             "control-custom-validity" => control_custom_validity::attached_controls_store_native_custom_validity(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
+            "get-element-by-id" => get_element_by_id::attached_id_lookup_uses_the_current_ordinary_tree(),
             "label-live" => label_live::attached_labels_track_their_live_control_and_form(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
@@ -2596,6 +2599,7 @@ fn main() {
     control_autocomplete::attached_controls_project_live_autocomplete();
     control_custom_validity::attached_controls_store_native_custom_validity();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
+    get_element_by_id::attached_id_lookup_uses_the_current_ordinary_tree();
     label_live::attached_labels_track_their_live_control_and_form();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
