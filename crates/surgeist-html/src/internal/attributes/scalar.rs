@@ -349,6 +349,13 @@ pub(crate) mod table_span {
     }
 
     impl HtmlTableSpanRule {
+        /// Content value written by the ranged unsigned-long IDL setter.
+        /// HTML 877d applies each span range to its getter and uses 1 as
+        /// the setter fallback beyond the shared unsigned reflection limit.
+        pub const fn reflected_setter_value(value: u32) -> u32 {
+            if value <= 2_147_483_647 { value } else { 1 }
+        }
+
         fn declaration(self) -> BoundedSpanRule {
             match self {
                 Self::CellColspan => CELL_COLSPAN,

@@ -1783,6 +1783,11 @@ pub fn html_title_element_text_setter() -> Type<DomString> {
     types::DOM_STRING
 }
 
+/// Selected setter conversion for `HTMLTableCellElement.obsolete.bgColor`.
+pub fn html_table_cell_element_obsolete_bg_color_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
 /// Selected setter conversion for `HTMLFontElement.color`.
 pub fn html_font_element_color_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY

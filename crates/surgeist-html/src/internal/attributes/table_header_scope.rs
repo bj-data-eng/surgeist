@@ -67,6 +67,18 @@ enum_rule!(TH_SCOPE, HtmlTableHeaderScopeState, Scope,
 pub(crate) mod bounded_scope {
     use super::*;
 
+    /// Select the known `scope` keyword for the shared table cell IDL getter.
+    /// Missing or unrecognized content selects the empty string.
+    pub fn table_cell_scope_keyword_with<E>(
+        raw: Option<&DocumentString>,
+        admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        Ok(match th_scope_state_with(raw, admit)? {
+            HtmlTableHeaderScopeState::Keyword(keyword) => keyword.canonical_keyword(),
+            HtmlTableHeaderScopeState::Auto => "",
+        })
+    }
+
     // The bound below counts the ASCII case-insensitive path, which reads pairs
     // only against keywords of the input's own length.
     const _: () = assert!(!TH_SCOPE.exact_keywords);

@@ -306,6 +306,12 @@ impl ElementBindings {
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLParamElement" => super::param::install(scope, &prototype, capture)?,
                 "HTMLPreElement" => super::pre::install(scope, &prototype, capture)?,
+                "HTMLTableCellElement" => {
+                    super::table_cell_column::install_cell(scope, &prototype, capture)?
+                }
+                "HTMLTableColElement" => {
+                    super::table_cell_column::install_column(scope, &prototype, capture)?
+                }
                 "HTMLSlotElement" => super::slot::install(scope, &prototype, capture)?,
                 "HTMLTemplateElement" => super::template::install(scope, &prototype, capture)?,
                 "HTMLTitleElement" => super::title::install(scope, &prototype, capture)?,
