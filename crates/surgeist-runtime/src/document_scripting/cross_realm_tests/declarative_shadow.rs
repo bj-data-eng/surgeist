@@ -660,7 +660,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
 }
 
 fn verify_form_associated_shadow_reuse() {
-    use super::super::guest::tests::expose_public_node_for_source_test;
+    use super::super::guest::tests::{expose_public_node_for_source_test, projected_node_id};
 
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session(&cancel, 0);
@@ -689,7 +689,10 @@ fn verify_form_associated_shadow_reuse() {
         &session.snapshot(),
         parsed_document,
         host_node,
-        "<template shadowrootmode=open><form id=shadow-owner></form><fieldset disabled></fieldset></template>",
+        concat!(
+            "<template shadowrootmode=open><form id=shadow-owner></form>",
+            "<fieldset disabled></fieldset><form id=shadow-owner></form></template>",
+        ),
         &cancel,
     );
     let installed = session
@@ -702,7 +705,8 @@ fn verify_form_associated_shadow_reuse() {
         .unwrap();
     let tree = installed.snapshot();
     let root = tree.node(host_node).unwrap().hosted_shadow_root().unwrap();
-    let [form, fieldset]: [NodeId; 2] = tree.node(root).unwrap().children().try_into().unwrap();
+    let [form, fieldset, next_form]: [NodeId; 3] =
+        tree.node(root).unwrap().children().try_into().unwrap();
 
     let body = tree
         .node(tree.document(document).unwrap().document_element().unwrap())
@@ -713,7 +717,7 @@ fn verify_form_associated_shadow_reuse() {
     connect.insert_before(host_node, body, None);
     session.dom().apply(connect, &cancel).unwrap();
 
-    let mut host = attach_window(session, target, cancel);
+    let mut host = attach_window(session, target, cancel.clone());
     let permit = host.permit().unwrap();
     expose_public_node_for_source_test(&mut host, &permit, host_node, "faceShadowHost");
     let observe = |host: &mut DocumentScriptHost, script: &str| {
@@ -729,7 +733,7 @@ fn verify_form_associated_shadow_reuse() {
         r#"(() => {
         const root = faceShadowHost.shadowRoot;
         const form = root.firstChild;
-        const fieldset = root.lastChild;
+        const fieldset = form.nextSibling;
         const calls = [];
         class ShadowFace extends HTMLElement {
             static formAssociated = true;
@@ -790,16 +794,38 @@ fn verify_form_associated_shadow_reuse() {
     assert!(!prefix.shadow_root(root).unwrap().state().declarative());
     assert!(prefix.node(root).unwrap().children().is_empty());
     assert_eq!(prefix.node(form).unwrap().parent(), None);
+    assert_eq!(prefix.node(next_form).unwrap().parent(), None);
     assert_eq!(prefix.node(fieldset).unwrap().children(), [face]);
     assert_shadow_face_state(&prefix, document, face, None, true);
+
+    let destroy_form = |host: &mut DocumentScriptHost| {
+        host.with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            batch.destroy(next_form);
+            dom.apply(batch, &cancel).map(drop)
+        })
+        .unwrap()
+    };
+    let early_retirement = destroy_form(&mut host);
+    assert!(
+        matches!(
+            early_retirement,
+            Err(DomError::CustomElementReactionPending(needed)) if needed == next_form
+        ),
+        "Form argument must remain live: {early_retirement:?}"
+    );
+    assert_eq!(host.snapshot().unwrap().stamp(), prefix.stamp());
 
     host.checkpoint().unwrap();
     observe(
         &mut host,
         r#"(() => {
         const {face, fieldset, calls} = shadowFaceProbe;
+        const replacement = calls[1]?.[2];
+        if (!(replacement instanceof HTMLFormElement)) return 'replacement Form argument';
         const expected = [
             ['before'],
+            ['owner', face, replacement],
             ['owner', face, null],
             ['disconnect', face, fieldset, false],
             ['disabled', face, false],
@@ -812,10 +838,22 @@ fn verify_form_associated_shadow_reuse() {
             'original FACE owner loss precedes disconnect and the nested edit changes disabledness once';
     })()"#,
     );
+    let delivered_form = host
+        .in_document(&permit, |scope| {
+            let form = evaluate(scope, "shadowFaceProbe.calls[1][2]")?;
+            projected_node_id(scope, &form)
+        })
+        .unwrap();
+    assert_eq!(delivered_form, next_form);
     let settled = host.snapshot().unwrap();
     assert!(settled.node(fieldset).unwrap().children().is_empty());
     assert_eq!(settled.node(face).unwrap().parent(), None);
     assert_shadow_face_state(&settled, document, face, None, false);
+    destroy_form(&mut host).unwrap();
+    assert!(matches!(
+        host.snapshot().unwrap().node(next_form),
+        Err(DomError::StaleNode)
+    ));
     assert!(
         host.take_guest_custom_element_callback_exception(&permit)
             .unwrap()
