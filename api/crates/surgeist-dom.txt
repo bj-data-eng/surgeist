@@ -3842,12 +3842,17 @@ pub struct surgeist_dom::tree::DomTagNameCollection
 pub struct surgeist_dom::tree::DomTagNameCollectionLimits
 impl surgeist_dom::tree::DomTagNameCollectionLimits
 pub const fn surgeist_dom::tree::DomTagNameCollectionLimits::new(work: u64, names: usize, name_units: usize) -> Self
+pub struct surgeist_dom::tree::DomTagNameCollectionNames
+impl surgeist_dom::tree::DomTagNameCollectionNames
+pub fn surgeist_dom::tree::DomTagNameCollectionNames::as_slice(&self) -> &[surgeist_html::internal::values::document_string::DocumentString]
+impl core::fmt::Debug for surgeist_dom::tree::DomTagNameCollectionNames
+pub fn surgeist_dom::tree::DomTagNameCollectionNames::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomTagNameCollectionRead<'dom, A>
 impl<A, E> surgeist_dom::tree::DomTagNameCollectionRead<'_, A> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::item(&self, index: usize) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::length(&self) -> core::result::Result<usize, E>
 pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::named_item(&self, name: &surgeist_html::internal::values::document_string::DocumentString) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
-pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::supported_names(&self) -> core::result::Result<alloc::vec::Vec<surgeist_html::internal::values::document_string::DocumentString>, E>
+pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::supported_names(&self) -> core::result::Result<surgeist_dom::tree::DomTagNameCollectionNames, E>
 impl<A> core::fmt::Debug for surgeist_dom::tree::DomTagNameCollectionRead<'_, A>
 pub fn surgeist_dom::tree::DomTagNameCollectionRead<'_, A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomTreeOrder<'a>

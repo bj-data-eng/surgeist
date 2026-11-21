@@ -170,7 +170,7 @@ fn named_items_and_supported_names_follow_current_tree_order_and_exact_values() 
             Some(last)
         );
         assert_eq!(
-            selected.supported_names().unwrap(),
+            selected.supported_names().unwrap().as_slice(),
             ["first".into(), "same".into(), isolated_surrogate.clone()]
         );
     }
@@ -187,7 +187,7 @@ fn named_items_and_supported_names_follow_current_tree_order_and_exact_values() 
         assert_eq!(selected.named_item(&"same".into()).unwrap(), Some(late));
         assert_eq!(selected.named_item(&isolated_surrogate).unwrap(), None);
         assert_eq!(
-            read_names(&dom),
+            read_names(&dom).as_slice(),
             ["same".into(), "first".into(), "revised".into()]
         );
     }

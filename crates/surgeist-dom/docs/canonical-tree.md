@@ -177,8 +177,9 @@ Length and item read current membership. Named lookup selects the first
 matching ID or eligible HTML name, and supported-name output retains the
 first occurrence of each exact nonempty value. The read bounds cumulative
 work, shares active Source work admission, and refuses reads after the
-qualifying callback scope closes. Supported-name results own their vector
-and share canonical text backing under a separate result limit.
+qualifying callback scope closes or its authority retires. Supported-name
+results retain their vector and text occurrences through a separate result
+limit. Source custody remains with each result until it is dropped.
 
 [Pinned qualified-name filter](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L5555-L5584) · [Pinned HTMLCollection](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L3904-L3958).
 

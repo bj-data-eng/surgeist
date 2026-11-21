@@ -882,6 +882,48 @@ impl Dom {
         }
         Ok(Some(work.clone()))
     }
+    pub(in crate::internal::store) fn qualify_collection_read(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<Option<crate::internal::store::tag_name_collection::ReadSource<'_>>, DomError> {
+        use crate::internal::store::tag_name_collection::{ReadAuthority, ReadSource};
+
+        let Some(work) = self.dispatch_hosted_read_work(cancel)? else {
+            return Ok(None);
+        };
+        let operation = self
+            .source_operation
+            .as_ref()
+            .ok_or(DomError::IncompleteSourceOperation)?;
+        let authority = if let Some(event) = operation.observation() {
+            ReadAuthority::Event(&event.request)
+        } else {
+            let registration = &self
+                .script_registration
+                .as_ref()
+                .ok_or(DomError::HostedSourceUnavailable)?
+                .0;
+            let node =
+                self.state
+                    .node_with(self.owner, registration.key.document.node(), &mut || {
+                        work.step(cancel)
+                    })?;
+            let crate::internal::snapshot::DomNodeKind::Document(metadata) = node.kind() else {
+                return Err(DomError::WrongDocument);
+            };
+            let association = metadata
+                .document_environment()
+                .hosted
+                .ok_or(DomError::HostedSourceUnavailable)?;
+            ReadAuthority::Script {
+                registration,
+                association,
+                attribute: matches!(operation.draft, OperationDraft::AttributeObserved(_)),
+            }
+        };
+        ReadSource::new(work, authority).map(Some)
+    }
+
     pub fn has_source_event_executor(&self) -> bool {
         self.source_event_executor.is_some()
     }

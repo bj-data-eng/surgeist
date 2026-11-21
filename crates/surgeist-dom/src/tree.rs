@@ -32,7 +32,7 @@ pub use crate::internal::snapshot::{
 };
 pub use crate::internal::store::{
     DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomTagNameCollection,
-    DomTagNameCollectionLimits, DomTagNameCollectionRead,
+    DomTagNameCollectionLimits, DomTagNameCollectionNames, DomTagNameCollectionRead,
 };
 pub use crate::internal::store::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};
 pub use crate::internal::tree_walker::{

@@ -1,13 +1,18 @@
 use std::cell::Cell;
 use std::ops::ControlFlow;
+use std::sync::Weak;
 
 use super::node_iterator::traversal::{OrdinaryTree, following};
 use super::*;
 use crate::internal::{
     document::DomDocumentClass,
+    hosted::{DocumentAssociation, ScriptRegistration},
     names::{in_html_namespace_with, qualified_equals_with, same_code_units},
     snapshot::{DomNode, DomNodeKind},
-    source::callback::CallbackWork,
+    source::{
+        callback::{CallbackWork, DispatchScope},
+        event::DomSourceEventRequest,
+    },
 };
 
 const ID: &[u16] = &[0x69, 0x64];
@@ -56,16 +61,104 @@ pub struct DomTagNameCollectionRead<'dom, A> {
 struct Meter<'dom, A> {
     cancellation: &'dom AtomicBool,
     admission: A,
-    source: Option<Arc<CallbackWork>>,
+    source: Option<ReadSource<'dom>>,
     work_limit: u64,
     work: Cell<u64>,
 }
 
-#[derive(Default)]
-struct NameOutput {
+/// Owned ordered names with the backing admitted for this read.
+pub struct DomTagNameCollectionNames {
     names: Vec<DocumentString>,
-    backing: Option<custody::Debit>,
+    vector_backing: Option<custody::Debit>,
+    text_backing: Option<custody::Debit>,
     retained_units: usize,
+}
+
+impl DomTagNameCollectionNames {
+    /// Borrow the exact names in their first-occurrence order.
+    pub fn as_slice(&self) -> &[DocumentString] {
+        &self.names
+    }
+}
+
+impl std::fmt::Debug for DomTagNameCollectionNames {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomTagNameCollectionNames")
+            .field("len", &self.names.len())
+            .finish_non_exhaustive()
+    }
+}
+
+pub(super) struct ReadSource<'dom> {
+    work: Arc<CallbackWork>,
+    scope: Weak<DispatchScope>,
+    authority: ReadAuthority<'dom>,
+}
+
+pub(super) enum ReadAuthority<'dom> {
+    Event(&'dom DomSourceEventRequest),
+    Script {
+        registration: &'dom ScriptRegistration,
+        association: Arc<DocumentAssociation>,
+        attribute: bool,
+    },
+}
+
+impl<'dom> ReadSource<'dom> {
+    pub(super) fn new(
+        work: Arc<CallbackWork>,
+        authority: ReadAuthority<'dom>,
+    ) -> Result<Self, DomError> {
+        let scope = work.active_scope().ok_or(DomError::InvalidSourceEvent)?;
+        let qualified = Self {
+            work,
+            scope,
+            authority,
+        };
+        qualified.validate()?;
+        Ok(qualified)
+    }
+
+    fn validate(&self) -> Result<(), DomError> {
+        if !self
+            .work
+            .active_scope()
+            .is_some_and(|active| active.ptr_eq(&self.scope))
+        {
+            return Err(DomError::InvalidSourceEvent);
+        }
+        match &self.authority {
+            ReadAuthority::Event(request) => {
+                let executor = request
+                    .executor
+                    .upgrade()
+                    .ok_or(DomError::InvalidSourceEvent)?;
+                request.validate_executor(&executor)
+            }
+            ReadAuthority::Script {
+                registration,
+                association,
+                attribute,
+            } => {
+                if !registration.is_active() {
+                    return Err(if *attribute {
+                        DomError::SourceAttributeExecutorUnavailable
+                    } else {
+                        DomError::HostedSourceUnavailable
+                    });
+                }
+                association
+                    .validate_live()
+                    .map(|_| ())
+                    .map_err(|_| DomError::HostedSourceUnavailable)
+            }
+        }
+    }
+
+    fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.validate()?;
+        self.work.step(cancel)
+    }
 }
 
 impl<A> std::fmt::Debug for DomTagNameCollectionRead<'_, A> {
@@ -90,7 +183,7 @@ impl Dom {
             return Err(DomError::ForeignOwner);
         }
         self.require_source_entry(cancel)?;
-        let source = self.dispatch_hosted_read_work(cancel)?;
+        let source = self.qualify_collection_read(cancel)?;
         let document_node = self.snapshot();
         let view = document_node.node_with(document.node(), || match &source {
             Some(source) => source.step(cancel),
@@ -126,7 +219,7 @@ impl Dom {
             return Err(DomError::ForeignOwner.into());
         }
         self.require_source_entry(cancel)?;
-        let source = self.dispatch_hosted_read_work(cancel)?;
+        let source = self.qualify_collection_read(cancel)?;
         let meter = Meter {
             cancellation: cancel,
             admission,
@@ -161,6 +254,9 @@ where
 {
     fn step(&self) -> Result<(), E> {
         check_cancel(self.cancellation)?;
+        if let Some(source) = &self.source {
+            source.validate()?;
+        }
         let next = self
             .work
             .get()
@@ -173,17 +269,10 @@ where
             }
             .into());
         }
-        if self.source.as_ref().is_some_and(|source| !source.active()) {
-            return Err(DomError::InvalidSourceEvent.into());
-        }
         (self.admission)()?;
-        if let Some(source) = &self.source {
-            if !source.active() {
-                return Err(DomError::InvalidSourceEvent.into());
-            }
-            source.step(self.cancellation)?;
-        } else {
-            check_cancel(self.cancellation)?;
+        match &self.source {
+            Some(source) => source.step(self.cancellation)?,
+            None => check_cancel(self.cancellation)?,
         }
         self.work.set(next);
         Ok(())
@@ -295,20 +384,25 @@ where
     }
 
     /// Return each nonempty supported name once, in first occurrence order.
-    pub fn supported_names(&self) -> Result<Vec<DocumentString>, E> {
-        let mut output = NameOutput::default();
+    pub fn supported_names(&self) -> Result<DomTagNameCollectionNames, E> {
+        let mut output = DomTagNameCollectionNames {
+            names: Vec::new(),
+            vector_backing: None,
+            text_backing: None,
+            retained_units: 0,
+        };
         self.walk::<()>(|node| {
             self.names(node, |value| {
                 self.append_supported_name(&mut output, value)?;
                 Ok(ControlFlow::Continue(()))
             })
         })?;
-        Ok(output.names)
+        Ok(output)
     }
 
     fn append_supported_name(
         &self,
-        output: &mut NameOutput,
+        output: &mut DomTagNameCollectionNames,
         value: &DocumentString,
     ) -> Result<(), E> {
         for present in &output.names {
@@ -342,12 +436,28 @@ where
             self.grow_names(output, count)?;
         }
         self.meter.step()?;
+        if self.meter.source.is_some() {
+            let mut payload = source::storage::Payload::default();
+            payload.string(value)?;
+            let usage = custody::Usage::new(payload.bytes, payload.units);
+            let admit = |usage| {
+                self.dom
+                    .admit_collection_output_usage(usage, self.meter.cancellation)
+            };
+            if let Some(backing) = &mut output.text_backing {
+                backing.grow(usage, admit)?;
+            } else {
+                output.text_backing =
+                    Some(self.dom.custody_registry.ledger().retain(usage, admit)?);
+            }
+        }
         output.names.push(value.clone());
         output.retained_units = next_units;
         Ok(())
     }
 
-    fn grow_names(&self, output: &mut NameOutput, count: usize) -> Result<(), E> {
+    fn grow_names(&self, output: &mut DomTagNameCollectionNames, count: usize) -> Result<(), E> {
+        self.meter.step()?;
         let capacity = count.max(
             output
                 .names
@@ -388,14 +498,14 @@ where
         if let Some(backing) = &mut backing {
             transaction::nodes::resize_debit(backing, usage(names.capacity())?, admit)?;
         }
-        // The canonical state already accounts for the actual text blocks.
         // Source holds both old and replacement vector storage until the move.
+        // The text occurrence receipts stay with the whole output.
         for value in output.names.drain(..) {
             self.meter.step()?;
             names.push(value);
         }
         output.names = names;
-        output.backing = backing;
+        output.vector_backing = backing;
         Ok(())
     }
 }

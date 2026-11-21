@@ -132,7 +132,8 @@ pub(crate) use shared::SharedVec;
 pub(crate) use source::AllocationIds as KeyAliases;
 pub(crate) use source::formation::{SourceRetention, SourceStorage, SourceWorkIdentity};
 pub use tag_name_collection::{
-    DomTagNameCollection, DomTagNameCollectionLimits, DomTagNameCollectionRead,
+    DomTagNameCollection, DomTagNameCollectionLimits, DomTagNameCollectionNames,
+    DomTagNameCollectionRead,
 };
 use view_transition::DraftTransitions;
 pub(crate) use view_transition::TransitionMembership;

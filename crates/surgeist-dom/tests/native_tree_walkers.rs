@@ -547,6 +547,18 @@ fn active_source_owns_search_work_and_suspended_operations_cannot_escape_it() {
             .unwrap();
         drop(scope);
         assert_eq!(read.item(0), Err(DomError::InvalidSourceEvent));
+        let replacement_scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+        assert_eq!(read.item(0), Err(DomError::InvalidSourceEvent));
+        let current = dom
+            .read_tag_name_collection(
+                &collection,
+                collection_limits,
+                || Ok::<_, DomError>(()),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(current.item(0).unwrap(), Some(root));
+        drop(replacement_scope);
     }
     let mut permit = Some(permit);
     let mut outcome = Some(
