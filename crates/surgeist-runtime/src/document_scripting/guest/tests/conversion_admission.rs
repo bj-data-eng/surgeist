@@ -11,12 +11,12 @@ pub(in crate::document_scripting) fn extend_guest_allowance_for_callback_convers
     budget.set_work_remaining(budget.work_remaining().unwrap() + 2 + 1 + code_units);
 }
 
-pub(in crate::document_scripting) fn conversion_work_precedes_guest_coercion() {
+pub(in crate::document_scripting) fn conversion_work_precedes_guest_coercion(assignment: &str) {
     // Compilation and evaluation each prepare one outcome record. The setter
     // prepares its callback frame, receiver, argument buffer and argument root.
     let preparation_prefix = 2 + 1 + 1 + 1 + 1;
-    // Direct DOMString conversion visits one value, then prepares one outcome
-    // record before ToString. This setter has no argument-presence decision.
+    // Direct DOMString and USVString conversions each visit one value and
+    // prepare one outcome before ToString. USV normalization follows ToString.
     let required = preparation_prefix + 1 + 1;
     for (available, reaches_coercion) in [(required - 1, false), (required, true)] {
         let cancellation = Arc::new(AtomicBool::new(false));
@@ -37,7 +37,8 @@ pub(in crate::document_scripting) fn conversion_work_precedes_guest_coercion() {
         let marker = host
             .in_document(&permit, |scope| {
                 let marker = scope.evaluate(&units(
-                    "globalThis.conversionMarker = {};\n\
+                    "globalThis.conversionDocument = document;\n\
+                     globalThis.conversionMarker = {};\n\
                      globalThis.conversionInput = { toString() { throw conversionMarker; } };\n\
                      conversionMarker",
                 ))?;
@@ -48,9 +49,7 @@ pub(in crate::document_scripting) fn conversion_work_precedes_guest_coercion() {
         events.budget.set_work_remaining(available);
         let before = host.snapshot().unwrap().stamp();
         let result = host.in_document(&permit, |scope| {
-            scope
-                .evaluate(&units("conversionText.data = conversionInput"))
-                .map(drop)
+            scope.evaluate(&units(assignment)).map(drop)
         });
         assert_eq!(host.snapshot().unwrap().stamp(), before);
         if let Err(DocumentScriptError::Script(Error::Exception(exception))) = &result {
@@ -65,10 +64,13 @@ pub(in crate::document_scripting) fn conversion_work_precedes_guest_coercion() {
             .unwrap();
         }
         if reaches_coercion {
-            assert!(matches!(
-                result,
-                Err(DocumentScriptError::Script(Error::Exception(_)))
-            ));
+            assert!(
+                matches!(
+                    result,
+                    Err(DocumentScriptError::Script(Error::Exception(_)))
+                ),
+                "{assignment} at the exact coercion work boundary: {result:?}"
+            );
             assert_eq!(events.budget.work_remaining().unwrap(), 0);
             drop(result);
         } else {
@@ -90,6 +92,59 @@ pub(in crate::document_scripting) fn conversion_work_precedes_guest_coercion() {
             ));
         }
         drop(marker);
+        let budget = events.budget.clone();
+        drop(events);
+        host.stop().into_session().unwrap();
+        assert_eq!(budget.used(), 0);
+    }
+}
+
+pub(in crate::document_scripting) fn cookie_access_refuses_unfunded_native_observations() {
+    // Compilation and evaluation prepare two outcomes. A getter adds its
+    // callback frame and receiver. The setter adds an argument buffer and root,
+    // descriptor visit, ToString outcome, and the empty string buffer admission.
+    let getter_prefix = 2 + 1 + 1;
+    let setter_prefix = getter_prefix + 1 + 1 + 1 + 1 + 1;
+    for (script, available) in [
+        ("cookieDocument.cookie", getter_prefix),
+        ("cookieDocument.cookie = ''", setter_prefix),
+    ] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (session, target) =
+            crate::document_scripting::cross_realm_tests::hosted_session(&cancel, 0);
+        let mut host = attach_public_nodes(session, target, cancel, 200_000, 2_000_000);
+        let permit = host.permit().unwrap();
+        host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&units("globalThis.cookieDocument = document"))
+                .map(drop)
+        })
+        .unwrap();
+        let before = host.snapshot().unwrap().stamp();
+        let events = host.guest_events().unwrap();
+        let backing = events.budget.used();
+        events.budget.set_work_remaining(available);
+        let result = host.in_document(&permit, |scope| scope.evaluate(&units(script)).map(drop));
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+            panic!("cookie access must admit its Document: {result:?}");
+        };
+        assert!(matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::WorkLimit)
+        ));
+        assert_eq!(events.budget.work_remaining().unwrap(), 0, "{script}");
+        assert_eq!(host.snapshot().unwrap().stamp(), before);
+        assert_eq!(events.budget.used(), backing);
+        let Err(DocumentScriptError::Script(Error::HostFailure(repeated))) =
+            host.in_document(&permit, |_| Ok(()))
+        else {
+            panic!("the original cookie access refusal must remain terminal: {script}");
+        };
+        assert!(std::ptr::eq(
+            failure.cause::<DocumentGuestEventError>().unwrap(),
+            repeated.cause::<DocumentGuestEventError>().unwrap(),
+        ));
+        drop((failure, repeated));
         let budget = events.budget.clone();
         drop(events);
         host.stop().into_session().unwrap();

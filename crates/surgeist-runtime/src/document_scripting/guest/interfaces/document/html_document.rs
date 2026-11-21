@@ -9,7 +9,7 @@ use surgeist_bindings_js::{
             document_obsolete_fg_color_setter, document_obsolete_link_color_setter,
             document_obsolete_vlink_color_setter,
         },
-        types::DOM_STRING,
+        types::{DOM_STRING, USV_STRING},
     },
     dom_exception::DomExceptionName,
 };
@@ -26,6 +26,7 @@ enum Member {
     Dir,
     Body,
     Head,
+    Cookie,
     FgColor,
     LinkColor,
     VlinkColor,
@@ -55,7 +56,7 @@ impl Member {
             Self::VlinkColor => (Target::BodyElement, const { &ascii(b"vlink") }),
             Self::AlinkColor => (Target::BodyElement, const { &ascii(b"alink") }),
             Self::BgColor => (Target::BodyElement, const { &ascii(b"bgcolor") }),
-            Self::Head | Self::Body => return None,
+            Self::Head | Self::Body | Self::Cookie => return None,
         })
     }
 }
@@ -66,6 +67,12 @@ pub(super) fn install<'scope>(
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
     for (member, name, get_name, set_name) in [
+        (
+            Member::Cookie,
+            &ascii(b"cookie")[..],
+            &ascii(b"get cookie")[..],
+            Some(&ascii(b"set cookie")[..]),
+        ),
         (
             Member::Dir,
             &ascii(b"dir")[..],
@@ -213,6 +220,16 @@ fn select_target(
     Ok(selected)
 }
 
+fn require_cookie_averse(
+    read: &NativeRead<'_>,
+    document: DocumentId,
+) -> Result<(), DocumentGuestEventError> {
+    let DomNodeKind::Document(metadata) = read.node(document.node())?.kind() else {
+        return Err(DomError::WrongNodeKind.into());
+    };
+    metadata.require_cookie_averse().map_err(Into::into)
+}
+
 enum TextValue {
     Raw(Option<DocumentString>),
     Direction(&'static str),
@@ -281,6 +298,12 @@ impl Capture {
         let (owner, events) = self.active(scope)?;
         let result = (|| {
             let output = match member {
+                Member::Cookie => {
+                    self.callbacks.with_read(&owner, &events, |read, _| {
+                        require_cookie_averse(read, document)
+                    })?;
+                    self.copy_dom_units(scope, &[])?
+                }
                 Member::Head | Member::Body => {
                     let target = if matches!(member, Member::Head) {
                         Target::Head
@@ -362,10 +385,13 @@ impl Capture {
         };
         let (owner, events) = self.active(scope)?;
         let result = (|| {
-            self.callbacks.with_read(&owner, &events, |read, _| {
-                read.node(document.node())?;
-                Ok(())
-            })?;
+            // Cookie qualifies the current Document facts after coercion.
+            if !matches!(member, Member::Cookie) {
+                self.callbacks.with_read(&owner, &events, |read, _| {
+                    read.node(document.node())?;
+                    Ok(())
+                })?;
+            }
             let absent;
             let input = match arguments.get(0) {
                 Some(input) => input,
@@ -374,6 +400,17 @@ impl Capture {
                     &absent
                 }
             };
+            if matches!(member, Member::Cookie) {
+                self.callbacks
+                    .conversion
+                    .run(scope, |conversion| conversion.value(&USV_STRING, input))
+                    .map_err(Error::from)?;
+                scope.check_active()?;
+                self.callbacks.with_read(&owner, &events, |read, _| {
+                    require_cookie_averse(read, document)
+                })?;
+                return Ok(Completion::Undefined);
+            }
             if matches!(member, Member::Body) {
                 let converted = match scope.kind(input)? {
                     ValueKind::Null | ValueKind::Undefined => BodyInput::Null,
@@ -455,7 +492,9 @@ impl Capture {
                 Member::VlinkColor => document_obsolete_vlink_color_setter(),
                 Member::AlinkColor => document_obsolete_alink_color_setter(),
                 Member::BgColor => document_obsolete_bg_color_setter(),
-                Member::Head | Member::Body => return Err(Error::BackendUnavailable.into()),
+                Member::Head | Member::Body | Member::Cookie => {
+                    return Err(Error::BackendUnavailable.into());
+                }
             };
             let converted = self
                 .callbacks
