@@ -26,4 +26,4 @@ pub use crate::internal::snapshot::{
     DomDocument, DomDocumentPosition, DomNamespaceUri, DomNode, DomNodeKind, DomSiblingDirection,
     DomTagName, DomTreeOrder, DomTreeScope,
 };
-pub use crate::internal::store::DomNodeIteratorFilterRequest;
+pub use crate::internal::store::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};

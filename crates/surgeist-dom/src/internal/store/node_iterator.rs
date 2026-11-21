@@ -2,7 +2,7 @@
 
 mod operation;
 mod traversal;
-pub use operation::DomNodeIteratorFilterRequest;
+pub use operation::{DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest};
 
 use super::*;
 use crate::{
@@ -741,6 +741,8 @@ impl DraftTree<'_> {
 }
 
 impl OrdinaryTree<Key> for DraftTree<'_> {
+    type Error = DomError;
+
     fn position(&self, node: Key) -> Result<Option<(Key, usize)>, DomError> {
         self.draft.source_step(self.cancel)?;
         Ok(self

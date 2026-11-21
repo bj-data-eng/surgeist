@@ -389,6 +389,11 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     node_relations::node_relations_follow_the_live_ordinary_tree();
     node_relations::node_relations_project_native_processing_instructions();
     node_iterator::iterator_tracks_the_native_pointer_through_removal();
+    node_iterator::filter_preserves_abrupt_completion_reentry_and_live_removal();
+    node_iterator::filter_interface_and_factory_follow_the_pinned_descriptors();
+    node_iterator::filter_dispatch_uses_its_associated_realm();
+    super::guest::tests::node_iterator_admission::traversal_refusal_preserves_the_native_pointer();
+    super::guest::tests::node_iterator_admission::an_unreachable_filter_cycle_releases_its_native_cursor();
     normalize::normalize_keeps_native_text_and_range_identity();
     normalize::normalize_preserves_typed_native_refusal();
     split_text::split_text_keeps_native_identity_and_range_boundaries();

@@ -8,33 +8,45 @@ use std::cell::Cell;
 use std::sync::Weak;
 use traversal::Direction;
 
-struct Work {
-    remaining: Cell<u64>,
-    limit: u64,
+enum Work<A> {
+    Finite { remaining: Cell<u64>, limit: u64 },
+    Accounted(A),
 }
 
-impl Work {
-    fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+impl<A, E> Work<A>
+where
+    A: Fn() -> Result<(), E>,
+    E: From<DomError>,
+{
+    fn step(&self, cancel: &AtomicBool) -> Result<(), E> {
         check_cancel(cancel)?;
-        let next = self
-            .remaining
-            .get()
-            .checked_sub(1)
-            .ok_or(DomError::NodeIteratorWorkLimit { limit: self.limit })?;
-        self.remaining.set(next);
-        Ok(())
+        match self {
+            Self::Finite { remaining, limit } => {
+                let next = remaining
+                    .get()
+                    .checked_sub(1)
+                    .ok_or(DomError::NodeIteratorWorkLimit { limit: *limit })?;
+                remaining.set(next);
+                Ok(())
+            }
+            Self::Accounted(admit) => admit(),
+        }
     }
 }
 
-struct Tree<'a> {
+struct Tree<'a, A> {
     dom: &'a Dom,
-    work: &'a Work,
+    work: &'a Work<A>,
     source: Option<&'a CallbackWork>,
     cancel: &'a AtomicBool,
 }
 
-impl Tree<'_> {
-    fn step(&self) -> Result<(), DomError> {
+impl<A, E> Tree<'_, A>
+where
+    A: Fn() -> Result<(), E>,
+    E: From<DomError>,
+{
+    fn step(&self) -> Result<(), E> {
         self.work.step(self.cancel)?;
         if let Some(source) = self.source {
             source.step(self.cancel)?;
@@ -42,7 +54,7 @@ impl Tree<'_> {
         Ok(())
     }
 
-    fn node(&self, id: NodeId) -> Result<&Node, DomError> {
+    fn node(&self, id: NodeId) -> Result<&Node, E> {
         self.dom
             .state
             .node_with(self.dom.owner, id, &mut || self.step())
@@ -54,14 +66,14 @@ impl Tree<'_> {
         mut pointer: Pointer<NodeId>,
         direction: Direction,
         active: bool,
-    ) -> Result<Option<Pointer<NodeId>>, DomError> {
+    ) -> Result<Option<Pointer<NodeId>>, E> {
         loop {
             self.step()?;
             let Some(next) = traversal::advance(self, cursor.root, pointer, direction)? else {
                 return Ok(None);
             };
             if active {
-                return Err(DomError::NodeIteratorFilterActive);
+                return Err(DomError::NodeIteratorFilterActive.into());
             }
             let bit = match self.node(next.node)?.kind() {
                 DomNodeKind::Element(_) => 0,
@@ -81,23 +93,29 @@ impl Tree<'_> {
     }
 }
 
-impl OrdinaryTree<NodeId> for Tree<'_> {
-    fn position(&self, node: NodeId) -> Result<Option<(NodeId, usize)>, DomError> {
+impl<A, E> OrdinaryTree<NodeId> for Tree<'_, A>
+where
+    A: Fn() -> Result<(), E>,
+    E: From<DomError>,
+{
+    type Error = E;
+
+    fn position(&self, node: NodeId) -> Result<Option<(NodeId, usize)>, E> {
         self.step()?;
         let Some(position) = self.dom.state.slot_index.position(Key::Existing(node)) else {
             return Ok(None);
         };
         let Key::Existing(parent) = position.parent else {
-            return Err(DomError::NodeIteratorPublicationUnavailable);
+            return Err(DomError::NodeIteratorPublicationUnavailable.into());
         };
         Ok(Some((parent, position.ordinal)))
     }
 
-    fn child(&self, node: NodeId, ordinal: usize) -> Result<Option<NodeId>, DomError> {
+    fn child(&self, node: NodeId, ordinal: usize) -> Result<Option<NodeId>, E> {
         Ok(self.node(node)?.children().get(ordinal).copied())
     }
 
-    fn last_child(&self, node: NodeId) -> Result<Option<NodeId>, DomError> {
+    fn last_child(&self, node: NodeId) -> Result<Option<NodeId>, E> {
         Ok(self.node(node)?.children().last().copied())
     }
 }
@@ -143,19 +161,98 @@ impl Drop for Activation {
     }
 }
 
+/// An unfiltered result awaiting caller output preparation before cursor publication.
+///
+/// Dropping this request leaves the cursor unchanged. Acceptance requires the
+/// original canonical publication and Source callback; projection may register
+/// external observers but cannot publish canonical edits before acceptance.
+#[must_use]
+pub struct DomNodeIteratorMatchRequest<A = fn() -> Result<(), DomError>> {
+    id: DomNodeIteratorId,
+    pointer: Pointer<NodeId>,
+    work: Work<A>,
+    source: Option<Weak<CallbackWork>>,
+    publication: Weak<State>,
+}
+
+impl<A> std::fmt::Debug for DomNodeIteratorMatchRequest<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomNodeIteratorMatchRequest")
+            .field("iterator", &self.id)
+            .field("node", &self.pointer.node)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<A> DomNodeIteratorMatchRequest<A> {
+    pub fn iterator(&self) -> DomNodeIteratorId {
+        self.id
+    }
+
+    pub fn node(&self) -> NodeId {
+        self.pointer.node
+    }
+
+    /// Admits acceptance and publishes the prepared result's cursor position.
+    pub fn accept<E>(self, dom: &mut Dom, cancel: &AtomicBool) -> Result<NodeId, E>
+    where
+        A: Fn() -> Result<(), E>,
+        E: From<DomError>,
+    {
+        if dom.owner != self.id.owner {
+            return Err(DomError::ForeignOwner.into());
+        }
+        dom.require_source_entry(cancel)?;
+        let source = dom.dispatch_hosted_read_work(cancel)?;
+        require_same_source(&self.source, source.as_ref())?;
+        if !Weak::ptr_eq(&self.publication, &Arc::downgrade(&dom.state)) {
+            return Err(DomError::NodeIteratorPublicationUnavailable.into());
+        }
+        let mut cursor = dom.state.node_iterators.cursor(dom.owner, self.id)?.clone();
+        Tree {
+            dom,
+            work: &self.work,
+            source: source.as_deref(),
+            cancel,
+        }
+        .step()?;
+        cursor.reference = staged_pointer(self.pointer);
+        dom.publish_node_iterator(self.id, cursor, cancel)?;
+        Ok(self.pointer.node)
+    }
+}
+
+fn require_same_source(
+    expected: &Option<Weak<CallbackWork>>,
+    active: Option<&Arc<CallbackWork>>,
+) -> Result<(), DomError> {
+    let same_scope = match (expected, active) {
+        (None, None) => true,
+        (Some(expected), Some(active)) => expected
+            .upgrade()
+            .is_some_and(|expected| Arc::ptr_eq(&expected, active)),
+        _ => false,
+    };
+    if same_scope {
+        Ok(())
+    } else {
+        Err(DomError::InvalidSourceEvent)
+    }
+}
+
 /// The sole response authority for a reached filter call. Dropping it ends the
 /// traversal and leaves its last accepted reference and any tree edits intact.
 #[must_use]
-pub struct DomNodeIteratorFilterRequest {
+pub struct DomNodeIteratorFilterRequest<A = fn() -> Result<(), DomError>> {
     id: DomNodeIteratorId,
     node: NodeId,
     direction: Direction,
-    work: Work,
+    work: Work<A>,
     source: Option<Weak<CallbackWork>>,
     activation: Activation,
 }
 
-impl std::fmt::Debug for DomNodeIteratorFilterRequest {
+impl<A> std::fmt::Debug for DomNodeIteratorFilterRequest<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DomNodeIteratorFilterRequest")
             .field("iterator", &self.id)
@@ -164,7 +261,7 @@ impl std::fmt::Debug for DomNodeIteratorFilterRequest {
     }
 }
 
-impl DomNodeIteratorFilterRequest {
+impl<A> DomNodeIteratorFilterRequest<A> {
     pub fn iterator(&self) -> DomNodeIteratorId {
         self.id
     }
@@ -175,27 +272,22 @@ impl DomNodeIteratorFilterRequest {
         self.node
     }
 
-    pub fn respond(
+    pub fn respond<E>(
         mut self,
         dom: &mut Dom,
         decision: DomNodeFilterDecision,
         cancel: &AtomicBool,
-    ) -> Result<DomNodeIteratorProgress, DomError> {
+    ) -> Result<DomNodeIteratorProgress<A>, E>
+    where
+        A: Fn() -> Result<(), E>,
+        E: From<DomError>,
+    {
         if dom.owner != self.id.owner {
-            return Err(DomError::ForeignOwner);
+            return Err(DomError::ForeignOwner.into());
         }
         dom.require_source_entry(cancel)?;
         let source = dom.dispatch_hosted_read_work(cancel)?;
-        let same_scope = match (&self.source, &source) {
-            (None, None) => true,
-            (Some(expected), Some(active)) => expected
-                .upgrade()
-                .is_some_and(|expected| Arc::ptr_eq(&expected, active)),
-            _ => false,
-        };
-        if !same_scope {
-            return Err(DomError::InvalidSourceEvent);
-        }
+        require_same_source(&self.source, source.as_ref())?;
         let mut cursor = dom.state.node_iterators.cursor(dom.owner, self.id)?.clone();
         let candidate = cursor
             .live_candidate()
@@ -282,7 +374,15 @@ impl Dom {
         work_limit: u64,
         cancel: &AtomicBool,
     ) -> Result<DomNodeIteratorProgress, DomError> {
-        self.advance_node_iterator(id, Direction::Next, work_limit, cancel)
+        self.advance_node_iterator(
+            id,
+            Direction::Next,
+            Work::Finite {
+                limit: work_limit,
+                remaining: Cell::new(work_limit),
+            },
+            cancel,
+        )
     }
 
     pub fn node_iterator_previous(
@@ -291,23 +391,66 @@ impl Dom {
         work_limit: u64,
         cancel: &AtomicBool,
     ) -> Result<DomNodeIteratorProgress, DomError> {
-        self.advance_node_iterator(id, Direction::Previous, work_limit, cancel)
+        self.advance_node_iterator(
+            id,
+            Direction::Previous,
+            Work::Finite {
+                limit: work_limit,
+                remaining: Cell::new(work_limit),
+            },
+            cancel,
+        )
     }
 
-    fn advance_node_iterator(
+    /// Advances with caller-owned admission before each reached traversal step.
+    ///
+    /// The same admission remains owned by any returned filter request and is
+    /// used on every response. Its first failure is returned unchanged, before
+    /// that step runs. An unfiltered match waits for output preparation and
+    /// explicit acceptance before publishing its cursor. Native Source work is
+    /// charged separately by DOM; admission must not charge that same Source
+    /// account again.
+    pub fn node_iterator_next_accounted<A, E>(
+        &mut self,
+        id: DomNodeIteratorId,
+        admission: A,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeIteratorProgress<A>, E>
+    where
+        A: Fn() -> Result<(), E>,
+        E: From<DomError>,
+    {
+        self.advance_node_iterator(id, Direction::Next, Work::Accounted(admission), cancel)
+    }
+
+    /// Moves backward with the same admission contract as [`Self::node_iterator_next_accounted`].
+    pub fn node_iterator_previous_accounted<A, E>(
+        &mut self,
+        id: DomNodeIteratorId,
+        admission: A,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeIteratorProgress<A>, E>
+    where
+        A: Fn() -> Result<(), E>,
+        E: From<DomError>,
+    {
+        self.advance_node_iterator(id, Direction::Previous, Work::Accounted(admission), cancel)
+    }
+
+    fn advance_node_iterator<A, E>(
         &mut self,
         id: DomNodeIteratorId,
         direction: Direction,
-        work_limit: u64,
+        work: Work<A>,
         cancel: &AtomicBool,
-    ) -> Result<DomNodeIteratorProgress, DomError> {
+    ) -> Result<DomNodeIteratorProgress<A>, E>
+    where
+        A: Fn() -> Result<(), E>,
+        E: From<DomError>,
+    {
         self.require_source_entry(cancel)?;
         let source = self.dispatch_hosted_read_work(cancel)?;
         let mut cursor = self.state.node_iterators.cursor(self.owner, id)?.clone();
-        let work = Work {
-            limit: work_limit,
-            remaining: Cell::new(work_limit),
-        };
         let tree = Tree {
             dom: self,
             work: &work,
@@ -349,6 +492,16 @@ impl Dom {
                     work,
                     source: source.as_ref().map(Arc::downgrade),
                     activation,
+                },
+            ))
+        } else if matches!(&work, Work::Accounted(_)) {
+            Ok(DomNodeIteratorProgress::Match(
+                DomNodeIteratorMatchRequest {
+                    id,
+                    pointer: next,
+                    work,
+                    source: source.as_ref().map(Arc::downgrade),
+                    publication: Arc::downgrade(&self.state),
                 },
             ))
         } else {

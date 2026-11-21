@@ -3474,9 +3474,12 @@ pub surgeist_dom::tree::DomNodeFilterDecision::Skip
 pub enum surgeist_dom::tree::DomNodeIteratorFilter
 pub surgeist_dom::tree::DomNodeIteratorFilter::Callback
 pub surgeist_dom::tree::DomNodeIteratorFilter::None
-pub enum surgeist_dom::tree::DomNodeIteratorProgress
+pub enum surgeist_dom::tree::DomNodeIteratorProgress<A>
 pub surgeist_dom::tree::DomNodeIteratorProgress::Complete(core::option::Option<surgeist_dom::identity::NodeId>)
-pub surgeist_dom::tree::DomNodeIteratorProgress::Filter(surgeist_dom::tree::DomNodeIteratorFilterRequest)
+pub surgeist_dom::tree::DomNodeIteratorProgress::Filter(surgeist_dom::tree::DomNodeIteratorFilterRequest<A>)
+pub surgeist_dom::tree::DomNodeIteratorProgress::Match(surgeist_dom::tree::DomNodeIteratorMatchRequest<A>)
+impl<A> core::fmt::Debug for surgeist_dom::tree::DomNodeIteratorProgress<A>
+pub fn surgeist_dom::tree::DomNodeIteratorProgress<A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::tree::DomNodeKind<'a>
 pub surgeist_dom::tree::DomNodeKind::Attr(&'a surgeist_dom::tree::DomAttribute)
 pub surgeist_dom::tree::DomNodeKind::Comment(&'a surgeist_html::internal::values::document_string::DocumentString)
@@ -3728,16 +3731,23 @@ pub fn surgeist_dom::tree::DomNodeIterator::pointer_before_reference_node(self) 
 pub fn surgeist_dom::tree::DomNodeIterator::reference_node(self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::tree::DomNodeIterator::root(self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::tree::DomNodeIterator::what_to_show(self) -> u32
-pub struct surgeist_dom::tree::DomNodeIteratorFilterRequest
-impl surgeist_dom::tree::DomNodeIteratorFilterRequest
-pub fn surgeist_dom::tree::DomNodeIteratorFilterRequest::iterator(&self) -> surgeist_dom::tree::DomNodeIteratorId
-pub fn surgeist_dom::tree::DomNodeIteratorFilterRequest::node(&self) -> surgeist_dom::identity::NodeId
-pub fn surgeist_dom::tree::DomNodeIteratorFilterRequest::respond(self, dom: &mut surgeist_dom::Dom, decision: surgeist_dom::tree::DomNodeFilterDecision, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorProgress, surgeist_dom::DomError>
-impl core::fmt::Debug for surgeist_dom::tree::DomNodeIteratorFilterRequest
-pub fn surgeist_dom::tree::DomNodeIteratorFilterRequest::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::tree::DomNodeIteratorFilterRequest<A>
+impl<A> surgeist_dom::tree::DomNodeIteratorFilterRequest<A>
+pub fn surgeist_dom::tree::DomNodeIteratorFilterRequest<A>::iterator(&self) -> surgeist_dom::tree::DomNodeIteratorId
+pub fn surgeist_dom::tree::DomNodeIteratorFilterRequest<A>::node(&self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::tree::DomNodeIteratorFilterRequest<A>::respond<E>(self, dom: &mut surgeist_dom::Dom, decision: surgeist_dom::tree::DomNodeFilterDecision, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorProgress<A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+impl<A> core::fmt::Debug for surgeist_dom::tree::DomNodeIteratorFilterRequest<A>
+pub fn surgeist_dom::tree::DomNodeIteratorFilterRequest<A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomNodeIteratorId
 impl surgeist_dom::tree::DomNodeIteratorId
 pub fn surgeist_dom::tree::DomNodeIteratorId::owner(self) -> surgeist_dom::identity::DomOwnerId
+pub struct surgeist_dom::tree::DomNodeIteratorMatchRequest<A>
+impl<A> surgeist_dom::tree::DomNodeIteratorMatchRequest<A>
+pub fn surgeist_dom::tree::DomNodeIteratorMatchRequest<A>::accept<E>(self, dom: &mut surgeist_dom::Dom, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::identity::NodeId, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::tree::DomNodeIteratorMatchRequest<A>::iterator(&self) -> surgeist_dom::tree::DomNodeIteratorId
+pub fn surgeist_dom::tree::DomNodeIteratorMatchRequest<A>::node(&self) -> surgeist_dom::identity::NodeId
+impl<A> core::fmt::Debug for surgeist_dom::tree::DomNodeIteratorMatchRequest<A>
+pub fn surgeist_dom::tree::DomNodeIteratorMatchRequest<A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomProcessingInstruction
 impl surgeist_dom::tree::DomProcessingInstruction
 pub fn surgeist_dom::tree::DomProcessingInstruction::attribute(&self, name: &surgeist_html::internal::values::document_string::DocumentString) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
@@ -4360,7 +4370,9 @@ pub fn surgeist_dom::Dom::take_child_list_records(&mut self, observer: surgeist_
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::create_node_iterator(&mut self, root: surgeist_dom::identity::NodeId, what_to_show: u32, filter: surgeist_dom::tree::DomNodeIteratorFilter, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorId, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::node_iterator_next(&mut self, id: surgeist_dom::tree::DomNodeIteratorId, work_limit: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorProgress, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::node_iterator_next_accounted<A, E>(&mut self, id: surgeist_dom::tree::DomNodeIteratorId, admission: A, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorProgress<A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::node_iterator_previous(&mut self, id: surgeist_dom::tree::DomNodeIteratorId, work_limit: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorProgress, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::node_iterator_previous_accounted<A, E>(&mut self, id: surgeist_dom::tree::DomNodeIteratorId, admission: A, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorProgress<A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::retire_node_iterator(&mut self, id: surgeist_dom::tree::DomNodeIteratorId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::create_scoped_registry(&mut self, source: &surgeist_dom::hosted::DomHostedSource, global: surgeist_dom::hosted::DomHostedGlobalId, limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::DomCommit, surgeist_dom::custom_element::DomRegistryId), surgeist_dom::hosted::DomHostedError>

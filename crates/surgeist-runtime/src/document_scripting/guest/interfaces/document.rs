@@ -33,6 +33,7 @@ mod li;
 mod list_compact;
 mod lists;
 mod meta;
+mod node_iterator;
 mod optgroup;
 mod ordinary;
 mod param;
@@ -307,6 +308,7 @@ pub(super) struct DocumentPrototypes {
     fragment: RetainedCallbackObject,
     shadow: RetainedCallbackObject,
     attr: RetainedCallbackObject,
+    iterator: RetainedCallbackObject,
     character_data: character_data::CharacterBindings,
 }
 
@@ -427,6 +429,7 @@ impl DocumentPrototypes {
         let attr = attr::install(scope, node, constructor, funding)?;
         let document_type = document_type::install(scope, node, constructor, &document, funding)?;
         let implementation = dom_implementation::install(scope, &document, funding)?;
+        let iterator = node_iterator::install(scope, &document, funding)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&xml_document)?;
@@ -444,6 +447,7 @@ impl DocumentPrototypes {
                 fragment: retained_fragment,
                 shadow: retained_shadow,
                 attr,
+                iterator,
                 character_data,
             },
             document,

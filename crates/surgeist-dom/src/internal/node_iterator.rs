@@ -60,12 +60,22 @@ impl DomNodeIterator {
     }
 }
 
-/// The result of advancing, or the exact callback awaiting a response.
-#[derive(Debug)]
+/// Traversal completion, unfiltered output preparation, or a reached filter callback.
 #[must_use]
-pub enum DomNodeIteratorProgress {
+pub enum DomNodeIteratorProgress<A = fn() -> Result<(), crate::DomError>> {
     Complete(Option<NodeId>),
-    Filter(crate::internal::store::DomNodeIteratorFilterRequest),
+    Match(crate::internal::store::DomNodeIteratorMatchRequest<A>),
+    Filter(crate::internal::store::DomNodeIteratorFilterRequest<A>),
+}
+
+impl<A> std::fmt::Debug for DomNodeIteratorProgress<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Complete(node) => f.debug_tuple("Complete").field(node).finish(),
+            Self::Match(request) => f.debug_tuple("Match").field(request).finish(),
+            Self::Filter(request) => f.debug_tuple("Filter").field(request).finish(),
+        }
+    }
 }
 
 /// The DOM NodeFilter decision. For NodeIterator, Reject and Skip both continue
