@@ -81,6 +81,9 @@ pub use construction::history::{
     HtmlParseHistoryBody, HtmlParseHistoryCursor, HtmlParseHistoryError, HtmlParseHistoryFrame,
     HtmlParseHistoryLeaf, HtmlParseHistoryOrigin, HtmlParseHistoryStep, HtmlParseOriginGroup,
 };
+pub use construction::media::{
+    HtmlParseMedia, HtmlParseMediaDisposition, HtmlParseMediaUnavailable,
+};
 pub use construction::meta::{HtmlParseMetaDomain, HtmlParseMetaMissingKind};
 pub use construction::pending_association::{
     HtmlParseAssociationCaptureDisposition, HtmlParseAssociationCapturedObservation,

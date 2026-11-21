@@ -1,15 +1,18 @@
 //! Completed non-control history and later canonical operations stay distinct.
 use super::*;
 use surgeist_html::{
-    construction::HtmlShadowRootMode, elements::media::HtmlInitialMediaState, values::Namespace,
+    construction::HtmlShadowRootMode,
+    elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect},
+    values::Namespace,
 };
 use surgeist_html::{
     construction::{HtmlNodeId, HtmlNodeKind},
-    elements::{native::HtmlElementClass, script::HtmlScriptResult},
-    vocabulary::KnownHtmlElement,
+    elements::script::HtmlScriptResult,
 };
-use surgeist_html_parser::HtmlFragmentParseRequest;
 use surgeist_html_parser::HtmlParseMetadataStep;
+use surgeist_html_parser::{
+    HtmlFragmentParseRequest, HtmlParseMediaDisposition, HtmlParseMediaUnavailable,
+};
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
 
 #[test]
@@ -505,6 +508,12 @@ fn parsed_unloaded_media_installs_native_audio_and_video_with_the_original_owner
             Some(HtmlInitialMediaState::Video),
         ),
         (
+            "<!doctype html><b><video poster=''><div></b>",
+            "video",
+            Namespace::html(),
+            Some(HtmlInitialMediaState::Video),
+        ),
+        (
             "<!doctype html><svg><video/></svg>",
             "video",
             Namespace::svg(),
@@ -513,6 +522,12 @@ fn parsed_unloaded_media_installs_native_audio_and_video_with_the_original_owner
     ] {
         let report = parse(HtmlSource::utf8(markup));
         let subject = source_element(&report, name);
+        let media = *report.media_state(&subject).unwrap().value();
+        assert_eq!(media.map(|state| state.initial()), expected);
+        assert_eq!(
+            media.map(|state| state.disposition()),
+            expected.map(|_| HtmlParseMediaDisposition::Unloaded)
+        );
         let (mut dom, environment) = setup();
         let installed = dom
             .install_parsed_html_document(
@@ -531,6 +546,10 @@ fn parsed_unloaded_media_installs_native_audio_and_video_with_the_original_owner
         assert_eq!(node.owner_document(), Some(installed.document()));
         assert_eq!(element.name().namespace_uri(), namespace.uri());
         assert_eq!(element.initial_media_state(), expected);
+        assert_eq!(
+            element.media_automatic_track_selection_performed(),
+            expected.map(|_| true)
+        );
         if let Some(state) = element.initial_media_state() {
             assert!(state.network_is_empty());
             assert!(state.paused());
@@ -540,8 +559,8 @@ fn parsed_unloaded_media_installs_native_audio_and_video_with_the_original_owner
 }
 
 #[test]
-fn unsupported_audio_refuses_after_an_admitted_prefix_without_publishing_any_state() {
-    let markup = "<!doctype html><div>private prefix</div><audio></audio>";
+fn reached_media_load_refuses_after_an_admitted_prefix_without_publishing_any_state() {
+    let markup = "<!doctype html><div>private prefix</div><audio src><track></audio>";
     let report = parse(HtmlSource::utf8(markup));
     let source = report.source().identity().clone();
     let audio = source_element(&report, "audio");
@@ -567,7 +586,11 @@ fn unsupported_audio_refuses_after_an_admitted_prefix_without_publishing_any_sta
             )
             .unwrap_err();
         assert!(
-            matches!(error, DomParsedHtmlInstallError::FamilyStateUnavailable { subject, class: HtmlElementClass::KnownHtml(KnownHtmlElement::Audio) } if subject == audio)
+            matches!(error, DomParsedHtmlInstallError::MediaStateUnavailable {
+                subject,
+                reason: HtmlParseMediaUnavailable::Resource(HtmlMediaResourceEffect::Load),
+            } if subject == audio),
+            "{error:?}"
         );
         let current = dom.snapshot();
         assert_eq!(current.stamp(), before.stamp());
@@ -606,5 +629,52 @@ fn unsupported_audio_refuses_after_an_admitted_prefix_without_publishing_any_sta
             value.code_units(),
             "private prefix".encode_utf16().collect::<Vec<_>>()
         );
+    }
+}
+
+#[test]
+fn parsed_media_refusal_identifies_the_first_unavailable_native_effect() {
+    let cancel = AtomicBool::new(false);
+    for (markup, reason) in [
+        (
+            "<!doctype html><video poster=preview><source></video>",
+            HtmlParseMediaUnavailable::Resource(HtmlMediaResourceEffect::DeterminePoster),
+        ),
+        (
+            "<!doctype html><video><source></video>",
+            HtmlParseMediaUnavailable::Resource(HtmlMediaResourceEffect::SelectResource),
+        ),
+        (
+            "<!doctype html><video><track></video>",
+            HtmlParseMediaUnavailable::TextTrack,
+        ),
+        (
+            "<!doctype html><b><div><video></video></b>",
+            HtmlParseMediaUnavailable::DocumentRemoval,
+        ),
+    ] {
+        let report = parse(HtmlSource::utf8(markup));
+        let subject = source_element(&report, "video");
+        let media = report.media_state(&subject).unwrap().value().unwrap();
+        assert_eq!(
+            media.disposition(),
+            HtmlParseMediaDisposition::Unavailable(reason),
+            "{markup:?}"
+        );
+        let (mut dom, environment) = setup();
+        let stamp = dom.snapshot().stamp();
+        let before = dom.usage();
+        let error = dom
+            .install_parsed_html_document(stamp, report, environment, limits(), &cancel)
+            .unwrap_err();
+        assert!(
+            matches!(error, DomParsedHtmlInstallError::MediaStateUnavailable {
+            subject: actual,
+            reason: found,
+        } if actual == subject && found == reason),
+            "{markup:?}: {error:?}"
+        );
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_eq!(dom.usage(), before);
     }
 }

@@ -432,7 +432,8 @@ impl SessionStorage {
             0,
         )?;
         self.bind_clone_metadata(c, node.index, bindings)?;
-        self.initial_associated_state(c, node.index)?;
+        let associated = self.associated_tag(c, node.index)?;
+        self.initial_associated_state(c, node.index, associated)?;
         if base::is_base(
             self.construction
                 .node_at(source)

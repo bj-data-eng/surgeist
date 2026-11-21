@@ -61,7 +61,10 @@ pub(crate) enum NativeFamily {
     Img,
     Picture,
     Source,
-    Media(surgeist_html::elements::media::HtmlInitialMediaState),
+    Media {
+        initial: surgeist_html::elements::media::HtmlInitialMediaState,
+        automatic_track_selection_performed: bool,
+    },
     Hyperlink,
     Template,
     Form(surgeist_html::elements::form::HtmlFormNativeState),
@@ -112,7 +115,7 @@ impl NativeFamily {
             | Self::Img
             | Self::Picture
             | Self::Source
-            | Self::Media(_)
+            | Self::Media { .. }
             | Self::Hyperlink
             | Self::Template
             | Self::Option(_)
@@ -142,7 +145,7 @@ impl NativeFamily {
             attributes,
             content,
         } = change;
-        if let Self::Media(state) = self {
+        if let Self::Media { initial, .. } = self {
             let resource = if attribute_is(name, KnownHtmlAttribute::Src, budget, cancel)? {
                 Some(KnownHtmlAttribute::Src)
             } else if attribute_is(name, KnownHtmlAttribute::Poster, budget, cancel)? {
@@ -162,9 +165,11 @@ impl NativeFamily {
                         break;
                     }
                 }
-                if let Some(effect) = state.attribute_resource_effect(
+                if let Some(effect) = initial.attribute_resource_effect(
                     resource,
-                    value.as_ref().map(HtmlAttributeInput::value),
+                    value
+                        .as_ref()
+                        .map(|attribute| attribute.value().code_units()),
                 ) {
                     return Err(DomError::MediaResourceEffectUnavailable(effect));
                 }

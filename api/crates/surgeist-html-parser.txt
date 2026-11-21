@@ -307,6 +307,14 @@ pub surgeist_html_parser::HtmlParseLimitsError::Unrepresentable::resource: surge
 impl core::error::Error for surgeist_html_parser::HtmlParseLimitsError
 impl core::fmt::Display for surgeist_html_parser::HtmlParseLimitsError
 pub fn surgeist_html_parser::HtmlParseLimitsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html_parser::HtmlParseMediaDisposition
+pub surgeist_html_parser::HtmlParseMediaDisposition::AwaitingStackExit
+pub surgeist_html_parser::HtmlParseMediaDisposition::Unavailable(surgeist_html_parser::HtmlParseMediaUnavailable)
+pub surgeist_html_parser::HtmlParseMediaDisposition::Unloaded
+pub enum surgeist_html_parser::HtmlParseMediaUnavailable
+pub surgeist_html_parser::HtmlParseMediaUnavailable::DocumentRemoval
+pub surgeist_html_parser::HtmlParseMediaUnavailable::Resource(surgeist_html::internal::elements::media::native::HtmlMediaResourceEffect)
+pub surgeist_html_parser::HtmlParseMediaUnavailable::TextTrack
 pub enum surgeist_html_parser::HtmlParseMetaDisposition<'a>
 pub surgeist_html_parser::HtmlParseMetaDisposition::Complete
 pub surgeist_html_parser::HtmlParseMetaDisposition::Unavailable(surgeist_html_parser::HtmlParseMetaMissing<'a>)
@@ -1130,6 +1138,10 @@ pub fn surgeist_html_parser::HtmlParseLimitsBuilder::source_units(self, cap: u64
 pub fn surgeist_html_parser::HtmlParseLimitsBuilder::token_attributes(self, cap: u64) -> Self
 pub fn surgeist_html_parser::HtmlParseLimitsBuilder::tree_depth(self, cap: u64) -> Self
 pub fn surgeist_html_parser::HtmlParseLimitsBuilder::work_credits(self, cap: u64) -> Self
+pub struct surgeist_html_parser::HtmlParseMedia
+impl surgeist_html_parser::HtmlParseMedia
+pub const fn surgeist_html_parser::HtmlParseMedia::disposition(self) -> surgeist_html_parser::HtmlParseMediaDisposition
+pub const fn surgeist_html_parser::HtmlParseMedia::initial(self) -> surgeist_html::internal::elements::media::native::HtmlInitialMediaState
 pub struct surgeist_html_parser::HtmlParseMetaMissing<'a>
 impl<'a> surgeist_html_parser::HtmlParseMetaMissing<'a>
 pub fn surgeist_html_parser::HtmlParseMetaMissing<'a>::document(&self) -> surgeist_html::internal::construction::HtmlNode<'a>
@@ -1253,6 +1265,7 @@ pub fn surgeist_html_parser::HtmlParseReport::fragment(&self) -> core::option::O
 pub fn surgeist_html_parser::HtmlParseReport::fragment_parser_document(&self) -> core::result::Result<core::option::Option<surgeist_html_parser::HtmlParseFragmentParserDocument<'_>>, surgeist_html_parser::HtmlParseUnresolvedReference>
 pub fn surgeist_html_parser::HtmlParseReport::image_support(&self) -> surgeist_html_semantics::capture::HtmlImageSupport
 pub fn surgeist_html_parser::HtmlParseReport::limits(&self) -> &surgeist_html_parser::HtmlParseLimits
+pub fn surgeist_html_parser::HtmlParseReport::media_state(&self, node: &surgeist_html::internal::construction::HtmlNodeId) -> core::result::Result<surgeist_html_parser::HtmlParseNodeRead<core::option::Option<surgeist_html_parser::HtmlParseMedia>>, surgeist_html_parser::HtmlParseNodeReadError>
 pub fn surgeist_html_parser::HtmlParseReport::metadata(&self) -> surgeist_html_parser::HtmlParseMetadataCursor<'_>
 pub fn surgeist_html_parser::HtmlParseReport::pending_associations(&self) -> surgeist_html_parser::HtmlParsePendingAssociationCursor<'_>
 pub fn surgeist_html_parser::HtmlParseReport::profile(&self) -> core::result::Result<core::option::Option<surgeist_ledger::profile::Report<surgeist_html::internal::accounting::HtmlWork, surgeist_html::internal::accounting::HtmlResource>>, surgeist_html::internal::accounting::fault::HtmlAccountingFault>

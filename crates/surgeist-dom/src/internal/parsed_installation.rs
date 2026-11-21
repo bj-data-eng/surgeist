@@ -165,6 +165,10 @@ pub enum DomParsedHtmlInstallError {
         subject: HtmlNodeId,
         class: surgeist_html::elements::native::HtmlElementClass,
     },
+    MediaStateUnavailable {
+        subject: HtmlNodeId,
+        reason: surgeist_html_parser::HtmlParseMediaUnavailable,
+    },
     BaseStateUnavailable {
         subject: HtmlNodeId,
     },
@@ -252,6 +256,9 @@ impl std::fmt::Display for DomParsedHtmlInstallError {
             ),
             Self::FamilyStateUnavailable { .. } => {
                 f.write_str("the original element family state of a source node is unavailable")
+            }
+            Self::MediaStateUnavailable { .. } => {
+                f.write_str("an original parser media effect requires an unavailable service")
             }
             Self::BaseStateUnavailable { .. } => {
                 f.write_str("the original state of a Base element is unavailable")

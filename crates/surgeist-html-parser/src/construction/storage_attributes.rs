@@ -575,6 +575,7 @@ impl SessionStorage {
                     next: Some(target),
                     pass: FormEffectPass::Local,
                     href_base: base::HrefBaseAhead::Unscanned,
+                    media_removal_from_document: None,
                 }));
             }
         }

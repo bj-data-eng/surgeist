@@ -87,6 +87,15 @@ the ordered construction effects. Missing or changed required facts receive
 original roles. An optional unused whole captured Base bank remains fully charged
 historical request data; it does not override the current canonical bindings.
 
+## Parser-created media
+
+Installation admits unloaded HTML Audio and Video when the original parser
+report qualifies their stack exit and empty text-track selection. The canonical
+element retains the media family and the completed selection flag. A reached
+resource, track, or Document-removal effect without its service refuses the
+whole installation with the original media subject and reason. The immutable
+report still exposes the original tree and lifecycle evidence.
+
 ## Meta Document history
 
 Installation transfers qualified per-Document language, referrer, refresh,

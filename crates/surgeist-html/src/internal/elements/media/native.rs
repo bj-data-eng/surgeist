@@ -1,6 +1,5 @@
 //! HTML media-element initialization and resource entry conditions.
 
-use crate::internal::values::DocumentString;
 use crate::vocabulary::{KnownHtmlAttribute, KnownHtmlElement};
 
 /// The actual unloaded state of a freshly created media element.
@@ -82,7 +81,7 @@ impl HtmlInitialMediaState {
     pub fn attribute_resource_effect(
         self,
         attribute: KnownHtmlAttribute,
-        value: Option<&DocumentString>,
+        value: Option<&[u16]>,
     ) -> Option<HtmlMediaResourceEffect> {
         match (self, attribute, value) {
             (_, KnownHtmlAttribute::Src, Some(_)) => Some(HtmlMediaResourceEffect::Load),

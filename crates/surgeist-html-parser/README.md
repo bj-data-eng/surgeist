@@ -114,6 +114,12 @@ CSSOM association disposition is explicitly pending. Construction completion
 therefore does not assert that every semantic observation or downstream
 association is available.
 
+`media_state()` reads the original HTML Audio or Video record by node. Media
+starts blocked at parser creation. A stack exit qualifies empty text-track
+selection and pending tracks in the unloaded profile. Reached resource,
+text-track, or Document-removal effects stay visible as the first unavailable
+operation. A foreign-namespace lookalike has no parser media state.
+
 Each source-created Document separately retains actual Meta pragma-language,
 canonical policy-container referrer policy and declarative-refresh history.
 The closed offline profile chooses Do nothing after a successful refresh; it

@@ -517,6 +517,7 @@ impl<'a> PreparedReportStorage<'a> {
         }
         qualify_creation_rows(storage, arena, c)?;
         qualify_nonce_rows(storage, arena, c)?;
+        qualify_media_rows(storage, arena, c)?;
         if closed_common {
             qualify_elements(storage, arena, c)?;
         }
@@ -731,6 +732,34 @@ fn qualify_nonce_rows(
     }
     Ok(())
 }
+fn qualify_media_rows(
+    storage: &FrozenStorage,
+    arena: &HtmlConstructionResult,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
+    if let Some(media) = &storage.payloads.facts.media {
+        for (node, row) in media.iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                mem::size_of::<media::HtmlParseMedia>() as u64,
+            )?;
+            let record = checked_node(arena, node, c)?;
+            let ConstructionNodeKind::Element(element) = record.kind() else {
+                return Err(latch_registry_row(c));
+            };
+            if classify(element.name(), c)?
+                != surgeist_html::elements::native::HtmlElementClass::KnownHtml(
+                    row.initial().element(),
+                )
+            {
+                return Err(latch_registry_row(c));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Qualifies every element of a closed profile with the Null registry: the scope of its row in the
 /// table of creation states, if it has one, is the scope its classification gives, and an element
 /// whose name classifies it in the Hyperlink, Image, Style or Dialog family has exactly one row of
@@ -1224,6 +1253,33 @@ impl ReportStorage {
             value: Some(value),
             probes,
         })
+    }
+    pub(crate) fn node_media(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<HtmlParseNodeRead<Option<media::HtmlParseMedia>>, HtmlParseNodeReadError> {
+        let storage = self.history.storage();
+        let record = arena(storage)
+            .node_by_result_id(node)
+            .map_err(|_| HtmlParseNodeReadError::Foreign)?;
+        let Some(media) = storage.payloads.facts.media.as_ref() else {
+            return Ok(HtmlParseNodeRead {
+                value: None,
+                probes: 0,
+            });
+        };
+        let (found, probes) = media.find_published(record.position());
+        let value = found
+            .map(|index| {
+                media
+                    .row(index)
+                    .copied()
+                    .ok_or(HtmlParseNodeReadError::Unresolved(unresolved(
+                        read::HtmlParseUnresolvedKind::Fact,
+                    )))
+            })
+            .transpose()?;
+        Ok(HtmlParseNodeRead { value, probes })
     }
     /// The document of the tree that holds `node`, for tests that ask about a node whose root they
     /// do not know.

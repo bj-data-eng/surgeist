@@ -705,6 +705,8 @@ impl SessionStorage {
                 }
                 Ok(node)
             })()?;
+            let associated = self.associated_tag(control, node.index)?;
+            let media = self.register_parser_media(control, node.index, associated)?;
             // The groups of the origins of the strings are the groups of the element's fields.
             self.bind_field(control, FieldRef::ElementName(node.index), name_group, 0)?;
             self.bind_field(control, FieldRef::Namespace(node.index), namespace.group, 0)?;
@@ -721,7 +723,11 @@ impl SessionStorage {
                     let Some(attribute) = attributes.try_pop(control)? else {
                         return Err(latch_registry_row(control));
                     };
-                    self.append_token_attribute(control, node.index, attribute, false, false)?;
+                    let position =
+                        self.append_token_attribute(control, node.index, attribute, false, false)?;
+                    if let Some(initial) = media {
+                        self.parser_media_attribute(control, node.index, initial, position)?;
+                    }
                 }
                 Ok(())
             })();
@@ -731,7 +737,7 @@ impl SessionStorage {
             if nonce.has_row() {
                 self.initial_nonce_attributes(control, node.index)?;
             }
-            self.initial_associated_state(control, node.index)?;
+            self.initial_associated_state(control, node.index, associated)?;
             self.initial_meta_attributes(control, node.index)?;
             self.association_initial_attributes(control, node.index)?;
             self.register_base(control, node.index, base::ResponseDomain::Unavailable)?;
