@@ -87,7 +87,9 @@ pub(super) fn guest(admission: Admission) -> DocumentGuestEventLimits {
         Admission::Standard | Admission::ScriptingDisabled => 20_000,
     };
     DocumentGuestEventLimits {
-        storage_bytes: 512 * 1024,
+        // Include all currently installed Window interfaces, as in the
+        // attached Runtime behavior fixtures.
+        storage_bytes: 640 * 1024,
         work: 10_000,
         pending_exception_reports: 16,
         node_retirement: DomNodeRetirementLimits::new(NATIVE_BYTES, 1_000),
