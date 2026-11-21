@@ -883,6 +883,27 @@ class DescriptionTests(unittest.TestCase):
         default["value"] = 2
         self.rejected("source declaration mismatch: HTMLInputElement.source")
 
+    def test_table_row_indexes_use_native_scalar_observations(self):
+        row = self.definition("HTMLTableRowElement")
+        members = row["members"]
+        self.assertEqual([member["id"] for member in members[:3]],
+                         ["HTMLTableRowElement.constructor:0", "HTMLTableRowElement.rowIndex",
+                          "HTMLTableRowElement.sectionRowIndex"])
+        mappings = self.data["access_mappings"]
+        for member in members[1:3]:
+            self.assertEqual(member["kind"], "attribute")
+            self.assertTrue(member["readonly"])
+            self.assertEqual(member["type"], {"kind": "named", "name": "long"})
+            accessor = mappings[member["id"] + "/get"]
+            self.assertFalse(accessor["requirements"])
+            self.assertEqual({producer["owner"] for producer in accessor["producers"]},
+                             {"surgeist-dom", "surgeist-html-semantics", "surgeist-runtime"})
+            self.assertNotIn(member["id"] + "/set", mappings)
+        cells = mappings["HTMLTableRowElement.cells/get"]
+        self.assertEqual(cells["result_view"], "live")
+        self.assertIn(2480, {provider["issue"] for provider in cells["requirements"]
+                             if "issue" in provider})
+
     def test_table_legacy_partials_preserve_pinned_aliases_and_string_types(self):
         members = {
             "HTMLTableElement": ["align", "border", "frame", "rules", "summary", "width",

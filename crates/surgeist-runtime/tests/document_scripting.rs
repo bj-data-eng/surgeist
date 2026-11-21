@@ -121,6 +121,8 @@ mod standard_window;
 mod tab_index;
 #[path = "document_scripting/table_legacy_reflections.rs"]
 mod table_legacy_reflections;
+#[path = "document_scripting/table_row_indexes.rs"]
+mod table_row_indexes;
 #[path = "document_scripting/text_comment.rs"]
 mod text_comment;
 #[path = "document_scripting/textarea_values.rs"]
@@ -2474,6 +2476,7 @@ fn main() {
             "native-media-status" => native_media_status::attached_media_observes_unloaded_native_state(),
             "tab-index" => tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs(),
             "table-legacy-reflections" => table_legacy_reflections::attached_table_legacy_reflections_use_native_attributes(),
+            "table-row-indexes" => table_row_indexes::attached_table_row_indexes_follow_live_ordinary_order(),
             "element-mixin" => element_mixin::attached_mixin_accessors_use_their_includers_and_native_state(),
             "dialog-close" => dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source(),
             "dialog-methods" => dialog_methods::attached_dialog_methods_use_original_native_events_and_tasks(),
@@ -2588,6 +2591,7 @@ fn main() {
     native_media_status::attached_media_observes_unloaded_native_state();
     tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs();
     table_legacy_reflections::attached_table_legacy_reflections_use_native_attributes();
+    table_row_indexes::attached_table_row_indexes_follow_live_ordinary_order();
     element_mixin::attached_mixin_accessors_use_their_includers_and_native_state();
     dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source();
     dialog_methods::attached_dialog_methods_use_original_native_events_and_tasks();
