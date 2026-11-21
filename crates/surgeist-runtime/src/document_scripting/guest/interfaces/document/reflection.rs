@@ -25,6 +25,7 @@ use surgeist_html::bounded::attributes::{
     popover_keyword_with, table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
     template_shadow_root_slot_assignment_keyword_with,
 };
+use surgeist_html::bounded::input::input_colorspace_with;
 use surgeist_html::bounded::marquee::{
     HtmlMarqueeUnsignedReflection, marquee_loop_setter_value_with, marquee_loop_value_with,
 };
@@ -58,6 +59,7 @@ pub(super) enum Reflection {
     FormEnctypeOverride,
     FormMethodOverride,
     InputType,
+    InputColorSpace,
     Popover,
     HeadingOffset,
     TabIndex,
@@ -545,6 +547,10 @@ impl Capture {
                         let input = node.as_input().ok_or(DomError::WrongNodeKind)?;
                         let state = input.input_type_with(|| read.step())?;
                         Reflected::Keyword(Some(state.canonical_keyword()))
+                    }
+                    Reflection::InputColorSpace => {
+                        let space = input_colorspace_with(units, || read.step())?;
+                        Reflected::Keyword(Some(space.canonical_keyword()))
                     }
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)

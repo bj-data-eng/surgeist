@@ -1,9 +1,46 @@
 use surgeist_html::{
+    attributes::input_colorspace::HtmlInputColorSpace,
+    bounded::input::input_colorspace_with,
     elements::input::{
         HtmlInputColorValueSource, input_color_standard_failure_fallback, input_color_value_source,
     },
     values::DocumentString,
 };
+
+#[test]
+fn colorspace_admits_only_reached_actions_on_exact_utf16() {
+    use HtmlInputColorSpace::{DisplayP3, LimitedSrgb};
+
+    let display = DocumentString::from("dIsPlAy-P3");
+    let limited = DocumentString::from("LiMiTeD-sRgB");
+    let padded = DocumentString::from(" display-p3 ");
+    for (raw, expected, steps) in [
+        (None, LimitedSrgb, 1),
+        (Some(&[][..]), LimitedSrgb, 5),
+        (Some(display.code_units()), DisplayP3, 14),
+        (Some(limited.code_units()), LimitedSrgb, 14),
+        (Some(padded.code_units()), LimitedSrgb, 6),
+        (Some(&[0xd800; 10][..]), LimitedSrgb, 6),
+    ] {
+        for limit in 0..=steps {
+            let mut reached = 0;
+            let state = input_colorspace_with(raw, || {
+                if reached == limit {
+                    return Err(reached);
+                }
+                reached += 1;
+                Ok(())
+            });
+            let outcome = if limit == steps {
+                Ok(expected)
+            } else {
+                Err(limit)
+            };
+            assert_eq!(state, outcome, "{raw:?}");
+            assert_eq!(reached, limit);
+        }
+    }
+}
 
 #[test]
 fn dirty_color_reads_actual_current_utf16_without_reading_default() {
