@@ -27,6 +27,7 @@ mod nested_dispatch;
 mod node_clone;
 mod node_equality;
 mod node_identity;
+mod node_iterator;
 mod node_namespace;
 mod node_position;
 mod node_relations;
@@ -387,6 +388,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::authored_instruction_separates_document_and_prototype_realms();
     node_relations::node_relations_follow_the_live_ordinary_tree();
     node_relations::node_relations_project_native_processing_instructions();
+    node_iterator::iterator_tracks_the_native_pointer_through_removal();
     normalize::normalize_keeps_native_text_and_range_identity();
     normalize::normalize_preserves_typed_native_refusal();
     split_text::split_text_keeps_native_identity_and_range_boundaries();
