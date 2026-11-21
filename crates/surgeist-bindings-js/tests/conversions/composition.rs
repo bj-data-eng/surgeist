@@ -205,6 +205,16 @@ fn nullable_and_declared_arguments(process: &mut Process) -> TestResult {
         let mask = declarations::document_create_node_iterator_0_what_to_show();
         let value = account.run(scope, |cx| cx.argument(&mask, None))?;
         assert_eq!(*value.get(), ArgumentValue::Present(IntegerValue::UnsignedLong(u32::MAX)));
+        let mask = declarations::document_create_tree_walker_0_what_to_show();
+        for input in [None, Some(&undefined)] {
+            let value = account.run(scope, |cx| cx.argument(&mask, input))?;
+            assert_eq!(*value.get(), ArgumentValue::Present(IntegerValue::UnsignedLong(u32::MAX)));
+        }
+        let value = account.run(scope, |cx| cx.argument(&mask, Some(&null)))?;
+        assert_eq!(*value.get(), ArgumentValue::Present(IntegerValue::UnsignedLong(0)));
+        let wrapped = scope.primitive(Primitive::Number(4294967297.0))?;
+        let value = account.run(scope, |cx| cx.argument(&mask, Some(&wrapped)))?;
+        assert_eq!(*value.get(), ArgumentValue::Present(IntegerValue::UnsignedLong(1)));
         let namespace = declarations::node_lookup_prefix_0_namespace();
         for input in [Some(&undefined), Some(&null)] {
             let value = account.run(scope, |cx| cx.argument(&namespace, input))?;

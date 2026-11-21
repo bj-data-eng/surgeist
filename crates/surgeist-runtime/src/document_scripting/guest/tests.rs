@@ -23,6 +23,7 @@ pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
 pub(in crate::document_scripting) mod slot_admission;
 pub(in crate::document_scripting) mod tree_mutation_admission;
+pub(in crate::document_scripting) mod tree_walker_admission;
 pub(in crate::document_scripting) mod trusted_policy;
 
 pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &DocumentScriptHost) {

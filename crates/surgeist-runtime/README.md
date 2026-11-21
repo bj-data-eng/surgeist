@@ -252,6 +252,16 @@ checkpoint. Stop disposes of the queue and returns custody of the native Session
 including any original pending native work. It closes the canonical engine
 registration before V8 teardown. A fresh recovered snapshot reports scripting
 Disabled, even when cancellation prevents other native work.
+
+The attached Document exposes native `NodeIterator` and `TreeWalker` cursors.
+Set `DomLimits::with_node_iterators` and `DomLimits::with_tree_walkers` to admit
+the relevant native records. TreeWalker reads and writes the live current node,
+and returns the same native Node wrapper through its getters and navigation.
+Both facilities keep the original `NodeFilter` as a traced guest reference and
+invoke it in its associated realm. TreeWalker resumes the native traversal
+after callback edits, then publishes the selected node after output preparation.
+Collection and attachment shutdown retire the cursors owned by their wrappers.
+
 The default Runtime uses the native no-script profile. A live owner can sample
 scripting for the current DOM revision; historical captures preserve the sampled
 fact with their exact snapshot and captured registration. A stopped snapshot

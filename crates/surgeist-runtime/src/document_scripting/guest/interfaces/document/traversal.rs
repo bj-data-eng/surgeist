@@ -1,9 +1,15 @@
 //! Ordinary native traversal projected through the pinned DOM interfaces.
 
+mod tree_walker;
+
 use super::*;
-use crate::document_scripting::iterator_retirement;
-use surgeist_bindings_js::conversion::IntegerType;
-use surgeist_bindings_js::conversion::declarations::document_create_node_iterator_0_what_to_show;
+use crate::document_scripting::traversal_retirement::{self, CursorId};
+use surgeist_bindings_js::conversion::{
+    Argument, IntegerType,
+    declarations::{
+        document_create_node_iterator_0_what_to_show, document_create_tree_walker_0_what_to_show,
+    },
+};
 use surgeist_bindings_js::{
     IntegerKind, IntegerMode, IntegerValue, ValueKind, dom_exception::DomExceptionName,
 };
@@ -11,6 +17,7 @@ use surgeist_dom::{
     Dom,
     tree::{
         DomNodeFilterDecision, DomNodeIteratorFilter, DomNodeIteratorId, DomNodeIteratorProgress,
+        DomTreeWalkerFilter,
     },
 };
 
@@ -18,7 +25,74 @@ const NODE_FILTER: &[u16] = &ascii(b"NodeFilter");
 const NODE_ITERATOR: &[u16] = &ascii(b"NodeIterator");
 const FILTER_REFERENCE: u32 = 0;
 
+pub(super) struct Prototypes {
+    iterator: RetainedCallbackObject,
+    walker: RetainedCallbackObject,
+}
+
+#[derive(Clone, Copy)]
+enum CursorKind {
+    Iterator,
+    Walker,
+}
+
+impl CursorKind {
+    fn prototype(self, prototypes: &Prototypes) -> &RetainedCallbackObject {
+        match self {
+            Self::Iterator => &prototypes.iterator,
+            Self::Walker => &prototypes.walker,
+        }
+    }
+
+    fn mask_argument(self) -> Argument<IntegerType> {
+        match self {
+            Self::Iterator => document_create_node_iterator_0_what_to_show(),
+            Self::Walker => document_create_tree_walker_0_what_to_show(),
+        }
+    }
+
+    fn create(
+        self,
+        dom: &mut Dom,
+        root: NodeId,
+        mask: u32,
+        callback: bool,
+        cancellation: &AtomicBool,
+    ) -> Result<CursorId, DomError> {
+        match self {
+            Self::Iterator => {
+                let filter = if callback {
+                    DomNodeIteratorFilter::Callback
+                } else {
+                    DomNodeIteratorFilter::None
+                };
+                dom.create_node_iterator(root, mask, filter, cancellation)
+                    .map(CursorId::Iterator)
+            }
+            Self::Walker => {
+                let filter = if callback {
+                    DomTreeWalkerFilter::Callback
+                } else {
+                    DomTreeWalkerFilter::None
+                };
+                dom.create_tree_walker(root, mask, filter, cancellation)
+                    .map(CursorId::Walker)
+            }
+        }
+    }
+}
+
 pub(super) fn install<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    funding: &OriginInterfaceFunding<'_>,
+) -> Result<Prototypes, DocumentGuestEventError> {
+    let iterator = install_node_iterator(scope, document, funding)?;
+    let walker = tree_walker::install(scope, document, funding)?;
+    Ok(Prototypes { iterator, walker })
+}
+
+fn install_node_iterator<'scope>(
     scope: &mut Scope<'scope>,
     document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
@@ -119,7 +193,9 @@ pub(super) fn install<'scope>(
     let handler = (funding.capture)(size_of::<Capture>())?;
     let factory = &ascii(b"createNodeIterator");
     let method = scope.bounded_function(
-        &Callback::new(move |scope, arguments| handler.create_iterator(scope, arguments)),
+        &Callback::new(move |scope, arguments| {
+            handler.create_cursor(scope, arguments, CursorKind::Iterator)
+        }),
         FunctionMetadata {
             name: factory,
             length: 1,
@@ -199,9 +275,9 @@ fn install_filter_interface<'scope>(
 }
 
 struct Projection {
-    id: Cell<Option<DomNodeIteratorId>>,
+    id: Cell<Option<CursorId>>,
     owner: Weak<NativeOwner>,
-    retirement: Option<Box<iterator_retirement::Record>>,
+    retirement: Option<Box<traversal_retirement::Record>>,
 }
 
 impl Drop for Projection {
@@ -209,7 +285,7 @@ impl Drop for Projection {
         if let (Some(owner), Some(id), Some(record)) =
             (self.owner.upgrade(), self.id.get(), self.retirement.take())
         {
-            owner.iterator_retirements.enqueue(id, record);
+            owner.traversal_retirements.enqueue(id, record);
         }
     }
 }
@@ -230,24 +306,25 @@ enum Direction {
 }
 
 enum FilterResult {
-    Decided(DomNodeFilterDecision, Root),
+    Decided(u16, Root),
     Throw(Root),
 }
 
-fn iterator_id<'scope>(
+fn cursor_id<'scope>(
     scope: &mut Scope<'scope>,
     receiver: &Value<'scope>,
-) -> Result<Option<DomNodeIteratorId>, Error> {
+) -> Result<Option<CursorId>, Error> {
     Ok(scope
         .native_object::<Projection>(receiver)?
         .and_then(|object| object.payload().id.get()))
 }
 
 impl Capture {
-    fn create_iterator<'scope>(
+    fn create_cursor<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
+        kind: CursorKind,
     ) -> Result<Completion<'scope>, Error> {
         let Some(GuestNode::Document(document)) =
             tree::projected_node(scope, arguments.receiver())?
@@ -272,10 +349,7 @@ impl Capture {
                 .callbacks
                 .conversion
                 .run(scope, |conversion| {
-                    conversion.argument(
-                        &document_create_node_iterator_0_what_to_show(),
-                        arguments.get(1),
-                    )
+                    conversion.argument(&kind.mask_argument(), arguments.get(1))
                 })
                 .map_err(Error::from)?;
             let ArgumentValue::Present(IntegerValue::UnsignedLong(mask)) = *converted.get() else {
@@ -303,43 +377,47 @@ impl Capture {
             })?;
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let prototype = match &self.origin {
-                Some(origin) => public.with_origin(&events, origin.global, |bindings| {
-                    Ok(scope.open_callback_object(&bindings.documents.iterator)?)
-                })?,
-                None => scope.open_callback_object(&public.document.prototypes.iterator)?,
+                Some(origin) => {
+                    public.with_origin(&events, origin.global, |bindings| {
+                        Ok(scope
+                            .open_callback_object(kind.prototype(&bindings.documents.traversal))?)
+                    })?
+                }
+                None => scope
+                    .open_callback_object(kind.prototype(&public.document.prototypes.traversal))?,
             };
-            let backing = events.reserve(&owner, size_of::<iterator_retirement::Record>())?;
+            let backing = events.reserve(&owner, size_of::<traversal_retirement::Record>())?;
             let payload = Projection {
                 id: Cell::new(None),
                 owner: Rc::downgrade(&owner),
-                retirement: Some(iterator_retirement::Record::new(backing)),
+                retirement: Some(traversal_retirement::Record::new(backing)),
             };
             let prototype = ObjectPrototype::Object(&prototype);
             let admission = |bytes| events.reserve(&owner, bytes);
-            let (value, filter) = match filter {
-                Some(filter) => (
-                    scope.project_native_object_with_reference(
-                        prototype,
-                        payload,
-                        FILTER_REFERENCE,
-                        filter,
-                        admission,
-                    )?,
-                    DomNodeIteratorFilter::Callback,
-                ),
-                None => (
-                    scope.project_native_object(prototype, payload, admission)?,
-                    DomNodeIteratorFilter::None,
-                ),
+            let value = match filter {
+                Some(filter) => scope.project_native_object_with_reference(
+                    prototype,
+                    payload,
+                    FILTER_REFERENCE,
+                    filter,
+                    admission,
+                )?,
+                None => scope.project_native_object(prototype, payload, admission)?,
             };
             let projection = scope
                 .native_object::<Projection>(&value)?
                 .ok_or(Error::RegistryConflict)?;
-            let id = self.with_iterator_dom(&owner, |dom| {
+            let id = self.with_cursor_dom(&owner, |dom| {
                 if dom.pending_source_edit().is_none() {
-                    owner.iterator_retirements.reap(dom)?;
+                    owner.traversal_retirements.reap(dom)?;
                 }
-                Ok(dom.create_node_iterator(root.node(), mask, filter, &owner.cancellation)?)
+                Ok(kind.create(
+                    dom,
+                    root.node(),
+                    mask,
+                    filter.is_some(),
+                    &owner.cancellation,
+                )?)
             })?;
             projection.payload().id.set(Some(id));
             Ok(Completion::Return(value))
@@ -353,7 +431,7 @@ impl Capture {
         arguments: Arguments<'scope>,
         member: Member,
     ) -> Result<Completion<'scope>, Error> {
-        let Some(id) = iterator_id(scope, arguments.receiver())? else {
+        let Some(CursorId::Iterator(id)) = cursor_id(scope, arguments.receiver())? else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"NodeIterator required"))?,
             ));
@@ -400,7 +478,10 @@ impl Capture {
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
     ) -> Result<Completion<'scope>, Error> {
-        if iterator_id(scope, arguments.receiver())?.is_none() {
+        if !matches!(
+            cursor_id(scope, arguments.receiver())?,
+            Some(CursorId::Iterator(_))
+        ) {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"NodeIterator required"))?,
             ));
@@ -408,7 +489,7 @@ impl Capture {
         Ok(Completion::Undefined)
     }
 
-    fn with_iterator_dom<T>(
+    fn with_cursor_dom<T>(
         &self,
         owner: &NativeOwner,
         action: impl FnOnce(&mut Dom) -> Result<T, DocumentGuestEventError>,
@@ -426,7 +507,7 @@ impl Capture {
         arguments: Arguments<'scope>,
         direction: Direction,
     ) -> Result<Completion<'scope>, Error> {
-        let Some(id) = iterator_id(scope, arguments.receiver())? else {
+        let Some(CursorId::Iterator(id)) = cursor_id(scope, arguments.receiver())? else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"NodeIterator required"))?,
             ));
@@ -457,7 +538,7 @@ impl Capture {
         id: DomNodeIteratorId,
         direction: Direction,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
-        let mut progress = self.with_iterator_dom(owner, |dom| {
+        let mut progress = self.with_cursor_dom(owner, |dom| {
             let admit = || events.step();
             match direction {
                 Direction::Next => dom.node_iterator_next_accounted(id, admit, &owner.cancellation),
@@ -482,25 +563,30 @@ impl Capture {
                         Observation::Node(Some(pending.node())),
                     )?;
                     scope.check_active()?;
-                    self.with_iterator_dom(owner, |dom| pending.accept(dom, &owner.cancellation))?;
+                    self.with_cursor_dom(owner, |dom| pending.accept(dom, &owner.cancellation))?;
                     return Ok(Completion::Return(value));
                 }
                 DomNodeIteratorProgress::Filter(pending) => {
                     let node = pending.node();
-                    let (decision, value) =
+                    let (code, value) =
                         match self.filter_candidate(scope, (owner, events), receiver, node)? {
                             FilterResult::Decided(decision, value) => (decision, value),
                             FilterResult::Throw(error) => {
                                 return Ok(Completion::Throw(scope.import(&error)?));
                             }
                         };
+                    let decision = match code {
+                        1 => DomNodeFilterDecision::Accept,
+                        2 => DomNodeFilterDecision::Reject,
+                        _ => DomNodeFilterDecision::Skip,
+                    };
                     let accepted = if decision == DomNodeFilterDecision::Accept {
                         Some(scope.import(&value)?)
                     } else {
                         None
                     };
                     scope.check_active()?;
-                    progress = self.with_iterator_dom(owner, |dom| {
+                    progress = self.with_cursor_dom(owner, |dom| {
                         pending.respond(dom, decision, &owner.cancellation)
                     })?;
                     if let Some(value) = accepted {
@@ -519,12 +605,12 @@ impl Capture {
         &self,
         scope: &mut Scope<'scope>,
         (owner, events): (&NativeOwner, &GuestEvents),
-        iterator: &Value<'scope>,
+        cursor: &Value<'scope>,
         node: NodeId,
     ) -> Result<FilterResult, DocumentGuestEventError> {
         events.step()?;
         let filter = scope
-            .native_object_reference::<Projection>(iterator, FILTER_REFERENCE)?
+            .native_object_reference::<Projection>(cursor, FILTER_REFERENCE)?
             .ok_or(Error::RegistryConflict)?;
         let callback = scope.callback_object(&filter)?;
         scope.in_callback_object_realm(&callback, |scope, filter| {
@@ -564,12 +650,7 @@ impl Capture {
                 return Err(Error::BackendUnavailable.into());
             };
             scope.check_active()?;
-            let decision = match code {
-                1 => DomNodeFilterDecision::Accept,
-                2 => DomNodeFilterDecision::Reject,
-                _ => DomNodeFilterDecision::Skip,
-            };
-            Ok(FilterResult::Decided(decision, scope.retain(&value)))
+            Ok(FilterResult::Decided(code, scope.retain(&value)))
         })
     }
 }

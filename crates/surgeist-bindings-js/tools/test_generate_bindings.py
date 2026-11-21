@@ -179,6 +179,47 @@ class DescriptionTests(unittest.TestCase):
         self.data["access_mappings"][key]["interface"] = "EventListener"
         self.rejected("wrong callback interface")
 
+    def test_tree_walker_source_preserves_exposure_identity_and_live_cursor(self):
+        # The retained standard block is the exact artifact contract. Reject
+        # changes that would silently alter installation or native conversion.
+        for change in ("exposure", "root_identity", "readonly_cursor", "nullable_cursor",
+                       "navigation_argument", "constructible"):
+            with self.subTest(change=change):
+                self.setUp()
+                if change == "exposure":
+                    self.definition("TreeWalker")["attributes"][0]["value"] = "*"
+                elif change == "root_identity":
+                    self.member("TreeWalker.root")["attributes"] = []
+                elif change == "readonly_cursor":
+                    self.member("TreeWalker.currentNode")["readonly"] = True
+                elif change == "nullable_cursor":
+                    member = self.member("TreeWalker.currentNode")
+                    member["type"] = {"kind": "nullable", "inner": member["type"]}
+                elif change == "navigation_argument":
+                    self.member("TreeWalker.parentNode:0")["arguments"] = [
+                        {"name": "node", "type": {"kind": "named", "name": "Node"},
+                         "presence": "required"}]
+                else:
+                    self.definition("TreeWalker")["members"].append({
+                        "id": "TreeWalker.constructor:0", "kind": "constructor",
+                        "attributes": [], "arguments": []})
+                self.rejected("source declaration mismatch: TreeWalker.source")
+
+    def test_tree_walker_factory_preserves_native_brand_and_callback_defaults(self):
+        factory = self.member("Document.createTreeWalker:0")
+        self.assertEqual(factory["attributes"], [{"name": "NewObject"}])
+        self.assertEqual(factory["type"], {"kind": "named", "name": "TreeWalker"})
+        root, mask, callback = factory["arguments"]
+        self.assertEqual(root, {"name": "root", "type": {"kind": "named", "name": "Node"},
+                                "presence": "required"})
+        self.assertEqual(mask["default"], {"kind": "integer", "value": 4294967295})
+        self.assertEqual(callback, {"name": "filter", "type": {"kind": "nullable", "inner": {
+            "kind": "named", "name": "NodeFilter"}}, "presence": "optional", "default": {"kind": "null"}})
+        arguments = {a["id"]: a for a in g.lower_arguments(self.data, g.lower_values(self.data))}
+        self.assertEqual(arguments["Document.createTreeWalker:0/whatToShow"]["index"], 1)
+        self.assertNotIn("Document.createTreeWalker:0/root", arguments)
+        self.assertNotIn("Document.createTreeWalker:0/filter", arguments)
+
     def test_namespace_source_qualifies_exposure_and_cssom_string_profile(self):
         self.definition("CSS")["attributes"][0]["value"] = "*"
         self.rejected("only Window namespace exposure is selected")
