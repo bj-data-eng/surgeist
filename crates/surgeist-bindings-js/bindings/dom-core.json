@@ -1102,6 +1102,16 @@
       "entries": ["ElementContentEditable"]
     },
     {
+      "id": "PopoverTargetAttributes.source",
+      "path": "references/html-popover-target--877d6146487f.md",
+      "anchor": "",
+      "block": 0,
+      "sha256": "e6f5af78a2863456104d1331f04f8838a350e860ff31cbdf4d85e6972143da53",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-popoverTargetElement",
+      "entries": ["PopoverTargetAttributes"]
+    },
+    {
       "id": "ToggleEvent.source",
       "path": "references/html-toggle-event--877d6146487f--eeb465762458.md",
       "anchor": "the&#45;toggleevent&#45;interface",
@@ -10658,6 +10668,30 @@
       ]
     },
     {
+      "id": "PopoverTargetAttributes",
+      "kind": "mixin",
+      "name": "PopoverTargetAttributes",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect", "value": "popovertarget"}],
+          "kind": "attribute",
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "Element"}},
+          "name": "popoverTargetElement",
+          "readonly": false,
+          "id": "PopoverTargetAttributes.popoverTargetElement"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "popoverTargetAction",
+          "readonly": false,
+          "id": "PopoverTargetAttributes.popoverTargetAction"
+        }
+      ]
+    },
+    {
       "id": "ToggleEvent",
       "kind": "interface",
       "name": "ToggleEvent",
@@ -12173,13 +12207,6 @@
       "owner": "surgeist-html-parser",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-document-object",
       "requirement": "Pin the delegated ParseHTMLUnsafeOptions definition before converting/exposing this external type; the retained source here references it but is not its full defining clause."
-    },
-    {
-      "name": "PopoverTargetAttributes",
-      "kind": "mixin",
-      "owner": "surgeist-runtime",
-      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#popovertargetattributes",
-      "requirement": "Retain the defining mixin and its limited-known-values action. Resolve the scoped live popover target and project the exact nullable Element. Convert the setter's actual nullable Element through DomSourceEdit::set_popover_target_element. Preserve the separate native activation and command dispatch requirements."
     },
     {
       "name": "FileList",
@@ -23796,6 +23823,44 @@
       "adapter": "htmlmarqueeelement.stop.call",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "stop_marquee"}
+      ],
+      "requirements": []
+    },
+    "PopoverTargetAttributes.popoverTargetElement/get": {
+      "kind": "native",
+      "adapter": "popovertargetattributes.popovertargetelement.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/reflected_element.rs", "symbol": "html_popover_target_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/popover_target.rs", "symbol": "read_popover_target"}
+      ],
+      "requirements": []
+    },
+    "PopoverTargetAttributes.popoverTargetElement/set": {
+      "kind": "native",
+      "adapter": "popovertargetattributes.popovertargetelement.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_popover_target_element"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/popover_target.rs", "symbol": "write_popover_target"}
+      ],
+      "requirements": []
+    },
+    "PopoverTargetAttributes.popoverTargetAction/get": {
+      "kind": "derived",
+      "algorithm": "popovertargetattributes.popovertargetaction.get",
+      "owner": "surgeist-html",
+      "contract": "Return the canonical toggle, show or hide keyword from the current null-namespace attribute. Missing and invalid values select toggle.",
+      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-popovertargetaction",
+      "inputs": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "popover_target_action_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "PopoverTargetAttributes.popoverTargetAction/set": {
+      "kind": "native",
+      "adapter": "popovertargetattributes.popovertargetaction.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
     },

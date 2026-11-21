@@ -55,6 +55,7 @@ mod ordinary;
 mod output;
 mod param;
 mod parent_node;
+mod popover_target;
 mod pre;
 mod processing_instruction;
 mod range_indicator;

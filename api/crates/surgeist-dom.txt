@@ -3756,6 +3756,8 @@ pub fn surgeist_dom::tree::DomNode<'_>::compare_document_position_with<E: core::
 impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::descendant_element_by_id_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, id: &[u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 impl surgeist_dom::tree::DomNode<'_>
+pub fn surgeist_dom::tree::DomNode<'_>::html_popover_target_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
+impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::html_table_part_with<E: core::convert::From<surgeist_dom::DomError>>(self, part: surgeist_dom::tree::DomHtmlTablePart, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::html_table_row_index_with<E: core::convert::From<surgeist_dom::DomError>>(self, kind: surgeist_html_semantics::table_rows::HtmlTableRowIndexKind, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<usize>, E>

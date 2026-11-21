@@ -178,7 +178,8 @@ impl<'a> DomInput<'a> {
             .ok_or_else(|| DomError::WrongNodeKind.into())
     }
 
-    /// Raw permitted-weak slot; the scoped getter remains an HTML semantic query.
+    /// Stored weak reference. Use `DomNode::html_popover_target_with` for
+    /// the scoped associated Element.
     pub fn explicit_popover_target(self) -> Option<NodeId> {
         self.node
             .node

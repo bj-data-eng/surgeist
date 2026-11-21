@@ -207,11 +207,20 @@ total_enum_rule!(COMMAND, COMMAND_DEFAULTS, HtmlCommandState, Command, Context::
      "close" => ("close", HtmlCommandState::Standard(HtmlStandardCommand::Close)),
      "request-close" => ("request-close", HtmlCommandState::Standard(HtmlStandardCommand::RequestClose)),
      "show-modal" => ("show-modal", HtmlCommandState::Standard(HtmlStandardCommand::ShowModal))]);
-enum_rule!(POPOVER_ACTION, HtmlPopoverTargetAction, Popovertargetaction, Context::PopoverTargetAction, [121], "attr-popovertargetaction",
-    Some(HtmlPopoverTargetAction::Toggle), Some(HtmlPopoverTargetAction::Toggle), None,
+total_enum_rule!(POPOVER_ACTION, POPOVER_ACTION_DEFAULTS, HtmlPopoverTargetAction, Popovertargetaction, Context::PopoverTargetAction, [121], "attr-popovertargetaction",
+    HtmlPopoverTargetAction::Toggle, HtmlPopoverTargetAction::Toggle, None,
     ["toggle" => ("toggle", HtmlPopoverTargetAction::Toggle),
      "show" => ("show", HtmlPopoverTargetAction::Show),
      "hide" => ("hide", HtmlPopoverTargetAction::Hide)]);
+
+/// Admit the local reflected popover action, including the missing and
+/// invalid Toggle default.
+pub fn popover_target_action_with<E>(
+    raw: Option<&[u16]>,
+    admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<HtmlPopoverTargetAction, E> {
+    total_enum_value_with(&POPOVER_ACTION, &POPOVER_ACTION_DEFAULTS, raw, admit)
+}
 
 /// Reads the Button command state and the complete exact custom value when present.
 ///

@@ -87,7 +87,8 @@ pub(super) fn install<'scope>(
     reflection::install(scope, prototype, capture, Receiver::Button, BEFORE_FORM)?;
     form_owner::install(scope, prototype, capture, FormOwnerGetter::Button)?;
     reflection::install(scope, prototype, capture, Receiver::Button, AFTER_FORM)?;
-    CustomValidityControl::Button.install(scope, prototype, capture)
+    CustomValidityControl::Button.install(scope, prototype, capture)?;
+    super::popover_target::install(scope, prototype, capture, Receiver::Button)
 }
 
 pub(super) fn type_keyword(

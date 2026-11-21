@@ -20,11 +20,22 @@ mod label;
 mod namespace;
 mod option_text;
 mod position;
+mod reflected_element;
 mod tabindex;
 mod table_rows;
 mod translation;
 pub use namespace::DomNamespaceUri;
 pub use position::DomDocumentPosition;
+
+const fn ascii_units<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
+    let mut units = [0; N];
+    let mut index = 0;
+    while index < N {
+        units[index] = bytes[index] as u16;
+        index += 1;
+    }
+    units
+}
 
 enum Descendant<Value> {
     Descend,

@@ -3,11 +3,12 @@
 use super::*;
 
 pub(super) fn attached_controls_reflect_their_live_popover_target() {
+    explicit_scope_refuses_one_short();
     let (session, top) = setup();
     let (mut host, _) =
         attach_event_window_with_work(session, top, Arc::new(cancel()), 160_000, |_, _, _| {});
     let permit = host.permit().unwrap();
-    for script in [ACCESSORS, ASSOCIATIONS, EXPLICIT_SCOPE] {
+    for script in [ACCESSORS, ASSOCIATIONS, EXPLICIT_SCOPE, REACTIONS] {
         let result = host
             .in_document(&permit, |scope| {
                 let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
@@ -19,6 +20,49 @@ pub(super) fn attached_controls_reflect_their_live_popover_target() {
     host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
         .unwrap();
     host.stop().into_session().unwrap();
+}
+
+fn explicit_scope_refuses_one_short() {
+    use std::cell::Cell;
+
+    let mut dom = native_dom();
+    let mut edit = DomBatch::new();
+    let document = edit.create_document();
+    let parent = edit.create_element_ns(&document, Namespace::html(), "div");
+    let button = edit.create_element_ns(&document, Namespace::html(), "button");
+    let target = edit.create_element_ns(&document, Namespace::html(), "div");
+    edit.insert_before(&button, &parent, None);
+    edit.insert_before(&target, &parent, None);
+    edit.set_popover_target_element(&button, Some((&target).into()));
+    let receipt = dom.apply(edit, &cancel()).unwrap();
+    let target = receipt.created(&target).unwrap().unwrap();
+    let button = receipt.created(&button).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let button = snapshot.node(button).unwrap();
+
+    let read = |limit| {
+        let steps = Cell::new(0);
+        let observed = button.html_popover_target_with(
+            || {
+                if steps.get() == limit {
+                    return Err(DomError::Cancelled);
+                }
+                steps.set(steps.get() + 1);
+                Ok(())
+            },
+            |_| -> Result<(), DomError> {
+                panic!("explicit association needs no traversal backing")
+            },
+        );
+        (observed, steps.get())
+    };
+    let (observed, exact) = read(usize::MAX);
+    assert_eq!(observed.unwrap(), Some(target));
+    assert!(exact > 1);
+    let (short, accepted) = read(exact - 1);
+    assert!(matches!(short, Err(DomError::Cancelled)));
+    assert_eq!(accepted, exact - 1);
+    assert_eq!(read(exact).0.unwrap(), Some(target));
 }
 
 const ACCESSORS: &str = r#"(() => {
@@ -132,5 +176,35 @@ const EXPLICIT_SCOPE: &str = r#"(() => {
     shadowOnly.id = 'outside-only';
     if (inside.popoverTargetElement !== shadowOnly) return 'ID fallback sees the current shadow tree';
     wrapper.remove();
+    return 'ok';
+})()"#;
+
+const REACTIONS: &str = r#"(() => {
+    const writes = [];
+    class PopoverProbe extends HTMLButtonElement {
+        static observedAttributes = ['popovertarget', 'popovertargetaction'];
+        attributeChangedCallback(name, oldValue, newValue) {
+            writes.push([name, oldValue, newValue, this.popoverTargetElement]);
+            if (name === 'popovertarget' && newValue === '') this.popoverTargetAction = 'SHOW';
+        }
+    }
+    customElements.define('x-popover-probe', PopoverProbe, {extends: 'button'});
+    const button = document.body.appendChild(document.createElement('button', {is: 'x-popover-probe'}));
+    const target = document.body.appendChild(document.createElement('div'));
+    button.popoverTargetElement = target;
+    if (writes.length !== 2 || writes[0][0] !== 'popovertarget' ||
+        writes[0][1] !== null || writes[0][2] !== '' || writes[0][3] !== target ||
+        writes[1][0] !== 'popovertargetaction' || writes[1][2] !== 'SHOW' ||
+        writes[1][3] !== target || button.popoverTargetAction !== 'show') {
+        return 'explicit set and nested action use the original attribute reactions';
+    }
+    writes.length = 0;
+    button.popoverTargetElement = null;
+    if (writes.length !== 1 || writes[0][0] !== 'popovertarget' ||
+        writes[0][1] !== '' || writes[0][2] !== null || writes[0][3] !== null) {
+        return 'null assignment publishes one removal reaction';
+    }
+    button.remove();
+    target.remove();
     return 'ok';
 })()"#;

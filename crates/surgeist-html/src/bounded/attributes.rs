@@ -23,7 +23,9 @@ pub use crate::internal::attributes::bounded_rules::{
     template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
     translate_processing_with,
 };
-pub use crate::internal::attributes::command::button_command_readback_with;
+pub use crate::internal::attributes::command::{
+    button_command_readback_with, popover_target_action_with,
+};
 pub use crate::internal::attributes::control_length::{
     HtmlControlDimensionRule, HtmlControlIntegerIndexSize, control_length_reflection_with,
     control_length_setter_value,

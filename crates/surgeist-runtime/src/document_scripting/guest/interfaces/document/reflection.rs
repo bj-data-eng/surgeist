@@ -26,8 +26,8 @@ use surgeist_html::bounded::attributes::{
     form_enctype_keyword_with, form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
-    popover_keyword_with, table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
-    template_shadow_root_slot_assignment_keyword_with,
+    popover_keyword_with, popover_target_action_with, table_cell_scope_keyword_with,
+    template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
 };
 use surgeist_html::bounded::input::input_colorspace_with;
 use surgeist_html::bounded::marquee::{
@@ -67,6 +67,7 @@ pub(super) enum Reflection {
     InputType,
     InputColorSpace,
     Popover,
+    PopoverTargetAction,
     HeadingOffset,
     TabIndex,
     ContentEditable,
@@ -641,6 +642,9 @@ impl Capture {
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
                     }
+                    Reflection::PopoverTargetAction => Reflected::Keyword(Some(
+                        popover_target_action_with(units, |_| read.step())?.canonical_keyword(),
+                    )),
                     Reflection::HeadingOffset => Reflected::Unsigned(u32::from(
                         heading_offset_reflection_with(units, |_| read.step())?,
                     )),
