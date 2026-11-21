@@ -420,11 +420,11 @@ impl FamilyIndex {
             })
             .transpose()
     }
-    pub fn option_index_with<E: From<DomError>>(
+    pub fn nearest_option_select_with<E: From<DomError>>(
         &self,
         option: NodeId,
         step: &mut impl FnMut() -> Result<(), E>,
-    ) -> Result<usize, E> {
+    ) -> Result<Option<NodeId>, E> {
         let key = Key::Existing(option);
         self.qualified(key)?;
         let fact = self
@@ -432,10 +432,19 @@ impl FamilyIndex {
             .get_with(key, step)?
             .filter(|fact| fact.kind == Kind::Option)
             .ok_or(DomError::SelectProtocol)?;
-        let select = match fact.select {
-            Some(Key::Existing(select)) => select,
-            None => return Ok(0),
-            Some(Key::Created(_)) => return Err(DomError::SelectProtocol.into()),
+        match fact.select {
+            Some(Key::Existing(select)) => Ok(Some(select)),
+            None => Ok(None),
+            Some(Key::Created(_)) => Err(DomError::SelectProtocol.into()),
+        }
+    }
+    pub fn option_index_with<E: From<DomError>>(
+        &self,
+        option: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, E> {
+        let Some(select) = self.nearest_option_select_with(option, step)? else {
+            return Ok(0);
         };
         self.find_option_with(select, step, |id, _| Ok(id == option))?
             .map(|(position, _)| position)

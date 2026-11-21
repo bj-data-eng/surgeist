@@ -8,17 +8,12 @@ use surgeist_bindings_js::{IntegerValue, conversion::declarations};
 use surgeist_dom::source::DomSourceEdit;
 use surgeist_html::bounded::select::select_type_value;
 
+mod form;
 mod strings;
+use form::FormControl;
 use strings::StringMember;
 
 const SELECT_REFLECTIONS: &[reflection::Member] = &[
-    (
-        &ascii(b"disabled"),
-        &ascii(b"get disabled"),
-        &ascii(b"set disabled"),
-        &ascii(b"disabled"),
-        Reflection::Boolean,
-    ),
     (
         &ascii(b"multiple"),
         &ascii(b"get multiple"),
@@ -49,7 +44,7 @@ const SELECT_REFLECTIONS: &[reflection::Member] = &[
     ),
 ];
 
-const OPTION_DISABLED: &[reflection::Member] = &[(
+const DISABLED: &[reflection::Member] = &[(
     &ascii(b"disabled"),
     &ascii(b"get disabled"),
     &ascii(b"set disabled"),
@@ -70,6 +65,8 @@ pub(super) fn install_select<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    reflection::install(scope, prototype, capture, Receiver::Select, DISABLED)?;
+    form::install(scope, prototype, capture, FormControl::Select)?;
     reflection::install(
         scope,
         prototype,
@@ -103,7 +100,8 @@ pub(super) fn install_option<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    reflection::install(scope, prototype, capture, Receiver::Option, OPTION_DISABLED)?;
+    reflection::install(scope, prototype, capture, Receiver::Option, DISABLED)?;
+    form::install(scope, prototype, capture, FormControl::Option)?;
     strings::install(scope, prototype, capture, StringMember::OptionLabel)?;
     reflection::install(
         scope,

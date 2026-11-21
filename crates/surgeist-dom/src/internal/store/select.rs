@@ -50,6 +50,13 @@ impl State {
     ) -> Result<usize, E> {
         self.family_index.option_index_with(option, step)
     }
+    pub(crate) fn nearest_option_select_with<E: From<DomError>>(
+        &self,
+        option: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<NodeId>, E> {
+        self.family_index.nearest_option_select_with(option, step)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

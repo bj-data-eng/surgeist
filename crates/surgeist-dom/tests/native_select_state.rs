@@ -1,4 +1,7 @@
 //! Literal HTML877d Select-family outcomes on the real canonical owner.
+#[path = "native_select_state/form_owner.rs"]
+mod form_owner;
+
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     Dom, DomBatch, DomCommit, DomError, DomSnapshot,

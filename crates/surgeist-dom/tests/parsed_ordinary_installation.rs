@@ -2629,9 +2629,9 @@ fn disabled_script_keeps_all_flags_preparation_document_nonce_and_real_parser_ca
 #[test]
 fn table_parser_form_pointer_preserves_nonancestor_form_owner() {
     // In-table form insertion pops that Form from the stack while retaining
-    // the parser form pointer. The later Input inside the cell belongs to it.
+    // the parser form pointer. Controls created inside the cell belong to it.
     let report = parse(HtmlSource::utf8(
-        "<!doctype html><table><form id=f><tr><td><input value=X></table>",
+        "<!doctype html><table><form id=f><tr><td><input value=X><select><option>A</select></table>",
     ));
     let (mut dom, environment) = setup();
     let result = install(&mut dom, report, environment);
@@ -2641,6 +2641,31 @@ fn table_parser_form_pointer_preserves_nonancestor_form_owner() {
     assert_ne!(node.parent(), Some(form));
     assert_eq!(node.as_input().unwrap().form_owner().unwrap(), Some(form));
     assert!(node.as_input().unwrap().state().parser_inserted());
+
+    let snapshot = result.snapshot();
+    let select = snapshot.node(element(&result, "select")).unwrap();
+    let option = snapshot.node(element(&result, "option")).unwrap();
+    assert_eq!(select.parent(), node.parent());
+    let select = select.as_select().unwrap();
+    assert!(select.state().parser_inserted());
+    assert_eq!(
+        select
+            .form_owner_with(|| Ok::<_, DomError>(()))
+            .unwrap()
+            .unwrap()
+            .id(),
+        form
+    );
+    assert_eq!(
+        option
+            .as_option()
+            .unwrap()
+            .form_owner_with(|| Ok::<_, DomError>(()))
+            .unwrap()
+            .unwrap()
+            .id(),
+        form
+    );
 }
 
 #[test]

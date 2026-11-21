@@ -22,6 +22,11 @@ pub(super) fn select_and_option_form_follow_native_owner() {
                         member.set !== undefined || !member.enumerable || !member.configurable)
                         return 'readonly form descriptors';
                 }
+                if (Object.keys(HTMLSelectElement.prototype).join() !==
+                        'disabled,form,multiple,name,required,size,type,selectedIndex,value' ||
+                    Object.keys(HTMLOptionElement.prototype).join() !==
+                        'disabled,form,label,defaultSelected,selected,value,text,index')
+                    return 'form declaration order';
                 const root = document.body;
                 const outer = root.appendChild(document.createElement('form'));
                 const named = root.appendChild(document.createElement('form'));
@@ -47,7 +52,12 @@ pub(super) fn select_and_option_form_follow_native_owner() {
                 }
 
                 const observed = [];
+                let duringConstruction;
                 class ObservedSelect extends HTMLSelectElement {
+                    constructor() {
+                        super();
+                        duringConstruction = [this.form, select.form, option.form];
+                    }
                     static observedAttributes = ['form'];
                     attributeChangedCallback() {
                         observed.push([this.form, this.firstChild.form]);
@@ -55,10 +65,20 @@ pub(super) fn select_and_option_form_follow_native_owner() {
                 }
                 customElements.define('x-observed-select-form', ObservedSelect, {extends: 'select'});
                 const watching = outer.appendChild(document.createElement('select', {is: 'x-observed-select-form'}));
+                if (duringConstruction?.[0] !== null || duringConstruction?.[1] !== outer ||
+                    duringConstruction?.[2] !== outer) return 'published associations during construction';
                 watching.appendChild(document.createElement('option'));
                 watching.setAttribute('form', 'renamed');
                 if (observed.length !== 1 || observed[0][0] !== named || observed[0][1] !== named)
                     return 'published association inside the original callback';
+                const destination = new Document();
+                if (destination.adoptNode(select) !== select || option.ownerDocument !== destination ||
+                    select.form !== null || option.form !== null) return 'adopted detached controls';
+                const adoptedForm = destination.createElementNS('http://www.w3.org/1999/xhtml', 'form');
+                destination.appendChild(adoptedForm);
+                adoptedForm.appendChild(select);
+                if (select.form !== adoptedForm || option.form !== adoptedForm)
+                    return 'canonical owner after adoption';
                 return 'ok';
             })()
         "#)?;

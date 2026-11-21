@@ -406,6 +406,8 @@ disabled attribute and exposes selected and index from the current DOM. Its
 defaultSelected reflects the selected attribute. Source applies selectedness
 changes and their native selectedcontent effects. Select.value reads the first
 selected Option and assigns through the native first-match selection edit.
+Select.form projects its native owner. Option.form follows its nearest Select
+under the HTML ancestor rules and projects that control's native owner.
 Option.value and label
 prefer their own attributes and use the same HTML-aware text as Option.text
 when those attributes are absent. Assigning Option.text replaces its ordinary

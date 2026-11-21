@@ -851,20 +851,22 @@ pub enum surgeist_dom::form::select::DomSelectTaskOutcome
 pub surgeist_dom::form::select::DomSelectTaskOutcome::SkippedTargetDestroyed
 pub surgeist_dom::form::select::DomSelectTaskOutcome::Updated
 pub struct surgeist_dom::form::select::DomOption<'a>
-impl surgeist_dom::form::select::DomOption<'_>
-pub fn surgeist_dom::form::select::DomOption<'_>::cached_select(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
-pub fn surgeist_dom::form::select::DomOption<'_>::id(self) -> surgeist_dom::identity::NodeId
-pub fn surgeist_dom::form::select::DomOption<'_>::index_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, E>
-pub fn surgeist_dom::form::select::DomOption<'_>::state(self) -> surgeist_dom::form::select::DomOptionState
-pub fn surgeist_dom::form::select::DomOption<'_>::visit_label_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>, emit: impl core::ops::function::FnMut(&[u16]) -> core::result::Result<(), E>) -> core::result::Result<(), E>
-pub fn surgeist_dom::form::select::DomOption<'_>::visit_text_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>, emit: impl core::ops::function::FnMut(&[u16]) -> core::result::Result<(), E>) -> core::result::Result<(), E>
-pub fn surgeist_dom::form::select::DomOption<'_>::visit_value_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>, emit: impl core::ops::function::FnMut(&[u16]) -> core::result::Result<(), E>) -> core::result::Result<(), E>
+impl<'a> surgeist_dom::form::select::DomOption<'a>
+pub fn surgeist_dom::form::select::DomOption<'a>::cached_select(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
+pub fn surgeist_dom::form::select::DomOption<'a>::form_owner_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::form::DomForm<'a>>, E>
+pub fn surgeist_dom::form::select::DomOption<'a>::id(self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::form::select::DomOption<'a>::index_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, E>
+pub fn surgeist_dom::form::select::DomOption<'a>::state(self) -> surgeist_dom::form::select::DomOptionState
+pub fn surgeist_dom::form::select::DomOption<'a>::visit_label_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>, emit: impl core::ops::function::FnMut(&[u16]) -> core::result::Result<(), E>) -> core::result::Result<(), E>
+pub fn surgeist_dom::form::select::DomOption<'a>::visit_text_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>, emit: impl core::ops::function::FnMut(&[u16]) -> core::result::Result<(), E>) -> core::result::Result<(), E>
+pub fn surgeist_dom::form::select::DomOption<'a>::visit_value_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>, emit: impl core::ops::function::FnMut(&[u16]) -> core::result::Result<(), E>) -> core::result::Result<(), E>
 pub struct surgeist_dom::form::select::DomOptionState
 impl surgeist_dom::form::select::DomOptionState
 pub fn surgeist_dom::form::select::DomOptionState::flags(self) -> surgeist_html::internal::elements::control_values::HtmlOptionFlags
 pub struct surgeist_dom::form::select::DomSelect<'a>
 impl<'a> surgeist_dom::form::select::DomSelect<'a>
 pub fn surgeist_dom::form::select::DomSelect<'a>::form_owner(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
+pub fn surgeist_dom::form::select::DomSelect<'a>::form_owner_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::form::DomForm<'a>>, E>
 pub fn surgeist_dom::form::select::DomSelect<'a>::id(self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::form::select::DomSelect<'a>::selected_index_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<usize>, E>
 pub fn surgeist_dom::form::select::DomSelect<'a>::state(self) -> &'a surgeist_dom::form::select::DomSelectState
