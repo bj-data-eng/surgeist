@@ -814,6 +814,16 @@
       "entries": ["HTMLLegendElement.obsolete"]
     },
     {
+      "id": "HTMLMarqueeElement.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "htmlmarqueeelement",
+      "block": 0,
+      "sha256": "18c5e0129aaaa561fa11394dfae4be21ee14c1ec71495fb8ed87a49f04ec1d46",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlmarqueeelement",
+      "entries": ["HTMLMarqueeElement"]
+    },
+    {
       "id": "ElementContentEditable.source",
       "path": "references/html-editability--877d6146487f.md",
       "anchor": "",
@@ -6805,6 +6815,125 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLMarqueeElement",
+      "kind": "interface",
+      "name": "HTMLMarqueeElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLMarqueeElement.constructor:0"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "behavior",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.behavior"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "bgColor",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.bgColor"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "direction",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.direction"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "height",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.height"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "hspace",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.hspace"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "long"},
+          "name": "loop",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.loop"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}, {"name": "ReflectDefault", "value": 6}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "scrollAmount",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.scrollAmount"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}, {"name": "ReflectDefault", "value": 85}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "scrollDelay",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.scrollDelay"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "trueSpeed",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.trueSpeed"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "vspace",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.vspace"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLMarqueeElement.width"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "start",
+          "arguments": [],
+          "id": "HTMLMarqueeElement.start:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "undefined"},
+          "name": "stop",
+          "arguments": [],
+          "id": "HTMLMarqueeElement.stop:0"
+        }
+      ],
+      "inherits": "HTMLElement"
     },
     {
       "id": "ElementContentEditable",
@@ -14379,6 +14508,218 @@
       "adapter": "htmllegendelement.obsolete.align.set",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.behavior/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.behavior.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.behavior/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.behavior.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.bgColor/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.bgcolor.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.bgColor/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.bgcolor.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.direction/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.direction.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.direction/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.direction.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.height/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.height.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.height/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.height.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.hspace/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.hspace.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "read_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.hspace/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.hspace.set",
+      "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "setter_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.loop/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.loop.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "marquee_loop_value_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.loop/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.loop.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "marquee_loop_setter_value_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.scrollAmount/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.scrollamount.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "read_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.scrollAmount/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.scrollamount.set",
+      "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "setter_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.scrollDelay/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.scrolldelay.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "read_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.scrollDelay/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.scrolldelay.set",
+      "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "setter_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.trueSpeed/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.truespeed.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.trueSpeed/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.truespeed.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.vspace/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.vspace.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "read_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.vspace/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.vspace.set",
+      "producers": [
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/marquee.rs", "symbol": "setter_value"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.width/get": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.width.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.width/set": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.width.set",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.start:0/call": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.start.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "start_marquee"}
+      ],
+      "requirements": []
+    },
+    "HTMLMarqueeElement.stop:0/call": {
+      "kind": "native",
+      "adapter": "htmlmarqueeelement.stop.call",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "stop_marquee"}
       ],
       "requirements": []
     },

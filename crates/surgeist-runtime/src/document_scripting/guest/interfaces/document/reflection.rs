@@ -19,6 +19,9 @@ use surgeist_html::bounded::attributes::{
     popover_keyword_with, table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
     template_shadow_root_slot_assignment_keyword_with,
 };
+use surgeist_html::bounded::marquee::{
+    HtmlMarqueeUnsignedReflection, marquee_loop_setter_value_with, marquee_loop_value_with,
+};
 use surgeist_html::bounded::numeric::{
     HtmlNumericParseError, integer_long_work_bound, parse_integer_long,
 };
@@ -48,6 +51,8 @@ pub(super) enum Reflection {
     SignedLongZero,
     SignedLongOne,
     SelectSize,
+    MarqueeUnsigned(HtmlMarqueeUnsignedReflection),
+    MarqueeLoop,
     TableSpan(TableSpan),
     TableScope,
 }
@@ -99,6 +104,7 @@ pub(super) enum Receiver {
     Font,
     Frameset,
     Legend,
+    Marquee,
     Li,
     OList,
     UList,
@@ -152,6 +158,13 @@ impl Receiver {
                 step()?;
                 html_element_is(node, "HTMLLegendElement")
             }
+            Self::Marquee => {
+                step()?;
+                node.as_element().is_some_and(|element| {
+                    !element.has_failed_construction_interface()
+                        && element.marquee_state().is_some()
+                })
+            }
             Self::Li => html_element_is(node, "HTMLLIElement"),
             Self::OList => html_element_is(node, "HTMLOListElement"),
             Self::UList => html_element_is(node, "HTMLUListElement"),
@@ -193,6 +206,7 @@ impl Receiver {
             Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
+            Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
             Self::Li => const { &ascii(b"HTMLLIElement required") },
             Self::OList => const { &ascii(b"HTMLOListElement required") },
             Self::UList => const { &ascii(b"HTMLUListElement required") },
@@ -420,6 +434,13 @@ impl Capture {
                         stored.map(|value| value.value()),
                         || read.step(),
                     )?),
+                    Reflection::MarqueeUnsigned(rule) => Reflected::Unsigned(
+                        rule.read_with(stored.map(|value| value.value()), || read.step())?,
+                    ),
+                    Reflection::MarqueeLoop => Reflected::Signed(marquee_loop_value_with(
+                        stored.map(|value| value.value()),
+                        || read.step(),
+                    )?),
                 }))
             })?;
             let Some(value) = value else {
@@ -496,7 +517,10 @@ impl Capture {
                     .transpose()?
             } else if matches!(
                 reflection,
-                Reflection::HeadingOffset | Reflection::SelectSize | Reflection::TableSpan(_)
+                Reflection::HeadingOffset
+                    | Reflection::SelectSize
+                    | Reflection::TableSpan(_)
+                    | Reflection::MarqueeUnsigned(_)
             ) {
                 let converted = self
                     .callbacks
@@ -516,6 +540,17 @@ impl Capture {
                 let value = match reflection {
                     Reflection::HeadingOffset => heading_offset_setter_value(value),
                     Reflection::SelectSize => select_size_reflection_setter_value(value),
+                    Reflection::MarqueeUnsigned(rule) => {
+                        let current = self.callbacks.with_read(&owner, &events, |read, _| {
+                            receiver.matches(read.node(id)?, || read.step())
+                        })?;
+                        if !current {
+                            return Ok(Completion::Throw(
+                                scope.type_error(receiver.error_message())?,
+                            ));
+                        }
+                        rule.setter_value(value)
+                    }
                     _ => HtmlTableSpanRule::reflected_setter_value(value),
                 };
                 Some(copy_numeric_attribute(
@@ -525,7 +560,7 @@ impl Capture {
                 )?)
             } else if matches!(
                 reflection,
-                Reflection::SignedLongZero | Reflection::SignedLongOne
+                Reflection::SignedLongZero | Reflection::SignedLongOne | Reflection::MarqueeLoop
             ) {
                 let converted = self
                     .callbacks
@@ -540,6 +575,34 @@ impl Capture {
                 scope.check_active()?;
                 let IntegerValue::Long(value) = *converted.get() else {
                     return Err(Error::BackendUnavailable.into());
+                };
+                let value = if matches!(reflection, Reflection::MarqueeLoop) {
+                    let Some(change) = self.callbacks.with_read(&owner, &events, |read, _| {
+                        let node = read.node(id)?;
+                        if !receiver.matches(node, || read.step())? {
+                            return Ok(None);
+                        }
+                        let attrs = node.attributes().ok_or(DomError::WrongNodeKind)?;
+                        let stored =
+                            attrs.get_null_namespace_attribute_with(attribute, || read.step())?;
+                        marquee_loop_setter_value_with(
+                            value,
+                            stored.map(|value| value.value()),
+                            || read.step(),
+                        )
+                        .map(Some)
+                    })?
+                    else {
+                        return Ok(Completion::Throw(
+                            scope.type_error(receiver.error_message())?,
+                        ));
+                    };
+                    let Some(change) = change else {
+                        return Ok(Completion::Undefined);
+                    };
+                    change
+                } else {
+                    value
                 };
                 Some(copy_numeric_attribute(
                     &owner,
@@ -580,7 +643,7 @@ impl Capture {
                 } else {
                     if matches!(
                         receiver,
-                        Receiver::Body | Receiver::Frameset | Receiver::Legend
+                        Receiver::Body | Receiver::Frameset | Receiver::Legend | Receiver::Marquee
                     ) {
                         let current = self.callbacks.with_read(&owner, &events, |read, _| {
                             receiver.matches(read.node(id)?, || read.step())

@@ -459,6 +459,37 @@ class DescriptionTests(unittest.TestCase):
         form["type"] = form["type"]["inner"]
         self.rejected("source declaration mismatch: HTMLLegendElement.source")
 
+    def test_marquee_primary_preserves_signed_loop_and_unsigned_defaults(self):
+        marquee = self.definition("HTMLMarqueeElement")
+        self.assertEqual(marquee["inherits"], "HTMLElement")
+        ctor, *attributes, start, stop = marquee["members"]
+        self.assertEqual(ctor["id"], "HTMLMarqueeElement.constructor:0")
+        self.assertEqual([member["name"] for member in attributes],
+                         ["behavior", "bgColor", "direction", "height", "hspace", "loop",
+                          "scrollAmount", "scrollDelay", "trueSpeed", "vspace", "width"])
+        for method, name in [(start, "start"), (stop, "stop")]:
+            self.assertEqual((method["name"], method["arguments"], method["attributes"], method["type"]["name"]),
+                             (name, [], [], "undefined"))
+        model = g.lower_values(self.data)
+        for name, kind, default in [("hspace", "UnsignedLong", None),
+                                    ("loop", "Long", None),
+                                    ("scrollAmount", "UnsignedLong", 6),
+                                    ("scrollDelay", "UnsignedLong", 85),
+                                    ("vspace", "UnsignedLong", None)]:
+            with self.subTest(member=name):
+                member = self.member("HTMLMarqueeElement." + name)
+                self.assertEqual(g.conversion_type(member["type"], model),
+                                 ("IntegerValue", "IntegerType",
+                                  f"IntegerType::new(IntegerKind::{kind}, IntegerMode::Wrap)"))
+                expected = [{"name": "CEReactions"}]
+                if name != "loop":
+                    expected.append({"name": "Reflect"})
+                if default is not None:
+                    expected.append({"name": "ReflectDefault", "value": default})
+                self.assertEqual(member["attributes"], expected)
+        self.member("HTMLMarqueeElement.scrollAmount")["attributes"][-1]["value"] = 0
+        self.rejected("source declaration mismatch: HTMLMarqueeElement.source")
+
     def test_selected_pi_constructor_and_factory_are_both_described(self):
         pi = self.member("ProcessingInstruction.constructor:0")
         self.assertEqual(pi["arguments"][0]["name"], "target")

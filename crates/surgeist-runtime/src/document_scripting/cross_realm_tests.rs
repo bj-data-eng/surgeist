@@ -23,6 +23,7 @@ mod inline_style;
 mod li_reflections;
 mod list_compact;
 mod list_reflections;
+mod marquee;
 mod meta_reflection;
 mod nested_dispatch;
 mod node_clone;
@@ -452,6 +453,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     list_reflections::list_members_reflect_canonical_attributes();
     details_reflections::details_members_reflect_canonical_attributes();
     details_reflections::details_properties_preserve_native_and_web_idl_contracts();
+    marquee::stop_marquee_preserves_native_state_on_source_work_refusal();
     document_tree_properties::document_tree_properties_select_and_forward_native_attributes();
     document_tree_properties::document_tree_properties_preserve_selection_conversion_and_source_contracts();
     document_legacy_entrypoints::document_legacy_entrypoints_preserve_tree_and_constructor_identity(
