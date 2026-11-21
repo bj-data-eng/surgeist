@@ -242,6 +242,15 @@ impl Process {
     }
 }
 
+/// A point-in-time observation of the engine's managed heap in bytes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HeapObservation {
+    /// Bytes in use by the managed heap at observation time.
+    pub used_bytes: usize,
+    /// The current heap size limit reported by the engine.
+    pub limit_bytes: usize,
+}
+
 /// Exclusive access to an execution owner's heap.
 pub struct Execution<'process> {
     engine: &'process mut dyn backend::Engine,
@@ -321,6 +330,12 @@ impl Execution<'_> {
     /// not surface rejected promises; host rejection reporting is separate.
     pub fn checkpoint(&mut self) -> Result<(), Error> {
         self.engine.checkpoint()
+    }
+
+    /// Observe the current managed heap without executing guest code.
+    /// The result counts only the provider's managed heap.
+    pub fn observe_heap(&mut self) -> Result<HeapObservation, Error> {
+        self.engine.observe_heap()
     }
 
     /// Advises the engine of memory pressure and reaps abandoned Rust roots.

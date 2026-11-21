@@ -168,9 +168,111 @@ pub enum WorkerResult {
     Failure(WorkerFailure),
 }
 
+/// Resource observations carried by the worker before it relinquishes custody.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkerResources {
+    pub native: NativeResourceEvidence,
+    pub engine: EngineResourceEvidence,
+}
+
+/// Root accounting of the one Runtime guest attachment.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum NativeResourceEvidence {
+    /// No guest Ledger was published through an attachment. Preparation may
+    /// have attempted work before returning a refusal.
+    NotAttached {},
+    /// An attachment existed but could not supply its accounting observation.
+    Unavailable {},
+    Measured(NativeLedgerUsage),
+}
+
+/// Inclusive Runtime adapter work and retained backing for one attachment.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "NativeLedgerFields")]
+pub struct NativeLedgerUsage {
+    adapter_work: u64,
+    live_backing_bytes: u64,
+    peak_backing_bytes: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NativeLedgerFields {
+    adapter_work: u64,
+    live_backing_bytes: u64,
+    peak_backing_bytes: u64,
+}
+
+impl TryFrom<NativeLedgerFields> for NativeLedgerUsage {
+    type Error = &'static str;
+
+    fn try_from(fields: NativeLedgerFields) -> Result<Self, Self::Error> {
+        Self::new(
+            fields.adapter_work,
+            fields.live_backing_bytes,
+            fields.peak_backing_bytes,
+        )
+        .ok_or("native live backing exceeds its peak")
+    }
+}
+
+impl NativeLedgerUsage {
+    /// Create a report whose live backing is within the observed peak.
+    #[must_use]
+    pub const fn new(adapter_work: u64, live: u64, peak: u64) -> Option<Self> {
+        if live > peak {
+            return None;
+        }
+        Some(Self {
+            adapter_work,
+            live_backing_bytes: live,
+            peak_backing_bytes: peak,
+        })
+    }
+
+    pub const fn adapter_work(&self) -> u64 {
+        self.adapter_work
+    }
+
+    pub const fn live_backing_bytes(&self) -> u64 {
+        self.live_backing_bytes
+    }
+
+    pub const fn peak_backing_bytes(&self) -> u64 {
+        self.peak_backing_bytes
+    }
+}
+
+/// Engine heap policy and its optional point sample during execution ownership.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum EngineResourceEvidence {
+    /// No engine policy was selected for this result.
+    Unavailable {},
+    /// V8's default policy was selected. Refusal may preclude an observation.
+    V8Default { sample: Option<HeapSample> },
+}
+
+/// Bytes reported by the managed heap. Process memory has separate custody.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeapSample {
+    pub used_bytes: u64,
+    pub limit_bytes: u64,
+}
+
+/// Complete worker evidence, subject to supervisor qualification.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkerReport {
+    pub result: WorkerResult,
+    pub resources: WorkerResources,
+}
+
 #[derive(Clone, Copy, Serialize, Deserialize)]
 enum Version {
-    V1,
+    V2,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -182,10 +284,11 @@ struct Request<T> {
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Response<T, R> {
+struct Response<T, R, M> {
     version: Version,
     fixture: T,
     result: R,
+    resources: M,
 }
 
 #[derive(Debug)]
@@ -264,7 +367,7 @@ pub(super) fn write_request(
     write_frame(
         writer,
         &Request {
-            version: Version::V1,
+            version: Version::V2,
             fixture,
         },
         max_payload_bytes,
@@ -286,15 +389,16 @@ pub fn read_request(
 pub fn write_report(
     writer: &mut impl Write,
     fixture: &FixtureId,
-    result: &WorkerResult,
+    report: &WorkerReport,
     max_payload_bytes: u32,
 ) -> Result<(), ProtocolError> {
     write_frame(
         writer,
         &Response {
-            version: Version::V1,
+            version: Version::V2,
             fixture,
-            result,
+            result: &report.result,
+            resources: &report.resources,
         },
         max_payload_bytes,
     )
@@ -306,10 +410,14 @@ pub(super) fn read_report(
     reader: &mut impl Read,
     fixture: &FixtureId,
     max_payload_bytes: u32,
-) -> Result<WorkerResult, ProtocolError> {
-    let response: Response<FixtureId, WorkerResult> = read_one(reader, max_payload_bytes)?;
+) -> Result<WorkerReport, ProtocolError> {
+    let response: Response<FixtureId, WorkerResult, WorkerResources> =
+        read_one(reader, max_payload_bytes)?;
     if response.fixture != *fixture {
         return Err(ProtocolError::FixtureMismatch);
     }
-    Ok(response.result)
+    Ok(WorkerReport {
+        result: response.result,
+        resources: response.resources,
+    })
 }

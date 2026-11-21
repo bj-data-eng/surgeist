@@ -838,11 +838,15 @@ pub fn surgeist_bindings_js::Execution<'_>::create_realm(&mut self) -> core::res
 pub fn surgeist_bindings_js::Execution<'_>::create_realm_funded<B: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, fund: impl core::ops::function::FnOnce(surgeist_bindings_js::preparation::Request) -> core::result::Result<B, E>) -> core::result::Result<surgeist_bindings_js::Realm, E>
 pub fn surgeist_bindings_js::Execution<'_>::in_realm<T>(&mut self, realm: &surgeist_bindings_js::Realm, action: impl for<'scope> core::ops::function::FnOnce(&mut surgeist_bindings_js::Scope<'scope>) -> core::result::Result<T, surgeist_bindings_js::Error>) -> core::result::Result<T, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Execution<'_>::memory_pressure(&mut self)
+pub fn surgeist_bindings_js::Execution<'_>::observe_heap(&mut self) -> core::result::Result<surgeist_bindings_js::HeapObservation, surgeist_bindings_js::Error>
 impl core::ops::drop::Drop for surgeist_bindings_js::Execution<'_>
 pub fn surgeist_bindings_js::Execution<'_>::drop(&mut self)
 pub struct surgeist_bindings_js::FunctionMetadata<'name>
 pub surgeist_bindings_js::FunctionMetadata::length: u32
 pub surgeist_bindings_js::FunctionMetadata::name: &'name [u16]
+pub struct surgeist_bindings_js::HeapObservation
+pub surgeist_bindings_js::HeapObservation::limit_bytes: usize
+pub surgeist_bindings_js::HeapObservation::used_bytes: usize
 pub struct surgeist_bindings_js::HostFailure
 impl surgeist_bindings_js::HostFailure
 pub fn surgeist_bindings_js::HostFailure::cause<E: core::error::Error + 'static>(&self) -> core::option::Option<&E>

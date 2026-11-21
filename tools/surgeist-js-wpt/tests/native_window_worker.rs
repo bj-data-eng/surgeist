@@ -1,10 +1,13 @@
 //! Process-level qualification of the actual Runtime-owned Window worker.
 
+use serde::Deserialize;
 use std::{collections::BTreeMap, env, path::PathBuf, sync::atomic::AtomicBool, time::Duration};
+use surgeist_fuzz::worker::read_frame;
 use surgeist_js_wpt::{
-    CleanupStatus, FixtureId, GuestDiagnostic, HarnessStatus, MemoryPolicy, ProcessExit,
-    ProcessStop, RelativePath, Report, Run, SourceRevision, SubtestStatus, WorkerFailure,
-    WorkerLimits, WorkerResult, execution_capabilities, run,
+    CleanupStatus, EngineResourceEvidence, FixtureId, GuestDiagnostic, HarnessStatus, MemoryPolicy,
+    NativeResourceEvidence, ProcessExit, ProcessStop, RelativePath, Report, Run, SourceRevision,
+    SubtestStatus, WorkerFailure, WorkerLimits, WorkerReport, WorkerResult, execution_capabilities,
+    run,
 };
 
 const NATIVE_WINDOW: &str = "e1e9b737e7e543f42be6afdd19b498d66525c99e";
@@ -49,15 +52,23 @@ fn invoke(fixture: &FixtureId, deadline: Duration) -> Run {
     assert_eq!(&run.fixture, fixture);
     assert_eq!(run.process.cleanup, CleanupStatus::Complete, "{run:?}");
     assert!(run.process.stdout.eof && run.process.stderr.eof, "{run:?}");
+    assert_eq!(run.process_memory_policy, MemoryPolicy::Unbounded);
+    assert!(!run.process_capabilities.hard_memory_limit);
+    assert!(!run.process_capabilities.sampled_rss);
+    assert_eq!(run.process.sampled_peak_rss_bytes, None);
     run
 }
 
 fn received(fixture: &FixtureId) -> WorkerResult {
+    received_report(fixture).result
+}
+
+fn received_report(fixture: &FixtureId) -> WorkerReport {
     let run = invoke(fixture, Duration::from_secs(10));
     assert_eq!(run.process.stop, ProcessStop::Exited, "{run:?}");
     assert_eq!(run.process.exit, ProcessExit::Success, "{run:?}");
     match run.report {
-        Report::Received(result) => result,
+        Report::Received(report) => report,
         _ => panic!("no qualified result: {run:?}"),
     }
 }
@@ -135,13 +146,21 @@ fn checks_the_whole_fixture_identity() {
         .unwrap(),
         fixture(NATIVE_WINDOW, "native-window", "#different-variant"),
     ] {
-        let result = received(&invalid);
+        let report = received_report(&invalid);
         assert!(
             matches!(
-                result,
+                report.result,
                 WorkerResult::Failure(WorkerFailure::UnavailableCapability { .. })
             ),
-            "{result:?}"
+            "{report:?}"
+        );
+        assert_eq!(
+            report.resources.native,
+            NativeResourceEvidence::NotAttached {}
+        );
+        assert_eq!(
+            report.resources.engine,
+            EngineResourceEvidence::Unavailable {}
         );
     }
 }
@@ -174,13 +193,92 @@ fn canonical_source_refusal_keeps_a_qualified_native_result() {
     if !execution_capabilities().process_groups {
         return;
     }
-    let result = received(&fixture(SOURCE_REFUSAL, "source-refusal", ""));
+    let report = received_report(&fixture(SOURCE_REFUSAL, "source-refusal", ""));
     assert!(
         matches!(
-            &result,
+            &report.result,
             WorkerResult::Failure(WorkerFailure::NativeRefusal { owner, code, .. })
                 if owner == "runtime" && code == "source-work-limit"
         ),
-        "{result:?}"
+        "{report:?}"
     );
+    assert_eq!(
+        report.resources.engine,
+        EngineResourceEvidence::V8Default { sample: None }
+    );
+    let NativeResourceEvidence::Measured(usage) = &report.resources.native else {
+        panic!("expected native accounting after refusal: {report:?}");
+    };
+    assert!(usage.adapter_work() > 0);
+    assert_eq!(usage.live_backing_bytes(), 0);
+    assert!(usage.peak_backing_bytes() > 0);
+}
+
+#[derive(Debug, Deserialize)]
+struct ResourceFrame {
+    resources: ResourceEvidence,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResourceEvidence {
+    native: NativeEvidence,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "status", rename_all = "kebab-case")]
+enum NativeEvidence {
+    NotAttached,
+    Measured {
+        adapter_work: u64,
+        live_backing_bytes: u64,
+        peak_backing_bytes: u64,
+    },
+}
+
+fn resource_evidence(fixture: &FixtureId) -> (NativeEvidence, EngineResourceEvidence) {
+    let run = invoke(fixture, Duration::from_secs(10));
+    assert_eq!(run.process.stop, ProcessStop::Exited, "{run:?}");
+    assert_eq!(run.process.exit, ProcessExit::Success, "{run:?}");
+    let frame: ResourceFrame = read_frame(&mut run.process.stdout.bytes.as_slice(), 32_764)
+        .expect("the actual terminal frame carries native resource evidence")
+        .expect("the worker wrote a terminal frame");
+    let Report::Received(report) = run.report else {
+        panic!("no qualified result: {run:?}");
+    };
+    (frame.resources.native, report.resources.engine)
+}
+
+#[test]
+fn native_resource_evidence_reports_actual_work_and_teardown() {
+    if !execution_capabilities().process_groups {
+        return;
+    }
+    let (completed, engine) = resource_evidence(&fixture(NATIVE_WINDOW, "native-window", ""));
+    let NativeEvidence::Measured {
+        adapter_work,
+        live_backing_bytes,
+        peak_backing_bytes,
+    } = completed
+    else {
+        panic!("expected native accounting after execution: {completed:?}");
+    };
+    assert!(adapter_work > 0);
+    assert!(peak_backing_bytes > 0);
+    assert_eq!(live_backing_bytes, 0);
+    assert!(
+        matches!(&engine, EngineResourceEvidence::V8Default { sample: Some(sample) }
+            if sample.used_bytes > 0 && sample.limit_bytes > 0),
+        "{engine:?}"
+    );
+
+    let (refused, engine) = resource_evidence(&fixture(
+        NATIVE_WINDOW,
+        "native-window",
+        "?scripting=disabled",
+    ));
+    assert!(
+        matches!(refused, NativeEvidence::NotAttached),
+        "{refused:?}"
+    );
+    assert_eq!(engine, EngineResourceEvidence::V8Default { sample: None });
 }

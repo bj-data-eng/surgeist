@@ -13,10 +13,11 @@ use std::{
 };
 
 use surgeist_js_wpt::{
-    CleanupStatus, ExecutionError, FixtureId, FixtureUrlError, GuestDiagnostic, HarnessResult,
-    HarnessStatus, MemoryPolicy, OutputStream, ProcessExit, ProcessStop, ProtocolError,
-    RelativePath, Report, Run, SourceRevision, StartError, Subtest, SubtestStatus, WorkerFailure,
-    WorkerLimits, WorkerResult, execution_capabilities, read_request, run, write_report,
+    CleanupStatus, EngineResourceEvidence, ExecutionError, FixtureId, FixtureUrlError,
+    GuestDiagnostic, HarnessResult, HarnessStatus, MemoryPolicy, NativeResourceEvidence,
+    OutputStream, ProcessExit, ProcessStop, ProtocolError, RelativePath, Report, Run,
+    SourceRevision, StartError, Subtest, SubtestStatus, WorkerFailure, WorkerLimits, WorkerReport,
+    WorkerResources, WorkerResult, execution_capabilities, read_request, run, write_report,
 };
 
 const REVISION: &str = "69f2bba61ce7e9469ccbce53de4644a89f6b7dff";
@@ -131,7 +132,8 @@ fn received(run: &Run, expected: &WorkerResult) {
     assert_eq!(run.process.stop, ProcessStop::Exited);
     assert_eq!(run.process.exit, ProcessExit::Success);
     assert!(
-        matches!(&run.report, Report::Received(actual) if actual == expected),
+        matches!(&run.report, Report::Received(actual)
+            if &actual.result == expected && actual.resources == controlled_resources()),
         "{run:?}"
     );
 }
@@ -225,7 +227,16 @@ fn verify_worker(cwd: &Path) {
     assert!(matches!(output_over.report, Report::TransportFailed));
 
     for mode in [
-        "missing", "partial", "version", "bad-path", "trailing", "extra", "mismatch",
+        "missing",
+        "partial",
+        "version",
+        "bad-path",
+        "invalid-ledger",
+        "contradictory-native",
+        "contradictory-engine",
+        "trailing",
+        "extra",
+        "mismatch",
     ] {
         let run = invoke(cwd, mode, default_limits(), &cancel).unwrap();
         clean(&run);
@@ -237,7 +248,12 @@ fn verify_worker(cwd: &Path) {
         assert!(
             match mode {
                 "missing" => matches!(error, ProtocolError::MissingFrame),
-                "partial" | "version" | "bad-path" => matches!(error, ProtocolError::Frame(_)),
+                "partial"
+                | "version"
+                | "bad-path"
+                | "invalid-ledger"
+                | "contradictory-native"
+                | "contradictory-engine" => matches!(error, ProtocolError::Frame(_)),
                 "trailing" | "extra" => matches!(error, ProtocolError::TrailingData),
                 "mismatch" => matches!(error, ProtocolError::FixtureMismatch),
                 _ => false,
@@ -371,8 +387,28 @@ fn start_descendant() {
 
 fn raw_report(version: &str, path: &str) -> String {
     format!(
-        r#"{{"version":"{version}","fixture":{{"revision":"{REVISION}","path":"{path}","url":"{URL}"}},"result":{{"harness":{{"status":"OK","diagnostic":{{"message":null,"stack":null}},"subtests":[{{"index":0,"name":[55296],"status":"NOTRUN","diagnostic":{{"message":null,"stack":[]}}}}]}}}}}}"#
+        r#"{{"version":"{version}","fixture":{{"revision":"{REVISION}","path":"{path}","url":"{URL}"}},"result":{{"harness":{{"status":"OK","diagnostic":{{"message":null,"stack":null}},"subtests":[{{"index":0,"name":[55296],"status":"NOTRUN","diagnostic":{{"message":null,"stack":[]}}}}]}}}},"resources":{{"native":{{"status":"not-attached"}},"engine":{{"status":"unavailable"}}}}}}"#
     )
+}
+
+fn controlled_resources() -> WorkerResources {
+    WorkerResources {
+        native: NativeResourceEvidence::NotAttached {},
+        engine: EngineResourceEvidence::Unavailable {},
+    }
+}
+
+fn write_result(output: &mut impl Write, fixture: &FixtureId, result: &WorkerResult) {
+    write_report(
+        output,
+        fixture,
+        &WorkerReport {
+            result: result.clone(),
+            resources: controlled_resources(),
+        },
+        MAX_FRAME,
+    )
+    .unwrap();
 }
 
 fn write_raw(output: &mut impl Write, json: &[u8]) {
@@ -388,50 +424,67 @@ fn worker(mode: &str) {
     let mut stdout = io::stdout().lock();
     let mixed = mixed_result(HarnessStatus::Error);
     if let Some(failure) = worker_failure(mode) {
-        write_report(
-            &mut stdout,
-            &identity,
-            &WorkerResult::Failure(failure),
-            MAX_FRAME,
-        )
-        .unwrap();
+        write_result(&mut stdout, &identity, &WorkerResult::Failure(failure));
         return;
     }
     match mode {
         "mixed" => {
             io::stderr().write_all(b"controlled diagnostic").unwrap();
-            write_report(&mut stdout, &identity, &mixed, MAX_FRAME).unwrap();
+            write_result(&mut stdout, &identity, &mixed);
         }
         "harness-timeout" => {
-            write_report(
+            write_result(
                 &mut stdout,
                 &identity,
                 &mixed_result(HarnessStatus::Timeout),
-                MAX_FRAME,
-            )
-            .unwrap();
+            );
         }
-        "raw-result" => write_raw(&mut stdout, raw_report("V1", FIXTURE).as_bytes()),
+        "raw-result" => write_raw(&mut stdout, raw_report("V2", FIXTURE).as_bytes()),
         "missing" => {}
         "partial" => stdout.write_all(&[0, 0, 0, 8, b'{']).unwrap(),
-        "version" => write_raw(&mut stdout, raw_report("V2", FIXTURE).as_bytes()),
-        "bad-path" => write_raw(&mut stdout, raw_report("V1", "../bad.js").as_bytes()),
+        "version" => write_raw(&mut stdout, raw_report("V1", FIXTURE).as_bytes()),
+        "bad-path" => write_raw(&mut stdout, raw_report("V2", "../bad.js").as_bytes()),
+        "invalid-ledger" => write_raw(
+            &mut stdout,
+            raw_report("V2", FIXTURE)
+                .replace(
+                    r#""status":"not-attached""#,
+                    r#""status":"measured","adapter_work":2,"live_backing_bytes":4,"peak_backing_bytes":3"#,
+                )
+                .as_bytes(),
+        ),
+        "contradictory-native" => write_raw(
+            &mut stdout,
+            raw_report("V2", FIXTURE)
+                .replace(
+                    r#""status":"not-attached""#,
+                    r#""status":"not-attached","adapter_work":2"#,
+                )
+                .as_bytes(),
+        ),
+        "contradictory-engine" => write_raw(
+            &mut stdout,
+            raw_report("V2", FIXTURE)
+                .replace(
+                    r#""status":"unavailable""#,
+                    r#""status":"unavailable","sample":{"used_bytes":4,"limit_bytes":5}"#,
+                )
+                .as_bytes(),
+        ),
         "trailing" => {
-            write_report(&mut stdout, &identity, &mixed, MAX_FRAME).unwrap();
+            write_result(&mut stdout, &identity, &mixed);
             stdout.write_all(b"x").unwrap();
         }
         "extra" => {
-            write_report(&mut stdout, &identity, &mixed, MAX_FRAME).unwrap();
-            write_report(&mut stdout, &identity, &mixed, MAX_FRAME).unwrap();
+            write_result(&mut stdout, &identity, &mixed);
+            write_result(&mut stdout, &identity, &mixed);
         }
         "mismatch" => {
-            write_report(
+            write_result(
                 &mut stdout,
                 &fixture("/dom/controlled.window.html?other"),
                 &mixed,
-                MAX_FRAME,
-            )
-            .unwrap();
+            );
         }
         "stderr-overflow" => {
             io::stderr().write_all(&[b'x'; 1025]).unwrap();
@@ -439,12 +492,12 @@ fn worker(mode: &str) {
         }
 
         "nonzero" => {
-            write_report(&mut stdout, &identity, &mixed, MAX_FRAME).unwrap();
+            write_result(&mut stdout, &identity, &mixed);
             exit(17);
         }
         "abort" => std::process::abort(),
         "reply-then-hang" => {
-            write_report(&mut stdout, &identity, &mixed, MAX_FRAME).unwrap();
+            write_result(&mut stdout, &identity, &mixed);
             park();
         }
         "descendant" => {

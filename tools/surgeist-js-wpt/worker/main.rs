@@ -11,14 +11,17 @@ use surgeist_bindings_js::{Error, Exception, ExceptionPhase, Primitive, Scope, V
 use surgeist_dom::{DomError, hosted::DomHostedError};
 use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_js_wpt::{
-    GuestDiagnostic, HarnessResult, HarnessStatus, Subtest, SubtestStatus, WorkerFailure,
-    WorkerResult, read_request, write_report,
+    EngineResourceEvidence, GuestDiagnostic, HarnessResult, HarnessStatus, HeapSample,
+    NativeLedgerUsage, NativeResourceEvidence, Subtest, SubtestStatus, WorkerFailure, WorkerReport,
+    WorkerResources, WorkerResult, read_request, write_report,
 };
+use surgeist_ledger::ProfileMode;
 use surgeist_runtime::{
     DomSession,
     document_scripting::{
-        DocumentGuestEventError, DocumentScriptError, DocumentScriptHost,
-        DocumentScriptNativeError, DocumentScriptPermit, PreparedDocumentScriptHost,
+        DocumentGuestAccounting, DocumentGuestEventError, DocumentGuestResource, DocumentGuestWork,
+        DocumentScriptError, DocumentScriptHost, DocumentScriptNativeError, DocumentScriptPermit,
+        PreparedDocumentScriptHost,
     },
     event::DomEventDispatcher,
     hosted::DomHostedRuntimeError,
@@ -44,17 +47,21 @@ fn main() -> ExitCode {
 
 fn serve() -> Result<(), Box<dyn StdError>> {
     let identity = read_request(&mut io::stdin().lock(), REQUEST_PAYLOAD_BYTES)?;
-    let result = match fixtures::resolve(&identity) {
+    let report = match fixtures::resolve(&identity) {
         Some(fixture) => run_case(fixture)?,
-        None => unavailable("fixture identity absent from worker inventory"),
+        None => without_attachment(
+            unavailable("fixture identity absent from worker inventory"),
+            EngineResourceEvidence::Unavailable {},
+        ),
     };
     let mut output = io::stdout().lock();
-    write_report(&mut output, &identity, &result, RESPONSE_PAYLOAD_BYTES)?;
+    write_report(&mut output, &identity, &report, RESPONSE_PAYLOAD_BYTES)?;
     output.flush()?;
     Ok(())
 }
 
-fn run_case(fixture: fixtures::Fixture) -> Result<WorkerResult, Box<dyn StdError>> {
+fn run_case(fixture: fixtures::Fixture) -> Result<WorkerReport, Box<dyn StdError>> {
+    let selected_heap = EngineResourceEvidence::V8Default { sample: None };
     let cancellation = Arc::new(AtomicBool::new(false));
     let mut session = DomSession::new(policy::dom()?, policy::session())?;
     let mut hosted = session.hosted_execution();
@@ -69,8 +76,15 @@ fn run_case(fixture: fixtures::Fixture) -> Result<WorkerResult, Box<dyn StdError
         policy::SCRIPT_STORAGE_BYTES,
         cancellation,
     ) {
-        Ok(prepared) => prepared,
-        Err(failure) => return Ok(native_refusal(&failure.error)),
+        Ok(prepared) => {
+            prepared.with_guest_accounting_profile(ProfileMode::Summary { timing: false })
+        }
+        Err(failure) => {
+            return Ok(without_attachment(
+                native_refusal(&failure.error),
+                selected_heap,
+            ));
+        }
     };
     let mut script = match prepared.enable_with_guest_event_registry(
         top,
@@ -84,14 +98,21 @@ fn run_case(fixture: fixtures::Fixture) -> Result<WorkerResult, Box<dyn StdError
     ) {
         Ok(script) => script,
         Err(failure) => match failure.error {
-            DocumentGuestEventError::Document(error) => return script_failure(error),
-            other => return Ok(guest_event_failure(&other)),
+            DocumentGuestEventError::Document(error) => {
+                return script_failure(error)
+                    .map(|result| without_attachment(result, selected_heap));
+            }
+            other => {
+                return Ok(without_attachment(
+                    guest_event_failure(&other),
+                    selected_heap,
+                ));
+            }
         },
     };
 
-    let result = evaluate(&mut script, fixture.source);
-    drop(script.stop());
-    match result {
+    let accounting = script.guest_accounting();
+    let result = match evaluate(&mut script, fixture.source) {
         Ok(Some(result)) => Ok(result),
         Ok(None) => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -99,7 +120,57 @@ fn run_case(fixture: fixtures::Fixture) -> Result<WorkerResult, Box<dyn StdError
         )
         .into()),
         Err(error) => script_failure(error),
+    };
+    let engine = heap_evidence(&mut script);
+    drop(script.stop());
+    Ok(WorkerReport {
+        result: result?,
+        resources: WorkerResources {
+            native: native_evidence(accounting.as_ref()),
+            engine,
+        },
+    })
+}
+
+fn without_attachment(result: WorkerResult, engine: EngineResourceEvidence) -> WorkerReport {
+    WorkerReport {
+        result,
+        resources: WorkerResources {
+            native: NativeResourceEvidence::NotAttached {},
+            engine,
+        },
     }
+}
+
+fn native_evidence(accounting: Option<&DocumentGuestAccounting>) -> NativeResourceEvidence {
+    let Some(report) = accounting.and_then(|account| account.snapshot().ok().flatten()) else {
+        return NativeResourceEvidence::Unavailable {};
+    };
+    let Some(root) = report.scopes.first() else {
+        return NativeResourceEvidence::Unavailable {};
+    };
+    let backing = DocumentGuestResource::BackingBytes;
+    NativeLedgerUsage::new(
+        root.usage.work(DocumentGuestWork::Adapter),
+        root.usage.live(backing),
+        root.usage.peak(backing),
+    )
+    .map_or(
+        NativeResourceEvidence::Unavailable {},
+        NativeResourceEvidence::Measured,
+    )
+}
+
+fn heap_evidence(host: &mut DocumentScriptHost) -> EngineResourceEvidence {
+    let sample = (|| {
+        let permit = host.permit().ok()?;
+        let observation = host.observe_engine_heap(&permit).ok()?;
+        Some(HeapSample {
+            used_bytes: u64::try_from(observation.used_bytes).ok()?,
+            limit_bytes: u64::try_from(observation.limit_bytes).ok()?,
+        })
+    })();
+    EngineResourceEvidence::V8Default { sample }
 }
 
 fn evaluate(
