@@ -221,21 +221,38 @@ impl PublicEventBindings {
         let conversion_host = script
             .preparation
             .conversion_host(ConversionOrigin::General);
-        let (realm, public) =
-            script
-                .process
-                .execution()
-                .finish_window_realm(pending, |scope, target| {
-                    Self::install_in_realm(
-                        scope,
-                        target,
-                        owner,
-                        permit,
-                        admission,
-                        (inbox, registry, global),
-                        conversion_host,
+        let (realm, public) = script
+            .process
+            .execution()
+            .finish_window_realm(pending, |scope, target| {
+                Self::install_in_realm(
+                    scope,
+                    target,
+                    owner,
+                    permit,
+                    admission,
+                    (inbox, registry, global),
+                    conversion_host,
+                )
+            })
+            .map_err(|error: DocumentGuestEventError| {
+                // Setup still owns the unpublished Window. Report an
+                // exhausted activation budget directly, like the other
+                // installation allocations that reserve from this budget.
+                if let DocumentGuestEventError::Document(DocumentScriptError::Script(
+                    Error::HostFailure(failure),
+                )) = &error
+                    && matches!(
+                        failure.cause::<DocumentGuestEventError>(),
+                        Some(DocumentGuestEventError::Document(
+                            DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+                        ))
                     )
-                })?;
+                {
+                    return DocumentScriptNativeError::StorageLimit.into();
+                }
+                error
+            })?;
         script.realm = super::super::PreparedScriptRealm::Ready(realm);
         Ok((script, public))
     }
