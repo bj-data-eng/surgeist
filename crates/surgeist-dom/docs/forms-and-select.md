@@ -92,6 +92,15 @@ option list and its order in the captured published segment. The caller admits
 each reached lookup and qualifies live access during Source callbacks. The
 observed index and selectedness describe that segment's node records.
 
+`DomSelect::visit_value_with` reads the value of the first selected Option in
+the same list. `DomOption::visit_value_with` and `visit_label_with` borrow a
+present null-namespace attribute, preserving empty and other exact UTF-16
+values. An absent attribute falls back to `visit_text_with`, which walks
+ordinary descendants in order, skips HTML script and img and SVG script
+subtrees, and strips and collapses ASCII whitespace. These observations use the
+captured published segment. Callers admit reached work, overlapping traversal
+scratch and output, and qualify live access during Source callbacks.
+
 Selectedcontent copies actual Option children, with fresh canonical identities,
 through the shared iterative clone executor and real family/Template/Shadow hooks.
 Each child finishes its deep clone before append to an actual temporary Fragment;

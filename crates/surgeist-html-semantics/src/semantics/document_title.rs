@@ -3,11 +3,9 @@
 //! second real buffer for ASCII strip/collapse; both capacities are cumulative.
 
 use super::*;
+use ascii_whitespace::AsciiWhitespaceText;
 use scan::name_part_is_with;
-use surgeist_html::{
-    bounded::lexical::is_ascii_whitespace,
-    values::{DocumentString, HtmlNameInput},
-};
+use surgeist_html::values::{DocumentString, HtmlNameInput};
 
 /// Selects the ordinary Document preorder (HTML) or direct children of the
 /// SVG document element (SVG) for the title lookup.
@@ -56,25 +54,15 @@ const SVG_NAMESPACE: &[u8] = b"http://www.w3.org/2000/svg";
 /// Retain one value across the title's Text nodes. Other UTF-16 is unchanged.
 #[derive(Default)]
 pub struct HtmlDocumentTitleText {
-    seen_non_space: bool,
-    pending_space: bool,
+    text: AsciiWhitespaceText,
 }
 
 impl HtmlDocumentTitleText {
     /// Feed one previously admitted input unit and consume the output in order.
     /// The caller admits and stores any output. Trailing whitespace has no output.
     pub fn push(&mut self, unit: u16) -> impl Iterator<Item = u16> + use<> {
-        let output = if is_ascii_whitespace(unit) {
-            self.pending_space = self.seen_non_space;
-            [None, None]
-        } else {
-            self.seen_non_space = true;
-            [
-                std::mem::take(&mut self.pending_space).then_some(32),
-                Some(unit),
-            ]
-        };
-        output.into_iter().flatten()
+        let (units, len) = self.text.push(unit);
+        units.into_iter().take(len)
     }
 }
 

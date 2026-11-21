@@ -20,6 +20,7 @@ pub(in crate::document_scripting) mod node_iterator_admission;
 pub(in crate::document_scripting) mod pre_width_admission;
 pub(in crate::document_scripting) mod projection_accounting;
 pub(in crate::document_scripting) mod registered_origin;
+pub(in crate::document_scripting) mod select_string_admission;
 pub(in crate::document_scripting) mod shadow_root;
 pub(in crate::document_scripting) mod slot_admission;
 pub(in crate::document_scripting) mod tree_mutation_admission;

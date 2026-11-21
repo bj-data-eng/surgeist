@@ -465,6 +465,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     select_selectedness::selectedness_accessors_use_their_creation_realm();
     optgroup_selection::selectedness_bindings_publish_native_selection_and_content();
     select_option_strings::select_and_option_strings_follow_canonical_text_and_value();
+    super::guest::tests::select_string_admission::select_value_admits_native_text_and_its_guest_copy();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();
     pre_width::pre_width_family_preserves_native_and_web_idl_contracts();

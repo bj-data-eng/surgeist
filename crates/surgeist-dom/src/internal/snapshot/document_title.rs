@@ -1,6 +1,6 @@
 //! Caller-admitted title reads over the exact published ordinary tree.
 
-use super::{DocumentId, DomError, DomNode, DomNodeKind, DomSnapshot};
+use super::{Descendant, DocumentId, DomError, DomNode, DomNodeKind, DomSnapshot};
 use surgeist_html_semantics::{HtmlDocumentTitleKind, HtmlDocumentTitleText};
 
 impl DomSnapshot {
@@ -33,7 +33,11 @@ impl DomSnapshot {
             HtmlDocumentTitleKind::Html if matches_title(root, kind, &mut step)? => Some(root),
             HtmlDocumentTitleKind::Html => {
                 root.find_descendant_with(&mut step, reserve, |node, s| {
-                    Ok(matches_title(node, kind, s)?.then_some(node))
+                    Ok(if matches_title(node, kind, s)? {
+                        Descendant::Found(node)
+                    } else {
+                        Descendant::Descend
+                    })
                 })?
             }
             HtmlDocumentTitleKind::Svg => {
