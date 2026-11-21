@@ -1725,6 +1725,51 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
     )
 }
 
+/// Selected argument `HTMLCanvasElement.getContext:0/contextId` (not overload selection).
+pub fn html_canvas_element_get_context_0_context_id() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLCanvasElement.getContext:0/contextId",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+fn default_html_canvas_element_to_data_url_0_type(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    cx.default_dom_string(&[105, 109, 97, 103, 101, 47, 112, 110, 103])
+}
+
+/// Selected argument `HTMLCanvasElement.toDataURL:0/type` (not overload selection).
+pub fn html_canvas_element_to_data_url_0_type() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLCanvasElement.toDataURL:0/type",
+        0,
+        true,
+        types::DOM_STRING,
+        Some(default_html_canvas_element_to_data_url_0_type),
+    )
+}
+
+fn default_html_canvas_element_to_blob_0_type(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    cx.default_dom_string(&[105, 109, 97, 103, 101, 47, 112, 110, 103])
+}
+
+/// Selected argument `HTMLCanvasElement.toBlob:0/type` (not overload selection).
+pub fn html_canvas_element_to_blob_0_type() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLCanvasElement.toBlob:0/type",
+        1,
+        true,
+        types::DOM_STRING,
+        Some(default_html_canvas_element_to_blob_0_type),
+    )
+}
+
 fn default_html_table_element_insert_row_0_index(
     cx: &mut Conversion<'_, '_>,
 ) -> Result<Converted<IntegerValue>, Failure> {

@@ -20,6 +20,7 @@ mod barred_control;
 mod body;
 mod break_elements;
 mod button;
+mod canvas;
 mod character_data;
 mod custom_validity;
 mod data_time;

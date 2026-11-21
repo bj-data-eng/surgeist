@@ -152,6 +152,39 @@ class DescriptionTests(unittest.TestCase):
         maximum["attributes"][-1]["value"]["literal"] = "2.0"
         self.rejected("source declaration mismatch: HTMLProgressElement.source")
 
+    def test_canvas_preserves_complete_idl_and_unavailable_native_providers(self):
+        definition = self.definition("HTMLCanvasElement")
+        self.assertEqual(definition["inherits"], "HTMLElement")
+        ctor, width, height, *operations = definition["members"]
+        self.assertEqual(ctor["kind"], "constructor")
+        self.assertEqual([width["name"], height["name"]], ["width", "height"])
+        mappings = self.data["access_mappings"]
+        for member in [width, height]:
+            self.assertEqual(member["type"], {"kind": "named", "name": "unsigned long"})
+            self.assertEqual(member["attributes"], [{"name": "CEReactions"}])
+            self.assertFalse(member["readonly"])
+            for access in ["get", "set"]:
+                self.assertFalse(mappings[member["id"] + "/" + access]["requirements"])
+        self.assertEqual([member["name"] for member in operations],
+                         ["getContext", "toDataURL", "toBlob", "transferControlToOffscreen"])
+        for member in operations:
+            self.assertEqual(mappings[member["id"] + "/call"]["kind"], "host")
+
+        context = self.definition("RenderingContext")
+        self.assertEqual(context["type"]["kind"], "union")
+        self.assertEqual([member["name"] for member in context["type"]["members"]],
+                         ["CanvasRenderingContext2D", "ImageBitmapRenderingContext",
+                          "WebGLRenderingContext", "WebGL2RenderingContext", "GPUCanvasContext"])
+        callback = self.definition("BlobCallback")
+        self.assertEqual(callback["kind"], "callback")
+        self.assertEqual(callback["type"], {"kind": "named", "name": "undefined"})
+        self.assertEqual(callback["arguments"], [{
+            "name": "blob", "presence": "required",
+            "type": {"kind": "nullable", "inner": {"kind": "named", "name": "Blob"}},
+        }])
+        callback["arguments"][0]["type"] = {"kind": "named", "name": "Blob"}
+        self.rejected("source declaration mismatch: HTMLCanvasElement.source")
+
     def test_unsigned_numeric_reflection_requires_reflect_on_the_same_member(self):
         for annotation in [
             {"name": "ReflectDefault", "value": 1},

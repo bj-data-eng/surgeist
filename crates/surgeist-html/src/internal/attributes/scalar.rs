@@ -213,7 +213,7 @@ nonnegative_rule!(
     Canvas,
     178,
     "attr-canvas-width",
-    crate::internal::elements::canvas::CANVAS_DEFAULT_WIDTH,
+    crate::internal::elements::canvas::CANVAS_DEFAULT_WIDTH as u128,
     false
 );
 nonnegative_rule!(
@@ -222,7 +222,7 @@ nonnegative_rule!(
     Canvas,
     64,
     "attr-canvas-height",
-    crate::internal::elements::canvas::CANVAS_DEFAULT_HEIGHT,
+    crate::internal::elements::canvas::CANVAS_DEFAULT_HEIGHT as u128,
     false
 );
 nonnegative_rule!(

@@ -657,6 +657,20 @@
       ]
     },
     {
+      "id": "HTMLCanvasElement.source",
+      "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
+      "anchor": "htmlcanvaselement",
+      "block": 0,
+      "sha256": "4fcaa908b355e91393b22633fbfdfcc2a11258c497f6aba53e2c1600ac0a00b9",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-canvas-element",
+      "entries": [
+        "RenderingContext",
+        "HTMLCanvasElement",
+        "BlobCallback"
+      ]
+    },
+    {
       "id": "HTMLProgressElement.source",
       "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
       "anchor": "htmlprogresselement",
@@ -5936,6 +5950,231 @@
       "partial": true
     },
     {
+      "id": "RenderingContext",
+      "kind": "typedef",
+      "name": "RenderingContext",
+      "attributes": [],
+      "type": {
+        "kind": "union",
+        "members": [
+          {
+            "kind": "named",
+            "name": "CanvasRenderingContext2D"
+          },
+          {
+            "kind": "named",
+            "name": "ImageBitmapRenderingContext"
+          },
+          {
+            "kind": "named",
+            "name": "WebGLRenderingContext"
+          },
+          {
+            "kind": "named",
+            "name": "WebGL2RenderingContext"
+          },
+          {
+            "kind": "named",
+            "name": "GPUCanvasContext"
+          }
+        ]
+      }
+    },
+    {
+      "id": "HTMLCanvasElement",
+      "kind": "interface",
+      "name": "HTMLCanvasElement",
+      "inherits": "HTMLElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLCanvasElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLCanvasElement.width"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "height",
+          "readonly": false,
+          "id": "HTMLCanvasElement.height"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "RenderingContext"
+            }
+          },
+          "name": "getContext",
+          "arguments": [
+            {
+              "name": "contextId",
+              "presence": "required",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              }
+            },
+            {
+              "name": "options",
+              "presence": "optional",
+              "type": {
+                "kind": "named",
+                "name": "any"
+              },
+              "default": {
+                "kind": "null"
+              }
+            }
+          ],
+          "id": "HTMLCanvasElement.getContext:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "toDataURL",
+          "arguments": [
+            {
+              "name": "type",
+              "presence": "optional",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "default": {
+                "kind": "string",
+                "value": "image/png"
+              }
+            },
+            {
+              "name": "quality",
+              "presence": "optional",
+              "type": {
+                "kind": "named",
+                "name": "any"
+              }
+            }
+          ],
+          "id": "HTMLCanvasElement.toDataURL:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "name": "toBlob",
+          "arguments": [
+            {
+              "name": "_callback",
+              "presence": "required",
+              "type": {
+                "kind": "named",
+                "name": "BlobCallback"
+              }
+            },
+            {
+              "name": "type",
+              "presence": "optional",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "default": {
+                "kind": "string",
+                "value": "image/png"
+              }
+            },
+            {
+              "name": "quality",
+              "presence": "optional",
+              "type": {
+                "kind": "named",
+                "name": "any"
+              }
+            }
+          ],
+          "id": "HTMLCanvasElement.toBlob:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "OffscreenCanvas"
+          },
+          "name": "transferControlToOffscreen",
+          "arguments": [],
+          "id": "HTMLCanvasElement.transferControlToOffscreen:0"
+        }
+      ]
+    },
+    {
+      "id": "BlobCallback",
+      "kind": "callback",
+      "name": "BlobCallback",
+      "attributes": [],
+      "type": {
+        "kind": "named",
+        "name": "undefined"
+      },
+      "arguments": [
+        {
+          "name": "blob",
+          "presence": "required",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Blob"
+            }
+          }
+        }
+      ]
+    },
+    {
       "id": "HTMLProgressElement",
       "kind": "interface",
       "name": "HTMLProgressElement",
@@ -10988,6 +11227,55 @@
   ],
   "externals": [
     {
+      "name": "CanvasRenderingContext2D",
+      "kind": "interface",
+      "owner": "surgeist-render",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#canvasrenderingcontext2d",
+      "requirement": "Provide an actual native 2D bitmap rendering context and its lifetime."
+    },
+    {
+      "name": "ImageBitmapRenderingContext",
+      "kind": "interface",
+      "owner": "surgeist-render",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#imagebitmaprenderingcontext",
+      "requirement": "Provide the actual bitmap transfer context and its native ownership."
+    },
+    {
+      "name": "WebGLRenderingContext",
+      "kind": "interface",
+      "owner": "surgeist-render",
+      "url": "https://registry.khronos.org/webgl/specs/latest/1.0/",
+      "requirement": "Provide the actual WebGL rendering context and operations."
+    },
+    {
+      "name": "WebGL2RenderingContext",
+      "kind": "interface",
+      "owner": "surgeist-render",
+      "url": "https://registry.khronos.org/webgl/specs/latest/2.0/",
+      "requirement": "Provide the actual WebGL 2 rendering context and operations."
+    },
+    {
+      "name": "GPUCanvasContext",
+      "kind": "interface",
+      "owner": "surgeist-render",
+      "url": "https://www.w3.org/TR/2026/CRD-webgpu-20261116/#gpucanvascontext",
+      "requirement": "Provide the actual GPU canvas rendering context and operations."
+    },
+    {
+      "name": "Blob",
+      "kind": "interface",
+      "owner": "surgeist-bindings-js",
+      "url": "https://w3c.github.io/FileAPI/#blob-section",
+      "requirement": "Provide a real Blob backed by the output of native bitmap encoding."
+    },
+    {
+      "name": "OffscreenCanvas",
+      "kind": "interface",
+      "owner": "surgeist-runtime",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#offscreencanvas",
+      "requirement": "Provide the native offscreen rendering ownership and transfer transition."
+    },
+    {
       "name": "AbortSignal",
       "kind": "interface",
       "owner": "surgeist-runtime",
@@ -15917,6 +16205,118 @@
         }
       ],
       "requirements": []
+    },
+    "HTMLCanvasElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlcanvaselement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLCanvasElement.width/get": {
+      "kind": "native",
+      "adapter": "htmlcanvaselement.width.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "canvas_none_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/canvas.rs",
+          "symbol": "reflected_dimension_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLCanvasElement.width/set": {
+      "kind": "native",
+      "adapter": "htmlcanvaselement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/canvas.rs",
+          "symbol": "reflected_value"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLCanvasElement.height/get": {
+      "kind": "native",
+      "adapter": "htmlcanvaselement.height.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "canvas_none_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/canvas.rs",
+          "symbol": "reflected_dimension_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLCanvasElement.height/set": {
+      "kind": "native",
+      "adapter": "htmlcanvaselement.height.set",
+      "producers": [
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/canvas.rs",
+          "symbol": "reflected_value"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLCanvasElement.getContext:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-render",
+        "contract": "Qualify the actual context-mode transition and native rendering context.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-canvas-getcontext"
+      }
+    },
+    "HTMLCanvasElement.toDataURL:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-render",
+        "contract": "Export actual bitmap data using the selected encoder and origin-clean checks.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-canvas-todataurl"
+      }
+    },
+    "HTMLCanvasElement.toBlob:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Retain actual encoding, Blob ownership, task and callback delivery across completion.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-canvas-toblob"
+      }
+    },
+    "HTMLCanvasElement.transferControlToOffscreen:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Transfer actual bitmap custody and publish the placeholder mode atomically.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-canvas-transfercontroltooffscreen"
+      }
     },
     "HTMLProgressElement.constructor:0/construct": {
       "kind": "native",

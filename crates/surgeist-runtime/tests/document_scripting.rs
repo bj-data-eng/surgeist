@@ -65,6 +65,8 @@ use surgeist_runtime::{
 mod body_reflections;
 #[path = "document_scripting/button_attributes.rs"]
 mod button_attributes;
+#[path = "document_scripting/canvas_dimensions.rs"]
+mod canvas_dimensions;
 #[path = "document_scripting/content_editable.rs"]
 mod content_editable;
 #[path = "document_scripting/control_autocomplete.rs"]
@@ -2453,6 +2455,7 @@ fn main() {
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
             "button-attributes" => button_attributes::attached_button_attributes_use_live_submitter_and_form_state(),
+            "canvas-dimensions" => canvas_dimensions::attached_canvas_dimensions_follow_native_bitmap_and_reflection(),
             "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
@@ -2564,6 +2567,7 @@ fn main() {
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
     output_values::attached_output_reads_native_values_and_stores_custom_validity();
     button_attributes::attached_button_attributes_use_live_submitter_and_form_state();
+    canvas_dimensions::attached_canvas_dimensions_follow_native_bitmap_and_reflection();
     textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state();
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     input_attributes::attached_input_reflections_use_canonical_attributes();

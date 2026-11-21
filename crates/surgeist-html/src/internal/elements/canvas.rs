@@ -5,8 +5,37 @@
 
 use crate::internal::microsyntax::numeric::HtmlNonNegativeInteger;
 
-pub(crate) const CANVAS_DEFAULT_WIDTH: u128 = 300;
-pub(crate) const CANVAS_DEFAULT_HEIGHT: u128 = 150;
+pub(crate) const CANVAS_DEFAULT_WIDTH: u32 = 300;
+pub(crate) const CANVAS_DEFAULT_HEIGHT: u32 = 150;
+const MAX_REFLECTED_DIMENSION: u32 = i32::MAX as u32;
+const MAX_REFLECTED_DIGITS: usize = 10;
+
+/// Selects the content attribute and default for a Canvas IDL dimension.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlCanvasDimension {
+    /// The reflected width, defaulting to 300.
+    Width,
+    /// The reflected height, defaulting to 150.
+    Height,
+}
+
+impl HtmlCanvasDimension {
+    const fn default_value(self) -> u32 {
+        match self {
+            Self::Width => CANVAS_DEFAULT_WIDTH,
+            Self::Height => CANVAS_DEFAULT_HEIGHT,
+        }
+    }
+
+    /// Applies the unsigned-long reflection cap and the default on overflow.
+    pub const fn reflected_value(self, value: u32) -> u32 {
+        if value <= MAX_REFLECTED_DIMENSION {
+            value
+        } else {
+            self.default_value()
+        }
+    }
+}
 
 /// An exact bitmap dimension, in CSS pixels. This is not an unsigned-long IDL
 /// reflection: that separate getter defaults above 2147483647, whereas the
@@ -42,12 +71,12 @@ pub struct HtmlCanvasNoneState {
 
 fn normalized_dimension(
     value: Option<HtmlNonNegativeInteger>,
-    default: u128,
+    default: u32,
 ) -> Option<HtmlNonNegativeInteger> {
     value.filter(|value| {
         // Both normative defaults have three digits. The existing exact
         // projection therefore reads at most three bytes, never a large input.
-        value.decimal_digits().len() > 3 || value.to_u128().ok() != Some(default)
+        value.decimal_digits().len() > 3 || value.to_u128().ok() != Some(u128::from(default))
     })
 }
 
@@ -82,7 +111,7 @@ impl HtmlCanvasNoneState {
     /// parsed value. Never the IDL `width` reflection.
     pub fn width(&self) -> HtmlCanvasBitmapDimension<'_> {
         self.width.as_ref().map_or(
-            HtmlCanvasBitmapDimension::Default(CANVAS_DEFAULT_WIDTH),
+            HtmlCanvasBitmapDimension::Default(u128::from(CANVAS_DEFAULT_WIDTH)),
             HtmlCanvasBitmapDimension::Parsed,
         )
     }
@@ -91,9 +120,42 @@ impl HtmlCanvasNoneState {
     /// parsed value. Never the IDL `height` reflection.
     pub fn height(&self) -> HtmlCanvasBitmapDimension<'_> {
         self.height.as_ref().map_or(
-            HtmlCanvasBitmapDimension::Default(CANVAS_DEFAULT_HEIGHT),
+            HtmlCanvasBitmapDimension::Default(u128::from(CANVAS_DEFAULT_HEIGHT)),
             HtmlCanvasBitmapDimension::Parsed,
         )
+    }
+
+    /// Reads the IDL dimension from the exact, recovered bitmap dimension.
+    ///
+    /// Absence, failed recovery and values above 2147483647 return the
+    /// dimension's default. Admit the selection and each digit of a bounded
+    /// numeric projection. A longer canonical value falls back by length.
+    pub fn reflected_dimension_with<E>(
+        &self,
+        dimension: HtmlCanvasDimension,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<u32, E> {
+        step()?;
+        let parsed = match dimension {
+            HtmlCanvasDimension::Width => &self.width,
+            HtmlCanvasDimension::Height => &self.height,
+        };
+        let default = dimension.default_value();
+        let Some(parsed) = parsed else {
+            return Ok(default);
+        };
+        let digits = parsed.decimal_digits().len();
+        if digits > MAX_REFLECTED_DIGITS {
+            return Ok(default);
+        }
+        for _ in 0..digits {
+            step()?;
+        }
+        let value = parsed
+            .to_u64()
+            .ok()
+            .and_then(|value| u32::try_from(value).ok());
+        Ok(value.map_or(default, |value| dimension.reflected_value(value)))
     }
 
     /// Always `true`: this type exists only while the context mode is `none`.
