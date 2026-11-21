@@ -234,12 +234,14 @@ front joins an idle bound root to its original hosted destruction Cleanup.
 
 The optional `document-scripting` feature attaches a bindings process and realm
 to an authenticated native top-level Document. Before publishing the attachment,
-Runtime installs `window`, `self`, `parent`, `opener`, `CSS`, and `DOMException`
-on the realm's global object. For this native no-opener top-level, the first
+Runtime installs `window`, `self`, `parent`, `opener`, `length`, `CSS`, and
+`DOMException` on the realm's global object. For this native no-opener top-level, the first
 three getters return the same WindowProxy and the `opener` getter returns
 `null`. The relation accessors qualify the receiving Window against the
-current native attachment. Assignments to `self`, `parent`, or a non-null
-`opener` replace the corresponding own property with the supplied guest value.
+current native attachment. The `length` getter reads DOM's current count of
+ordinary Document-tree child navigables. Assignments to `self`, `parent`,
+`length`, or a non-null `opener` replace the own property with the supplied
+guest value.
 `CSS.escape` preserves exact UTF-16 and uses
 `surgeist_bindings_js::css::CssNamespaceLimits`.
 The `DOMException` constructor uses

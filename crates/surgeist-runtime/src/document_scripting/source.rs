@@ -550,6 +550,35 @@ impl NativeOwner {
         Ok(())
     }
 
+    pub(super) fn callback_scripting_status(
+        &self,
+        attachment: &Attachment,
+        session: &mut DomSession,
+        event: Option<&DomSourceEventRequest>,
+    ) -> Result<HtmlScriptingStatus, DocumentScriptNativeError> {
+        let current = session.read_dom().pending_source_edit();
+        if let Some((request, registration)) = self.active_constructor_registration(current)? {
+            session.dom().raw().source_custom_element_callback_step(
+                request,
+                &registration,
+                &self.cancellation,
+            )?;
+            return Ok(HtmlScriptingStatus::Enabled);
+        }
+        if let Some((request, registration)) = self.active_attribute_registration()? {
+            session.dom().raw().source_attribute_callback_step(
+                request,
+                &registration,
+                &self.cancellation,
+            )?;
+            return Ok(HtmlScriptingStatus::Enabled);
+        }
+        match event {
+            Some(request) => self.qualify_event(attachment, session, request),
+            None => Ok(self.observe(attachment, session)?.status()),
+        }
+    }
+
     pub(super) fn active_event_request(&self) -> Option<DomSourceEventRequest> {
         self.attached_event_request()
             .or_else(|| self.active_source().map(|active| active.request))

@@ -1046,6 +1046,8 @@ pub surgeist_runtime::hosted::DomHostedRuntimeError::OwnerDisposed
 pub surgeist_runtime::hosted::DomHostedRuntimeError::Protocol
 pub surgeist_runtime::hosted::DomHostedRuntimeError::TargetNotFound
 pub surgeist_runtime::hosted::DomHostedRuntimeError::UrlUnavailable
+impl core::convert::From<surgeist_dom::internal::hosted::DomHostedError> for surgeist_runtime::hosted::DomHostedRuntimeError
+pub fn surgeist_runtime::hosted::DomHostedRuntimeError::from(error: surgeist_dom::internal::hosted::DomHostedError) -> Self
 impl core::convert::From<surgeist_runtime::hosted::DomHostedRuntimeError> for surgeist_runtime::document_scripting::DocumentScriptNativeError
 pub fn surgeist_runtime::document_scripting::DocumentScriptNativeError::from(error: surgeist_runtime::hosted::DomHostedRuntimeError) -> Self
 impl core::convert::From<surgeist_runtime::hosted::DomHostedRuntimeError> for surgeist_runtime::event::DomEventConstructionError

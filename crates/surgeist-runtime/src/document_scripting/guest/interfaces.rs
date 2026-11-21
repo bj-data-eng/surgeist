@@ -999,29 +999,7 @@ impl Callbacks {
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let current = session.read_dom().pending_source_edit();
-        let status = if let Some((request, registration)) =
-            owner.active_constructor_registration(current)?
-        {
-            session.dom().raw().source_custom_element_callback_step(
-                request,
-                &registration,
-                &owner.cancellation,
-            )?;
-            HtmlScriptingStatus::Enabled
-        } else if let Some((request, registration)) = owner.active_attribute_registration()? {
-            session.dom().raw().source_attribute_callback_step(
-                request,
-                &registration,
-                &owner.cancellation,
-            )?;
-            HtmlScriptingStatus::Enabled
-        } else {
-            match request {
-                Some(request) => owner.qualify_event(attachment, &mut session, request)?,
-                None => owner.observe(attachment, &mut session)?.status(),
-            }
-        };
+        let status = owner.callback_scripting_status(attachment, &mut session, request)?;
         if status != HtmlScriptingStatus::Enabled {
             return Err(DocumentScriptNativeError::Revoked.into());
         }
