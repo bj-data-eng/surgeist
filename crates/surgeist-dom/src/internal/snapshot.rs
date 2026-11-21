@@ -18,6 +18,7 @@ mod equality;
 mod namespace;
 mod option_text;
 mod position;
+mod tabindex;
 mod translation;
 pub use namespace::DomNamespaceUri;
 pub use position::DomDocumentPosition;

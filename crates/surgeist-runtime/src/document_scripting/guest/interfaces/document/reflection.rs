@@ -49,6 +49,7 @@ pub(super) enum Reflection {
     DialogClosedBy,
     Popover,
     HeadingOffset,
+    TabIndex,
     ContentEditable,
     EnterKeyHint,
     InputMode,
@@ -391,7 +392,7 @@ impl Capture {
                 if write {
                     return Ok(Some(Reflected::Write));
                 }
-                let stored = if matches!(reflection, Reflection::Translate) {
+                let stored = if matches!(reflection, Reflection::Translate | Reflection::TabIndex) {
                     None
                 } else {
                     let attrs = node.attributes().ok_or(DomError::WrongNodeKind)?;
@@ -424,6 +425,7 @@ impl Capture {
                             Reflected::Keyword(Some(keyword.canonical_keyword()))
                         }
                     },
+                    Reflection::TabIndex => Reflected::Signed(node.tab_index_with(|| read.step())?),
                     Reflection::DialogClosedBy => {
                         let state = closedby_processing_with(units, |_| read.step())?;
                         let value = match state {
@@ -604,7 +606,10 @@ impl Capture {
                 )?)
             } else if matches!(
                 reflection,
-                Reflection::SignedLongZero | Reflection::SignedLongOne | Reflection::MarqueeLoop
+                Reflection::SignedLongZero
+                    | Reflection::SignedLongOne
+                    | Reflection::MarqueeLoop
+                    | Reflection::TabIndex
             ) {
                 let converted = self
                     .callbacks
@@ -620,6 +625,16 @@ impl Capture {
                 let IntegerValue::Long(value) = *converted.get() else {
                     return Err(Error::BackendUnavailable.into());
                 };
+                if matches!(reflection, Reflection::TabIndex) {
+                    let current = self.callbacks.with_read(&owner, &events, |read, _| {
+                        receiver.matches(read.node(id)?, || read.step())
+                    })?;
+                    if !current {
+                        return Ok(Completion::Throw(
+                            scope.type_error(receiver.error_message())?,
+                        ));
+                    }
+                }
                 let value = if matches!(reflection, Reflection::MarqueeLoop) {
                     let Some(change) = self.callbacks.with_read(&owner, &events, |read, _| {
                         let node = read.node(id)?;

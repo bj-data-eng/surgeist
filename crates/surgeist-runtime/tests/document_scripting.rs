@@ -89,6 +89,8 @@ mod script_preparation;
 mod source_events;
 #[path = "document_scripting/standard_window.rs"]
 mod standard_window;
+#[path = "document_scripting/tab_index.rs"]
+mod tab_index;
 #[path = "document_scripting/text_comment.rs"]
 mod text_comment;
 #[path = "document_scripting/translate_reflection.rs"]
@@ -2424,6 +2426,7 @@ fn main() {
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "legend-form" => legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner(),
             "marquee" => marquee::attached_marquee_uses_native_reflections_and_running_state(),
+            "tab-index" => tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs(),
             "element-mixin" => element_mixin::attached_mixin_accessors_use_their_includers_and_native_state(),
             "dialog-close" => dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source(),
             "dialog-state" => dialog_state::attached_dialog_accessors_use_current_native_state(),
@@ -2521,6 +2524,7 @@ fn main() {
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     legend_form::attached_legend_uses_the_immediate_fieldsets_current_form_owner();
     marquee::attached_marquee_uses_native_reflections_and_running_state();
+    tab_index::attached_tab_index_uses_includer_brands_and_current_native_inputs();
     element_mixin::attached_mixin_accessors_use_their_includers_and_native_state();
     dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source();
     dialog_state::attached_dialog_accessors_use_current_native_state();

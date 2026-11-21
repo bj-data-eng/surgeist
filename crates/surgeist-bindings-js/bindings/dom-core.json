@@ -12530,8 +12530,9 @@
       "kind": "native",
       "adapter": "htmlorsvgormathmlelement.tabindex.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics.rs", "symbol": "TabIndex"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/tabindex.rs", "symbol": "tab_index_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/tabindex.rs", "symbol": "recover_tab_index_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/tabindex.rs", "symbol": "HtmlTabIndexDefault"}
       ],
       "requirements": []
     },
@@ -12539,9 +12540,12 @@
       "kind": "derived",
       "algorithm": "htmlorsvgormathmlelement.tabindex.set",
       "owner": "surgeist-html",
-      "contract": "Reflect the converted long tabIndex setter as the source tabindex attribute spelling through the native attribute writer; getter processing uses the actual native TabIndex semantic query.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tabindex",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}],
+      "contract": "Serialize the converted Web IDL long as signed decimal in the exact null-namespace tabindex attribute through the original Source edit and synchronous reactions.",
+      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
+      "inputs": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "copy_numeric_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
       "requirements": []
     },
     "HTMLOrSVGOrMathMLElement.focus:0/call": {

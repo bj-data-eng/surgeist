@@ -1547,11 +1547,22 @@ pub surgeist_html_semantics::HtmlSpellcheckDefaultBehavior::TrueByDefault
 pub enum surgeist_html_semantics::HtmlSubmitterTypeObservation
 pub surgeist_html_semantics::HtmlSubmitterTypeObservation::Button(surgeist_html::internal::attributes::HtmlAttributeReport<surgeist_html::internal::attributes::HtmlButtonTypeState>)
 pub surgeist_html_semantics::HtmlSubmitterTypeObservation::Input(surgeist_html::internal::attributes::HtmlAttributeReport<surgeist_html::internal::attributes::HtmlInputType>)
+pub enum surgeist_html_semantics::HtmlTabIndexDefault
+pub surgeist_html_semantics::HtmlTabIndexDefault::FirstSummary
+pub surgeist_html_semantics::HtmlTabIndexDefault::NegativeOne
+pub surgeist_html_semantics::HtmlTabIndexDefault::Zero
+impl surgeist_html_semantics::HtmlTabIndexDefault
+pub fn surgeist_html_semantics::HtmlTabIndexDefault::for_html_with<E>(local_name: &[u16], admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<Self, E>
+pub fn surgeist_html_semantics::HtmlTabIndexDefault::for_svg_or_mathml_with<E>(local_name: &[u16], admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<Self, E>
 pub enum surgeist_html_semantics::HtmlTabIndexOrigin
 pub surgeist_html_semantics::HtmlTabIndexOrigin::MissingDefault
 pub surgeist_html_semantics::HtmlTabIndexOrigin::OutOfRangeDefault
 pub surgeist_html_semantics::HtmlTabIndexOrigin::ParseFailureDefault
 pub surgeist_html_semantics::HtmlTabIndexOrigin::Recovered
+pub enum surgeist_html_semantics::HtmlTabIndexRecoveryError
+pub surgeist_html_semantics::HtmlTabIndexRecoveryError::InvalidSyntax
+pub surgeist_html_semantics::HtmlTabIndexRecoveryError::OutOfRange
+pub surgeist_html_semantics::HtmlTabIndexRecoveryError::RepresentationExhausted
 pub enum surgeist_html_semantics::HtmlTableCellKind
 pub surgeist_html_semantics::HtmlTableCellKind::Data
 pub surgeist_html_semantics::HtmlTableCellKind::Header
@@ -3340,6 +3351,7 @@ pub fn surgeist_html_semantics::HtmlUsemapReferenceResult::raw_attribute(&self) 
 pub fn surgeist_html_semantics::HtmlUsemapReferenceResult::reference(&self) -> &surgeist_html::internal::attributes::hash_name::HtmlHashNameReferenceReport
 pub fn surgeist_html_semantics::HtmlUsemapReferenceResult::selected_target_diagnostic(&self) -> core::option::Option<surgeist_html_semantics::HtmlUsemapSelectedTargetDiagnostic>
 pub fn surgeist_html_semantics::html_foreign_root_inherits_editability_with<E>(name: &impl surgeist_html::internal::values::semantic_input::HtmlNameInput + ?core::marker::Sized, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
+pub fn surgeist_html_semantics::recover_tab_index_with<E>(raw: &surgeist_html::internal::values::document_string::DocumentString, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<core::result::Result<i32, surgeist_html_semantics::HtmlTabIndexRecoveryError>, E>
 pub fn surgeist_html_semantics::select_document_base<'a>(document: core::option::Option<&'a surgeist_html_semantics::HtmlBaseDocumentFacts>, first: surgeist_html_semantics::HtmlDocumentFirstBase<'a>) -> core::result::Result<&'a surgeist_html_semantics::HtmlBaseUrlRecord, surgeist_html_semantics::HtmlBaseMissing>
 pub fn surgeist_html_semantics::select_document_base_serialization<'a>(established_fallback: &'a surgeist_html::internal::values::document_string::DocumentString, first: surgeist_html_semantics::HtmlDocumentFirstBase<'a>) -> core::result::Result<&'a surgeist_html::internal::values::document_string::DocumentString, surgeist_html_semantics::HtmlBaseMissing>
 pub fn surgeist_html_semantics::select_frozen_base<'a>(fallback: &'a surgeist_html_semantics::HtmlBaseUrlRecord, outcome: &'a surgeist_html_semantics::HtmlBaseParseOutcome) -> core::result::Result<(&'a surgeist_html_semantics::HtmlBaseUrlRecord, bool), surgeist_html_semantics::HtmlBaseMissing>
