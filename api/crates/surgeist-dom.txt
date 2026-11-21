@@ -908,6 +908,7 @@ pub fn surgeist_dom::form::DomButtonState::parser_inserted(&self) -> bool
 pub struct surgeist_dom::form::DomFieldset<'a>
 impl<'a> surgeist_dom::form::DomFieldset<'a>
 pub fn surgeist_dom::form::DomFieldset<'a>::form_owner(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
+pub fn surgeist_dom::form::DomFieldset<'a>::form_owner_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::form::DomForm<'a>>, E>
 pub fn surgeist_dom::form::DomFieldset<'a>::id(self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::form::DomFieldset<'a>::state(self) -> &'a surgeist_dom::form::DomFieldsetState
 pub struct surgeist_dom::form::DomFieldsetState

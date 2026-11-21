@@ -533,6 +533,33 @@ class DescriptionTests(unittest.TestCase):
         form["attributes"].pop(1)
         self.rejected("source declaration mismatch: HTMLFormElement.source")
 
+    def test_fieldset_retains_required_error_and_live_object_requirements(self):
+        fieldset = self.definition("HTMLFieldSetElement")
+        self.assertEqual(fieldset["inherits"], "HTMLElement")
+        ctor, *members = fieldset["members"]
+        self.assertEqual(ctor["id"], "HTMLFieldSetElement.constructor:0")
+        self.assertEqual([member["name"] for member in members],
+                         ["disabled", "form", "name", "type", "elements", "willValidate", "validity",
+                          "validationMessage", "checkValidity", "reportValidity", "setCustomValidity"])
+        setter = members[-1]
+        self.assertEqual(setter["arguments"], [
+            {"name": "error", "presence": "required", "type": {"kind": "named", "name": "DOMString"}},
+        ])
+        mappings = self.data["access_mappings"]
+        writer = mappings[setter["id"] + "/call"]
+        self.assertFalse(writer["requirements"])
+        self.assertEqual({producer["symbol"] for producer in writer["producers"]},
+                         {"fieldset_set_custom_validity", "set_custom_validity"})
+        for name, issues in [("elements", {1235, 2480}), ("validity", {1235})]:
+            with self.subTest(member=name):
+                member = self.member("HTMLFieldSetElement." + name)
+                self.assertEqual(member["attributes"], [{"name": "SameObject"}])
+                getter = mappings[member["id"] + "/get"]
+                self.assertEqual(getter["result_view"], "live")
+                self.assertEqual({requirement["issue"] for requirement in getter["requirements"]}, issues)
+        setter["arguments"][0]["presence"] = "optional"
+        self.rejected("source declaration mismatch: HTMLFieldSetElement.source")
+
     def test_dialog_state_and_native_methods_preserve_the_primary_declaration(self):
         dialog = self.definition("HTMLDialogElement")
         self.assertEqual(dialog["inherits"], "HTMLElement")

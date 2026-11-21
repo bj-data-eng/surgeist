@@ -6,6 +6,7 @@ use super::{reflection::Receiver, *};
 pub(super) enum FormOwnerGetter {
     Select,
     Option,
+    Fieldset,
     Legend,
 }
 
@@ -14,6 +15,7 @@ impl FormOwnerGetter {
         match self {
             Self::Select => Receiver::Select,
             Self::Option => Receiver::Option,
+            Self::Fieldset => Receiver::Fieldset,
             Self::Legend => Receiver::Legend,
         }
     }
@@ -65,6 +67,10 @@ impl Capture {
                         .form_owner_with(|| read.step())?,
                     FormOwnerGetter::Option => node
                         .as_option()
+                        .ok_or(DomError::WrongNodeKind)?
+                        .form_owner_with(|| read.step())?,
+                    FormOwnerGetter::Fieldset => node
+                        .as_fieldset()
                         .ok_or(DomError::WrongNodeKind)?
                         .form_owner_with(|| read.step())?,
                     FormOwnerGetter::Legend => {

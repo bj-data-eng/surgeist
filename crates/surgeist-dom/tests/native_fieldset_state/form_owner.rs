@@ -99,6 +99,18 @@ fn legend_reads_the_stored_fieldset_owner_in_each_published_segment() {
             .form_owner(),
         Err(DomError::IncompleteSourceOperation),
     );
+    let prefix_fieldset = prefix.node(fieldset).unwrap().as_fieldset().unwrap();
+    let mut prefix_work = 0;
+    assert!(
+        prefix_fieldset
+            .form_owner_with(|| {
+                prefix_work += 1;
+                Ok::<_, ReadError>(())
+            })
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(prefix_work, 1);
     assert_eq!(legend_owner(&prefix, first), None);
     assert_eq!(legend_owner(&prefix, second), None);
 
@@ -129,6 +141,30 @@ fn legend_reads_the_stored_fieldset_owner_in_each_published_segment() {
     assert_eq!(legend_owner(&current, second), Some(external));
     assert_eq!(legend_owner(&current, nested), None);
     assert_eq!(legend_owner(&prefix, first), None);
+
+    // The direct Fieldset accessor only reads the stored relation and its Form.
+    let mut direct_required = 1usize;
+    current
+        .node_with(external, || {
+            direct_required += 1;
+            Ok::<_, ReadError>(())
+        })
+        .unwrap();
+    let current_fieldset = current.node(fieldset).unwrap().as_fieldset().unwrap();
+    for (allowance, expected) in [
+        (direct_required, Ok(Some(external))),
+        (direct_required - 1, Err(ReadError::Refused)),
+    ] {
+        let mut attempts = 0;
+        let result = current_fieldset.form_owner_with(|| {
+            attempts += 1;
+            (attempts <= allowance)
+                .then_some(())
+                .ok_or(ReadError::Refused)
+        });
+        assert_eq!(result.map(|owner| owner.map(|form| form.id())), expected);
+        assert_eq!(attempts, direct_required);
+    }
 
     // Reaching the parent relation, Fieldset kind and stored owner adds one
     // debit apiece beyond the independently admitted parent and Form lookups.
