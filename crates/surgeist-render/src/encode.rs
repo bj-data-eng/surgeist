@@ -69,7 +69,7 @@ pub(crate) fn encode_vello_scene_with_initial_transform(
         encode_vello_commands(
             &commands.commands,
             &mut encoded,
-            kurbo::Affine::from(initial_transform),
+            initial_transform.to_kurbo(),
             target_extent,
             &account,
         )?;
@@ -183,14 +183,11 @@ fn push_vello_clip(
     transform: Transform,
     account: &Account,
 ) -> Result<()> {
-    let transform = kurbo::Affine::from(transform);
+    let transform = transform.to_kurbo();
     match clip.geometry() {
-        RenderClipGeometry::Rect(rect) => scene.push_clip_layer(
-            peniko::Fill::NonZero,
-            transform,
-            &kurbo::Rect::from(*rect),
-            account,
-        ),
+        RenderClipGeometry::Rect(rect) => {
+            scene.push_clip_layer(peniko::Fill::NonZero, transform, &rect.to_kurbo(), account)
+        }
         RenderClipGeometry::RoundedRect { rect, radii } => {
             if let Some(circle) = exact_fit_clip_circle(*rect, *radii, account)? {
                 scene.push_clip_layer(peniko::Fill::NonZero, transform, &circle, account)
@@ -314,7 +311,7 @@ fn encode_vello_commands(
             } => {
                 let transform = crate::vello_engine::geometry::affine_product(
                     transform,
-                    kurbo::Affine::from(*run_transform),
+                    run_transform.to_kurbo(),
                     account,
                 )?;
                 crate::text::qualify_receiving_placement(transform, outline, account)?;
@@ -327,7 +324,7 @@ fn encode_vello_commands(
                             clip,
                         } => {
                             let brush = match color {
-                                Some(color) => FrameBrush::solid((*color).into()),
+                                Some(color) => FrameBrush::solid(color.to_peniko()),
                                 None => glyph_paint_brush(
                                     paint.fill(),
                                     transform,
@@ -339,7 +336,7 @@ fn encode_vello_commands(
                                 scene.push_clip_layer(
                                     peniko::Fill::NonZero,
                                     transform,
-                                    &kurbo::Rect::from(*clip),
+                                    &clip.to_kurbo(),
                                     account,
                                 )?;
                             }
@@ -420,7 +417,8 @@ fn encode_vello_commands(
                 account,
             )?,
             RenderCommand::Layer { layer, children } => {
-                let layer_transform = affine_product(transform, layer.transform.into(), account)?;
+                let layer_transform =
+                    affine_product(transform, layer.transform.to_kurbo(), account)?;
                 let continuation = if layer.isolation != LayerIsolation::None {
                     encode_layer_start(scene, layer, layer_transform, target_extent, account)?;
                     if children.is_empty() {
@@ -500,7 +498,7 @@ fn encode_solid_fill<'a>(
             transform,
             brush,
             brush_transform,
-            &kurbo::Rect::from(*rect),
+            &rect.to_kurbo(),
             account,
         ),
         RenderShape::RoundedRect { rect, radii } => scene.fill(
@@ -643,14 +641,14 @@ fn encode_shadow(
     shadow: &RenderShadow,
     account: &Account,
 ) -> Result<()> {
-    let color = peniko::Color::from(shadow.color);
+    let color = shadow.color.to_peniko();
     let std_dev = shadow.blur * 0.5;
     match shape {
         ShadowShape::Rect(rect) => {
             let rect = offset_rect(expand_rect(*rect, shadow.spread), shadow.offset);
             scene.draw_blurred_rounded_rect(
                 transform,
-                rect.into(),
+                rect.to_kurbo(),
                 color,
                 0.0,
                 std_dev,
@@ -662,7 +660,7 @@ fn encode_shadow(
             if let Some(radius) = radii.uniform() {
                 scene.draw_blurred_rounded_rect(
                     transform,
-                    rect.into(),
+                    rect.to_kurbo(),
                     color,
                     (radius + shadow.spread).max(0.0),
                     std_dev,
@@ -690,7 +688,7 @@ fn encode_shadow(
             );
             scene.draw_blurred_rounded_rect(
                 transform,
-                rect.into(),
+                rect.to_kurbo(),
                 color,
                 radius,
                 std_dev,
@@ -715,7 +713,7 @@ fn encode_non_uniform_rounded_shadow(
             &mut scene.draws(),
             transform,
             &RenderShape::RoundedRect { rect, radii },
-            peniko::Color::from(color),
+            color.to_peniko(),
             None,
             account,
         )?;
@@ -724,11 +722,11 @@ fn encode_non_uniform_rounded_shadow(
 
     let std_dev = blur * 0.5;
     let kernel = 2.5 * std_dev;
-    let support = kurbo::Rect::from(rect).inflate(kernel, kernel);
+    let support = rect.to_kurbo().inflate(kernel, kernel);
     let mid_x = rect.x() + rect.width() * 0.5;
     let mid_y = rect.y() + rect.height() * 0.5;
-    let shadow_rect = kurbo::Rect::from(rect);
-    let color = peniko::Color::from(color);
+    let shadow_rect = rect.to_kurbo();
+    let color = color.to_peniko();
 
     let regions = [
         (
@@ -783,7 +781,7 @@ fn encode_prepared_bitmap(
         transform,
         &brush,
         Some(brush_transform),
-        &kurbo::Rect::from(rect),
+        &rect.to_kurbo(),
         account,
     )
 }
@@ -800,12 +798,7 @@ fn encode_image(
     let image_transform = affine_product(transform, local, account)?;
     let clip_to_target = matches!(fit, ImageFit::Contain | ImageFit::Cover);
     if clip_to_target {
-        scene.push_clip_layer(
-            peniko::Fill::NonZero,
-            transform,
-            &kurbo::Rect::from(rect),
-            account,
-        )?;
+        scene.push_clip_layer(peniko::Fill::NonZero, transform, &rect.to_kurbo(), account)?;
     }
     with_sampled_image(
         scene,
@@ -857,8 +850,8 @@ fn with_sampled_image<T>(
 
 pub(crate) fn image_brush(image: &Image) -> peniko::ImageBrush {
     peniko::ImageBrush::new(image_data(image))
-        .with_quality(image.sampling_quality().into())
-        .with_extend(image.extend.into())
+        .with_quality(image.sampling_quality().to_peniko())
+        .with_extend(image.extend.to_peniko())
 }
 
 pub(crate) fn image_data(image: &Image) -> peniko::ImageData {
@@ -922,7 +915,7 @@ fn encode_layer_start(
     let (clip, clip_transform) = match &layer.clip {
         Some(clip) => {
             let clip_transform = match clip.coordinate_space() {
-                Some(space) => affine_product(transform, space.transform().into(), account)?,
+                Some(space) => affine_product(transform, space.transform().to_kurbo(), account)?,
                 None => transform,
             };
             (clip.geometry(), clip_transform)
@@ -946,7 +939,7 @@ fn encode_layer_start(
             layer,
             peniko::Fill::NonZero,
             clip_transform,
-            &kurbo::Rect::from(*rect),
+            &rect.to_kurbo(),
             account,
         ),
         RenderClipGeometry::RoundedRect { rect, radii } => {
@@ -1196,7 +1189,7 @@ pub(crate) fn glyph_paint_brush(
 ) -> Result<FrameBrush> {
     account.work(RenderWork::PaintVisits, 1)?;
     match paint.kind() {
-        PaintKind::Color(color) => Ok(FrameBrush::solid((*color).into())),
+        PaintKind::Color(color) => Ok(FrameBrush::solid(color.to_peniko())),
         PaintKind::Gradient(gradient) => {
             gradient_brush(gradient, transform, target_extent, account)
         }
@@ -1214,7 +1207,7 @@ fn render_paint_brush(
 ) -> Result<FrameBrush> {
     account.work(RenderWork::PaintVisits, 1)?;
     match paint {
-        RenderPaint::Color(color) => Ok(FrameBrush::solid((*color).into())),
+        RenderPaint::Color(color) => Ok(FrameBrush::solid(color.to_peniko())),
         RenderPaint::Gradient(gradient) => {
             gradient_brush(gradient, transform, target_extent, account)
         }
@@ -1250,7 +1243,7 @@ fn prepare_sweep_gradient(
     let supplied = gradient.stops();
     if supplied.len() == 1 {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        return Ok(FrameBrush::solid(supplied[0].color().into()));
+        return Ok(FrameBrush::solid(supplied[0].color().to_peniko()));
     }
     let mut step = false;
     let endpoints = if supplied.len() >= 2 {
@@ -1304,10 +1297,9 @@ fn prepare_sweep_gradient(
         let position = gradient_field::scalar(account, || stop.position())?;
         let offset = gradient_field::scalar(account, || position as f32)?;
         account.work(RenderWork::CoordinateVisits, 4)?;
-        stops.append_slot()?.write(peniko::ColorStop::from((
-            offset,
-            peniko::Color::from(stop.color()),
-        )));
+        stops
+            .append_slot()?
+            .write(peniko::ColorStop::from((offset, stop.color().to_peniko())));
     }
     let mut previous = None;
     let mut ordered = true;
@@ -1339,10 +1331,9 @@ fn prepare_sweep_gradient(
         }
         previous = Some((position, offset));
         account.work(RenderWork::CoordinateVisits, 4)?;
-        stops.append_slot()?.write(peniko::ColorStop::from((
-            offset,
-            peniko::Color::from(stop.color()),
-        )));
+        stops
+            .append_slot()?
+            .write(peniko::ColorStop::from((offset, stop.color().to_peniko())));
     }
     account.work(RenderWork::CoordinateVisits, 2)?;
     let center = gradient.center();
@@ -1418,9 +1409,9 @@ impl Drop for FrameStroke {
 }
 fn vello_stroke(stroke: &RenderStroke, account: &Account) -> Result<FrameStroke> {
     let mut vello = kurbo::Stroke::new(stroke.width)
-        .with_join(stroke.join.into())
-        .with_start_cap(stroke.start_cap.into())
-        .with_end_cap(stroke.end_cap.into())
+        .with_join(stroke.join.to_kurbo())
+        .with_start_cap(stroke.start_cap.to_kurbo())
+        .with_end_cap(stroke.end_cap.to_kurbo())
         .with_miter_limit(stroke.miter_limit);
     let mut hold = None;
     if let Some(dash) = stroke.dash {
@@ -2053,7 +2044,7 @@ mod ordinary_gradient_accounting_tests {
         let mut context = RenderAccountingContext::default();
         context.run(RenderAttemptKind::Frame,RenderPhase::GradientPrepare,|account|{
             let brush=prepared(&gradient,account)?;
-            assert!(matches!(brush.as_ref(),peniko::BrushRef::Solid(actual) if actual==peniko::Color::from(color)));
+            assert!(matches!(brush.as_ref(),peniko::BrushRef::Solid(actual) if actual==color.to_peniko()));
             Ok(())
         }).unwrap();
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();

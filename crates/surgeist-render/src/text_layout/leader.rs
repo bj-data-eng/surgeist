@@ -423,14 +423,14 @@ fn prepare_inner<'text>(
             .map_err(|e| LeaderPatternError::render(ordinal, e))?;
         let recorded_glyphs = account.phase(RenderPhase::Qualify, || {
             let account = account.at(RenderPhase::Qualify);
-            qualify_preparation_placement(transform.into(), &prepared, &account)
+            qualify_preparation_placement(transform.to_kurbo(), &prepared, &account)
                 .map_err(|e| LeaderPatternError::render(ordinal, e))?;
             let mut bounds = account.retained(glyph_bounds.len())?;
             for (index, (local_bounds, (_, group))) in
                 glyph_bounds.into_iter().zip(run.glyphs()).enumerate()
             {
                 account.work(RenderWork::LeaderClusterVisits, 1)?;
-                let mapped = map_preparation_bounds(transform.into(), local_bounds, &account)
+                let mapped = map_preparation_bounds(transform.to_kurbo(), local_bounds, &account)
                     .map_err(|e| LeaderPatternError::render(ordinal, e))?;
                 total_bounds = union_bounds(total_bounds, mapped, &account)
                     .map_err(|e| LeaderPatternError::render(ordinal, e))?;

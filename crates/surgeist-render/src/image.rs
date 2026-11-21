@@ -1211,24 +1211,24 @@ pub(crate) fn validate_image_buffer_rgba_len(size: PhysicalSize, byte_len: usize
     Ok(())
 }
 
-/// Converts the public sampling-quality hint to its equivalent Peniko value.
-impl From<ImageQuality> for peniko::ImageQuality {
-    fn from(quality: ImageQuality) -> Self {
-        match quality {
-            ImageQuality::Low => Self::Low,
-            ImageQuality::Medium => Self::Medium,
-            ImageQuality::High => Self::High,
+impl ImageQuality {
+    /// Converts the public sampling-quality hint to its equivalent Peniko value.
+    pub(crate) fn to_peniko(self) -> peniko::ImageQuality {
+        match self {
+            Self::Low => peniko::ImageQuality::Low,
+            Self::Medium => peniko::ImageQuality::Medium,
+            Self::High => peniko::ImageQuality::High,
         }
     }
 }
 
-/// Converts the public extension policy to its equivalent Peniko value.
-impl From<Extend> for peniko::Extend {
-    fn from(extend: Extend) -> Self {
-        match extend {
-            Extend::Pad => Self::Pad,
-            Extend::Repeat => Self::Repeat,
-            Extend::Reflect => Self::Reflect,
+impl Extend {
+    /// Converts the public extension policy to its equivalent Peniko value.
+    pub(crate) fn to_peniko(self) -> peniko::Extend {
+        match self {
+            Self::Pad => peniko::Extend::Pad,
+            Self::Repeat => peniko::Extend::Repeat,
+            Self::Reflect => peniko::Extend::Reflect,
         }
     }
 }

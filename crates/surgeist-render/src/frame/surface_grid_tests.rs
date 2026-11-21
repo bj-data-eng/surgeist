@@ -160,7 +160,7 @@ fn surface_foreground_keeps_nested_world_clips_and_independent_mask_inverse() {
         })
         .unwrap();
     assert_eq!(*masked.1, CompositeSourceSpace::SurfaceGrid);
-    let inverse = kurbo::Affine::from(masked.0.affine);
+    let inverse = masked.0.affine.to_kurbo();
     let local = inverse * kurbo::Point::new(5.0, 6.0);
     assert!((local.x - 1.0).abs() < 1e-12 && (local.y - 1.0).abs() < 1e-12);
     assert!(

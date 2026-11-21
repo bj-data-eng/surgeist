@@ -680,12 +680,9 @@ impl VelloScene {
         }
         account.work(RenderWork::GlyphVisits, 1)?;
         let first_drawable = first_occurrence.source_index();
-        let paint_transform = geometry::affine_product(
-            transform,
-            kurbo::Affine::from(validated.transform()),
-            account,
-        )
-        .map_err(|error| glyph_geometry_error(error, first_drawable))?;
+        let paint_transform =
+            geometry::affine_product(transform, validated.transform().to_kurbo(), account)
+                .map_err(|error| glyph_geometry_error(error, first_drawable))?;
         let native_run = geometry::qualify_transform(paint_transform, account)
             .map_err(|error| glyph_geometry_error(error, first_drawable))?;
         let brush = glyph_paint_brush(

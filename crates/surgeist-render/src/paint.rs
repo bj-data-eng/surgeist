@@ -93,10 +93,10 @@ impl Default for Color {
     }
 }
 
-/// Converts the numeric-sRGB channels to the equivalent Peniko color.
-impl From<Color> for peniko::Color {
-    fn from(color: Color) -> Self {
-        Self::new([color.r, color.g, color.b, color.a])
+impl Color {
+    /// Converts the numeric-sRGB channels to the equivalent Peniko color.
+    pub(crate) fn to_peniko(self) -> peniko::Color {
+        peniko::Color::new([self.r, self.g, self.b, self.a])
     }
 }
 

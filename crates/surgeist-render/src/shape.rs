@@ -386,13 +386,13 @@ pub enum LineJoin {
     Bevel,
 }
 
-/// Converts the public line join to its equivalent Kurbo value.
-impl From<LineJoin> for kurbo::Join {
-    fn from(join: LineJoin) -> Self {
-        match join {
-            LineJoin::Miter => Self::Miter,
-            LineJoin::Round => Self::Round,
-            LineJoin::Bevel => Self::Bevel,
+impl LineJoin {
+    /// Converts the public line join to its equivalent Kurbo value.
+    pub(crate) fn to_kurbo(self) -> kurbo::Join {
+        match self {
+            Self::Miter => kurbo::Join::Miter,
+            Self::Round => kurbo::Join::Round,
+            Self::Bevel => kurbo::Join::Bevel,
         }
     }
 }
@@ -411,13 +411,13 @@ pub enum LineCap {
     Square,
 }
 
-/// Converts the public line cap to its equivalent Kurbo value.
-impl From<LineCap> for kurbo::Cap {
-    fn from(cap: LineCap) -> Self {
-        match cap {
-            LineCap::Butt => Self::Butt,
-            LineCap::Round => Self::Round,
-            LineCap::Square => Self::Square,
+impl LineCap {
+    /// Converts the public line cap to its equivalent Kurbo value.
+    pub(crate) fn to_kurbo(self) -> kurbo::Cap {
+        match self {
+            Self::Butt => kurbo::Cap::Butt,
+            Self::Round => kurbo::Cap::Round,
+            Self::Square => kurbo::Cap::Square,
         }
     }
 }

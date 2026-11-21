@@ -1203,13 +1203,8 @@ pub fn surgeist_render::geometry::Rect::try_new(x: f64, y: f64, width: f64, heig
 pub const fn surgeist_render::geometry::Rect::width(self) -> f64
 pub const fn surgeist_render::geometry::Rect::x(self) -> f64
 pub const fn surgeist_render::geometry::Rect::y(self) -> f64
-impl core::convert::From<surgeist_render::geometry::Rect> for kurbo::rect::Rect
-pub fn kurbo::rect::Rect::from(rect: surgeist_render::geometry::Rect) -> Self
 impl core::convert::From<surgeist_render::geometry::Rect> for surgeist_render::shape::Shape
 pub fn surgeist_render::shape::Shape::from(rect: surgeist_render::geometry::Rect) -> Self
-impl core::convert::TryFrom<kurbo::rect::Rect> for surgeist_render::geometry::Rect
-pub type surgeist_render::geometry::Rect::Error = surgeist_render::Error
-pub fn surgeist_render::geometry::Rect::try_from(rect: kurbo::rect::Rect) -> surgeist_render::Result<Self>
 pub struct surgeist_render::geometry::Size
 impl surgeist_render::geometry::Size
 pub const fn surgeist_render::geometry::Size::height(self) -> f64
@@ -1228,8 +1223,6 @@ pub fn surgeist_render::geometry::Transform::skew_y(radians: f64) -> surgeist_re
 pub fn surgeist_render::geometry::Transform::then(self, next: Self) -> surgeist_render::Result<Self>
 pub fn surgeist_render::geometry::Transform::translation(x: f64, y: f64) -> surgeist_render::Result<Self>
 pub fn surgeist_render::geometry::Transform::try_new(values: [f64; 6]) -> surgeist_render::Result<Self>
-impl core::convert::From<surgeist_render::geometry::Transform> for kurbo::affine::Affine
-pub fn kurbo::affine::Affine::from(transform: surgeist_render::geometry::Transform) -> Self
 impl core::default::Default for surgeist_render::geometry::Transform
 pub fn surgeist_render::geometry::Transform::default() -> Self
 pub mod surgeist_render::image
@@ -1237,8 +1230,6 @@ pub enum surgeist_render::image::Extend
 pub surgeist_render::image::Extend::Pad
 pub surgeist_render::image::Extend::Reflect
 pub surgeist_render::image::Extend::Repeat
-impl core::convert::From<surgeist_render::image::Extend> for peniko::brush::Extend
-pub fn peniko::brush::Extend::from(extend: surgeist_render::image::Extend) -> Self
 pub enum surgeist_render::image::ImageFit
 pub surgeist_render::image::ImageFit::Contain
 pub surgeist_render::image::ImageFit::Cover
@@ -1249,8 +1240,6 @@ pub enum surgeist_render::image::ImageQuality
 pub surgeist_render::image::ImageQuality::High
 pub surgeist_render::image::ImageQuality::Low
 pub surgeist_render::image::ImageQuality::Medium
-impl core::convert::From<surgeist_render::image::ImageQuality> for peniko::image::ImageQuality
-pub fn peniko::image::ImageQuality::from(quality: surgeist_render::image::ImageQuality) -> Self
 pub enum surgeist_render::image::ImageRendering
 pub surgeist_render::image::ImageRendering::Auto
 pub surgeist_render::image::ImageRendering::CrispEdges
@@ -1426,8 +1415,6 @@ pub const fn surgeist_render::paint::Color::b(self) -> f32
 pub const fn surgeist_render::paint::Color::g(self) -> f32
 pub const fn surgeist_render::paint::Color::r(self) -> f32
 pub fn surgeist_render::paint::Color::try_rgba(r: f32, g: f32, b: f32, a: f32) -> surgeist_render::Result<Self>
-impl core::convert::From<surgeist_render::paint::Color> for peniko::Color
-pub fn peniko::Color::from(color: surgeist_render::paint::Color) -> Self
 impl core::convert::From<surgeist_render::paint::Color> for surgeist_render::paint::Paint
 pub fn surgeist_render::paint::Paint::from(color: surgeist_render::paint::Color) -> Self
 impl core::default::Default for surgeist_render::paint::Color
@@ -1768,14 +1755,10 @@ pub enum surgeist_render::shape::LineCap
 pub surgeist_render::shape::LineCap::Butt
 pub surgeist_render::shape::LineCap::Round
 pub surgeist_render::shape::LineCap::Square
-impl core::convert::From<surgeist_render::shape::LineCap> for kurbo::stroke::Cap
-pub fn kurbo::stroke::Cap::from(cap: surgeist_render::shape::LineCap) -> Self
 pub enum surgeist_render::shape::LineJoin
 pub surgeist_render::shape::LineJoin::Bevel
 pub surgeist_render::shape::LineJoin::Miter
 pub surgeist_render::shape::LineJoin::Round
-impl core::convert::From<surgeist_render::shape::LineJoin> for kurbo::stroke::Join
-pub fn kurbo::stroke::Join::from(join: surgeist_render::shape::LineJoin) -> Self
 pub enum surgeist_render::shape::PathElement
 pub surgeist_render::shape::PathElement::Close
 pub surgeist_render::shape::PathElement::CubicTo(surgeist_render::geometry::Point, surgeist_render::geometry::Point, surgeist_render::geometry::Point)
