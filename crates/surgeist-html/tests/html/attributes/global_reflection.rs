@@ -227,3 +227,80 @@ fn editing_keyword_read_and_set_preserve_the_first_refusal() {
         assert_eq!(result, Err(HtmlAttributeKeywordRead::ValueHeader));
     }
 }
+
+#[test]
+fn hidden_content_selects_its_state_from_exact_utf16() {
+    use surgeist_html::attributes::{HtmlHidden, HtmlHiddenState};
+    use surgeist_html::bounded::attributes::hidden_processing_with;
+
+    let until_found: Vec<_> = "UnTiL-fOuNd".encode_utf16().collect();
+    let trailing_space: Vec<_> = "until-found ".encode_utf16().collect();
+    for (raw, state) in [
+        (None, HtmlHiddenState::NotHidden),
+        (
+            Some(&until_found[..]),
+            HtmlHiddenState::Keyword(HtmlHidden::UntilFound),
+        ),
+        (
+            Some(&trailing_space[..]),
+            HtmlHiddenState::Keyword(HtmlHidden::Hidden),
+        ),
+        (
+            Some(&[0xd800, 0, 0xdc00][..]),
+            HtmlHiddenState::Keyword(HtmlHidden::Hidden),
+        ),
+        (Some(&[][..]), HtmlHiddenState::Keyword(HtmlHidden::Hidden)),
+    ] {
+        assert_eq!(
+            hidden_processing_with(raw, |_| Ok::<_, Infallible>(())).unwrap(),
+            state
+        );
+    }
+}
+
+#[test]
+fn hidden_setter_preserves_typed_alternatives_and_first_refusal() {
+    use surgeist_html::bounded::attributes::{
+        HtmlAttributeKeywordRead, HtmlHiddenSetterAction as Action, HtmlHiddenSetterInput as Input,
+        hidden_setter_action_with,
+    };
+
+    let until_found: Vec<_> = "UnTiL-fOuNd".encode_utf16().collect();
+    for (value, action) in [
+        (Input::Null, Action::Remove),
+        (Input::Boolean(false), Action::Remove),
+        (Input::Boolean(true), Action::SetEmpty),
+        (Input::Number(0.0), Action::Remove),
+        (Input::Number(-0.0), Action::Remove),
+        (Input::Number(f64::NAN), Action::Remove),
+        (Input::Number(f64::INFINITY), Action::SetEmpty),
+        (Input::Number(f64::NEG_INFINITY), Action::SetEmpty),
+        (Input::Number(f64::MIN_POSITIVE), Action::SetEmpty),
+        (Input::String(&[]), Action::Remove),
+        (Input::String(&[0x30]), Action::SetEmpty),
+        (Input::String(&[0xd800, 0, 0xdc00]), Action::SetEmpty),
+        (Input::String(&until_found), Action::SetUntilFound),
+    ] {
+        assert_eq!(
+            hidden_setter_action_with(value, |_| Ok::<_, Infallible>(())).unwrap(),
+            action
+        );
+        assert_eq!(
+            hidden_setter_action_with(value, Err),
+            Err(HtmlAttributeKeywordRead::ValueHeader)
+        );
+    }
+    let exact = 2 + until_found.len();
+    for (available, expected) in [
+        (exact, Ok(Action::SetUntilFound)),
+        (exact - 1, Err("refused")),
+    ] {
+        let mut remaining = available;
+        let result = hidden_setter_action_with(Input::String(&until_found), |_| {
+            remaining = remaining.checked_sub(1).ok_or("refused")?;
+            Ok(())
+        });
+        assert_eq!(result, expected);
+        assert_eq!(remaining, 0);
+    }
+}

@@ -2,18 +2,19 @@
 
 use super::{element::HTML_NAMESPACE, *};
 use std::fmt::Write;
-use surgeist_bindings_js::conversion::IntegerType;
 use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING, DOM_STRING_NULL_TO_EMPTY};
+use surgeist_bindings_js::conversion::{HiddenAttributeValue, IntegerType, declarations};
 use surgeist_bindings_js::{
     IntegerKind, IntegerMode, IntegerValue, dom_exception::DomExceptionName,
 };
 use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
-use surgeist_html::attributes::HtmlContentEditableState;
+use surgeist_html::attributes::{HtmlContentEditableState, HtmlHidden, HtmlHiddenState};
 use surgeist_html::bounded::attributes::{
-    HtmlTableSpanRule, contenteditable_processing_with, contenteditable_setter_state_with,
-    dir_keyword_with, enterkeyhint_keyword_with, heading_offset_reflection_with,
-    heading_offset_setter_value, inputmode_keyword_with, popover_keyword_with,
-    table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
+    HtmlHiddenSetterAction, HtmlHiddenSetterInput, HtmlTableSpanRule,
+    contenteditable_processing_with, contenteditable_setter_state_with, dir_keyword_with,
+    enterkeyhint_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
+    hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
+    popover_keyword_with, table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
     template_shadow_root_slot_assignment_keyword_with,
 };
 use surgeist_html::bounded::numeric::{
@@ -33,6 +34,7 @@ pub(super) enum Reflection {
     Mode,
     SlotAssignment,
     Direction,
+    Hidden,
     Popover,
     HeadingOffset,
     ContentEditable,
@@ -338,6 +340,13 @@ impl Capture {
                     Reflection::Direction => {
                         Reflected::Keyword(Some(dir_keyword_with(units, |_| read.step())?))
                     }
+                    Reflection::Hidden => match hidden_processing_with(units, |_| read.step())? {
+                        HtmlHiddenState::NotHidden => Reflected::Boolean(false),
+                        HtmlHiddenState::Keyword(HtmlHidden::Hidden) => Reflected::Boolean(true),
+                        HtmlHiddenState::Keyword(keyword @ HtmlHidden::UntilFound) => {
+                            Reflected::Keyword(Some(keyword.canonical_keyword()))
+                        }
+                    },
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
                     }
@@ -417,7 +426,9 @@ impl Capture {
                     &absent
                 }
             };
-            let value = if matches!(reflection, Reflection::Boolean) {
+            let value = if matches!(reflection, Reflection::Hidden) {
+                self.prepare_hidden_attribute(scope, &owner, &events, id, input)?
+            } else if matches!(reflection, Reflection::Boolean) {
                 let converted = self
                     .callbacks
                     .conversion
@@ -551,6 +562,47 @@ impl Capture {
             }
         })();
         tree::tree_completion(scope, &events, result)
+    }
+}
+
+impl Capture {
+    fn prepare_hidden_attribute<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        id: NodeId,
+        input: &Value<'scope>,
+    ) -> Result<Option<(DocumentString, GuestBacking)>, DocumentGuestEventError> {
+        let converted = self
+            .callbacks
+            .conversion
+            .run(scope, |cx| {
+                cx.value(&declarations::html_element_hidden_setter(), input)
+            })
+            .map_err(Error::from)?;
+        scope.check_active()?;
+        let value = match converted.get() {
+            None => HtmlHiddenSetterInput::Null,
+            Some(HiddenAttributeValue::Boolean(value)) => HtmlHiddenSetterInput::Boolean(*value),
+            Some(HiddenAttributeValue::Number(value)) => HtmlHiddenSetterInput::Number(*value),
+            Some(HiddenAttributeValue::String(value)) => {
+                HtmlHiddenSetterInput::String(value.as_code_units())
+            }
+        };
+        let action = self.callbacks.with_read(owner, events, |read, _| {
+            read.node(id)?;
+            hidden_setter_action_with(value, |_| read.step())
+        })?;
+        match action {
+            HtmlHiddenSetterAction::Remove => Ok(None),
+            HtmlHiddenSetterAction::SetEmpty => copy_native_data(owner, events, &[]).map(Some),
+            HtmlHiddenSetterAction::SetUntilFound => {
+                let mut units = [0; MAX_KEYWORD_UNITS];
+                let units = keyword_units(HtmlHidden::UntilFound.canonical_keyword(), &mut units)?;
+                copy_native_data(owner, events, units).map(Some)
+            }
+        }
     }
 }
 

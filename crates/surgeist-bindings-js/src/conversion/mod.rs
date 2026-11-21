@@ -30,7 +30,7 @@ pub use account::{
     CleanupObservation, CleanupStatus, ConversionAccount, Converted, LedgerError, Resource,
     ResourceFields, ResourceTable, Work, WorkFields, WorkTable,
 };
-pub use composition::{Argument, ArgumentValue, Descriptor, Nullable};
+pub use composition::{Argument, ArgumentValue, Descriptor, HiddenAttributeValue, Nullable};
 pub use failure::{
     CleanupFailure, CleanupFault, CleanupPrimary, CleanupStage, Failure, FailureKind, Rule,
 };

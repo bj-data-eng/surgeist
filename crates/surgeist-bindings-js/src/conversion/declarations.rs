@@ -2,6 +2,7 @@
 // Source-adapted WHATWG and W3C declarations: see the crate NOTICE.md.
 //! Closed scoped conversion descriptors from the retained declarations.
 
+use super::HiddenAttributeValue;
 use super::{
     Argument, Conversion, Converted, Enumeration, Failure, IntegerType, Nullable, Type, types,
 };
@@ -1821,6 +1822,11 @@ pub fn html_select_element_set_custom_validity_0_error() -> Argument<Type<DomStr
 /// Selected setter conversion for `CharacterData.data`.
 pub fn character_data_data_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLElement.hidden`.
+pub fn html_element_hidden_setter() -> Nullable<Type<HiddenAttributeValue>> {
+    Type::scalar(super::composition::hidden_attribute_value).nullable()
 }
 
 /// Selected setter conversion for `HTMLElement.innerText`.

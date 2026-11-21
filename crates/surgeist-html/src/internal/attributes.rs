@@ -1428,8 +1428,8 @@ enum_rule!(DRAGGABLE, HtmlDraggableState, Draggable, Context::Global, [48], "att
     Some(HtmlDraggableState::Auto), Some(HtmlDraggableState::Auto), None,
     ["true" => ("true", HtmlDraggableState::Keyword(HtmlDraggable::True)),
      "false" => ("false", HtmlDraggableState::Keyword(HtmlDraggable::False))]);
-enum_rule!(HIDDEN, HtmlHiddenState, Hidden, Context::Global, [65], "attr-hidden",
-    Some(HtmlHiddenState::NotHidden), Some(HtmlHiddenState::Keyword(HtmlHidden::Hidden)), Some(HtmlHiddenState::Keyword(HtmlHidden::Hidden)),
+total_enum_rule!(HIDDEN, HIDDEN_DEFAULTS, HtmlHiddenState, Hidden, Context::Global, [65], "attr-hidden",
+    HtmlHiddenState::NotHidden, HtmlHiddenState::Keyword(HtmlHidden::Hidden), Some(HtmlHiddenState::Keyword(HtmlHidden::Hidden)),
     ["hidden" => ("hidden", HtmlHiddenState::Keyword(HtmlHidden::Hidden)),
      "until-found" => ("until-found", HtmlHiddenState::Keyword(HtmlHidden::UntilFound))]);
 enum_rule!(POPOVER, HtmlPopoverState, Popover, Context::Global, [119], "attr-popover",
@@ -3021,6 +3021,69 @@ pub(crate) mod bounded_rules {
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<&'static str, E> {
         reflected_keyword_with(&INPUTMODE, raw, admit).map(|keyword| keyword.unwrap_or(""))
+    }
+
+    /// Selects the intrinsic hidden state from the exact null-namespace value.
+    pub fn hidden_processing_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlHiddenState, E> {
+        total_enum_value_with(&HIDDEN, &HIDDEN_DEFAULTS, raw, admit)
+    }
+
+    /// One value of the already converted nullable `hidden` setter union.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub enum HtmlHiddenSetterInput<'a> {
+        /// The null alternative, including converted `undefined`.
+        Null,
+        /// A Boolean primitive.
+        Boolean(bool),
+        /// An unrestricted double, including NaN and either signed zero.
+        Number(f64),
+        /// An exact DOMString, borrowed from its original conversion.
+        String(&'a [u16]),
+    }
+
+    /// The local content-attribute action selected by the `hidden` setter.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum HtmlHiddenSetterAction {
+        /// Remove the null-namespace attribute.
+        Remove,
+        /// Set its value to the empty string.
+        SetEmpty,
+        /// Set its value to the canonical `until-found` keyword.
+        SetUntilFound,
+    }
+
+    /// Selects the `hidden` setter's local attribute action after IDL conversion.
+    /// Reached value and keyword observations draw on the caller's admission.
+    pub fn hidden_setter_action_with<E>(
+        value: HtmlHiddenSetterInput<'_>,
+        mut admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlHiddenSetterAction, E> {
+        use HtmlHiddenSetterAction::{Remove, SetEmpty, SetUntilFound};
+        use HtmlHiddenSetterInput::{Boolean, Null, Number, String};
+
+        admit(HtmlAttributeKeywordRead::ValueHeader)?;
+        Ok(match value {
+            Null | Boolean(false) => Remove,
+            Number(number) if number == 0.0 || number.is_nan() => Remove,
+            String(raw) => {
+                if keyword_spelling_matches_with(
+                    raw,
+                    HtmlHidden::UntilFound.canonical_keyword(),
+                    false,
+                    &mut admit,
+                )? {
+                    SetUntilFound
+                } else if raw.is_empty() {
+                    Remove
+                } else {
+                    SetEmpty
+                }
+            }
+            Boolean(true) | Number(_) => SetEmpty,
+        })
     }
 
     fn reflected_keyword_with<T: Copy + PartialEq, E>(

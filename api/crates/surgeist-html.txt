@@ -2421,6 +2421,15 @@ pub surgeist_html::bounded::attributes::HtmlEmbeddedDimensionParent::Unavailable
 pub enum surgeist_html::bounded::attributes::HtmlHashNameScanStep<'raw>
 pub surgeist_html::bounded::attributes::HtmlHashNameScanStep::Complete(surgeist_html::attributes::hash_name::HtmlHashNameReferenceReport)
 pub surgeist_html::bounded::attributes::HtmlHashNameScanStep::Continue(surgeist_html::bounded::attributes::HtmlHashNameScan<'raw>)
+pub enum surgeist_html::bounded::attributes::HtmlHiddenSetterAction
+pub surgeist_html::bounded::attributes::HtmlHiddenSetterAction::Remove
+pub surgeist_html::bounded::attributes::HtmlHiddenSetterAction::SetEmpty
+pub surgeist_html::bounded::attributes::HtmlHiddenSetterAction::SetUntilFound
+pub enum surgeist_html::bounded::attributes::HtmlHiddenSetterInput<'a>
+pub surgeist_html::bounded::attributes::HtmlHiddenSetterInput::Boolean(bool)
+pub surgeist_html::bounded::attributes::HtmlHiddenSetterInput::Null
+pub surgeist_html::bounded::attributes::HtmlHiddenSetterInput::Number(f64)
+pub surgeist_html::bounded::attributes::HtmlHiddenSetterInput::String(&'a [u16])
 pub enum surgeist_html::bounded::attributes::HtmlIconSizeShape
 pub surgeist_html::bounded::attributes::HtmlIconSizeShape::Bitmap
 pub surgeist_html::bounded::attributes::HtmlIconSizeShape::Bitmap::height: core::ops::range::Range<usize>
@@ -2501,6 +2510,8 @@ pub fn surgeist_html::bounded::attributes::embedded_dimension_applicability(elem
 pub fn surgeist_html::bounded::attributes::enterkeyhint_keyword_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<&'static str, E>
 pub fn surgeist_html::bounded::attributes::heading_offset_reflection_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlIntegerAttributeRead) -> core::result::Result<(), E>) -> core::result::Result<u8, E>
 pub const fn surgeist_html::bounded::attributes::heading_offset_setter_value(value: u32) -> u32
+pub fn surgeist_html::bounded::attributes::hidden_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlHiddenState, E>
+pub fn surgeist_html::bounded::attributes::hidden_setter_action_with<E>(value: surgeist_html::bounded::attributes::HtmlHiddenSetterInput<'_>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::bounded::attributes::HtmlHiddenSetterAction, E>
 pub fn surgeist_html::bounded::attributes::input_list_applies(state: surgeist_html::attributes::HtmlInputType) -> bool
 pub fn surgeist_html::bounded::attributes::input_readonly_applies(state: surgeist_html::attributes::HtmlInputType) -> bool
 pub fn surgeist_html::bounded::attributes::input_submitter_context(state: surgeist_html::attributes::HtmlInputType) -> surgeist_html::attributes::HtmlButtonSubmitterContext
