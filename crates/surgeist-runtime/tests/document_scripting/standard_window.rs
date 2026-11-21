@@ -172,6 +172,54 @@ fn assert_no_hook_globals(host: &mut DocumentScriptHost, permit: &DocumentScript
     );
 }
 
+pub(super) fn guest_media_removal_reaches_the_owning_checkpoint() {
+    let (mut session, top) = setup();
+    let cancellation = Arc::new(cancel());
+    let mut registry = new_registry();
+    registry.bind(&mut session.dom(), &cancellation).unwrap();
+    let mut host = prepare(session, cancellation)
+        .enable_with_guest_event_registry(top, ALLOW, None, &mut Some(registry), guest_limits())
+        .unwrap();
+    let permit = host.permit().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const parent = document.documentElement ?? document;
+            const box = parent.appendChild(document.createElement('div'));
+            const media = document.createElement('audio');
+            globalThis.removalFixture = { box, media };
+            return box.appendChild(media) === media && media.parentNode === box;
+        })())"#,
+        1.0,
+    );
+    let removed = host.in_document(&permit, |scope| {
+        assert_script_number(
+            scope,
+            r#"Number((() => {
+            const {box, media} = removalFixture;
+            return box.removeChild(media) === media && media.parentNode === null;
+        })())"#,
+            1.0,
+        )
+    });
+    if let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = &removed {
+        panic!(
+            "guest media removal refused: {:?}",
+            failure.cause::<DomSourceDriveError>()
+        );
+    }
+    removed.unwrap();
+    host.checkpoint().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        "Number(removalFixture.media.parentNode === null)",
+        1.0,
+    );
+    host.stop().into_session().unwrap();
+}
+
 fn new_registry() -> DomEventDispatcher<()> {
     DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 16,
