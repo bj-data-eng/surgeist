@@ -138,6 +138,7 @@ pub(super) enum Receiver {
     Input,
     Legend,
     Marquee,
+    Meter,
     Li,
     OList,
     UList,
@@ -146,6 +147,7 @@ pub(super) enum Receiver {
     Output,
     Param,
     Pre,
+    Progress,
     Slot,
     TableCell,
     TableColumn,
@@ -281,6 +283,14 @@ impl Receiver {
                 step()?;
                 html_element_is(node, family.interface())
             }
+            Self::Progress => {
+                step()?;
+                html_element_is(node, "HTMLProgressElement")
+            }
+            Self::Meter => {
+                step()?;
+                html_element_is(node, "HTMLMeterElement")
+            }
         })
     }
 
@@ -314,6 +324,7 @@ impl Receiver {
             Self::Input => const { &ascii(b"HTMLInputElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
+            Self::Meter => const { &ascii(b"HTMLMeterElement required") },
             Self::Li => const { &ascii(b"HTMLLIElement required") },
             Self::OList => const { &ascii(b"HTMLOListElement required") },
             Self::UList => const { &ascii(b"HTMLUListElement required") },
@@ -322,6 +333,7 @@ impl Receiver {
             Self::Output => const { &ascii(b"HTMLOutputElement required") },
             Self::Param => const { &ascii(b"HTMLParamElement required") },
             Self::Pre => const { &ascii(b"HTMLPreElement required") },
+            Self::Progress => const { &ascii(b"HTMLProgressElement required") },
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
             Self::TableCell => const { &ascii(b"HTMLTableCellElement required") },
             Self::TableColumn => const { &ascii(b"HTMLTableColElement required") },

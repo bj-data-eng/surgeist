@@ -10,6 +10,7 @@ pub mod link;
 pub mod marquee;
 pub mod media;
 pub mod native;
+pub mod range_indicator;
 pub mod script;
 pub mod style;
 pub mod template;

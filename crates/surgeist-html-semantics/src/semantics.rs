@@ -2196,13 +2196,9 @@ impl<'a> HtmlSemanticSession<'a> {
         Ok(())
     }
     fn numeric_budget(&mut self, digits: usize) -> Result<usize, HtmlSemanticFailure> {
-        // One bounded atomic numeric operation: scan, canonical write, and
-        // allocation. Poll immediately before and after, without claiming the
-        // parser's 256-unit cancellation quantum for String operations.
-        let work = digits
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(3))
-            .and_then(|n| n.checked_add(8))
+        // The floating-point operation's atomic envelope also covers our other
+        // numeric materializations. Poll around the call, with no inner quantum.
+        let work = surgeist_html::bounded::numeric::floating_point_number_work_bound(digits)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
         self.remaining_allocated_bytes()

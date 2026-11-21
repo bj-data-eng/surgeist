@@ -3,7 +3,10 @@
 
 use super::*;
 use surgeist_html::{
-    microsyntax::numeric::HtmlFloatingPointNumber, values::Attribute, vocabulary::KnownHtmlElement,
+    elements::range_indicator::{HtmlMeterRange, HtmlProgressMaximum},
+    microsyntax::numeric::HtmlFloatingPointNumber,
+    values::Attribute,
+    vocabulary::KnownHtmlElement,
 };
 
 use surgeist_html::bounded::numeric::{
@@ -123,11 +126,6 @@ impl<'a> HtmlSemanticSession<'a> {
         Ok(result.into_parts().0.ok())
     }
 
-    fn range_finite(&mut self, value: f64) -> Result<HtmlFloatingPointNumber, HtmlSemanticFailure> {
-        HtmlFloatingPointNumber::try_from(value)
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))
-    }
-
     pub(super) fn meter_state(
         &mut self,
         element: &'a HtmlCapturedElement,
@@ -137,42 +135,24 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.charge(20)?;
         let min_raw = self.attribute(element, "min")?;
-        let minimum = self.range_number(min_raw)?.map_or(0.0, |n| n.value());
+        let minimum = self.range_number(min_raw)?;
         let max_raw = self.attribute(element, "max")?;
-        let maximum = self
-            .range_number(max_raw)?
-            .map_or(1.0, |n| n.value())
-            .max(minimum);
+        let range = HtmlMeterRange::new(minimum, self.range_number(max_raw)?);
         let value_raw = self.attribute(element, "value")?;
-        let value = self
-            .range_number(value_raw)?
-            .map_or(0.0, |n| n.value())
-            .clamp(minimum, maximum);
+        let value = range.value(self.range_number(value_raw)?);
         let low_raw = self.attribute(element, "low")?;
-        let low = self
-            .range_number(low_raw)?
-            .map_or(minimum, |n| n.value())
-            .clamp(minimum, maximum);
+        let low = self.range_number(low_raw)?;
         let high_raw = self.attribute(element, "high")?;
-        let high = self
-            .range_number(high_raw)?
-            .map_or(maximum, |n| n.value())
-            .clamp(low, maximum);
+        let high = range.high(low, self.range_number(high_raw)?);
         let optimum_raw = self.attribute(element, "optimum")?;
-        let optimum = match self.range_number(optimum_raw)? {
-            Some(number) => number.value(),
-            // The finite result uses Rust's midpoint operation, avoiding both
-            // endpoint overflow and an early rounded/underflowed difference.
-            None => minimum.midpoint(maximum),
-        }
-        .clamp(minimum, maximum);
+        let optimum = range.optimum(self.range_number(optimum_raw)?);
         Ok(HtmlSemanticValue::Known(HtmlMeterState {
-            minimum: self.range_finite(minimum)?,
-            maximum: self.range_finite(maximum)?,
-            value: self.range_finite(value)?,
-            low: self.range_finite(low)?,
-            high: self.range_finite(high)?,
-            optimum: self.range_finite(optimum)?,
+            minimum: range.minimum(),
+            maximum: range.maximum(),
+            value,
+            low: range.low(low),
+            high,
+            optimum,
         }))
     }
 
@@ -189,19 +169,13 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.charge(8)?;
         let max_raw = self.attribute(element, "max")?;
-        let maximum = self
-            .range_number(max_raw)?
-            .filter(|n| n.value() > 0.0)
-            .map_or(1.0, |n| n.value());
-        let value = self
-            .range_number(value_raw)?
-            .map_or(0.0, |n| n.value())
-            .clamp(0.0, maximum);
+        let maximum = HtmlProgressMaximum::new(self.range_number(max_raw)?);
+        let value = self.range_number(value_raw)?;
         Ok(HtmlSemanticValue::Known(HtmlProgressState::Determinate(
             HtmlDeterminateProgress {
-                maximum: self.range_finite(maximum)?,
-                value: self.range_finite(value)?,
-                position: self.range_finite(value / maximum)?,
+                maximum: maximum.maximum(),
+                value: maximum.determinate_value(value),
+                position: maximum.determinate_position(value),
             },
         )))
     }
