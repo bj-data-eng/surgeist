@@ -7,6 +7,11 @@
 //! algorithms: None represents source −1, without a WebIDL long conversion.
 
 use super::*;
+use crate::table_rows::{
+    HtmlTableRowChild, HtmlTableRowIndexKind, HtmlTableRowOrder, HtmlTableRowParentRoute,
+    HtmlTableRowReader,
+};
+use std::ops::ControlFlow;
 use surgeist_html::vocabulary::KnownHtmlElement;
 
 /// Direct HTML tbody subjects in a qualified table snapshot.
@@ -61,20 +66,13 @@ impl HtmlTableCellCollection {
 /// parent's children directly in source order.
 #[derive(Clone, Copy)]
 enum Collection {
-    Rows,
+    Rows(HtmlTableRowOrder),
     Direct(DirectCollection),
 }
 #[derive(Clone, Copy)]
 enum DirectCollection {
     Bodies,
-    SectionRows,
     Cells,
-}
-#[derive(Clone, Copy)]
-enum RowPhase {
-    Head,
-    Body,
-    Foot,
 }
 enum CollectionProjection<'t> {
     Snapshot(&'t mut Vec<HtmlCaptureSubjectId>),
@@ -86,8 +84,7 @@ enum CollectionProjection<'t> {
 }
 #[derive(Clone, Copy)]
 enum TableIndex {
-    Row,
-    SectionRow,
+    Row(HtmlTableRowIndexKind),
     Cell,
 }
 impl<'a> HtmlSemanticSession<'a> {
@@ -95,13 +92,13 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<Option<usize>>, HtmlSemanticFailure> {
-        self.table_index(subject, TableIndex::Row)
+        self.table_index(subject, TableIndex::Row(HtmlTableRowIndexKind::Table))
     }
     pub(in crate::semantics) fn table_section_row_index(
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<Option<usize>>, HtmlSemanticFailure> {
-        self.table_index(subject, TableIndex::SectionRow)
+        self.table_index(subject, TableIndex::Row(HtmlTableRowIndexKind::Section))
     }
     pub(in crate::semantics) fn table_cell_index(
         &mut self,
@@ -125,7 +122,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let kind = self.known(element)?;
         let applicable = match query {
-            TableIndex::Row | TableIndex::SectionRow => kind == Some(KnownHtmlElement::Tr),
+            TableIndex::Row(_) => kind == Some(KnownHtmlElement::Tr),
             TableIndex::Cell => matches!(kind, Some(KnownHtmlElement::Td | KnownHtmlElement::Th)),
         };
         if !applicable {
@@ -151,36 +148,28 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlCapturedNodeKind::Element(element) => self.known(element)?,
             _ => None,
         };
-        let section = matches!(
-            parent_kind,
-            Some(KnownHtmlElement::Thead | KnownHtmlElement::Tbody | KnownHtmlElement::Tfoot)
-        );
         let (container, collection) = match query {
             TableIndex::Cell if parent_kind == Some(KnownHtmlElement::Tr) => {
                 (parent, Collection::Direct(DirectCollection::Cells))
             }
-            TableIndex::SectionRow if section => {
-                (parent, Collection::Direct(DirectCollection::SectionRows))
-            }
-            TableIndex::Row | TableIndex::SectionRow
-                if parent_kind == Some(KnownHtmlElement::Table) =>
-            {
-                (parent, Collection::Rows)
-            }
-            TableIndex::Row if section => {
-                let Some(table) = self.parent(parent_node)?.map_err(TableStop::Missing)? else {
-                    return Ok(None);
-                };
-                let table_node = self.node(&table)?;
-                let HtmlCapturedNodeKind::Element(element) = table_node.kind() else {
-                    return Ok(None);
-                };
-                if self.known(element)? != Some(KnownHtmlElement::Table) {
-                    return Ok(None);
+            TableIndex::Cell => return Ok(None),
+            TableIndex::Row(kind) => match kind.parent_route(parent_kind) {
+                HtmlTableRowParentRoute::None => return Ok(None),
+                HtmlTableRowParentRoute::Direct(order) => (parent, Collection::Rows(order)),
+                HtmlTableRowParentRoute::SectionParentTable => {
+                    let Some(table) = self.parent(parent_node)?.map_err(TableStop::Missing)? else {
+                        return Ok(None);
+                    };
+                    let table_node = self.node(&table)?;
+                    let HtmlCapturedNodeKind::Element(element) = table_node.kind() else {
+                        return Ok(None);
+                    };
+                    if self.known(element)? != Some(KnownHtmlElement::Table) {
+                        return Ok(None);
+                    }
+                    (table, Collection::Rows(HtmlTableRowOrder::Table))
                 }
-                (table, Collection::Rows)
-            }
-            _ => return Ok(None),
+            },
         };
         let mut projection = CollectionProjection::Target {
             subject,
@@ -212,7 +201,7 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlTableRowCollection>, HtmlSemanticFailure> {
         Ok(self
-            .table_collection(subject, Collection::Rows)?
+            .table_collection(subject, Collection::Rows(HtmlTableRowOrder::Table))?
             .map(|rows| HtmlTableRowCollection { rows }))
     }
     pub(in crate::semantics) fn table_section_rows(
@@ -220,7 +209,7 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlTableRowCollection>, HtmlSemanticFailure> {
         Ok(self
-            .table_collection(subject, Collection::Direct(DirectCollection::SectionRows))?
+            .table_collection(subject, Collection::Rows(HtmlTableRowOrder::Section))?
             .map(|rows| HtmlTableRowCollection { rows }))
     }
     pub(in crate::semantics) fn table_row_cells(
@@ -247,10 +236,9 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let kind = self.known(element)?;
         let applicable = match collection {
-            Collection::Rows | Collection::Direct(DirectCollection::Bodies) => {
-                kind == Some(KnownHtmlElement::Table)
-            }
-            Collection::Direct(DirectCollection::SectionRows) => matches!(
+            Collection::Rows(HtmlTableRowOrder::Table)
+            | Collection::Direct(DirectCollection::Bodies) => kind == Some(KnownHtmlElement::Table),
+            Collection::Rows(HtmlTableRowOrder::Section) => matches!(
                 kind,
                 Some(KnownHtmlElement::Thead | KnownHtmlElement::Tbody | KnownHtmlElement::Tfoot)
             ),
@@ -278,7 +266,16 @@ impl<'a> HtmlSemanticSession<'a> {
         projection: &mut CollectionProjection<'_>,
     ) -> TableResult<()> {
         match collection {
-            Collection::Rows => self.table_collection_rows(subject, projection),
+            Collection::Rows(order) => {
+                let _ = order.visit(&mut CapturedRowRead(self), subject, |reader, row| {
+                    Ok(if reader.0.table_collection_emit(projection, row)? {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    })
+                })?;
+                Ok(())
+            }
             Collection::Direct(direct) => self.table_collection_direct(subject, direct, projection),
         }
     }
@@ -321,7 +318,6 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)?;
             let keep = match collection {
                 DirectCollection::Bodies => kind == Some(KnownHtmlElement::Tbody),
-                DirectCollection::SectionRows => kind == Some(KnownHtmlElement::Tr),
                 DirectCollection::Cells => {
                     matches!(kind, Some(KnownHtmlElement::Td | KnownHtmlElement::Th))
                 }
@@ -332,49 +328,30 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         Ok(())
     }
-    fn table_collection_append_rows(
-        &mut self,
-        subject: &HtmlCaptureSubjectId,
-        projection: &mut CollectionProjection<'_>,
-    ) -> TableResult<bool> {
-        let mut children = self.table_children(subject)?;
-        while let Some((id, kind)) = self.table_next(&mut children)? {
-            self.charge(1)?;
-            if kind == Some(KnownHtmlElement::Tr) && self.table_collection_emit(projection, id)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+}
+
+struct CapturedRowRead<'session, 'capture>(&'session mut HtmlSemanticSession<'capture>);
+
+impl<'a> HtmlTableRowReader for CapturedRowRead<'_, 'a> {
+    type Id = HtmlCaptureSubjectId;
+    type Children = HtmlCapturedChildIds<'a>;
+    type Error = TableStop;
+
+    fn step(&mut self) -> TableResult<()> {
+        self.0.charge(1).map_err(Into::into)
     }
-    fn table_collection_rows(
+
+    fn children(&mut self, container: &Self::Id) -> TableResult<Self::Children> {
+        self.0.table_children(container)
+    }
+
+    fn next_element(
         &mut self,
-        subject: &HtmlCaptureSubjectId,
-        projection: &mut CollectionProjection<'_>,
-    ) -> TableResult<()> {
-        // Fixed passes preserve source header/body/footer order without
-        // temporary section/footer buffers. Every actual visit is charged.
-        for phase in [RowPhase::Head, RowPhase::Body, RowPhase::Foot] {
-            self.charge(1)?;
-            let mut children = self.table_children(subject)?;
-            while let Some((id, kind)) = self.table_next(&mut children)? {
-                self.charge(1)?;
-                match (phase, kind) {
-                    (RowPhase::Head, Some(KnownHtmlElement::Thead))
-                    | (RowPhase::Body, Some(KnownHtmlElement::Tbody))
-                    | (RowPhase::Foot, Some(KnownHtmlElement::Tfoot)) => {
-                        if self.table_collection_append_rows(&id, projection)? {
-                            return Ok(());
-                        }
-                    }
-                    (RowPhase::Body, Some(KnownHtmlElement::Tr))
-                        if self.table_collection_emit(projection, id)? =>
-                    {
-                        return Ok(());
-                    }
-                    _ => {}
-                }
-            }
-        }
-        Ok(())
+        children: &mut Self::Children,
+    ) -> TableResult<Option<HtmlTableRowChild<Self::Id>>> {
+        Ok(self
+            .0
+            .table_next(children)?
+            .map(|(id, kind)| HtmlTableRowChild { id, kind }))
     }
 }

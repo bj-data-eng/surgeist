@@ -134,7 +134,10 @@ impl TableFamily {
             Self::Table => TABLE_REFLECTIONS,
             Self::Caption => &[ALIGN],
             Self::Section => &[ALIGN, CH, CH_OFF, V_ALIGN],
-            Self::Row => &[ALIGN, CH, CH_OFF, V_ALIGN, BG_COLOR],
+            Self::Row => {
+                super::table_row_index::install(scope, prototype, capture)?;
+                &[ALIGN, CH, CH_OFF, V_ALIGN, BG_COLOR]
+            }
         };
         reflection::install(
             scope,

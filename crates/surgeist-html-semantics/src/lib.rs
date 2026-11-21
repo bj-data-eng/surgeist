@@ -15,6 +15,7 @@ mod hyperlink;
 #[cfg(test)]
 mod schema_tests;
 mod semantics;
+pub mod table_rows;
 pub use base::*;
 pub use capture::*;
 pub use controlled_option_value::*;

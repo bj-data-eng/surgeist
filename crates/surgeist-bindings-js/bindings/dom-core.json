@@ -19316,28 +19316,21 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
+          "path": "crates/surgeist-dom/src/internal/snapshot/table_rows.rs",
+          "symbol": "html_table_row_index_with"
         },
         {
           "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
-          "symbol": "table_row_index"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose a bounded current Source index in the associated Table rows order through ordinary parent relationships.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-rowindex"
+          "path": "crates/surgeist-html-semantics/src/table_rows.rs",
+          "symbol": "visit"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Project the checked long or the pinned -1 for a row with no qualifying Table collection.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-rowindex",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_row_index.rs",
+          "symbol": "read_row_index"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableRowElement.sectionRowIndex/get": {
       "kind": "native",
@@ -19345,28 +19338,21 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/internal/semantic.rs",
-          "symbol": "query"
+          "path": "crates/surgeist-dom/src/internal/snapshot/table_rows.rs",
+          "symbol": "html_table_row_index_with"
         },
         {
           "owner": "surgeist-html-semantics",
-          "path": "crates/surgeist-html-semantics/src/semantics/table/collections.rs",
-          "symbol": "table_section_row_index"
-        }
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose a bounded current Source index in the direct Table or TableSection parent's rows order.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-sectionrowindex"
+          "path": "crates/surgeist-html-semantics/src/table_rows.rs",
+          "symbol": "visit"
         },
         {
           "owner": "surgeist-runtime",
-          "contract": "Project the checked long or the pinned -1 for a row with no qualifying parent collection.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-sectionrowindex",
-          "issue": 2258
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/table_row_index.rs",
+          "symbol": "read_row_index"
         }
-      ]
+      ],
+      "requirements": []
     },
     "HTMLTableRowElement.cells/get": {
       "kind": "native",

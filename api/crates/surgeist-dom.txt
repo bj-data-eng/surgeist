@@ -3736,6 +3736,8 @@ pub fn surgeist_dom::tree::DomNode<'_>::find_slot_with<E: core::convert::From<su
 impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::compare_document_position_with<E: core::convert::From<surgeist_dom::DomError>>(self, other: surgeist_dom::identity::NodeId, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_dom::tree::DomDocumentPosition, E>
 impl surgeist_dom::tree::DomNode<'_>
+pub fn surgeist_dom::tree::DomNode<'_>::html_table_row_index_with<E: core::convert::From<surgeist_dom::DomError>>(self, kind: surgeist_html_semantics::table_rows::HtmlTableRowIndexKind, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<usize>, E>
+impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::tab_index_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<i32, E>
 impl<'a> surgeist_dom::tree::DomNode<'a>
 pub fn surgeist_dom::tree::DomNode<'a>::as_attr(self) -> core::option::Option<surgeist_dom::tree::DomAttr<'a>>
