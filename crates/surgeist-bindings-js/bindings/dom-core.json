@@ -13360,67 +13360,107 @@
     "Node.nodeValue/get": {
       "kind": "native",
       "adapter": "node.nodevalue.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "data"}],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/text.rs",
+          "symbol": "read_node_text"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Attr value/identity branch of nodeValue; other kinds preserve source null/no-op behavior.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "data"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "value"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Node.nodeValue/set": {
       "kind": "native",
       "adapter": "node.nodevalue.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "replace_data"}],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/text.rs",
+          "symbol": "write_node_text"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Attr value/identity branch of nodeValue; other kinds preserve source null/no-op behavior.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "replace_data"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_value"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Node.textContent/get": {
       "kind": "native",
       "adapter": "node.textcontent.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "data"}],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/text.rs",
+          "symbol": "read_node_text"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Kind-correct descendant Text projection; Attr value branch consumes canonical Attr identity.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "data"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "value"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "visit_descendant_text_with"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Node.textContent/set": {
       "kind": "native",
       "adapter": "node.textcontent.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/text.rs",
+          "symbol": "write_node_text"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "General replace-all string operation with original native Source custody and Range maintenance.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-          "issue": 2276
+          "path": "crates/surgeist-dom/src/internal/compound.rs",
+          "symbol": "set_text_content"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Node.normalize:0/call": {
       "kind": "native",
       "adapter": "node.normalize.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tree.rs",
+          "symbol": "normalize_node"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "The named normalize operation with its special live Range endpoint transfer and source hook order.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-          "issue": 2275
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "normalize"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Node.cloneNode:0/call": {
       "kind": "native",
@@ -13521,13 +13561,29 @@
     "Document.constructor:0/construct": {
       "kind": "native",
       "adapter": "document.constructor.construct",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document.rs",
+          "symbol": "construct_document"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Standard Document construction using the associated-global Document origin and canonical defaults.",
+          "path": "crates/surgeist-dom/src/internal/store/hosted.rs",
+          "symbol": "document_constructor_context"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/batch.rs",
+          "symbol": "construct_document"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "The attached Window constructor uses its authentic associated Document. Independently installed realms require their own qualified associated Document and constructor authority. Registered projection-only realms do not supply that authority.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
-          "issue": 2277
+          "issue": 2257
         }
       ]
     },
@@ -13724,28 +13780,56 @@
     "Document.createAttribute:0/call": {
       "kind": "native",
       "adapter": "document.createattribute.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr_factory.rs",
+          "symbol": "create_attribute"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs",
+          "symbol": "create_detached"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/batch.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs",
+          "symbol": "create_detached_with_node_retirement_watch"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Document.createAttributeNS:0/call": {
       "kind": "native",
       "adapter": "document.createattributens.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr_factory.rs",
+          "symbol": "create_attribute"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs",
+          "symbol": "create_detached"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/batch.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs",
+          "symbol": "create_detached_with_node_retirement_watch"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Document.createEvent:0/call": {
       "kind": "native",
@@ -13838,13 +13922,34 @@
     "DocumentFragment.constructor:0/construct": {
       "kind": "native",
       "adapter": "documentfragment.constructor.construct",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_fragment"}],
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/fragment.rs",
+          "symbol": "construct_fragment"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/batch.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs",
+          "symbol": "create_detached_with_node_retirement_watch"
+        }
+      ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The authentic current-global associated Document for DocumentFragment construction.",
+          "contract": "The attached Window constructor uses its authentic associated Document. Independently installed realms require their own qualified associated Document and constructor authority. Registered projection-only realms do not supply that authority.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-documentfragment",
-          "issue": 2259
+          "issue": 2257
         }
       ]
     },
@@ -14046,13 +14151,25 @@
     "Element.attributes/get": {
       "kind": "native",
       "adapter": "element.attributes.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "attributes"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the realm-qualified live NamedNodeMap with the canonical Element association, supported-name precedence and native operation results.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
+          "issue": 2308
         }
       ],
       "result_view": "live"
@@ -14121,67 +14238,87 @@
     "Element.getAttributeNode:0/call": {
       "kind": "native",
       "adapter": "element.getattributenode.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/attribute/node.rs",
+          "symbol": "attribute_entry"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_named_item_with"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Element.getAttributeNodeNS:0/call": {
       "kind": "native",
       "adapter": "element.getattributenodens.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/attribute/node.rs",
+          "symbol": "attribute_entry"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_named_item_ns_with"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Element.setAttributeNode:0/call": {
       "kind": "native",
       "adapter": "element.setattributenode.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/attribute/node.rs",
+          "symbol": "attribute_entry"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "attach_attribute_for_script"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Element.setAttributeNodeNS:0/call": {
       "kind": "native",
       "adapter": "element.setattributenodens.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/attribute/node.rs",
+          "symbol": "attribute_entry"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "attach_attribute_for_script"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Element.removeAttributeNode:0/call": {
       "kind": "native",
       "adapter": "element.removeattributenode.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/attribute/node.rs",
+          "symbol": "attribute_entry"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_node"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Element.attachShadow:0/call": {
       "kind": "native",
@@ -14297,210 +14434,348 @@
     "NamedNodeMap.length/get": {
       "kind": "native",
       "adapter": "namednodemap.length.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "len"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
-          "issue": 2274
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the realm-qualified live NamedNodeMap with the canonical Element association, supported-name precedence and native operation results.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
+          "issue": 2308
         }
       ]
     },
     "NamedNodeMap.item:0/call": {
       "kind": "native",
       "adapter": "namednodemap.item.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "item"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
-          "issue": 2274
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the realm-qualified live NamedNodeMap with the canonical Element association, supported-name precedence and native operation results.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
+          "issue": 2308
         }
       ]
     },
     "NamedNodeMap.getNamedItem:0/call": {
       "kind": "native",
       "adapter": "namednodemap.getnameditem.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_named_item_with"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
-          "issue": 2274
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the realm-qualified live NamedNodeMap with the canonical Element association, supported-name precedence and native operation results.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
+          "issue": 2308
         }
       ]
     },
     "NamedNodeMap.getNamedItemNS:0/call": {
       "kind": "native",
       "adapter": "namednodemap.getnameditemns.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_named_item_ns_with"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
-          "issue": 2274
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the realm-qualified live NamedNodeMap with the canonical Element association, supported-name precedence and native operation results.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
+          "issue": 2308
         }
       ]
     },
     "NamedNodeMap.setNamedItem:0/call": {
       "kind": "native",
       "adapter": "namednodemap.setnameditem.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "attach_attribute_for_script"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
-          "issue": 2274
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the live NamedNodeMap setter with canonical attribute verification before the same-identity and in-use decisions, preserving original reentry and refusal.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-element-attributes-set",
+          "issue": 2308
         }
       ]
     },
     "NamedNodeMap.setNamedItemNS:0/call": {
       "kind": "native",
       "adapter": "namednodemap.setnameditemns.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "attach_attribute_for_script"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
-          "issue": 2274
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the live NamedNodeMap setter with canonical attribute verification before the same-identity and in-use decisions, preserving original reentry and refusal.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-element-attributes-set",
+          "issue": 2308
         }
       ]
     },
     "NamedNodeMap.removeNamedItem:0/call": {
       "kind": "native",
       "adapter": "namednodemap.removenameditem.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_named_item_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_node"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
-          "issue": 2274
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the realm-qualified live NamedNodeMap with the canonical Element association, supported-name precedence and native operation results.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
+          "issue": 2308
         }
       ]
     },
     "NamedNodeMap.removeNamedItemNS:0/call": {
       "kind": "native",
       "adapter": "namednodemap.removenameditemns.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_named_item_ns_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_node"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-bindings-js",
+          "contract": "Qualify exact legacy indexed properties and ordinary prototype behavior for the live NamedNodeMap on the supported backend.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
-          "issue": 2274
+          "issue": 2480
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the realm-qualified live NamedNodeMap with the canonical Element association, supported-name precedence and native operation results.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-namednodemap",
+          "issue": 2308
         }
       ]
     },
     "Attr.namespaceURI/get": {
       "kind": "native",
       "adapter": "attr.namespaceuri.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr.rs",
+          "symbol": "attr_member"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/name.rs",
+          "symbol": "namespace_uri"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Attr.prefix/get": {
       "kind": "native",
       "adapter": "attr.prefix.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr.rs",
+          "symbol": "attr_member"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/name.rs",
+          "symbol": "prefix"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Attr.localName/get": {
       "kind": "native",
       "adapter": "attr.localname.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr.rs",
+          "symbol": "attr_member"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/name.rs",
+          "symbol": "local_name"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Attr.name/get": {
       "kind": "native",
       "adapter": "attr.name.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr.rs",
+          "symbol": "attr_member"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "name"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Attr.value/get": {
       "kind": "native",
       "adapter": "attr.value.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr.rs",
+          "symbol": "attr_member"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "value"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Attr.value/set": {
       "kind": "native",
       "adapter": "attr.value.set",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr.rs",
+          "symbol": "set_value"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_value"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Attr.ownerElement/get": {
       "kind": "native",
       "adapter": "attr.ownerelement.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr.rs",
+          "symbol": "attr_member"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "owner_element"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Attr.specified/get": {
       "kind": "native",
       "adapter": "attr.specified.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/attr.rs",
+          "symbol": "attr_member"
+        },
         {
           "owner": "surgeist-dom",
-          "contract": "Stable Attr identity, detached/replaced custody and canonical NamedNodeMap object operations.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "as_attr"
         }
-      ]
+      ],
+      "requirements": []
     },
     "CharacterData.data/get": {
       "kind": "native",
@@ -14556,13 +14831,34 @@
     "Text.constructor:0/construct": {
       "kind": "native",
       "adapter": "text.constructor.construct",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_text"}],
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/character_data.rs",
+          "symbol": "construct_character"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/batch.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs",
+          "symbol": "create_detached_with_node_retirement_watch"
+        }
+      ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The authentic current-global associated Document for Text construction.",
+          "contract": "The attached Window constructor uses its authentic associated Document. Independently installed realms require their own qualified associated Document and constructor authority. Registered projection-only realms do not supply that authority.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-text",
-          "issue": 2259
+          "issue": 2257
         }
       ]
     },
@@ -14587,15 +14883,29 @@
     "ProcessingInstruction.constructor:0/construct": {
       "kind": "native",
       "adapter": "processinginstruction.constructor.construct",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_processing_instruction"}],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The authentic current-global associated Document for ProcessingInstruction construction.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-processinginstruction",
-          "issue": 2259
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/processing_instruction.rs",
+          "symbol": "construct_instruction"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/batch.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs",
+          "symbol": "create_detached_with_node_retirement_watch"
         }
-      ]
+      ],
+      "requirements": []
     },
     "ProcessingInstruction.target/get": {
       "kind": "native",
@@ -14667,13 +14977,34 @@
     "Comment.constructor:0/construct": {
       "kind": "native",
       "adapter": "comment.constructor.construct",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_comment"}],
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/character_data.rs",
+          "symbol": "construct_character"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/batch.rs",
+          "symbol": "create_detached"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs",
+          "symbol": "create_detached_with_node_retirement_watch"
+        }
+      ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The authentic current-global associated Document for Comment construction.",
+          "contract": "The attached Window constructor uses its authentic associated Document. Independently installed realms require their own qualified associated Document and constructor authority. Registered projection-only realms do not supply that authority.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-comment",
-          "issue": 2259
+          "issue": 2257
         }
       ]
     },

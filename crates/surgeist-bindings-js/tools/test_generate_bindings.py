@@ -562,8 +562,8 @@ class DescriptionTests(unittest.TestCase):
             lambda d: d["access_mappings"]["Node.nodeName/get"]["producers"][0].update(symbol=[]),
             lambda d: d["access_mappings"]["Node.nodeName/get"]["producers"][0].update(owner="surgeist-dom/src"),
             lambda d: d["access_mappings"]["Node.nodeName/get"]["producers"][0].update(path="/absolute/path.rs"),
-            lambda d: d["access_mappings"]["ProcessingInstruction.constructor:0/construct"]["requirements"][0].update(issue=True),
-            lambda d: d["access_mappings"]["ProcessingInstruction.constructor:0/construct"]["requirements"][0].update(issue=2**32),
+            lambda d: d["access_mappings"]["Element.attributes/get"]["requirements"][0].update(issue=True),
+            lambda d: d["access_mappings"]["Element.attributes/get"]["requirements"][0].update(issue=2**32),
         ]
         for index, mutate in enumerate(cases):
             with self.subTest(case=index):
@@ -1139,13 +1139,63 @@ class DescriptionTests(unittest.TestCase):
         closed_by["attributes"][-1]["name"] = "Reflect"
         self.rejected("source declaration mismatch: HTMLDialogElement.source")
 
+    def test_core_node_values_and_constructors_name_the_live_routes(self):
+        routes = {
+            "Node.nodeValue/get": {"read_node_text", "data", "value"},
+            "Node.nodeValue/set": {"write_node_text", "replace_data", "set_attribute_value"},
+            "Node.textContent/get": {"read_node_text", "visit_descendant_text_with", "value"},
+            "Node.textContent/set": {"write_node_text", "set_text_content"},
+            "Node.normalize:0/call": {"normalize_node", "normalize"},
+            "Document.constructor:0/construct": {
+                "construct_document", "document_constructor_context",
+            },
+            "DocumentFragment.constructor:0/construct": {"construct_fragment", "create_detached"},
+            "Text.constructor:0/construct": {"construct_character", "create_detached"},
+            "Comment.constructor:0/construct": {"construct_character", "create_detached"},
+            "ProcessingInstruction.constructor:0/construct": {
+                "construct_instruction", "create_detached",
+            },
+        }
+        attached_constructors = {"Document", "DocumentFragment", "Text", "Comment"}
+        mappings = self.data["access_mappings"]
+        for access, symbols in routes.items():
+            with self.subTest(access=access):
+                mapping = mappings[access]
+                issues = {r.get("issue") for r in mapping["requirements"]}
+                interface = access.split(".", 1)[0]
+                self.assertEqual(issues, {2257} if interface in attached_constructors else set())
+                self.assertTrue(symbols <= {p["symbol"] for p in mapping["producers"]})
+
+    def test_direct_attr_custody_keeps_the_named_collection_requirement(self):
+        mappings = self.data["access_mappings"]
+        direct = {
+            "Document.createAttribute:0/call": "create_attribute",
+            "Document.createAttributeNS:0/call": "create_attribute",
+            "Element.getAttributeNode:0/call": "get_named_item_with",
+            "Element.getAttributeNodeNS:0/call": "get_named_item_ns_with",
+            "Element.setAttributeNode:0/call": "attach_attribute_for_script",
+            "Element.setAttributeNodeNS:0/call": "attach_attribute_for_script",
+            "Element.removeAttributeNode:0/call": "remove_attribute_node",
+            "Attr.value/set": "set_attribute_value",
+        }
+        direct.update({access: "attr_member" for access in mappings if access.startswith("Attr.")
+                       and access.endswith("/get")})
+        for access, symbol in direct.items():
+            with self.subTest(access=access):
+                mapping = mappings[access]
+                self.assertFalse(mapping["requirements"])
+                self.assertIn(symbol, {p["symbol"] for p in mapping["producers"]})
+        for access, mapping in mappings.items():
+            if access == "Element.attributes/get" or access.startswith("NamedNodeMap."):
+                with self.subTest(access=access):
+                    self.assertEqual({r.get("issue") for r in mapping["requirements"]}, {2308, 2480})
+        self.assertEqual(mappings["Element.attributes/get"]["result_view"], "live")
+
     def test_selected_pi_constructor_and_factory_are_both_described(self):
         pi = self.member("ProcessingInstruction.constructor:0")
         self.assertEqual(pi["arguments"][0]["name"], "target")
         self.assertEqual(pi["arguments"][1]["default"], {"kind": "string", "value": ""})
         self.assertEqual(self.member("Document.createProcessingInstruction:0")["type"]["name"], "ProcessingInstruction")
-        contracts = self.data["access_mappings"][pi["id"] + "/construct"]["requirements"]
-        self.assertTrue(any(r.get("issue") == 2259 and "associated Document" in r["contract"] for r in contracts))
         self.assertTrue(self.data["access_mappings"]["ProcessingInstruction.setAttribute:0/call"]["requirements"])
 
 

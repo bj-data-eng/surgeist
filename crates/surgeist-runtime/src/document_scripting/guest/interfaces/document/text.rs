@@ -182,7 +182,7 @@ impl Capture {
                 id.node_type(node.kind())?;
                 Ok(node.as_attr().map(|attr| attr.id()))
             })?;
-            if matches!(id, GuestNode::Document(_))
+            if matches!(id, GuestNode::Document(_) | GuestNode::DocumentType(_))
                 || (!content
                     && matches!(
                         id,
