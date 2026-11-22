@@ -78,6 +78,38 @@ pub(super) fn document_type_tracks_native_tree() {
     })
     .unwrap();
 
+    let revision = host.snapshot().unwrap().revision();
+    host.in_document(&permit, |scope| {
+        let value = evaluate(
+            scope,
+            r#"
+            (() => {
+                let conversions = 0;
+                const input = { toString() { ++conversions; return '\ud800'; } };
+                if (!Reflect.set(savedDoctype, 'nodeValue', input) ||
+                    !Reflect.set(savedDoctype, 'textContent', input) || conversions !== 2)
+                    return false;
+                const thrown = {};
+                try {
+                    savedDoctype.nodeValue = { toString() { throw thrown; } };
+                    return false;
+                } catch (error) {
+                    if (error !== thrown) return false;
+                }
+                return savedDoctype.nodeValue === null && savedDoctype.textContent === null &&
+                    savedDoctype === document.doctype && savedDoctype.name === 'html';
+            })()
+        "#,
+        )?;
+        assert!(
+            scope.boolean(&value)?,
+            "doctype writes convert once and leave the node intact"
+        );
+        Ok(())
+    })
+    .expect("DocumentType value writes are ordinary guest no-ops");
+    assert_eq!(host.snapshot().unwrap().revision(), revision);
+
     host.in_document(&permit, |scope| {
         let value = evaluate(
             scope,
