@@ -526,7 +526,7 @@ impl HostedRuntime {
                 })
                 .map_err(|error| error.0)?
                 .ok_or(DomEventConstructionError::MissingRelevantGlobal)?;
-            let association = EventTargetAssociation { global, document };
+            let association = state.event_global(dom, global, cancel)?;
             state.sample_event_creation(dom, &association, cancel)?
         };
         NativeDomEvent::legacy(dom, self.event_storage.clone(), creation, cancel)
