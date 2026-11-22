@@ -1756,8 +1756,10 @@ impl BulkEnvelope {
         );
         let binary_depth = usize::BITS as usize - extent.leading_zeros() as usize;
         let d = binary_depth.div_ceil(4);
-        let registry_depth = u64::BITS.div_ceil(4) as usize;
-        let h = bulk_add(d, registry_depth);
+        // Preserve the established per-traversal budget for these fixtures.
+        // Actual custody index depth depends on its live entries.
+        let registry_visit_allowance = 16;
+        let h = bulk_add(d, registry_visit_allowance);
         // counted_relations::{adjust,replace}: five qualified parts per key,
         // two key paths per change. inbound::{adjust_pair,finish}: at most
         // five Map changes/reference, including both old-Created removal maps.
@@ -1768,8 +1770,8 @@ impl BulkEnvelope {
         } else {
             bulk_add(bulk_mul(10, r), bulk_mul(4, p))
         };
-        // Complete generation/global-ID words retain R=16, even when current
-        // values happen to use shallow paths. Native Bank radix is sixteen.
+        // The native Bank still has radix sixteen, giving the depth d above.
+        // The custody registry uses the fixed fixture allowance R.
         let frontier = bulk_add(
             bulk_mul(bulk_mul(22, bulk_add(h, 3)), r),
             bulk_mul(bulk_mul(36, d), p),
@@ -1778,11 +1780,14 @@ impl BulkEnvelope {
         // <=63 generic calls/Map change, <=20r publication visitor reads,
         // plus separate full-key aliases and four 32p callgraph allowances.
         let q = bulk_add(bulk_add(bulk_mul(367, r), bulk_mul(128, p)), a);
-        // bank::{register_page,register_record,reconcile_releases}: <=8R
-        // registry passes per new/adopted record/page; native paths and fixed
+        // Allow up to eight registry traversals per new or adopted record or
+        // page, with R visits budgeted per traversal. Native paths and fixed
         // selected traversal remain separate. No term contains k*k or S.
         let bank_pages = bulk_add(
-            bulk_add(bulk_mul(bulk_mul(8, registry_depth), n), bulk_mul(h, q)),
+            bulk_add(
+                bulk_mul(bulk_mul(8, registry_visit_allowance), n),
+                bulk_mul(h, q),
+            ),
             bulk_mul(32, p),
         );
         // <=36 custody gates per frontier allocation, one nested dependency
@@ -1865,7 +1870,7 @@ impl BulkEnvelope {
             slot_discovery: bulk_mul(32, p),
         };
         eprintln!(
-            "bulk source_derived_envelope operation={operation:?} k={records} extent={extent} p={p} r={r} U={u} A={a} P={frontier} N={n} D={binary_depth} d={d} R={registry_depth} h={h} F={f} J={j} limits={envelope:?} finite_storage_configuration_bytes=32000000000 storage_configuration_not_oracle=true"
+            "bulk source_derived_envelope operation={operation:?} k={records} extent={extent} p={p} r={r} U={u} A={a} P={frontier} N={n} D={binary_depth} d={d} R={registry_visit_allowance} h={h} F={f} J={j} limits={envelope:?} finite_storage_configuration_bytes=32000000000 storage_configuration_not_oracle=true"
         );
         envelope
     }

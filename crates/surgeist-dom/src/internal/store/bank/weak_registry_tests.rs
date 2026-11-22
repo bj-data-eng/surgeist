@@ -1,8 +1,6 @@
-//! An actual borrowed materialization fits a finite registry allowance without
-//! reserving an affine Debit field for every vacant weak-descriptor slot.
+//! Exact weak custody and node backing for a borrowed materialization.
 use super::*;
 use crate::internal::store::DomResource;
-use std::mem::align_of;
 
 struct BorrowedValue {
     identity: MaterializationId,
@@ -10,11 +8,8 @@ struct BorrowedValue {
 }
 
 fn one_object_allowance() -> usize {
-    // An empty registry needs one leaf and the complete fixed radix path for
-    // this first key. Enumerate the real target/header allocations independently
-    // of the production receipt calculator. Opaque Arc/allocator bytes stay out.
-    let branches = (u64::BITS / BITS - 1) as usize;
-    let weak_descriptor = size_of::<u64>() + size_of::<WeakCustody>();
+    // Enumerate the first entry's allocations independently of the production
+    // receipt calculator. Opaque Arc and allocator headers stay out.
     [
         size_of::<BorrowedValue>(),
         size_of::<Debit>(), // shared payload receipt target
@@ -22,9 +17,7 @@ fn one_object_allowance() -> usize {
         size_of::<Mutex<RegistryState>>(), // release ticket's Weak owner target
         size_of::<RecordCustody>(),        // registry entry's Weak target allowance
         size_of::<ReleaseNode>(),
-        (branches + 1) * size_of::<RegistryNode>(),
-        branches * WIDTH * size_of::<Option<Box<RegistryNode>>>(),
-        WIDTH * weak_descriptor, // nonce and Weak, including vacant positions
+        size_of::<RegistryNode>(),
     ]
     .into_iter()
     .try_fold(0usize, usize::checked_add)
@@ -38,33 +31,13 @@ fn qualify_registry_allocation_inventory(value: &BorrowedValue, payload: Usage) 
     let custody = registry
         .adopt_object(value.identity, payload, |_| Ok(()))
         .unwrap();
-    let branches = (u64::BITS / BITS - 1) as usize;
     let state = registry.lock();
     assert!(state.pages.is_none());
-    let mut node = state.records.as_deref().unwrap();
-    for _ in 0..branches {
-        let RegistryNode::Branch { children, .. } = node else {
-            panic!("one-object registry path ended before its complete radix depth");
-        };
-        assert_eq!(children.len(), WIDTH);
-        assert_eq!(children.capacity(), WIDTH, "actual branch reserve excess");
-        let mut occupied = children.iter().flatten();
-        node = occupied.next().unwrap();
-        assert!(occupied.next().is_none());
-    }
-    let RegistryNode::Leaf { entries, .. } = node else {
-        panic!("one-object registry path did not end in a leaf");
-    };
-    assert_eq!(entries.len(), WIDTH);
-    assert_eq!(entries.capacity(), WIDTH, "actual leaf reserve excess");
-    assert_eq!(entries.iter().flatten().count(), 1);
-    let descriptor = size_of::<u64>() + size_of::<WeakCustody>();
-    let alignment = align_of::<u64>().max(align_of::<WeakCustody>());
-    assert_eq!(descriptor % alignment, 0, "descriptor alignment premise");
-    eprintln!(
-        "one-object registry inventory: branches={branches}, branch/leaf capacity={WIDTH}, \
-         actual entry stride={}, nonce+Weak allowance={descriptor}, descriptor alignment={alignment}",
-        size_of::<Option<RegistryEntry>>()
+    let node = state.records.as_deref().unwrap();
+    assert_eq!(node.identity, value.identity);
+    assert!(node.children.iter().all(Option::is_none));
+    assert!(
+        matches!(&node.entry.custody, WeakCustody::Record(weak) if weak.ptr_eq(&Arc::downgrade(&custody.0)))
     );
     drop(state);
     drop(custody);
