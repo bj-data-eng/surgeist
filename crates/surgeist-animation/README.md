@@ -6,8 +6,8 @@ states, and next-frame hints.
 
 Version 0.1.0 supports snapshot-based CSS animation reconciliation and transition
 decisions, typed native keyframe normalization and computed interval sampling,
-timing, easing, computed numeric composition, repeatable lists, immutable
-effect-stack folds and replacement decisions,
+timing, easing, computed numeric composition, background/mask position and size
+layers, repeatable lists, immutable effect-stack folds and replacement decisions,
 logarithmic ratio interpolation, normalized positions, premultiplied colors,
 computed basic shapes and native shape/path command lists, resolved 2D/3D
 transforms, box/text shadow lists, computed clip-path branches, and discrete
@@ -21,8 +21,8 @@ ordered addition and component-based accumulation of supplied computed values.
 Clip paths retain opaque supplied sources, geometric boxes and complete shape
 payloads. Compatible shapes use the shared kernel; other branches switch as a
 whole. Masking's discrete property policy and legacy clip rectangles can use
-the existing discrete and computed-component families. Repeatable mask
-position/size lists remain outside the current capability.
+the existing discrete and computed-component families. Shared layer sampling
+uses repeatable-list pairing for background and mask positions and sizes.
 Filter lists use corresponding identity padding and ordered addition; native
 filter images specialize matching used sources or execute supplied generic
 image interpolation. Explicit transform/composite diagnostic markers retain typed

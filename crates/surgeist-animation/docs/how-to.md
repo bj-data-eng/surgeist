@@ -98,6 +98,24 @@ caller-owned map from those handles to the original calculations. A
 `ComputedNumeric::source(handle)` participates in the same operations, producing
 the typed postorder plan described in the [reference](reference.md#computed-numeric-combination).
 
+## Sample repeatable image layers
+
+For background-position or mask-position, supply one `ComputedPosition` per
+layer, normalized to top-left x/y length-percentages. Store it as a Position
+component in a single-component `ComputedValue`. For background-size or
+mask-size, supply `LayerSize::Explicit` with two guarded `LayerSizeAxis` values,
+or the whole-size Contain/Cover branch, and store a Size component. The
+[LayerSize example](../src/computed/layer_size.rs) constructs an Auto axis and
+samples a numeric width.
+
+Collect the layers into `computed::RepeatableList`, wrap with
+`InterpolableValue::repeatable_list`, and use the normal track constructors.
+For endpoint composition, select `AnimationType::RepeatableList` through the
+existing default operations. Keep source/context mappings alive and preserve the
+property's percentage basis; do not evaluate image or box geometry here.
+See the [layer contract](reference.md#background-and-mask-layer-positions-and-sizes)
+for constant size keywords, whole-list mismatch and final range handling.
+
 ## Sample computed basic shapes
 
 Prepare a `shape::ShapeValue` with an explicit already-selected `ReferenceBox`.

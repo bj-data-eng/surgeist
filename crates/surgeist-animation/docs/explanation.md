@@ -171,6 +171,14 @@ still owns image domains, blur edge handling and pixel execution. Neither native
 list sampling nor generic-image delegation claims composed Filter Effects
 rendering conformance.
 
+Background and mask positions share normalized computed positions. Their sizes
+share a guarded two-axis or Contain/Cover record. Matching size keywords remain
+constant while numeric axes combine, so they remain separate from ordinary
+discrete components. Both properties reuse the generic repeatable-list owner
+for checked LCM pairing, global compatibility and atomic results. This keeps
+contextual image/box resolution with callers and geometry consumers. See the
+[layer contract](reference.md#background-and-mask-layer-positions-and-sizes).
+
 ## App-native motion
 
 This remains distinct from app-native motion work. A future `surgeist-motion`

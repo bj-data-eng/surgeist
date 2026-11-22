@@ -265,6 +265,58 @@ discrete components, unlike ordinary by-computed-value combination. Arithmetic,
 expansion and capacity failures remain typed errors without partial output.
 Final property clamping stays caller-owned.
 
+### Background and mask layer positions and sizes
+
+Both position properties use the existing `ComputedComponent::Position` with
+`ComputedPosition` x/y offsets normalized from the top-left corner. Both size
+properties use `ComputedComponent::Size(LayerSize)`. Wrap one component in each
+`ComputedValue` layer, construct the existing `RepeatableList`, then use
+`InterpolableValue::repeatable_list` through ordinary pair/track sampling or
+`AnimationTypeOperations::RepeatableList`. No second list algorithm or property
+registry is involved.
+
+`LayerSize::Explicit` requires both horizontal and vertical `LayerSizeAxis`
+values. Construct each as explicit Auto or a checked numeric Length, Percentage
+or LengthPercentage. Number, Integer and other dimension roots are rejected.
+Contain and Cover are mutually exclusive whole-size branches. Authored omission,
+natural dimensions, aspect ratios, box selection and used size remain with the
+caller and geometry consumer; there is no default or zero-size substitute here.
+
+Matching Auto axes remain Auto while the other numeric axes combine. Matching
+Contain/Contain and Cover/Cover are constant. These are resolved size states,
+not ordinary Discrete components: this preserves numeric interpolation beside
+matching keywords as exercised by
+[WPT's background-size keyword cases](https://github.com/web-platform-tests/wpt/blob/master/css/css-backgrounds/animations/background-size-interpolation.html).
+An Auto/numeric, Contain/Cover or whole-keyword/explicit-size conflict anywhere
+in the repeated pairing selects the complete original list before arithmetic.
+Interpolation switches at 0.5; addition and accumulation select the original
+effect operand. Compatible numeric axes add component-wise, and accumulation
+uses the same addition. Layers repeat to the checked LCM rather than concatenate.
+Compatible exact-endpoint samples also retain the repeated cardinality.
+
+Background clip/origin continue to use ordinary Discrete components in the
+generic RepeatableList. Even equal discrete tags make the whole property switch
+between its original endpoint lists. Size constants do not change that rule.
+Mask clip/origin are table-discrete properties, with their complete prepared
+layer list supplied as one discrete value; they are not these repeatable sizes.
+
+The caller supplies each property's percentage basis: position percentages use
+positioning-area size minus image size, whereas size percentages use the
+positioning-area dimensions. The selected [Backgrounds position](../../../references/css-backgrounds-3--CRD-css-backgrounds-3-20240311--8a291792b2fd.md#background-position)
+and [size](../../../references/css-backgrounds-3--CRD-css-backgrounds-3-20240311--8a291792b2fd.md#background-size)
+clauses own those definitions. [Mask position](../../../references/css-masking-1--CRD-css-masking-1-20210805--79ff953b4747.md#the-mask-position)
+and [mask size](../../../references/css-masking-1--CRD-css-masking-1-20210805--79ff953b4747.md#the-mask-size)
+delegate their value definitions to Backgrounds, so they share these native
+types while retaining their caller-supplied mask context.
+
+Percentages, signed intermediate values and symbolic source/context identity
+remain unresolved. Negative extrapolated sizes remain reusable until final
+caller-owned range clamping after interpolation/addition/accumulation, as required
+by [Values range checking](../../../references/css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#combining-range).
+List expansion, allocation and arithmetic errors use existing computed
+operation/index diagnostics without partial results. A later finite sample may
+recover. See the [layer sampling procedure](how-to.md#sample-repeatable-image-layers).
+
 ## Effect timing and relevance
 
 `timing::EffectTiming::try_new(EffectTimingOptions)` validates a Web Animations
@@ -943,9 +995,10 @@ The sampler never resolves an edge against border-box dimensions or aliases
 `rect(auto, auto, auto, auto)` to whole `auto`.
 
 Shorthands contribute through their effective longhands; `mask` also resets the
-six mask-border longhands. Repeatable `mask-position`/`mask-size` list sampling,
-authored lowering, resource and SVG resolution, applicability, computed-style
-publication and downstream clipping/masking execution remain separate consumers.
+six mask-border longhands. The [shared layer sampler](#background-and-mask-layer-positions-and-sizes)
+handles repeatable `mask-position` and `mask-size`. Style supplies computed layers,
+resource identities and SVG context. Geometry and paint consumers apply the
+samples. Runtime publishes composed results.
 
 ## Integration boundary
 
