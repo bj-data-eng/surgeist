@@ -370,10 +370,14 @@ fn ordered_container_discovery_ignores_noncontainers_in_the_same_document() {
     }
     for populated in [false, true] {
         let small = sample(0, populated);
-        let large = sample(256, populated);
+        // Metered ordering reads the deeper node and position banks. Allow
+        // 320 page reads per extra level across the two passes over five
+        // containers. The larger fixture adds two bank levels and enough
+        // ordinary nodes that even one step per noncontainer fails the bound.
+        let large = sample(1024, populated);
         assert!(
-            large <= small + 96,
-            "fixed five actual containers (populated={populated}) across 256 noncontainers: small={small}, large={large}"
+            large <= small + 2 * 320,
+            "fixed five actual containers (populated={populated}) across 1024 noncontainers: small={small}, large={large}"
         );
     }
 }

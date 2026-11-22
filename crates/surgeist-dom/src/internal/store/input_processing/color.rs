@@ -696,14 +696,11 @@ mod tests {
     fn color_decimal_work_refusal_cleans_actual_banks_and_preserves_first_error() {
         let cancel = AtomicBool::new(false);
         let mut meter = super::super::tests::fixture();
-        // Retain the original independently chosen 2B ceiling. Exact progress
-        // diagnosis showed this literal reaches it in the real decimal parse
-        // after hundreds of thousands of advancing read/write requests and
-        // actual bank growth, before transforms/serialization; this is not an
-        // initial-header refusal or a synthetic action counter.
-        let first = DomError::InputProcessingWorkLimit {
-            limit: 2_000_000_000,
-        };
+        // The decimal fast path brings this colour's parse below 5 million
+        // work units. This ceiling still stops the parse after bank growth.
+        const WORK_LIMIT: u64 = 2_000_000;
+        meter.work_limit = WORK_LIMIT;
+        let first = DomError::InputProcessingWorkLimit { limit: WORK_LIMIT };
         assert_eq!(
             meter
                 .color(
@@ -718,7 +715,7 @@ mod tests {
         );
         assert_eq!(meter.live, 0);
         let stopped_work = meter.work;
-        assert!(stopped_work > 1_000_000_000);
+        assert!(stopped_work > WORK_LIMIT / 2);
         assert!(meter.peak > CssColorParse::register_bytes() + CssColorSlot::record_bytes());
         cancel.store(true, std::sync::atomic::Ordering::Release);
         assert_eq!(
