@@ -2,6 +2,9 @@
 
 use std::mem::size_of;
 
+mod inverse_matrix;
+use inverse_matrix::InverseMatrix;
+
 use super::native::IccPcsSpace;
 use super::{
     Account, Curve, CurveInput, Direction, Extent, Header, Hold, ProfileError, ProfileResult,
@@ -233,79 +236,29 @@ impl MatrixForward {
     }
 
     fn invert(&self, bytes: &[u8], account: &Account) -> ProfileResult<MatrixInverse> {
-        let rows = inverse_rows(self.columns, account)?.ok_or(ProfileError::Unsupported)?;
+        let matrix =
+            InverseMatrix::from_columns(self.columns, account)?.ok_or(ProfileError::Unsupported)?;
         let [r, g, b] = &self.curves;
         let curves = [
             InverseCurve::prepare(r, bytes, account)?,
             InverseCurve::prepare(g, bytes, account)?,
             InverseCurve::prepare(b, bytes, account)?,
         ];
-        Ok(MatrixInverse { rows, curves })
+        Ok(MatrixInverse { matrix, curves })
     }
 }
 
 struct MatrixInverse {
-    rows: [[f64; 3]; 3],
+    matrix: InverseMatrix,
     curves: [InverseCurve; 3],
 }
 
 impl MatrixInverse {
     fn device(&self, xyz: [f64; 3], bytes: &[u8], account: &Account) -> Result<[f64; 3]> {
-        let mut device = [0.0; 3];
-        for ((destination, row), curve) in device.iter_mut().zip(&self.rows).zip(&self.curves) {
-            let mut linear = 0.0;
-            for (&coefficient, value) in row.iter().zip(xyz) {
-                linear = account.coordinate(|| coefficient.mul_add(value, linear))?;
-            }
-            let target = account.coordinate(|| linear.clamp(0.0, 1.0))?;
-            *destination = curve.evaluate(target, bytes, account)?;
+        let mut device = self.matrix.linear_controls(xyz, account)?;
+        for (coordinate, curve) in device.iter_mut().zip(&self.curves) {
+            *coordinate = curve.evaluate(*coordinate, bytes, account)?;
         }
         Ok(device)
     }
-}
-
-fn inverse_rows(columns: [[f64; 3]; 3], account: &Account) -> Result<Option<[[f64; 3]; 3]>> {
-    // XYZ tag values are exact signed s15Fixed16 values in binary64.
-    // Retain their integer codes through the determinant to distinguish a
-    // genuinely singular matrix from cancellation in floating arithmetic.
-    const FIXED: f64 = 65536.0;
-    let mut codes = [[0_i128; 3]; 3];
-    for (code, component) in codes
-        .iter_mut()
-        .flatten()
-        .zip(columns.into_iter().flatten())
-    {
-        *code = account.coordinate(|| (component * FIXED) as i128)?;
-    }
-    let [r, g, b] = codes;
-    let cofactors = [
-        cross(g, b, account)?,
-        cross(b, r, account)?,
-        cross(r, g, account)?,
-    ];
-    let mut determinant = 0_i128;
-    for (code, cofactor) in r.into_iter().zip(cofactors[0]) {
-        determinant = account.coordinate(|| determinant + code * cofactor)?;
-    }
-    if determinant == 0 {
-        return Ok(None);
-    }
-
-    let mut inverse = [[0.0; 3]; 3];
-    for (coefficient, cofactor) in inverse
-        .iter_mut()
-        .flatten()
-        .zip(cofactors.into_iter().flatten())
-    {
-        *coefficient = account.coordinate(|| cofactor as f64 * FIXED / determinant as f64)?;
-    }
-    Ok(Some(inverse))
-}
-
-fn cross([a0, a1, a2]: [i128; 3], [b0, b1, b2]: [i128; 3], account: &Account) -> Result<[i128; 3]> {
-    Ok([
-        account.coordinate(|| a1 * b2 - a2 * b1)?,
-        account.coordinate(|| a2 * b0 - a0 * b2)?,
-        account.coordinate(|| a0 * b1 - a1 * b0)?,
-    ])
 }
