@@ -345,6 +345,75 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
     );
     assert_eq!((receivers.as_str(), event_target.as_str()), ("ok", "ok"));
 
+    let shadow = host
+        .with_native(|dom, _, _| {
+            use surgeist_dom::shadow::DomShadowRootInit;
+            use surgeist_html::construction::HtmlShadowRootMode;
+
+            let mut batch = DomBatch::new();
+            let shadow_host = batch.create_element_ns(document, Namespace::html(), "div");
+            batch.insert_before(&shadow_host, body, None);
+            let shadow = batch.attach_shadow(
+                &shadow_host,
+                DomShadowRootInit::new(HtmlShadowRootMode::Open),
+            );
+            dom.apply(batch, &cancel())
+                .unwrap()
+                .attached_shadow_root(&shadow)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    edit(&mut host, DomSourceEdit::move_before(first, shadow, None));
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(snapshot.node(first).unwrap().parent(), Some(shadow));
+    assert_eq!(content_navigable(&snapshot, first), Some(first_child));
+    assert!(
+        !snapshot
+            .hosted_navigable(first_child)
+            .unwrap()
+            .is_retiring()
+    );
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const child = originalFirstChild;
+                if (window.length !== 1 || window[0] !== originalSecondChild
+                    || window.firstNativeChild !== undefined) {
+                    return 'ordinary Window lookup exposed a shadow-connected child';
+                }
+                if (child.closed || child.parent !== window || child.length !== 1
+                    || child[0] !== originalNestedChild || originalNestedChild.closed
+                    || child.nestedWindowElement?.id !== 'nestedWindowElement') {
+                    return 'an admitted shadow-connected Window remains live';
+                }
+                const listener = () => {};
+                child.addEventListener('while-in-shadow-tree', listener);
+                child.removeEventListener('while-in-shadow-tree', listener);
+                return 'ok';
+            })()"#,
+        ),
+        "ok"
+    );
+    edit(
+        &mut host,
+        DomSourceEdit::move_before(first, root, Some(second)),
+    );
+    assert_eq!(
+        content_navigable(&host.snapshot().unwrap(), first),
+        Some(first_child)
+    );
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            "window[0] === originalFirstChild && window.firstNativeChild === originalFirstChild ? 'ok' : 'move replaced the original WindowProxy'",
+        ),
+        "ok"
+    );
+
     let accounting = host.guest_accounting().unwrap();
     let live_backing = || {
         accounting.snapshot().unwrap().unwrap().scopes[0]
