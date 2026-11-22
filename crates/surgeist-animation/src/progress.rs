@@ -23,6 +23,9 @@ pub struct UnitRatio {
 }
 
 impl NormalizedProgress {
+    pub(crate) const ZERO: Self = Self { value: 0.0 };
+    pub(crate) const ONE: Self = Self { value: 1.0 };
+
     pub fn new(value: f64) -> Result<Self, NumericError> {
         validate_unit_interval(NumericInput::Progress, value)?;
 
@@ -41,6 +44,12 @@ impl NormalizedProgress {
 
     pub const fn value(self) -> f64 {
         self.value
+    }
+
+    pub(crate) const fn complement(self) -> Self {
+        Self {
+            value: 1.0 - self.value,
+        }
     }
 }
 
