@@ -35,10 +35,11 @@
 //! | [`timing`] | Timing parameters, phases and the timing sample. |
 //! | [`interpolation`] | Interpolable values, property keys and pairs. |
 //! | [`computed`] | Canonical computed atoms, symbolic math and property combination. |
+//! | [`composition`] | Pure underlying-first endpoint composition and property operations. |
 //! | [`transform`] | Resolved 2D functions, list addition and affine interpolation. |
 //! | [`sample`] | Sampled property results and next-frame hints. |
 //! | [`transition`] | Transition tracks, lifecycle decisions, and current values. |
-//! | [`keyframe`] | Keyframe tracks, the entry point for keyframe animations. |
+//! | [`keyframe`] | Normalized tracks and caller-computed keyframe effect sampling. |
 //! | [`keyframe_input`] | Native typed keyframe normalization and computed offsets. |
 //! | [`diagnostics`] | Numeric diagnostics shared by the typed constructors. |
 //!
@@ -133,6 +134,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod composition;
 pub mod computed;
 pub mod diagnostics;
 pub mod easing;

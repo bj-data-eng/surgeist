@@ -60,6 +60,15 @@ and metadata. Style supplies target-context computed property values. The
 [reference](reference.md#native-keyframe-normalization) describes the phases
 and failure semantics.
 
+`keyframe::ComputedKeyframes` consumes the next phase: caller-computed values
+with required computed offsets and preserved specified metadata. It filters each
+longhand, preserves overlapping frame order, inserts native underlying-value
+endpoints when required, and applies endpoint composition before interval easing
+and interpolation. CSS supplies its separately assembled endpoints. The shared
+pure composition boundary accepts selected property operations without owning
+effect ordering or publication. See [computed effects](reference.md#computed-keyframe-effects)
+for native versus CSS timing adapters and atomic failure behavior.
+
 CSS transition lifecycle decisions use a separate immutable snapshot boundary in
 `transition`. Style provides atomic endpoint and matching facts; Animation
 promotes due records and decides creation, cancellation, and reversal using the
