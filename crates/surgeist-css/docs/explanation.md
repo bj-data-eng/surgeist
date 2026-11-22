@@ -67,9 +67,9 @@ and [§8.3](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adc
 Under the conventions, requirements are descriptive assertions and RFC 2119 key
 words, which bind in their lowercase spelling, and all text is normative except
 sections marked non-normative, examples and notes. The crate takes requirements
-only from normative text and treats notes and examples as explanation. The specification
-defines three classes, and the module is the unit of each: a claim covers the
-whole module, not one feature or one stylesheet.
+only from normative text and treats notes and examples as explanation. The
+specification defines conformance conditions for individual stylesheets,
+renderers and authoring tools.
 
 A style sheet is conformant when every statement that uses the module's syntax is
 "valid according to the generic CSS grammar" and to the grammar of each feature
@@ -91,12 +91,14 @@ belong to downstream crates. It claims no renderer conformance, and a consumer
 that makes one composes this crate with those crates and owns the claim. Whether
 a feature parses is stated by the catalog, not by the class.
 
-An authoring tool is conformant when it writes stylesheets that are syntactically
-correct under the generic and feature grammars. `surgeist-css` is not an authoring
-tool. Its serializers write specified values and the selected literal CSSOM rule
-and sheet formats, following the Syntax 3 §9 requirement that serialized CSS
-parse back to the same syntax data, and the crate does not claim that every stylesheet an
-application assembles from them is conformant.
+An authoring tool is conformant when the stylesheets it emits satisfy the
+generic grammar, the applicable feature grammars and the module's other
+stylesheet requirements. Represented token and component output follows the
+Syntax 3 §9 round-trip rule, including its allowance for collapsing consecutive
+whitespace tokens. Typed specified values and literal CSSOM rule and sheet
+formats follow the selected CSSOM and feature serialization rules, including
+their numeric projection. Applications own conformance for the stylesheets
+they assemble from those outputs.
 
 The decoding and encoding guidance is advice to authors and host adapters; it is
 not a parser grammar. The [reference](reference.md#stylesheet-encoding-guidance)
