@@ -2,7 +2,8 @@
 //!
 //! Every numerical operation is total over proof-typed operands. [`Finite`]
 //! and [`UnitInterval`] reject NaN and both infinities when they are built;
-//! a result beyond binary64 is the signed closest finite value.
+//! the ordinary numerical operations return the signed closest finite value
+//! on overflow. Checked interpolation reports unrepresentable samples.
 //!
 //! ```
 //! use surgeist_color::{Color, ColorSpace, Finite, PredefinedColorSpace, UnitInterval};
@@ -158,7 +159,9 @@ pub use spaces::*;
 mod value;
 pub use value::{Color, SerializationFamily, Transformation};
 mod interpolation;
+pub use interpolation::{InterpolationComponent, InterpolationSample, InterpolationSampleError};
 mod serialization;
+mod wide;
 pub use serialization::SerializationRequest;
 mod protocol;
 pub use protocol::{ActionLayout, DigitSlot, Kernel, OperationOwner};

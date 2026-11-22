@@ -19,6 +19,8 @@
 pub struct Finite(f64);
 
 impl Finite {
+    pub(crate) const ZERO: Self = Self(0.0);
+
     /// Proves `value` finite; `None` for NaN and both infinities.
     #[must_use]
     pub const fn new(value: f64) -> Option<Self> {

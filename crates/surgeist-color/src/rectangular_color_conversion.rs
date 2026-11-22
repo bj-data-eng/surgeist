@@ -12,12 +12,11 @@
 
 mod colorimetry;
 mod transfer;
-mod wide;
 
 use crate::PredefinedColorSpace;
 use crate::finite::Finite;
+use crate::wide::Wide;
 use colorimetry::WhitePoint;
-use wide::Wide;
 
 /// The eleven supported intrinsic rectangular color spaces.
 ///

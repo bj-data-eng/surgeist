@@ -1,5 +1,5 @@
-use super::wide::Wide;
 use crate::PredefinedColorSpace;
+use crate::wide::Wide;
 
 pub(super) fn decode(value: Wide, space: PredefinedColorSpace) -> Wide {
     use PredefinedColorSpace::{A98Rgb, DisplayP3, ProphotoRgb, Rec2020, Srgb};
