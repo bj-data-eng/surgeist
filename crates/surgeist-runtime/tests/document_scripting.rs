@@ -73,6 +73,8 @@ mod content_editable;
 mod control_autocomplete;
 #[path = "document_scripting/control_custom_validity.rs"]
 mod control_custom_validity;
+#[path = "document_scripting/control_validation.rs"]
+mod control_validation;
 #[path = "document_scripting/dialog_close.rs"]
 mod dialog_close;
 #[path = "document_scripting/dialog_methods.rs"]
@@ -2474,6 +2476,7 @@ fn main() {
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
             "button-attributes" => button_attributes::attached_button_attributes_use_live_submitter_and_form_state(),
             "button-command-target" => button_attributes::attached_button_resolves_its_live_command_target(),
+            "control-validation" => control_validation::attached_controls_observe_live_validation_candidacy(),
             "canvas-dimensions" => canvas_dimensions::attached_canvas_dimensions_follow_native_bitmap_and_reflection(),
             "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
@@ -2595,6 +2598,7 @@ fn main() {
     output_values::attached_output_reads_native_values_and_stores_custom_validity();
     button_attributes::attached_button_attributes_use_live_submitter_and_form_state();
     button_attributes::attached_button_resolves_its_live_command_target();
+    control_validation::attached_controls_observe_live_validation_candidacy();
     canvas_dimensions::attached_canvas_dimensions_follow_native_bitmap_and_reflection();
     textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state();
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
