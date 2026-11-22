@@ -25,6 +25,17 @@ results. `sample()` returns the same ordered results in a newly allocated vector
 Tracks retain their original `segments()` order independently of their lookup
 index. Sampling remains stateless; retained results do not borrow their track.
 
+Each `KeyframeSegment` carries the easing of its starting keyframe. It governs
+the interval to the next keyframe for that property, including a caller-supplied
+implicit 100% endpoint. Callers omit the timing function on the final keyframe:
+it has no outgoing interval. After applying direction, sampling selects each
+property's interval and applies its easing once to the local interval fraction.
+Reverse playback traverses those same intervals and timing functions backwards.
+During the delay, backwards fill holds the first iteration's directed starting
+value without applying easing. At the start of the active phase, interval easing
+applies normally. Endpoint synthesis and authored-keyframe normalization remain
+caller-owned.
+
 Property names, value markers, and diagnostic endpoints use immutable shared
 storage. This moves some allocation into construction; see the
 [sampling measurements](performance.md) and

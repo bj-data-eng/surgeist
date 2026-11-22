@@ -4,6 +4,13 @@
 //! and contiguous per-property segments. This crate samples those typed segments
 //! but does not parse keyframes, resolve animation names, or synthesize
 //! endpoints from style.
+//!
+//! A segment's easing belongs to its starting keyframe and governs the interval
+//! to its ending keyframe. Callers supply any implicit final endpoint and omit
+//! the final keyframe's timing function because it has no outgoing interval.
+//! Sampling selects each property's interval after direction, then applies its
+//! easing once to the local interval fraction. During delay fill, the starting
+//! endpoint of the first iteration is held without easing.
 
 use core::fmt;
 use core::ops::Range;
@@ -20,7 +27,7 @@ use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
 use crate::timing::ActiveDuration;
 use crate::timing::{
     AnimationDirection, AnimationPlayState, FillMode, IterationCount, TimingError,
-    TimingParameters, TimingSample,
+    TimingParameters, TimingPhase, TimingSample,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -514,10 +521,18 @@ fn sample_property<'a, T>(
     let after = entries.partition_point(|entry| start_offset(entry).value() <= progress.value());
     let segment = segment_at(after - 1);
     let outcome = if let Some(local_progress) = segment_local_progress(segment, progress) {
-        let eased_progress = segment
-            .easing()
-            .evaluate_with_before_flag(local_progress, timing.easing_before_flag());
-        InterpolationProgress::from_eased(eased_progress)
+        let interpolation_progress = if timing.phase() == TimingPhase::Before {
+            // CSS delay fill holds the directed endpoint without applying the
+            // outgoing easing, including functions with non-unit endpoints.
+            InterpolationProgress::new(local_progress.value())
+        } else {
+            InterpolationProgress::from_eased(
+                segment
+                    .easing()
+                    .evaluate_with_before_flag(local_progress, timing.easing_before_flag()),
+            )
+        };
+        interpolation_progress
             .ok()
             .map(|interpolation_progress| segment.pair.sample(interpolation_progress))
     } else {
