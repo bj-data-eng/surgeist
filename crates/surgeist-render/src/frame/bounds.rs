@@ -566,6 +566,7 @@ impl SemanticSourceContribution {
                             | crate::command::NormalizedForegroundEffect::Morphology(_)
                             | crate::command::NormalizedForegroundEffect::Displacement(_)
                             | crate::command::NormalizedForegroundEffect::Lighting(_)
+                            | crate::command::NormalizedForegroundEffect::Turbulence(..)
                             | crate::command::NormalizedForegroundEffect::NativeShadow(_)
                     )
                 ))
@@ -861,6 +862,13 @@ impl SemanticSourceContribution {
                         "displacement primitive result",
                     )?);
             }
+            Some(crate::command::NormalizedForegroundEffect::Turbulence(_, region)) => {
+                source_bounds =
+                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                        super::turbulence::output_domain(*region),
+                        "turbulence primitive result",
+                    )?);
+            }
             Some(crate::command::NormalizedForegroundEffect::Lighting(foreground)) => {
                 let domains = foreground.source;
                 source_bounds =
@@ -906,16 +914,20 @@ impl SemanticSourceContribution {
         {
             // The parent image fixes operation membership, independently of
             // source support, opacity, masks, or the source transform's rank.
-            let mut affected = if let Some(source) = layer
-                .foreground_filters
-                .as_ref()
-                .and_then(super::bounded_filter_source)
-            {
+            let operation_region = match layer.foreground_filters.as_ref() {
+                Some(crate::command::NormalizedForegroundEffect::Turbulence(_, region)) => {
+                    Some(super::turbulence::output_domain(*region))
+                }
+                effect => effect
+                    .and_then(super::bounded_filter_source)
+                    .map(super::filter_grid::result_domain),
+            };
+            let mut affected = if let Some(region) = operation_region {
                 SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
-                    super::gaussian::result_domain(source),
-                    "Gaussian operation result",
+                    region,
+                    "native filter operation result",
                 )?)
-                .try_transform(layer.transform, "Gaussian operation transform")?
+                .try_transform(layer.transform, "native filter operation transform")?
             } else {
                 match domain {
                     SemanticContributionDomain::RootOutputBounded(bounds) => {
@@ -982,7 +994,10 @@ impl SemanticSourceContribution {
         let partially_covered = layer.clip.is_some()
             || matches!(
                 layer.foreground_filters,
-                Some(crate::command::NormalizedForegroundEffect::Lighting(_))
+                Some(
+                    crate::command::NormalizedForegroundEffect::Lighting(_)
+                        | crate::command::NormalizedForegroundEffect::Turbulence(..)
+                )
             );
         let command = if no_operation {
             None

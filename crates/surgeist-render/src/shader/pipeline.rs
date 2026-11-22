@@ -1053,6 +1053,92 @@ pub(super) fn create_lighting_render_pipeline(
     })
 }
 
+pub(super) fn create_turbulence_bind_group_layout(
+    generation: &Generation,
+    account: &Account,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    account.work(RenderWork::ShaderBindingVisits, 1)?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, Some(account), || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist turbulence bindings"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(
+                        super::TurbulenceParameterBytes::SIZE as u64,
+                    ),
+                },
+                count: None,
+            }],
+        })
+    })
+}
+
+pub(super) fn create_turbulence_shader_module(
+    generation: &Generation,
+    account: &Account,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, Some(account), || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist turbulence shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                "../shaders/turbulence.wgsl"
+            ))),
+        })
+    })
+}
+
+pub(super) fn create_turbulence_render_pipeline(
+    generation: &Generation,
+    account: &Account,
+    device: &wgpu::Device,
+    target_format: ShaderTextureFormatKey,
+    layout: &wgpu::BindGroupLayout,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    let pipeline_layout =
+        generation.opaque(GpuObjectKind::PipelineLayout, Some(account), || {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Surgeist turbulence pipeline layout"),
+                bind_group_layouts: &[Some(layout)],
+                immediate_size: 0,
+            })
+        })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, Some(account), || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist turbulence pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
 pub(super) fn create_native_shadow_bind_group_layout(
     generation: &Generation,
     _cpu: &CpuAccount,

@@ -1827,6 +1827,8 @@ pub enum PrimitiveOperation {
     GpuDiffuseLightingFilterExecution,
     /// Executing admitted finite native specular lighting on the GPU.
     GpuSpecularLightingFilterExecution,
+    /// GPU execution of source-free Perlin noise.
+    GpuTurbulenceFilterExecution,
     /// Executing admitted native straight-byte map displacement on the GPU.
     GpuDisplacementFilterExecution,
     /// Executing admitted rectangular component erosion and dilation on the GPU.
@@ -1919,6 +1921,7 @@ impl PrimitiveOperation {
             Self::GpuDiffuseLightingFilterExecution => "GPU diffuse lighting filter execution",
             Self::GpuSpecularLightingFilterExecution => "GPU specular lighting filter execution",
             Self::GpuMorphologyFilterExecution => "GPU morphology filter execution",
+            Self::GpuTurbulenceFilterExecution => "GPU turbulence filter execution",
             Self::GpuDisplacementFilterExecution => "GPU displacement filter execution",
             Self::GpuNativeDropShadowFilterExecution => "GPU native drop-shadow filter execution",
             Self::FilterRegionPlanning => "filter-region planning",

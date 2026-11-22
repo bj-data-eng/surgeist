@@ -891,6 +891,7 @@ fn acquired_binding_aggregate_fixed_backing_admits_exact_bytes_before_native_acq
             offset_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
             native_shadow_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
             lighting_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            turbulence_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
             gaussian_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
             morphology_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
             color_filter_operation_bindings: PassMap::new(&setup, 0).unwrap(),

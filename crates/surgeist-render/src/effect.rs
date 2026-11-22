@@ -10,7 +10,8 @@
 //! against the source domain; among others
 //! [`GaussianSource::finite_with_edge`](crate::gaussian::GaussianSource::finite_with_edge) and
 //! [`ConvolutionInput::with_edge_mode`](crate::convolution::ConvolutionInput::with_edge_mode) accept
-//! it.
+//! it. [`Turbulence`] and [`TurbulenceRegion`] describe a source-free noise image.
 
 pub use crate::filter_domains::FilterDomains;
 pub use crate::filter_model::{FilterColorSpace, FilterEdgeMode};
+pub use crate::turbulence::{Turbulence, TurbulenceKind, TurbulenceRegion, TurbulenceStitch};

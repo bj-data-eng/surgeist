@@ -503,6 +503,16 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
             .unwrap(),
         ),
     );
+    let turbulence_bounds = Rect::new(12.0, 8.0, 2.0, 1.0);
+    scene
+        .turbulence_layer(
+            Layer::new(),
+            crate::effect::Turbulence::try_new([0.125, 0.25], 1.0)
+                .unwrap()
+                .with_octaves(2),
+            crate::effect::TurbulenceRegion::try_new(turbulence_bounds, turbulence_bounds).unwrap(),
+        )
+        .unwrap();
     scene
         .normalize(
             Capabilities::CURRENT,

@@ -17,7 +17,9 @@ mod offset;
 mod selection_stack_tests;
 #[cfg(test)]
 mod test_support;
+mod turbulence;
 mod validate;
+pub(crate) use turbulence::TurbulencePassFacts;
 
 #[cfg(test)]
 #[expect(

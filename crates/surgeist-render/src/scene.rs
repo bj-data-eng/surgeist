@@ -252,6 +252,32 @@ impl Scene {
         self
     }
 
+    /// Appends source-free turbulence with an independent primitive and filter region.
+    ///
+    /// The layer's transform, clip, mask, opacity and composition apply to the
+    /// generated image. This replaces any previous foreground effect.
+    ///
+    /// Returns a typed input error if the layer has a backdrop filter.
+    pub fn turbulence_layer(
+        &mut self,
+        layer: Layer,
+        operation: crate::turbulence::Turbulence,
+        region: crate::turbulence::TurbulenceRegion,
+    ) -> Result<&mut Self> {
+        if layer.backdrop_filter().is_some() {
+            return Err(crate::Error::invalid_value(
+                "turbulence layer backdrop",
+                "present",
+                "must be absent for a source-free turbulence layer",
+            ));
+        }
+        self.commands.push(Command::Layer {
+            layer: Box::new(layer.with_turbulence(operation, region)),
+            children: Vec::new().into(),
+        });
+        Ok(self)
+    }
+
     /// Appends native displacement, replacing the layer's exclusive foreground effect.
     ///
     /// Moves the authentic first-input Scene into this layer's iterative child

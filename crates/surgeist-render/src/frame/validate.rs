@@ -22,6 +22,7 @@ pub(super) fn validate_semantic_frame_graph(
     validate_morphology_metadata(graph, account)?;
     validate_displacement_metadata(graph, account, pass_intents.has_displacement)?;
     validate_lighting_metadata(graph, account)?;
+    validate_turbulence_metadata(graph, account)?;
     validate_native_shadow_metadata(graph, account)?;
     if pass_intents.invalid_capture_read {
         return Err(GraphValidationError::InvalidCaptureResult);
@@ -282,6 +283,7 @@ fn validate_pass_intents(
     let mut morphology_count = 0_usize;
     let mut shadow_count = 0_usize;
     let mut lighting_count = 0_usize;
+    let mut turbulence_count = 0_usize;
     let mut facts = PassIntentFacts::default();
     for pass in &graph.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -293,6 +295,7 @@ fn validate_pass_intents(
             SemanticPassIntent::Offset(_) => offset_count += 1,
             SemanticPassIntent::Displacement(_) => facts.has_displacement = true,
             SemanticPassIntent::Lighting(_) => lighting_count += 1,
+            SemanticPassIntent::Turbulence => turbulence_count += 1,
             SemanticPassIntent::VelloCapture { .. } if !pass.reads.is_empty() => {
                 facts.invalid_capture_read = true;
             }
@@ -311,7 +314,7 @@ fn validate_pass_intents(
     if shadow_count != graph.native_shadows.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
-    if lighting_count != graph.lighting.len() {
+    if lighting_count != graph.lighting.len() || turbulence_count != graph.turbulence.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
     if offset_count != graph.offsets.len() {
@@ -653,6 +656,8 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
                 })
                 .map(|entry| entry.facts.output_footprint())
         });
+        let turbulence = turbulence_for_pass(graph, producer, account)?;
+        let expected = expected.or_else(|| turbulence.map(|entry| entry.facts.output_footprint()));
         if composite.filter_footprint != expected
             || (expected.is_some()
                 && !matches!(composite.kind, SemanticCompositeKind::Layer { .. }))
@@ -1832,6 +1837,60 @@ fn validate_lighting_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
     }
     if previous.is_some() {
         return Err(GraphValidationError::InvalidPassArity);
+    }
+    Ok(())
+}
+
+pub(super) fn turbulence_for_pass<'a>(
+    graph: &'a GpuRenderGraph,
+    pass: SemanticPassId,
+    account: &Account,
+) -> GraphBuildResult<Option<&'a super::graph::SemanticTurbulencePlan>> {
+    let index = ordered_metadata_index(
+        &graph.turbulence,
+        pass.index.0,
+        |entry| entry.pass.index.0,
+        account,
+    )?;
+    Ok(graph
+        .turbulence
+        .get(index)
+        .filter(|entry| entry.pass == pass))
+}
+
+fn validate_turbulence_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
+    let mut last_index = None;
+    for entry in &graph.turbulence {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if last_index.is_some_and(|last| entry.pass.index.0 <= last) {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        last_index = Some(entry.pass.index.0);
+        let pass = graph
+            .passes
+            .get(entry.pass.index.as_usize()?)
+            .filter(|pass| pass.id == entry.pass)
+            .ok_or(GraphValidationError::UnknownPass(entry.pass))?;
+        if pass.intent != SemanticPassIntent::Turbulence
+            || !pass.reads.is_empty()
+            || !pass.dependencies.is_empty()
+        {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        let SemanticPassResult::Resource(result) = pass.result else {
+            return Err(GraphValidationError::InvalidPassArity);
+        };
+        let descriptor = graph
+            .resources
+            .get(result.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownResource(result))?
+            .descriptor;
+        if descriptor.role != SemanticResourceRole::FilterIntermediate
+            || super::GraphLoweringSpatialDescriptor::from_semantic(descriptor)
+                != entry.facts.target_plan()
+        {
+            return Err(GraphValidationError::InvalidPassResultRole);
+        }
     }
     Ok(())
 }

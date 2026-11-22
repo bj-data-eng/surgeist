@@ -472,6 +472,7 @@ fn runtime_pass_kind(
         ),
         GraphLoweringPassKind::Offset(offset) => RuntimePassKind::Offset(offset.clone()),
         GraphLoweringPassKind::Lighting(work) => RuntimePassKind::Lighting(work.clone()),
+        GraphLoweringPassKind::Turbulence(work) => RuntimePassKind::Turbulence(work.clone()),
         GraphLoweringPassKind::NativeShadowMerge(work) => {
             RuntimePassKind::NativeShadowMerge(work.clone())
         }
@@ -906,7 +907,8 @@ const fn runtime_read_uses_shader_sampler(kind: &RuntimePassKind, role: RuntimeR
         | RuntimePassKind::Displacement(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_)
-        | RuntimePassKind::Lighting(_) => false,
+        | RuntimePassKind::Lighting(_)
+        | RuntimePassKind::Turbulence(_) => false,
         RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { .. },
             ..
@@ -1037,6 +1039,7 @@ pub(super) fn runtime_pass_cache_keys(
                 | RuntimePassKind::Offset(_)
                 | RuntimePassKind::NativeShadowMerge(_)
                 | RuntimePassKind::Lighting(_)
+                | RuntimePassKind::Turbulence(_)
                 | RuntimePassKind::Displacement(_)
         ) {
             Some(match result {
@@ -1092,6 +1095,7 @@ fn shader_program(kind: &RuntimePassKind) -> Result<ShaderProgramKey> {
         RuntimePassKind::Lighting(work) => Ok(ShaderProgramKey::Lighting(
             super::lighting::shader_stage(work),
         )),
+        RuntimePassKind::Turbulence(_) => Ok(ShaderProgramKey::Turbulence),
         RuntimePassKind::BlurHorizontal(Some(blur)) => Ok(ShaderProgramKey::BlurHorizontal {
             source_alpha: blur.input == RuntimeBlurInput::SourceAlpha,
             edge: shader_sampling_edge(blur.edge),
@@ -1150,6 +1154,7 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         RuntimePassKind::Offset(_) => &[ShaderDataBindingKey::OffsetParameters],
         RuntimePassKind::NativeShadowMerge(_) => &[ShaderDataBindingKey::NativeShadowParameters],
         RuntimePassKind::Lighting(_) => &[ShaderDataBindingKey::LightingParameters],
+        RuntimePassKind::Turbulence(_) => &[ShaderDataBindingKey::TurbulenceParameters],
         RuntimePassKind::Gaussian(operation) => super::gaussian::data_bindings(operation),
         RuntimePassKind::Morphology(_) => &[ShaderDataBindingKey::MorphologyParameters],
         RuntimePassKind::Displacement(work) => {

@@ -565,6 +565,7 @@ pub(crate) enum RuntimePassKind {
     Offset(crate::frame::GraphLoweringOffset),
     NativeShadowMerge(crate::frame::NativeShadowPassFacts),
     Lighting(crate::frame::LightingPassFacts),
+    Turbulence(crate::frame::TurbulencePassFacts),
     BlurHorizontal(Option<RuntimeBlur>),
     BlurVertical(Option<RuntimeBlur>),
     DropShadowColorize(Option<RuntimeDropShadow>),

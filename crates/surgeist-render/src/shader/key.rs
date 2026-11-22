@@ -127,6 +127,7 @@ pub(crate) enum ShaderProgramKey {
         raw_map: bool,
     },
     Lighting(ShaderLightingStageKey),
+    Turbulence,
     NativeShadow {
         original: ShaderNativeShadowSourceKey,
         shifted_alpha: bool,
@@ -314,6 +315,7 @@ pub(crate) enum ShaderDataBindingKey {
     MorphologyParameters,
     OffsetParameters,
     LightingParameters,
+    TurbulenceParameters,
     NativeShadowParameters,
     ConvolutionWeights,
     ColorFilterOperations,

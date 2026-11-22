@@ -247,6 +247,7 @@ impl Capabilities {
             gpu_gaussian_filter_execution: true,
             gpu_diffuse_lighting_filter_execution: true,
             gpu_specular_lighting_filter_execution: true,
+            gpu_turbulence_filter_execution: true,
             gpu_morphology_filter_execution: true,
             gpu_displacement_filter_execution: true,
             gpu_native_drop_shadow_filter_execution: true,
@@ -528,6 +529,9 @@ impl Capabilities {
             PrimitiveOperation::GpuSpecularLightingFilterExecution => self
                 .filters
                 .supports_gpu_specular_lighting_filter_execution(),
+            PrimitiveOperation::GpuTurbulenceFilterExecution => {
+                self.filters.supports_gpu_turbulence_filter_execution()
+            }
             PrimitiveOperation::GpuDisplacementFilterExecution => {
                 self.filters.supports_gpu_displacement_filter_execution()
             }
@@ -1017,6 +1021,7 @@ pub struct FilterCapabilities {
     gpu_gaussian_filter_execution: bool,
     gpu_diffuse_lighting_filter_execution: bool,
     gpu_specular_lighting_filter_execution: bool,
+    gpu_turbulence_filter_execution: bool,
     gpu_morphology_filter_execution: bool,
     gpu_displacement_filter_execution: bool,
     gpu_native_drop_shadow_filter_execution: bool,
@@ -1098,6 +1103,12 @@ impl FilterCapabilities {
     #[must_use]
     pub const fn supports_gpu_specular_lighting_filter_execution(self) -> bool {
         self.gpu_specular_lighting_filter_execution
+    }
+
+    /// Reports GPU support for source-free Perlin turbulence.
+    #[must_use]
+    pub const fn supports_gpu_turbulence_filter_execution(self) -> bool {
+        self.gpu_turbulence_filter_execution
     }
 
     /// Returns whether admitted native straight-byte map displacement executes on GPU.
