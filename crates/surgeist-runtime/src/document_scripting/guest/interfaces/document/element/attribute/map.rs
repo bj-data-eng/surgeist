@@ -243,6 +243,9 @@ impl Capture {
         let (owner, events) = self.active(scope)?;
         let result = (|| {
             events.step()?;
+            // A traced cache may outlive the native pin. Complete the
+            // current Element read before opening a scoped guest root.
+            self.with_attribute_map(&owner, &events, element, |_, _| Ok(()))?;
             if let Some(cached) = scope
                 .native_object_reference::<GuestNodeProjection>(receiver, ATTRIBUTES_REFERENCE)?
             {
