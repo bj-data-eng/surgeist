@@ -1,13 +1,14 @@
 //! Source-time Img updates and Picture/Source fanout over actual canonical keys.
 use super::*;
 
+use std::io::{Cursor, Write};
 use surgeist_html::{
     elements::image::{
         HtmlImageAttributeChange, HtmlImageAttributeEffect, HtmlImageDocumentActivity,
         HtmlImageMutationTargets, HtmlImageTreeChange, HtmlImageUpdateFlags,
         HtmlImageUpdateStartDecision,
     },
-    values::HtmlValueInterpreter,
+    values::{HtmlValueInterpreter, Namespace},
     vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
@@ -50,6 +51,86 @@ impl Undo {
 }
 
 impl Draft {
+    pub(super) fn create_html_image(
+        &mut self,
+        document: DocumentId,
+        width: Option<u32>,
+        height: Option<u32>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
+        use crate::internal::source::{DomElementCreationName, DomElementCreationOptions};
+
+        let document = self.resolve(document.into())?;
+        let metadata = self.document_metadata(document)?;
+        let operands = source::formation::Formation::new(self, cancel)?;
+        let namespace =
+            source::formation::string("http://www.w3.org/1999/xhtml", operands.as_ref(), cancel)?;
+        let local = source::formation::string(
+            KnownHtmlElement::Img.local_name(),
+            operands.as_ref(),
+            cancel,
+        )?;
+        let name = DomElementCreationName::Qualified(Namespace::from_uri(namespace), local);
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let element = self.native_element(
+            &name,
+            &DomElementCreationOptions::default(),
+            metadata,
+            formation.as_ref(),
+            cancel,
+        )?;
+        drop(name);
+        drop(operands);
+        let image = self.allocate_element_formed(element, document, limits, cancel, formation)?;
+        self.initialize_native_element(image, None, limits, cancel)?;
+
+        for (attribute, dimension) in [
+            (KnownHtmlAttribute::Width, width),
+            (KnownHtmlAttribute::Height, height),
+        ] {
+            if let Some(dimension) = dimension {
+                self.set_image_factory_dimension(image, attribute, dimension, limits, cancel)?;
+            }
+        }
+        Ok(image)
+    }
+
+    fn set_image_factory_dimension(
+        &mut self,
+        image: Key,
+        attribute: KnownHtmlAttribute,
+        dimension: u32,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        // An unsigned 32-bit integer occupies at most ten decimal bytes.
+        let mut bytes = [0_u8; 10];
+        let mut decimal = Cursor::new(bytes.as_mut_slice());
+        write!(&mut decimal, "{dimension}").map_err(|_| DomError::RepresentationExhausted)?;
+        let count =
+            usize::try_from(decimal.position()).map_err(|_| DomError::RepresentationExhausted)?;
+        let text = std::str::from_utf8(
+            bytes
+                .get(..count)
+                .ok_or(DomError::RepresentationExhausted)?,
+        )
+        .map_err(|_| DomError::RepresentationExhausted)?;
+
+        let operands = source::formation::Formation::new(self, cancel)?;
+        let name = source::formation::string(attribute.local_name(), operands.as_ref(), cancel)?;
+        let value = source::formation::string(text, operands.as_ref(), cancel)?;
+        self.set_standard_attribute(
+            image,
+            Some(&Namespace::none()),
+            &name,
+            &value,
+            limits,
+            cancel,
+        )
+    }
+
     pub(super) fn start_image_update(
         &mut self,
         key: Key,

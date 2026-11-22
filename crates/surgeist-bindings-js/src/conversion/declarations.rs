@@ -1731,6 +1731,28 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
     )
 }
 
+/// Selected argument `HTMLImageElement.Image/width` (not overload selection).
+pub fn html_image_element_image_width() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLImageElement.Image/width",
+        0,
+        true,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLImageElement.Image/height` (not overload selection).
+pub fn html_image_element_image_height() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLImageElement.Image/height",
+        1,
+        true,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
 /// Selected argument `HTMLScriptElement.supports:0/type` (not overload selection).
 pub fn html_script_element_supports_0_type() -> Argument<Type<DomString>> {
     Argument::new(
@@ -2433,6 +2455,11 @@ pub fn html_element_outer_text_setter() -> Type<DomString> {
 /// Selected setter conversion for `HTMLTitleElement.text`.
 pub fn html_title_element_text_setter() -> Type<DomString> {
     types::DOM_STRING
+}
+
+/// Selected setter conversion for `HTMLImageElement.obsolete.border`.
+pub fn html_image_element_obsolete_border_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
 }
 
 /// Selected setter conversion for `HTMLTableElement.obsolete.bgColor`.

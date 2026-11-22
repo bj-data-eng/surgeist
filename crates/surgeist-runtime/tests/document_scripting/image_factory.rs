@@ -101,8 +101,10 @@ pub(super) fn attached_image_factory_creates_and_qualifies_native_nodes() {
         .nodes()
         .filter_map(|id| snapshot.node(id).ok())
         .find(|node| {
-            node.node_name() == "IMG".into()
-                && node.attribute_ns(&Namespace::none(), &"width".into()) == Some(&"314159".into())
+            node.as_element().is_some_and(|element| {
+                element.name().namespace_uri() == Namespace::html().uri()
+                    && element.name().local_name() == &"img".into()
+            }) && node.attribute_ns(&Namespace::none(), &"width".into()) == Some(&"314159".into())
         })
         .unwrap();
     assert_eq!(image.owner_document(), Some(top.document()));

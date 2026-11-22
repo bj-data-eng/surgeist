@@ -9,7 +9,7 @@ use surgeist_html::{
 
 mod adjacent;
 mod attribute;
-mod option_factory;
+mod legacy_factory;
 pub(super) use attribute::AttributeResult;
 mod svg;
 

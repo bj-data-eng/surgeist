@@ -245,6 +245,11 @@ pub(crate) enum Command {
         kind: Creation,
         document: Option<NodeOperand>,
     },
+    CreateHtmlImage {
+        document: DocumentId,
+        width: Option<u32>,
+        height: Option<u32>,
+    },
     CreateHtmlOption {
         document: DocumentId,
         text: DocumentString,

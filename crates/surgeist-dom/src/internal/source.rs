@@ -584,6 +584,11 @@ pub enum DomDetachedNodeCreation {
     AttributeNs(Namespace, DocumentString),
     Fragment,
     Text(DocumentString),
+    /// The HTML Image factory's converted optional dimensions.
+    HtmlImage {
+        width: Option<u32>,
+        height: Option<u32>,
+    },
     /// The HTML Option factory's converted arguments. Selectedness starts clean
     /// and is independent of the presence of the selected content attribute.
     HtmlOption {
@@ -622,6 +627,13 @@ impl DomDetachedNodeCreation {
             }
             Self::Fragment => DomSourceEdit::create_fragment(document.node()),
             Self::Text(data) => DomSourceEdit::create_text(document.node(), data),
+            Self::HtmlImage { width, height } => DomSourceEdit {
+                command: Command::CreateHtmlImage {
+                    document,
+                    width,
+                    height,
+                },
+            },
             Self::HtmlOption {
                 text,
                 value,

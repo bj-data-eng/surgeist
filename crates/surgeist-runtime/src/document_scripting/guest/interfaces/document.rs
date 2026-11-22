@@ -559,7 +559,7 @@ impl DocumentBindings {
             &origin.capture,
             &origin.retain,
         )?;
-        element.install_option_factory(scope, &global, capture)?;
+        element.install_legacy_element_factories(scope, &global, capture)?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
             scope,

@@ -4195,6 +4195,14 @@ impl Draft {
                 )?;
                 self.register_ticket(key, cancelled)?;
             }
+            Command::CreateHtmlImage {
+                document,
+                width,
+                height,
+            } => {
+                let key = self.create_html_image(*document, *width, *height, limits, cancelled)?;
+                self.register_ticket(key, cancelled)?;
+            }
             Command::CreateHtmlOption {
                 document,
                 text,

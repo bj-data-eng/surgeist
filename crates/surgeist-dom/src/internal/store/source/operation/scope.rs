@@ -123,7 +123,8 @@ impl OperationRoot {
                 ..
             } => existing(associated_document),
             Command::Create { document, .. } => document.as_ref().and_then(existing),
-            Command::CreateHtmlOption { document, .. } => Some(document.node()),
+            Command::CreateHtmlImage { document, .. }
+            | Command::CreateHtmlOption { document, .. } => Some(document.node()),
             Command::AttachShadow { host, .. } => existing(host),
             Command::InitializeRegistry { root, .. } | Command::UpgradeRegistry { root, .. } => {
                 existing(root)

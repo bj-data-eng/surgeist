@@ -417,6 +417,30 @@
       "entries": ["HTMLTitleElement"]
     },
     {
+      "id": "HTMLImageElement.source",
+      "path": "references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md",
+      "anchor": "htmlimageelement",
+      "block": 0,
+      "sha256": "4d86dbaf6db20717abd866297ed9bb732f45e70ff3558665e13988a560055d5f",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+      "entries": [
+        "HTMLImageElement"
+      ]
+    },
+    {
+      "id": "HTMLImageElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLImageElement&#45;partial",
+      "block": 0,
+      "sha256": "aecdaf6354e1026e1366befbd453368ad811a3b89b2b58158778d124a6f371c9",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLImageElement-partial",
+      "entries": [
+        "HTMLImageElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLScriptElement.source",
       "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
       "anchor": "htmlscriptelement",
@@ -5312,6 +5336,51 @@
         }
       ],
       "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLImageElement",
+      "kind": "interface",
+      "name": "HTMLImageElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}, {"name": "LegacyFactoryFunction", "value": {"name": "Image", "arguments": [{"name": "width", "presence": "optional", "type": {"kind": "named", "name": "unsigned long"}}, {"name": "height", "presence": "optional", "type": {"kind": "named", "name": "unsigned long"}}]}}],
+      "members": [
+        {"attributes": [{"name": "HTMLConstructor"}], "kind": "constructor", "arguments": [], "id": "HTMLImageElement.constructor:0"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "alt", "readonly": false, "id": "HTMLImageElement.alt"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "ReflectURL"}], "kind": "attribute", "type": {"kind": "named", "name": "USVString"}, "name": "src", "readonly": false, "id": "HTMLImageElement.src"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "USVString"}, "name": "srcset", "readonly": false, "id": "HTMLImageElement.srcset"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "sizes", "readonly": false, "id": "HTMLImageElement.sizes"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "nullable", "inner": {"kind": "named", "name": "DOMString"}}, "name": "crossOrigin", "readonly": false, "id": "HTMLImageElement.crossOrigin"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "useMap", "readonly": false, "id": "HTMLImageElement.useMap"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "boolean"}, "name": "isMap", "readonly": false, "id": "HTMLImageElement.isMap"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "boolean"}, "name": "controls", "readonly": false, "id": "HTMLImageElement.controls"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}], "kind": "attribute", "type": {"kind": "named", "name": "unsigned long"}, "name": "width", "readonly": false, "id": "HTMLImageElement.width"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "ReflectSetter"}], "kind": "attribute", "type": {"kind": "named", "name": "unsigned long"}, "name": "height", "readonly": false, "id": "HTMLImageElement.height"},
+        {"attributes": [], "kind": "attribute", "type": {"kind": "named", "name": "unsigned long"}, "name": "naturalWidth", "readonly": true, "id": "HTMLImageElement.naturalWidth"},
+        {"attributes": [], "kind": "attribute", "type": {"kind": "named", "name": "unsigned long"}, "name": "naturalHeight", "readonly": true, "id": "HTMLImageElement.naturalHeight"},
+        {"attributes": [], "kind": "attribute", "type": {"kind": "named", "name": "boolean"}, "name": "complete", "readonly": true, "id": "HTMLImageElement.complete"},
+        {"attributes": [], "kind": "attribute", "type": {"kind": "named", "name": "USVString"}, "name": "currentSrc", "readonly": true, "id": "HTMLImageElement.currentSrc"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "referrerPolicy", "readonly": false, "id": "HTMLImageElement.referrerPolicy"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "decoding", "readonly": false, "id": "HTMLImageElement.decoding"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "loading", "readonly": false, "id": "HTMLImageElement.loading"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "fetchPriority", "readonly": false, "id": "HTMLImageElement.fetchPriority"},
+        {"attributes": [], "kind": "operation", "name": "decode", "type": {"kind": "promise", "inner": {"kind": "named", "name": "undefined"}}, "arguments": [], "id": "HTMLImageElement.decode:0"}
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLImageElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLImageElement",
+      "attributes": [],
+      "members": [
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "name", "readonly": false, "id": "HTMLImageElement.obsolete.name"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "ReflectURL"}], "kind": "attribute", "type": {"kind": "named", "name": "USVString"}, "name": "lowsrc", "readonly": false, "id": "HTMLImageElement.obsolete.lowsrc"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "align", "readonly": false, "id": "HTMLImageElement.obsolete.align"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "unsigned long"}, "name": "hspace", "readonly": false, "id": "HTMLImageElement.obsolete.hspace"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "unsigned long"}, "name": "vspace", "readonly": false, "id": "HTMLImageElement.obsolete.vspace"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "ReflectURL"}], "kind": "attribute", "type": {"kind": "named", "name": "USVString"}, "name": "longDesc", "readonly": false, "id": "HTMLImageElement.obsolete.longDesc"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]}, "name": "border", "readonly": false, "id": "HTMLImageElement.obsolete.border"}
+      ],
+      "partial": true
     },
     {
       "id": "HTMLScriptElement",
@@ -12898,7 +12967,7 @@
       "producers": [
         {
           "owner": "surgeist-runtime",
-          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/option_factory.rs",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/legacy_factory.rs",
           "symbol": "construct_option"
         },
         {
@@ -16829,6 +16898,212 @@
       "adapter": "htmltitleelement.text.set",
       "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "set_text_content"}],
       "requirements": []
+    },
+    "HTMLImageElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlimageelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Admit the original Img update in the actual associated fully active Document.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#updating-the-image-data", "issue": 3130}]
+    },
+    "HTMLImageElement.Image/factory": {
+      "kind": "native",
+      "adapter": "htmlimageelement.image.factory",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/legacy_factory.rs", "symbol": "construct_image"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/image.rs", "symbol": "create_html_image"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs", "symbol": "create_detached_with_node_retirement_watch"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Admit the original Img update in the actual associated fully active Document.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#updating-the-image-data", "issue": 3130}]
+    },
+    "HTMLImageElement.alt/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-alt", "issue": 2258}
+    },
+    "HTMLImageElement.alt/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-alt", "issue": 2258}
+    },
+    "HTMLImageElement.src/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply USVString URL reflection with the canonical image attribute action and qualified Document and image facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-src", "issue": 2258}
+    },
+    "HTMLImageElement.src/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply USVString URL reflection with the canonical image attribute action and qualified Document and image facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-src", "issue": 2258}
+    },
+    "HTMLImageElement.srcset/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-srcset", "issue": 2258}
+    },
+    "HTMLImageElement.srcset/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-srcset", "issue": 2258}
+    },
+    "HTMLImageElement.sizes/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-sizes", "issue": 2258}
+    },
+    "HTMLImageElement.sizes/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-sizes", "issue": 2258}
+    },
+    "HTMLImageElement.crossOrigin/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-crossorigin", "issue": 2258}
+    },
+    "HTMLImageElement.crossOrigin/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-crossorigin", "issue": 2258}
+    },
+    "HTMLImageElement.useMap/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-usemap", "issue": 2258}
+    },
+    "HTMLImageElement.useMap/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-usemap", "issue": 2258}
+    },
+    "HTMLImageElement.isMap/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-ismap", "issue": 2258}
+    },
+    "HTMLImageElement.isMap/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-ismap", "issue": 2258}
+    },
+    "HTMLImageElement.controls/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-controls", "issue": 2258}
+    },
+    "HTMLImageElement.controls/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-controls", "issue": 2258}
+    },
+    "HTMLImageElement.width/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-layout", "contract": "Provide the actual rendered or intrinsic image dimension and qualify the required native fallback.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-width"}
+    },
+    "HTMLImageElement.width/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-width", "issue": 2258}
+    },
+    "HTMLImageElement.height/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-layout", "contract": "Provide the actual rendered or intrinsic image dimension and qualify the required native fallback.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-height"}
+    },
+    "HTMLImageElement.height/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-height", "issue": 2258}
+    },
+    "HTMLImageElement.naturalWidth/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Project the standard observation from the native image request and presentation facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-naturalwidth", "issue": 2258}
+    },
+    "HTMLImageElement.naturalHeight/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Project the standard observation from the native image request and presentation facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-naturalheight", "issue": 2258}
+    },
+    "HTMLImageElement.complete/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Project the standard observation from the native image request and presentation facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-complete", "issue": 2258}
+    },
+    "HTMLImageElement.currentSrc/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Project the standard observation from the native image request and presentation facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-currentsrc", "issue": 2258}
+    },
+    "HTMLImageElement.referrerPolicy/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-referrerpolicy", "issue": 2258}
+    },
+    "HTMLImageElement.referrerPolicy/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-referrerpolicy", "issue": 2258}
+    },
+    "HTMLImageElement.decoding/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-decoding", "issue": 2258}
+    },
+    "HTMLImageElement.decoding/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-decoding", "issue": 2258}
+    },
+    "HTMLImageElement.loading/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-loading", "issue": 2258}
+    },
+    "HTMLImageElement.loading/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-loading", "issue": 2258}
+    },
+    "HTMLImageElement.fetchPriority/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-fetchpriority", "issue": 2258}
+    },
+    "HTMLImageElement.fetchPriority/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply the selected HTML keyword and reflection rules through the live native image attribute route.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-fetchpriority", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.name/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-name", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.name/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-name", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.lowsrc/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply USVString URL reflection with the canonical image attribute action and qualified Document and image facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-lowsrc", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.lowsrc/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply USVString URL reflection with the canonical image attribute action and qualified Document and image facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-lowsrc", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.align/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-align", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.align/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-align", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.hspace/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-hspace", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.hspace/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-hspace", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.vspace/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-vspace", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.vspace/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-vspace", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.longDesc/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply USVString URL reflection with the canonical image attribute action and qualified Document and image facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-longdesc", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.longDesc/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Apply USVString URL reflection with the canonical image attribute action and qualified Document and image facts.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-longdesc", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.border/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-border", "issue": 2258}
+    },
+    "HTMLImageElement.obsolete.border/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the exact declared image reflection and any resulting native attribute effect.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-border", "issue": 2258}
+    },
+    "HTMLImageElement.decode:0/call": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the genuine native decode promise and image-request, task, cancellation and result custody.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-decode", "issue": 2258}
     },
     "HTMLScriptElement.constructor:0/construct": {
       "kind": "native",
