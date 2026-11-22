@@ -11,6 +11,7 @@ use crate::error::BackendErrorCode;
 use crate::{Error, Result};
 
 mod lut;
+mod mpe;
 
 pub(crate) enum Selection {
     Invalid,
@@ -29,13 +30,15 @@ pub(crate) struct RgbProfile(Transform);
 enum Transform {
     Matrix(RgbMatrixProfile),
     Lookup(lut::RgbLutProfile),
+    MultiProcess(mpe::RgbMpeProfile),
 }
 
 impl RgbProfile {
-    pub(crate) fn pcs(&self, samples: [u8; 3], account: &Account) -> Result<PcsColor> {
-        match &self.0 {
+    pub(crate) fn pcs(&mut self, samples: [u8; 3], account: &Account) -> Result<PcsColor> {
+        match &mut self.0 {
             Transform::Matrix(profile) => Ok(PcsColor::XyzD50(profile.xyz_d50(samples, account)?)),
             Transform::Lookup(profile) => profile.pcs(samples, account),
+            Transform::MultiProcess(profile) => profile.pcs(samples, account),
         }
     }
 }
@@ -126,9 +129,19 @@ fn prepare_transform(bytes: AccountedVec<u8>, account: &Account) -> ProfileResul
         return Err(ProfileError::Invalid);
     }
 
-    // ICC.1:2022 §8.10.2 skips the optional multi-process route when the CMM
-    // lacks its operations. AToB1 carries the requested media-relative
-    // transform, then AToB0 is the prescribed perceptual fallback.
+    // ICC.1:2022 §8.10.2 selects a supported DToB1 for this intent first.
+    // Unsupported operations leave the original bytes for the AToB or matrix
+    // fallback. Malformed selected data remains an invalid profile.
+    let bytes = if version == 4
+        && let Some(tag) = find_tag(&table, b"D2B1", account)?
+    {
+        match mpe::prepare(bytes, tag, &header.pcs, account)? {
+            mpe::Attempt::Ready(profile) => return Ok(Transform::MultiProcess(profile)),
+            mpe::Attempt::Fallback(bytes) => bytes,
+        }
+    } else {
+        bytes
+    };
     for signature in [b"A2B1", b"A2B0"] {
         if let Some(tag) = find_tag(&table, signature, account)? {
             let profile = lut::RgbLutProfile::read(bytes, tag, version, &header.pcs, account)?;
@@ -374,12 +387,12 @@ fn read_tag_table(
 }
 
 /// In-place fallible heapsort meters reached comparisons before inspection.
-fn sort_tags(
-    tags: &mut [Tag],
-    compare: impl Fn(&Tag, &Tag) -> Ordering,
+fn sort_tags<T>(
+    tags: &mut [T],
+    compare: impl Fn(&T, &T) -> Ordering,
     account: &Account,
 ) -> Result<()> {
-    let sift = |tags: &mut [Tag], mut root: usize| -> Result<()> {
+    let sift = |tags: &mut [T], mut root: usize| -> Result<()> {
         let end = tags.len();
         while root < end / 2 {
             let left = root * 2 + 1;

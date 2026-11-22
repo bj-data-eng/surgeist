@@ -947,8 +947,10 @@ power exponent, including values near the legal integer endpoints.
 
 The embedded ICC route admits version 2 and 4 RGB Input and Display profiles.
 It requests media-relative colorimetry independently of the preferred intent
-in the header. With the optional DToB multi-process route unavailable, ICC
-precedence selects `A2B1`, then the perceptual `A2B0` fallback, then matrix/TRC.
+in the header. ICC precedence selects supported `D2B1` multi-process tables,
+then `A2B1`, the perceptual `A2B0` fallback, and matrix/TRC. An unsupported
+multi-process operation falls through to the next ICC transform. Malformed
+selected data uses the untagged sRGB fallback.
 `A2B0` can contain profile-defined gamut and tone mapping. Profile qualification
 covers the selected transform and profile structure while keeping unrelated
 metadata opaque. [ICC.1:2022, §§8.3–8.4 and 8.10](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=45)
@@ -959,6 +961,7 @@ metadata opaque. [ICC.1:2022, §§8.3–8.4 and 8.10](https://www.color.org/spec
 | `mft1` | Lab. ICC leaves the 8-bit XYZ encoding implementation-specific, so selected `mft1` XYZ returns `UnsupportedPng`. |
 | `mft2` | XYZ D50 and legacy Lab, including legacy Lab in v4 profiles. |
 | v4 `mAB` | XYZ D50 and current Lab. |
+| v4 `mpet` (`D2B1`) | Floating-point XYZ D50 and Lab in actual PCS units. |
 
 Render executes identity, gamma, sampled, and v4 parametric curves. It uses
 linear interpolation for uniform curves and trilinear interpolation for RGB
@@ -969,9 +972,19 @@ Lab-to-XYZ result to the ICC reference white and uses Color to convert XYZ D50
 to SDR sRGB with terminal clipping and quantization. Straight alpha
 retains its source byte. [ICC.1:2022, §§6.3.4, 10.10–10.12 and Annex F](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=65)
 
+Multi-process elements run in directory order. Each output channel count
+determines the next element's input. Curve sets use segmented formulas and
+sampled segments with inherited lower endpoints. Float matrices retain signed
+and extended channel values. Float CLUTs clamp only their inputs, then use
+multilinear interpolation. ACS markers pass the current channels through.
+Encoded floating-point values must be normal or zero. A selected pipeline whose
+computed element output exceeds the finite float range returns a bitmap-color
+numeric diagnostic. [ICC.1:2022, §§4.3 and 10.16](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=78)
+
 Ledger accounts for the ICC inflater's offered output bytes, reached tag records,
-curve and table samples, numeric work, and temporary backing. Profile preparation
-and pixel conversion use the existing PNG color phases.
+curve and table samples, numeric work, and temporary backing. Multi-process
+conversion reuses two channel buffers sized for its widest validated stage.
+Profile preparation and pixel conversion use the existing PNG color phases.
 
 Chromaticities calibrate homogeneous integer XYZ columns without dividing by
 primary y; zero-y primaries and boundary whites remain admissible. Exact integer
@@ -1512,8 +1525,8 @@ Huffman arrays. Selected PNG color compilation and conversion also admit their
 actual fixed numeric workspaces before construction, retaining the compiled
 workspace charge through pixel conversion and its real overlap with inflate and
 pixel buffers. ICC qualification also admits the inflated profile bytes and
-tag index. Sampled curves and lookup tables keep the inflated backing until
-conversion completes.
+tag index. Sampled curves, lookup tables, and multi-process pipelines keep
+the inflated backing until conversion completes.
 Pixel conversion runs in place using the compiled transform.
 Arc allocator headers, hash-table bucket overhead, dependency
 internal allocations and process/RSS usage are outside these units.

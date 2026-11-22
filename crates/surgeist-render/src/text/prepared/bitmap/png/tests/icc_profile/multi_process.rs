@@ -1,7 +1,11 @@
 use super::*;
-use crate::tests::icc_png::{
-    mpe_clut_transform, mpe_curve_transform, mpe_matrix_profile, mpe_profile,
-    unsupported_mpe_transform,
+use crate::{
+    accounting::RenderAttemptStatus,
+    tests::icc_png::{
+        mpe_aliased_matrix_transform, mpe_clut_transform, mpe_curve_transform, mpe_matrix_profile,
+        mpe_overflowing_matrix_transform, mpe_profile, unsupported_mpe_transform,
+    },
+    text::GlyphNumericPhase,
 };
 
 #[test]
@@ -14,6 +18,65 @@ fn selected_icc_mpe_xyz_overrides_legacy_and_lower_png_profiles() {
     assert_eq!(
         decoded.pixels,
         [188, 188, 188, 0, 254, 185, 129, 128, 234, 207, 144, 255],
+    );
+}
+
+#[test]
+fn selected_icc_mpe_runs_aliased_elements_in_directory_order() {
+    let profile = mpe_profile(
+        mpe_aliased_matrix_transform(),
+        b"XYZ ",
+        lut16_transform(),
+        None,
+    );
+    let source = [0, 40, 90, 7, 128, 30, 200, 128, 255, 0, 0, 255];
+    let bytes = image(&source, Some(&profile), &[], &[]);
+    // Halve RGB, map red plus 1/4 to a D50 neutral, and halve again.
+    // Luminance is 1/8 + R/1020. The sRGB transfer gives 99.086, 137.083,
+    // and 164.750 before rounding. Both half stages must run.
+    assert_eq!(
+        test_decode(&bytes, 1 << 20).unwrap().pixels,
+        [99, 99, 99, 7, 137, 137, 137, 128, 165, 165, 165, 255],
+    );
+}
+
+#[test]
+fn selected_icc_mpe_numeric_overflow_releases_custody_before_publication() {
+    let profile = mpe_profile(
+        mpe_overflowing_matrix_transform(),
+        b"XYZ ",
+        lut16_transform(),
+        None,
+    );
+    let source = [0, 200, 20, 7, 255, 30, 200, 128];
+    let bytes = image(&source, Some(&profile), &[], &[]);
+    let mut context = RenderAccountingContext::default();
+    let error = decode_in(&bytes, 1 << 20, &mut context).err().unwrap();
+    // Both matrices have finite coefficients. On the second pixel the
+    // first gives f32::MAX and the second doubles it, exceeding binary32.
+    assert_eq!(
+        error.glyph_preparation_diagnostic(),
+        Some(&GlyphPreparationError::Numeric {
+            phase: GlyphNumericPhase::BitmapColor,
+            value: 2.0 * f64::from(f32::MAX),
+        }),
+    );
+    let terminal = context.last_attempt().unwrap();
+    assert_eq!(
+        terminal.status(),
+        RenderAttemptStatus::Failed(crate::ErrorCode::GlyphPreparation),
+    );
+    assert_eq!(terminal.cleanup_fault(), None);
+    let usage = terminal.attempt().unwrap().usage();
+    assert_eq!(usage.work(RenderWork::ImageTexelVisits), 2);
+    assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+    assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+    assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+
+    let retry = image(&source[..4], Some(&profile), &[], &[]);
+    assert_eq!(
+        decode_in(&retry, 1 << 20, &mut context).unwrap().pixels,
+        [0, 0, 0, 7],
     );
 }
 

@@ -79,6 +79,49 @@ pub(crate) fn unsupported_mpe_transform() -> Vec<u8> {
     mpe_transform([mpe_element(b"xmpl", 3, 3)])
 }
 
+pub(crate) fn mpe_aliased_matrix_transform() -> Vec<u8> {
+    let d50 = [0.9642_f32, 1.0, 0.8249];
+    let tone = mpe_matrix(
+        3,
+        3,
+        &[d50[0], 0.0, 0.0, d50[1], 0.0, 0.0, d50[2], 0.0, 0.0],
+        &d50.map(|component| component / 4.0),
+    );
+    let half = mpe_matrix(
+        3,
+        3,
+        &[0.5, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5],
+        &[0.0; 3],
+    );
+    // ICC.1:2022 §10.16 permits exact aliases. Store tone then half, with
+    // three positions specifying half, tone, and the same half again.
+    let mut transform = mpe_element(b"mpet", 3, 3);
+    transform.extend(3_u32.to_be_bytes());
+    let tone_start = 16_u32 + 3 * 8;
+    let tone_size = u32::try_from(tone.len()).unwrap();
+    let tone_position = (tone_start, tone_size);
+    let half_position = (tone_start + tone_size, u32::try_from(half.len()).unwrap());
+    for (offset, length) in [half_position, tone_position, half_position] {
+        transform.extend(offset.to_be_bytes());
+        transform.extend(length.to_be_bytes());
+    }
+    transform.extend(tone);
+    transform.extend(half);
+    transform
+}
+
+pub(crate) fn mpe_overflowing_matrix_transform() -> Vec<u8> {
+    let scale_red = |scale| {
+        mpe_matrix(
+            3,
+            3,
+            &[scale, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            &[0.0; 3],
+        )
+    };
+    mpe_transform([scale_red(f32::MAX), scale_red(2.0)])
+}
+
 pub(crate) fn mpe_clut_transform() -> Vec<u8> {
     let input = mpe_matrix(3, 2, &[2.0, 0.0, 0.0, 0.0, 2.0, 0.0], &[-0.5; 2]);
     let mut begin = mpe_element(b"bACS", 2, 2);

@@ -581,9 +581,9 @@ impl FontData {
     /// sbix noninterlaced 8-bit RGBA PNG with IHDR, contiguous IDAT, IEND and
     /// supported sRGB/gAMA/cHRM or embedded RGB ICC color uses retained
     /// strike/bearing metadata and decoded pixels under the same instance
-    /// restriction. Embedded ICC supports matrix/TRC and forward lookup tables.
-    /// Other selected
-    /// operations/formats refuse explicitly, without representation fallback.
+    /// restriction. Embedded ICC supports matrix/TRC, forward lookup tables,
+    /// and selected v4 forward multi-process tables.
+    /// Other selected operations and formats return a typed refusal.
     /// Palette0 is the default; CurrentColor uses the caller's paint.
     /// Consecutive ordinary outlines share one NonZero fill. Intrinsic paints
     /// retain their order and prevent foreground merging across them.
