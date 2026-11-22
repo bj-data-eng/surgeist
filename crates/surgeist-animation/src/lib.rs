@@ -13,6 +13,8 @@
 //! [`timing::EffectTiming`] samples optional signed model local time and derives
 //! effect phases, fill, iteration progress and relevance from supplied animation
 //! observations. Normalized CSS elapsed tracks use the same timing kernel.
+//! [`playback`] owns checked idle animation/effect registrations and immutable
+//! coordinate observations; callers supply timeline snapshots and effect facts.
 //!
 //! Callers pass effective [`time::ElapsedTime`] values that already account for
 //! the runtime clock and track start time. Paused sampling is explicit through
@@ -27,6 +29,7 @@
 //! | --- | --- |
 //! | [`time`] | Typed elapsed time, delay and duration. |
 //! | [`timeline`] | Model time flow, fixed-origin document timing and conversions. |
+//! | [`playback`] | Checked animation/effect ownership and supplied coordinate observations. |
 //! | [`progress`] | Normalized progress, unit ratios and easing input. |
 //! | [`easing`] | Cubic Bezier, step and linear easing functions. |
 //! | [`timing`] | Timing parameters, phases and the timing sample. |
@@ -136,6 +139,7 @@ pub mod easing;
 pub mod interpolation;
 pub mod keyframe;
 pub mod keyframe_input;
+pub mod playback;
 pub mod progress;
 pub mod sample;
 pub mod time;

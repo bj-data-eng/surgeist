@@ -8,10 +8,10 @@ dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
 [src/lib.rs](../src/lib.rs) declares the public modules `computed`, `diagnostics`,
-`easing`, `interpolation`, `keyframe`, `keyframe_input`, `progress`, `sample`,
-`time`, `timeline`, `timing`, `transform`, and `transition`, and the constant
-`CRATE_NAME`. Each public type has one path through its owning module, such as
-`surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
+`easing`, `interpolation`, `keyframe`, `keyframe_input`, `playback`, `progress`,
+`sample`, `time`, `timeline`, `timing`, `transform`, and `transition`, and the
+constant `CRATE_NAME`. Each public type has one path through its owning module,
+such as `surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
 source modules and the external consumer targets under
 [tests/](../tests/); crate-level examples are doctests.
 
@@ -71,6 +71,60 @@ overflowing division or subtraction intermediates. Unrepresentable results retur
 `TimeErrorKind::Unrepresentable` with the operation category; constructor failures
 and decreasing document reports have separate typed categories. These errors are
 distinct from a normal unresolved result. Arithmetic uses floating-point rounding.
+
+## Playback ownership and coordinate observation
+
+`playback::AnimationRecords` owns one animation creation-order universe across
+the caller's documents. Creating a record sets unresolved start and hold times,
+rate one and optional timeline/effect associations. The records boundary exposes
+idle association changes and retirement, with no controls that change playback
+time. Association changes therefore have no pending readiness or finished work
+to process in any state constructible through this API.
+
+Opaque `AnimationId` and `EffectId` handles retain their owner identity. Foreign
+handles and retired registrations return separate typed errors; removed slots
+are never reused. Creation order remains stable across transfers, timeline
+reassignment and other records' retirement. `animations()` enumerates live
+records in creation order. There is no process-global static registry: consumers
+share the owner for their global animation list.
+
+`register_effect` accepts validated `EffectFacts`, either derived from
+`EffectTiming` or constructed with a nonnegative finite/infinite end time.
+`create` and `assign_effect` enforce at most one animation per effect. Assigning
+an already-owned effect detaches its previous animation, and identical assignment
+is a no-op. Invalid requests and exhausted identity/capacity checks preserve the
+existing ownership graph. Retirement releases registration ownership; an effect
+must be detached before its registration can be retired. This is not `cancel()`
+and does not destroy host objects or dispatch lifecycle events.
+
+`snapshot(animation, timeline)` checks supplied timeline identity against the
+record's association. Missing required facts, a mismatched timeline and an
+unexpected timeline on a detached record are errors. A supplied inactive
+timeline is valid and yields unresolved current time. Snapshots own their
+captured associations and effect facts, which remain unchanged through later
+reassignment or retirement.
+
+`PlaybackCoordinates` is a separate immutable value combining the existing
+`AnimationSnapshot` and optional held animation time. Current time uses hold
+first, including when both start and hold are resolved. Otherwise the existing
+checked timeline-to-animation conversion supplies current time. Missing/inactive
+timeline or unresolved start yields unresolved; arithmetic limits remain typed
+errors. This observes supplied state without performing seek, clamping or a
+playback state transition.
+
+`observe` derives the no-pending-task play-state predicates in source order and
+produces a read-only `PlaybackObservation`. Paused takes precedence over
+finished; zero rate does not imply paused. The observation builds a coherent
+`EffectTimingInput` for an associated effect, or an unassociated input when there
+is no effect. Callers cannot independently overwrite its play state and current
+time. See the [coordinate example](../src/playback.rs).
+
+Full playback control remains outside this boundary: pending play/pause and
+readiness generations, current/start-time setters with their pending/finished
+effects, seamless rate changes and reverse; then finished-state updates,
+completion identities, finish/cancel and ordered deferred/event requests.
+Runtime retains actual scheduling, coherent publication, event dispatch and
+document-facing API projection.
 
 ## Effect timing and relevance
 
