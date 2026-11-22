@@ -909,8 +909,9 @@ clip and currentColor behavior. Caller paint applies to foreground operations.
 
 The supported intrinsic profile is COLRv0, a COLRv1 solid/glyph/translation/static
 clip subset, and sbix noninterlaced RGBA8 PNG with IHDR, contiguous IDAT,
-IEND and the supported `sRGB`/`gAMA`/`cHRM` source-color family. Other paint
-operations, formats and unexecuted PNG semantics refuse explicitly.
+IEND and supported `sRGB`, `gAMA`, `cHRM` and embedded RGB matrix/TRC ICC
+color. Other paint operations, formats and unexecuted PNG semantics refuse
+explicitly.
 Color and bitmap admission requires a default effective instance without
 synthesis; supported outline variation and synthesis follow the policy below.
 Malformed selected COLRv1 data cannot fall back to a COLRv0 representation.
@@ -923,17 +924,18 @@ and output extent, Adler checksum and all five scanline filters before retaining
 pixels. The inflater uses fixed-state miniz_oxide with caller-owned buffers.
 
 PNG color admission follows [PNG Third Edition (24 June 2025)](https://www.w3.org/TR/2025/REC-png-3-20250624/),
-sections 4.3, 11.3.2 and 13.13–13.14. Supported color chunks are unique, have exact
-lengths and valid 31-bit integer fields, and precede IDAT. Framing, CRC, order
-and cardinality errors remain malformed input. ICC (`iCCP`), `cICP`, HDR,
-animation and all other unexecuted ancillary semantics remain explicit
-`UnsupportedPng` refusals, including alongside supported lower-priority tags.
+sections 4.3, 11.3.2 and 13.13–13.14. Supported color chunks are unique and
+precede IDAT. Fixed payloads have exact lengths and valid 31-bit integer fields.
+An `iCCP` chunk carries a validated name and exactly one zlib stream.
+Framing, CRC, order and cardinality errors remain malformed input.
+`cICP`, HDR, animation and unexecuted ICC transforms return `UnsupportedPng`
+even when lower-priority color hints are present.
 
-An explicit `sRGB` source preserves bytes in this numeric sRGB receiver for
-all four defined intents. It overrides lower-priority gamma/chromaticities
-without evaluating their semantic calibration; their framing still must be
-valid. A selected invalid sRGB intent or physically invalid selected cHRM uses
-complete untagged sRGB fallback, rather than partially applying a lower profile.
+The native route selects `iCCP` ahead of `sRGB` and legacy hints. With no
+`iCCP`, explicit `sRGB` preserves bytes for all four defined intents and
+overrides lower-priority calibration. The framing of lower-priority chunks
+still must be valid. An invalid selected ICC profile, sRGB intent or
+chromaticity description uses the complete untagged sRGB fallback.
 This invalid-identification fallback and still-image default follow the retained
 [CSS Color 4 tagged-image](../../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md#tagged-images)
 and [untagged-image](../../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md#untagged)
@@ -942,6 +944,20 @@ Zero gamma is ignored. Missing source components use the native still-image
 policy: sRGB primaries/D65 when cHRM is absent, and the actual piecewise sRGB
 transfer when gamma is absent or zero. A positive gAMA instead uses its encoded
 power exponent, including values near the legal integer endpoints.
+
+The embedded ICC route admits version 2 and 4 RGB Input and Display matrix
+profiles with XYZ PCS. It executes identity, gamma and sampled curves, and
+supported version 4 parametric curves. The profile's matrix columns produce
+media-relative XYZ D50. The existing Color conversion adapts that PCS to the
+SDR sRGB destination and quantizes with terminal clipping. This native route
+selects media-relative colorimetry independently of the profile's preferred
+intent. ICC precedence skips the optional multi-process route when its
+operations are unavailable. A selected forward lookup table still requires
+a supported decoder. See [ICC.1:2022, §§8.3–8.4, 8.10 and Annex F](https://www.color.org/specifications/ICC.1-2022-05.pdf).
+
+Ledger accounts for the ICC inflater's offered output bytes, reached tag
+records, numeric work and temporary backing. Profile preparation and pixel
+conversion use the existing PNG color phases.
 
 Chromaticities calibrate homogeneous integer XYZ columns without dividing by
 primary y; zero-y primaries and boundary whites remain admissible. Exact integer

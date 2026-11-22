@@ -14,20 +14,109 @@ const D65_TO_D50: [i32; 9] = [68674, 1502, -3291, 1939, 64912, -1119, -606, 988,
 
 pub(crate) fn matrix_profile(sampled_blue: bool) -> Vec<u8> {
     let blue_curve = if sampled_blue {
-        // Three samples at x = 0, 1/2, 1, with linear interpolation.
-        b"curv\0\0\0\0\0\0\0\x03\0\0\x40\0\xff\xff".to_vec()
+        sampled_curve()
     } else {
         // Parametric function zero, x^1.5.
         b"para\0\0\0\0\0\0\0\0\0\x01\x80\0".to_vec()
     };
-    profile(vec![
+    v4_profile(
+        b"RGB ",
+        "Surgeist RGB fixture",
+        matrix_tags([RED, GREEN, BLUE], blue_curve),
+    )
+}
+
+pub(crate) fn piecewise_p3_profile(with_mpe: bool) -> Vec<u8> {
+    // ICC function type 3 uses the piecewise sRGB transfer used by Display P3.
+    // g, a, b, c, d are independently rounded to signed 15.16.
+    let mut transfer = fixed(b"para", &[157286, 62119, 3417, 5072, 2651]);
+    transfer.splice(8..8, [0, 3, 0, 0]);
+    let mut tags = vec![
         (*b"rXYZ", fixed(b"XYZ ", &RED)),
         (*b"gXYZ", fixed(b"XYZ ", &GREEN)),
         (*b"bXYZ", fixed(b"XYZ ", &BLUE)),
-        (*b"rTRC", b"curv\0\0\0\0\0\0\0\0".to_vec()), // identity
-        (*b"gTRC", b"curv\0\0\0\0\0\0\0\x01\x02\0".to_vec()), // x² in u8Fixed8
+        (*b"rTRC", transfer.clone()),
+        (*b"gTRC", transfer.clone()),
+        (*b"bTRC", transfer),
+    ];
+    if with_mpe {
+        // ICC.1:2022 §10.16. The optional media-relative multi-process
+        // route has one 3-to-3 float matrix element with zero offsets.
+        let mut element = b"matf\0\0\0\0\0\x03\0\x03".to_vec();
+        let xyz = [RED, GREEN, BLUE];
+        for row in 0..3 {
+            for column in xyz {
+                element.extend((column[row] as f32 / 65536.0).to_be_bytes());
+            }
+        }
+        element.extend_from_slice(&[0; 12]);
+        let mut transform = b"mpet\0\0\0\0\0\x03\0\x03".to_vec();
+        transform.extend_from_slice(&1_u32.to_be_bytes());
+        transform.extend_from_slice(&24_u32.to_be_bytes());
+        transform.extend_from_slice(&u32::try_from(element.len()).unwrap().to_be_bytes());
+        transform.extend(element);
+        tags.push((*b"D2B1", transform));
+    }
+    v4_profile(b"RGB ", "Surgeist piecewise P3 fixture", tags)
+}
+
+pub(crate) fn v2_matrix_profile() -> Vec<u8> {
+    // ICC.1:2001-04 §§6.1–6.3 and 6.5.
+    // <https://archive.color.org/files/ICC_Minor_Revision_for_Web.pdf>
+    // The v2 XYZ type requires nonnegative colorants. Use the sRGB primaries
+    // from CSS Color 4, here Bradford-adapted to the ICC D50 PCS in s15Fixed16.
+    let columns = [
+        [28576, 14581, 912],
+        [25239, 46983, 6361],
+        [9375, 3972, 46787],
+    ];
+    let mut tags = matrix_tags(columns, sampled_curve());
+    let ascii = b"Surgeist v2 RGB fixture\0";
+    let mut description = b"desc\0\0\0\0".to_vec();
+    description.extend(u32::try_from(ascii.len()).unwrap().to_be_bytes());
+    description.extend_from_slice(ascii);
+    // Unused Unicode code/count (8), ScriptCode code/count (3), and text (67).
+    description.extend_from_slice(&[0; 8 + 3 + 67]);
+    tags.extend([
+        (*b"wtpt", fixed(b"XYZ ", &D50)),
+        (*b"chad", fixed(b"sf32", &D65_TO_D50)),
+        (*b"desc", description),
+        (*b"cprt", b"text\0\0\0\0Surgeist test fixture\0".to_vec()),
+    ]);
+    input_profile([2, 0x40], b"RGB ", tags)
+}
+
+pub(crate) fn gray_profile() -> Vec<u8> {
+    // ICC.1:2022 Table G.3 defines kTRC and the shared input-profile tags.
+    v4_profile(
+        b"GRAY",
+        "Surgeist monochrome fixture",
+        vec![(*b"kTRC", curve(&[0x200]))],
+    )
+}
+
+fn matrix_tags(columns: [[i32; 3]; 3], blue_curve: Vec<u8>) -> Vec<([u8; 4], Vec<u8>)> {
+    let [red, green, blue] = columns;
+    vec![
+        (*b"rXYZ", fixed(b"XYZ ", &red)),
+        (*b"gXYZ", fixed(b"XYZ ", &green)),
+        (*b"bXYZ", fixed(b"XYZ ", &blue)),
+        (*b"rTRC", curve(&[])),      // identity
+        (*b"gTRC", curve(&[0x200])), // x² in u8Fixed8
         (*b"bTRC", blue_curve),
-    ])
+    ]
+}
+
+fn sampled_curve() -> Vec<u8> {
+    // Three samples at x = 0, 1/2, 1, with linear interpolation.
+    curve(&[0, 16384, 65535])
+}
+
+fn curve(samples: &[u16]) -> Vec<u8> {
+    let mut bytes = b"curv\0\0\0\0".to_vec();
+    bytes.extend(u32::try_from(samples.len()).unwrap().to_be_bytes());
+    bytes.extend(samples.iter().flat_map(|value| value.to_be_bytes()));
+    bytes
 }
 
 pub(crate) fn lut_profile() -> Vec<u8> {
@@ -50,7 +139,7 @@ pub(crate) fn lut_profile() -> Vec<u8> {
         }
     }
     transform.extend_from_slice(&identity);
-    profile(vec![(*b"A2B0", transform)])
+    v4_profile(b"RGB ", "Surgeist RGB fixture", vec![(*b"A2B0", transform)])
 }
 
 fn fixed(kind: &[u8; 4], values: &[i32]) -> Vec<u8> {
@@ -69,15 +158,30 @@ fn mluc(text: &str) -> Vec<u8> {
     bytes
 }
 
-fn profile(mut tags: Vec<([u8; 4], Vec<u8>)>) -> Vec<u8> {
+fn v4_profile(
+    color_space: &[u8; 4],
+    description: &str,
+    mut tags: Vec<([u8; 4], Vec<u8>)>,
+) -> Vec<u8> {
     tags.extend([
         (*b"wtpt", fixed(b"XYZ ", &D50)),
         (*b"chad", fixed(b"sf32", &D65_TO_D50)),
-        (*b"desc", mluc("Surgeist RGB fixture")),
+        (*b"desc", mluc(description)),
         (*b"cprt", mluc("Surgeist test fixture")),
     ]);
+    input_profile([4, 0x40], color_space, tags)
+}
+
+fn input_profile(
+    version: [u8; 2],
+    color_space: &[u8; 4],
+    tags: Vec<([u8; 4], Vec<u8>)>,
+) -> Vec<u8> {
     let mut bytes = vec![0; 132 + 12 * tags.len()];
-    bytes[8..24].copy_from_slice(b"\x04\x40\0\0scnrRGB XYZ ");
+    bytes[8..10].copy_from_slice(&version);
+    bytes[12..16].copy_from_slice(b"scnr");
+    bytes[16..20].copy_from_slice(color_space);
+    bytes[20..24].copy_from_slice(b"XYZ ");
     bytes[24..36].copy_from_slice(b"\x07\xe9\0\x01\0\x01\0\0\0\0\0\0");
     bytes[36..40].copy_from_slice(b"acsp");
     bytes[47] = 1; // embedded profile flag

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     accounting::{RenderAccountingOptions, RenderLimits, RenderQuantity},
-    tests::icc_png::{image, lut_profile, matrix_profile},
+    tests::icc_png::{gray_profile, image, lut_profile, matrix_profile, v2_matrix_profile},
 };
 use ::png::chunk::{cHRM, gAMA, iCCP, sRGB};
 
@@ -47,6 +47,33 @@ fn selected_icc_matrix_curves_override_lower_profiles_and_preserve_alpha() {
             assert_eq!(decoded.pixels, expected);
         }
     }
+}
+
+#[test]
+fn selected_icc_v2_evaluates_identity_gamma_and_sampled_curves() {
+    let source = [128, 140, 128, 0, 230, 142, 64, 128, 200, 139, 80, 255];
+    let bytes = image(&source, Some(&v2_matrix_profile()), &[], &[]);
+    // The calibrated source primaries match destination sRGB primaries.
+    // Independent sRGB encoding of identity, square, and piecewise-linear
+    // channel values gives the literal bytes below. For the first pixel,
+    // the unrounded bytes are [187.845, 149.198, 137.699].
+    assert_eq!(
+        test_decode(&bytes, 1 << 20).unwrap().pixels,
+        [188, 149, 138, 0, 244, 151, 99, 128, 229, 148, 110, 255]
+    );
+}
+
+#[test]
+fn gray_icc_profile_for_rgba_selects_untagged_srgb() {
+    // PNG Third Edition §11.3.2.3 requires an RGB profile for color type 6.
+    // This is a valid monochrome ICC profile embedded in a mismatched image.
+    let bytes = image(
+        &SOURCE,
+        Some(&gray_profile()),
+        &[(gAMA, &100000_u32.to_be_bytes())],
+        &[],
+    );
+    assert_eq!(test_decode(&bytes, 1 << 20).unwrap().pixels, SOURCE);
 }
 
 #[test]
@@ -122,6 +149,51 @@ fn invalid_iccp_framing_is_a_png_error() {
 }
 
 #[test]
+fn invalid_iccp_zlib_refuses_with_valid_chunk_crc_and_releases_custody() {
+    let stream = zlib(&matrix_profile(false));
+    let mut valid = b"Profile\0\0".to_vec();
+    valid.extend_from_slice(&stream);
+    let mut corrupt = valid.clone();
+    *corrupt.last_mut().unwrap() ^= 1;
+    let mut trailing = valid.clone();
+    trailing.push(0);
+    let mut concatenated = valid.clone();
+    concatenated.extend_from_slice(&stream);
+    let truncated = &valid[..valid.len() - 1];
+    let mut context = RenderAccountingContext::default();
+    let retry = image(&SOURCE, None, &[(iCCP, &valid)], &[]);
+    for (case, payload) in [
+        ("wrong Adler", corrupt.as_slice()),
+        ("missing trailer byte", truncated),
+        ("trailing byte", trailing.as_slice()),
+        ("second stream", concatenated.as_slice()),
+    ] {
+        // The PNG encoder writes a fresh CRC for each damaged zlib payload.
+        let bytes = image(&SOURCE, None, &[(iCCP, payload)], &[]);
+        let error = decode_in(&bytes, 1 << 20, &mut context).err().unwrap();
+        assert_eq!(
+            error.glyph_preparation_diagnostic(),
+            Some(&GlyphPreparationError::InvalidFont),
+            "{case}"
+        );
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.cleanup_fault(), None, "{case}");
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0, "{case}");
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0, "{case}");
+        assert_eq!(
+            usage.work(RenderWork::PreparedTransferredBytes),
+            0,
+            "{case}"
+        );
+        assert_eq!(
+            decode_in(&retry, 1 << 20, &mut context).unwrap().pixels,
+            POWER
+        );
+    }
+}
+
+#[test]
 fn selected_icc_charges_texel_work_and_releases_failed_preparation_before_retry() {
     let profile = matrix_profile(false);
     let bytes = image(&SOURCE, Some(&profile), &[], &[]);
@@ -156,5 +228,44 @@ fn selected_icc_charges_texel_work_and_releases_failed_preparation_before_retry(
     assert_eq!(
         decode_in(&small, 1 << 20, &mut context).unwrap().pixels,
         POWER[..4]
+    );
+}
+
+#[test]
+fn selected_icc_piecewise_display_p3_executes_both_transfer_branches() {
+    use crate::tests::icc_png::piecewise_p3_profile;
+
+    let source = [
+        180, 90, 130, 127, 32, 128, 200, 0, 255, 160, 0, 134, 10, 11, 0, 1,
+    ];
+    let png = image(&source, Some(&piecewise_p3_profile(false)), &[], &[]);
+    let decoded = test_decode(&png, 1 << 20).unwrap();
+    // Independent CSS Color 4 Display P3 to sRGB calculation uses the same
+    // piecewise transfer on both sides of the sRGB matrix conversion. The
+    // final source pixel straddles the low and high branches at 10 and 11.
+    assert_eq!(
+        decoded.pixels,
+        [
+            193, 83, 131, 127, 0, 130, 206, 0, 255, 154, 0, 134, 10, 11, 0, 1
+        ]
+    );
+}
+
+#[test]
+fn icc_matrix_fallback_runs_when_the_optional_multi_process_route_is_unavailable() {
+    use crate::tests::icc_png::piecewise_p3_profile;
+
+    // ICC.1:2022 §8.10.2 skips an optional multi-process route when the CMM
+    // cannot execute it. The admitted P3 matrix therefore gives the same
+    // independent oracle as the profile without that optional route.
+    let png = image(
+        &[180, 90, 130, 127],
+        Some(&piecewise_p3_profile(true)),
+        &[],
+        &[],
+    );
+    assert_eq!(
+        test_decode(&png, 1 << 20).unwrap().pixels,
+        [193, 83, 131, 127]
     );
 }

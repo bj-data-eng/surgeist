@@ -1,6 +1,6 @@
 //! Owned narrow PNG decoding, authored from W3C PNG Third Edition,
 //! 24 June 2025, sections 5, 9–11: <https://www.w3.org/TR/2025/REC-png-3-20250624/>.
-//! Noninterlaced RGBA8 admits sRGB/gAMA/cHRM source descriptions.
+//! Noninterlaced RGBA8 admits sRGB/gAMA/cHRM and embedded RGB ICC matrix/TRC.
 //! Other valid profiles/ancillary semantics refuse rather than being ignored.
 //! miniz_oxide 0.8.9's safe low-level core owns fixed inline state, not an
 //! allocating stream decoder. Its state and source-declared Huffman temporary
@@ -14,6 +14,12 @@ use miniz_oxide::inflate::{
     TINFLStatus,
     core::{DecompressorOxide, decompress, inflate_flags},
 };
+
+// Fixed-state inflater and its core.rs Huffman temporary arrays.
+const INFLATE_WORKSPACE_BYTES: usize =
+    size_of::<DecompressorOxide>() + size_of::<[u16; 16]>() + size_of::<[u32; 17]>();
+const PNG_ZLIB_FLAGS: u32 = inflate_flags::TINFL_FLAG_PARSE_ZLIB_HEADER
+    | inflate_flags::TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF;
 
 pub(super) struct Decoded {
     pub width: u32,
@@ -147,7 +153,7 @@ fn header(data: &[u8], account: &Account) -> Result<Header> {
             }
             b"IEND" if seen && next.data.is_empty() && at == data.len() => break,
             b"IEND" | b"IHDR" => return Err(invalid()),
-            b"sRGB" | b"gAMA" | b"cHRM" => metadata.read(&next, seen, account)?,
+            b"iCCP" | b"sRGB" | b"gAMA" | b"cHRM" => metadata.read(&next, seen, account)?,
             // Requiring this closed chunk grammar also rules out noncontiguous
             // IDAT, APNG, palette/transparency and unexecuted color profiles.
             _ => return Err(GlyphPreparationError::UnsupportedPng.into()),
@@ -170,18 +176,59 @@ fn header(data: &[u8], account: &Account) -> Result<Header> {
     })
 }
 
+/// Inflate a single iCCP zlib stream without trusting the ICC header as an
+/// allocation request. Grow only when the inflater fills the backed prefix.
+fn inflate_profile(compressed: &[u8], account: &Account) -> Result<AccountedVec<u8>> {
+    let _workspace = account.acquire(RenderResource::ScratchCpuBytes, INFLATE_WORKSPACE_BYTES)?;
+    let mut state = DecompressorOxide::new();
+    let mut output = account.temporary::<u8>(0)?;
+    let mut input_at = 0;
+    let mut written = 0;
+    let mut capacity = size_of::<u32>();
+    loop {
+        output.resize(capacity, 0)?;
+        account.work(RenderWork::IccProfileInflateBytes, capacity - written)?;
+        let remaining = compressed.get(input_at..).ok_or_else(invalid)?;
+        let (status, consumed, produced) =
+            decompress(&mut state, remaining, &mut output, written, PNG_ZLIB_FLAGS);
+        input_at = sum(&[input_at, consumed])?;
+        written = sum(&[written, produced])?;
+        match status {
+            TINFLStatus::Done if input_at == compressed.len() => {
+                output.truncate(written);
+                return Ok(output);
+            }
+            TINFLStatus::HasMoreOutput if written == capacity => {
+                // A valid profile's declared size is a stopping point, not
+                // authority to reserve that much. Extra output is still
+                // verified as zlib before the ICC parser rejects its extent.
+                let declared = usize::try_from(number(&output[..size_of::<u32>()])?)
+                    .map_err(|_| overflow())?;
+                let limit = (u32::MAX as usize).min(isize::MAX as usize);
+                // Keep small, ordinary profiles to one growth after the prefix.
+                let growth = capacity.saturating_mul(2).max(4096).min(limit);
+                let next = if declared > capacity {
+                    growth.min(declared)
+                } else {
+                    growth
+                };
+                if next <= capacity {
+                    return Err(overflow());
+                }
+                capacity = next;
+            }
+            _ => return Err(invalid()),
+        }
+    }
+}
+
 pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
     let Header {
         layout,
         idat,
         mut color,
     } = header(data, account)?;
-    // core.rs init_tree's only temporary arrays: total_symbols and next_code.
-    let fixed = sum(&[
-        size_of::<DecompressorOxide>(),
-        size_of::<[u16; 16]>(),
-        size_of::<[u32; 17]>(),
-    ])?;
+    let fixed = INFLATE_WORKSPACE_BYTES;
     account.preview(
         RenderResource::ScratchCpuBytes,
         sum(&[fixed, idat, layout.filtered_len])?,
@@ -203,14 +250,8 @@ pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
     let scanlines = {
         let _workspace = account.acquire(RenderResource::ScratchCpuBytes, fixed)?;
         let mut state = DecompressorOxide::new();
-        let (status, consumed, produced) = decompress(
-            &mut state,
-            &compressed,
-            &mut pixels,
-            0,
-            inflate_flags::TINFL_FLAG_PARSE_ZLIB_HEADER
-                | inflate_flags::TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF,
-        );
+        let (status, consumed, produced) =
+            decompress(&mut state, &compressed, &mut pixels, 0, PNG_ZLIB_FLAGS);
         // The core verifies the zlib header and Adler checksum. Neither trailing
         // compressed bytes nor a shorter/longer image stream is accepted.
         if status != TINFLStatus::Done
@@ -313,6 +354,7 @@ fn paeth(a: u8, b: u8, c: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    mod icc_accounting;
     mod icc_profile;
     mod source_color;
 
@@ -852,7 +894,7 @@ mod tests {
     #[test]
     fn png_unexecuted_chunk_semantics_refuse_without_ignoring_color_or_animation() {
         let valid = image(&zlib(&FILTERED[0]), false);
-        for kind in [*b"cICP", *b"iCCP", *b"acTL", *b"tEXt"] {
+        for kind in [*b"cICP", *b"acTL", *b"tEXt"] {
             let mut bytes = valid[..33].to_vec();
             let payload = if kind == *b"cICP" {
                 [1, 13, 0, 1]
