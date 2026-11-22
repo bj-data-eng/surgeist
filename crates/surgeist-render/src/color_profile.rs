@@ -10,7 +10,9 @@ use crate::accounting::{Account, AccountedVec, Hold, RenderResource, RenderWork}
 use crate::error::BackendErrorCode;
 use crate::{Error, Result};
 
+mod inverse;
 mod lut;
+mod model;
 mod mpe;
 pub(crate) mod native;
 pub(crate) mod pcs;
@@ -60,8 +62,7 @@ struct RgbMatrixProfile {
 }
 
 struct ProfileData {
-    columns: [[f64; 3]; 3],
-    curves: [Curve; 3],
+    model: model::MatrixForward,
     sampled_curves: Option<AccountedVec<u8>>,
 }
 
@@ -77,17 +78,10 @@ pub(crate) fn prepare(bytes: AccountedVec<u8>, account: &Account) -> Result<Sele
 
 impl RgbMatrixProfile {
     fn xyz_d50(&self, samples: [u8; 3], account: &Account) -> Result<[f64; 3]> {
-        let mut xyz = [0.0; 3];
         let curve_bytes = self.data.sampled_curves.as_deref().unwrap_or_default();
-        for ((curve, column), sample) in
-            self.data.curves.iter().zip(&self.data.columns).zip(samples)
-        {
-            let linear = curve.evaluate(CurveInput::Byte(sample), curve_bytes, account)?;
-            for (value, tint) in xyz.iter_mut().zip(column) {
-                *value = account.coordinate(|| linear.mul_add(*tint, *value))?;
-            }
-        }
-        Ok(xyz)
+        self.data
+            .model
+            .xyz_d50(samples.map(CurveInput::Byte), curve_bytes, account)
     }
 }
 
@@ -179,36 +173,14 @@ fn prepare_matrix(
     account: &Account,
 ) -> ProfileResult<RgbMatrixProfile> {
     let hold = account.acquire(RenderResource::ScratchCpuBytes, size_of::<ProfileData>())?;
-    let mut transform = Box::new(ProfileData {
-        columns: [[0.0; 3]; 3],
-        curves: [Curve::Identity, Curve::Identity, Curve::Identity],
-        sampled_curves: None,
-    });
-    for (column, signature) in transform
-        .columns
-        .iter_mut()
-        .zip([b"rXYZ", b"gXYZ", b"bXYZ"])
-    {
-        *column = xyz_tag(table, &bytes, signature, account)?;
-        if version == 2 {
-            for &component in column.iter() {
-                if account.coordinate(|| component < 0.0)? {
-                    return Err(ProfileError::Invalid);
-                }
-            }
-        }
-    }
-    for (curve, signature) in transform.curves.iter_mut().zip([b"rTRC", b"gTRC", b"bTRC"]) {
-        let tag = required_tag(table, signature, account)?;
-        *curve = Curve::read(tag, &bytes, version, account)?;
-    }
-    let needs_samples = transform
-        .curves
-        .iter()
-        .any(|curve| matches!(curve, Curve::Sampled { .. }));
-    transform.sampled_curves = needs_samples.then_some(bytes);
+    let tags = model::MatrixTags::find(table, account)?.ok_or(ProfileError::Invalid)?;
+    let model = model::MatrixForward::read(tags, &bytes, version, account)?;
+    let sampled_curves = model.uses_samples().then_some(bytes);
     Ok(RgbMatrixProfile {
-        data: transform,
+        data: Box::new(ProfileData {
+            model,
+            sampled_curves,
+        }),
         _hold: hold,
     })
 }
@@ -219,7 +191,11 @@ fn xyz_tag(
     signature: &[u8; 4],
     account: &Account,
 ) -> ProfileResult<[f64; 3]> {
-    let payload = required_tag(table, signature, account)?.payload(bytes)?;
+    read_xyz(required_tag(table, signature, account)?, bytes, account)
+}
+
+fn read_xyz(tag: Extent, bytes: &[u8], account: &Account) -> ProfileResult<[f64; 3]> {
+    let payload = tag.payload(bytes)?;
     if tag_kind(payload, account)? != *b"XYZ " || payload.len() != 20 {
         return Err(ProfileError::Invalid);
     }
@@ -268,7 +244,8 @@ impl Header {
         let data_space = field::<4>(header, 16)?;
         let pcs = field::<4>(header, 20)?;
         if matches!(version[0], 2 | 4) {
-            let reserved = if version[0] == 2 { 84 } else { 100 };
+            // Published v2 profiles also use the 16-byte profile ID slot.
+            // The ID is opaque. The final 28 bytes remain reserved.
             if !matches!(
                 &class,
                 b"scnr" | b"mntr" | b"prtr" | b"link" | b"spac" | b"abst" | b"nmcl"
@@ -279,7 +256,7 @@ impl Header {
                     !matches!(&pcs, b"XYZ " | b"Lab ")
                 }
                 || account.coordinate(|| u32_at(header, 64))?? > 3
-                || !header[reserved..].iter().all(|&byte| byte == 0)
+                || !header[100..].iter().all(|&byte| byte == 0)
             {
                 return Err(ProfileError::Invalid);
             }
@@ -585,11 +562,14 @@ fn sampled_curve_size(count: u32) -> ProfileResult<usize> {
 }
 
 fn sample_value(bytes: &[u8], index: u64, account: &Account) -> Result<f64> {
+    Ok(f64::from(sample_raw(bytes, index, account)?) / 65535.0)
+}
+
+fn sample_raw(bytes: &[u8], index: u64, account: &Account) -> Result<u16> {
     let offset = usize::try_from(index * 2).map_err(|_| sample_invariant())?;
-    let value = account
+    account
         .coordinate(|| u16_at(bytes, offset))?
-        .map_err(|_| sample_invariant())?;
-    Ok(f64::from(value) / 65535.0)
+        .map_err(|_| sample_invariant())
 }
 
 fn sample_invariant() -> Error {
@@ -601,6 +581,7 @@ fn sample_invariant() -> Error {
 
 /// Table 68 maps the five serialized function forms to two branches. The
 /// upper branch always has a real power base throughout its selected domain.
+#[derive(Clone, Copy)]
 struct ParametricCurve {
     threshold: f64,
     gamma: f64,

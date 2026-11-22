@@ -200,7 +200,8 @@ caller-supplied immutable ICC v2 or v4 bytes, the presence of description and
 copyright tags, the media white point, and an eligible Input, Display, Output,
 or ColorSpace class. The view exposes the device signature, channel count, and
 PCS. Each conversion qualifies the selected transform at the point of use. An
-Input profile may omit the reverse direction.
+Input profile may omit the reverse direction. The profile ID is opaque in
+both editions, including v2 profiles published by the ICC Registry.
 
 `to_pcs` requests an explicit rendering intent and returns actual D50 XYZ or
 Lab values tagged with that intent. `from_pcs` uses the incoming PCS value's
@@ -217,6 +218,14 @@ actual XYZ or Lab PCS values. Eight-bit `mft1` requires Lab PCS.
 Indirect absolute conversion uses the profile's media white to adjust
 XYZ. The Lab API expresses those absolute tristimulus values as CIELAB
 referenced to PCS D50. Direct absolute float routes supply their own mapping.
+
+Without a selected table, eligible three-channel and monochrome profiles
+use their matrix/TRC or gray model. Reverse matrix evaluation recovers
+linear device coordinates before inverting the curves. Singular matrices
+and constant or nonmonotonic curves remain usable in the forward
+direction. Model fallback supplies colorimetric coordinates for the
+requested intent and applies media-white adjustment for absolute intent.
+[ICC.1:2022 Annex F](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=115)
 
 Unavailable routes return `IccProfileError::UnsupportedTransform`.
 Malformed selected data and numerical output failures have separate
