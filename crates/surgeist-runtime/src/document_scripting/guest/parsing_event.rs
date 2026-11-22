@@ -13,7 +13,14 @@ pub(in crate::document_scripting) struct ParsingEventFiring {
     global: DomHostedGlobalId,
     document: DocumentId,
     creation: Option<Result<EventCreation, DomEventTimestampUnavailable>>,
+    listener: Option<ParsingListener>,
     dispatch: Option<DomEventDispatch>,
+}
+
+struct ParsingListener {
+    selection: DomEventHostInvocation,
+    result: Result<(), DomEventCallbackError>,
+    checkpoint: Option<Root>,
 }
 
 impl ParsingEventFiring {
@@ -27,6 +34,7 @@ impl ParsingEventFiring {
             global,
             document,
             creation: None,
+            listener: None,
             dispatch: None,
         }
     }
@@ -54,6 +62,24 @@ impl DocumentScriptHost {
         let cancel = &owner.cancellation;
         let mut usage = DispatchUsage::default();
         loop {
+            if let Some(listener) = &mut firing.listener {
+                if let Some(event) = &listener.checkpoint {
+                    // An outermost listener's script cleanup performs the
+                    // checkpoint before returning to DOM's invocation steps.
+                    // Keep the native selection open and Window.event current
+                    // while jobs may synchronously reenter event dispatch.
+                    let _current = events.window_event.enter(event.clone());
+                    self.checkpoint()
+                        .map_err(DocumentScriptEventError::Access)?;
+                    listener.checkpoint.take();
+                }
+                self.finish_attached_listener(
+                    &events,
+                    &mut listener.selection,
+                    Ok(listener.result),
+                )?;
+                firing.listener.take();
+            }
             let progress = self
                 .with_native(|dom, _, _| {
                     let mut registry = events
@@ -92,7 +118,26 @@ impl DocumentScriptHost {
                 .map_err(DocumentScriptEventError::Guest)?;
             match progress {
                 DomEventDispatchOutcome::HostInvocation(mut selected) => {
-                    self.invoke_attached_listener(&events, None, &mut selected)?;
+                    let mut event = None;
+                    let result =
+                        self.call_attached_listener(&events, None, &selected, Some(&mut event));
+                    match (result, event) {
+                        (Ok(result), Some(event)) => {
+                            firing.listener = Some(ParsingListener {
+                                selection: selected,
+                                result,
+                                checkpoint: Some(event),
+                            });
+                        }
+                        (Ok(_), None) => self.finish_attached_listener(
+                            &events,
+                            &mut selected,
+                            Err(DocumentGuestEventError::RegistryState),
+                        )?,
+                        (Err(error), _) => {
+                            self.finish_attached_listener(&events, &mut selected, Err(error))?;
+                        }
+                    }
                 }
                 settled => return Ok(settled),
             }

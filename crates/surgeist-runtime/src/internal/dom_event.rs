@@ -430,23 +430,24 @@ impl From<DomHostedError> for DomEventDispatchError {
 /// Real completed delivery. This value is deliberately not cloneable.
 #[derive(Debug)]
 pub struct DomEventDispatchReceipt {
-    origin: DispatchOrigin,
+    target: DomEventTarget,
     event_type: DomEventType,
     callbacks: usize,
     failures: Vec<DomEventListenerFailure>,
+    native_cause: Option<NativeEventCause>,
     default_prevented: bool,
     funding: Option<DispatchFunding>,
 }
 impl DomEventDispatchReceipt {
     pub(crate) fn native_cause(&self) -> Option<NativeEventCause> {
-        self.origin.cause()
+        self.native_cause
     }
     pub(crate) fn release_producer_retention(&mut self) {
         self.funding.take();
     }
     /// Original exact target, independent of later retirement/reparenting.
     pub fn original_target(&self) -> DomEventTarget {
-        self.origin.target()
+        self.target.clone()
     }
     /// Type that was actually dispatched.
     pub fn event_type(&self) -> DomEventType {
@@ -1768,10 +1769,11 @@ impl<C> DomEventDispatcher<C> {
                 state.status.set(Status::Complete);
                 custody.finish_dispatch(state);
                 let receipt = DomEventDispatchReceipt {
-                    origin: state.origin.clone(),
+                    target: state.origin.target(),
                     event_type: dispatch.event_type.clone(),
                     callbacks: dispatch.callbacks,
                     failures: std::mem::take(&mut dispatch.failures),
+                    native_cause: state.origin.cause(),
                     default_prevented: event.default_prevented(),
                     funding: Some(funding),
                 };
@@ -2623,7 +2625,7 @@ struct ContinuationState {
     _body: BodyCustody,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 enum DispatchOrigin {
     Node(NodeId),
     Global(surgeist_dom::hosted::DomHostedGlobalId),
@@ -2631,7 +2633,7 @@ enum DispatchOrigin {
     Native(NativeDispatchOrigin),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 enum NativeDispatchOrigin {
     Node {
         node: NodeId,

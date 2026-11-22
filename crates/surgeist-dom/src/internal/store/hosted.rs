@@ -2363,7 +2363,14 @@ impl DomHostedSource {
         document: DocumentId,
         global: DomHostedGlobalId,
         cancel: &AtomicBool,
-    ) -> Result<(&'dom DomDocumentMetadata, DomHostedEntryId, DomHostedNavigableId), DomHostedError> {
+    ) -> Result<
+        (
+            &'dom DomDocumentMetadata,
+            DomHostedEntryId,
+            DomHostedNavigableId,
+        ),
+        DomHostedError,
+    > {
         check_cancel(cancel)?;
         dom.validate_hosted_source(self)?;
         dom.require_source_idle()?;

@@ -114,22 +114,50 @@ impl DocumentScriptHost {
         request: Option<&DomSourceEventRequest>,
         selected: &mut DomEventHostInvocation,
     ) -> Result<(), DocumentScriptEventError> {
+        let result = self.call_attached_listener(events, request, selected, None);
+        self.finish_attached_listener(events, selected, result)
+    }
+
+    pub(super) fn call_attached_listener(
+        &mut self,
+        events: &GuestEvents,
+        request: Option<&DomSourceEventRequest>,
+        selected: &DomEventHostInvocation,
+        retain_event: Option<&mut Option<Root>>,
+    ) -> Result<Result<(), DomEventCallbackError>, DocumentGuestEventError> {
+        let owner = &self.native;
+        match self.engine.as_mut() {
+            Some(engine) => {
+                engine
+                    .process
+                    .execution()
+                    .in_realm(&engine.realm, |scope| {
+                        Ok(events.invoke_native_listener(
+                            owner,
+                            scope,
+                            request,
+                            selected,
+                            retain_event,
+                        ))
+                    })
+                    .map_err(DocumentGuestEventError::from)
+                    .and_then(|result| result)
+            }
+            None => Err(DocumentScriptNativeError::Revoked.into()),
+        }
+    }
+
+    pub(super) fn finish_attached_listener(
+        &mut self,
+        events: &GuestEvents,
+        selected: &mut DomEventHostInvocation,
+        result: Result<Result<(), DomEventCallbackError>, DocumentGuestEventError>,
+    ) -> Result<(), DocumentScriptEventError> {
         let owner = &self.native;
         let attachment = owner
             .attachment
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        let result = match self.engine.as_mut() {
-            Some(engine) => engine
-                .process
-                .execution()
-                .in_realm(&engine.realm, |scope| {
-                    Ok(events.invoke_native_listener(owner, scope, request, selected))
-                })
-                .map_err(DocumentGuestEventError::from)
-                .and_then(|result| result),
-            None => Err(DocumentScriptNativeError::Revoked.into()),
-        };
         let result = events.report_selected(selected, result);
         if let Some(engine) = self.engine.as_mut() {
             engine.settle_engine_cleanup(owner, &attachment.realm);
@@ -245,7 +273,7 @@ impl GuestEvents {
                     .map_err(Into::into);
                 }
             };
-            let invoked = self.invoke_native_listener(owner, scope, Some(request), &selected);
+            let invoked = self.invoke_native_listener(owner, scope, Some(request), &selected, None);
             let reported = self.report_selected(&mut selected, invoked);
             scope.check_active()?;
             reported?;
@@ -258,6 +286,7 @@ impl GuestEvents {
         scope: &mut Scope<'_>,
         request: Option<&DomSourceEventRequest>,
         selected: &DomEventHostInvocation,
+        retain_event: Option<&mut Option<Root>>,
     ) -> Result<Result<(), DomEventCallbackError>, DocumentGuestEventError> {
         owner.schedule_media_removals(scope)?;
         let mut report = None;
@@ -274,6 +303,9 @@ impl GuestEvents {
                 .ok_or(Error::RegistryConflict)?;
             let receiver = wrapper::project_native_event_target(owner, self, scope, &current)?;
             let event = self.project_native_event(owner, scope, selected.event())?;
+            if let Some(retained) = retain_event {
+                *retained = Some(scope.retain(&event));
+            }
             Ok((event, receiver))
         })();
         match self.invoke_selected(
