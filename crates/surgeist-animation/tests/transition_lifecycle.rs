@@ -361,6 +361,70 @@ fn repeated_reversals_use_independent_shortening_factors() {
 }
 
 #[test]
+fn reversal_during_delay_uses_the_last_equal_input_of_linear_easing() {
+    let initial = start(1.0, 0.0, Easing::linear());
+    let policy = Policy::default();
+    let mut reverse = change(50.0, 0.0, 1.0, 1.0);
+    let easing = Easing::linear_function(
+        LinearEasing::new(vec![
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.25,
+            },
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.75,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 1.0,
+            },
+        ])
+        .unwrap(),
+    );
+    reverse.matching = Some(timing(1.0, 1.0, easing));
+    let first = initial
+        .update(Some(time(0.5)), &[reverse], &policy)
+        .unwrap()
+        .unwrap();
+    let first_run = running(first.state());
+    assert_eq!(first_run.shortening_factor().value(), 0.5);
+    let sample = first_run.sample(Some(time(0.75)), &policy).unwrap();
+    assert_eq!(sample.value(), Some(&number(50.0)));
+
+    let mut reverse_again = change(50.0, 100.0, 1.0, 0.0);
+    reverse_again.new_id = TransitionTrackId::new(3);
+    let second = first
+        .state()
+        .update(Some(time(0.75)), &[reverse_again], &policy)
+        .unwrap()
+        .unwrap();
+    let second_run = running(second.state());
+    // The last duplicate zero input has output .75. With old factor .5 the
+    // new shortening factor is .75*.5 + (1-.5) = .875.
+    assert_eq!(
+        (
+            sample.easing_output().unwrap().value(),
+            second_run.shortening_factor().value()
+        ),
+        (0.75, 0.875)
+    );
+    assert_eq!(second_run.end_time(), time(1.625));
+}
+
+#[test]
+fn step_start_uses_the_bottom_of_its_initial_step_only_during_delay() {
+    let state = start(1.0, 1.0, Easing::step_start());
+    for (elapsed, output) in [(0.5, 0.0), (1.0, 1.0)] {
+        let sample = running(&state)
+            .sample(Some(time(elapsed)), &Policy::default())
+            .unwrap();
+        assert_eq!(sample.value(), Some(&number(0.0)));
+        assert_eq!(sample.easing_output().unwrap().value(), output);
+    }
+}
+
+#[test]
 fn reversal_shortens_only_negative_delays_and_preserves_used_timing() {
     let initial = start(1.0, 0.0, Easing::linear());
     for (delay, start, end) in [(-0.4, 0.3, 1.3), (0.4, 0.9, 1.9)] {
