@@ -6,7 +6,8 @@ states, and next-frame hints.
 
 Version 0.1.0 supports snapshot-based CSS animation reconciliation and transition
 decisions, typed native keyframe normalization and computed interval sampling,
-timing, easing, computed numeric composition,
+timing, easing, computed numeric composition, repeatable lists, immutable
+effect-stack folds and replacement decisions,
 logarithmic ratio interpolation, normalized positions, premultiplied colors,
 computed basic shapes and native shape/path command lists, resolved 2D/3D
 transforms, box/text shadow lists, and discrete switching. Basic shapes retain

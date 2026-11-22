@@ -33,6 +33,10 @@ use std::sync::Arc;
 
 use crate::interpolation::{DiscreteValue, InterpolationProgress, checked_interpolate};
 
+mod repeatable;
+#[doc(inline)]
+pub use repeatable::RepeatableList;
+
 /// A computed dimension's canonical unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DimensionKind {
@@ -75,6 +79,8 @@ pub enum ComputedErrorKind {
     DegenerateRatio,
     IncompatibleTypes,
     EmptyComponents,
+    EmptyList,
+    ListExpansion,
     NonFiniteResult,
     RatioUnderflow,
     Capacity,

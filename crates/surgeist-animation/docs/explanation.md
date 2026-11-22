@@ -67,9 +67,21 @@ with required computed offsets and preserved specified metadata. It filters each
 longhand, preserves overlapping frame order, inserts native underlying-value
 endpoints when required, and applies endpoint composition before interval easing
 and interpolation. CSS supplies its separately assembled endpoints. The shared
-pure composition boundary accepts selected property operations without owning
-effect ordering or publication. See [computed effects](reference.md#computed-keyframe-effects)
+pure composition boundary accepts selected property operations and validates
+effect ordering over supplied snapshots. It folds each effect against the
+previous output, without repeating endpoint composition. State publication stays
+caller-owned. Stack playback facts come directly from checked records rather
+than another supplied mutable play state. Computed effect bundles retain their
+associated effect identity and setup revision, so reassociation or setup edits
+cannot silently reuse stale frames. See [computed effects](reference.md#computed-keyframe-effects)
 for native versus CSS timing adapters and atomic failure behavior.
+
+The same immutable snapshot supplies replacement decisions. Exact target and
+property coverage, playback state and timeline monotonicity determine eligibility;
+persisted animations may cover lower animations while remaining protected from
+removal. Runtime publishes the decisions and queues playback events from captured
+coordinates. CSS owners supply class-specific order and applicability facts.
+See [effect stacks](reference.md#effect-stacks-and-replacement).
 
 CSS animation-list reconciliation uses `css_animation`. Style supplies the
 resolved effective list, rule matches, used timing and applicability. Animation

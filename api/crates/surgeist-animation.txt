@@ -3,11 +3,132 @@
 
 pub mod surgeist_animation
 pub mod surgeist_animation::composition
+pub enum surgeist_animation::composition::AnimationOrder
+pub surgeist_animation::composition::AnimationOrder::Defined
+pub surgeist_animation::composition::AnimationOrder::Defined::class: surgeist_animation::composition::AnimationClass
+pub surgeist_animation::composition::AnimationOrder::Defined::class_specific: core::option::Option<u64>
+pub surgeist_animation::composition::AnimationOrder::Defined::inter_class: core::option::Option<i64>
+pub surgeist_animation::composition::AnimationOrder::Undefined
+pub surgeist_animation::composition::AnimationOrder::Undefined::class: surgeist_animation::composition::AnimationClass
+impl surgeist_animation::composition::AnimationOrder
+pub const fn surgeist_animation::composition::AnimationOrder::class(self) -> surgeist_animation::composition::AnimationClass
+pub enum surgeist_animation::composition::AnimationType
+pub surgeist_animation::composition::AnimationType::ByComputedValue
+pub surgeist_animation::composition::AnimationType::Discrete
+pub surgeist_animation::composition::AnimationType::RepeatableList
+pub enum surgeist_animation::composition::EffectStackErrorKind
+pub surgeist_animation::composition::EffectStackErrorKind::Capacity
+pub surgeist_animation::composition::EffectStackErrorKind::DuplicateAnimation
+pub surgeist_animation::composition::EffectStackErrorKind::EffectMismatch
+pub surgeist_animation::composition::EffectStackErrorKind::InconsistentOrder
+pub surgeist_animation::composition::EffectStackErrorKind::Playback
+pub surgeist_animation::composition::EffectStackErrorKind::PropertyPolicy
+pub surgeist_animation::composition::EffectStackErrorKind::TargetMismatch
+pub surgeist_animation::composition::EffectStackErrorKind::TimelineMismatch
+pub surgeist_animation::composition::EffectStackErrorKind::Timing
+pub surgeist_animation::composition::EffectStackErrorKind::UndefinedOrder
+pub enum surgeist_animation::composition::PropertyOperationErrorKind
+pub surgeist_animation::composition::PropertyOperationErrorKind::Capacity
+pub surgeist_animation::composition::PropertyOperationErrorKind::Computed(surgeist_animation::computed::ComputedError)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Interpolation(alloc::boxed::Box<surgeist_animation::interpolation::InterpolationError>)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Shadow(alloc::boxed::Box<surgeist_animation::shadow::ShadowError>)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Transform(alloc::boxed::Box<surgeist_animation::transform::TransformError>)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Unsupported(surgeist_animation::keyframe_input::CompositeOperation)
+pub surgeist_animation::composition::PropertyOperationErrorKind::WrongValueFamily
+pub struct surgeist_animation::composition::AnimationClass(_)
+impl surgeist_animation::composition::AnimationClass
+pub const fn surgeist_animation::composition::AnimationClass::identity(self) -> u64
+pub const fn surgeist_animation::composition::AnimationClass::new(identity: u64) -> Self
+pub struct surgeist_animation::composition::AnimationStackInput
+pub surgeist_animation::composition::AnimationStackInput::animation: surgeist_animation::playback::AnimationId
+pub surgeist_animation::composition::AnimationStackInput::effect: core::option::Option<surgeist_animation::composition::EffectStackEffect>
+pub surgeist_animation::composition::AnimationStackInput::in_document: bool
+pub surgeist_animation::composition::AnimationStackInput::order: surgeist_animation::composition::AnimationOrder
+pub surgeist_animation::composition::AnimationStackInput::prescribed_by_markup: bool
+pub surgeist_animation::composition::AnimationStackInput::replace_state: surgeist_animation::timing::AnimationReplaceState
+pub surgeist_animation::composition::AnimationStackInput::target: core::option::Option<surgeist_animation::composition::EffectTargetId>
+pub surgeist_animation::composition::AnimationStackInput::timeline: core::option::Option<surgeist_animation::timeline::TimelineSnapshot>
+pub struct surgeist_animation::composition::AnimationTypeOperations
+impl surgeist_animation::composition::AnimationTypeOperations
+pub const fn surgeist_animation::composition::AnimationTypeOperations::animation_type(self) -> surgeist_animation::composition::AnimationType
+pub const fn surgeist_animation::composition::AnimationTypeOperations::new(animation_type: surgeist_animation::composition::AnimationType) -> Self
+impl surgeist_animation::composition::PropertyValueOperations for surgeist_animation::composition::AnimationTypeOperations
+pub type surgeist_animation::composition::AnimationTypeOperations::Error = surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::AnimationTypeOperations::accumulate(&self, _: &surgeist_animation::interpolation::PropertyKey, underlying: &surgeist_animation::interpolation::InterpolableValue, value: &surgeist_animation::interpolation::InterpolableValue) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
+pub fn surgeist_animation::composition::AnimationTypeOperations::add(&self, _: &surgeist_animation::interpolation::PropertyKey, underlying: &surgeist_animation::interpolation::InterpolableValue, value: &surgeist_animation::interpolation::InterpolableValue) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
+pub fn surgeist_animation::composition::AnimationTypeOperations::interpolate(&self, property: &surgeist_animation::interpolation::PropertyKey, start: &surgeist_animation::interpolation::InterpolableValue, end: &surgeist_animation::interpolation::InterpolableValue, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
+pub struct surgeist_animation::composition::CompositedProperty
+impl surgeist_animation::composition::CompositedProperty
+pub const fn surgeist_animation::composition::CompositedProperty::animation(&self) -> &surgeist_animation::playback::AnimationId
+pub const fn surgeist_animation::composition::CompositedProperty::class(&self) -> surgeist_animation::composition::AnimationClass
+pub const fn surgeist_animation::composition::CompositedProperty::value(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub struct surgeist_animation::composition::EffectStackEffect
+pub surgeist_animation::composition::EffectStackEffect::composite: surgeist_animation::keyframe_input::CompositeOperation
+pub surgeist_animation::composition::EffectStackEffect::keyframes: surgeist_animation::keyframe::ComputedKeyframes
+pub surgeist_animation::composition::EffectStackEffect::not_animatable: alloc::vec::Vec<surgeist_animation::interpolation::PropertyKey>
+pub surgeist_animation::composition::EffectStackEffect::timing: surgeist_animation::timing::EffectTiming
+impl surgeist_animation::composition::EffectStackEffect
+pub fn surgeist_animation::composition::EffectStackEffect::new(setup: surgeist_animation::playback::EffectSnapshot, timing: surgeist_animation::timing::EffectTiming, keyframes: surgeist_animation::keyframe::ComputedKeyframes, composite: surgeist_animation::keyframe_input::CompositeOperation, not_animatable: alloc::vec::Vec<surgeist_animation::interpolation::PropertyKey>) -> Self
+pub const fn surgeist_animation::composition::EffectStackEffect::setup(&self) -> &surgeist_animation::playback::EffectSnapshot
+pub struct surgeist_animation::composition::EffectStackError
+impl surgeist_animation::composition::EffectStackError
+pub const fn surgeist_animation::composition::EffectStackError::kind(&self) -> surgeist_animation::composition::EffectStackErrorKind
+pub const fn surgeist_animation::composition::EffectStackError::playback_error(&self) -> core::option::Option<&surgeist_animation::playback::PlaybackError>
+pub const fn surgeist_animation::composition::EffectStackError::timing_error(&self) -> core::option::Option<&surgeist_animation::timing::EffectTimingError>
+impl core::convert::From<surgeist_animation::playback::PlaybackError> for surgeist_animation::composition::EffectStackError
+pub fn surgeist_animation::composition::EffectStackError::from(error: surgeist_animation::playback::PlaybackError) -> Self
+impl core::convert::From<surgeist_animation::timing::EffectTimingError> for surgeist_animation::composition::EffectStackError
+pub fn surgeist_animation::composition::EffectStackError::from(error: surgeist_animation::timing::EffectTimingError) -> Self
+impl core::error::Error for surgeist_animation::composition::EffectStackError
+pub fn surgeist_animation::composition::EffectStackError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_animation::composition::EffectStackError
+pub fn surgeist_animation::composition::EffectStackError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::composition::EffectStackSampleError<E>
+impl<E> surgeist_animation::composition::EffectStackSampleError<E>
+pub const fn surgeist_animation::composition::EffectStackSampleError<E>::animation(&self) -> &surgeist_animation::playback::AnimationId
+pub const fn surgeist_animation::composition::EffectStackSampleError<E>::keyframe_error(&self) -> &surgeist_animation::keyframe::KeyframeSampleError<E>
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_animation::composition::EffectStackSampleError<E>
+pub fn surgeist_animation::composition::EffectStackSampleError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_animation::composition::EffectStackSampleError<E>
+pub fn surgeist_animation::composition::EffectStackSampleError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::composition::EffectStackSnapshot
+impl surgeist_animation::composition::EffectStackSnapshot
+pub fn surgeist_animation::composition::EffectStackSnapshot::animations(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_animation::playback::AnimationId>
+pub fn surgeist_animation::composition::EffectStackSnapshot::new(records: &surgeist_animation::playback::AnimationRecords, inputs: alloc::vec::Vec<surgeist_animation::composition::AnimationStackInput>) -> core::result::Result<Self, surgeist_animation::composition::EffectStackError>
+pub fn surgeist_animation::composition::EffectStackSnapshot::replacements(&self) -> core::result::Result<alloc::vec::Vec<surgeist_animation::composition::ReplacementDecision>, surgeist_animation::composition::EffectStackError>
+pub fn surgeist_animation::composition::EffectStackSnapshot::sample<P: surgeist_animation::composition::PropertyValueOperations + ?core::marker::Sized>(&self, target: surgeist_animation::composition::EffectTargetId, property: &surgeist_animation::interpolation::PropertyKey, applicability: surgeist_animation::keyframe::KeyframeTarget<'_>, operations: &P) -> core::result::Result<core::option::Option<surgeist_animation::composition::CompositedProperty>, surgeist_animation::composition::EffectStackSampleError<<P as surgeist_animation::composition::PropertyValueOperations>::Error>>
+pub fn surgeist_animation::composition::EffectStackSnapshot::undefined_animations(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_animation::playback::AnimationId>
+pub struct surgeist_animation::composition::EffectTargetId(_)
+impl surgeist_animation::composition::EffectTargetId
+pub const fn surgeist_animation::composition::EffectTargetId::identity(self) -> u64
+pub const fn surgeist_animation::composition::EffectTargetId::new(identity: u64) -> Self
+pub struct surgeist_animation::composition::PropertyOperationError
+impl surgeist_animation::composition::PropertyOperationError
+pub const fn surgeist_animation::composition::PropertyOperationError::kind(&self) -> &surgeist_animation::composition::PropertyOperationErrorKind
+impl core::convert::From<surgeist_animation::computed::ComputedError> for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::computed::ComputedError) -> Self
+impl core::convert::From<surgeist_animation::interpolation::InterpolationError> for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::interpolation::InterpolationError) -> Self
+impl core::error::Error for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::composition::ReplacementDecision
+impl surgeist_animation::composition::ReplacementDecision
+pub const fn surgeist_animation::composition::ReplacementDecision::animation(&self) -> &surgeist_animation::playback::AnimationId
+pub const fn surgeist_animation::composition::ReplacementDecision::current_time(&self) -> core::option::Option<surgeist_animation::time::AnimationTime>
+pub const fn surgeist_animation::composition::ReplacementDecision::replace_state(&self) -> surgeist_animation::timing::AnimationReplaceState
+pub const fn surgeist_animation::composition::ReplacementDecision::timeline(&self) -> core::option::Option<surgeist_animation::timeline::TimelineSnapshot>
 pub trait surgeist_animation::composition::PropertyValueOperations
 pub type surgeist_animation::composition::PropertyValueOperations::Error
 pub fn surgeist_animation::composition::PropertyValueOperations::accumulate(&self, property: &surgeist_animation::interpolation::PropertyKey, underlying: &surgeist_animation::interpolation::InterpolableValue, value: &surgeist_animation::interpolation::InterpolableValue) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
 pub fn surgeist_animation::composition::PropertyValueOperations::add(&self, property: &surgeist_animation::interpolation::PropertyKey, underlying: &surgeist_animation::interpolation::InterpolableValue, value: &surgeist_animation::interpolation::InterpolableValue) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
 pub fn surgeist_animation::composition::PropertyValueOperations::interpolate(&self, property: &surgeist_animation::interpolation::PropertyKey, start: &surgeist_animation::interpolation::InterpolableValue, end: &surgeist_animation::interpolation::InterpolableValue, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
+impl surgeist_animation::composition::PropertyValueOperations for surgeist_animation::composition::AnimationTypeOperations
+pub type surgeist_animation::composition::AnimationTypeOperations::Error = surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::AnimationTypeOperations::accumulate(&self, _: &surgeist_animation::interpolation::PropertyKey, underlying: &surgeist_animation::interpolation::InterpolableValue, value: &surgeist_animation::interpolation::InterpolableValue) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
+pub fn surgeist_animation::composition::AnimationTypeOperations::add(&self, _: &surgeist_animation::interpolation::PropertyKey, underlying: &surgeist_animation::interpolation::InterpolableValue, value: &surgeist_animation::interpolation::InterpolableValue) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
+pub fn surgeist_animation::composition::AnimationTypeOperations::interpolate(&self, property: &surgeist_animation::interpolation::PropertyKey, start: &surgeist_animation::interpolation::InterpolableValue, end: &surgeist_animation::interpolation::InterpolableValue, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
 pub fn surgeist_animation::composition::compose_value<P: surgeist_animation::composition::PropertyValueOperations + ?core::marker::Sized>(property: &surgeist_animation::interpolation::PropertyKey, operation: surgeist_animation::keyframe_input::CompositeOperation, underlying: &surgeist_animation::interpolation::InterpolableValue, value: &surgeist_animation::interpolation::InterpolableValue, operations: &P) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, <P as surgeist_animation::composition::PropertyValueOperations>::Error>
 pub mod surgeist_animation::computed
 pub enum surgeist_animation::computed::ComputedComponent
@@ -19,8 +140,10 @@ pub enum surgeist_animation::computed::ComputedErrorKind
 pub surgeist_animation::computed::ComputedErrorKind::Capacity
 pub surgeist_animation::computed::ComputedErrorKind::DegenerateRatio
 pub surgeist_animation::computed::ComputedErrorKind::EmptyComponents
+pub surgeist_animation::computed::ComputedErrorKind::EmptyList
 pub surgeist_animation::computed::ComputedErrorKind::FractionalInteger
 pub surgeist_animation::computed::ComputedErrorKind::IncompatibleTypes
+pub surgeist_animation::computed::ComputedErrorKind::ListExpansion
 pub surgeist_animation::computed::ComputedErrorKind::NegativeRatioComponent
 pub surgeist_animation::computed::ComputedErrorKind::NonFiniteInput
 pub surgeist_animation::computed::ComputedErrorKind::NonFiniteResult
@@ -67,6 +190,8 @@ impl surgeist_animation::computed::ComputedError
 pub const fn surgeist_animation::computed::ComputedError::component(&self) -> core::option::Option<usize>
 pub const fn surgeist_animation::computed::ComputedError::kind(&self) -> surgeist_animation::computed::ComputedErrorKind
 pub const fn surgeist_animation::computed::ComputedError::operation(&self) -> core::option::Option<surgeist_animation::computed::ComputedOperation>
+impl core::convert::From<surgeist_animation::computed::ComputedError> for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::computed::ComputedError) -> Self
 impl core::error::Error for surgeist_animation::computed::ComputedError
 impl core::fmt::Display for surgeist_animation::computed::ComputedError
 pub fn surgeist_animation::computed::ComputedError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -143,6 +268,14 @@ impl core::cmp::PartialEq for surgeist_animation::computed::MathSource
 pub fn surgeist_animation::computed::MathSource::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_animation::computed::MathSource
 pub fn surgeist_animation::computed::MathSource::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_animation::computed::RepeatableList
+impl surgeist_animation::computed::RepeatableList
+pub fn surgeist_animation::computed::RepeatableList::accumulate(&self, other: &Self) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::RepeatableList::add(&self, other: &Self) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::RepeatableList::combined_len(first: usize, second: usize) -> core::result::Result<usize, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::RepeatableList::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::RepeatableList::items(&self) -> &[surgeist_animation::computed::ComputedValue]
+pub fn surgeist_animation::computed::RepeatableList::new(items: alloc::vec::Vec<surgeist_animation::computed::ComputedValue>) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
 pub mod surgeist_animation::css_animation
 pub enum surgeist_animation::css_animation::CssAnimationEligibility
 pub surgeist_animation::css_animation::CssAnimationEligibility::AncestorDisplayNone
@@ -441,6 +574,7 @@ pub surgeist_animation::interpolation::InterpolableValue::Discrete(surgeist_anim
 pub surgeist_animation::interpolation::InterpolableValue::Grid(surgeist_animation::grid::GridValue)
 pub surgeist_animation::interpolation::InterpolableValue::Number(surgeist_animation::interpolation::InterpolableNumber)
 pub surgeist_animation::interpolation::InterpolableValue::Percentage(surgeist_animation::interpolation::InterpolablePercentage)
+pub surgeist_animation::interpolation::InterpolableValue::RepeatableList(surgeist_animation::computed::RepeatableList)
 pub surgeist_animation::interpolation::InterpolableValue::Shadow(surgeist_animation::shadow::ShadowList)
 pub surgeist_animation::interpolation::InterpolableValue::Shape(surgeist_animation::shape::ShapeValue)
 pub surgeist_animation::interpolation::InterpolableValue::Transform(surgeist_animation::interpolation::TransformValue)
@@ -453,6 +587,7 @@ pub const fn surgeist_animation::interpolation::InterpolableValue::family(&self)
 pub fn surgeist_animation::interpolation::InterpolableValue::grid(value: surgeist_animation::grid::GridValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::number(value: surgeist_animation::interpolation::InterpolableNumber) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::percentage(value: surgeist_animation::interpolation::InterpolablePercentage) -> Self
+pub fn surgeist_animation::interpolation::InterpolableValue::repeatable_list(value: surgeist_animation::computed::RepeatableList) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::shadow(value: surgeist_animation::shadow::ShadowList) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::shape(value: surgeist_animation::shape::ShapeValue) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::transform(value: surgeist_animation::interpolation::TransformValue) -> Self
@@ -497,6 +632,8 @@ pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::fr
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::property: surgeist_animation::interpolation::PropertyKey
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::reason: &'static str
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::to: surgeist_animation::interpolation::InterpolableValue
+impl core::convert::From<surgeist_animation::interpolation::InterpolationError> for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::interpolation::InterpolationError) -> Self
 impl core::convert::From<surgeist_animation::interpolation::InterpolationError> for surgeist_animation::transition::TransitionDecisionError
 pub fn surgeist_animation::transition::TransitionDecisionError::from(error: surgeist_animation::interpolation::InterpolationError) -> Self
 impl core::error::Error for surgeist_animation::interpolation::InterpolationError
@@ -519,6 +656,7 @@ pub surgeist_animation::interpolation::ValueFamily::Discrete
 pub surgeist_animation::interpolation::ValueFamily::Grid
 pub surgeist_animation::interpolation::ValueFamily::Number
 pub surgeist_animation::interpolation::ValueFamily::Percentage
+pub surgeist_animation::interpolation::ValueFamily::RepeatableList
 pub surgeist_animation::interpolation::ValueFamily::Shadow
 pub surgeist_animation::interpolation::ValueFamily::Shape
 pub surgeist_animation::interpolation::ValueFamily::Transform
@@ -944,6 +1082,8 @@ pub fn surgeist_animation::playback::PlaybackCoordinates::observe(self, effect: 
 pub struct surgeist_animation::playback::PlaybackError
 impl surgeist_animation::playback::PlaybackError
 pub const fn surgeist_animation::playback::PlaybackError::kind(&self) -> &surgeist_animation::playback::PlaybackErrorKind
+impl core::convert::From<surgeist_animation::playback::PlaybackError> for surgeist_animation::composition::EffectStackError
+pub fn surgeist_animation::composition::EffectStackError::from(error: surgeist_animation::playback::PlaybackError) -> Self
 impl core::convert::From<surgeist_animation::playback::PlaybackError> for surgeist_animation::css_animation::CssAnimationError
 pub fn surgeist_animation::css_animation::CssAnimationError::from(error: surgeist_animation::playback::PlaybackError) -> Self
 impl core::convert::From<surgeist_animation::time::TimeError> for surgeist_animation::playback::PlaybackError
@@ -1338,6 +1478,8 @@ pub enum surgeist_animation::timing::AnimationReplaceState
 pub surgeist_animation::timing::AnimationReplaceState::Active
 pub surgeist_animation::timing::AnimationReplaceState::Persisted
 pub surgeist_animation::timing::AnimationReplaceState::Removed
+impl surgeist_animation::timing::AnimationReplaceState
+pub const fn surgeist_animation::timing::AnimationReplaceState::persist(&mut self)
 pub enum surgeist_animation::timing::EffectPlayState
 pub surgeist_animation::timing::EffectPlayState::Finished
 pub surgeist_animation::timing::EffectPlayState::Idle
@@ -1414,6 +1556,8 @@ pub fn surgeist_animation::timing::EffectTiming::default() -> Self
 pub struct surgeist_animation::timing::EffectTimingError
 impl surgeist_animation::timing::EffectTimingError
 pub const fn surgeist_animation::timing::EffectTimingError::kind(self) -> surgeist_animation::timing::EffectTimingErrorKind
+impl core::convert::From<surgeist_animation::timing::EffectTimingError> for surgeist_animation::composition::EffectStackError
+pub fn surgeist_animation::composition::EffectStackError::from(error: surgeist_animation::timing::EffectTimingError) -> Self
 impl core::convert::From<surgeist_animation::timing::EffectTimingError> for surgeist_animation::css_animation::CssAnimationError
 pub fn surgeist_animation::css_animation::CssAnimationError::from(error: surgeist_animation::timing::EffectTimingError) -> Self
 impl core::error::Error for surgeist_animation::timing::EffectTimingError
