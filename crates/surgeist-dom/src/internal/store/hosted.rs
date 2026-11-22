@@ -8,6 +8,7 @@ pub(in crate::internal::store) mod operations;
 pub(in crate::internal::store) mod queue;
 pub(super) mod style_root_withdrawal;
 use super::*;
+use crate::internal::document::{DomDocumentCreationCause, HostedDocumentProfile};
 use crate::internal::hosted::*;
 use crate::{internal::document::DomOpaqueOrigin, internal::source::DomSourceEventRequest};
 use operations::OperationResult;
@@ -31,9 +32,10 @@ impl crate::internal::document::HostedDocumentInputs {
         source: &DomHostedSource,
         work: &Work,
         origin: &DomOpaqueOrigin,
+        profile: HostedDocumentProfile,
         cancel: &AtomicBool,
     ) -> Result<Self, DomHostedError> {
-        Self::form_profile(source, work, origin, None, None, cancel)
+        Self::form_profile(source, work, origin, profile, None, None, cancel)
     }
     pub(in crate::internal::store) fn form_child(
         source: &DomHostedSource,
@@ -46,6 +48,7 @@ impl crate::internal::document::HostedDocumentInputs {
             source,
             work,
             profile.parent.origin(),
+            HostedDocumentProfile::InitialAboutBlank,
             Some((
                 profile.parent,
                 profile.creator_base,
@@ -60,6 +63,7 @@ impl crate::internal::document::HostedDocumentInputs {
         source: &DomHostedSource,
         work: &Work,
         origin: &DomOpaqueOrigin,
+        profile: HostedDocumentProfile,
         parent: Option<(
             &DomDocumentMetadata,
             &surgeist_html_semantics::HtmlBaseUrlRecord,
@@ -76,7 +80,8 @@ impl crate::internal::document::HostedDocumentInputs {
             HtmlAboutBaseUrl, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsRevision,
             HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme,
         };
-        // The original constructor's intrinsic URL, not an external URL parse.
+        // Both native top-level profiles and the native child constructor use
+        // this intrinsic URL. Its spelling does not encode the creation cause.
         const URL: &[u16] = &[97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107];
         work.step(cancel)?;
         let workspace = if let Some(formation) = formation {
@@ -291,6 +296,7 @@ impl crate::internal::document::HostedDocumentInputs {
         let _workspace = workspace;
         // All fallible admission and cancellation precede the immutable owner.
         Ok(Self(Arc::new(HostedDocumentInputData {
+            profile,
             facts,
             opener,
             top_creation_url,
@@ -391,6 +397,39 @@ impl Dom {
         prepared: &mut Option<DomHostedPreparedTopLevel>,
         cancel: &AtomicBool,
     ) -> Result<DomHostedCreationLease, DomHostedError> {
+        self.begin_hosted_top_level_with_profile(
+            source,
+            prepared,
+            HostedDocumentProfile::InitialAboutBlank,
+            cancel,
+        )
+    }
+
+    /// Begin a native top-level Document for locally supplied, already decoded HTML.
+    ///
+    /// Its current entry is established while loading. The parser supplies the
+    /// tree after creation through a separate Runtime operation.
+    pub fn begin_hosted_top_level_html(
+        &mut self,
+        source: &mut DomHostedSource,
+        prepared: &mut Option<DomHostedPreparedTopLevel>,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedCreationLease, DomHostedError> {
+        self.begin_hosted_top_level_with_profile(
+            source,
+            prepared,
+            HostedDocumentProfile::LocalHtml,
+            cancel,
+        )
+    }
+
+    fn begin_hosted_top_level_with_profile(
+        &mut self,
+        source: &mut DomHostedSource,
+        prepared: &mut Option<DomHostedPreparedTopLevel>,
+        profile: HostedDocumentProfile,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedCreationLease, DomHostedError> {
         self.require_source_idle()?;
         self.validate_hosted_source(source)?;
         check_cancel(cancel)?;
@@ -414,12 +453,16 @@ impl Dom {
             prefix.context.slot,
             prefix.context.generation,
         )?;
-        // Five real canonical phase publications are mandatory after the policy
-        // result. Other edits must leave these reserved increments available.
+        // Execution, activity, entry and finish publish canonical state. The
+        // initial blank also publishes a finish-loading sample before its entry.
+        let canonical_revisions = match profile {
+            HostedDocumentProfile::InitialAboutBlank => 5,
+            HostedDocumentProfile::LocalHtml => 4,
+        };
         self.revision
             .0
             .checked_add(self.hosted_revisions)
-            .and_then(|revision| revision.checked_add(5))
+            .and_then(|revision| revision.checked_add(canonical_revisions))
             .ok_or(DomError::RevisionExhausted)?;
         let retained = source.retain(size_of::<Operation>(), cancel)?;
         let origin = DomDocumentMetadata::fresh_opaque_origin();
@@ -438,7 +481,13 @@ impl Dom {
             source.limits().scratch_bytes(),
             DomHostedResource::ScratchBytes,
         )?;
-        let operation = source.begin_operation(&prefix.work, 10, bank.scratch_bytes()?, cancel)?;
+        // The issuer also publishes the policy outcome and issues four roles.
+        let operation = source.begin_operation(
+            &prefix.work,
+            canonical_revisions + 5,
+            bank.scratch_bytes()?,
+            cancel,
+        )?;
         let (bank, retained) = bank.into_owned();
         let prepared = prepared.take().expect("validated original preparation");
         let request = Request {
@@ -461,13 +510,14 @@ impl Dom {
                         request,
                         origin,
                         embedder_policy: None,
+                        document_profile: profile,
                     }),
                     _retained: retained,
                 },
             ),
             true,
         ));
-        self.hosted_revisions += 5;
+        self.hosted_revisions += canonical_revisions;
         Ok(DomHostedCreationLease {
             operation,
             completed: None,
@@ -552,9 +602,9 @@ impl DomHostedCreationLease {
         dom.require_sync_source_idle()?;
         dom.validate_hosted_source(source)?;
         let operation = dom.hosted_operation(self.operation)?;
-        if !matches!(operation.phase, CreationPhase::Policy(_)) {
+        let CreationPhase::Policy(policy) = &operation.phase else {
             return Err(DomHostedError::WrongPhase);
-        }
+        };
         let current = publication
             .as_ref()
             .ok_or(DomHostedError::MissingPublication)?;
@@ -568,6 +618,7 @@ impl DomHostedCreationLease {
             source,
             &operation.request().work,
             &operation.origin,
+            policy.document_profile,
             cancel,
         )?;
         let next = CreationPhase::Execution(DomHostedExecutionRequest {
@@ -650,23 +701,31 @@ impl DomHostedCreationLease {
                     DocumentPhase::Active,
                     cancel,
                 )?;
-                let association = dom
-                    .snapshot()
-                    .document(request.document)?
-                    .metadata()
-                    .document_environment()
+                let snapshot = dom.snapshot();
+                let metadata = snapshot.document(request.document)?.metadata();
+                let environment = metadata.document_environment();
+                let association = environment
                     .hosted
-                    .clone()
+                    .as_ref()
                     .ok_or(DomHostedError::UnsupportedProfile)?;
-                (
-                    prepared,
+                let next = if matches!(
+                    metadata.creation_cause(),
+                    DomDocumentCreationCause::HostedLocalHtml { .. }
+                ) {
+                    CreationPhase::Entry(DomHostedEntryRequest {
+                        request: next_request,
+                        document: request.document,
+                        global: request.global,
+                    })
+                } else {
                     CreationPhase::FinishLoading(DomHostedFinishLoadingRequest {
                         request: next_request,
                         document: request.document,
                         global: request.global,
                         navigation_start: association.navigation_start,
-                    }),
-                )
+                    })
+                };
+                (prepared, next)
             }
             (CreationPhase::FinishLoading(request), PublicationValue::FinishLoading(moment)) => {
                 if moment.source != source.id()
@@ -726,16 +785,21 @@ impl DomHostedCreationLease {
                     current.key,
                 )?;
                 let snapshot = dom.snapshot();
-                let environment = snapshot
-                    .document(request.document)?
-                    .metadata()
-                    .document_environment();
+                let metadata = snapshot.document(request.document)?.metadata();
+                let environment = metadata.document_environment();
                 let association = environment
                     .hosted
                     .as_ref()
                     .ok_or(DomHostedError::UnsupportedProfile)?;
-                let DocumentPhase::Loaded(loaded) = association.phase else {
-                    return Err(DomHostedError::WrongPhase);
+                let load = match (association.phase, metadata.creation_cause()) {
+                    (
+                        DocumentPhase::Loaded(moment),
+                        DomDocumentCreationCause::HostedInitialAboutBlank { .. },
+                    ) => HostedDocumentLoad::Loaded(moment),
+                    (DocumentPhase::Active, DomDocumentCreationCause::HostedLocalHtml { .. }) => {
+                        HostedDocumentLoad::Loading
+                    }
+                    _ => return Err(DomHostedError::WrongPhase),
                 };
                 let mut prepared = dom.prepare_hosted_phase(
                     operation,
@@ -744,7 +808,7 @@ impl DomHostedCreationLease {
                     DocumentPhase::InitialEntry {
                         entry: *entry,
                         navigable: *navigable,
-                        loaded,
+                        load,
                     },
                     cancel,
                 )?;
@@ -1014,7 +1078,7 @@ impl Dom {
             phase: DocumentPhase::Constructed,
             _retained: retained,
         });
-        let metadata = DomDocumentMetadata::hosted_initial(
+        let metadata = DomDocumentMetadata::hosted(
             self.document_environment.input_platform(),
             operation.origin.clone(),
             registry,
@@ -1031,15 +1095,17 @@ impl Dom {
             cancel,
             formation,
         )?;
-        let html = draft.html_skeleton_element(document, "html", self.limits, cancel)?;
-        draft.select_element_registry(html, cancel)?;
-        draft.pre_insert(html, document, None, self.limits, cancel)?;
-        let head = draft.html_skeleton_element(document, "head", self.limits, cancel)?;
-        draft.select_element_registry(head, cancel)?;
-        draft.pre_insert(head, html, None, self.limits, cancel)?;
-        let body = draft.html_skeleton_element(document, "body", self.limits, cancel)?;
-        draft.select_element_registry(body, cancel)?;
-        draft.pre_insert(body, html, None, self.limits, cancel)?;
+        if inputs.0.profile == HostedDocumentProfile::InitialAboutBlank {
+            let html = draft.html_skeleton_element(document, "html", self.limits, cancel)?;
+            draft.select_element_registry(html, cancel)?;
+            draft.pre_insert(html, document, None, self.limits, cancel)?;
+            let head = draft.html_skeleton_element(document, "head", self.limits, cancel)?;
+            draft.select_element_registry(head, cancel)?;
+            draft.pre_insert(head, html, None, self.limits, cancel)?;
+            let body = draft.html_skeleton_element(document, "body", self.limits, cancel)?;
+            draft.select_element_registry(body, cancel)?;
+            draft.pre_insert(body, html, None, self.limits, cancel)?;
+        }
         let (mut prepared, mapped) =
             draft.finish_with_mapping(self, cancel, [document].into_iter())?;
         let document = DocumentId(mapped[0]);
@@ -2259,6 +2325,66 @@ impl DomHostedSource {
         }
         association.source.validate_issuer(self.id())?;
         Ok(metadata)
+    }
+
+    /// Qualify the current, loading top-level Document for the native local HTML parser.
+    ///
+    /// Runtime retains the original parser session and rechecks this association
+    /// before resuming it. This check only observes the canonical lifecycle state.
+    pub fn qualify_hosted_local_html_parser(
+        &self,
+        dom: &Dom,
+        document: DocumentId,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedError> {
+        check_cancel(cancel)?;
+        dom.validate_hosted_source(self)?;
+        dom.require_source_idle()?;
+        dom.snapshot().require_complete_source()?;
+        let work = self.work(cancel)?;
+        let mut step = || work.step(cancel);
+        let (actual_document, metadata, phase) =
+            dom.dispatch_global_document_metadata(global, &mut step, AssociationReadWork::Pages)?;
+        if actual_document != document {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        if !matches!(
+            metadata.creation_cause(),
+            DomDocumentCreationCause::HostedLocalHtml { source, .. } if *source == self.id()
+        ) {
+            return Err(DomHostedError::UnsupportedProfile);
+        }
+        let DocumentPhase::InitialEntry {
+            entry,
+            navigable,
+            load: HostedDocumentLoad::Loading,
+        } = phase
+        else {
+            return Err(DomHostedError::WrongPhase);
+        };
+        let environment = metadata.document_environment();
+        let association = environment
+            .hosted
+            .as_ref()
+            .ok_or(DomHostedError::StaleIdentity)?;
+        let graph = dom
+            .state
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::StaleIdentity)?;
+        let current = graph.navigable_with(navigable, &mut step)?;
+        step()?;
+        history::validate_navigable_association(association, current)?;
+        if current.parent.is_some()
+            || current.traversable != navigable
+            || current.current != entry
+            || current.active != entry
+            || graph.entry_with(entry, &mut step)?.document != Some(document)
+        {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        Ok(())
     }
 
     /// Publish one exact engine registration for this canonical owner.

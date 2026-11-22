@@ -1322,7 +1322,10 @@ macro_rules! request {
         }
     };
 }
-request!(DomHostedPolicyRequest, "The exact source-qualified Permissions Policy phase.", origin: crate::internal::document::DomOpaqueOrigin, embedder_policy:Option<Arc<DomHostedEmbedderPolicyInputs>>);
+request!(DomHostedPolicyRequest, "The exact source-qualified Permissions Policy phase.",
+    origin: crate::internal::document::DomOpaqueOrigin,
+    embedder_policy: Option<Arc<DomHostedEmbedderPolicyInputs>>,
+    document_profile: crate::internal::document::HostedDocumentProfile);
 request!(DomHostedExecutionRequest, "Creation of the actual native agent, loop, Global and settings.",
     origin: crate::internal::document::DomOpaqueOrigin, inputs: crate::internal::document::HostedDocumentInputs);
 request!(DomHostedMakeActiveRequest, "Make the actual Document/Global association active.",
@@ -1846,11 +1849,17 @@ pub(crate) enum DocumentPhase {
     InitialEntry {
         entry: DomHostedEntryId,
         navigable: DomHostedNavigableId,
-        loaded: DomHostedMoment,
+        load: HostedDocumentLoad,
     },
     Retired {
         operation: DomHostedOperationId,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HostedDocumentLoad {
+    Loading,
+    Loaded(DomHostedMoment),
 }
 
 /// The one captured canonical association. Runtime's mutable objects are not

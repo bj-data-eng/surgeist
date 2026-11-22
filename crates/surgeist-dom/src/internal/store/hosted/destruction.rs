@@ -140,6 +140,7 @@ mod tests {
                 &self.source,
                 &work,
                 &origin,
+                HostedDocumentProfile::InitialAboutBlank,
                 &c,
             )
             .unwrap();

@@ -291,7 +291,7 @@ fn initial_association(draft: &mut Draft, source: &DomHostedSource, creation: Do
         DocumentPhase::InitialEntry {
             entry: creation.entry,
             navigable: creation.navigable,
-            loaded: moment,
+            load: HostedDocumentLoad::Loaded(moment),
         },
     );
 }

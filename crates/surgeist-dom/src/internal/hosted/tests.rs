@@ -604,6 +604,7 @@ fn execution_request(fixture: &mut IssuerFixture) -> DomHostedExecutionRequest {
         &fixture.source,
         &request.work,
         &fixture.origin,
+        crate::internal::document::HostedDocumentProfile::InitialAboutBlank,
         &cancellation(),
     )
     .unwrap();

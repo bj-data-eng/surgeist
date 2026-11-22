@@ -1689,7 +1689,7 @@ impl DomSnapshot {
     }
 }
 
-fn validate_navigable_association(
+pub(super) fn validate_navigable_association(
     association: &DocumentAssociation,
     record: &Navigable,
 ) -> Result<(), DomHostedError> {
@@ -2132,6 +2132,7 @@ pub(in crate::internal::store) mod tests {
                 &self.source,
                 &work,
                 &self.origin,
+                HostedDocumentProfile::InitialAboutBlank,
                 &cancel,
             )
             .unwrap();

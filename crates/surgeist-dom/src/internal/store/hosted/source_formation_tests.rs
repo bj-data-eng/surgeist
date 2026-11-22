@@ -77,8 +77,16 @@ impl Fixture {
             .clone();
         // These once-formed values are constructor operands only. The actual
         // closed Document does not acquire hosted environment/activity proof.
-        parent.hosted_inputs =
-            Some(HostedDocumentInputs::form(&source, &work, parent.origin(), &c).unwrap());
+        parent.hosted_inputs = Some(
+            HostedDocumentInputs::form(
+                &source,
+                &work,
+                parent.origin(),
+                HostedDocumentProfile::InitialAboutBlank,
+                &c,
+            )
+            .unwrap(),
+        );
         Self {
             dom,
             source,

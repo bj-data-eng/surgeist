@@ -576,6 +576,8 @@ impl DomSourceLease<'_> {
                     request: inner,
                     origin,
                     embedder_policy: Some(inputs),
+                    document_profile:
+                        crate::internal::document::HostedDocumentProfile::InitialAboutBlank,
                 }),
                 _retained: retained,
             });
@@ -1205,7 +1207,7 @@ impl Draft {
         // Keep the existing referrer sampling point; only CSP issuance is an
         // already admitted original result retained across publication retry.
         parent_policy.csp = inherited_csp.clone();
-        let mut metadata = DomDocumentMetadata::hosted_initial(
+        let mut metadata = DomDocumentMetadata::hosted(
             platform,
             inner.origin.clone(),
             registry,
@@ -1505,7 +1507,7 @@ impl DomSourceLease<'_> {
                             DocumentPhase::InitialEntry {
                                 entry: *entry_id,
                                 navigable: *navigable,
-                                loaded,
+                                load: HostedDocumentLoad::Loaded(loaded),
                             },
                             cancel,
                         )?;
