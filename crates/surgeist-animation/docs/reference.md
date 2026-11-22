@@ -245,6 +245,9 @@ Transform, Shadow and Filter failures retain their typed diagnostics. Unsupporte
 operations do not
 silently become addition. Property-definition and applicable Appendix A
 selection remain with the caller, without another CSS property registry.
+Guarded Palette payloads delegate nonadditive addition to the palette owner;
+unspecified accumulation uses that same effect-operand selection. The default
+operations therefore support symbolic palettes in ordinary effect-stack folds.
 
 `replacements` selects Active, non-markup-prescribed, finished animations with a
 monotonic timeline and associated in-effect targeted effect in the supplied
@@ -834,7 +837,10 @@ returns the exact first operand; at or above one the exact second. Equal supplie
 operands remain unchanged, including equal already sampled plans. Palette
 addition selects the effect palette rather than adding colors. Palette progress
 selection is specific to this value family; numeric font interpolation retains
-finite extrapolation. No palette accumulation operation is provided.
+finite extrapolation. The default by-computed-value operations delegate palette
+addition to `PaletteValue::add`; unspecified accumulation uses the same
+nonadditive selection of the effect palette. There is no separate palette
+accumulation algorithm or per-entry color addition.
 
 `PaletteValue::nodes()` exposes an immutable nonempty postorder plan. A source
 node carries its opaque identity. `PaletteNode::MixOklab` carries two earlier
