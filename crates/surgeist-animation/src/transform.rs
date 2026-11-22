@@ -501,11 +501,28 @@ fn combine_number(
             let delta = finite(b - a, component)?;
             finite(a + finite(delta * p, component)?, component)
         }
-        Combination::Accumulate => finite(
-            a + finite(if one_based { b - 1. } else { b }, component)?,
-            component,
-        ),
+        Combination::Accumulate if one_based => {
+            let (sum, roundoff) = two_sum(a, b, component)?;
+            let (shifted, shift_roundoff) = two_sum(sum, -1., component)?;
+            finite(
+                shifted + finite(roundoff + shift_roundoff, component)?,
+                component,
+            )
+        }
+        Combination::Accumulate => finite(a + b, component),
     }
+}
+
+// Keep both rounding tails when evaluating a+b-1. Subtracting one before a
+// large cancellation loses it; subtracting it only after a rounded sum loses a
+// subnormal underlying value when the effect is exactly the identity.
+fn two_sum(a: f64, b: f64, component: TransformComponent) -> Result<(f64, f64), TransformError> {
+    let sum = finite(a + b, component)?;
+    let b_virtual = finite(sum - a, component)?;
+    let a_virtual = finite(sum - b_virtual, component)?;
+    let a_roundoff = finite(a - a_virtual, component)?;
+    let b_roundoff = finite(b - b_virtual, component)?;
+    Ok((sum, finite(a_roundoff + b_roundoff, component)?))
 }
 
 enum MatrixPair {

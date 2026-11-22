@@ -677,8 +677,9 @@ when a spatial result cannot be represented without loss. Numeric failures use
 
 `accumulated_with(effect)` combines an underlying list with an effect using the
 same matching, padding and suffix rules. Direct parameters add, using a+b−1
-for scale parameters. Decomposed affine residual diagonal and scale parameters
-also use one-based accumulation. Spatial scale and perspective W are one-based;
+for scale parameters. Checked compensated sums retain cancellation and identity
+cases, including subnormal underlying values. Decomposed affine residual diagonal
+and scale parameters also use one-based accumulation. Spatial scale and perspective W are one-based;
 translation, skew and the other perspective components add. Decomposed rotations
 use the underlying × effect quaternion product. A failed decomposition selects
 the complete effect value; checked arithmetic failure returns an error without
