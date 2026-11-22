@@ -64,6 +64,18 @@ fn cubic_tangent_does_not_round_a_subnormal_slope_before_multiplication() {
 }
 
 #[test]
+fn cubic_tangent_preserves_the_largest_finite_rounded_result() {
+    let curve = CubicBezier::new(0.01, 0.03, 0.5, 0.5).unwrap();
+    let input = EasingInput::new(-f64::from_bits(0x7fd5_5555_5555_5555)).unwrap();
+    // The exact quotient using these binary64 operands rounds to -MAX.
+    // Rounding the slope to 3 first moves the product across overflow.
+    assert_eq!(
+        curve.evaluate_unrestricted(input).map(|p| p.value()),
+        Ok(-f64::MAX)
+    );
+}
+
+#[test]
 fn unrestricted_easing_can_feed_overshoot_to_the_next_function() {
     let curve = Easing::cubic_bezier(CubicBezier::new(0.25, 0.5, 0.75, 0.5).unwrap());
     for (input, expected) in [(-0.5, -1.0), (1.5, 2.0)] {
@@ -136,6 +148,25 @@ fn steps_keeps_representable_outputs_when_the_step_number_overflows() {
     let steps = Steps::new(2, StepPosition::JumpNone).unwrap();
     assert!(matches!(
         steps.evaluate_unrestricted(input),
+        Err(EasingError::NonFiniteEasedProgress { .. })
+    ));
+}
+
+#[test]
+fn steps_classifies_both_sides_of_the_finite_output_limit() {
+    let finite = Steps::new(10, StepPosition::JumpNone).unwrap();
+    let input = EasingInput::new(f64::from_bits(0x7fec_cccc_cccc_cccc)).unwrap();
+    // The exact quotient x*10/9 rounds to MAX.
+    assert_eq!(
+        finite.evaluate_unrestricted(input).map(|p| p.value()),
+        Ok(f64::MAX)
+    );
+
+    let overflowing = Steps::new(12, StepPosition::JumpNone).unwrap();
+    let input = EasingInput::new(f64::from_bits(0x7fed_5555_5555_5555)).unwrap();
+    // The exact quotient x*12/11 is above the binary64 overflow midpoint.
+    assert!(matches!(
+        overflowing.evaluate_unrestricted(input),
         Err(EasingError::NonFiniteEasedProgress { .. })
     ));
 }
