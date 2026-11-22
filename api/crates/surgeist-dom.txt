@@ -940,6 +940,8 @@ pub fn surgeist_dom::form::DomForm<'a>::id(self) -> surgeist_dom::identity::Node
 pub fn surgeist_dom::form::DomForm<'a>::past_names(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = (&'a surgeist_html::internal::values::document_string::DocumentString, surgeist_dom::identity::NodeId)>
 pub fn surgeist_dom::form::DomForm<'a>::state(self) -> surgeist_html::internal::elements::form_native::HtmlFormNativeState
 pub struct surgeist_dom::form::DomInput<'a>
+impl surgeist_dom::form::DomInput<'_>
+pub fn surgeist_dom::form::DomInput<'_>::suggestions_source_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 impl<'a> surgeist_dom::form::DomInput<'a>
 pub fn surgeist_dom::form::DomInput<'a>::explicit_popover_target(self) -> core::option::Option<surgeist_dom::identity::NodeId>
 pub fn surgeist_dom::form::DomInput<'a>::form_owner(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>

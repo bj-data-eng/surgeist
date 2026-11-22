@@ -14,6 +14,7 @@ pub mod constraint_validation;
 mod controlled_option_value;
 pub mod fieldset_disabledness;
 mod hyperlink;
+pub mod input_suggestions;
 #[cfg(test)]
 mod schema_tests;
 mod semantics;

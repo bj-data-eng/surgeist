@@ -22574,24 +22574,12 @@
       "kind": "native",
       "adapter": "htmlinputelement.list.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "input_suggestions_source"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/input.rs", "symbol": "read_input_list"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/input_list.rs", "symbol": "suggestions_source_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/input_suggestions.rs", "symbol": "input_suggestions_source"},
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "input_list_applies"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose native Input suggestions-source resolution with the current Source segment's type, ordinary scope and first ID match.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list",
-          "issue": 1235
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project the exact nullable branded DataList wrapper from the reached association.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-list",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.max/get": {
       "kind": "native",
