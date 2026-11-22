@@ -223,11 +223,21 @@ impl Operations for Entered<'_> {
             .as_callable()
             .ok_or(Error::ExpectedFunction)?;
         let realm = self.context.realm().clone();
-        // PromiseJob puts this callback in the same FIFO as promise reactions.
-        // The executor owns failure reporting and continuation at checkpoints.
+        // Raw microtasks share the promise FIFO. Ordinary guest throws
+        // complete this callback; engine failures stop the checkpoint.
         self.context
             .enqueue_job(Job::PromiseJob(PromiseJob::with_realm(
-                move |context| function.call(&JsValue::undefined(), &[], context),
+                move |context| {
+                    function
+                        .call(&JsValue::undefined(), &[], context)
+                        .or_else(|error| {
+                            if error.as_engine().is_some() {
+                                Err(error)
+                            } else {
+                                Ok(JsValue::undefined())
+                            }
+                        })
+                },
                 realm,
             )));
         Ok(())
@@ -381,14 +391,14 @@ impl Operations for Entered<'_> {
     }
 
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error> {
-        self.check_active()?;
+        let prepared = self.state.prepare(self.realm)?;
         let prototype = self.object_prototype(prototype)?;
         let object = JsObject::new(
             self.context.root_shape(),
             prototype,
             boa_engine::builtins::object::OrdinaryObject,
         );
-        self.root(object.upcast().into())
+        prepared.finish(Handle::Value(object.upcast().into()))
     }
 
     fn set_prototype(
@@ -409,10 +419,11 @@ impl Operations for Entered<'_> {
     fn array(&mut self, values: &[Root]) -> Result<Root, Error> {
         self.check_active()?;
         crate::backend::validate_array_length(values.len())?;
+        let prepared = self.state.prepare(self.realm)?;
         let elements = self.outbound_values(values)?;
         let object =
             elements.map(|values| JsObject::from(JsArray::from_iter(values, self.context)));
-        self.root(object.value.into())
+        prepared.finish(Handle::Value(object.value.into()))
     }
 
     fn well_known_symbol(&mut self, symbol: WellKnownSymbol) -> Result<Root, Error> {
@@ -444,23 +455,27 @@ impl Operations for Entered<'_> {
         }
         self.validate_root(function)?;
         self.validate_root(receiver)?;
+        let prepared = self.state.prepare(self.realm)?;
         let function = self
             .value(function)?
             .as_callable()
             .ok_or(Error::ExpectedFunction)?;
         let receiver = self.value(receiver)?;
         let arguments = self.outbound_values(arguments)?;
-        self.attempt_value_after(ExceptionPhase::Invoke, enter, |context| {
+        enter()?;
+        self.finish_value(prepared, ExceptionPhase::Invoke, |context| {
             function.call(&receiver, &arguments.value, context)
         })
     }
 
     fn construct_without_arguments(&mut self, constructor: &Root) -> Result<Root, Error> {
+        self.validate_root(constructor)?;
+        let prepared = self.state.prepare(self.realm)?;
         let constructor = self
             .value(constructor)?
             .as_constructor()
             .ok_or(Error::ExpectedConstructor)?;
-        self.attempt_value(ExceptionPhase::Invoke, |context| {
+        self.finish_value(prepared, ExceptionPhase::Invoke, |context| {
             constructor.construct(&[], None, context).map(JsValue::from)
         })
     }

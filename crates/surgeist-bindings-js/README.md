@@ -81,8 +81,9 @@ Array construction has the [qualified embedding bound](PROVENANCE.md#scoped-obje
 
 Exception capture never invokes a guest `toString` or `stack` getter. Explicit
 `to_utf16` conversion follows JavaScript ToString and can itself throw.
-Checkpoints are shared across realms. The current SDK checkpoint swallows job
-callback exceptions; promise rejection reporting requires the host adapter.
+Checkpoints are shared across realms and continue past ordinary throws from
+raw microtasks. Promise rejection reporting belongs to the host adapter.
+Native module resolution remains disabled.
 The engine owns guest execution, allocation and collection. A heap observation
 reports shallow collector bytes for the current thread. It excludes separate
 buffers and process memory. The isolated WPT worker enforces its deadline

@@ -10,6 +10,7 @@ use boa_engine::{
     Context, JsError, JsObject, JsResult, JsString, JsSymbol, JsValue,
     builtins::promise::ResolvingFunctions,
     context::{HostHooks, intrinsics::Intrinsics},
+    module::IdleModuleLoader,
     object::{
         builtins::JsPromise,
         host::{immutable_prototype, window_properties},
@@ -361,6 +362,7 @@ impl Engine {
         let globals = Rc::new(Globals::default());
         let context = Context::builder()
             .host_hooks(globals.clone())
+            .module_loader(Rc::new(IdleModuleLoader))
             .build()
             .map_err(|_| Error::BackendUnavailable)?;
         Ok((
@@ -645,17 +647,16 @@ impl Entered<'_> {
         phase: ExceptionPhase,
         action: impl FnOnce(&mut Context) -> JsResult<JsValue>,
     ) -> Result<Root, Error> {
-        self.attempt_value_after(phase, || Ok(()), action)
+        let prepared = self.state.prepare(self.realm)?;
+        self.finish_value(prepared, phase, action)
     }
 
-    fn attempt_value_after(
+    fn finish_value(
         &mut self,
+        prepared: PreparedRoot,
         phase: ExceptionPhase,
-        enter: impl FnOnce() -> Result<(), Error>,
         action: impl FnOnce(&mut Context) -> JsResult<JsValue>,
     ) -> Result<Root, Error> {
-        let prepared = self.state.prepare(self.realm)?;
-        enter()?;
         let result = action(self.context);
         self.state.owner.available()?;
         match result {
