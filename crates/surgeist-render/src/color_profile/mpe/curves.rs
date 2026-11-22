@@ -277,7 +277,10 @@ impl Formula {
 fn log10_affine_power(input: f64, gamma: f64, b: f64, c: f64, account: &Account) -> Result<f64> {
     let power = account.coordinate(|| input.powf(gamma))?;
     let argument = account.coordinate(|| b.mul_add(power, c))?;
-    if (power.is_normal() && argument.is_normal()) || input == 0.0 || power.is_nan() {
+    // A nonzero binary32 addend can cancel a normal power product exactly,
+    // but this cancellation cannot reduce a nonzero residual to binary64 zero.
+    let direct = power.is_normal() && (argument.is_normal() || (argument == 0.0 && c != 0.0));
+    if direct || input == 0.0 || power.is_nan() {
         return account.coordinate(|| argument.log10());
     }
     if b == 0.0 {
