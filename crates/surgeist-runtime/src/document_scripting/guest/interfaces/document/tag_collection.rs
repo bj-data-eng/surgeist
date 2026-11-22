@@ -1,11 +1,13 @@
-//! Live Document tag-name reads over the canonical DOM collection.
+//! Live collection wrappers for Document queries and Window named access.
 
+use super::super::window_children::{self, WindowSite};
 use super::*;
 use surgeist_bindings_js::conversion::declarations::{
     document_get_elements_by_tag_name_0_qualified_name, html_collection_item_0_index,
     html_collection_named_item_0_name,
 };
 use surgeist_bindings_js::{IntegerValue, Intrinsic, ValueKind};
+use surgeist_dom::hosted::DomWindowNamedValue;
 use surgeist_dom::tree::{
     DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
 };
@@ -18,6 +20,35 @@ const NAMED_ITEM: &[u16] = &ascii(b"namedItem");
 struct Collection {
     native: DomHtmlCollection,
     _query: GuestBacking,
+}
+
+#[derive(Clone)]
+pub(super) struct CollectionProjection {
+    prototype: RetainedCallbackObject,
+    read: RetainedCallbackObject,
+    keys: RetainedCallbackObject,
+}
+
+impl CollectionProjection {
+    fn project<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        collection: Collection,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let prototype = scope.open_callback_object(&self.prototype)?;
+        let read = scope.open_callback_object(&self.read)?;
+        let keys = scope.open_callback_object(&self.keys)?;
+        let value = scope.project_native_object_with_collection_properties(
+            ObjectPrototype::Object(&prototype),
+            collection,
+            &read,
+            &keys,
+            |bytes| events.reserve(owner, bytes),
+        )?;
+        Ok(Completion::Return(value))
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -49,7 +80,7 @@ pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
-) -> Result<(), DocumentGuestEventError> {
+) -> Result<CollectionProjection, DocumentGuestEventError> {
     let prototype = scope.object(ObjectPrototype::Default)?;
     let constructor = scope.constructor(
         &illegal_constructor(funding.capture)?,
@@ -135,15 +166,16 @@ pub(super) fn install<'scope>(
     let read = scope.retain_callback_object(read, funding.retain)?;
     let keys = scope.callback_object(&keys)?;
     let keys = scope.retain_callback_object(keys, funding.retain)?;
-    let query = (funding.capture)(size_of::<(
-        Capture,
-        RetainedCallbackObject,
-        RetainedCallbackObject,
-        RetainedCallbackObject,
-    )>())?;
+    let projection = CollectionProjection {
+        prototype,
+        read,
+        keys,
+    };
+    let query_projection = projection.clone();
+    let query = (funding.capture)(size_of::<(Capture, CollectionProjection)>())?;
     let query = scope.fixed_arity_function(
         &Callback::new(move |scope, arguments| {
-            query.get_elements_by_tag_name(scope, arguments, &prototype, &read, &keys)
+            query.get_elements_by_tag_name(scope, arguments, &query_projection)
         }),
         FunctionMetadata {
             name: GET_BY_TAG,
@@ -159,7 +191,22 @@ pub(super) fn install<'scope>(
         true,
         true,
     )?;
-    Ok(())
+    Ok(projection)
+}
+
+pub(super) fn install_window(
+    scope: &mut Scope<'_>,
+    capture: CaptureFunding<'_>,
+    projection: &CollectionProjection,
+    site: WindowSite,
+) -> Result<(), DocumentGuestEventError> {
+    let names = capture(size_of::<(Capture, CollectionProjection, WindowSite)>())?;
+    let projection = projection.clone();
+    let name_site = site.clone();
+    scope.install_window_name_reader(&Callback::new(move |scope, arguments| {
+        names.read_window_name(scope, arguments, &projection, &name_site)
+    }))?;
+    window_children::install(scope, capture, site)
 }
 
 impl Capture {
@@ -167,9 +214,7 @@ impl Capture {
         &self,
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
-        prototype: &RetainedCallbackObject,
-        read: &RetainedCallbackObject,
-        keys: &RetainedCallbackObject,
+        projection: &CollectionProjection,
     ) -> Result<Completion<'scope>, Error> {
         let Some(GuestNode::Document(document)) =
             tree::projected_node(scope, arguments.receiver())?
@@ -204,20 +249,74 @@ impl Capture {
                     .raw()
                     .get_elements_by_tag_name(document, name, units.len(), read.cancel)?)
             })?;
-            let prototype = scope.open_callback_object(prototype)?;
-            let read = scope.open_callback_object(read)?;
-            let keys = scope.open_callback_object(keys)?;
-            let value = scope.project_native_object_with_collection_properties(
-                ObjectPrototype::Object(&prototype),
+            projection.project(
+                scope,
+                &owner,
+                &events,
                 Collection {
                     native,
                     _query: backing,
                 },
-                &read,
-                &keys,
-                |bytes| events.reserve(&owner, bytes),
-            )?;
-            Ok(Completion::Return(value))
+            )
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
+    fn read_window_name<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+        projection: &CollectionProjection,
+        site: &WindowSite,
+    ) -> Result<Completion<'scope>, Error> {
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let argument = arguments.get(0).ok_or(Error::BackendUnavailable)?;
+            let units = scope.dom_string(argument)?;
+            let units = units.as_code_units();
+            let (name, backing) = character_data::copy_native_data(&owner, &events, units)?;
+            let named = self
+                .callbacks
+                .with_read(&owner, &events, |read, attached| {
+                    let Some(target) = site.qualify(self, read, attached)? else {
+                        return Ok(DomWindowNamedValue::Unsupported);
+                    };
+                    let dom = read
+                        .dom
+                        .try_borrow()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    dom.raw().window_named_value(
+                        target.global,
+                        name,
+                        units.len(),
+                        events.limits.work,
+                        || events.budget.charge_work(read.account_scope, 1),
+                        read.cancel,
+                    )
+                })?;
+            match named {
+                DomWindowNamedValue::Unsupported => Ok(Completion::Undefined),
+                DomWindowNamedValue::Element(node) => {
+                    Ok(Completion::Return(self.project_observation(
+                        scope,
+                        &owner,
+                        &events,
+                        Observation::Node(Some(node)),
+                    )?))
+                }
+                DomWindowNamedValue::Collection(native) => projection.project(
+                    scope,
+                    &owner,
+                    &events,
+                    Collection {
+                        native,
+                        _query: backing,
+                    },
+                ),
+                DomWindowNamedValue::Child(context) => {
+                    self.project_window_child(scope, &owner, &events, site, context)
+                }
+            }
         })();
         tree::tree_completion(scope, &events, result)
     }

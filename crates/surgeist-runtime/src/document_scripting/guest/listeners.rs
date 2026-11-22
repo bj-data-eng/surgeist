@@ -86,9 +86,14 @@ impl GuestEvents {
         Ok(GuestTargetProjection { native, lifetime })
     }
 
-    pub(in crate::document_scripting) fn reap_retired_targets(&self, process: &mut Process) {
+    pub(in crate::document_scripting) fn reap_retired_targets(
+        &self,
+        process: &mut Process,
+        native: &NativeOwner,
+    ) {
         if let Some(public) = &self.public {
             public.reap_nodes(process, &self.backing.retired_targets);
+            public.reap_windows(native, process);
         }
         if self.backing.retired_targets.get()
             && let Ok(mut registry) = self.registry.try_borrow_mut()

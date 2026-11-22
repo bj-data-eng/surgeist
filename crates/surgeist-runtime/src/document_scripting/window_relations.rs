@@ -27,17 +27,20 @@ const fn ascii<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     units
 }
 
-enum Relation {
+#[derive(Clone, Copy)]
+pub(super) enum Relation {
     WindowProxy,
+    Parent,
     Opener,
     Length,
+    Closed,
 }
 
-struct Member {
-    key: &'static [u16],
+pub(super) struct Member {
+    pub(super) key: &'static [u16],
     get: &'static [u16],
     set: Option<&'static [u16]>,
-    relation: Relation,
+    pub(super) relation: Relation,
 }
 
 const MEMBERS: &[Member] = &[
@@ -63,7 +66,7 @@ const MEMBERS: &[Member] = &[
         key: &ascii(b"parent"),
         get: &ascii(b"get parent"),
         set: Some(&ascii(b"set parent")),
-        relation: Relation::WindowProxy,
+        relation: Relation::Parent,
     },
     Member {
         key: &ascii(b"length"),
@@ -72,6 +75,19 @@ const MEMBERS: &[Member] = &[
         relation: Relation::Length,
     },
 ];
+
+const CLOSED: Member = Member {
+    key: &ascii(b"closed"),
+    get: &ascii(b"get closed"),
+    set: None,
+    relation: Relation::Closed,
+};
+
+impl Member {
+    fn configurable(&self) -> bool {
+        self.set.is_some() || matches!(self.relation, Relation::Closed)
+    }
+}
 
 struct WindowRelations {
     native: Weak<NativeOwner>,
@@ -110,14 +126,43 @@ pub(super) fn install(
         permit,
         _backing: backing,
     });
-    let global = scope.global()?;
-    for member in MEMBERS {
-        let getter = Access {
+    install_members(scope, MEMBERS.iter(), |member, setter| {
+        let access = Access {
             host: host.clone(),
             member,
         };
+        Callback::new(move |scope, arguments| access.call(scope, arguments, setter))
+    })
+}
+
+pub(super) fn install_child_members(
+    scope: &mut Scope<'_>,
+    callback: impl FnMut(&'static Member, bool) -> Callback,
+) -> Result<(), Error> {
+    install_members(
+        scope,
+        MEMBERS.iter().chain(std::iter::once(&CLOSED)),
+        callback,
+    )
+}
+
+pub(super) fn child_callback_count() -> usize {
+    MEMBERS
+        .iter()
+        .map(|member| 1 + usize::from(member.set.is_some()))
+        .sum::<usize>()
+        + 1
+}
+
+fn install_members(
+    scope: &mut Scope<'_>,
+    members: impl Iterator<Item = &'static Member>,
+    mut callback: impl FnMut(&'static Member, bool) -> Callback,
+) -> Result<(), Error> {
+    let global = scope.global()?;
+    for member in members {
         let get = scope.fixed_arity_function(
-            &Callback::new(move |scope, arguments| getter.call(scope, arguments, false)),
+            &callback(member, false),
             FunctionMetadata {
                 name: member.get,
                 length: 0,
@@ -126,12 +171,8 @@ pub(super) fn install(
         let set = member
             .set
             .map(|name| {
-                let setter = Access {
-                    host: host.clone(),
-                    member,
-                };
                 scope.fixed_arity_function(
-                    &Callback::new(move |scope, arguments| setter.call(scope, arguments, true)),
+                    &callback(member, true),
                     FunctionMetadata { name, length: 1 },
                 )
             })
@@ -143,7 +184,7 @@ pub(super) fn install(
                 get: Some(&get),
                 set: set.as_ref(),
                 enumerable: true,
-                configurable: member.set.is_some(),
+                configurable: member.configurable(),
             },
         )?;
     }
@@ -216,8 +257,9 @@ impl Access {
             }
             match self.member.relation {
                 // The canonical attached navigable is this parentless top-level.
-                Relation::WindowProxy => Ok(None),
+                Relation::WindowProxy | Relation::Parent => Ok(None),
                 Relation::Opener => Ok(Some(Primitive::Null)),
+                Relation::Closed => Err(DocumentScriptNativeError::ProjectionCustody),
                 Relation::Length => {
                     let count = hosted.script_child_navigable_count(
                         &session.dom(),
@@ -236,22 +278,7 @@ impl Access {
         };
 
         if let Some(value) = replacement {
-            return match scope.define_property(
-                &global,
-                PropertyKey::String(self.member.key),
-                PropertyDescriptor::Data {
-                    value,
-                    writable: true,
-                    enumerable: true,
-                    configurable: true,
-                },
-            ) {
-                Ok(()) => Ok(Completion::Undefined),
-                Err(Error::PropertyRejected) => Ok(Completion::Throw(
-                    scope.type_error(&ascii(b"Cannot replace Window attribute"))?,
-                )),
-                Err(error) => Err(error),
-            };
+            return replace_attribute(scope, &global, self.member, value);
         }
         if setter {
             // Disowning this live no-opener context leaves its opener absent
@@ -264,6 +291,30 @@ impl Access {
             None => global,
         };
         Ok(Completion::Return(value))
+    }
+}
+
+pub(super) fn replace_attribute<'scope>(
+    scope: &mut Scope<'scope>,
+    global: &surgeist_bindings_js::Value<'scope>,
+    member: &Member,
+    value: &surgeist_bindings_js::Value<'scope>,
+) -> Result<Completion<'scope>, Error> {
+    match scope.define_property(
+        global,
+        PropertyKey::String(member.key),
+        PropertyDescriptor::Data {
+            value,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        },
+    ) {
+        Ok(()) => Ok(Completion::Undefined),
+        Err(Error::PropertyRejected) => Ok(Completion::Throw(
+            scope.type_error(&ascii(b"Cannot replace Window attribute"))?,
+        )),
+        Err(error) => Err(error),
     }
 }
 

@@ -134,6 +134,93 @@ impl Operations for Entered<'_> {
         })
     }
 
+    fn install_window_name_reader(&mut self, reader: &Root) -> Result<(), Error> {
+        self.check_active()?;
+        let reader = self.object_value(reader)?;
+        let names = self
+            .state
+            .realms
+            .try_borrow()
+            .map_err(|_| self.state.conflict())?
+            .get(&self.realm.index)
+            .and_then(|record| record.window.as_ref())
+            .map(|window| window.names.clone())
+            .ok_or(Error::BackendUnavailable)?;
+        if boa_engine::object::host::install_window_name_reader(&names, reader) {
+            Ok(())
+        } else {
+            Err(Error::PropertyRejected)
+        }
+    }
+
+    fn install_window_index_reader(&mut self, reader: &Root) -> Result<(), Error> {
+        self.check_active()?;
+        if !self
+            .state
+            .realms
+            .try_borrow()
+            .map_err(|_| self.state.conflict())?
+            .get(&self.realm.index)
+            .is_some_and(|record| record.window.is_some())
+        {
+            return Err(Error::BackendUnavailable);
+        }
+        let reader = self.object_value(reader)?;
+        let proxy = self.context.global_this();
+        if boa_engine::object::host::install_window_index_reader(&proxy, reader) {
+            Ok(())
+        } else {
+            Err(Error::PropertyRejected)
+        }
+    }
+
+    fn prepare_same_origin_window(&mut self) -> Result<Realm, Error> {
+        self.check_active()?;
+        let origin = boa_engine::object::host::window_proxy_origin(&self.context.global_this())
+            .ok_or(Error::BackendUnavailable)?;
+        let backing = self
+            .state
+            .owner
+            .preparation
+            .get()
+            .map(|account| {
+                let bytes = State::realm_storage_bytes()
+                    .checked_add(size_of::<Guard>())
+                    .ok_or(Error::Allocation)?;
+                let guard = account.admit(Request::Realm { bytes })?;
+                Ok::<_, Error>(RealmBacking::new(guard))
+            })
+            .transpose()?;
+        self.state.create_realm(self.context, Some(origin), backing)
+    }
+
+    fn install_child_window(
+        &mut self,
+        realm: &Realm,
+        install: &mut dyn FnMut(&mut dyn Operations) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        self.check_active()?;
+        let key = realm.0.key;
+        let realm = self.state.lookup_realm(key)?;
+        let frame = EnterRealm::new(self.context, realm);
+        install(&mut Entered {
+            context: &mut *frame.context,
+            state: self.state.clone(),
+            realm: key,
+        })?;
+        let window = self
+            .state
+            .realms
+            .try_borrow_mut()
+            .map_err(|_| self.state.conflict())?
+            .get_mut(&key.index)
+            .ok_or_else(|| self.state.conflict())?
+            .window
+            .take();
+        drop(window);
+        Ok(())
+    }
+
     fn qualify_window_event_target(
         &mut self,
         constructor: &Root,
@@ -307,7 +394,7 @@ impl Operations for Entered<'_> {
     }
 
     fn global(&mut self) -> Result<Root, Error> {
-        let global = self.context.global_object();
+        let global = self.context.global_this();
         self.root(global.into())
     }
 

@@ -342,9 +342,19 @@ pub(super) struct DocumentPrototypes {
     attr: RetainedCallbackObject,
     traversal: traversal::Prototypes,
     character_data: character_data::CharacterBindings,
+    collections: tag_collection::CollectionProjection,
 }
 
 impl DocumentPrototypes {
+    pub(super) fn install_window_reads(
+        &self,
+        scope: &mut Scope<'_>,
+        capture: CaptureFunding<'_>,
+        site: super::window_children::WindowSite,
+    ) -> Result<(), DocumentGuestEventError> {
+        tag_collection::install_window(scope, capture, &self.collections, site)
+    }
+
     fn for_document(&self, interface: DomDocumentInterface) -> &RetainedCallbackObject {
         match interface {
             DomDocumentInterface::Document => &self.document,
@@ -420,7 +430,15 @@ impl DocumentPrototypes {
         )?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         non_element_parent::install(scope, &document, &fragment, funding.capture)?;
-        tag_collection::install(scope, &document, funding)?;
+        let collections = tag_collection::install(scope, &document, funding)?;
+        if let Some(capture) = constructors {
+            tag_collection::install_window(
+                scope,
+                capture,
+                &collections,
+                super::window_children::WindowSite::Attached,
+            )?;
+        }
         custom_elements::install_node_getter(
             scope,
             &document,
@@ -483,6 +501,7 @@ impl DocumentPrototypes {
                 attr,
                 traversal,
                 character_data,
+                collections,
             },
             document,
         ))

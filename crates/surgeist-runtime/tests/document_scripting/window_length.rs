@@ -204,7 +204,15 @@ pub(super) fn observe(
             let outcome = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
             scope.to_utf16(&outcome)
         })
-        .unwrap();
+        .unwrap_or_else(|error| {
+            if let DocumentScriptError::Script(Error::HostFailure(failure)) = &error {
+                panic!(
+                    "Window observation failed: {:?}",
+                    std::error::Error::source(failure)
+                );
+            }
+            panic!("Window observation failed: {error:?}");
+        });
     String::from_utf16(&result).unwrap()
 }
 
