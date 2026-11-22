@@ -845,6 +845,7 @@ impl Account {
                 | RenderAttemptKind::Lighting
                 | RenderAttemptKind::Morphology
                 | RenderAttemptKind::DropShadow
+                | RenderAttemptKind::IccProfile
         ) {
             return RenderAccountingError::StandaloneAllocation { resource }.into();
         }
@@ -883,6 +884,7 @@ impl Account {
                 | RenderAttemptKind::Lighting
                 | RenderAttemptKind::Morphology
                 | RenderAttemptKind::DropShadow
+                | RenderAttemptKind::IccProfile
         ) {
             return RenderAccountingError::StandaloneCapacityOverflow { resource }.into();
         }
@@ -958,6 +960,7 @@ impl Account {
             && self.kind != RenderAttemptKind::Lighting
             && self.kind != RenderAttemptKind::Morphology
             && self.kind != RenderAttemptKind::DropShadow
+            && self.kind != RenderAttemptKind::IccProfile
             && refusal.phase != RenderPhase::Attempt
             && let RenderRefusalReason::Limit { limit } = refusal.reason
             && let Some(required) = refusal

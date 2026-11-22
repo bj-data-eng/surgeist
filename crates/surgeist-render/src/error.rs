@@ -60,6 +60,7 @@ enum PreparationDiagnostic {
     Morphology(crate::morphology::MorphologyPreparationError),
     Displacement(crate::displacement::DisplacementPreparationError),
     DropShadow(crate::native_shadow::DropShadowPreparationError),
+    IccProfile(crate::icc::IccProfileError),
     Glyph(crate::text::GlyphPreparationError),
     Accounting(crate::accounting::RenderAccountingError),
     GeometryRealization(GeometryRealizationError),
@@ -207,6 +208,18 @@ impl Error {
                 Some(PreparationDiagnostic::Accounting(diagnostic)) => Some(diagnostic),
                 _ => None,
             },
+        }
+    }
+
+    /// Reports a semantic failure during ICC source-profile preparation or conversion.
+    #[must_use]
+    pub const fn icc_profile_diagnostic(&self) -> Option<&crate::icc::IccProfileError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::IccProfile(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
         }
     }
 
@@ -836,6 +849,26 @@ impl From<GradientHintError> for Error {
     }
 }
 
+impl From<crate::icc::IccProfileError> for Error {
+    fn from(value: crate::icc::IccProfileError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::IccProfile,
+            message: chain(&value),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::IccProfile(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
+        })
+    }
+}
+
 /// An outgoing hint does not identify a supported interval of ordered colors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GradientHintError {
@@ -1198,6 +1231,8 @@ pub enum ErrorCode {
     PresentFailed,
     /// Reports that the selected platform or backend path is unsupported.
     UnsupportedBackend,
+    /// Reports a semantic ICC source-profile failure through [`Error::icc_profile_diagnostic`].
+    IccProfile,
 }
 
 /// Prints one lowercase phrase naming the classification.
@@ -1244,6 +1279,7 @@ impl fmt::Display for ErrorCode {
             // Also raised before the present call, for unavailable resources and format checks.
             Self::PresentFailed => "presented output failed",
             Self::UnsupportedBackend => "unsupported backend",
+            Self::IccProfile => "icc profile refused",
         })
     }
 }

@@ -45,6 +45,7 @@
 //! | [`diagnostic`] | Typed diagnostics that an [`Error`] carries |
 //! | [`effect`] | Inputs shared by the filter-primitive modules |
 //! | [`geometry`] | Logical and physical geometry and coordinate spaces |
+//! | [`icc`] | Checked in-memory color profiles and calibrated conversions |
 //! | [`image`] | Images and their sampling choices |
 //! | [`paint`] | Paint sources, colors and gradients |
 //! | [`renderer`] | The GPU renderer, its options and frame statistics |
@@ -65,6 +66,7 @@ pub mod displacement;
 pub mod effect;
 pub mod gaussian;
 pub mod geometry;
+pub mod icc;
 pub mod image;
 pub mod lighting;
 pub mod morphology;
