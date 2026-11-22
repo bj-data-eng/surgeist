@@ -9,7 +9,8 @@ animation-specific diagnostics.
 
 - `surgeist-css` owns authored CSS animation and transition syntax and values;
   CSSOM owns live authored editing.
-- `surgeist-animation` owns executable animation timing and sampling contracts.
+- `surgeist-animation` owns executable animation timing, time-space conversions
+  and sampling contracts.
 - `surgeist-runtime` owns clocks, scheduling, lifecycle, and invalidation.
 - Root `surgeist` owns cross-crate lowering and integration.
 - `surgeist-render`, `surgeist-layout`, and `surgeist-text` consume sampled
@@ -26,6 +27,13 @@ support, computed endpoints, keyframe lookup, and list pairing before sampling.
 Runtime resolves clocks and track start times into effective elapsed time. The
 animation crate can then sample explicit inputs without owning a scheduler or
 CSS parser. Root owns the adapters between these boundaries.
+
+The separate model-time boundary accepts signed coordinates and immutable
+timeline/animation snapshots. Callers supply document activity and frame time;
+Animation owns fixed-origin arithmetic and coordinate transformations. Captured
+snapshots keep queue-time conversion inputs coherent while callers later change
+timeline or playback state. Play-control lifecycle and effect sampling consume
+these values separately. See [model time](reference.md#model-time-and-timeline-conversions).
 
 ## Values and failure semantics
 

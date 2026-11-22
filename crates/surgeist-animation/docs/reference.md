@@ -8,12 +8,69 @@ dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
 [src/lib.rs](../src/lib.rs) declares the public modules `diagnostics`, `easing`,
-`interpolation`, `keyframe`, `progress`, `sample`, `time`, `timing`, and
+`interpolation`, `keyframe`, `progress`, `sample`, `time`, `timeline`, `timing`, and
 `transition`, and the constant `CRATE_NAME`. Each public type has one path,
 through the module that owns it, for example `surgeist_animation::easing::Easing`;
 the crate root reexports nothing. The crate forbids unsafe code. Tests live in
 source modules and the external consumer targets under
 [tests/](../tests/); crate-level examples are doctests.
+
+## Model time and timeline conversions
+
+`time::{AnimationTime, TimelineTime, OriginRelativeTime}` are distinct signed,
+finite millisecond coordinates. Their constructors reject NaN and infinities;
+`Option<coordinate>` exposes unresolved time separately from zero. `PlaybackRate`
+accepts every finite multiplier, including negative values and zero. The current
+representation uses `f64` milliseconds and distinguishes 0.001 ms from 0.0 ms in
+the focused checks. This meets the selected specification's recommended input
+precision at that boundary; it does not promise microsecond spacing at every
+magnitude or require a fixed internal representation.
+
+`timeline::DocumentTimeline` retains a caller-assigned identity and fixed
+origin-time offset. Each `update(DocumentClock)` receives document activity and,
+when active, an origin-relative frame timestamp. Current time is `now - origin`;
+unestablished origins and inactive documents produce unresolved time. Active
+reports cannot decrease, including across inactivity. Rejected reports preserve
+the previous state. Reading `snapshot()` never advances time. On restoration,
+the next update uses the supplied current timestamp without subtracting inactive
+time or changing origins. The caller owns clock acquisition, document lifetime,
+default-timeline uniqueness and frame/event ordering.
+
+`TimelineSnapshot` captures current time, identity, monotonicity and optional
+fixed-offset origin conversion. External producers may supply nonmonotonic
+timelines with no origin conversion; time is not assumed to follow a wall clock.
+External producers own their declared monotonicity across reports.
+
+The conversion functions consume explicit coordinates and immutable snapshots:
+
+| Function | Calculation and unresolved cases |
+| --- | --- |
+| `timeline_time_to_origin_relative_time` | Adds the timeline's own origin offset. Unresolved input, inactivity or absent conversion yields unresolved. |
+| `animation_time_to_timeline_time` | Computes `time / rate + start`. Unresolved or infinite input, zero rate or unresolved start yields unresolved. |
+| `animation_time_to_origin_relative_time` | Composes the two operations through the animation's captured associated timeline. Missing association also yields unresolved. |
+| `timeline_time_to_animation_time` | Computes `(time - start) * rate` for supplied coordinates. Unresolved input or start yields unresolved. This arithmetic does not resolve hold time or play state. |
+
+`AnimationTimeInput::Infinite` represents the extended algorithm input, such as
+an infinite associated-effect end, without admitting nonfinite model coordinates.
+`AnimationSnapshot` captures start time, playback rate and the associated timeline;
+later timeline/rate changes cannot alter a previously captured conversion.
+For animation time 30, rate 2, start 100 and document origin 40, the intermediate
+timeline time is 115 and the origin-relative result is 155. An already supplied
+timeline coordinate 30 converts directly to 70 without applying animation state.
+
+These operations implement the adopted native repairs in
+[#604](https://github.com/bj-data-eng/surgeist/issues/604) and
+[#605](https://github.com/bj-data-eng/surgeist/issues/605): restored document time
+uses current `now`, and failed animation conversion propagates unresolved rather
+than returning the original input. This is a bounded repair of the selected
+source's converter signature and return, not a claim that its text is corrected.
+The [module example](../src/timeline.rs) demonstrates the composed conversion.
+
+Finite arithmetic is not clamped. Rescaling recovers representable results from
+overflowing division or subtraction intermediates. Unrepresentable results return
+`TimeErrorKind::Unrepresentable` with the operation category; constructor failures
+and decreasing document reports have separate typed categories. These errors are
+distinct from a normal unresolved result. Arithmetic uses floating-point rounding.
 
 ## Sampling contracts
 
@@ -131,6 +188,7 @@ supported interpolation produces `SampleClassification::Failed` and
 | Capability | Status | Owner / behavior |
 | --- | --- | --- |
 | Time intake, finite durations, delays, and effective elapsed time | `supported` | `surgeist-animation` validates finite typed time values; runtime/root supplies elapsed time. |
+| Signed nullable model time, immutable conversion snapshots and fixed-origin document time | `supported` | `surgeist-animation` owns pure coordinate arithmetic and checked document reports; callers supply clocks, activity and timeline identities. |
 | Timing phases, fill modes, direction, iteration counts, play state, and next-frame hints | `supported` | `surgeist-animation` samples validated timing and reports stable or may-change hints. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
