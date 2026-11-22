@@ -21,7 +21,7 @@ pub(super) fn script_async_keeps_native_flag_and_content_coherent() {
 
                 const html = 'http://www.w3.org/1999/xhtml';
                 const script = document.createElementNS(html, 'h:script');
-                const foreign = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+                const foreign = document.createElementNS('urn:foreign', 'script');
                 Object.setPrototypeOf(foreign, proto);
                 for (const field of fields) {
                     const d = Object.getOwnPropertyDescriptor(proto, field);

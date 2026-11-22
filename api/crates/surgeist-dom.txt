@@ -2777,6 +2777,7 @@ pub const fn surgeist_dom::script::DomDocumentScriptingObservation::basis(self) 
 pub const fn surgeist_dom::script::DomDocumentScriptingObservation::status(self) -> surgeist_html_semantics::capture::HtmlScriptingStatus
 pub struct surgeist_dom::script::DomHtmlScript<'a>
 impl surgeist_dom::script::DomHtmlScript<'_>
+pub fn surgeist_dom::script::DomHtmlScript<'_>::effective_async_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub fn surgeist_dom::script::DomHtmlScript<'_>::flags(self) -> surgeist_html::internal::elements::script_flags::HtmlScriptFlags
 pub fn surgeist_dom::script::DomHtmlScript<'_>::id(self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::script::DomHtmlScript<'_>::parser_document(self) -> core::option::Option<surgeist_dom::identity::DocumentId>
@@ -3068,6 +3069,7 @@ pub fn surgeist_dom::source::DomSourceEdit::set_command_for_element(node: surgei
 pub fn surgeist_dom::source::DomSourceEdit::set_custom_validity(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_design_mode(document: surgeist_dom::identity::DocumentId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_dialog_return_value(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_html_script_async(node: surgeist_dom::identity::NodeId, value: bool) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_input_checked(node: surgeist_dom::identity::NodeId, value: bool) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_input_indeterminate(node: surgeist_dom::identity::NodeId, value: bool) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_input_value(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self

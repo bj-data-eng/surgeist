@@ -5177,6 +5177,7 @@ pub struct surgeist_html::elements::script::HtmlScriptFlags
 impl surgeist_html::elements::script::HtmlScriptFlags
 pub const fn surgeist_html::elements::script::HtmlScriptFlags::already_started(self) -> bool
 pub fn surgeist_html::elements::script::HtmlScriptFlags::async_attribute_added(&mut self)
+pub fn surgeist_html::elements::script::HtmlScriptFlags::async_idl_assigned(&mut self)
 pub fn surgeist_html::elements::script::HtmlScriptFlags::clone_already_started_from(&mut self, source: Self)
 pub const fn surgeist_html::elements::script::HtmlScriptFlags::delaying_load(self) -> bool
 pub const fn surgeist_html::elements::script::HtmlScriptFlags::external_file(self) -> bool

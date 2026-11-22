@@ -38,6 +38,7 @@ impl Charge<HtmlWork, HtmlResource> for TypeWork<'_> {
 
 use surgeist_html::{
     elements::script::{HtmlScriptKind, HtmlScriptResult},
+    values::Namespace,
     vocabulary::KnownHtmlAttribute,
 };
 
@@ -318,6 +319,40 @@ impl Draft {
         }
         Ok(())
     }
+    pub(super) fn set_html_script_async(
+        &mut self,
+        node: Key,
+        value: bool,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let mut fields = self.script_fields_mut(node, cancel)?;
+        let state = (*fields).as_mut().ok_or(DomError::WrongNodeKind)?;
+        state.flags.async_idl_assigned();
+        fields.commit(cancel)?;
+
+        let operands = source::formation::Formation::new(self, cancel)?;
+        let name = source::formation::string(
+            KnownHtmlAttribute::Async.local_name(),
+            operands.as_ref(),
+            cancel,
+        )?;
+        let namespace = Namespace::none();
+        if value {
+            let empty = source::formation::string("", operands.as_ref(), cancel)?;
+            self.set_standard_attribute(node, Some(&namespace), &name, &empty, limits, cancel)
+        } else {
+            self.remove_attribute(
+                node,
+                Some(&namespace),
+                &name,
+                attributes::AttributeRemoval::IgnoreMissing,
+                limits,
+                cancel,
+            )
+        }
+    }
+
     pub(super) fn script_attribute_change(
         &mut self,
         node: Key,

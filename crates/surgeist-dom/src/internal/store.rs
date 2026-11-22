@@ -4086,6 +4086,10 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 self.set_style_disabled(node, *disabled, limits, cancelled)?;
             }
+            Command::SetHtmlScriptAsync { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_html_script_async(node, *value, limits, cancelled)?;
+            }
             Command::Output { node, edit } => {
                 let node = self.resolve(node.clone())?;
                 self.output_edit(node, edit, limits, cancelled)?;

@@ -1731,6 +1731,17 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
     )
 }
 
+/// Selected argument `HTMLScriptElement.supports:0/type` (not overload selection).
+pub fn html_script_element_supports_0_type() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLScriptElement.supports:0/type",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected argument `HTMLMediaElement.canPlayType:0/type` (not overload selection).
 pub fn html_media_element_can_play_type_0_type() -> Argument<Type<DomString>> {
     Argument::new(
