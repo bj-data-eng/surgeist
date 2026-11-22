@@ -740,3 +740,103 @@ fn one_update_rejects_conflicting_timeline_and_target_observations() {
         EffectStackErrorKind::TargetMismatch
     );
 }
+
+fn color(
+    space: surgeist_animation::interpolation::ColorInterpolationSpace,
+    value: f64,
+) -> InterpolableValue {
+    use surgeist_animation::interpolation::InterpolableColor;
+    InterpolableValue::color(
+        InterpolableColor::from_straight_components(
+            space,
+            value,
+            value * 0.5,
+            -value,
+            UnitRatio::new(1.0).unwrap(),
+        )
+        .unwrap(),
+    )
+}
+
+#[test]
+fn color_nonadditive_addition_returns_the_effect_operand() {
+    use surgeist_animation::composition::PropertyValueOperations;
+    use surgeist_animation::interpolation::ColorInterpolationSpace::{Oklab, Srgb};
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    // Selected Values 4: a type without addition selects B. No color-space
+    // conversion, clipping, or component sum is part of this operation.
+    for (underlying, effect) in [
+        (color(Srgb, 0.25), color(Srgb, 0.75)),
+        (color(Srgb, f64::MAX), color(Oklab, -f64::MAX)),
+    ] {
+        assert_eq!(
+            operations.add(&key("color"), &underlying, &effect),
+            Ok(effect.clone())
+        );
+        assert_eq!(
+            operations.add(&key("color"), &effect, &underlying),
+            Ok(underlying)
+        );
+    }
+}
+
+#[test]
+fn color_nonadditive_accumulation_uses_the_same_effect_operand_fallback() {
+    use surgeist_animation::composition::PropertyValueOperations;
+    use surgeist_animation::interpolation::ColorInterpolationSpace::{Oklab, Srgb};
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    // Values 4's unspecified accumulation delegates to addition, so B survives.
+    let underlying = color(Srgb, f64::MAX);
+    let effect = color(Oklab, -f64::MAX);
+    assert_eq!(
+        operations.accumulate(&key("color"), &underlying, &effect),
+        Ok(effect.clone())
+    );
+    assert_eq!(
+        operations.accumulate(&key("color"), &effect, &underlying),
+        Ok(underlying)
+    );
+}
+
+fn assert_color_stack_fallback(operation: CompositeOperation) {
+    use surgeist_animation::interpolation::ColorInterpolationSpace::{Oklab, Srgb};
+    let mut records = AnimationRecords::new();
+    let underlying = color(Srgb, 0.25);
+    let effect = color(Oklab, 0.75);
+    let lower = input(
+        &mut records,
+        &[("color", underlying)],
+        CompositeOperation::Replace,
+    );
+    let mut higher = input(&mut records, &[("color", effect.clone())], operation);
+    // Exercise composition of both interval endpoints before real interpolation.
+    higher.local_time = Some(AnimationTime::from_millis(50.0).unwrap());
+    state(
+        &mut higher,
+        EffectPlayState::Running,
+        AnimationReplaceState::Active,
+    );
+    let higher_id = higher.animation.clone();
+    let snapshot = EffectStackSnapshot::new(&records, vec![higher, lower]).unwrap();
+    let sampled = snapshot.sample(
+        EffectTargetId::new(1),
+        &key("color"),
+        KeyframeTarget::Available(&color(Srgb, 0.0)),
+        &AnimationTypeOperations::new(AnimationType::ByComputedValue),
+    );
+    let sampled = sampled
+        .expect("nonadditive color composition returns a value")
+        .unwrap();
+    assert_eq!(sampled.value(), &effect);
+    assert_eq!(sampled.animation(), &higher_id);
+}
+
+#[test]
+fn color_nonadditive_addition_samples_through_the_effect_stack() {
+    assert_color_stack_fallback(CompositeOperation::Add);
+}
+
+#[test]
+fn color_nonadditive_accumulation_samples_through_the_effect_stack() {
+    assert_color_stack_fallback(CompositeOperation::Accumulate);
+}
