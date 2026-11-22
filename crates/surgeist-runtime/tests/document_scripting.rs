@@ -85,6 +85,8 @@ mod dialog_close;
 mod dialog_methods;
 #[path = "document_scripting/dialog_state.rs"]
 mod dialog_state;
+#[path = "document_scripting/document_all.rs"]
+mod document_all;
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
 #[path = "document_scripting/element_mixin.rs"]
@@ -2514,6 +2516,7 @@ fn main() {
             "wpt-window-startup" => wpt_window_startup::starts_unmodified_harness_with_native_timers(),
             "html-collection-indexed-assignment" => wpt_window_startup::refuses_unsupported_html_collection_index_assignment(),
             "html-collection-properties" => tag_collection::reflects_live_tag_collection_properties(),
+            "document-all" => document_all::uses_the_canonical_live_document(),
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
             "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),
             "media-removal-stable-state" => standard_window::guest_media_removal_reaches_the_owning_checkpoint(),
@@ -2680,6 +2683,7 @@ fn main() {
     window_document::window_projects_the_live_document_and_node_brands();
     window_length::attached_window_length_tracks_current_native_children();
     window_properties::named_window_elements_follow_the_live_document();
+    document_all::uses_the_canonical_live_document();
     named_node_map::follows_the_native_attribute_list();
     named_node_map::verifies_attachment_before_rechecking_ownership();
     window_properties::indexed_window_children_follow_the_live_browsing_contexts();
