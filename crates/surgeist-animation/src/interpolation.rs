@@ -16,6 +16,7 @@ use std::sync::Arc;
 use crate::computed::{ComputedError, ComputedValue, RepeatableList};
 use crate::diagnostics::{NumericError, NumericInput};
 use crate::easing::EasedProgress;
+use crate::filter::{FilterError, FilterList};
 use crate::grid::{GridError, GridValue};
 use crate::masking::ClipPathValue;
 use crate::progress::UnitRatio;
@@ -42,6 +43,7 @@ pub enum ValueFamily {
     Shadow,
     Grid,
     ClipPath,
+    Filter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,6 +106,7 @@ pub enum InterpolableValue {
     Shadow(ShadowList),
     Grid(GridValue),
     ClipPath(ClipPathValue),
+    Filter(FilterList),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -131,6 +134,7 @@ pub enum InterpolationOutcome {
     ShapeFailure(ShapeInterpolationFailure),
     ShadowFailure(ShadowInterpolationFailure),
     GridFailure(GridInterpolationFailure),
+    FilterFailure(FilterInterpolationFailure),
     Unsupported(InterpolationError),
 }
 
@@ -261,6 +265,32 @@ impl GridInterpolationFailure {
     }
 }
 
+/// A failed whole-filter sample retaining its property, inputs and eased progress.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FilterInterpolationFailure {
+    property: PropertyKey,
+    endpoints: Arc<InterpolationEndpoints>,
+    progress: InterpolationProgress,
+    error: FilterError,
+}
+impl FilterInterpolationFailure {
+    pub const fn property(&self) -> &PropertyKey {
+        &self.property
+    }
+    pub fn from(&self) -> &InterpolableValue {
+        &self.endpoints.from
+    }
+    pub fn to(&self) -> &InterpolableValue {
+        &self.endpoints.to
+    }
+    pub const fn progress(&self) -> InterpolationProgress {
+        self.progress
+    }
+    pub const fn error(&self) -> &FilterError {
+        &self.error
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolationError {
     EmptyPropertyKey,
@@ -274,6 +304,7 @@ pub enum InterpolationError {
     Shape(ShapeInterpolationFailure),
     Shadow(ShadowInterpolationFailure),
     Grid(GridInterpolationFailure),
+    Filter(FilterInterpolationFailure),
     MismatchedFamilies {
         property: PropertyKey,
         from: ValueFamily,
@@ -311,6 +342,13 @@ impl fmt::Display for InterpolationError {
             Self::Numeric(error) => {
                 write!(f, "numeric interpolation input is invalid: {error}")
             }
+            Self::Filter(result) => write!(
+                f,
+                "interpolating {} failed at {}: {}",
+                result.property.as_str(),
+                result.progress.value(),
+                result.error
+            ),
             Self::Shadow(result) => write!(
                 f,
                 "interpolating {} failed at {}: {}",
@@ -390,6 +428,7 @@ impl std::error::Error for InterpolationError {
             Self::Shape(result) => Some(&result.error),
             Self::Shadow(result) => Some(&result.error),
             Self::Grid(result) => Some(&result.error),
+            Self::Filter(result) => Some(&result.error),
             _ => None,
         }
     }
@@ -409,6 +448,7 @@ fn value_family_name(family: ValueFamily) -> &'static str {
         ValueFamily::Shadow => "shadow",
         ValueFamily::Grid => "grid",
         ValueFamily::ClipPath => "clip-path",
+        ValueFamily::Filter => "filter",
     }
 }
 
@@ -701,6 +741,10 @@ impl InterpolableValue {
         Self::Composite(value)
     }
 
+    pub fn filter(value: FilterList) -> Self {
+        Self::Filter(value)
+    }
+
     pub fn shadow(value: ShadowList) -> Self {
         Self::Shadow(value)
     }
@@ -739,6 +783,7 @@ impl InterpolableValue {
             Self::Shadow(_) => ValueFamily::Shadow,
             Self::Grid(_) => ValueFamily::Grid,
             Self::ClipPath(_) => ValueFamily::ClipPath,
+            Self::Filter(_) => ValueFamily::Filter,
         }
     }
 }
@@ -870,6 +915,17 @@ impl InterpolationPair {
             }
             (InterpolableValue::Composite(_), InterpolableValue::Composite(_)) => {
                 self.unsupported(ValueFamily::Composite, "composite interpolation deferred")
+            }
+            (InterpolableValue::Filter(from), InterpolableValue::Filter(to)) => {
+                match from.interpolate(to, progress) {
+                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::Filter(value)),
+                    Err(error) => InterpolationOutcome::FilterFailure(FilterInterpolationFailure {
+                        property: self.property.clone(),
+                        endpoints: Arc::clone(&self.endpoints),
+                        progress,
+                        error,
+                    }),
+                }
             }
             (InterpolableValue::Shadow(from), InterpolableValue::Shadow(to)) => {
                 match from.interpolate(to, progress) {

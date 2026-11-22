@@ -72,6 +72,9 @@ impl PropertyValueOperations for Operations {
             InterpolationOutcome::ShapeFailure(error) => {
                 Err(InterpolationError::Shape(error).into())
             }
+            InterpolationOutcome::FilterFailure(error) => {
+                Err(InterpolationError::Filter(error).into())
+            }
             InterpolationOutcome::ShadowFailure(error) => {
                 Err(InterpolationError::Shadow(error).into())
             }

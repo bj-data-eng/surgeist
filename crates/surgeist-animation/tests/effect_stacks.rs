@@ -1077,6 +1077,112 @@ fn integration_default_operations_use_shadow_accumulation() {
     );
 }
 
+fn filter_value(inputs: Vec<surgeist_animation::filter::FilterInput>) -> InterpolableValue {
+    InterpolableValue::filter(surgeist_animation::filter::FilterList::new(inputs).unwrap())
+}
+
+#[test]
+fn filter_default_addition_preserves_underlying_first_order() {
+    use surgeist_animation::composition::compose_value;
+    use surgeist_animation::filter::{AmountFunction, FilterAmountInput, FilterInput};
+    let blur = FilterInput::blur_pixels(2.).unwrap();
+    let brightness = FilterInput::amount(
+        AmountFunction::Brightness,
+        FilterAmountInput::Number(InterpolableNumber::new(3.).unwrap()),
+    )
+    .unwrap();
+    let underlying = filter_value(vec![blur.clone()]);
+    let effect = filter_value(vec![brightness.clone()]);
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    assert_eq!(
+        compose_value(
+            &key("filter"),
+            CompositeOperation::Add,
+            &underlying,
+            &effect,
+            &operations
+        ),
+        Ok(filter_value(vec![blur, brightness]))
+    );
+}
+
+#[test]
+fn filter_default_accumulation_selects_the_complete_effect_including_urls() {
+    use surgeist_animation::composition::compose_value;
+    use surgeist_animation::filter::FilterInput;
+    let underlying = filter_value(vec![FilterInput::blur_pixels(2.).unwrap()]);
+    let effect = filter_value(vec![
+        FilterInput::url_reference(std::sync::Arc::from("url(#effect)")).unwrap(),
+    ]);
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    assert_eq!(
+        compose_value(
+            &key("filter"),
+            CompositeOperation::Accumulate,
+            &underlying,
+            &effect,
+            &operations
+        ),
+        Ok(effect.clone())
+    );
+    assert_eq!(
+        compose_value(
+            &key("filter"),
+            CompositeOperation::Accumulate,
+            &effect,
+            &underlying,
+            &operations
+        ),
+        Ok(underlying)
+    );
+}
+
+fn filter_stack(operation: CompositeOperation) -> (InterpolableValue, InterpolableValue) {
+    use surgeist_animation::filter::{AmountFunction, FilterAmountInput, FilterInput};
+    let blur = FilterInput::blur_pixels(2.).unwrap();
+    let brightness = FilterInput::amount(
+        AmountFunction::Brightness,
+        FilterAmountInput::Number(InterpolableNumber::new(3.).unwrap()),
+    )
+    .unwrap();
+    let underlying = filter_value(vec![blur.clone()]);
+    let effect = filter_value(vec![brightness.clone()]);
+    let expected = if operation == CompositeOperation::Add {
+        filter_value(vec![blur, brightness])
+    } else {
+        effect.clone()
+    };
+    let mut records = AnimationRecords::new();
+    let low = input(
+        &mut records,
+        &[("filter", underlying.clone())],
+        CompositeOperation::Replace,
+    );
+    let mut high = input(&mut records, &[("filter", effect)], operation);
+    // The active midpoint must compose both endpoints using the real default
+    // operations before filter interpolation, rather than returning an endpoint.
+    state(
+        &mut records,
+        &mut high,
+        EffectPlayState::Running,
+        AnimationReplaceState::Active,
+    );
+    let snapshot = EffectStackSnapshot::new(&records, vec![high, low]).unwrap();
+    (sample(&snapshot, "filter", &underlying).unwrap(), expected)
+}
+
+#[test]
+fn filter_default_addition_flows_through_the_active_effect_stack() {
+    let (actual, expected) = filter_stack(CompositeOperation::Add);
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn filter_default_accumulation_flows_through_the_active_effect_stack() {
+    let (actual, expected) = filter_stack(CompositeOperation::Accumulate);
+    assert_eq!(actual, expected);
+}
+
 #[test]
 fn integration_landed_list_operations_fold_through_canonical_stack_samples() {
     for (underlying, effect, operation, expected) in [

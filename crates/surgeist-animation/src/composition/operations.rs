@@ -2,6 +2,7 @@
 
 use super::PropertyValueOperations;
 use crate::computed::ComputedError;
+use crate::filter::FilterError;
 use crate::interpolation::{
     InterpolableNumber, InterpolablePercentage, InterpolableValue, InterpolationError,
     InterpolationOutcome, InterpolationPair, InterpolationProgress, PropertyKey, TransformValue,
@@ -19,9 +20,10 @@ use core::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimationType {
     Discrete,
-    /// Combines computed components and dispatches guarded Transform/Shadow
-    /// payloads to their selected property-specific list owners. Shadow kind
-    /// remains encoded by ShadowList; generic repeatable-list rules do not apply.
+    /// Combines computed components and dispatches guarded Transform/Shadow/Filter
+    /// payloads to their selected property-specific list owners. Shadow kind and
+    /// filter function identities remain encoded by their respective lists;
+    /// generic repeatable-list rules do not apply to these payloads.
     ByComputedValue,
     RepeatableList,
 }
@@ -53,6 +55,7 @@ pub enum PropertyOperationErrorKind {
     Computed(ComputedError),
     Transform(Box<TransformError>),
     Shadow(Box<ShadowError>),
+    Filter(Box<FilterError>),
     Interpolation(Box<InterpolationError>),
 }
 /// A typed failure from a generic property operation.
@@ -81,6 +84,7 @@ impl std::error::Error for PropertyOperationError {
             PropertyOperationErrorKind::Computed(error) => Some(error),
             PropertyOperationErrorKind::Transform(error) => Some(error.as_ref()),
             PropertyOperationErrorKind::Shadow(error) => Some(error.as_ref()),
+            PropertyOperationErrorKind::Filter(error) => Some(error.as_ref()),
             PropertyOperationErrorKind::Interpolation(error) => Some(error.as_ref()),
             _ => None,
         }
@@ -149,6 +153,9 @@ impl PropertyValueOperations for AnimationTypeOperations {
                 Err(InterpolationError::Shadow(error).into())
             }
             InterpolationOutcome::GridFailure(error) => Err(InterpolationError::Grid(error).into()),
+            InterpolationOutcome::FilterFailure(error) => {
+                Err(InterpolationError::Filter(error).into())
+            }
             InterpolationOutcome::Unsupported(error) => Err(error.into()),
         }
     }
@@ -239,6 +246,16 @@ impl AnimationTypeOperations {
                     kind: PropertyOperationErrorKind::Shadow(Box::new(error)),
                 })?;
                 Ok(InterpolableValue::shadow(value))
+            }
+            (InterpolableValue::Filter(a), InterpolableValue::Filter(b)) => {
+                let value = if operation == CompositeOperation::Add {
+                    a.added_to(b).map_err(|error| PropertyOperationError {
+                        kind: PropertyOperationErrorKind::Filter(Box::new(error)),
+                    })?
+                } else {
+                    a.accumulated_with(b)
+                };
+                Ok(InterpolableValue::filter(value))
             }
             (InterpolableValue::Discrete(_), InterpolableValue::Discrete(_)) => Ok(value.clone()),
             (a, b) if a.family() != b.family() => Ok(value.clone()),
