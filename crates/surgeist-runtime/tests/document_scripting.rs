@@ -58,7 +58,7 @@ use surgeist_runtime::{
         DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceRuntimeError,
         DomSourceServices, DomSourceUnavailable, DomSourceUrlService,
     },
-    style::DomStyleRuntimeLimits,
+    style::{DomConstructedSheetOwnerInit, DomStyleRuntimeLimits},
 };
 
 #[path = "document_scripting/anchor_attributes.rs"]
@@ -77,6 +77,8 @@ mod control_autocomplete;
 mod control_custom_validity;
 #[path = "document_scripting/control_validation.rs"]
 mod control_validation;
+#[path = "document_scripting/cssom.rs"]
+mod cssom;
 #[path = "document_scripting/dialog_close.rs"]
 mod dialog_close;
 #[path = "document_scripting/dialog_methods.rs"]
@@ -129,8 +131,6 @@ mod popover_target;
 mod range_indicator_bindings;
 #[path = "document_scripting/script_async.rs"]
 mod script_async;
-#[path = "document_scripting/cssom.rs"]
-mod cssom;
 #[path = "document_scripting/script_preparation.rs"]
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
@@ -2546,6 +2546,7 @@ fn main() {
         match scenario.as_str() {
             "window-event-target-lookup" => window_document::window_resolves_the_inherited_event_target_operations(),
             "window-properties-full" => window_document::window_properties_full_assignment_regression(),
+            "boa-qualification-window-oracle" => window_document::qualification_window_oracle(),
             "window-properties-alternate-assignment" => window_document::window_properties_refuses_alternate_receiver(),
             "window-properties-direct-storage" => window_document::window_properties_direct_assignment_preserves_storage_and_inheritance(),
             "wpt-window-startup" => wpt_window_startup::starts_unmodified_harness_with_native_timers(),
@@ -2637,6 +2638,7 @@ fn main() {
             }
             "cssom-window-contract" => cssom::run(),
             "cssom-prototype-order" => cssom::prototype_own_key_order(),
+            "cssom-indexed-properties" => cssom::indexed_properties_and_rule_custody(),
             "cssom-prototype-cycle" => cssom::prototype_cycles_are_rejected_by_ordinary_receivers(),
             "css-namespace" => native_window_exposes_css_escape(),
             "css-namespace-admission" => native_window_css_admission(),

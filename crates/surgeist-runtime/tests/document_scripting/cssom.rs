@@ -139,7 +139,7 @@ fn reuse_native_owner() {
     assert!(snapshot.sheet_rules(original.sheet()).unwrap().is_empty());
 }
 
-fn indexed_properties_and_rule_custody() {
+pub(super) fn indexed_properties_and_rule_custody() {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
         .enable(top, ALLOW, hooks(&hook()))
