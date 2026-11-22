@@ -978,18 +978,40 @@ pub mod surgeist_animation::transform
 pub enum surgeist_animation::transform::TransformComponent
 pub surgeist_animation::transform::TransformComponent::Angle
 pub surgeist_animation::transform::TransformComponent::MatrixCoefficient(usize)
+pub surgeist_animation::transform::TransformComponent::Perspective(usize)
+pub surgeist_animation::transform::TransformComponent::Quaternion(usize)
+pub surgeist_animation::transform::TransformComponent::RotationAxis(usize)
 pub surgeist_animation::transform::TransformComponent::ScaleX
 pub surgeist_animation::transform::TransformComponent::ScaleY
+pub surgeist_animation::transform::TransformComponent::ScaleZ
+pub surgeist_animation::transform::TransformComponent::Skew(usize)
 pub surgeist_animation::transform::TransformComponent::TranslationX
 pub surgeist_animation::transform::TransformComponent::TranslationY
+pub surgeist_animation::transform::TransformComponent::TranslationZ
+pub enum surgeist_animation::transform::TransformErrorKind
+pub surgeist_animation::transform::TransformErrorKind::NonFinite
+pub surgeist_animation::transform::TransformErrorKind::NotTwoDimensional
 pub enum surgeist_animation::transform::TransformFunction
 pub surgeist_animation::transform::TransformFunction::Matrix(surgeist_animation::transform::TransformMatrix)
+pub surgeist_animation::transform::TransformFunction::Matrix3d(surgeist_animation::transform::TransformMatrix3d)
+pub surgeist_animation::transform::TransformFunction::Perspective(core::option::Option<surgeist_animation::transform::CssPixels>)
 pub surgeist_animation::transform::TransformFunction::Rotate(surgeist_animation::transform::TransformAngle)
+pub surgeist_animation::transform::TransformFunction::Rotate3d
+pub surgeist_animation::transform::TransformFunction::Rotate3d::angle: surgeist_animation::transform::TransformAngle
+pub surgeist_animation::transform::TransformFunction::Rotate3d::axis: surgeist_animation::transform::RotationAxis
+pub surgeist_animation::transform::TransformFunction::RotateX(surgeist_animation::transform::TransformAngle)
+pub surgeist_animation::transform::TransformFunction::RotateY(surgeist_animation::transform::TransformAngle)
+pub surgeist_animation::transform::TransformFunction::RotateZ(surgeist_animation::transform::TransformAngle)
 pub surgeist_animation::transform::TransformFunction::Scale
 pub surgeist_animation::transform::TransformFunction::Scale::x: surgeist_animation::transform::ScaleFactor
 pub surgeist_animation::transform::TransformFunction::Scale::y: core::option::Option<surgeist_animation::transform::ScaleFactor>
+pub surgeist_animation::transform::TransformFunction::Scale3d
+pub surgeist_animation::transform::TransformFunction::Scale3d::x: surgeist_animation::transform::ScaleFactor
+pub surgeist_animation::transform::TransformFunction::Scale3d::y: surgeist_animation::transform::ScaleFactor
+pub surgeist_animation::transform::TransformFunction::Scale3d::z: surgeist_animation::transform::ScaleFactor
 pub surgeist_animation::transform::TransformFunction::ScaleX(surgeist_animation::transform::ScaleFactor)
 pub surgeist_animation::transform::TransformFunction::ScaleY(surgeist_animation::transform::ScaleFactor)
+pub surgeist_animation::transform::TransformFunction::ScaleZ(surgeist_animation::transform::ScaleFactor)
 pub surgeist_animation::transform::TransformFunction::Skew
 pub surgeist_animation::transform::TransformFunction::Skew::x: surgeist_animation::transform::TransformAngle
 pub surgeist_animation::transform::TransformFunction::Skew::y: core::option::Option<surgeist_animation::transform::TransformAngle>
@@ -998,8 +1020,15 @@ pub surgeist_animation::transform::TransformFunction::SkewY(surgeist_animation::
 pub surgeist_animation::transform::TransformFunction::Translate
 pub surgeist_animation::transform::TransformFunction::Translate::x: surgeist_animation::transform::CssPixels
 pub surgeist_animation::transform::TransformFunction::Translate::y: core::option::Option<surgeist_animation::transform::CssPixels>
+pub surgeist_animation::transform::TransformFunction::Translate3d
+pub surgeist_animation::transform::TransformFunction::Translate3d::x: surgeist_animation::transform::CssPixels
+pub surgeist_animation::transform::TransformFunction::Translate3d::y: surgeist_animation::transform::CssPixels
+pub surgeist_animation::transform::TransformFunction::Translate3d::z: surgeist_animation::transform::CssPixels
 pub surgeist_animation::transform::TransformFunction::TranslateX(surgeist_animation::transform::CssPixels)
 pub surgeist_animation::transform::TransformFunction::TranslateY(surgeist_animation::transform::CssPixels)
+pub surgeist_animation::transform::TransformFunction::TranslateZ(surgeist_animation::transform::CssPixels)
+impl surgeist_animation::transform::TransformFunction
+pub fn surgeist_animation::transform::TransformFunction::neutral_for_addition(self) -> Self
 pub struct surgeist_animation::transform::CssPixels(_)
 impl surgeist_animation::transform::CssPixels
 pub const surgeist_animation::transform::CssPixels::ZERO: Self
@@ -1008,13 +1037,22 @@ pub const fn surgeist_animation::transform::CssPixels::value(self) -> f64
 impl core::cmp::Eq for surgeist_animation::transform::CssPixels
 pub struct surgeist_animation::transform::ResolvedTransformList
 impl surgeist_animation::transform::ResolvedTransformList
+pub fn surgeist_animation::transform::ResolvedTransformList::accumulated_with(&self, effect: &Self) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
 pub fn surgeist_animation::transform::ResolvedTransformList::added_to(&self, other: &Self) -> Self
 pub fn surgeist_animation::transform::ResolvedTransformList::functions(&self) -> &[surgeist_animation::transform::TransformFunction]
+pub fn surgeist_animation::transform::ResolvedTransformList::neutral_for_addition(&self) -> Self
 pub fn surgeist_animation::transform::ResolvedTransformList::new(functions: alloc::vec::Vec<surgeist_animation::transform::TransformFunction>) -> Self
 pub fn surgeist_animation::transform::ResolvedTransformList::to_matrix(&self) -> core::result::Result<surgeist_animation::transform::TransformMatrix, surgeist_animation::transform::TransformError>
+pub fn surgeist_animation::transform::ResolvedTransformList::to_matrix3d(&self) -> core::result::Result<surgeist_animation::transform::TransformMatrix3d, surgeist_animation::transform::TransformError>
+pub struct surgeist_animation::transform::RotationAxis(_)
+impl surgeist_animation::transform::RotationAxis
+pub const fn surgeist_animation::transform::RotationAxis::components(self) -> [f64; 3]
+pub fn surgeist_animation::transform::RotationAxis::new(values: [f64; 3]) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
+impl core::cmp::Eq for surgeist_animation::transform::RotationAxis
 pub struct surgeist_animation::transform::ScaleFactor(_)
 impl surgeist_animation::transform::ScaleFactor
 pub const surgeist_animation::transform::ScaleFactor::ONE: Self
+pub const surgeist_animation::transform::ScaleFactor::ZERO: Self
 pub fn surgeist_animation::transform::ScaleFactor::new(value: f64) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
 pub const fn surgeist_animation::transform::ScaleFactor::value(self) -> f64
 impl core::cmp::Eq for surgeist_animation::transform::ScaleFactor
@@ -1030,6 +1068,7 @@ pub struct surgeist_animation::transform::TransformError
 impl surgeist_animation::transform::TransformError
 pub const fn surgeist_animation::transform::TransformError::component(&self) -> surgeist_animation::transform::TransformComponent
 pub const fn surgeist_animation::transform::TransformError::function_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_animation::transform::TransformError::kind(&self) -> surgeist_animation::transform::TransformErrorKind
 pub const fn surgeist_animation::transform::TransformError::value(&self) -> f64
 impl core::error::Error for surgeist_animation::transform::TransformError
 impl core::fmt::Display for surgeist_animation::transform::TransformError
@@ -1040,6 +1079,16 @@ pub const surgeist_animation::transform::TransformMatrix::IDENTITY: Self
 pub const fn surgeist_animation::transform::TransformMatrix::coefficients(self) -> [f64; 6]
 pub fn surgeist_animation::transform::TransformMatrix::new(coefficients: [f64; 6]) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
 impl core::cmp::Eq for surgeist_animation::transform::TransformMatrix
+impl core::convert::From<surgeist_animation::transform::TransformMatrix> for surgeist_animation::transform::TransformMatrix3d
+pub fn surgeist_animation::transform::TransformMatrix3d::from(value: surgeist_animation::transform::TransformMatrix) -> Self
+pub struct surgeist_animation::transform::TransformMatrix3d(_)
+impl surgeist_animation::transform::TransformMatrix3d
+pub const surgeist_animation::transform::TransformMatrix3d::IDENTITY: Self
+pub const fn surgeist_animation::transform::TransformMatrix3d::coefficients(self) -> [f64; 16]
+pub fn surgeist_animation::transform::TransformMatrix3d::new(coefficients: [f64; 16]) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
+impl core::cmp::Eq for surgeist_animation::transform::TransformMatrix3d
+impl core::convert::From<surgeist_animation::transform::TransformMatrix> for surgeist_animation::transform::TransformMatrix3d
+pub fn surgeist_animation::transform::TransformMatrix3d::from(value: surgeist_animation::transform::TransformMatrix) -> Self
 pub mod surgeist_animation::transition
 pub enum surgeist_animation::transition::TransitionDecisionErrorKind
 pub surgeist_animation::transition::TransitionDecisionErrorKind::DuplicateChange

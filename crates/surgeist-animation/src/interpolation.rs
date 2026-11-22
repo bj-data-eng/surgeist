@@ -505,12 +505,18 @@ impl TransformValue {
         }
     }
 
-    /// Returns marker text, or `resolved-2d` for a concrete payload.
+    /// Returns marker text, or `resolved-2d`/`resolved-3d` for a concrete payload.
     /// Inspect [`Self::resolved_list`] to distinguish payloads from marker text.
     pub fn kind(&self) -> &str {
         match &self.payload {
             TransformPayload::Unsupported(kind) => kind,
-            TransformPayload::Resolved(_) => "resolved-2d",
+            TransformPayload::Resolved(list) => {
+                if list.is_spatial() {
+                    "resolved-3d"
+                } else {
+                    "resolved-2d"
+                }
+            }
         }
     }
 }

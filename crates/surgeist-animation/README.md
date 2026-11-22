@@ -8,11 +8,11 @@ Version 0.1.0 supports snapshot-based CSS transition decisions, typed native
 keyframe normalization and computed interval sampling, timing, easing,
 computed numeric composition,
 logarithmic ratio interpolation, normalized positions, premultiplied colors,
-resolved 2D transforms, and discrete switching. Contextual calculations retain
-source identity in symbolic combination plans. 2D transform lists support
-identity padding, common primitives, suffix matrix interpolation, and list
-addition. 3D transforms, transform accumulation, and opaque diagnostic markers
-produce typed unsupported outcomes. CSS lowering, contextual evaluation, final
+resolved 2D/3D transforms, and discrete switching. Contextual calculations retain
+source identity in symbolic combination plans. Transform lists support identity
+padding, common primitives, suffix matrix interpolation, list addition and
+accumulation. Explicit transform/composite diagnostic markers retain typed
+unsupported outcomes. CSS lowering, contextual evaluation, final
 clamping, runtime scheduling, and root integration belong to their respective
 owners.
 

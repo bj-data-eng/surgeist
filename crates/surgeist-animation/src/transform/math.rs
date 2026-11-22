@@ -1,18 +1,20 @@
 //! Checked affine arithmetic and the selected CSS Transforms 1 algorithms.
 
 use super::{
-    CssPixels, ScaleFactor, TransformAngle, TransformComponent as C, TransformError,
-    TransformFunction as F, TransformMatrix, finite,
+    Combination, CssPixels, ScaleFactor, TransformAngle, TransformComponent as C, TransformError,
+    TransformFunction as F, TransformMatrix, combine_number, finite,
 };
 
 fn checked(value: f64, component: C) -> Result<f64, TransformError> {
     finite(value, component)
 }
 
-fn lerp(a: f64, b: f64, p: f64, component: C) -> Result<f64, TransformError> {
-    let delta = checked(b - a, component)?;
-    let scaled = checked(delta * p, component)?;
-    checked(a + scaled, component)
+fn lerp(a: f64, b: f64, operation: Combination, component: C) -> Result<f64, TransformError> {
+    let one_based = matches!(
+        component,
+        C::ScaleX | C::ScaleY | C::MatrixCoefficient(0 | 3)
+    );
+    combine_number(a, b, operation, one_based, component)
 }
 
 fn dot(a: f64, b: f64, c: f64, d: f64, component: C) -> Result<f64, TransformError> {
@@ -41,7 +43,7 @@ fn multiply(a: TransformMatrix, b: TransformMatrix) -> Result<TransformMatrix, T
     ])
 }
 
-fn function_matrix(function: F) -> Result<TransformMatrix, TransformError> {
+pub(super) fn function_matrix(function: F) -> Result<TransformMatrix, TransformError> {
     match function {
         F::Matrix(matrix) => Ok(matrix),
         F::Rotate(angle) => {
@@ -73,6 +75,7 @@ fn function_matrix(function: F) -> Result<TransformMatrix, TransformError> {
         }
         F::ScaleX(x) => TransformMatrix::new([x.value(), 0., 0., 1., 0., 0.]),
         F::ScaleY(y) => TransformMatrix::new([1., 0., 0., y.value(), 0., 0.]),
+        other => super::spatial::function_matrix(other)?.require_affine(),
     }
 }
 
@@ -223,10 +226,10 @@ pub(super) fn decompose(matrix: TransformMatrix) -> Result<Decomposed, Transform
     })
 }
 
-pub(super) fn interpolate_matrix(
+pub(super) fn combine_matrix(
     mut a: Decomposed,
     mut b: Decomposed,
-    p: f64,
+    operation: Combination,
 ) -> Result<TransformMatrix, TransformError> {
     use core::f64::consts::{PI, TAU};
     if (a.scale[0] < 0. && b.scale[1] < 0.) || (a.scale[1] < 0. && b.scale[0] < 0.) {
@@ -247,22 +250,35 @@ pub(super) fn interpolate_matrix(
             b.angle -= TAU;
         }
     }
-    let x = lerp(a.translation[0], b.translation[0], p, C::TranslationX)?;
-    let y = lerp(a.translation[1], b.translation[1], p, C::TranslationY)?;
-    let sx = lerp(a.scale[0], b.scale[0], p, C::ScaleX)?;
-    let sy = lerp(a.scale[1], b.scale[1], p, C::ScaleY)?;
-    let angle = lerp(a.angle, b.angle, p, C::Angle)?;
+    let x = lerp(
+        a.translation[0],
+        b.translation[0],
+        operation,
+        C::TranslationX,
+    )?;
+    let y = lerp(
+        a.translation[1],
+        b.translation[1],
+        operation,
+        C::TranslationY,
+    )?;
+    let sx = lerp(a.scale[0], b.scale[0], operation, C::ScaleX)?;
+    let sy = lerp(a.scale[1], b.scale[1], operation, C::ScaleY)?;
+    let angle = lerp(a.angle, b.angle, operation, C::Angle)?;
     let mut residual = [0.; 4];
     for (index, result) in residual.iter_mut().enumerate() {
         *result = lerp(
             a.residual[index],
             b.residual[index],
-            p,
+            operation,
             C::MatrixCoefficient(index),
         )?;
     }
     // Zero was represented as one turn solely for shortest-rotation matching.
-    let angle = if angle == TAU || angle == -TAU {
+    let angle = if angle == TAU
+        || angle == -TAU
+        || (matches!(operation, Combination::Accumulate) && angle % TAU == 0.)
+    {
         0.
     } else {
         angle
@@ -365,7 +381,7 @@ pub(super) fn function_pair(a: F, b: F) -> Option<FunctionPair> {
 }
 
 impl FunctionPair {
-    pub(super) fn sample(self, p: f64) -> Result<F, TransformError> {
+    pub(super) fn sample(self, operation: Combination) -> Result<F, TransformError> {
         let components = match self.shape {
             Shape::Translate(_) => [C::TranslationX, C::TranslationY],
             Shape::TranslateX => [C::TranslationX, C::TranslationX],
@@ -375,8 +391,8 @@ impl FunctionPair {
             Shape::ScaleY => [C::ScaleY, C::ScaleY],
             Shape::Rotate | Shape::Skew(_) | Shape::SkewX | Shape::SkewY => [C::Angle, C::Angle],
         };
-        let x = lerp(self.from[0], self.to[0], p, components[0])?;
-        let y = lerp(self.from[1], self.to[1], p, components[1])?;
+        let x = lerp(self.from[0], self.to[0], operation, components[0])?;
+        let y = lerp(self.from[1], self.to[1], operation, components[1])?;
         // Both components crossed the finite boundary immediately above.
         Ok(match self.shape {
             Shape::Translate(two) => F::Translate {
