@@ -486,6 +486,95 @@ pub fn surgeist_animation::easing::Steps::evaluate_unrestricted_with_before_flag
 pub fn surgeist_animation::easing::Steps::evaluate_with_before_flag(&self, progress: surgeist_animation::progress::NormalizedProgress, before_flag: bool) -> surgeist_animation::easing::EasedProgress
 pub fn surgeist_animation::easing::Steps::new(count: u32, position: surgeist_animation::easing::StepPosition) -> core::result::Result<Self, surgeist_animation::easing::EasingError>
 pub const fn surgeist_animation::easing::Steps::position(self) -> surgeist_animation::easing::StepPosition
+pub mod surgeist_animation::filter
+pub mod surgeist_animation::filter::image
+pub enum surgeist_animation::filter::image::FilterImageSample<S>
+pub surgeist_animation::filter::image::FilterImageSample::Filtered
+pub surgeist_animation::filter::image::FilterImageSample::Filtered::filters: surgeist_animation::filter::FilterList
+pub surgeist_animation::filter::image::FilterImageSample::Filtered::source: surgeist_animation::filter::image::FilterImageSource
+pub surgeist_animation::filter::image::FilterImageSample::Generic(S)
+pub struct surgeist_animation::filter::image::FilterImage<I>
+impl<I> surgeist_animation::filter::image::FilterImage<I>
+pub fn surgeist_animation::filter::image::FilterImage<I>::filtered(original: I, source: surgeist_animation::filter::image::FilterImageSource, filters: surgeist_animation::filter::FilterList) -> Self
+pub fn surgeist_animation::filter::image::FilterImage<I>::generic(original: I) -> Self
+pub const fn surgeist_animation::filter::image::FilterImage<I>::original(&self) -> &I
+pub fn surgeist_animation::filter::image::FilterImage<I>::sample<S, E>(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress, generic: impl core::ops::function::FnOnce(&I, &I, surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<S, E>) -> core::result::Result<surgeist_animation::filter::image::FilterImageSample<S>, E>
+pub struct surgeist_animation::filter::image::FilterImageSource(_)
+impl surgeist_animation::filter::image::FilterImageSource
+pub fn surgeist_animation::filter::image::FilterImageSource::new() -> Self
+impl core::cmp::Eq for surgeist_animation::filter::image::FilterImageSource
+impl core::cmp::PartialEq for surgeist_animation::filter::image::FilterImageSource
+pub fn surgeist_animation::filter::image::FilterImageSource::eq(&self, other: &Self) -> bool
+impl core::default::Default for surgeist_animation::filter::image::FilterImageSource
+pub fn surgeist_animation::filter::image::FilterImageSource::default() -> Self
+pub enum surgeist_animation::filter::AmountFunction
+pub surgeist_animation::filter::AmountFunction::Brightness
+pub surgeist_animation::filter::AmountFunction::Contrast
+pub surgeist_animation::filter::AmountFunction::Grayscale
+pub surgeist_animation::filter::AmountFunction::Invert
+pub surgeist_animation::filter::AmountFunction::Opacity
+pub surgeist_animation::filter::AmountFunction::Saturate
+pub surgeist_animation::filter::AmountFunction::Sepia
+pub enum surgeist_animation::filter::FilterAmountInput
+pub surgeist_animation::filter::FilterAmountInput::Number(surgeist_animation::interpolation::InterpolableNumber)
+pub surgeist_animation::filter::FilterAmountInput::Percentage(surgeist_animation::interpolation::InterpolablePercentage)
+pub enum surgeist_animation::filter::FilterComponent
+pub surgeist_animation::filter::FilterComponent::Amount
+pub surgeist_animation::filter::FilterComponent::Angle
+pub surgeist_animation::filter::FilterComponent::Color(surgeist_animation::interpolation::InterpolationComponent)
+pub surgeist_animation::filter::FilterComponent::OffsetX
+pub surgeist_animation::filter::FilterComponent::OffsetY
+pub surgeist_animation::filter::FilterComponent::StandardDeviation
+pub enum surgeist_animation::filter::FilterErrorKind
+pub surgeist_animation::filter::FilterErrorKind::Capacity
+pub surgeist_animation::filter::FilterErrorKind::EmptyReference
+pub surgeist_animation::filter::FilterErrorKind::IncompatibleFunctions
+pub surgeist_animation::filter::FilterErrorKind::InvalidInputAlpha
+pub surgeist_animation::filter::FilterErrorKind::MismatchedColorSpaces
+pub surgeist_animation::filter::FilterErrorKind::NegativeInput
+pub surgeist_animation::filter::FilterErrorKind::NonFinite
+pub enum surgeist_animation::filter::FilterFunctionKind
+pub surgeist_animation::filter::FilterFunctionKind::Amount(surgeist_animation::filter::AmountFunction)
+pub surgeist_animation::filter::FilterFunctionKind::Blur
+pub surgeist_animation::filter::FilterFunctionKind::DropShadow
+pub surgeist_animation::filter::FilterFunctionKind::HueRotate
+pub surgeist_animation::filter::FilterFunctionKind::Url
+pub struct surgeist_animation::filter::FilterDropShadow
+impl surgeist_animation::filter::FilterDropShadow
+pub const fn surgeist_animation::filter::FilterDropShadow::color(&self) -> surgeist_animation::interpolation::InterpolableColor
+pub const fn surgeist_animation::filter::FilterDropShadow::offsets_pixels(&self) -> [f64; 2]
+pub const fn surgeist_animation::filter::FilterDropShadow::standard_deviation_pixels(&self) -> f64
+pub struct surgeist_animation::filter::FilterError
+impl surgeist_animation::filter::FilterError
+pub const fn surgeist_animation::filter::FilterError::failed_component(&self) -> core::option::Option<surgeist_animation::filter::FilterComponent>
+pub const fn surgeist_animation::filter::FilterError::function_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_animation::filter::FilterError::kind(&self) -> surgeist_animation::filter::FilterErrorKind
+pub const fn surgeist_animation::filter::FilterError::value(&self) -> core::option::Option<f64>
+impl core::error::Error for surgeist_animation::filter::FilterError
+impl core::fmt::Display for surgeist_animation::filter::FilterError
+pub fn surgeist_animation::filter::FilterError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::filter::FilterFunction(_)
+impl surgeist_animation::filter::FilterFunction
+pub const fn surgeist_animation::filter::FilterFunction::amount(&self) -> core::option::Option<(surgeist_animation::filter::AmountFunction, f64)>
+pub const fn surgeist_animation::filter::FilterFunction::angle(&self) -> core::option::Option<surgeist_animation::transform::TransformAngle>
+pub const fn surgeist_animation::filter::FilterFunction::blur_pixels(&self) -> core::option::Option<f64>
+pub const fn surgeist_animation::filter::FilterFunction::drop_shadow(&self) -> core::option::Option<&surgeist_animation::filter::FilterDropShadow>
+pub const fn surgeist_animation::filter::FilterFunction::kind(&self) -> surgeist_animation::filter::FilterFunctionKind
+pub fn surgeist_animation::filter::FilterFunction::url_reference(&self) -> core::option::Option<&str>
+pub struct surgeist_animation::filter::FilterInput(_)
+impl surgeist_animation::filter::FilterInput
+pub fn surgeist_animation::filter::FilterInput::amount(function: surgeist_animation::filter::AmountFunction, input: surgeist_animation::filter::FilterAmountInput) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
+pub fn surgeist_animation::filter::FilterInput::blur_pixels(sigma: f64) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
+pub fn surgeist_animation::filter::FilterInput::drop_shadow_pixels(offsets: [f64; 2], sigma: f64, color: surgeist_animation::interpolation::InterpolableColor) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
+pub fn surgeist_animation::filter::FilterInput::hue_rotate(angle: surgeist_animation::transform::TransformAngle) -> Self
+pub fn surgeist_animation::filter::FilterInput::url_reference(reference: alloc::sync::Arc<str>) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
+pub struct surgeist_animation::filter::FilterList
+impl surgeist_animation::filter::FilterList
+pub fn surgeist_animation::filter::FilterList::accumulated_with(&self, effect: &Self) -> Self
+pub fn surgeist_animation::filter::FilterList::added_to(&self, other: &Self) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
+pub fn surgeist_animation::filter::FilterList::functions(&self) -> &[surgeist_animation::filter::FilterFunction]
+pub fn surgeist_animation::filter::FilterList::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
+pub fn surgeist_animation::filter::FilterList::new(inputs: alloc::vec::Vec<surgeist_animation::filter::FilterInput>) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
 pub mod surgeist_animation::grid
 pub enum surgeist_animation::grid::GridComponent
 pub surgeist_animation::grid::GridComponent::Breadth
@@ -572,6 +661,7 @@ pub surgeist_animation::interpolation::InterpolableValue::Color(surgeist_animati
 pub surgeist_animation::interpolation::InterpolableValue::Composite(surgeist_animation::interpolation::CompositeValue)
 pub surgeist_animation::interpolation::InterpolableValue::Computed(surgeist_animation::computed::ComputedValue)
 pub surgeist_animation::interpolation::InterpolableValue::Discrete(surgeist_animation::interpolation::DiscreteValue)
+pub surgeist_animation::interpolation::InterpolableValue::Filter(surgeist_animation::filter::FilterList)
 pub surgeist_animation::interpolation::InterpolableValue::Grid(surgeist_animation::grid::GridValue)
 pub surgeist_animation::interpolation::InterpolableValue::Number(surgeist_animation::interpolation::InterpolableNumber)
 pub surgeist_animation::interpolation::InterpolableValue::Percentage(surgeist_animation::interpolation::InterpolablePercentage)
@@ -586,6 +676,7 @@ pub fn surgeist_animation::interpolation::InterpolableValue::composite(value: su
 pub fn surgeist_animation::interpolation::InterpolableValue::computed(value: surgeist_animation::computed::ComputedValue) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::discrete(value: surgeist_animation::interpolation::DiscreteValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::family(&self) -> surgeist_animation::interpolation::ValueFamily
+pub fn surgeist_animation::interpolation::InterpolableValue::filter(value: surgeist_animation::filter::FilterList) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::grid(value: surgeist_animation::grid::GridValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::number(value: surgeist_animation::interpolation::InterpolableNumber) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::percentage(value: surgeist_animation::interpolation::InterpolablePercentage) -> Self
@@ -607,6 +698,7 @@ pub enum surgeist_animation::interpolation::InterpolationError
 pub surgeist_animation::interpolation::InterpolationError::Computed(surgeist_animation::interpolation::ComputedInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::EmptyDiscreteValue
 pub surgeist_animation::interpolation::InterpolationError::EmptyPropertyKey
+pub surgeist_animation::interpolation::InterpolationError::Filter(surgeist_animation::interpolation::FilterInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::Grid(surgeist_animation::interpolation::GridInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::MismatchedColorSpaces
 pub surgeist_animation::interpolation::InterpolationError::MismatchedColorSpaces::from: surgeist_animation::interpolation::ColorInterpolationSpace
@@ -645,6 +737,7 @@ pub fn surgeist_animation::interpolation::InterpolationError::fmt(&self, f: &mut
 pub enum surgeist_animation::interpolation::InterpolationOutcome
 pub surgeist_animation::interpolation::InterpolationOutcome::ArithmeticFailure(surgeist_animation::interpolation::NonFiniteInterpolationResult)
 pub surgeist_animation::interpolation::InterpolationOutcome::ComputedFailure(surgeist_animation::interpolation::ComputedInterpolationFailure)
+pub surgeist_animation::interpolation::InterpolationOutcome::FilterFailure(surgeist_animation::interpolation::FilterInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::GridFailure(surgeist_animation::interpolation::GridInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::ShadowFailure(surgeist_animation::interpolation::ShadowInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::ShapeFailure(surgeist_animation::interpolation::ShapeInterpolationFailure)
@@ -656,6 +749,7 @@ pub surgeist_animation::interpolation::ValueFamily::Color
 pub surgeist_animation::interpolation::ValueFamily::Composite
 pub surgeist_animation::interpolation::ValueFamily::Computed
 pub surgeist_animation::interpolation::ValueFamily::Discrete
+pub surgeist_animation::interpolation::ValueFamily::Filter
 pub surgeist_animation::interpolation::ValueFamily::Grid
 pub surgeist_animation::interpolation::ValueFamily::Number
 pub surgeist_animation::interpolation::ValueFamily::Percentage
@@ -681,6 +775,13 @@ pub fn surgeist_animation::interpolation::DiscreteValue::from_shared(token: allo
 pub fn surgeist_animation::interpolation::DiscreteValue::from_text(token: &str) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::DiscreteValue::new(token: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::DiscreteValue::token(&self) -> &str
+pub struct surgeist_animation::interpolation::FilterInterpolationFailure
+impl surgeist_animation::interpolation::FilterInterpolationFailure
+pub const fn surgeist_animation::interpolation::FilterInterpolationFailure::error(&self) -> &surgeist_animation::filter::FilterError
+pub fn surgeist_animation::interpolation::FilterInterpolationFailure::from(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub const fn surgeist_animation::interpolation::FilterInterpolationFailure::progress(&self) -> surgeist_animation::interpolation::InterpolationProgress
+pub const fn surgeist_animation::interpolation::FilterInterpolationFailure::property(&self) -> &surgeist_animation::interpolation::PropertyKey
+pub fn surgeist_animation::interpolation::FilterInterpolationFailure::to(&self) -> &surgeist_animation::interpolation::InterpolableValue
 pub struct surgeist_animation::interpolation::GridInterpolationFailure
 impl surgeist_animation::interpolation::GridInterpolationFailure
 pub const fn surgeist_animation::interpolation::GridInterpolationFailure::error(&self) -> &surgeist_animation::grid::GridError

@@ -161,6 +161,16 @@ deviation belongs to its distinct function shape. Shared box/text algebra does
 not confer filter-list composition semantics or own layout, painting, currentcolor
 resolution, color conversion or invalidation.
 
+Filter lists preserve function identities until interpolation, so Animation can
+preflight the entire list before numeric work and initialize unmatched tails with
+the correct identities. Filter images reuse numerical list interpolation but
+route incompatibility to the caller's generic image operation, while the filter
+property uses whole-value discrete switching. Immutable source tokens distinguish
+verified used image/context identity from authored URL spelling. The renderer
+still owns image domains, blur edge handling and pixel execution. Neither native
+list sampling nor generic-image delegation claims composed Filter Effects
+rendering conformance.
+
 ## App-native motion
 
 This remains distinct from app-native motion work. A future `surgeist-motion`

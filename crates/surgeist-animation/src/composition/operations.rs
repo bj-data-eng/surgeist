@@ -149,6 +149,9 @@ impl PropertyValueOperations for AnimationTypeOperations {
                 Err(InterpolationError::Shadow(error).into())
             }
             InterpolationOutcome::GridFailure(error) => Err(InterpolationError::Grid(error).into()),
+            InterpolationOutcome::FilterFailure(error) => {
+                Err(InterpolationError::Filter(error).into())
+            }
             InterpolationOutcome::Unsupported(error) => Err(error.into()),
         }
     }

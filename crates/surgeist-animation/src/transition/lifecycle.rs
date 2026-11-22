@@ -464,6 +464,9 @@ impl<T: Clone> RunningTransition<T> {
                 InterpolationOutcome::ShapeFailure(error) => {
                     return Err(InterpolationError::Shape(error).into());
                 }
+                InterpolationOutcome::FilterFailure(error) => {
+                    return Err(InterpolationError::Filter(error).into());
+                }
                 InterpolationOutcome::ShadowFailure(error) => {
                     return Err(InterpolationError::Shadow(error).into());
                 }

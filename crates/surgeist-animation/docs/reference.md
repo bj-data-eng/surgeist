@@ -1005,6 +1005,67 @@ composite interpolation, produces `SampleClassification::Unsupported` and
 supported interpolation produces `SampleClassification::Failed` and
 `SampleValue::Error`, and later endpoint samples can recover.
 
+## Normalized filter lists and filter images
+
+[`filter`](../src/filter.rs) owns `FilterInput`, immutable `FilterFunction`
+samples and `FilterList`. Supply resolved CSS-pixel lengths, explicit colors,
+`TransformAngle` values and typed number/percentage amounts. Percentage 1 means
+100%. Input constructors reject nonfinite/negative sigma and amounts, invalid
+endpoint alpha and empty URL reference tokens. Drop-shadow offsets can be
+negative. The singleton `FilterDropShadow` has offsets, standard deviation and
+color; no spread/inset slot exists. Neither it nor blur uses box-shadow blur
+radius semantics. Style retains authored syntax, omitted-argument computation,
+currentcolor, symbolic context and color conversion.
+
+The [selected Filter Effects 1 rules](../../../references/filter-effects-1--WD-filter-effects-1-20181218--b73408da4068.md#interpolation-of-filter-functions)
+interpolate blur as length, seven amount functions as numbers, hue rotation
+without normalizing complete turns, and one drop shadow componentwise.
+The shared checked scalar and premultiplied color kernels handle finite eased
+progress, including extrapolation. Sampled lists can be reused as endpoints
+without reapplying input guards. Each paired color must already use the same
+explicit interpolation space. Used-value clamping remains with consumers:
+amounts above one remain valid computed inputs, including grayscale, invert,
+opacity and sepia whose effect use caps the amount at one. Filter-function pixel
+execution in sRGB and SVG primitive color-space policy are distinct from this
+supplied interpolation-space boundary.
+
+`InterpolableValue::filter` enters ordinary pair, transition and keyframe
+sampling. `FilterInterpolationFailure` retains the property, complete endpoints,
+eased progress and indexed/component `FilterError`. No partial list is returned;
+later finite samples can recover. Capacity reservations return typed errors.
+
+Before arithmetic, interpolation checks the complete pair of lists for URL
+references and mismatched corresponding function kinds. Either condition selects
+the entire original from list below progress 0.5, or the entire to list otherwise.
+For compatible lists, append missing identity functions at the end. Empty means
+`none`; it receives the other list's corresponding identities. Interpolation
+retains the padded shape, including at exact endpoints. Identities are blur zero,
+hue zero, brightness/contrast/opacity/saturate one, grayscale/invert/sepia zero,
+and a transparent zero-offset/zero-sigma drop shadow. These differ from omitted
+arguments: all seven omitted amounts compute to one, and a missing drop-shadow
+color comes from the color property. The caller supplies those computed defaults.
+`added_to` concatenates underlying first; `accumulated_with` returns the entire
+effect B under the [selected list algebra](../../../references/filter-effects-1--WD-filter-effects-1-20181218--b73408da4068.md#animation-of-filters).
+
+[`filter::image`](../src/filter/image.rs) specializes native filter() image pairs.
+Retain each complete original image in `FilterImage<I>`. For a filter() form,
+supply its list and a `FilterImageSource` token certifying one immutable used
+image plus all non-list context. Clone that token only for verified identical
+facts, and issue a new token when the source, concrete object size or other
+context changes. Keep the source-token-to-image mapping alive for sampled output.
+URL text equality alone does not certify compatible sources.
+
+`FilterImage::sample` returns a filtered source/list when both forms share that
+verified source/context and numerical list interpolation succeeds. Otherwise it
+executes the supplied generic image interpolation callback exactly once with both
+complete originals and unchanged progress, preserving its typed result or error.
+This includes URL/kind incompatibility and numerical/capability failure; it does
+not replace generic image interpolation with a property-level discrete swap.
+[Filter-image execution](../../../references/filter-effects-1--WD-filter-effects-1-20181218--b73408da4068.md#FilterCSSImageValue)
+retains source dimensions/origin and uses duplicate edges for blur; those image
+domain facts remain caller/renderer responsibilities. No decoding, fetching,
+resource resolution, generic image algorithm or pixel execution is added here.
+
 ## Resolved shadow lists
 
 [`shadow`](../src/shadow.rs) owns normalized box/text shadow inputs and sampled
@@ -1175,6 +1236,7 @@ basis is guessed.
 | Computed keyframe effect sampling and native endpoint fallback | `supported` | `keyframe::ComputedKeyframes` selects sparse property intervals, preserves overlap branches, composes endpoints, and samples supplied property operations. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
+| Normalized filter lists and native filter images | `supported` | Supplied resolved functions, identity end padding, URL/incompatible whole-value fallback, ordered composition and executed generic-image delegation. |
 | Normalized box/text shadow lists | `supported` | Supplied resolved geometry and explicit colors, inset-aware end padding, whole-value discrete fallback, ordered addition and accumulation. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |

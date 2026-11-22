@@ -23,7 +23,9 @@ payloads. Compatible shapes use the shared kernel; other branches switch as a
 whole. Masking's discrete property policy and legacy clip rectangles can use
 the existing discrete and computed-component families. Repeatable mask
 position/size lists remain outside the current capability.
-Explicit transform/composite diagnostic markers retain typed
+Filter lists use corresponding identity padding and ordered addition; native
+filter images specialize matching used sources or execute supplied generic
+image interpolation. Explicit transform/composite diagnostic markers retain typed
 unsupported outcomes. CSS lowering, contextual evaluation, final
 clamping, runtime scheduling, and root integration belong to their respective
 owners. Shape addition and accumulation remain outside the current capability.
