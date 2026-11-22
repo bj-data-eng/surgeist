@@ -172,8 +172,10 @@ pub(crate) fn prepare(value: Color, destination: Space) -> Color {
     Color::new(destination, channels, value.unit_alpha())
 }
 
-fn hue_turn(first: f64, second: f64, method: Hue) -> f64 {
-    let (difference, correction) = Wide::from_f64(second).add_with_error(Wide::from_f64(-first));
+fn hue_turn(first: f64, second: f64, normalization: f64, method: Hue) -> f64 {
+    let (difference, low) = Wide::from_f64(second).add_with_error(Wide::from_f64(-first));
+    let (shifted, shift_error) = difference.add_with_error(Wide::from_f64(normalization));
+    let (difference, correction) = shifted.add_with_error(low.add(shift_error));
     let difference = difference.to_f64();
     let half_turn = difference.abs().total_cmp(&180.0).then_with(|| {
         let correction = if difference.is_sign_negative() {
@@ -191,8 +193,8 @@ fn hue_turn(first: f64, second: f64, method: Hue) -> f64 {
         Hue::Shorter if half_turn.is_gt() => 360.0_f64.copysign(-difference),
         Hue::Longer if half_turn.is_lt() && difference > 0.0 => -360.0,
         Hue::Longer if half_turn.is_lt() => 360.0,
-        Hue::Increasing if second < first => 360.0,
-        Hue::Decreasing if first < second => -360.0,
+        Hue::Increasing if difference < 0.0 => 360.0,
+        Hue::Decreasing if difference > 0.0 => -360.0,
         _ => 0.0,
     }
 }
@@ -260,13 +262,17 @@ fn interpolate_components(
             // The affine form keeps the offset at large progress. Retain
             // the low word of the slope, which can determine a near-zero
             // result after the rounded slope cancels the first endpoint.
-            let (slope, correction) = second.add_with_error(first.negated());
-            first.add_product(slope, t).add_product(correction, t)
+            affine(first, second, t)
         }
     };
-    let alpha = aa
-        .zip(ba)
-        .map(|(a, b)| interpolate(Wide::from_f64(a), Wide::from_f64(b)));
+    let weights = aa.zip(ba).map(|(a, b)| {
+        let a = Wide::from_f64(a);
+        let b = Wide::from_f64(b);
+        // a*(1-t), formed without narrowing the complement beforehand.
+        let first = a.add_product(a.negated(), t);
+        let second = b.multiply(t);
+        (first, second, interpolate(a, b))
+    });
 
     let a = first.channels();
     let b = second.channels();
@@ -277,12 +283,25 @@ fn interpolate_components(
         if let Some((hue_index, strategy)) = hue
             && index == hue_index
         {
-            let start = x.rem_euclid(360.0);
-            let end = y.rem_euclid(360.0);
-            let turn = hue_turn(start, end, strategy);
+            let start = x % 360.0;
+            let end = y % 360.0;
+            let start_wrap = if start < 0.0 { 360.0 } else { 0.0 };
+            let end_wrap = if end < 0.0 { 360.0 } else { 0.0 };
+            let normalization = end_wrap - start_wrap;
+            let turn = hue_turn(start, end, normalization, strategy);
             let angle = if in_unit_interval {
-                let start = if turn < 0.0 { start - turn } else { start };
-                let end = if turn > 0.0 { end + turn } else { end };
+                let start_offset = start_wrap - turn.min(0.0);
+                let end_offset = end_wrap + turn.max(0.0);
+                let start = if start_offset != 0.0 {
+                    start + start_offset
+                } else {
+                    start
+                };
+                let end = if end_offset != 0.0 {
+                    end + end_offset
+                } else {
+                    end
+                };
                 start * (1.0 - progress) + end * progress
             } else {
                 // Evaluate each term before reducing the whole angle. An
@@ -291,24 +310,48 @@ fn interpolate_components(
                 start
                     + (hue_product_remainder(end, progress)
                         - hue_product_remainder(start, progress))
-                    + hue_product_remainder(turn, progress)
+                    + hue_product_remainder(normalization + turn, progress)
             };
             return Some(Wide::from_f64(angle.rem_euclid(360.0)));
         }
-        if x.to_bits() == y.to_bits() && alpha.is_none_or(|alpha| !alpha.is_zero()) {
+        if x.to_bits() == y.to_bits() && weights.is_none_or(|(_, _, alpha)| !alpha.is_zero()) {
             // A common coordinate factors out of the premultiplied sum.
             return Some(Wide::from_f64(x));
         }
-        let value = interpolate(
-            Wide::from_f64(x).multiply_fixed(aa.unwrap_or(1.0)),
-            Wide::from_f64(y).multiply_fixed(ba.unwrap_or(1.0)),
-        );
-        Some(match alpha {
-            Some(alpha) if !alpha.is_zero() => value.divide(alpha),
-            _ => value,
+        let x = Wide::from_f64(x);
+        let y = Wide::from_f64(y);
+        Some(match weights {
+            None => interpolate(x, y),
+            Some((first, second, alpha)) if !alpha.is_zero() => {
+                // Since first + second = alpha, factor the more heavily
+                // weighted coordinate out of the premultiplied sum. Forming
+                // both endpoint products first loses even representable
+                // channel differences when their rounded products agree.
+                if first.magnitude_order(second).is_lt() {
+                    affine(y, x, first.divide(alpha))
+                } else {
+                    affine(x, y, second.divide(alpha))
+                }
+            }
+            Some((first, second, _)) if in_unit_interval => {
+                x.multiply(first).add(y.multiply(second))
+            }
+            Some((_, second, _)) => {
+                // With zero alpha the terms have opposite weights. The
+                // un-divided premultiplied channel is their difference.
+                let (difference, low) = y.add_with_error(x.negated());
+                difference.multiply(second).add_product(low, second)
+            }
         })
     });
-    (channels, alpha)
+    (channels, weights.map(|(_, _, alpha)| alpha))
+}
+
+fn affine(first: Wide, second: Wide, progress: Wide) -> Wide {
+    let (slope, correction) = second.add_with_error(first.negated());
+    first
+        .add_product(slope, progress)
+        .add_product(correction, progress)
 }
 
 /// Reduce a hue product before rounding or adding the starting angle. Two
