@@ -7,7 +7,7 @@ use surgeist_cssom::{
     CssomBatch, CssomEditGuard, CssomError, CssomMediaListId, CssomSheetId, CssomSheetInit,
     CssomSheetText, CssomSnapshot,
 };
-use surgeist_dom::{hosted::DomHostedSheetConstructionError, style::DomStyleCssomRootError};
+use surgeist_dom::{hosted::sheet::DomHostedSheetConstructionError, style::DomStyleCssomRootError};
 
 pub(super) type FailureSlot = HostFailureSlot<Failure, DomHostedRuntimeRetention>;
 
@@ -40,12 +40,14 @@ pub(super) struct Host {
     pub(super) owner: Weak<NativeOwner>,
     pub(super) permit: DocumentScriptPermit,
     pub(super) failures: FailureSlot,
+    pub(super) cap: preparation::ExternalAdmission,
 }
 
 pub(super) struct Retention {
     owner: Weak<NativeOwner>,
     bytes: usize,
     _native: DomHostedRuntimeRetention,
+    _cap: Option<preparation::CapReservation>,
 }
 
 impl Retention {
@@ -54,6 +56,7 @@ impl Retention {
             owner: Rc::downgrade(owner),
             bytes: 0,
             _native: native,
+            _cap: None,
         }
     }
 }
@@ -166,14 +169,7 @@ impl StylesheetHost for Host {
                 .get()
                 .checked_add(bytes)
                 .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-            if owner
-                .stylesheet_base
-                .get()
-                .checked_add(total)
-                .is_none_or(|all| all > owner.storage_limit)
-            {
-                return Err(DocumentScriptNativeError::StorageLimit);
-            }
+            let cap = self.cap.reserve(bytes)?;
             let mut session = owner
                 .session
                 .try_borrow_mut()
@@ -186,6 +182,7 @@ impl StylesheetHost for Host {
                 owner: Rc::downgrade(&owner),
                 bytes,
                 _native: native,
+                _cap: Some(cap),
             })
         })();
         self.native_result(scope, result)

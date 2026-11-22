@@ -1,4 +1,4 @@
-//! Private V8 lowering for authored CSSOM wrapper custody and indexed objects.
+//! Private V8 lowering for authored CSSOM wrapper custody.
 
 use super::*;
 
@@ -17,48 +17,7 @@ pub(super) fn values<'s, const N: usize>(
     Ok(output)
 }
 
-pub(super) fn capture_reflect<'s>(
-    scope: &mut v8::PinScope<'s, '_>,
-    reflect: v8::Local<'s, v8::Object>,
-) -> Result<v8::Local<'s, v8::Array>, Error> {
-    let mut methods = [v8::undefined(scope).into(); IndexedTrap::ALL.len()];
-    for (entry, trap) in methods.iter_mut().zip(IndexedTrap::ALL) {
-        *entry = pristine_method(scope, reflect, trap.name())?.into();
-    }
-    Ok(v8::Array::new_with_elements(scope, &methods))
-}
-
-fn reflection<'s>(
-    scope: &mut v8::PinScope<'s, '_>,
-    intrinsics: v8::Local<'s, v8::Object>,
-    trap: IndexedTrap,
-    arguments: &[v8::Local<'s, v8::Value>],
-) -> Result<v8::Local<'s, v8::Value>, Error> {
-    let array = captured_value(scope, intrinsics, INDEXED_REFLECT_FIELD)?;
-    let array = v8::Local::<v8::Array>::try_from(array).map_err(|_| Error::BackendUnavailable)?;
-    let method = array
-        .get_index(scope, trap as u32)
-        .ok_or(Error::BackendUnavailable)?;
-    let method =
-        v8::Local::<v8::Function>::try_from(method).map_err(|_| Error::BackendUnavailable)?;
-    let receiver = v8::undefined(scope);
-    method
-        .call(scope, receiver.into(), arguments)
-        .ok_or(Error::BackendUnavailable)
-}
-
-fn carrier<'s>(
-    scope: &v8::PinScope<'s, '_>,
-    value: v8::Local<'s, v8::Value>,
-) -> Option<v8::Local<'s, v8::Object>> {
-    let value = if let Ok(proxy) = v8::Local::<v8::Proxy>::try_from(value) {
-        if proxy.is_revoked() {
-            return None;
-        }
-        proxy.get_handler(scope)
-    } else {
-        value
-    };
+fn carrier(value: v8::Local<v8::Value>) -> Option<v8::Local<v8::Object>> {
     if value.is_proxy() {
         return None;
     }
@@ -85,7 +44,7 @@ pub(super) fn project<'s>(
     links: &[&Root],
 ) -> Result<Projection, Error> {
     let object = roots.local(scope, object)?;
-    let carrier = carrier(scope, object).ok_or(Error::ExpectedObject)?;
+    let carrier = carrier(object).ok_or(Error::ExpectedObject)?;
     let key = v8::Local::new(scope, &roots.projection_key);
     match carrier.has_private(scope, key) {
         Some(false) => (),
@@ -131,7 +90,7 @@ pub(super) fn projection<'s>(
     roots: &Roots,
     object: v8::Local<'s, v8::Value>,
 ) -> Result<Option<Projected<'s>>, Error> {
-    let Some(carrier) = carrier(scope, object) else {
+    let Some(carrier) = carrier(object) else {
         return Ok(None);
     };
     let key = v8::Local::new(scope, &roots.projection_key);
@@ -180,204 +139,4 @@ pub(super) fn reopen<'s>(
     identity: Projection,
 ) -> Result<Option<v8::Local<'s, v8::Value>>, Error> {
     Ok(live_projection(roots, identity)?.and_then(|entry| entry.object.to_local(scope)))
-}
-
-pub(super) fn indexed_proxy<'s>(
-    scope: &v8::PinScope<'s, '_>,
-    roots: &Roots,
-    prototype: &Root,
-    handlers: &[&Root; 9],
-) -> Result<v8::Local<'s, v8::Proxy>, Error> {
-    let prototype = roots.local(scope, prototype)?;
-    let target = v8::Object::with_prototype_and_properties(scope, prototype, &[], &[]);
-    let null = v8::null(scope);
-    let handler = v8::Object::with_prototype_and_properties(scope, null.into(), &[], &[]);
-    // Define traps through V8's normal property path. The bulk constructor
-    // fills a dictionary directly, which misses the engine's interesting-name
-    // bookkeeping for fast Proxy get, including Array iterator reads.
-    for (trap, value) in IndexedTrap::ALL.into_iter().zip(handlers) {
-        let name = v8::String::new(scope, trap.name()).ok_or(Error::BackendUnavailable)?;
-        let value = roots.local(scope, value)?;
-        if handler.create_data_property(scope, name.into(), value) != Some(true) {
-            return Err(Error::BackendUnavailable);
-        }
-    }
-    v8::Proxy::new(scope, target, handler).ok_or(Error::BackendUnavailable)
-}
-
-pub(super) fn indexed_key(
-    scope: &v8::PinScope,
-    key: v8::Local<v8::Value>,
-) -> Result<Option<u32>, Error> {
-    if key.is_symbol() {
-        return Ok(None);
-    }
-    let key = v8::Local::<v8::String>::try_from(key).map_err(|_| Error::ExpectedPropertyKey)?;
-    let mut units = [0; 10];
-    let Some(units) = units.get_mut(..key.length()) else {
-        return Ok(None);
-    };
-    key.write_v2(scope, 0, units, v8::WriteFlags::empty());
-    if units.is_empty() || (units.len() > 1 && units.first() == Some(&u16::from(b'0'))) {
-        return Ok(None);
-    }
-    let mut index = 0_u32;
-    for &unit in units.iter() {
-        let Some(digit) = unit
-            .checked_sub(u16::from(b'0'))
-            .filter(|digit| *digit < 10)
-        else {
-            return Ok(None);
-        };
-        let Some(value) = index
-            .checked_mul(10)
-            .and_then(|index| index.checked_add(u32::from(digit)))
-        else {
-            return Ok(None);
-        };
-        index = value;
-    }
-    Ok((index != u32::MAX).then_some(index))
-}
-
-fn descriptor_fields<'s>(
-    scope: &v8::PinScope<'s, '_>,
-    fields: &[(&str, v8::Local<'s, v8::Value>)],
-) -> Result<v8::Local<'s, v8::Object>, Error> {
-    let null = v8::null(scope);
-    let object = v8::Object::with_prototype_and_properties(scope, null.into(), &[], &[]);
-    for &(key, value) in fields {
-        let key = v8::String::new(scope, key).ok_or(Error::BackendUnavailable)?;
-        if object.create_data_property(scope, key.into(), value) != Some(true) {
-            return Err(Error::BackendUnavailable);
-        }
-    }
-    Ok(object)
-}
-
-pub(super) fn descriptor<'s>(
-    scope: &v8::PinScope<'s, '_>,
-    value: v8::Local<'s, v8::Value>,
-) -> Result<v8::Local<'s, v8::Object>, Error> {
-    let yes = v8::Boolean::new(scope, true).into();
-    let no = v8::Boolean::new(scope, false).into();
-    descriptor_fields(
-        scope,
-        &[
-            ("value", value),
-            ("writable", no),
-            ("enumerable", yes),
-            ("configurable", yes),
-        ],
-    )
-}
-
-pub(super) fn fallback<'s>(
-    scope: &mut v8::PinScope<'s, '_>,
-    roots: &Roots,
-    intrinsics: v8::Local<'s, v8::Object>,
-    trap: IndexedTrap,
-    arguments: &[&Root],
-) -> Result<v8::Local<'s, v8::Value>, Error> {
-    let count = arguments.len();
-    let mut values = values::<4>(scope, roots, arguments)?;
-    let arguments = values.get_mut(..count).ok_or(Error::TooManyArguments)?;
-    if let IndexedTrap::Define = trap {
-        let descriptor = arguments.get_mut(2).ok_or(Error::BackendUnavailable)?;
-        let input = v8::Local::<v8::Object>::try_from(*descriptor)
-            .map_err(|_| Error::BackendUnavailable)?;
-        let null = v8::null(scope);
-        let output = v8::Object::with_prototype_and_properties(scope, null.into(), &[], &[]);
-        for field in [
-            "value",
-            "writable",
-            "get",
-            "set",
-            "enumerable",
-            "configurable",
-        ] {
-            let key = v8::String::new(scope, field).ok_or(Error::BackendUnavailable)?;
-            if input
-                .has_own_property(scope, key.into())
-                .ok_or(Error::BackendUnavailable)?
-            {
-                let value = input
-                    .get(scope, key.into())
-                    .ok_or(Error::BackendUnavailable)?;
-                if output.create_data_property(scope, key.into(), value) != Some(true) {
-                    return Err(Error::BackendUnavailable);
-                }
-            }
-        }
-        *descriptor = output.into();
-    }
-    reflection(scope, intrinsics, trap, arguments)
-}
-
-pub(super) fn own_keys<'s>(
-    scope: &mut v8::PinScope<'s, '_>,
-    intrinsics: v8::Local<'s, v8::Object>,
-    target: v8::Local<'s, v8::Value>,
-) -> Result<v8::Local<'s, v8::Array>, Error> {
-    let existing = reflection(scope, intrinsics, IndexedTrap::Keys, &[target])?;
-    v8::Local::<v8::Array>::try_from(existing).map_err(|_| Error::BackendUnavailable)
-}
-
-pub(super) fn keys<'s>(
-    scope: &v8::PinScope<'s, '_>,
-    existing: v8::Local<'s, v8::Array>,
-    length: u32,
-) -> Result<v8::Local<'s, v8::Array>, Error> {
-    let count = length
-        .checked_add(existing.length())
-        .ok_or(Error::ArrayTooLong)?;
-    super::super::validate_array_length(count as usize)?;
-    let output = v8::Array::new(
-        scope,
-        i32::try_from(count).map_err(|_| Error::ArrayTooLong)?,
-    );
-    for index in 0..count {
-        let property = v8::Integer::new_from_unsigned(scope, index)
-            .to_string(scope)
-            .ok_or(Error::BackendUnavailable)?;
-        let value = if index < length {
-            property.into()
-        } else {
-            existing
-                .get_index(scope, index - length)
-                .ok_or(Error::BackendUnavailable)?
-        };
-        if output.create_data_property(scope, property.into(), value) != Some(true) {
-            return Err(Error::BackendUnavailable);
-        }
-    }
-    Ok(output)
-}
-
-pub(super) fn prototype_step<'s>(
-    scope: &v8::PinScope<'s, '_>,
-    roots: &Roots,
-    target: v8::Local<'s, v8::Value>,
-    candidate: v8::Local<'s, v8::Value>,
-) -> Result<Result<Option<v8::Local<'s, v8::Value>>, ()>, Error> {
-    let Ok(object) = v8::Local::<v8::Object>::try_from(candidate) else {
-        return Ok(Ok(None));
-    };
-    let object = if let Ok(proxy) = v8::Local::<v8::Proxy>::try_from(candidate) {
-        if projection(scope, roots, candidate)?.is_none() {
-            // The ordinary cycle test stops at an object with custom [[GetPrototypeOf]].
-            return Ok(Ok(None));
-        }
-        v8::Local::<v8::Object>::try_from(proxy.get_target(scope))
-            .map_err(|_| Error::BackendUnavailable)?
-    } else {
-        object
-    };
-    if target.strict_equals(object.into()) {
-        return Ok(Err(()));
-    }
-    let prototype = object
-        .get_prototype(scope)
-        .ok_or(Error::BackendUnavailable)?;
-    Ok(Ok(Some(prototype)))
 }

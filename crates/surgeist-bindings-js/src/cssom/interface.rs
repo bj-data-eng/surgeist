@@ -404,7 +404,7 @@ fn rules<'scope, H: StylesheetHost>(
     let rules = view.sheet.result(scope, sheet.css_rules())?;
     let root = scope.operations.projection_link(&args.receiver().root, 0)?;
     let wrapper = scope.value(root);
-    state::<Rules<H>>(scope, &wrapper)?
+    indexed::state::<Rules<H>>(scope, &wrapper)?
         .ok_or(Error::BackendUnavailable)?
         .bind(rules.handle());
     Ok(Completion::Return(wrapper))
@@ -418,7 +418,7 @@ fn media<'scope, H: StylesheetHost>(
     let media = view.sheet.media(scope)?;
     let root = scope.operations.projection_link(&args.receiver().root, 1)?;
     let wrapper = scope.value(root);
-    state::<Media<H>>(scope, &wrapper)?
+    indexed::state::<Media<H>>(scope, &wrapper)?
         .ok_or(Error::BackendUnavailable)?
         .bind(media.handle());
     Ok(Completion::Return(wrapper))

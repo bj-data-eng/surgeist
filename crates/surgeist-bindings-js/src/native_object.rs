@@ -121,7 +121,7 @@ impl Drop for AbortProjection<'_, '_> {
 }
 
 impl<'scope> Scope<'scope> {
-    fn native_projection_bytes<T, Storage>(&self) -> Result<usize, Error> {
+    pub(crate) fn native_projection_bytes<T, Storage>(&self) -> Result<usize, Error> {
         self.operations
             .native_object_storage_bytes()
             .checked_add(size_of::<NativeObject<T>>())

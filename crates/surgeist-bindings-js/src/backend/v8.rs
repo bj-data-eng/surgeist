@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
 use super::{
-    CoercedString, DomExceptionProfile, IndexedTrap, ObjectPrototype, Operations, PropertyDefinition,
-    PropertyDescriptor, PropertyKey, Projection, RealmProfile, WindowInterface,
+    CoercedString, DomExceptionProfile, ObjectPrototype, Operations, Projection,
+    PropertyDefinition, PropertyDescriptor, PropertyKey, RealmProfile, WindowInterface,
 };
 use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
@@ -20,8 +20,8 @@ use crate::{
 };
 
 mod callback_object;
-mod native_object;
 mod cssom;
+mod native_object;
 #[cfg(test)]
 mod tests;
 mod window;
@@ -35,7 +35,6 @@ const DOM_EXCEPTION_PROFILE_FIELD: usize = 7;
 const WINDOW_PROTOTYPE_FIELD: usize = 8;
 const WINDOW_EVENT_TARGET_PROTOTYPE_FIELD: usize = 9;
 const CSSOM_PROTOTYPES_FIELD: usize = 10;
-const INDEXED_REFLECT_FIELD: usize = 11;
 
 struct ActiveOwner;
 
@@ -757,9 +756,8 @@ impl super::Engine for Engine {
                 .map_err(|_| Error::BackendUnavailable)?;
             let bind = pristine_method(scope, function_prototype, "bind")?;
             let construct = pristine_method(scope, reflect, "construct")?;
-            let indexed = cssom::capture_reflect(scope, reflect)?;
             let template = v8::ObjectTemplate::new(scope);
-            if !template.set_internal_field_count(INDEXED_REFLECT_FIELD + 1) {
+            if !template.set_internal_field_count(CSSOM_PROTOTYPES_FIELD + 1) {
                 return Err(Error::BackendUnavailable);
             }
             let intrinsics = template
@@ -772,7 +770,6 @@ impl super::Engine for Engine {
                 || !intrinsics.set_internal_field(4, construct.into())
                 || !intrinsics.set_internal_field(5, object_constructor.into())
                 || !intrinsics.set_internal_field(ERROR_CONSTRUCTOR_FIELD, error_constructor.into())
-                || !intrinsics.set_internal_field(INDEXED_REFLECT_FIELD, indexed.into())
             {
                 return Err(Error::BackendUnavailable);
             }
@@ -2076,72 +2073,6 @@ impl Operations for Entered<'_, '_, '_> {
                 roots.retain(scope, realm, prototype)
             },
         )
-    }
-
-    fn indexed_proxy(&mut self, prototype: &Root, handlers: &[&Root; 9]) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
-            let proxy = cssom::indexed_proxy(scope, roots, prototype, handlers)?;
-            roots.retain(scope, realm, proxy.into())
-        })
-    }
-
-    fn indexed_key(&mut self, key: &Root) -> Result<Option<u32>, Error> {
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
-            cssom::indexed_key(scope, roots.local(scope, key)?)
-        })
-    }
-
-    fn indexed_fallback(&mut self, trap: IndexedTrap, arguments: &[&Root]) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, intrinsics| {
-            let value = cssom::fallback(scope, roots, intrinsics, trap, arguments)?;
-            roots.retain(scope, realm, value)
-        })
-    }
-
-    fn indexed_own_keys(&mut self, target: &Root) -> Result<(Root, u32), Error> {
-        self.attempt(
-            ExceptionPhase::PropertyRead,
-            |scope, roots, realm, intrinsics| {
-                let target = roots.local(scope, target)?;
-                let keys = cssom::own_keys(scope, intrinsics, target)?;
-                Ok((roots.retain(scope, realm, keys.into())?, keys.length()))
-            },
-        )
-    }
-
-    fn indexed_keys(&mut self, own_keys: &Root, length: u32) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
-            let keys = v8::Local::<v8::Array>::try_from(roots.local(scope, own_keys)?)
-                .map_err(|_| Error::BackendUnavailable)?;
-            let array = cssom::keys(scope, keys, length)?;
-            roots.retain(scope, realm, array.into())
-        })
-    }
-
-    fn indexed_prototype_step(
-        &mut self,
-        target: &Root,
-        candidate: &Root,
-    ) -> Result<super::PrototypeStep, Error> {
-        self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
-            let target = roots.local(scope, target)?;
-            let candidate = roots.local(scope, candidate)?;
-            Ok(
-                match cssom::prototype_step(scope, roots, target, candidate)? {
-                    Ok(None) => super::PrototypeStep::Complete,
-                    Err(()) => super::PrototypeStep::Cycle,
-                    Ok(Some(next)) => super::PrototypeStep::Next(roots.retain(scope, realm, next)?),
-                },
-            )
-        })
-    }
-
-    fn indexed_descriptor(&mut self, value: &Root) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
-            let value = roots.local(scope, value)?;
-            let descriptor = cssom::descriptor(scope, value)?;
-            roots.retain(scope, realm, descriptor.into())
-        })
     }
 
     fn set_prototype(

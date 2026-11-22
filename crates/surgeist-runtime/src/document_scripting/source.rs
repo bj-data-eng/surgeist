@@ -326,12 +326,10 @@ fn call_guest(
     let pin_bytes = Some(projection::ProjectedComments::pin_bytes());
     let plan = engine.comments.plan_slot();
     let slot_bytes = plan.and_then(projection::SlotPlan::growth_bytes);
-    let existing_base = engine.retained_bytes_with(0);
-    let miss_base = pin_bytes
+    let miss_bytes = pin_bytes
         .zip(slot_bytes)
         .and_then(|(pin, slots)| pin.checked_add(slots))
         .and_then(|additional| engine.retained_bytes_with(additional));
-    let miss_bytes = miss_base.and_then(|base| base.checked_add(native.stylesheet_bytes.get()));
     let preparation = &engine.preparation;
     let comments = &mut engine.comments;
     let receiving_realm = &engine.realm;
@@ -425,8 +423,8 @@ fn call_guest(
                 Ok(prepared)
             })?;
 
-        let (key, stylesheet_base) = match prepared {
-            PreparedPin::Existing(key) => (key, existing_base),
+        let key = match prepared {
+            PreparedPin::Existing(key) => key,
             PreparedPin::Funded {
                 plan,
                 watch,
@@ -449,7 +447,7 @@ fn call_guest(
                 };
                 let object = execution.in_realm(creation_realm, |scope| scope.managed_object())?;
                 vacant.install(delegated, object, watch, backing);
-                (plan.key, miss_base)
+                plan.key
             }
         };
         execution.in_realm(receiving_realm, |scope| {
@@ -470,14 +468,6 @@ fn call_guest(
                 limits,
                 argument: scope.retain(&argument),
             };
-            let Some(stylesheet_base) = stylesheet_base else {
-                return refuse(
-                    scope,
-                    &attachment.failures,
-                    DocumentScriptNativeError::RepresentationExhausted,
-                );
-            };
-            native.stylesheet_base.set(stylesheet_base);
             invoke_argument(scope, native, source, &handler, argument)
         })
     })();

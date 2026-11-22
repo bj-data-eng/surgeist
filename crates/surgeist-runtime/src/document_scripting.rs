@@ -32,9 +32,9 @@ use crate::{
     internal::dom_style::DomSession,
 };
 
+mod cssom;
 pub(crate) mod guest;
 mod preparation;
-mod cssom;
 mod projection;
 mod traversal_retirement;
 pub use guest::{
@@ -272,7 +272,6 @@ struct NativeOwner {
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
-    stylesheet_base: Cell<usize>,
     stylesheet_bytes: Cell<usize>,
     css_limits: Cell<CssNamespaceLimits>,
     dom_exception_limits: Cell<DomExceptionLimits>,
@@ -684,7 +683,6 @@ impl PreparedDocumentScriptHost {
                 trusted_types_reports: RefCell::new(None),
                 cancellation,
                 storage_limit,
-                stylesheet_base: Cell::new(0),
                 stylesheet_bytes: Cell::new(0),
                 css_limits: Cell::new(CssNamespaceLimits::default()),
                 dom_exception_limits: Cell::new(DomExceptionLimits::default()),
@@ -1058,6 +1056,7 @@ impl PreparedDocumentScriptHost {
                     owner: Rc::downgrade(owner),
                     permit,
                     failures: stylesheet_failures,
+                    cap: preparation.external_admission(),
                 },
                 cssom::Retention::installation(owner, stylesheet_backing),
             )
@@ -1184,7 +1183,6 @@ impl UnpublishedScriptEngine {
             _registration_access_backing: registration_access_backing,
         });
         owner.media_removal_job.replace(Some(media_removal_job));
-        owner.stylesheet_base.set(bytes);
         Ok(ScriptEngine {
             registration,
             guest_events: None,
@@ -1600,11 +1598,6 @@ impl DocumentScriptHost {
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        self.native.stylesheet_base.set(
-            engine
-                .retained_bytes_with(0)
-                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
-        );
         let result = engine.process.execution().in_realm(&engine.realm, action);
         engine.settle_engine_cleanup(&self.native, &attachment.realm);
         Ok(result?)
@@ -1633,11 +1626,6 @@ impl DocumentScriptHost {
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        self.native.stylesheet_base.set(
-            engine
-                .retained_bytes_with(0)
-                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
-        );
         let result = engine.process.execution().checkpoint();
         engine.settle_engine_cleanup(&self.native, &attachment.realm);
         Ok(result?)

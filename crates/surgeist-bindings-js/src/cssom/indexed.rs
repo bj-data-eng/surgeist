@@ -21,164 +21,123 @@ fn extent(length: usize) -> Result<u32, Error> {
     u32::try_from(length).map_err(|_| Error::ArrayTooLong)
 }
 
+const ITEM_READER: u32 = 0;
+
+pub(super) fn state<'scope, L: List>(
+    scope: &mut Scope<'scope>,
+    value: &Value<'scope>,
+) -> Result<Option<Rc<L>>, Error> {
+    Ok(scope
+        .native_object::<Rc<L>>(value)?
+        .map(|native| native.payload().clone()))
+}
+
+pub(super) fn brand<'scope, L: List>(
+    scope: &mut Scope<'scope>,
+    value: &Value<'scope>,
+) -> Result<Rc<L>, Error> {
+    state(scope, value)?.ok_or_else(|| type_error(scope))
+}
+
 fn indexed<'scope, L: List>(
     scope: &mut Scope<'scope>,
     state: Rc<L>,
 ) -> Result<Value<'scope>, Error> {
     let prototype = L::INTERFACE.prototype(scope)?;
-    let handlers = [
-        handler(scope, &state, IndexedTrap::Get)?,
-        handler(scope, &state, IndexedTrap::Has)?,
-        handler(scope, &state, IndexedTrap::Descriptor)?,
-        handler(scope, &state, IndexedTrap::Define)?,
-        handler(scope, &state, IndexedTrap::Set)?,
-        handler(scope, &state, IndexedTrap::Delete)?,
-        handler(scope, &state, IndexedTrap::Keys)?,
-        handler(scope, &state, IndexedTrap::PreventExtensions)?,
-        handler(scope, &state, IndexedTrap::SetPrototype)?,
-    ];
-    let roots = handlers.each_ref().map(|value| &value.root);
-    let root = scope.operations.indexed_proxy(&prototype.root, &roots)?;
-    let owner = state.clone();
-    let read = scope.fixed_arity_function(
-        &Callback::new(move |scope, arguments| {
-            let index = arguments.get(0).ok_or(Error::BackendUnavailable)?;
-            let IntegerValue::UnsignedLong(index) =
-                scope.integer(index, IntegerKind::UnsignedLong, IntegerMode::Wrap)?
-            else {
-                return Err(Error::BackendUnavailable);
-            };
-            match owner.item(scope, index)? {
-                Some(value) => Ok(Completion::Return(value)),
-                None => nullable(scope),
-            }
-        }),
+    let read = scope.bounded_function(
+        &Callback::new(read_index::<L>),
+        FunctionMetadata {
+            name: &[],
+            length: 1,
+        },
+        2,
+    )?;
+    let keys = scope.fixed_arity_function(
+        &Callback::new(keys::<L>),
         FunctionMetadata {
             name: &[],
             length: 1,
         },
     )?;
-    scope.operations.project(&root, state, &[&read.root])?;
-    Ok(scope.value(root))
+    let bytes = scope.native_projection_bytes::<Rc<L>, <L::Host as StylesheetHost>::Storage>()?;
+    let backing = state.sheet().realm.host.retain(scope, bytes)?;
+    let object = scope.project_native_object_with_collection_properties(
+        ObjectPrototype::Object(&prototype),
+        state,
+        &read,
+        &keys,
+        |_| Ok::<_, Error>(backing),
+    )?;
+    scope.set_native_object_reference::<Rc<L>>(&object, ITEM_READER, Some(&read))?;
+    Ok(object)
 }
 
-fn handler<'scope, L: List>(
+fn read_index<'scope, L: List>(
     scope: &mut Scope<'scope>,
-    state: &Rc<L>,
-    trap: IndexedTrap,
-) -> Result<Value<'scope>, Error> {
-    let state = state.clone();
-    scope.fixed_arity_function(
-        &Callback::new(move |scope, arguments| dispatch(scope, state.as_ref(), trap, arguments)),
-        FunctionMetadata {
-            name: &[],
-            length: trap.arity(),
-        },
-    )
-}
-
-fn dispatch<'scope, L: List>(
-    scope: &mut Scope<'scope>,
-    state: &L,
-    trap: IndexedTrap,
     arguments: Arguments<'scope>,
 ) -> Result<Completion<'scope>, Error> {
+    let state = brand::<L>(scope, arguments.receiver())?;
+    state.sheet().realm.host.work(scope, 1)?;
+    let key = arguments.get(0).ok_or(Error::BackendUnavailable)?;
+    let presence_only = arguments.get(1).is_some();
+    let index = if scope.kind(key)? == ValueKind::Number {
+        let IntegerValue::UnsignedLong(index) =
+            scope.integer(key, IntegerKind::UnsignedLong, IntegerMode::Wrap)?
+        else {
+            return Err(Error::BackendUnavailable);
+        };
+        Some(index)
+    } else {
+        None
+    };
+    if presence_only {
+        let present = match index {
+            Some(index) => index < state.length(scope)?,
+            None => false,
+        };
+        return Ok(Completion::Return(
+            scope.primitive(Primitive::Boolean(present))?,
+        ));
+    }
+    match index {
+        Some(index) => Ok(state
+            .item(scope, index)?
+            .map_or(Completion::Undefined, Completion::Return)),
+        None => Ok(Completion::Undefined),
+    }
+}
+
+fn keys<'scope, L: List>(
+    scope: &mut Scope<'scope>,
+    arguments: Arguments<'scope>,
+) -> Result<Completion<'scope>, Error> {
+    let state = brand::<L>(scope, arguments.receiver())?;
     let host = &state.sheet().realm.host;
     host.work(scope, 1)?;
-    let target = arguments.get(0).ok_or(Error::BackendUnavailable)?;
-    match trap {
-        IndexedTrap::PreventExtensions => return boolean(scope, false),
-        IndexedTrap::Keys => {
-            let length = state.length(scope)?;
-            let (own_keys, own_length) = scope.operations.indexed_own_keys(&target.root)?;
-            let count = length.checked_add(own_length).ok_or(Error::ArrayTooLong)?;
-            host.work(scope, count as usize)?;
-            let keys = scope.operations.indexed_keys(&own_keys, length)?;
-            return Ok(Completion::Return(scope.value(keys)));
-        }
-        IndexedTrap::SetPrototype => {
-            let candidate = arguments.get(1).ok_or(Error::BackendUnavailable)?;
-            let mut current = candidate.root.clone();
-            loop {
-                use crate::backend::PrototypeStep;
-                host.work(scope, 1)?;
-                match scope
-                    .operations
-                    .indexed_prototype_step(&target.root, &current)?
-                {
-                    PrototypeStep::Complete => break,
-                    PrototypeStep::Cycle => return boolean(scope, false),
-                    PrototypeStep::Next(next) => current = next,
-                }
-            }
-        }
-        _ => {
-            let key = arguments.get(1).ok_or(Error::BackendUnavailable)?;
-            if let Some(index) = scope.operations.indexed_key(&key.root)? {
-                match trap {
-                    IndexedTrap::Define => return boolean(scope, false),
-                    IndexedTrap::Get | IndexedTrap::Descriptor => {
-                        if let Some(value) = state.item(scope, index)? {
-                            return if matches!(trap, IndexedTrap::Descriptor) {
-                                let descriptor =
-                                    scope.operations.indexed_descriptor(&value.root)?;
-                                Ok(Completion::Return(scope.value(descriptor)))
-                            } else {
-                                Ok(Completion::Return(value))
-                            };
-                        }
-                    }
-                    IndexedTrap::Has => {
-                        if index < state.length(scope)? {
-                            return boolean(scope, true);
-                        }
-                    }
-                    IndexedTrap::Set => {
-                        if index < state.length(scope)? {
-                            return boolean(scope, false);
-                        }
-                    }
-                    IndexedTrap::Delete => {
-                        let supported = index < state.length(scope)?;
-                        return boolean(scope, !supported);
-                    }
-                    _ => (),
-                }
-            }
-        }
+    if arguments.get(0).is_some() {
+        return Ok(Completion::Return(scope.array(&[])?));
     }
-    let mut roots = [&target.root; 4];
-    let roots = roots
-        .get_mut(..trap.arity() as usize)
-        .ok_or(Error::BackendUnavailable)?;
-    for (index, root) in roots.iter_mut().enumerate() {
-        *root = &arguments.get(index).ok_or(Error::BackendUnavailable)?.root;
+    let length = state.length(scope)?;
+    let bytes = (length as usize)
+        .checked_mul(size_of::<Value<'scope>>())
+        .ok_or(Error::Allocation)?;
+    let _backing = host.retain(scope, bytes)?;
+    host.work(scope, length as usize)?;
+    let mut indices = Vec::new();
+    indices
+        .try_reserve_exact(length as usize)
+        .map_err(|_| Error::Allocation)?;
+    for index in 0..length {
+        indices.push(scope.primitive(Primitive::Number(f64::from(index)))?);
     }
-    let root = scope.operations.indexed_fallback(trap, roots)?;
-    Ok(Completion::Return(scope.value(root)))
+    Ok(Completion::Return(scope.array(&indices)?))
 }
 
-fn boolean<'scope>(scope: &mut Scope<'scope>, value: bool) -> Result<Completion<'scope>, Error> {
-    Ok(Completion::Return(
-        scope.primitive(Primitive::Boolean(value))?,
-    ))
-}
-
-// The list owns nine private trap closure payloads and one read closure. These
-// targets share the list state. Their generic SDK/function bookkeeping is not
-// attributed as a native CSSOM payload.
 fn backing<L: List>(
     scope: &mut Scope<'_>,
     host: &L::Host,
 ) -> Result<<L::Host as StylesheetHost>::Storage, Error> {
-    let bytes = scope
-        .operations
-        .projection_storage_bytes()
-        .checked_add(size_of::<L>())
-        .and_then(|bytes| bytes.checked_add(9 * size_of::<(Rc<L>, IndexedTrap)>()))
-        .and_then(|bytes| bytes.checked_add(size_of::<Rc<L>>()))
-        .ok_or(Error::Allocation)?;
-    host.retain(scope, bytes)
+    host.retain(scope, size_of::<L>())
 }
 
 pub(super) fn length<'scope, L: List>(
@@ -196,18 +155,18 @@ pub(super) fn item<'scope, L: List>(
 ) -> Result<Completion<'scope>, Error> {
     let state = brand::<L>(scope, arguments.receiver())?;
     let index = integer_argument(&state.sheet().realm.account, scope, &arguments, &L::index())?;
-    let root = scope
-        .operations
-        .projection_link(&arguments.receiver().root, 0)?;
-    let resolver = scope.value(root);
+    let resolver = scope
+        .native_object_reference::<Rc<L>>(arguments.receiver(), ITEM_READER)?
+        .ok_or(Error::ExpectedNativeObject)?;
     let index = scope.primitive(Primitive::Number(f64::from(index)))?;
-    // The private function belongs to the list's creation realm. Borrowing a
-    // prototype method across realms cannot change the returned wrapper realm.
-    Ok(Completion::Return(scope.call(
-        &resolver,
-        arguments.receiver(),
-        &[index],
-    )?))
+    // The private reader belongs to the list's creation realm. A borrowed
+    // prototype method still creates any returned wrapper in that realm.
+    let value = scope.call(&resolver, arguments.receiver(), &[index])?;
+    if scope.kind(&value)? == ValueKind::Undefined {
+        nullable(scope)
+    } else {
+        Ok(Completion::Return(value))
+    }
 }
 
 impl<H: StylesheetHost> Rules<H> {

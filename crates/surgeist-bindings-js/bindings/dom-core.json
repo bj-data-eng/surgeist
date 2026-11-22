@@ -13811,7 +13811,7 @@
       "producers": [
         {
           "owner": "surgeist-runtime",
-          "path": "crates/surgeist-runtime/src/dom_style/constructed_sheet.rs",
+          "path": "crates/surgeist-runtime/src/internal/dom_style/constructed_sheet.rs",
           "symbol": "construct_document_sheet"
         }
       ],

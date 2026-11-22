@@ -13,7 +13,7 @@ use surgeist_cssom::{
 };
 use surgeist_ledger::{Limits, Operation, Tariffs};
 
-use crate::backend::{IndexedTrap, Projection};
+use crate::backend::Projection;
 use crate::conversion::cssom::MediaOption;
 use crate::conversion::{Argument, ArgumentValue, ConversionAccount, IntegerType, Work, types};
 use crate::dom_exception::DomExceptionName;
@@ -298,7 +298,7 @@ impl<H: StylesheetHost> RealmState<H> {
         arguments: ConstructorArguments<'scope>,
     ) -> Result<ConstructorCompletion<'scope>, Error> {
         let options = self.account.run(scope, |conversion| {
-            conversion.sheet_options(arguments.get(0), state::<Media<H>>)
+            conversion.sheet_options(arguments.get(0), indexed::state::<Media<H>>)
         })?;
         let invocation = arguments.select_prototype(scope)?;
         let shell = scope.object(ObjectPrototype::Object(invocation.prototype()))?;

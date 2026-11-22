@@ -140,62 +140,6 @@ pub(crate) struct Projection {
     pub(crate) id: u32,
 }
 
-pub(crate) enum PrototypeStep {
-    Complete,
-    Cycle,
-    Next(Root),
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum IndexedTrap {
-    Get,
-    Has,
-    Descriptor,
-    Define,
-    Set,
-    Delete,
-    Keys,
-    PreventExtensions,
-    SetPrototype,
-}
-
-impl IndexedTrap {
-    pub(crate) const ALL: [Self; 9] = [
-        Self::Get,
-        Self::Has,
-        Self::Descriptor,
-        Self::Define,
-        Self::Set,
-        Self::Delete,
-        Self::Keys,
-        Self::PreventExtensions,
-        Self::SetPrototype,
-    ];
-
-    pub(crate) const fn name(self) -> &'static str {
-        match self {
-            Self::Get => "get",
-            Self::Has => "has",
-            Self::Descriptor => "getOwnPropertyDescriptor",
-            Self::Define => "defineProperty",
-            Self::Set => "set",
-            Self::Delete => "deleteProperty",
-            Self::Keys => "ownKeys",
-            Self::PreventExtensions => "preventExtensions",
-            Self::SetPrototype => "setPrototypeOf",
-        }
-    }
-
-    pub(crate) const fn arity(self) -> u32 {
-        match self {
-            Self::Get | Self::Define => 3,
-            Self::Set => 4,
-            Self::Has | Self::Descriptor | Self::Delete | Self::SetPrototype => 2,
-            Self::Keys | Self::PreventExtensions => 1,
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub(crate) struct DeclaredCallable<'a> {
     pub(crate) metadata: FunctionMetadata<'a>,
@@ -379,18 +323,6 @@ pub(crate) trait Operations {
     fn reopen_projection(&mut self, identity: Projection) -> Result<Option<Root>, Error>;
     fn cssom_prototypes(&mut self, prototypes: &[&Root]) -> Result<(), Error>;
     fn cssom_prototype(&mut self, index: u32) -> Result<Root, Error>;
-    fn indexed_proxy(&mut self, prototype: &Root, handlers: &[&Root; 9]) -> Result<Root, Error>;
-    fn indexed_key(&mut self, key: &Root) -> Result<Option<u32>, Error>;
-    fn indexed_fallback(&mut self, trap: IndexedTrap, arguments: &[&Root]) -> Result<Root, Error>;
-    fn indexed_own_keys(&mut self, target: &Root) -> Result<(Root, u32), Error>;
-    fn indexed_keys(&mut self, own_keys: &Root, length: u32) -> Result<Root, Error>;
-    fn indexed_prototype_step(
-        &mut self,
-        target: &Root,
-        candidate: &Root,
-    ) -> Result<PrototypeStep, Error>;
-    fn indexed_descriptor(&mut self, value: &Root) -> Result<Root, Error>;
-
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error>;
     fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)
     -> Result<(), Error>;

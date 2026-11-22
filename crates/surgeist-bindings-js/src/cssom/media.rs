@@ -65,7 +65,7 @@ fn media_text<'scope, H: StylesheetHost>(
     scope: &mut Scope<'scope>,
     args: Arguments<'scope>,
 ) -> Result<Completion<'scope>, Error> {
-    let state = brand::<Media<H>>(scope, args.receiver())?;
+    let state = indexed::brand::<Media<H>>(scope, args.receiver())?;
     let media = state.capture(scope)?;
     let text = state
         .sheet
@@ -81,7 +81,7 @@ fn set_media_text<'scope, H: StylesheetHost>(
     scope: &mut Scope<'scope>,
     args: Arguments<'scope>,
 ) -> Result<Completion<'scope>, Error> {
-    let state = brand::<Media<H>>(scope, args.receiver())?;
+    let state = indexed::brand::<Media<H>>(scope, args.receiver())?;
     let undefined = scope.primitive(Primitive::Undefined)?;
     let input = args.get(0).unwrap_or(&undefined);
     let value = state
@@ -125,7 +125,7 @@ fn edit<'scope, H: StylesheetHost>(
     edit: MediaEdit,
     descriptor: &Argument<crate::conversion::Type<crate::DomString>>,
 ) -> Result<Completion<'scope>, Error> {
-    let state = brand::<Media<H>>(scope, args.receiver())?;
+    let state = indexed::brand::<Media<H>>(scope, args.receiver())?;
     let value = state.sheet.realm.account.run(scope, |conversion| {
         conversion.argument(descriptor, args.get(descriptor.index()))
     })?;
