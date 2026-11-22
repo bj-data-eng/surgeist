@@ -14,6 +14,8 @@ pub(super) fn document_create_event_exposes_the_native_uninitialized_event() {
         const {value: make, writable, configurable, enumerable} = descriptor;
         if (!writable || !configurable || !enumerable || make.name !== 'createEvent' ||
             make.length !== 1 || Object.hasOwn(make, 'prototype')) return 'incorrect method descriptor';
+        try { Reflect.construct(function () {}, [], make); return 'method was a constructor'; }
+        catch (error) { if (!(error instanceof TypeError)) throw error; }
         let touched = 0;
         const input = {toString() { touched++; return 'eVeNt'; }};
         for (const receiver of [{}, Object.create(document), new Proxy(document, {}), document.body]) {
@@ -132,6 +134,15 @@ pub(super) fn borrowed_create_event_uses_the_receiving_document_realm() {
         if (foreign.initEvent('realm-event', false, false) !== undefined ||
             foreign.type !== 'realm-event' || !document.dispatchEvent(foreign) || observed !== 1)
             return 'foreign Event init and dispatcher must use the same exact object';
+        const original = child.Event;
+        const constructed = new original('ordinary');
+        if (Object.getPrototypeOf(constructed) !== original.prototype ||
+            constructed.type !== 'ordinary' || constructed.isTrusted ||
+            !document.dispatchEvent(constructed)) return 'child Event constructor used the wrong realm';
+        child.Event = function Replacement() {};
+        const replaced = foreignMake.call(receiving, 'Event');
+        if (Object.getPrototypeOf(replaced) !== original.prototype || replaced.isTrusted)
+            return 'factory used a mutable global Event binding';
         return 'ok';
     })()",
     );
