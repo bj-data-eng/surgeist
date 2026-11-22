@@ -6,6 +6,11 @@
 //! runtime clocks in `surgeist-runtime`, and cross-crate lowering in the root
 //! `surgeist` facade.
 //!
+//! [`timeline`] accepts signed, nullable model coordinates and immutable
+//! conversion snapshots. Document timelines use a caller-supplied frame timestamp
+//! with a fixed origin offset; they never read a clock or own document lifecycle.
+//! Animation play control and effect sampling consume this model separately.
+//!
 //! Callers pass effective [`time::ElapsedTime`] values that already account for
 //! the runtime clock and track start time. Paused sampling is explicit through
 //! [`timing::AnimationPlayState::Paused`]; advancing wall-clock time alone does not make a
@@ -13,12 +18,13 @@
 //! tracks, including computed endpoints, rectangular color spaces, and property
 //! support policy.
 //!
-//! Each public type has one path, through the module that owns it. The nine
+//! Each public type has one path, through the module that owns it. The ten
 //! modules are:
 //!
 //! | Module | Owns |
 //! | --- | --- |
 //! | [`time`] | Typed elapsed time, delay and duration. |
+//! | [`timeline`] | Model time flow, fixed-origin document timing and conversions. |
 //! | [`progress`] | Normalized progress, unit ratios and easing input. |
 //! | [`easing`] | Cubic Bezier, step and linear easing functions. |
 //! | [`timing`] | Timing parameters, phases and the timing sample. |
@@ -126,6 +132,7 @@ pub mod keyframe;
 pub mod progress;
 pub mod sample;
 pub mod time;
+pub mod timeline;
 pub mod timing;
 pub mod transition;
 

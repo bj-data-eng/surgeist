@@ -363,6 +363,24 @@ pub fn surgeist_animation::sample::SampledPropertyResult::from_timing_and_pair(t
 pub const fn surgeist_animation::sample::SampledPropertyResult::next_frame(&self) -> surgeist_animation::sample::NextFrameHint
 pub const fn surgeist_animation::sample::SampledPropertyResult::value(&self) -> &surgeist_animation::sample::SampleValue
 pub mod surgeist_animation::time
+pub enum surgeist_animation::time::TimeErrorKind
+pub surgeist_animation::time::TimeErrorKind::DecreasingDocumentTime
+pub surgeist_animation::time::TimeErrorKind::DecreasingDocumentTime::attempted: surgeist_animation::time::TimelineTime
+pub surgeist_animation::time::TimeErrorKind::DecreasingDocumentTime::previous: surgeist_animation::time::TimelineTime
+pub surgeist_animation::time::TimeErrorKind::NonFinite
+pub surgeist_animation::time::TimeErrorKind::NonFinite::input: surgeist_animation::time::TimeInput
+pub surgeist_animation::time::TimeErrorKind::Unrepresentable
+pub surgeist_animation::time::TimeErrorKind::Unrepresentable::operation: surgeist_animation::time::TimeOperation
+pub enum surgeist_animation::time::TimeInput
+pub surgeist_animation::time::TimeInput::Animation
+pub surgeist_animation::time::TimeInput::OriginRelative
+pub surgeist_animation::time::TimeInput::PlaybackRate
+pub surgeist_animation::time::TimeInput::Timeline
+pub enum surgeist_animation::time::TimeOperation
+pub surgeist_animation::time::TimeOperation::AnimationToTimeline
+pub surgeist_animation::time::TimeOperation::DocumentCurrentTime
+pub surgeist_animation::time::TimeOperation::TimelineToAnimation
+pub surgeist_animation::time::TimeOperation::TimelineToOrigin
 pub struct surgeist_animation::time::AnimationDelay
 impl surgeist_animation::time::AnimationDelay
 pub const fn surgeist_animation::time::AnimationDelay::as_secs(self) -> f64
@@ -372,10 +390,71 @@ impl surgeist_animation::time::AnimationDuration
 pub const fn surgeist_animation::time::AnimationDuration::as_secs(self) -> f64
 pub fn surgeist_animation::time::AnimationDuration::from_secs(secs: f64) -> core::result::Result<Self, surgeist_animation::diagnostics::NumericError>
 pub const fn surgeist_animation::time::AnimationDuration::is_zero(self) -> bool
+pub struct surgeist_animation::time::AnimationTime
+impl surgeist_animation::time::AnimationTime
+pub const fn surgeist_animation::time::AnimationTime::as_millis(self) -> f64
+pub fn surgeist_animation::time::AnimationTime::from_millis(millis: f64) -> core::result::Result<Self, surgeist_animation::time::TimeError>
 pub struct surgeist_animation::time::ElapsedTime
 impl surgeist_animation::time::ElapsedTime
 pub const fn surgeist_animation::time::ElapsedTime::as_secs(self) -> f64
 pub fn surgeist_animation::time::ElapsedTime::from_secs(secs: f64) -> core::result::Result<Self, surgeist_animation::diagnostics::NumericError>
+pub struct surgeist_animation::time::OriginRelativeTime
+impl surgeist_animation::time::OriginRelativeTime
+pub const fn surgeist_animation::time::OriginRelativeTime::as_millis(self) -> f64
+pub fn surgeist_animation::time::OriginRelativeTime::from_millis(millis: f64) -> core::result::Result<Self, surgeist_animation::time::TimeError>
+pub struct surgeist_animation::time::PlaybackRate
+impl surgeist_animation::time::PlaybackRate
+pub fn surgeist_animation::time::PlaybackRate::new(value: f64) -> core::result::Result<Self, surgeist_animation::time::TimeError>
+pub const fn surgeist_animation::time::PlaybackRate::value(self) -> f64
+pub struct surgeist_animation::time::TimeError
+impl surgeist_animation::time::TimeError
+pub const fn surgeist_animation::time::TimeError::kind(self) -> surgeist_animation::time::TimeErrorKind
+impl core::error::Error for surgeist_animation::time::TimeError
+impl core::fmt::Display for surgeist_animation::time::TimeError
+pub fn surgeist_animation::time::TimeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::time::TimelineTime
+impl surgeist_animation::time::TimelineTime
+pub const fn surgeist_animation::time::TimelineTime::as_millis(self) -> f64
+pub fn surgeist_animation::time::TimelineTime::from_millis(millis: f64) -> core::result::Result<Self, surgeist_animation::time::TimeError>
+pub mod surgeist_animation::timeline
+pub enum surgeist_animation::timeline::AnimationTimeInput
+pub surgeist_animation::timeline::AnimationTimeInput::Finite(surgeist_animation::time::AnimationTime)
+pub surgeist_animation::timeline::AnimationTimeInput::Infinite
+pub surgeist_animation::timeline::AnimationTimeInput::Unresolved
+pub enum surgeist_animation::timeline::DocumentClock
+pub surgeist_animation::timeline::DocumentClock::Active(surgeist_animation::time::OriginRelativeTime)
+pub surgeist_animation::timeline::DocumentClock::Inactive
+pub surgeist_animation::timeline::DocumentClock::Unestablished
+pub enum surgeist_animation::timeline::TimelineMonotonicity
+pub surgeist_animation::timeline::TimelineMonotonicity::Monotonic
+pub surgeist_animation::timeline::TimelineMonotonicity::NonMonotonic
+pub struct surgeist_animation::timeline::AnimationSnapshot
+impl surgeist_animation::timeline::AnimationSnapshot
+pub const fn surgeist_animation::timeline::AnimationSnapshot::new(playback_rate: surgeist_animation::time::PlaybackRate, start_time: core::option::Option<surgeist_animation::time::TimelineTime>, timeline: core::option::Option<surgeist_animation::timeline::TimelineSnapshot>) -> Self
+pub const fn surgeist_animation::timeline::AnimationSnapshot::playback_rate(self) -> surgeist_animation::time::PlaybackRate
+pub const fn surgeist_animation::timeline::AnimationSnapshot::start_time(self) -> core::option::Option<surgeist_animation::time::TimelineTime>
+pub const fn surgeist_animation::timeline::AnimationSnapshot::timeline(self) -> core::option::Option<surgeist_animation::timeline::TimelineSnapshot>
+pub struct surgeist_animation::timeline::DocumentTimeline
+impl surgeist_animation::timeline::DocumentTimeline
+pub const fn surgeist_animation::timeline::DocumentTimeline::new(id: surgeist_animation::timeline::TimelineId, origin_time: surgeist_animation::time::OriginRelativeTime) -> Self
+pub const fn surgeist_animation::timeline::DocumentTimeline::origin_time(&self) -> surgeist_animation::time::OriginRelativeTime
+pub const fn surgeist_animation::timeline::DocumentTimeline::snapshot(&self) -> surgeist_animation::timeline::TimelineSnapshot
+pub fn surgeist_animation::timeline::DocumentTimeline::update(&mut self, clock: surgeist_animation::timeline::DocumentClock) -> core::result::Result<surgeist_animation::timeline::TimelineSnapshot, surgeist_animation::time::TimeError>
+pub struct surgeist_animation::timeline::TimelineId(_)
+impl surgeist_animation::timeline::TimelineId
+pub const fn surgeist_animation::timeline::TimelineId::new(value: u64) -> Self
+pub const fn surgeist_animation::timeline::TimelineId::value(self) -> u64
+pub struct surgeist_animation::timeline::TimelineSnapshot
+impl surgeist_animation::timeline::TimelineSnapshot
+pub const fn surgeist_animation::timeline::TimelineSnapshot::current_time(self) -> core::option::Option<surgeist_animation::time::TimelineTime>
+pub const fn surgeist_animation::timeline::TimelineSnapshot::id(self) -> surgeist_animation::timeline::TimelineId
+pub const fn surgeist_animation::timeline::TimelineSnapshot::is_active(self) -> bool
+pub const fn surgeist_animation::timeline::TimelineSnapshot::monotonicity(self) -> surgeist_animation::timeline::TimelineMonotonicity
+pub const fn surgeist_animation::timeline::TimelineSnapshot::new(id: surgeist_animation::timeline::TimelineId, current_time: core::option::Option<surgeist_animation::time::TimelineTime>, monotonicity: surgeist_animation::timeline::TimelineMonotonicity, origin_offset: core::option::Option<surgeist_animation::time::OriginRelativeTime>) -> Self
+pub fn surgeist_animation::timeline::animation_time_to_origin_relative_time(time: surgeist_animation::timeline::AnimationTimeInput, animation: surgeist_animation::timeline::AnimationSnapshot) -> core::result::Result<core::option::Option<surgeist_animation::time::OriginRelativeTime>, surgeist_animation::time::TimeError>
+pub fn surgeist_animation::timeline::animation_time_to_timeline_time(time: surgeist_animation::timeline::AnimationTimeInput, animation: surgeist_animation::timeline::AnimationSnapshot) -> core::result::Result<core::option::Option<surgeist_animation::time::TimelineTime>, surgeist_animation::time::TimeError>
+pub fn surgeist_animation::timeline::timeline_time_to_animation_time(time: core::option::Option<surgeist_animation::time::TimelineTime>, animation: surgeist_animation::timeline::AnimationSnapshot) -> core::result::Result<core::option::Option<surgeist_animation::time::AnimationTime>, surgeist_animation::time::TimeError>
+pub fn surgeist_animation::timeline::timeline_time_to_origin_relative_time(time: core::option::Option<surgeist_animation::time::TimelineTime>, timeline: surgeist_animation::timeline::TimelineSnapshot) -> core::result::Result<core::option::Option<surgeist_animation::time::OriginRelativeTime>, surgeist_animation::time::TimeError>
 pub mod surgeist_animation::timing
 pub enum surgeist_animation::timing::AnimationDirection
 pub surgeist_animation::timing::AnimationDirection::Alternate

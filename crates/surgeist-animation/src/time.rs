@@ -1,10 +1,177 @@
-//! Time inputs for animation sampling.
+//! Typed model coordinates and normalized inputs for animation sampling.
+//!
+//! Model coordinates are signed finite milliseconds; `Option<coordinate>`
+//! represents unresolved time. Coordinate types cannot be interchanged implicitly.
+//! These inputs do not imply that a timeline follows a wall clock.
 //!
 //! [`ElapsedTime`] is the effective, runtime-supplied non-negative elapsed time
 //! used for sampling. This crate validates and consumes it, but does not own
 //! clocks, scheduling, pause bookkeeping, or track-start resolution.
 
 use crate::diagnostics::{NumericError, NumericInput};
+
+/// A finite time in an animation's coordinate space, in milliseconds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnimationTime {
+    millis: f64,
+}
+
+/// A finite time in an associated timeline's coordinate space, in milliseconds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TimelineTime {
+    millis: f64,
+}
+
+/// A finite time relative to a document's time origin, in milliseconds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OriginRelativeTime {
+    millis: f64,
+}
+
+/// A finite playback multiplier, including negative values and zero.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlaybackRate {
+    value: f64,
+}
+
+/// The semantic input rejected by a model-time constructor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeInput {
+    Animation,
+    Timeline,
+    OriginRelative,
+    PlaybackRate,
+}
+
+/// The model-time operation whose result cannot be represented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeOperation {
+    DocumentCurrentTime,
+    TimelineToOrigin,
+    AnimationToTimeline,
+    TimelineToAnimation,
+}
+
+/// A typed model-time construction, arithmetic, or reporting failure.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TimeError {
+    kind: TimeErrorKind,
+}
+
+/// The distinction between invalid input, numeric limits, and decreasing reports.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TimeErrorKind {
+    NonFinite {
+        input: TimeInput,
+    },
+    Unrepresentable {
+        operation: TimeOperation,
+    },
+    DecreasingDocumentTime {
+        previous: TimelineTime,
+        attempted: TimelineTime,
+    },
+}
+
+impl AnimationTime {
+    /// Constructs a signed, finite animation coordinate without clamping it.
+    pub fn from_millis(millis: f64) -> Result<Self, TimeError> {
+        validate_model_number(millis, TimeInput::Animation)?;
+        Ok(Self { millis })
+    }
+
+    pub const fn as_millis(self) -> f64 {
+        self.millis
+    }
+}
+
+impl TimelineTime {
+    /// Constructs a signed, finite timeline coordinate without clamping it.
+    pub fn from_millis(millis: f64) -> Result<Self, TimeError> {
+        validate_model_number(millis, TimeInput::Timeline)?;
+        Ok(Self { millis })
+    }
+
+    pub const fn as_millis(self) -> f64 {
+        self.millis
+    }
+}
+
+impl OriginRelativeTime {
+    /// Constructs a signed, finite origin-relative coordinate without clamping it.
+    pub fn from_millis(millis: f64) -> Result<Self, TimeError> {
+        validate_model_number(millis, TimeInput::OriginRelative)?;
+        Ok(Self { millis })
+    }
+
+    pub const fn as_millis(self) -> f64 {
+        self.millis
+    }
+}
+
+impl PlaybackRate {
+    pub fn new(value: f64) -> Result<Self, TimeError> {
+        validate_model_number(value, TimeInput::PlaybackRate)?;
+        Ok(Self { value })
+    }
+
+    pub const fn value(self) -> f64 {
+        self.value
+    }
+}
+
+impl TimeError {
+    pub const fn kind(self) -> TimeErrorKind {
+        self.kind
+    }
+
+    pub(crate) const fn unrepresentable(operation: TimeOperation) -> Self {
+        Self {
+            kind: TimeErrorKind::Unrepresentable { operation },
+        }
+    }
+
+    pub(crate) const fn decreasing(previous: TimelineTime, attempted: TimelineTime) -> Self {
+        Self {
+            kind: TimeErrorKind::DecreasingDocumentTime {
+                previous,
+                attempted,
+            },
+        }
+    }
+}
+
+impl core::fmt::Display for TimeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.kind {
+            TimeErrorKind::NonFinite { input } => write!(f, "{input:?} time input must be finite"),
+            TimeErrorKind::Unrepresentable { operation } => {
+                write!(f, "{operation:?} time result is not representable")
+            }
+            TimeErrorKind::DecreasingDocumentTime {
+                previous,
+                attempted,
+            } => write!(
+                f,
+                "document timeline cannot decrease from {} to {} milliseconds",
+                previous.as_millis(),
+                attempted.as_millis()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TimeError {}
+
+fn validate_model_number(value: f64, input: TimeInput) -> Result<(), TimeError> {
+    if value.is_finite() {
+        Ok(())
+    } else {
+        Err(TimeError {
+            kind: TimeErrorKind::NonFinite { input },
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AnimationDuration {
