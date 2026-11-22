@@ -194,17 +194,29 @@ pub(super) fn attached_window_length_tracks_current_native_children() {
     }
 }
 
-fn observe(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, script: &str) -> String {
+pub(super) fn observe(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    script: &str,
+) -> String {
     let result = host
         .in_document(permit, |scope| {
             let outcome = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
             scope.to_utf16(&outcome)
         })
-        .unwrap();
+        .unwrap_or_else(|error| {
+            if let DocumentScriptError::Script(Error::HostFailure(failure)) = &error {
+                panic!(
+                    "Window observation failed: {:?}",
+                    std::error::Error::source(failure)
+                );
+            }
+            panic!("Window observation failed: {error:?}");
+        });
     String::from_utf16(&result).unwrap()
 }
 
-fn edit(host: &mut DocumentScriptHost, edit: DomSourceEdit) {
+pub(super) fn edit(host: &mut DocumentScriptHost, edit: DomSourceEdit) {
     host.with_native(|dom, _, mut source| {
         let mut services = DomSourceServices {
             meta: None,
@@ -224,7 +236,10 @@ fn edit(host: &mut DocumentScriptHost, edit: DomSourceEdit) {
     .unwrap();
 }
 
-fn content_navigable(snapshot: &DomSnapshot, container: NodeId) -> Option<DomHostedNavigableId> {
+pub(super) fn content_navigable(
+    snapshot: &DomSnapshot,
+    container: NodeId,
+) -> Option<DomHostedNavigableId> {
     snapshot
         .node(container)
         .unwrap()

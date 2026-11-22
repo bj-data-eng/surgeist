@@ -1,7 +1,7 @@
 pub(crate) mod boa;
 
 use std::any::{Any, TypeId};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
@@ -149,6 +149,15 @@ pub(crate) struct DeclaredCallable<'a> {
 pub(crate) trait Operations {
     fn realm_key(&self) -> RealmKey;
     fn window_interface(&mut self) -> Result<WindowInterface, Error>;
+    fn install_window_name_reader(&mut self, reader: &Root) -> Result<(), Error>;
+    fn install_window_index_reader(&mut self, reader: &Root) -> Result<(), Error>;
+    fn prepare_same_origin_window(&mut self, payload: Weak<dyn Any>) -> Result<Realm, Error>;
+    fn child_window_payload(&self, value: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
+    fn install_child_window(
+        &mut self,
+        realm: &Realm,
+        install: &mut dyn FnMut(&mut dyn Operations) -> Result<(), Error>,
+    ) -> Result<(), Error>;
     fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
     fn refuse(&self, error: Error) -> Error;
     fn check_host_failure_report(&self) -> Result<(), Error>;

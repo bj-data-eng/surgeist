@@ -22,8 +22,18 @@ fn fixture() -> (DocumentScriptHost, DocumentScriptPermit) {
     let permit = host.permit().unwrap();
     expose_public_node_for_source_test(&mut host, &permit, root, "probeIteratorRoot");
     host.in_document(&permit, |scope| {
-        scope.evaluate(&units("globalThis.probeIterator = document.createNodeIterator(probeIteratorRoot, NodeFilter.SHOW_TEXT)")).map(drop)
-    }).unwrap();
+        // Predefine the result slot so the trial prices iterator traversal
+        // independently of a named lookup during a new Window assignment.
+        scope
+            .evaluate(&units(
+                r#"
+                globalThis.probeIterator = document.createNodeIterator(probeIteratorRoot, NodeFilter.SHOW_TEXT);
+                globalThis.probeIteratorResult = undefined;
+                "#,
+            ))
+            .map(drop)
+    })
+    .unwrap();
     (host, permit)
 }
 

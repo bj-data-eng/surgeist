@@ -119,6 +119,10 @@ platform policy. XML creation copies the associated origin and policy into a
 fresh closed Document. None of these facts restores execution permission or
 supplies unavailable family/resource services.
 
+The snapshot retains the Document's original creation navigable after the
+active association ends. Historical lookup can still identify its browsing
+context and former parent, including when the Document has no active entry.
+
 Idle mutable Style custody has a
 [qualified withdrawal](source-and-style.md#mutable-cssom-custody-and-disabled-state)
 at the original destruction cleanup. Ordinary detach or an empty producer list

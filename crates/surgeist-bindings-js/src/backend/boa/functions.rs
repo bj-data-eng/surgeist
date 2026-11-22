@@ -419,8 +419,15 @@ fn run_boa_callable(
                 callback,
                 maximum_arguments,
             } => {
-                let receiver = if receiver_or_target.is_null_or_undefined() {
-                    entered.context.global_object()
+                let global = entered.context.global_object();
+                let receiver = if receiver_or_target.is_null_or_undefined()
+                    || receiver_or_target
+                        .as_object()
+                        .is_some_and(|receiver| receiver == global)
+                {
+                    // Global environment record access can reach the inner
+                    // Window. Native interface code observes its WindowProxy.
+                    entered.context.global_this()
                 } else {
                     // Boa ToObject only refuses null or undefined, handled above.
                     receiver_or_target

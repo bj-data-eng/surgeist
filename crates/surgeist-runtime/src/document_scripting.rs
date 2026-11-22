@@ -1290,7 +1290,7 @@ impl ScriptEngine {
     fn settle_engine_cleanup(&mut self, native: &NativeOwner, realm: &RealmAuthority) {
         self.comments.drain_retirements(&mut self.process);
         if let Some(events) = &self.guest_events {
-            events.reap_retired_targets(&mut self.process);
+            events.reap_retired_targets(&mut self.process, native);
         }
         if realm.check_owner_active().is_err() {
             native.discard_media_removals();

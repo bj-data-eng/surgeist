@@ -673,7 +673,7 @@ impl Dom {
             return Err(DomHostedError::ForeignSource);
         }
         Ok(match association.phase {
-            DocumentPhase::Retired { operation } => Some(DomHostedDocumentDestructionProof {
+            DocumentPhase::Retired { operation, .. } => Some(DomHostedDocumentDestructionProof {
                 source: source.id(),
                 document: creation.document,
                 global: creation.global,

@@ -3669,6 +3669,7 @@ pub fn surgeist_dom::tree::DomDocument<'_>::is_simple_fullscreen_document(self) 
 pub fn surgeist_dom::tree::DomDocument<'_>::keyboard_lock_active(self) -> core::result::Result<bool, surgeist_dom::DomError>
 impl<'a> surgeist_dom::tree::DomDocument<'a>
 pub fn surgeist_dom::tree::DomDocument<'a>::active_range(self) -> surgeist_dom::range::DomActiveRangeState
+pub fn surgeist_dom::tree::DomDocument<'a>::captured_fully_active_with<E>(self, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E> where E: core::convert::From<surgeist_dom::DomError> + core::convert::From<surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::tree::DomDocument<'a>::focused_area_designation(self) -> surgeist_dom::focus::DomFocusedAreaDesignation
 pub fn surgeist_dom::tree::DomDocument<'a>::id(self) -> surgeist_dom::identity::DocumentId
 pub fn surgeist_dom::tree::DomDocument<'a>::is_fully_active(self) -> core::result::Result<bool, surgeist_dom::hosted::DomHostedError>
@@ -4784,6 +4785,11 @@ pub fn surgeist_dom::DomSnapshot::retarget_node_with<E: core::convert::From<surg
 pub fn surgeist_dom::DomSnapshot::revision(&self) -> surgeist_dom::identity::DomRevision
 pub fn surgeist_dom::DomSnapshot::stamp(&self) -> surgeist_dom::identity::DomStamp
 impl surgeist_dom::DomSnapshot
+pub fn surgeist_dom::DomSnapshot::captured_hosted_navigable_with<E: core::convert::From<surgeist_dom::hosted::DomHostedError>>(&self, id: surgeist_dom::hosted::DomHostedNavigableId, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_dom::hosted::history::DomHostedNavigable<'_>, E>
+pub fn surgeist_dom::DomSnapshot::hosted_creation_navigable_with<E>(&self, document: surgeist_dom::identity::DocumentId, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::hosted::history::DomHostedNavigable<'_>>, E> where E: core::convert::From<surgeist_dom::DomError> + core::convert::From<surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::DomSnapshot::hosted_entry(&self, id: surgeist_dom::hosted::history::DomHostedEntryId) -> core::result::Result<surgeist_dom::hosted::history::DomHostedEntry<'_>, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::DomSnapshot::hosted_navigable(&self, id: surgeist_dom::hosted::DomHostedNavigableId) -> core::result::Result<surgeist_dom::hosted::history::DomHostedNavigable<'_>, surgeist_dom::hosted::DomHostedError>
+impl surgeist_dom::DomSnapshot
 pub fn surgeist_dom::DomSnapshot::details_toggle_intentions(&self) -> core::result::Result<&[surgeist_dom::details::DomDetailsToggleIntention], surgeist_dom::DomError>
 impl surgeist_dom::DomSnapshot
 pub fn surgeist_dom::DomSnapshot::flat_tree(&self, document: surgeist_dom::identity::DocumentId, limits: surgeist_dom::shadow::DomSlotQueryLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::shadow::DomFlatTree, surgeist_dom::DomError>
@@ -4791,9 +4797,6 @@ impl surgeist_dom::DomSnapshot
 pub fn surgeist_dom::DomSnapshot::global_document(&self, global: surgeist_dom::hosted::DomHostedGlobalId) -> core::result::Result<surgeist_dom::identity::DocumentId, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::DomSnapshot::global_document_with<E>(&self, global: surgeist_dom::hosted::DomHostedGlobalId, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_dom::identity::DocumentId, E> where E: core::convert::From<surgeist_dom::DomError> + core::convert::From<surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::DomSnapshot::relevant_global(&self, node: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_dom::hosted::DomHostedGlobalId>, surgeist_dom::hosted::DomHostedError>
-impl surgeist_dom::DomSnapshot
-pub fn surgeist_dom::DomSnapshot::hosted_entry(&self, id: surgeist_dom::hosted::history::DomHostedEntryId) -> core::result::Result<surgeist_dom::hosted::history::DomHostedEntry<'_>, surgeist_dom::hosted::DomHostedError>
-pub fn surgeist_dom::DomSnapshot::hosted_navigable(&self, id: surgeist_dom::hosted::DomHostedNavigableId) -> core::result::Result<surgeist_dom::hosted::history::DomHostedNavigable<'_>, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::DomSnapshot
 pub fn surgeist_dom::DomSnapshot::html_capture(&self, document: surgeist_dom::identity::DocumentId, host: core::option::Option<&surgeist_dom::capture::DomHostCapture>, capture_limits: surgeist_html_semantics::capture::HtmlCaptureLimits, adapter_limits: surgeist_dom::capture::DomHtmlCaptureLimits, cancellation: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::capture::DomHtmlCapture, surgeist_dom::capture::DomHtmlCaptureError>
 pub fn surgeist_dom::DomSnapshot::with_document_scripting(&self, scripting: surgeist_dom::script::DomDocumentScriptingObservation) -> core::result::Result<surgeist_dom::capture::DomScriptingCapture<'_>, surgeist_dom::capture::DomHtmlCaptureError>

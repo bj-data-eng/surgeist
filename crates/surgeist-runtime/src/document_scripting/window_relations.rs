@@ -7,7 +7,7 @@ use std::{
 
 use surgeist_bindings_js::{
     Arguments, Callback, Completion, Error, FunctionMetadata, Primitive, PropertyDescriptor,
-    PropertyKey, Scope, ValueKind,
+    PropertyKey, Scope, Value, ValueKind,
 };
 use surgeist_dom::hosted::{DomHostedError, DomHostedRuntimeRetention};
 use surgeist_html_semantics::HtmlScriptingStatus;
@@ -27,17 +27,20 @@ const fn ascii<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     units
 }
 
-enum Relation {
+#[derive(Clone, Copy)]
+pub(super) enum Relation {
     WindowProxy,
+    Parent,
     Opener,
     Length,
+    Closed,
 }
 
-struct Member {
-    key: &'static [u16],
+pub(super) struct Member {
+    pub(super) key: &'static [u16],
     get: &'static [u16],
     set: Option<&'static [u16]>,
-    relation: Relation,
+    pub(super) relation: Relation,
 }
 
 const MEMBERS: &[Member] = &[
@@ -63,7 +66,7 @@ const MEMBERS: &[Member] = &[
         key: &ascii(b"parent"),
         get: &ascii(b"get parent"),
         set: Some(&ascii(b"set parent")),
-        relation: Relation::WindowProxy,
+        relation: Relation::Parent,
     },
     Member {
         key: &ascii(b"length"),
@@ -72,6 +75,19 @@ const MEMBERS: &[Member] = &[
         relation: Relation::Length,
     },
 ];
+
+const CLOSED: Member = Member {
+    key: &ascii(b"closed"),
+    get: &ascii(b"get closed"),
+    set: None,
+    relation: Relation::Closed,
+};
+
+impl Member {
+    fn configurable(&self) -> bool {
+        self.set.is_some() || matches!(self.relation, Relation::Closed)
+    }
+}
 
 struct WindowRelations {
     native: Weak<NativeOwner>,
@@ -110,14 +126,43 @@ pub(super) fn install(
         permit,
         _backing: backing,
     });
-    let global = scope.global()?;
-    for member in MEMBERS {
-        let getter = Access {
+    install_members(scope, MEMBERS.iter(), |member, setter| {
+        let access = Access {
             host: host.clone(),
             member,
         };
+        Callback::new(move |scope, arguments| access.call(scope, arguments, setter))
+    })
+}
+
+pub(super) fn install_child_members(
+    scope: &mut Scope<'_>,
+    callback: impl FnMut(&'static Member, bool) -> Callback,
+) -> Result<(), Error> {
+    install_members(
+        scope,
+        MEMBERS.iter().chain(std::iter::once(&CLOSED)),
+        callback,
+    )
+}
+
+pub(super) fn child_callback_count() -> usize {
+    MEMBERS
+        .iter()
+        .map(|member| 1 + usize::from(member.set.is_some()))
+        .sum::<usize>()
+        + 1
+}
+
+fn install_members(
+    scope: &mut Scope<'_>,
+    members: impl Iterator<Item = &'static Member>,
+    mut callback: impl FnMut(&'static Member, bool) -> Callback,
+) -> Result<(), Error> {
+    let global = scope.global()?;
+    for member in members {
         let get = scope.fixed_arity_function(
-            &Callback::new(move |scope, arguments| getter.call(scope, arguments, false)),
+            &callback(member, false),
             FunctionMetadata {
                 name: member.get,
                 length: 0,
@@ -126,12 +171,8 @@ pub(super) fn install(
         let set = member
             .set
             .map(|name| {
-                let setter = Access {
-                    host: host.clone(),
-                    member,
-                };
                 scope.fixed_arity_function(
-                    &Callback::new(move |scope, arguments| setter.call(scope, arguments, true)),
+                    &callback(member, true),
                     FunctionMetadata { name, length: 1 },
                 )
             })
@@ -143,7 +184,7 @@ pub(super) fn install(
                 get: Some(&get),
                 set: set.as_ref(),
                 enumerable: true,
-                configurable: member.set.is_some(),
+                configurable: member.configurable(),
             },
         )?;
     }
@@ -160,110 +201,138 @@ impl Access {
         // Bindings supplies the callback realm's global for a null or undefined
         // receiver, matching the Web IDL accessor default.
         let global = scope.global()?;
+        let native = self.host.native.upgrade().ok_or(Error::ExpiredIdentity)?;
+        if scope.realm_authority()?.identity() != self.host.permit.realm {
+            return Err(Error::RegistryConflict);
+        }
         if !scope.strict_equals(arguments.receiver(), &global)? {
+            if let Some(result) =
+                super::guest::call_child_window_relation(scope, &arguments, self.member, setter)?
+            {
+                return Ok(result);
+            }
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Not a Window object"))?,
             ));
         }
+        access_attached(
+            scope,
+            &native,
+            &self.host.permit,
+            &arguments,
+            self.member,
+            setter,
+        )
+    }
+}
 
-        let native = self.host.native.upgrade().ok_or(Error::ExpiredIdentity)?;
-        let attachment = native.attachment.get().ok_or(Error::ExpiredIdentity)?;
-        let permit = &self.host.permit;
-        if scope.realm_authority()?.identity() != permit.realm
-            || attachment.realm.identity() != permit.realm
-            || attachment.target.document() != permit.document
-        {
-            return refuse(
-                scope,
-                &attachment.failures,
-                DocumentScriptNativeError::ForeignPermit,
-            );
-        }
+pub(super) fn access_attached<'scope>(
+    scope: &mut Scope<'scope>,
+    native: &NativeOwner,
+    permit: &DocumentScriptPermit,
+    arguments: &Arguments<'scope>,
+    member: &Member,
+    setter: bool,
+) -> Result<Completion<'scope>, Error> {
+    let attachment = native.attachment.get().ok_or(Error::ExpiredIdentity)?;
+    if attachment.realm.identity() != permit.realm
+        || attachment.target.document() != permit.document
+    {
+        return refuse(
+            scope,
+            &attachment.failures,
+            DocumentScriptNativeError::ForeignPermit,
+        );
+    }
 
-        let undefined;
-        let mut replacement = None;
-        if setter {
-            let value = match arguments.get(0) {
-                Some(value) => value,
-                None => {
-                    undefined = scope.primitive(Primitive::Undefined)?;
-                    &undefined
-                }
-            };
-            if !matches!(self.member.relation, Relation::Opener)
-                || scope.kind(value)? != ValueKind::Null
-            {
-                replacement = Some(value);
+    let undefined;
+    let mut replacement = None;
+    if setter {
+        let value = match arguments.get(0) {
+            Some(value) => value,
+            None => {
+                undefined = scope.primitive(Primitive::Undefined)?;
+                &undefined
             }
-        }
-
-        let result = (|| {
-            let mut session = native
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            qualify(&native, attachment, &mut session)?;
-            let hosted = session.hosted_execution();
-            if setter {
-                if replacement.is_some() {
-                    hosted.admit_script_work(
-                        &session.dom(),
-                        self.member.key.len(),
-                        &native.cancellation,
-                    )?;
-                }
-                return Ok(None);
-            }
-            match self.member.relation {
-                // The canonical attached navigable is this parentless top-level.
-                Relation::WindowProxy => Ok(None),
-                Relation::Opener => Ok(Some(Primitive::Null)),
-                Relation::Length => {
-                    let count = hosted.script_child_navigable_count(
-                        &session.dom(),
-                        attachment.target.document(),
-                        &native.cancellation,
-                    )?;
-                    let length = u32::try_from(count)
-                        .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
-                    Ok(Some(Primitive::Number(f64::from(length))))
-                }
-            }
-        })();
-        let primitive = match result {
-            Ok(primitive) => primitive,
-            Err(error) => return refuse(scope, &attachment.failures, error),
         };
-
-        if let Some(value) = replacement {
-            return match scope.define_property(
-                &global,
-                PropertyKey::String(self.member.key),
-                PropertyDescriptor::Data {
-                    value,
-                    writable: true,
-                    enumerable: true,
-                    configurable: true,
-                },
-            ) {
-                Ok(()) => Ok(Completion::Undefined),
-                Err(Error::PropertyRejected) => Ok(Completion::Throw(
-                    scope.type_error(&ascii(b"Cannot replace Window attribute"))?,
-                )),
-                Err(error) => Err(error),
-            };
+        if !matches!(member.relation, Relation::Opener) || scope.kind(value)? != ValueKind::Null {
+            replacement = Some(value);
         }
+    }
+
+    let result = (|| {
+        let mut session = native
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        qualify(native, attachment, &mut session)?;
+        let hosted = session.hosted_execution();
         if setter {
-            // Disowning this live no-opener context leaves its opener absent
-            // and preserves the accessor.
-            return Ok(Completion::Undefined);
+            if replacement.is_some() {
+                hosted.admit_script_work(&session.dom(), member.key.len(), &native.cancellation)?;
+            }
+            return Ok(None);
         }
+        match member.relation {
+            // The canonical attached navigable is this parentless top-level.
+            Relation::WindowProxy | Relation::Parent => Ok(None),
+            Relation::Opener => Ok(Some(Primitive::Null)),
+            Relation::Closed => Ok(Some(Primitive::Boolean(false))),
+            Relation::Length => {
+                let count = hosted.script_child_navigable_count(
+                    &session.dom(),
+                    attachment.target.document(),
+                    &native.cancellation,
+                )?;
+                let length = u32::try_from(count)
+                    .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
+                Ok(Some(Primitive::Number(f64::from(length))))
+            }
+        }
+    })();
+    let primitive = match result {
+        Ok(primitive) => primitive,
+        Err(error) => return refuse(scope, &attachment.failures, error),
+    };
 
-        let value = match primitive {
-            Some(primitive) => scope.primitive(primitive)?,
-            None => global,
-        };
-        Ok(Completion::Return(value))
+    let global = arguments.receiver();
+    if let Some(value) = replacement {
+        return replace_attribute(scope, global, member, value);
+    }
+    if setter {
+        // Disowning this live no-opener context leaves its opener absent
+        // and preserves the accessor.
+        return Ok(Completion::Undefined);
+    }
+
+    let value = match primitive {
+        Some(primitive) => scope.primitive(primitive)?,
+        None => scope.import(&scope.retain(global))?,
+    };
+    Ok(Completion::Return(value))
+}
+
+pub(super) fn replace_attribute<'scope>(
+    scope: &mut Scope<'scope>,
+    global: &Value<'scope>,
+    member: &Member,
+    value: &Value<'scope>,
+) -> Result<Completion<'scope>, Error> {
+    match scope.define_property(
+        global,
+        PropertyKey::String(member.key),
+        PropertyDescriptor::Data {
+            value,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        },
+    ) {
+        Ok(()) => Ok(Completion::Undefined),
+        Err(Error::PropertyRejected) => Ok(Completion::Throw(
+            scope.type_error(&ascii(b"Cannot replace Window attribute"))?,
+        )),
+        Err(error) => Err(error),
     }
 }
 

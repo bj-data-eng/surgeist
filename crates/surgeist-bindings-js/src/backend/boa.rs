@@ -1,6 +1,7 @@
 //! The Boa adapter owns the only guest heap used by this execution owner.
 
 use std::{
+    any::Any,
     cell::{Cell, OnceCell, RefCell},
     collections::BTreeMap,
     rc::{Rc, Weak},
@@ -13,7 +14,7 @@ use boa_engine::{
     module::IdleModuleLoader,
     object::{
         builtins::JsPromise,
-        host::{immutable_prototype, window_properties},
+        host::{WindowOrigin, immutable_prototype, window_properties, window_proxy},
     },
     property::PropertyDescriptor as BoaDescriptor,
     realm::{Realm as BoaRealm, WeakRealm},
@@ -81,6 +82,7 @@ impl Drop for PreparedRoot {
 struct WindowObjects {
     prototype: JsObject,
     event_target: JsObject,
+    names: JsObject,
 }
 
 struct RealmRecord {
@@ -88,6 +90,7 @@ struct RealmRecord {
     external: Option<BoaRealm>,
     realm: WeakRealm,
     window: Option<WindowObjects>,
+    child_payload: Option<Weak<dyn Any>>,
     _backing: Option<Rc<RealmBacking>>,
 }
 
@@ -97,6 +100,8 @@ struct State {
     roots: RefCell<BTreeMap<u64, Rc<RootRecord>>>,
     realms: RefCell<BTreeMap<u64, RealmRecord>>,
     next_root: Cell<u64>,
+    next_realm: Cell<u64>,
+    globals: Rc<Globals>,
     callbacks: callback_objects::CallbackObjects,
     native: native::NativeObjects,
     callables: functions::BoaCallables,
@@ -104,13 +109,15 @@ struct State {
 }
 
 impl State {
-    fn new(owner: u64) -> Rc<Self> {
+    fn new(owner: u64, globals: Rc<Globals>) -> Rc<Self> {
         Rc::new_cyclic(|weak| Self {
             self_weak: weak.clone(),
             owner: Rc::new(OwnerState::new(owner)),
             roots: RefCell::new(BTreeMap::new()),
             realms: RefCell::new(BTreeMap::new()),
             next_root: Cell::new(0),
+            next_realm: Cell::new(0),
+            globals,
             callbacks: Default::default(),
             native: Default::default(),
             callables: functions::BoaCallables::new(),
@@ -118,8 +125,96 @@ impl State {
         })
     }
 
+    fn create_realm(
+        &self,
+        context: &mut Context,
+        origin: Option<WindowOrigin>,
+        backing: Option<Rc<RealmBacking>>,
+        child_payload: Option<Weak<dyn Any>>,
+    ) -> Result<Realm, Error> {
+        self.owner.available()?;
+        let index = self
+            .next_realm
+            .get()
+            .checked_add(1)
+            .ok_or(Error::IdentityExhausted)?;
+        let window = origin.is_some();
+        let prior = context.realm().clone();
+        self.globals.origin.set(origin);
+        let realm = context.create_realm();
+        self.globals.origin.set(None);
+        self.globals.prepared.set(None);
+        context.enter_realm(prior);
+        let realm = realm.map_err(|_| Error::BackendUnavailable)?;
+        let key = RealmKey {
+            owner: self.owner.id(),
+            index,
+        };
+        let token = Realm(Rc::new(RealmIdentity {
+            key,
+            _backing: backing.clone(),
+        }));
+        let window = {
+            let frame = EnterRealm::new(context, realm.clone());
+            let global = frame.context.global_object();
+            if window {
+                let prototype = frame
+                    .context
+                    .intrinsics()
+                    .constructors()
+                    .object()
+                    .prototype();
+                let root_shape = frame.context.root_shape();
+                let event_target = immutable_prototype(root_shape, Some(prototype));
+                let names = window_properties(root_shape, global.clone(), event_target.clone());
+                let prototype = immutable_prototype(root_shape, Some(names.clone()));
+                prototype.insert_property(
+                    JsSymbol::to_string_tag(),
+                    BoaDescriptor::builder()
+                        .value(JsString::from("Window"))
+                        .writable(false)
+                        .enumerable(false)
+                        .configurable(true),
+                );
+                if !global.set_prototype(Some(prototype.clone())) {
+                    return Err(Error::PropertyRejected);
+                }
+                Some(WindowObjects {
+                    prototype,
+                    event_target,
+                    names,
+                })
+            } else {
+                None
+            }
+        };
+        self.realms
+            .try_borrow_mut()
+            .map_err(|_| self.conflict())?
+            .insert(
+                index,
+                RealmRecord {
+                    identity: Rc::downgrade(&token.0),
+                    realm: realm.downgrade(),
+                    external: Some(realm),
+                    window,
+                    child_payload,
+                    _backing: backing,
+                },
+            );
+        self.next_realm.set(index);
+        Ok(token)
+    }
+
     fn conflict(&self) -> Error {
         self.owner.fail(Error::RegistryConflict)
+    }
+
+    fn realm_storage_bytes() -> usize {
+        size_of::<RealmIdentity>()
+            + size_of::<RealmRecord>()
+            + size_of::<(u64, RealmRecord)>()
+            + size_of::<RealmBacking>()
     }
 
     fn prepare(&self, realm: RealmKey) -> Result<PreparedRoot, Error> {
@@ -308,27 +403,36 @@ impl State {
 
 #[derive(Default)]
 struct Globals {
-    window: Cell<bool>,
+    origin: Cell<Option<WindowOrigin>>,
+    prepared: Cell<Option<JsObject>>,
 }
 
 impl HostHooks for Globals {
     fn create_global_object(&self, intrinsics: &Intrinsics) -> JsObject {
-        if self.window.get() {
-            immutable_prototype(
+        if let Some(origin) = self.origin.take() {
+            let window = immutable_prototype(
                 intrinsics.root_shape(),
                 Some(intrinsics.constructors().object().prototype()),
-            )
+            );
+            self.prepared.set(Some(window_proxy(
+                intrinsics.root_shape(),
+                window.clone(),
+                origin,
+            )));
+            window
         } else {
             JsObject::with_object_proto(intrinsics)
         }
+    }
+
+    fn create_global_this(&self, _: &Intrinsics) -> Option<JsObject> {
+        self.prepared.take()
     }
 }
 
 pub(crate) struct Engine {
     state: Rc<State>,
     context: Context,
-    globals: Rc<Globals>,
-    next_realm: u64,
     _lease: BackendLease,
 }
 
@@ -368,10 +472,8 @@ impl Engine {
             .map_err(|_| Error::BackendUnavailable)?;
         Ok((
             Self {
-                state: State::new(owner),
+                state: State::new(owner, globals),
                 context,
-                globals,
-                next_realm: 0,
                 _lease: lease,
             },
             backing,
@@ -401,83 +503,9 @@ impl super::Engine for Engine {
         profile: RealmProfile,
         backing: Option<Rc<RealmBacking>>,
     ) -> Result<Realm, Error> {
-        self.prepare_realm()?;
-        let index = self
-            .next_realm
-            .checked_add(1)
-            .ok_or(Error::IdentityExhausted)?;
-        let window = matches!(profile, RealmProfile::Window);
-        let prior = self.context.realm().clone();
-        self.globals.window.set(window);
-        let realm = self.context.create_realm();
-        self.globals.window.set(false);
-        self.context.enter_realm(prior);
-        let realm = realm.map_err(|_| Error::BackendUnavailable)?;
-        let key = RealmKey {
-            owner: self.state.owner.id(),
-            index,
-        };
-        let token = Realm(Rc::new(RealmIdentity {
-            key,
-            _backing: backing.clone(),
-        }));
-        let window = {
-            let frame = EnterRealm::new(&mut self.context, realm.clone());
-            let global = frame.context.global_object();
-            if window {
-                let prototype = frame
-                    .context
-                    .intrinsics()
-                    .constructors()
-                    .object()
-                    .prototype();
-                let root_shape = frame.context.root_shape();
-                let event_target = immutable_prototype(root_shape, Some(prototype));
-                let names = window_properties(root_shape, event_target.clone());
-                names.insert_property(
-                    JsSymbol::to_string_tag(),
-                    BoaDescriptor::builder()
-                        .value(JsString::from("WindowProperties"))
-                        .writable(false)
-                        .enumerable(false)
-                        .configurable(true),
-                );
-                let prototype = immutable_prototype(root_shape, Some(names));
-                prototype.insert_property(
-                    JsSymbol::to_string_tag(),
-                    BoaDescriptor::builder()
-                        .value(JsString::from("Window"))
-                        .writable(false)
-                        .enumerable(false)
-                        .configurable(true),
-                );
-                if !global.set_prototype(Some(prototype.clone())) {
-                    return Err(Error::PropertyRejected);
-                }
-                Some(WindowObjects {
-                    prototype,
-                    event_target,
-                })
-            } else {
-                None
-            }
-        };
+        let origin = matches!(profile, RealmProfile::Window).then(WindowOrigin::default);
         self.state
-            .realms
-            .try_borrow_mut()
-            .map_err(|_| self.state.conflict())?
-            .insert(
-                index,
-                RealmRecord {
-                    identity: Rc::downgrade(&token.0),
-                    realm: realm.downgrade(),
-                    external: Some(realm),
-                    window,
-                    _backing: backing,
-                },
-            );
-        self.next_realm = index;
-        Ok(token)
+            .create_realm(&mut self.context, origin, backing, None)
     }
 
     fn with_realm(
@@ -515,10 +543,7 @@ impl super::Engine for Engine {
     }
 
     fn realm_storage_bytes(&self) -> usize {
-        size_of::<RealmIdentity>()
-            + size_of::<RealmRecord>()
-            + size_of::<(u64, RealmRecord)>()
-            + size_of::<RealmBacking>()
+        State::realm_storage_bytes()
     }
 
     fn managed_object_storage_bytes(&self) -> usize {

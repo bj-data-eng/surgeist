@@ -180,6 +180,7 @@ struct HtmlPrototype {
     constructor: RetainedCallbackObject,
 }
 
+#[derive(Clone, Copy)]
 enum ElementInterface {
     Element,
     Html(&'static str),
@@ -202,6 +203,7 @@ enum ElementObservation {
     ShadowRoot(Option<NodeId>),
 }
 
+#[derive(Clone, Copy)]
 enum NativeProjection {
     Document(DocumentId, DomDocumentInterface),
     DocumentType,
@@ -1070,7 +1072,7 @@ impl PublicEventBindings {
                         .watch(scope, owner, events, &self.callbacks, node, prototype)
                 }
             };
-            let project = |documents: &DocumentPrototypes, elements: &ElementBindings| match projection
+            let project = |scope: &mut Scope<'scope>, documents: &DocumentPrototypes, elements: &ElementBindings| match projection
             {
                 NativeProjection::Document(document, interface) => {
                     // Published Documents survive for the native owner's lifetime.
@@ -1116,14 +1118,21 @@ impl PublicEventBindings {
                 }
             };
             if origin == attached {
-                project(&bindings.prototypes, &bindings.element)
-            } else {
-                self.with_origin_with(
-                    origin,
-                    || admission.step(),
-                    |origin| project(&origin.documents, &origin.elements),
-                )
+                return project(scope, &bindings.prototypes, &bindings.element);
             }
+            if let Some(value) = self.with_origin_if_present(
+                origin,
+                || admission.step(),
+                |origin| project(scope, &origin.documents, &origin.elements),
+            )? {
+                return Ok(value);
+            }
+            self.establish_child_origin(scope, owner, events, origin)?;
+            self.with_origin_with(
+                origin,
+                || admission.step(),
+                |origin| project(scope, &origin.documents, &origin.elements),
+            )
         })
     }
 }

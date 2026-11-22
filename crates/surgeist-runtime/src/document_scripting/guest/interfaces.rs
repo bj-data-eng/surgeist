@@ -10,6 +10,9 @@ mod page_transition_event;
 mod security_policy_violation;
 mod toggle_event;
 mod trusted_policy;
+mod window_children;
+pub(in crate::document_scripting) use window_children::call_child_window_relation;
+pub(super) use window_children::{ChildRelations, child_window_event_receiver, was_child_window};
 
 use super::*;
 pub(in crate::document_scripting) use custom_elements::document_registry as creation_document_registry;
@@ -118,6 +121,22 @@ struct OriginBindings {
     _backing: GuestBacking,
 }
 
+struct OriginInstall<'scope, 'setup> {
+    global: DomHostedGlobalId,
+    document: DocumentId,
+    registry: surgeist_dom::custom_element::DomRegistryId,
+    dom_exception_limits: DomExceptionLimits,
+    admission: OriginAdmission,
+    conversion_host: preparation::NativeConversionHost,
+    window: Option<WindowOriginInstall<'scope, 'setup>>,
+}
+
+struct WindowOriginInstall<'scope, 'setup> {
+    target: &'setup Value<'scope>,
+    relations: Rc<window_children::ChildRelations>,
+    owner: &'setup NativeOwner,
+}
+
 #[derive(Clone, Copy, Default)]
 struct OriginCost {
     bytes: usize,
@@ -178,6 +197,8 @@ pub(super) struct PublicEventBindings {
     scoped_registries: RefCell<custom_elements::ScopedRegistries>,
     origins: RefCell<Option<Box<OriginBindings>>>,
     origin_cost: OriginCost,
+    window_children: window_children::Children,
+    conversion_host: preparation::NativeConversionHost,
 }
 
 impl Drop for PublicEventBindings {
@@ -192,6 +213,23 @@ impl Drop for PublicEventBindings {
 impl PublicEventBindings {
     pub(super) fn reap_nodes(&self, process: &mut Process, retired: &Cell<bool>) {
         self.document.reap_nodes(process, retired);
+    }
+
+    pub(super) fn reap_windows(&self, native: &NativeOwner, process: &mut Process) -> bool {
+        let Ok(session) = native.session.try_borrow() else {
+            return false;
+        };
+        if session.read_dom().pending_source_edit().is_some() {
+            return false;
+        }
+        let snapshot = session.snapshot();
+        drop(session);
+        let retired = self.window_children.reap(&snapshot);
+        if retired {
+            // Settle expired engine roots at the same native boundary.
+            drop(process.execution());
+        }
+        retired
     }
 
     pub(super) fn install_window(
@@ -281,7 +319,7 @@ impl PublicEventBindings {
             Hosted::new(conversion_host.for_origin(ConversionOrigin::DomException))
                 .storage_bytes::<GuestBacking>()
                 .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        let hosted = Hosted::new(conversion_host);
+        let hosted = Hosted::new(conversion_host.for_origin(ConversionOrigin::General));
         let metadata_bytes = hosted
             .storage_bytes::<GuestBacking>()
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
@@ -519,6 +557,8 @@ impl PublicEventBindings {
                 scoped_registries: RefCell::default(),
                 origins: RefCell::new(None),
                 origin_cost,
+                window_children: window_children::Children::default(),
+                conversion_host,
             },
         ))
     }
@@ -540,6 +580,37 @@ impl PublicEventBindings {
         admission: OriginAdmission,
         conversion_host: preparation::NativeConversionHost,
     ) -> Result<(), DocumentGuestEventError> {
+        let (_, bindings) = self.build_origin(
+            scope,
+            events,
+            OriginInstall {
+                global,
+                document,
+                registry,
+                dom_exception_limits,
+                admission,
+                conversion_host,
+                window: None,
+            },
+        )?;
+        self.publish_origin(bindings)
+    }
+
+    fn build_origin<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+        install: OriginInstall<'scope, '_>,
+    ) -> Result<(Value<'scope>, OriginBindings), DocumentGuestEventError> {
+        let OriginInstall {
+            global,
+            document,
+            registry,
+            dom_exception_limits,
+            admission,
+            conversion_host,
+            window: window_profile,
+        } = install;
         let fund = |bytes| admission.take(events, bytes);
         let backing = fund(size_of::<OriginBindings>())?;
         let realm = scope.realm_authority()?.identity();
@@ -574,9 +645,20 @@ impl PublicEventBindings {
             conversion_backing,
             constructor_backing,
         )?;
-        let target = install_target_prototype(scope, &capture)?;
-        install_event_interface(scope, Interface::Target, &target, &capture)?;
-        let (constructor, node) = document::install_node(scope, &target, &capture)?;
+        let ordinary_target;
+        let target = match &window_profile {
+            Some(window) => {
+                install_target_operations(scope, window.target, &capture)?;
+                window.target
+            }
+            None => {
+                ordinary_target = install_target_prototype(scope, &capture)?;
+                &ordinary_target
+            }
+        };
+        let target_constructor =
+            install_event_interface(scope, Interface::Target, target, &capture)?;
+        let (constructor, node) = document::install_node(scope, target, &capture)?;
         let documents = document::DocumentPrototypes::install_origin(
             scope,
             &node,
@@ -602,23 +684,44 @@ impl PublicEventBindings {
             &capture,
             &fund,
         )?;
-        let target = scope.callback_object(&target)?;
+        if let Some(window) = window_profile {
+            let capture_reader = |bytes| -> Result<Capture, DocumentGuestEventError> {
+                Ok(Capture {
+                    callbacks: self.callbacks.clone(),
+                    origin: Some(authority.clone()),
+                    _backing: events.reserve(window.owner, bytes)?,
+                })
+            };
+            documents.install_window_reads(
+                scope,
+                &capture_reader,
+                window_children::WindowSite::Child(window.relations),
+            )?;
+        }
+        let target = scope.callback_object(target)?;
         let target = scope.retain_callback_object(target, fund)?;
         admission.finish()?;
+        Ok((
+            target_constructor,
+            OriginBindings {
+                global,
+                target,
+                documents,
+                elements,
+                custom_elements,
+                next: None,
+                _backing: backing,
+            },
+        ))
+    }
+
+    fn publish_origin(&self, mut record: OriginBindings) -> Result<(), DocumentGuestEventError> {
         let mut origins = self
             .origins
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let record = Box::new(OriginBindings {
-            global,
-            target,
-            documents,
-            elements,
-            custom_elements,
-            next: origins.take(),
-            _backing: backing,
-        });
-        *origins = Some(record);
+        record.next = origins.take();
+        *origins = Some(Box::new(record));
         Ok(())
     }
 
@@ -634,9 +737,19 @@ impl PublicEventBindings {
     fn with_origin_with<T>(
         &self,
         global: DomHostedGlobalId,
-        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+        step: impl FnMut() -> Result<(), DocumentGuestEventError>,
         use_origin: impl FnOnce(&OriginBindings) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
+        self.with_origin_if_present(global, step, use_origin)?
+            .ok_or_else(|| DocumentScriptNativeError::CreationGlobalUnavailable.into())
+    }
+
+    fn with_origin_if_present<T>(
+        &self,
+        global: DomHostedGlobalId,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+        use_origin: impl FnOnce(&OriginBindings) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<Option<T>, DocumentGuestEventError> {
         let origins = self
             .origins
             .try_borrow()
@@ -645,11 +758,11 @@ impl PublicEventBindings {
         while let Some(origin) = next {
             step()?;
             if origin.global == global {
-                return use_origin(origin);
+                return use_origin(origin).map(Some);
             }
             next = origin.next.as_deref();
         }
-        Err(DocumentScriptNativeError::CreationGlobalUnavailable.into())
+        Ok(None)
     }
 
     pub(super) fn activate(&self, events: &Rc<GuestEvents>) {

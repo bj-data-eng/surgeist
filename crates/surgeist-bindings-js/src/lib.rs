@@ -90,8 +90,8 @@ pub mod preparation;
 mod promise;
 mod trusted_types;
 
-use std::marker::PhantomData;
 use std::rc::Rc;
+use std::{any::Any, marker::PhantomData};
 
 pub use callback_object::{CallbackObject, RetainedCallbackObject};
 pub use custom_elements::{CustomElementRegistryIdentity, PublishedCustomElementRegistry};
@@ -242,6 +242,19 @@ pub struct Execution<'process> {
 /// installation yields the ordinary execution capability for this realm.
 pub struct PendingWindowRealm(Realm);
 
+/// Host custody of a native browsing context's guest WindowProxy.
+pub struct ChildWindow {
+    _realm: Realm,
+    proxy: Root,
+}
+
+impl ChildWindow {
+    /// Opens this context's stable WindowProxy in the current execution owner.
+    pub fn open<'scope>(&self, scope: &mut Scope<'scope>) -> Result<Value<'scope>, Error> {
+        scope.import(&self.proxy)
+    }
+}
+
 impl Drop for Execution<'_> {
     fn drop(&mut self) {
         self.engine.reap();
@@ -283,64 +296,8 @@ impl Execution<'_> {
             &Value<'scope>,
         ) -> Result<(Value<'scope>, T), E>,
     ) -> Result<(Realm, T), E> {
-        let result = self.in_pending_window_realm(&pending, |scope| {
-            let interface = scope.operations.window_interface()?;
-            let window_prototype = scope.import(&interface.prototype)?;
-            let prototype = scope.import(&interface.event_target_prototype)?;
-            let (parent, value) = match install(scope, &prototype) {
-                Ok(result) => result,
-                Err(error) => return Ok(Err(error)),
-            };
-            scope
-                .operations
-                .qualify_window_event_target(&parent.root, &prototype.root)?;
-            let global = scope.global()?;
-            let prototype_key = &b"prototype".map(u16::from);
-            let name = &b"Window".map(u16::from);
-            let constructor = ConstructorCallback::bounded(
-                0,
-                // The interface always refuses before consulting NewTarget.
-                |_| Err(Error::BackendUnavailable),
-                |scope, _| {
-                    Ok(ConstructorCompletion::Throw(
-                        scope.type_error(&b"Illegal constructor".map(u16::from))?,
-                    ))
-                },
-            );
-            let window = scope.constructor(&constructor, FunctionMetadata { name, length: 0 })?;
-            scope.set_prototype(&window, ObjectPrototype::Object(&parent))?;
-            scope.define_property(
-                &window,
-                PropertyKey::String(prototype_key),
-                PropertyDescriptor::Data {
-                    value: &window_prototype,
-                    writable: false,
-                    enumerable: false,
-                    configurable: false,
-                },
-            )?;
-            scope.define_new_property(
-                &window_prototype,
-                PropertyKey::String(&b"constructor".map(u16::from)),
-                PropertyDescriptor::Data {
-                    value: &window,
-                    writable: true,
-                    enumerable: false,
-                    configurable: true,
-                },
-            )?;
-            scope.define_new_property(
-                &global,
-                PropertyKey::String(name),
-                PropertyDescriptor::Data {
-                    value: &window,
-                    writable: true,
-                    enumerable: false,
-                    configurable: true,
-                },
-            )?;
-            Ok(Ok(value))
-        })??;
+        let result =
+            self.in_pending_window_realm(&pending, |scope| scope.assemble_window(install))??;
         Ok((pending.0, result))
     }
 
@@ -967,6 +924,155 @@ pub struct Scope<'scope> {
 }
 
 impl<'scope> Scope<'scope> {
+    /// Install the native reader for a pending Window's named properties.
+    /// The callback receives one exact string name, with an undefined result
+    /// representing an unsupported name. The reader is never exposed to script.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error outside pending Window installation, for a duplicate
+    /// installation, or if the callback cannot be admitted.
+    pub fn install_window_name_reader(&mut self, reader: &Callback) -> Result<(), Error> {
+        let reader = self.fixed_arity_function(
+            reader,
+            FunctionMetadata {
+                name: &[],
+                length: 1,
+            },
+        )?;
+        self.operations.install_window_name_reader(&reader.root)
+    }
+
+    /// Install the pending WindowProxy's live child reader. With no argument
+    /// it returns the native child count. With an index, it returns that
+    /// child's WindowProxy or undefined. A second argument requests a boolean
+    /// membership check. The reader is never exposed to script.
+    pub fn install_window_index_reader(&mut self, reader: &Callback) -> Result<(), Error> {
+        let reader = self.fixed_arity_function(
+            reader,
+            FunctionMetadata {
+                name: &[],
+                length: 2,
+            },
+        )?;
+        self.operations.install_window_index_reader(&reader.root)
+    }
+
+    /// Create a child Window for a native context whose active settings the
+    /// host has qualified as same-origin with the current Window. The installer
+    /// establishes the reserved EventTarget prototype before publication.
+    pub fn create_same_origin_window<T, E: From<Error>>(
+        &mut self,
+        payload: &Rc<impl Any>,
+        install: impl for<'child> FnOnce(
+            &mut Scope<'child>,
+            &Value<'child>,
+        ) -> Result<(Value<'child>, T), E>,
+    ) -> Result<(ChildWindow, T), E> {
+        let erased: Rc<dyn Any> = payload.clone();
+        let child = self
+            .operations
+            .prepare_same_origin_window(Rc::downgrade(&erased))?;
+        let mut install = Some(install);
+        let mut result = None;
+        self.operations
+            .install_child_window(&child, &mut |operations| {
+                let install = install.take().ok_or(Error::RegistryConflict)?;
+                let mut scope = Scope {
+                    operations,
+                    invariant: PhantomData,
+                };
+                result = Some(match scope.assemble_window(install)? {
+                    Ok(value) => Ok((scope.global()?.root, value)),
+                    Err(error) => Err(error),
+                });
+                Ok(())
+            })?;
+        let (proxy, value) = result.ok_or(Error::RegistryConflict)??;
+        Ok((
+            ChildWindow {
+                _realm: child,
+                proxy,
+            },
+            value,
+        ))
+    }
+
+    /// Resolve host data only for an authentic child WindowProxy in this heap.
+    /// The child realm holds a weak reference to its host payload.
+    pub fn child_window_payload<T: Any>(
+        &self,
+        value: &Value<'scope>,
+    ) -> Result<Option<Rc<T>>, Error> {
+        Ok(self
+            .operations
+            .child_window_payload(&value.root)?
+            .and_then(|data| data.downcast().ok()))
+    }
+
+    fn assemble_window<T, E: From<Error>>(
+        &mut self,
+        install: impl FnOnce(&mut Scope<'scope>, &Value<'scope>) -> Result<(Value<'scope>, T), E>,
+    ) -> Result<Result<T, E>, Error> {
+        let scope = self;
+        let interface = scope.operations.window_interface()?;
+        let window_prototype = scope.import(&interface.prototype)?;
+        let prototype = scope.import(&interface.event_target_prototype)?;
+        let (parent, value) = match install(scope, &prototype) {
+            Ok(result) => result,
+            Err(error) => return Ok(Err(error)),
+        };
+        scope
+            .operations
+            .qualify_window_event_target(&parent.root, &prototype.root)?;
+        let global = scope.global()?;
+        let prototype_key = &b"prototype".map(u16::from);
+        let name = &b"Window".map(u16::from);
+        let constructor = ConstructorCallback::bounded(
+            0,
+            // The interface always refuses before consulting NewTarget.
+            |_| Err(Error::BackendUnavailable),
+            |scope, _| {
+                Ok(ConstructorCompletion::Throw(
+                    scope.type_error(&b"Illegal constructor".map(u16::from))?,
+                ))
+            },
+        );
+        let window = scope.constructor(&constructor, FunctionMetadata { name, length: 0 })?;
+        scope.set_prototype(&window, ObjectPrototype::Object(&parent))?;
+        scope.define_property(
+            &window,
+            PropertyKey::String(prototype_key),
+            PropertyDescriptor::Data {
+                value: &window_prototype,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+            },
+        )?;
+        scope.define_new_property(
+            &window_prototype,
+            PropertyKey::String(&b"constructor".map(u16::from)),
+            PropertyDescriptor::Data {
+                value: &window,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            },
+        )?;
+        scope.define_new_property(
+            &global,
+            PropertyKey::String(name),
+            PropertyDescriptor::Data {
+                value: &window,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            },
+        )?;
+        Ok(Ok(value))
+    }
+
     /// Allocates one host object in the entered creation realm, with its
     /// original Object prototype and a private managed holder.
     pub fn managed_object(&mut self) -> Result<ManagedObject, Error> {

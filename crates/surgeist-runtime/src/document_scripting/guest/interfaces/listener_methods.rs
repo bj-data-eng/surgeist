@@ -54,7 +54,14 @@ impl Capture {
         operation: Operation,
     ) -> Result<Completion<'scope>, Error> {
         let (owner, events) = self.active(scope)?;
-        let Some(target) = event_receiver(&owner, &events, scope, arguments.receiver())? else {
+        let target = match event_receiver(&owner, &events, scope, arguments.receiver()) {
+            Ok(target) => target,
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                return Err(error);
+            }
+            Err(error) => return refuse(scope, &events.refusal, error),
+        };
+        let Some(target) = target else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"EventTarget required"))?,
             ));
@@ -156,6 +163,16 @@ impl Capture {
                     GuestReceiver::Window(_) => {
                         events.register_retained(owner, scope, key, options, observed, None)?;
                     }
+                    GuestReceiver::ChildWindow(window) => {
+                        events.register_retained(
+                            owner,
+                            scope,
+                            key,
+                            options,
+                            observed,
+                            Some(TargetRetirement::ChildWindow(window.clone())),
+                        )?;
+                    }
                     GuestReceiver::Node { lifetime, .. } => {
                         events.register_retained(
                             owner,
@@ -163,7 +180,7 @@ impl Capture {
                             key,
                             options,
                             observed,
-                            lifetime.clone(),
+                            lifetime.clone().map(TargetRetirement::Node),
                         )?;
                     }
                 }

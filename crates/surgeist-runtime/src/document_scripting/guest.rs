@@ -14,6 +14,7 @@ pub(super) use reports::DispatchFailure;
 mod csp_task;
 mod element_task;
 mod interfaces;
+pub(super) use interfaces::call_child_window_relation;
 pub(super) use interfaces::{ActiveConstructor, ActiveReactionQueue, PendingConstructor};
 mod listeners;
 mod parsing_event;
@@ -574,9 +575,14 @@ struct TracedListener {
 enum RegisteredListenerObject {
     Retained {
         callback: RefCell<Option<RetainedCallbackObject>>,
-        lifetime: Option<Rc<interfaces::NodeLifetime>>,
+        retirement: Option<TargetRetirement>,
     },
     Traced(TracedListener),
+}
+
+enum TargetRetirement {
+    Node(Rc<interfaces::NodeLifetime>),
+    ChildWindow(Rc<interfaces::ChildRelations>),
 }
 
 pub(crate) struct RegisteredGuestListener {
@@ -590,9 +596,11 @@ impl RegisteredGuestListener {
     pub(crate) fn target_retired(&self) -> bool {
         match &self.object {
             RegisteredListenerObject::Traced(traced) => traced.lifetime.retired.get(),
-            RegisteredListenerObject::Retained { lifetime, .. } => {
-                lifetime.as_ref().is_some_and(|target| target.is_retired())
-            }
+            RegisteredListenerObject::Retained { retirement, .. } => match retirement {
+                Some(TargetRetirement::Node(node)) => node.is_retired(),
+                Some(TargetRetirement::ChildWindow(window)) => window.is_retired(),
+                None => false,
+            },
         }
     }
 }

@@ -1853,6 +1853,7 @@ pub(crate) enum DocumentPhase {
     },
     Retired {
         operation: DomHostedOperationId,
+        original_navigable: DomHostedNavigableId,
     },
 }
 

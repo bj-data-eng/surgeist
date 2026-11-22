@@ -86,9 +86,16 @@ impl GuestEvents {
         Ok(GuestTargetProjection { native, lifetime })
     }
 
-    pub(in crate::document_scripting) fn reap_retired_targets(&self, process: &mut Process) {
+    pub(in crate::document_scripting) fn reap_retired_targets(
+        &self,
+        process: &mut Process,
+        native: &NativeOwner,
+    ) {
         if let Some(public) = &self.public {
             public.reap_nodes(process, &self.backing.retired_targets);
+            if public.reap_windows(native, process) {
+                self.backing.retired_targets.set(true);
+            }
         }
         if self.backing.retired_targets.get()
             && let Ok(mut registry) = self.registry.try_borrow_mut()
@@ -137,7 +144,7 @@ impl GuestEvents {
         key: ListenerMatch<'_, 'scope>,
         options: DomEventListenerOptions,
         observed: CallbackObject<'scope>,
-        lifetime: Option<Rc<interfaces::NodeLifetime>>,
+        retirement: Option<TargetRetirement>,
     ) -> Result<DomEventRegistrationId, DocumentGuestEventError> {
         let attachment = owner
             .attachment
@@ -154,7 +161,7 @@ impl GuestEvents {
             code,
             object: RegisteredListenerObject::Retained {
                 callback: RefCell::new(Some(object)),
-                lifetime,
+                retirement,
             },
             registration_window: attachment.target,
             _backing: backing,
