@@ -46,6 +46,18 @@ The checked sampler reports the component if its final value is out of range.
 Ordinary and controlled interpolation take `UnitInterval` progress and return
 `Color` under the closest-finite policy.
 
+`InterpolationEndpoint::sample_interpolation` also accepts prior checked
+samples. At exact progress zero or one, it returns the selected sampled
+endpoint in its original space with its missing components intact. At other
+progress values it prepares the endpoints in the selected space and uses the
+selected hue strategy. Preparation converts the exposed coordinates with the
+ordinary closest-finite rule and carries analogous missing components, while
+retaining the sample's alpha. At true zero alpha, a nonzero premultiplied
+residue remains a premultiplied contribution after conversion. Straight
+coordinates from alpha that rounded to zero re-enter with the rounded alpha.
+`InterpolationSample::equivalent_to_resolved` checks exact same-space numerical
+equality, including missing components, and excludes nonzero residue.
+
 `SerializationFamily` selects the resolved spelling independently of authored
 text. `SerializationRequest::HtmlCompatible` uses hexadecimal output only when
 the value has actual sRGB byte channels and opaque alpha. Other values retain

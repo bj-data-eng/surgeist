@@ -209,7 +209,18 @@ same numerical preparation and premultiplied components. Its
 `InterpolationSample` carries finite or missing channels and finite or
 missing alpha in the selected space. Finite alpha can extrapolate outside the
 unit interval. A component outside the final finite range reports a checked
-error. CSS's ordered mix fold retains the existing zero-total two-operand
+error.
+
+`InterpolationEndpoint` admits either a resolved color or an earlier checked
+sample. Its checked interpolation operation holds a selected sampled endpoint
+exactly at progress zero or one. Between endpoints it prepares both coordinate
+tuples in the selected interpolation space and carries alpha independently.
+Present non-hue residue from a true zero-alpha result contributes as an
+already-premultiplied coordinate. A straight coordinate with alpha rounded to
+zero uses the ordinary zero weight. Color preserves that distinction when
+preparing a sampled endpoint in a different interpolation space.
+
+CSS's ordered mix fold retains the existing zero-total two-operand
 progress of 0.5, omitted-weight normalization and final alpha multiplier; it
 requests the color-function family after the fold. These steps do not become an
 alternative native CSS resolver.

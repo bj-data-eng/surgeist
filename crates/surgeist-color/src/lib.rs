@@ -159,7 +159,10 @@ pub use spaces::*;
 mod value;
 pub use value::{Color, SerializationFamily, Transformation};
 mod interpolation;
-pub use interpolation::{InterpolationComponent, InterpolationSample, InterpolationSampleError};
+#[doc(inline)]
+pub use interpolation::{
+    InterpolationComponent, InterpolationEndpoint, InterpolationSample, InterpolationSampleError,
+};
 mod serialization;
 mod wide;
 pub use serialization::SerializationRequest;

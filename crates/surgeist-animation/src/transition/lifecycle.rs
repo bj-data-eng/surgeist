@@ -102,6 +102,24 @@ pub enum Transitionability {
 /// interpolation returns its typed unsupported outcome; it is not evidence
 /// that an otherwise animatable property is not animatable.
 pub trait TransitionPropertyPolicy {
+    /// Compares endpoints for transition decisions. The default uses value
+    /// equality and recognizes exact same-space equality between a resolved
+    /// color and a checked sample. A consumer can supply contextual equality.
+    fn equivalent(
+        &self,
+        _property: &PropertyKey,
+        first: &InterpolableValue,
+        second: &InterpolableValue,
+    ) -> bool {
+        match (first, second) {
+            (InterpolableValue::ColorSample(sample), InterpolableValue::ResolvedColor(color))
+            | (InterpolableValue::ResolvedColor(color), InterpolableValue::ColorSample(sample)) => {
+                sample.equivalent_to_resolved(color.color())
+            }
+            _ => first == second,
+        }
+    }
+
     fn transitionability(
         &self,
         property: &PropertyKey,
@@ -691,7 +709,7 @@ impl<T: Clone + Eq> TransitionSnapshot<T> {
                     return Ok(());
                 };
                 // Timing edits alone do not alter an unchanged running target.
-                if run.end_value() == &change.after {
+                if policy.equivalent(change.key.property(), run.end_value(), &change.after) {
                     return Ok(());
                 }
                 if !timing.has_positive_combined_duration() {
@@ -703,7 +721,7 @@ impl<T: Clone + Eq> TransitionSnapshot<T> {
                 let Some(current) = sample.value() else {
                     return Err(time_failure("current-value progress", None));
                 };
-                if current == &change.after
+                if policy.equivalent(change.key.property(), current, &change.after)
                     || policy.transitionability(change.key.property(), current, &change.after)
                         != Transitionability::Continuous
                 {
@@ -711,17 +729,20 @@ impl<T: Clone + Eq> TransitionSnapshot<T> {
                     outcomes.push(TransitionOutcome::Cancelled(run));
                     return Ok(());
                 }
-                let (reversing_start, shortening) =
-                    if run.reversing_adjusted_start_value() == &change.after {
-                        let Some(eased) = sample.easing_output() else {
-                            return Err(time_failure("reversal progress", None));
-                        };
-                        let old = run.shortening_factor().value();
-                        let shortening = (eased.value() * old + (1.0 - old)).abs().clamp(0.0, 1.0);
-                        (run.end_value().clone(), UnitRatio::new(shortening)?)
-                    } else {
-                        (current.clone(), UnitRatio::new(1.0)?)
+                let (reversing_start, shortening) = if policy.equivalent(
+                    change.key.property(),
+                    run.reversing_adjusted_start_value(),
+                    &change.after,
+                ) {
+                    let Some(eased) = sample.easing_output() else {
+                        return Err(time_failure("reversal progress", None));
                     };
+                    let old = run.shortening_factor().value();
+                    let shortening = (eased.value() * old + (1.0 - old)).abs().clamp(0.0, 1.0);
+                    (run.end_value().clone(), UnitRatio::new(shortening)?)
+                } else {
+                    (current.clone(), UnitRatio::new(1.0)?)
+                };
                 let replacement = create_run(
                     change,
                     timing,
@@ -737,7 +758,8 @@ impl<T: Clone + Eq> TransitionSnapshot<T> {
                 outcomes.push(TransitionOutcome::Started(replacement));
             }
             Some(TransitionState::Completed(done)) => {
-                let same_target = done.end_value() == &change.after;
+                let same_target =
+                    policy.equivalent(change.key.property(), done.end_value(), &change.after);
                 if !same_target || change.matching.is_none() {
                     self.remove(&change.key);
                     outcomes.push(TransitionOutcome::CompletedRemoved(done));
@@ -761,7 +783,7 @@ impl<T: Clone + Eq> TransitionSnapshot<T> {
         let Some(timing) = change.matching.as_ref() else {
             return Ok(());
         };
-        if change.before == change.after
+        if policy.equivalent(change.key.property(), &change.before, &change.after)
             || !timing.has_positive_combined_duration()
             || policy.transitionability(change.key.property(), &change.before, &change.after)
                 != Transitionability::Continuous

@@ -724,6 +724,7 @@ pub surgeist_animation::interpolation::InterpolableValue::Transform(surgeist_ani
 impl surgeist_animation::interpolation::InterpolableValue
 pub fn surgeist_animation::interpolation::InterpolableValue::clip_path(value: surgeist_animation::masking::ClipPathValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::color(value: surgeist_animation::interpolation::InterpolableColor) -> Self
+pub fn surgeist_animation::interpolation::InterpolableValue::color_endpoint(&self) -> core::option::Option<surgeist_color::interpolation::InterpolationEndpoint>
 pub fn surgeist_animation::interpolation::InterpolableValue::composite(value: surgeist_animation::interpolation::CompositeValue) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::computed(value: surgeist_animation::computed::ComputedValue) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::discrete(value: surgeist_animation::interpolation::DiscreteValue) -> Self
@@ -868,6 +869,7 @@ pub fn surgeist_animation::interpolation::InterpolablePercentage::new(value: f64
 pub const fn surgeist_animation::interpolation::InterpolablePercentage::value(self) -> f64
 pub struct surgeist_animation::interpolation::InterpolationPair
 impl surgeist_animation::interpolation::InterpolationPair
+pub fn surgeist_animation::interpolation::InterpolationPair::color_endpoints(property: surgeist_animation::interpolation::PropertyKey, from: surgeist_color::interpolation::InterpolationEndpoint, to: surgeist_color::interpolation::InterpolationEndpoint, method: surgeist_color::spaces::InterpolationMethod) -> Self
 pub fn surgeist_animation::interpolation::InterpolationPair::from(&self) -> &surgeist_animation::interpolation::InterpolableValue
 pub fn surgeist_animation::interpolation::InterpolationPair::new(property: surgeist_animation::interpolation::PropertyKey, from: surgeist_animation::interpolation::InterpolableValue, to: surgeist_animation::interpolation::InterpolableValue) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::InterpolationPair::property(&self) -> &surgeist_animation::interpolation::PropertyKey
@@ -2106,6 +2108,7 @@ pub fn surgeist_animation::transition::TransitionUpdate<T>::completions(&self) -
 pub fn surgeist_animation::transition::TransitionUpdate<T>::outcomes(&self) -> &[surgeist_animation::transition::TransitionOutcome<T>]
 pub const fn surgeist_animation::transition::TransitionUpdate<T>::state(&self) -> &surgeist_animation::transition::TransitionSnapshot<T>
 pub trait surgeist_animation::transition::TransitionPropertyPolicy
+pub fn surgeist_animation::transition::TransitionPropertyPolicy::equivalent(&self, _property: &surgeist_animation::interpolation::PropertyKey, first: &surgeist_animation::interpolation::InterpolableValue, second: &surgeist_animation::interpolation::InterpolableValue) -> bool
 pub fn surgeist_animation::transition::TransitionPropertyPolicy::interpolate(&self, property: &surgeist_animation::interpolation::PropertyKey, from: &surgeist_animation::interpolation::InterpolableValue, to: &surgeist_animation::interpolation::InterpolableValue, progress: surgeist_animation::interpolation::InterpolationProgress) -> surgeist_animation::interpolation::InterpolationOutcome
 pub fn surgeist_animation::transition::TransitionPropertyPolicy::transitionability(&self, property: &surgeist_animation::interpolation::PropertyKey, from: &surgeist_animation::interpolation::InterpolableValue, to: &surgeist_animation::interpolation::InterpolableValue) -> surgeist_animation::transition::Transitionability
 pub const surgeist_animation::CRATE_NAME: &str

@@ -3,19 +3,20 @@
 use crate::wide::Wide;
 
 // The smallest exponent of a normalized binary64 integer significand is
-// -1074 - 52. The largest term multiplies two unrestricted finite values
-// and a unit alpha. Six such terms need fewer than 2052 bits above zero.
+// -1074 - 52. Every factor is smaller than 2^1024, so six products of
+// three factors sum to less than 2^3075. Include the whole exponent span.
 const FIRST_BIT: i32 = 3 * (-1074 - 52);
-const LIMBS: usize = 86;
+const LIMBS: usize = ((3075 - FIRST_BIT) as usize).div_ceil(64);
 
 /// Compares the unrounded weighted numerator with either signed finite limit.
-/// A nonzero divisor supplies its sign. No divisor compares the numerator
-/// itself, including the premultiplied coordinate at alpha zero.
+/// A nonzero divisor supplies its own affine weights and sign. These can
+/// differ from the numerator weights when a coordinate is already
+/// premultiplied. No divisor compares the numerator itself.
 pub(super) fn exceeds(
     first: (f64, f64),
     second: (f64, f64),
     progress: f64,
-    divisor: Option<f64>,
+    divisor: Option<((f64, f64), Wide)>,
 ) -> bool {
     let (x, a) = first;
     let (y, b) = second;
@@ -25,9 +26,9 @@ pub(super) fn exceeds(
         sum.product([-direction * x, a, progress]);
         sum.product([direction * y, b, progress]);
         match divisor {
-            Some(sign) => {
+            Some(((a, b), divisor)) => {
                 // Subtract MAX times the magnitude of the weighted alpha.
-                let limit = f64::MAX.copysign(sign);
+                let limit = f64::MAX.copysign(divisor.to_f64());
                 sum.product([-limit, a, 1.0]);
                 sum.product([limit, a, progress]);
                 sum.product([-limit, b, progress]);

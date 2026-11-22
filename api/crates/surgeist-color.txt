@@ -92,6 +92,11 @@ pub surgeist_color::HueInterpolation::Shorter
 #[non_exhaustive] pub enum surgeist_color::InterpolationComponent
 pub surgeist_color::InterpolationComponent::Alpha
 pub surgeist_color::InterpolationComponent::Channel(usize)
+pub enum surgeist_color::InterpolationEndpoint
+pub surgeist_color::InterpolationEndpoint::Resolved(surgeist_color::Color)
+pub surgeist_color::InterpolationEndpoint::Sampled(surgeist_color::InterpolationSample)
+impl surgeist_color::InterpolationEndpoint
+pub fn surgeist_color::InterpolationEndpoint::sample_interpolation(self, second: Self, method: surgeist_color::InterpolationMethod, progress: surgeist_color::Finite) -> core::result::Result<surgeist_color::InterpolationSample, surgeist_color::InterpolationSampleError>
 #[non_exhaustive] pub enum surgeist_color::InterpolationError
 pub surgeist_color::InterpolationError::HueRequiresPolarSpace
 impl core::error::Error for surgeist_color::InterpolationError
@@ -260,6 +265,7 @@ pub struct surgeist_color::InterpolationSample
 impl surgeist_color::InterpolationSample
 pub const fn surgeist_color::InterpolationSample::alpha(self) -> core::option::Option<surgeist_color::Finite>
 pub const fn surgeist_color::InterpolationSample::channels(self) -> [core::option::Option<surgeist_color::Finite>; 3]
+pub fn surgeist_color::InterpolationSample::equivalent_to_resolved(self, color: surgeist_color::Color) -> bool
 pub const fn surgeist_color::InterpolationSample::space(self) -> surgeist_color::ColorSpace
 impl core::fmt::Debug for surgeist_color::InterpolationSample
 pub fn surgeist_color::InterpolationSample::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
