@@ -158,6 +158,54 @@ fn reversing_an_active_color_preserves_the_current_sample_and_shortens_the_run()
     assert_checked_color(later.value(), 0.125, 1.0);
 }
 
+#[test]
+fn retargeting_to_the_current_color_cancels_without_starting_a_replacement() {
+    struct ContinuousColorPolicy;
+
+    impl TransitionPropertyPolicy for ContinuousColorPolicy {
+        fn transitionability(
+            &self,
+            _: &PropertyKey,
+            _: &InterpolableValue,
+            _: &InterpolableValue,
+        ) -> Transitionability {
+            Transitionability::Continuous
+        }
+
+        fn interpolate(
+            &self,
+            property: &PropertyKey,
+            from: &InterpolableValue,
+            to: &InterpolableValue,
+            progress: InterpolationProgress,
+        ) -> InterpolationOutcome {
+            ColorPolicy.interpolate(property, from, to, progress)
+        }
+    }
+
+    let old_target = color(1.0, 1.0);
+    let initial = start(color(0.0, 1.0), old_target.clone(), Easing::linear());
+    let current = running(&initial).sample(at(250.0), &ColorPolicy).unwrap();
+    assert_eq!(current.phase(), TransitionSamplePhase::Active);
+    assert_checked_color(current.value(), 0.25, 1.0);
+
+    let update = initial
+        .update(
+            at(250.0),
+            &[change(old_target, color(0.25, 1.0), Easing::linear(), 2)],
+            &ContinuousColorPolicy,
+        )
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(update.outcomes(), [TransitionOutcome::Cancelled(old)]
+            if old.id() == TransitionTrackId::new(1)),
+        "expected cancellation without a replacement, got {:?}",
+        update.outcomes(),
+    );
+    assert!(update.state().records().is_empty());
+}
+
 fn color(red: f64, alpha: f64) -> InterpolableValue {
     InterpolableValue::resolved_color(Color::new(
         SRGB,
