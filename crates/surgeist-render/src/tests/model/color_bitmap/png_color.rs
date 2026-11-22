@@ -201,6 +201,16 @@ fn real_gpu_selected_icc_lut_png_preserves_converted_ink_on_both_routes() {
     assert_icc_readback(&png, [188, 188, 188, 128], [104, 114, 124, 255]);
 }
 
+#[test]
+fn real_gpu_selected_icc_multi_process_png_preserves_ink_on_both_routes() {
+    let profile = icc_png::mpe_matrix_profile();
+    let png = icc_png::image(&[128, 128, 128, 128], Some(&profile), &[], &[]);
+    // The float Display-P3 matrix maps equal linear samples to D50 neutral.
+    // sRGB encodes 128/255 linear to 188. The original 128/255 alpha then
+    // composites over the test backdrop, preserving the retained placement.
+    assert_icc_readback(&png, [188, 188, 188, 128], [104, 114, 124, 255]);
+}
+
 fn assert_icc_readback(png: &[u8], converted: [u8; 4], composited: [u8; 4]) {
     let original = positioned_sbix(png);
     let ready = prepare(original.clone());

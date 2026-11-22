@@ -40,24 +40,171 @@ pub(crate) fn piecewise_p3_profile(with_mpe: bool) -> Vec<u8> {
         (*b"bTRC", transfer),
     ];
     if with_mpe {
-        // ICC.1:2022 §10.16. The optional media-relative multi-process
-        // route has one 3-to-3 float matrix element with zero offsets.
-        let mut element = b"matf\0\0\0\0\0\x03\0\x03".to_vec();
-        let xyz = [RED, GREEN, BLUE];
-        for row in 0..3 {
-            for column in xyz {
-                element.extend((column[row] as f32 / 65536.0).to_be_bytes());
-            }
-        }
-        element.extend_from_slice(&[0; 12]);
-        let mut transform = b"mpet\0\0\0\0\0\x03\0\x03".to_vec();
-        transform.extend_from_slice(&1_u32.to_be_bytes());
-        transform.extend_from_slice(&24_u32.to_be_bytes());
-        transform.extend_from_slice(&u32::try_from(element.len()).unwrap().to_be_bytes());
-        transform.extend(element);
-        tags.push((*b"D2B1", transform));
+        tags.push((*b"D2B1", unsupported_mpe_transform()));
     }
     v4_profile(b"RGB ", "Surgeist piecewise P3 fixture", tags)
+}
+
+pub(crate) fn mpe_matrix_profile() -> Vec<u8> {
+    // Convert linear Display-P3 to D50 PCSXYZ. The A2B routes are
+    // deliberately different so precedence is visible in the decoded pixels.
+    let coefficients: Vec<_> = (0..3)
+        .flat_map(|row| [RED, GREEN, BLUE].map(|column| column[row] as f32 / 65536.0))
+        .collect();
+    let matrix = mpe_matrix(3, 3, &coefficients, &[0.0; 3]);
+    mpe_profile(
+        mpe_transform([matrix]),
+        b"XYZ ",
+        lut16_transform(),
+        Some(lut_a_to_b_transform()),
+    )
+}
+
+pub(crate) fn mpe_profile(
+    transform: Vec<u8>,
+    pcs: &[u8; 4],
+    perceptual: Vec<u8>,
+    colorimetric: Option<Vec<u8>>,
+) -> Vec<u8> {
+    let mut tags = vec![(*b"D2B1", transform), (*b"A2B0", perceptual)];
+    if let Some(transform) = colorimetric {
+        tags.push((*b"A2B1", transform));
+    }
+    let mut profile = v4_profile(b"RGB ", "Surgeist MPE fixture", tags);
+    profile[20..24].copy_from_slice(pcs);
+    profile
+}
+
+pub(crate) fn unsupported_mpe_transform() -> Vec<u8> {
+    mpe_transform([mpe_element(b"xmpl", 3, 3)])
+}
+
+pub(crate) fn mpe_clut_transform() -> Vec<u8> {
+    let input = mpe_matrix(3, 2, &[2.0, 0.0, 0.0, 0.0, 2.0, 0.0], &[-0.5; 2]);
+    let mut begin = mpe_element(b"bACS", 2, 2);
+    begin.extend_from_slice(b"test");
+    let mut end = mpe_element(b"eACS", 3, 3);
+    end.extend_from_slice(b"test");
+
+    // ICC.1:2022 Table 63. Two red positions and three green positions,
+    // with green varying fastest and a red/green cross term.
+    let mut clut = mpe_element(b"clut", 2, 3);
+    clut.extend([2, 3]);
+    clut.resize(28, 0);
+    for u in [0.0, 1.0] {
+        for (v, w) in [(0.0, 0.0), (0.5, 0.25), (1.0, 1.0)] {
+            append_floats(
+                &mut clut,
+                &[
+                    -0.125 + u / 8.0 + w / 8.0 + u * w / 4.0,
+                    1.125 + v / 8.0 + u / 16.0,
+                    0.3125 + u / 8.0 + v / 16.0,
+                ],
+            );
+        }
+    }
+    let output = mpe_matrix(
+        3,
+        3,
+        &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        &[0.375, -0.75, 0.0],
+    );
+    mpe_transform([input, begin, clut, end, output])
+}
+
+pub(crate) fn mpe_curve_transform() -> Vec<u8> {
+    let input = mpe_matrix(
+        3,
+        3,
+        &[1.25, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        &[0.0; 3],
+    );
+    let mut sampled = b"samf\0\0\0\0".to_vec();
+    sampled.extend(2_u32.to_be_bytes());
+    append_floats(&mut sampled, &[50.0, 75.0]);
+    let lightness = mpe_curve(
+        &[0.0, 1.0],
+        [constant_segment(20.0), sampled, constant_segment(90.0)],
+    );
+    let a = mpe_curve(
+        &[0.0, 1.0],
+        [
+            constant_segment(-20.0),
+            formula_segment(1, &[2.0, 40.0, 0.9, 0.1, 20.0]),
+            constant_segment(20.0),
+        ],
+    );
+    let b = mpe_curve(
+        &[0.0],
+        [
+            constant_segment(14.0),
+            formula_segment(2, &[24.0, 2.0, -1.0, 0.0, -10.0]),
+        ],
+    );
+    let mut curves = mpe_element(b"cvst", 3, 3);
+    append_positions(&mut curves, [lightness, a, b]);
+    mpe_transform([input, curves])
+}
+
+fn mpe_transform<const N: usize>(elements: [Vec<u8>; N]) -> Vec<u8> {
+    let mut transform = mpe_element(b"mpet", 3, 3);
+    transform.extend(u32::try_from(N).unwrap().to_be_bytes());
+    append_positions(&mut transform, elements);
+    transform
+}
+
+fn mpe_element(signature: &[u8; 4], input: u16, output: u16) -> Vec<u8> {
+    let mut element = signature.to_vec();
+    element.extend([0; 4]);
+    element.extend(input.to_be_bytes());
+    element.extend(output.to_be_bytes());
+    element
+}
+
+fn mpe_matrix(input: u16, output: u16, coefficients: &[f32], offsets: &[f32]) -> Vec<u8> {
+    let mut matrix = mpe_element(b"matf", input, output);
+    append_floats(&mut matrix, coefficients);
+    append_floats(&mut matrix, offsets);
+    matrix
+}
+
+fn mpe_curve<const N: usize>(breaks: &[f32], segments: [Vec<u8>; N]) -> Vec<u8> {
+    let mut curve = b"curf\0\0\0\0".to_vec();
+    curve.extend(u16::try_from(N).unwrap().to_be_bytes());
+    curve.extend([0; 2]);
+    append_floats(&mut curve, breaks);
+    curve.extend(segments.into_iter().flatten());
+    curve
+}
+
+fn constant_segment(value: f32) -> Vec<u8> {
+    formula_segment(0, &[1.0, 0.0, 0.0, value])
+}
+
+fn formula_segment(function: u16, parameters: &[f32]) -> Vec<u8> {
+    let mut formula = b"parf\0\0\0\0".to_vec();
+    formula.extend(function.to_be_bytes());
+    formula.extend([0; 2]);
+    append_floats(&mut formula, parameters);
+    formula
+}
+
+fn append_floats(bytes: &mut Vec<u8>, values: &[f32]) {
+    bytes.extend(values.iter().flat_map(|value| value.to_be_bytes()));
+}
+
+fn append_positions<const N: usize>(bytes: &mut Vec<u8>, values: [Vec<u8>; N]) {
+    let table = bytes.len();
+    bytes.resize(table + N * 8, 0);
+    for (i, value) in values.into_iter().enumerate() {
+        let entry = table + i * 8;
+        let offset = u32::try_from(bytes.len()).unwrap();
+        let length = u32::try_from(value.len()).unwrap();
+        bytes[entry..entry + 4].copy_from_slice(&offset.to_be_bytes());
+        bytes[entry + 4..entry + 8].copy_from_slice(&length.to_be_bytes());
+        bytes.extend(value);
+        bytes.resize(bytes.len().next_multiple_of(4), 0);
+    }
 }
 
 pub(crate) fn v2_matrix_profile() -> Vec<u8> {

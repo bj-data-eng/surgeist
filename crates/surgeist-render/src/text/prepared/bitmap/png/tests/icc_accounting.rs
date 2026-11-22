@@ -1,8 +1,46 @@
 use super::*;
 use crate::{
     accounting::{RenderAccountingOptions, RenderLimits, RenderQuantity},
-    tests::icc_png::{colorimetric_lut_profile, image, lut16_transform, matrix_profile},
+    tests::icc_png::{
+        colorimetric_lut_profile, image, lut16_transform, matrix_profile, mpe_matrix_profile,
+    },
 };
+
+#[test]
+fn icc_multi_process_releases_workspaces_when_conversion_refuses_and_retries() {
+    let profile = mpe_matrix_profile();
+    let input = image(&[128, 128, 128, 7, 64, 64, 64, 0], Some(&profile), &[], &[]);
+    let mut accounting = RenderAccountingContext::new(
+        RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::ImageTexelVisits, 1)
+                .unwrap(),
+        ),
+    );
+    let error = decode_in(&input, 1 << 20, &mut accounting).err().unwrap();
+    assert!(error.accounting_diagnostic().is_some(), "{error:?}");
+    let terminal = accounting.last_attempt().unwrap();
+    assert_eq!(terminal.cleanup_fault(), None);
+    let attempt = terminal.attempt().unwrap();
+    assert_eq!(
+        attempt.refusal().unwrap().quantity(),
+        RenderQuantity::Work(RenderWork::ImageTexelVisits)
+    );
+    let conversion = attempt.phase_usage(RenderPhase::PngColorConvert);
+    assert_eq!(conversion.work(RenderWork::ImageTexelVisits), 1);
+    // The reached affine transform visits all nine coefficients and three offsets.
+    assert!(conversion.work(RenderWork::CoordinateVisits) >= 12);
+    let usage = attempt.usage();
+    assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+    assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+
+    let retry = image(&[128, 128, 128, 7], Some(&profile), &[], &[]);
+    assert_eq!(
+        decode_in(&retry, 1 << 20, &mut accounting).unwrap().pixels,
+        [188, 188, 188, 7]
+    );
+}
 
 #[test]
 fn icc_lut_conversion_refuses_at_the_texel_boundary_and_releases_table_backing() {
