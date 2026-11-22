@@ -271,6 +271,10 @@ guest value.
 The `DOMException` constructor uses
 `surgeist_bindings_js::dom_exception::DomExceptionLimits` for its DOMString
 conversions. A conflicting host hook name refuses attachment.
+The authenticated Window installs `CSSStyleSheet` over the original Document's
+CSSOM owner. The constructed sheet has a live `CSSRuleList` and `MediaList`.
+The bindings retain native sheet, rule and list identity across edits and
+publish rule and media mutations through the original owner.
 The host-defined child-count callable reads the original Session's current DOM.
 Entry releases native loans before running guest code and leaves queued jobs for
 an explicit checked

@@ -797,6 +797,9 @@ fn retire_projected_comment_during_unwind(fixture: &mut Fixture) {
     ));
 }
 
+// Keep the reached storage boundaries above the released Window setup peak.
+const STORAGE_PADDING_ROOTS: usize = 256;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StorageAdmission {
     BeforeOperation,
@@ -818,7 +821,7 @@ fn observe_pin_admission(storage: usize, detach: bool) -> (StorageAdmission, usi
         },
         Arc::new(cancel()),
         |scope| {
-            for _ in 0..64 {
+            for _ in 0..STORAGE_PADDING_ROOTS {
                 let value = scope.primitive(Primitive::Undefined)?;
                 padding.push(scope.retain(&value));
             }
@@ -1360,7 +1363,7 @@ fn observe_creation_admission(storage: usize) -> StorageAdmission {
     // peak, without assuming the private physical extent of either owner.
     let padding = match host.in_document(&permit, |scope| {
         let mut roots = Vec::new();
-        for _ in 0..64 {
+        for _ in 0..STORAGE_PADDING_ROOTS {
             let value = scope.primitive(Primitive::Undefined)?;
             roots.push(scope.retain(&value));
         }

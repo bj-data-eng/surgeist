@@ -3486,6 +3486,7 @@ pub struct surgeist_dom::style::DomStyleCssomRoot
 impl surgeist_dom::style::DomStyleCssomRoot
 pub fn surgeist_dom::style::DomStyleCssomRoot::batch(&self, guard: surgeist_cssom::publication::CssomEditGuard) -> core::result::Result<surgeist_cssom::store::CssomBatch, surgeist_dom::style::DomStyleCssomRootError>
 pub fn surgeist_dom::style::DomStyleCssomRoot::commit(&self, batch: &mut core::option::Option<surgeist_cssom::store::CssomBatch>) -> core::result::Result<surgeist_cssom::store::CssomCommit, surgeist_dom::style::DomStyleCssomRootError>
+pub fn surgeist_dom::style::DomStyleCssomRoot::commit_with_cancellation(&self, batch: &mut core::option::Option<surgeist_cssom::store::CssomBatch>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_cssom::store::CssomCommit, surgeist_dom::style::DomStyleCssomRootError>
 pub fn surgeist_dom::style::DomStyleCssomRoot::new(root: surgeist_dom::identity::NodeId, store: surgeist_cssom::store::CssomStore) -> Self
 pub fn surgeist_dom::style::DomStyleCssomRoot::root(&self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_dom::style::DomStyleCssomRoot::snapshot(&self) -> core::result::Result<surgeist_cssom::model::CssomSnapshot, surgeist_dom::style::DomStyleCssomRootError>

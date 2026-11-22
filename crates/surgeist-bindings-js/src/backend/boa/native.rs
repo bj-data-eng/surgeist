@@ -132,7 +132,7 @@ struct NativeData {
 struct NativeCarrier(Gc<NativeData>);
 
 #[derive(Trace, Finalize)]
-struct Collection {
+struct Collection<const NAMED: bool> {
     native: Gc<NativeData>,
     read: JsObject,
     keys: JsObject,
@@ -142,10 +142,15 @@ fn native_data(object: &JsObject) -> Option<Gc<NativeData>> {
     if let Some(carrier) = object.downcast_ref::<NativeCarrier>() {
         return Some(Gc::clone(&carrier.0));
     }
-    readonly_indexed_source::<Collection>(object).map(|collection| Gc::clone(&collection.native))
+    readonly_indexed_source::<Collection<true>>(object)
+        .map(|collection| Gc::clone(&collection.native))
+        .or_else(|| {
+            readonly_indexed_source::<Collection<false>>(object)
+                .map(|collection| Gc::clone(&collection.native))
+        })
 }
 
-impl Collection {
+impl<const NAMED: bool> Collection<NAMED> {
     fn read(
         &self,
         holder: &JsObject,
@@ -205,8 +210,8 @@ fn invalid_keys() -> boa_engine::JsError {
         .into()
 }
 
-impl IndexedProperties for Collection {
-    const HAS_NAMED_PROPERTIES: bool = true;
+impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
+    const HAS_NAMED_PROPERTIES: bool = NAMED;
 
     fn index_count(&self, holder: &JsObject, context: &mut Context) -> JsResult<u32> {
         self.numeric_keys(holder, context)
@@ -328,7 +333,7 @@ impl Entered<'_> {
             references: GcRefCell::new(references),
         });
         let object = match slot {
-            Some(NativeProjectionSlot::Collection { read, keys }) => {
+            Some(NativeProjectionSlot::Collection { read, keys, named }) => {
                 let callable = |root| {
                     self.state
                         .value(root)?
@@ -336,15 +341,21 @@ impl Entered<'_> {
                         .filter(JsObject::is_callable)
                         .ok_or(Error::ExpectedObject)
                 };
-                readonly_indexed(
-                    root_shape,
-                    prototype,
-                    Collection {
-                        native,
-                        read: callable(read)?,
-                        keys: callable(keys)?,
-                    },
-                )
+                let read = callable(read)?;
+                let keys = callable(keys)?;
+                if named {
+                    readonly_indexed(
+                        root_shape,
+                        prototype,
+                        Collection::<true> { native, read, keys },
+                    )
+                } else {
+                    readonly_indexed(
+                        root_shape,
+                        prototype,
+                        Collection::<false> { native, read, keys },
+                    )
+                }
             }
             _ => JsObject::new(root_shape, prototype, NativeCarrier(native)).upcast(),
         };
@@ -472,6 +483,19 @@ impl Entered<'_> {
             .resolve_native(root)?
             .filter(|resolved| resolved.payload.as_ref().type_id() == brand)
             .map(|resolved| resolved.data.index))
+    }
+
+    pub(super) fn native_is_live(&self, index: u32, brand: TypeId) -> Result<bool, Error> {
+        self.state.owner.available()?;
+        let entries = self
+            .state
+            .native
+            .entries
+            .try_borrow()
+            .map_err(|_| self.state.conflict())?;
+        Ok(entries.get(&index).is_some_and(|entry| {
+            entry.payload.as_ref().type_id() == brand && entry.object.upgrade().is_some()
+        }))
     }
 
     pub(super) fn reopen_native(

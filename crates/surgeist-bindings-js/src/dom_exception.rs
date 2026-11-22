@@ -154,7 +154,7 @@ pub fn install<Storage: 'static>(
         .share();
     let parent = ledger.root();
     let conversion = ConversionAccount::new(scope, ledger, parent, limits, Tariffs::identity())?;
-    install_account(scope, conversion, backing)
+    install_account(scope, conversion, backing, Some(INTERFACE))
 }
 
 /// Installs DOMException with producer-local caps and admission delegated to
@@ -175,13 +175,28 @@ pub fn install_hosted<H: Host, B: 'static, Storage: 'static>(
         return Err(Error::PropertyRejected);
     }
     let conversion = hosted.install(scope, limits.conversion_limits(), conversion_backing)?;
-    install_account(scope, conversion, constructor_backing)
+    install_account(scope, conversion, constructor_backing, Some(INTERFACE))
+}
+
+/// Fund the target realm's diagnostic prototype without publishing a global.
+pub(crate) fn ensure_private<Storage: 'static>(
+    scope: &mut Scope<'_>,
+    conversion: &ConversionAccount,
+    retain: impl FnOnce(&mut Scope<'_>, usize) -> Result<Storage, Error>,
+) -> Result<(), Error> {
+    if scope.operations.dom_exception_profile()?.is_some() {
+        return Ok(());
+    }
+    let bytes = constructor_target_bytes::<Storage>().ok_or(Error::Allocation)?;
+    let backing = retain(scope, bytes)?;
+    install_account(scope, conversion.clone(), backing, None)
 }
 
 fn install_account<Storage: 'static>(
     scope: &mut Scope<'_>,
     conversion: ConversionAccount,
     backing: Storage,
+    global_key: Option<&[u16]>,
 ) -> Result<(), Error> {
     let conversion = Rc::new(conversion);
     // The constructor owns the account and its debit together. Publication
@@ -289,7 +304,7 @@ fn install_account<Storage: 'static>(
     )?;
     scope
         .operations
-        .publish_dom_exception(INTERFACE, &constructor.root, &prototype.root, account)
+        .publish_dom_exception(global_key, &constructor.root, &prototype.root, account)
 }
 
 fn read_slot<'scope>(

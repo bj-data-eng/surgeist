@@ -594,6 +594,10 @@ impl Operations for Entered<'_> {
         native::NativeObjects::storage_bytes()
     }
 
+    fn native_reference_storage_bytes(&self) -> usize {
+        size_of::<(u32, JsObject)>()
+    }
+
     fn project_native_object(
         &mut self,
         prototype: ObjectPrototype<'_>,
@@ -649,6 +653,10 @@ impl Operations for Entered<'_> {
 
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn std::any::Any>>, Error> {
         self.native_payload(object)
+    }
+
+    fn native_object_is_live(&self, index: u32, brand: std::any::TypeId) -> Result<bool, Error> {
+        self.native_is_live(index, brand)
     }
 
     fn native_object_index(
@@ -816,7 +824,7 @@ impl Operations for Entered<'_> {
 
     fn publish_dom_exception(
         &mut self,
-        key: &[u16],
+        key: Option<&[u16]>,
         constructor: &Root,
         prototype: &Root,
         account: std::rc::Weak<crate::conversion::ConversionAccount>,
@@ -840,5 +848,35 @@ impl Operations for Entered<'_> {
         slot: crate::dom_exception::Slot,
     ) -> Result<Option<Root>, Error> {
         self.boa_dom_exception_slot(receiver, slot)
+    }
+
+    fn cssom_prototypes(&mut self, prototypes: &[&Root]) -> Result<(), Error> {
+        self.check_active()?;
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(prototypes.len())
+            .map_err(|_| Error::Allocation)?;
+        for value in prototypes {
+            values.push(self.object_value(value)?);
+        }
+        let mut host = self.context.realm().host_defined_mut();
+        if host.has::<cssom::CssomPrototypes>() {
+            return Err(Error::PropertyRejected);
+        }
+        host.insert(cssom::CssomPrototypes(values));
+        Ok(())
+    }
+
+    fn cssom_prototype(&mut self, index: u32) -> Result<Option<Root>, Error> {
+        self.check_active()?;
+        let index = usize::try_from(index).map_err(|_| Error::BackendUnavailable)?;
+        let value = self
+            .context
+            .realm()
+            .host_defined()
+            .get::<cssom::CssomPrototypes>()
+            .and_then(|prototypes| prototypes.0.get(index))
+            .cloned();
+        value.map(|value| self.root(value.into())).transpose()
     }
 }
