@@ -4020,7 +4020,9 @@ pub fn surgeist_dom::tree::DomTokenList::capture_with<'a, E: core::convert::From
 pub const fn surgeist_dom::tree::DomTokenList::class(element: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::tree::DomTokenList::contains_with<E: core::convert::From<surgeist_dom::DomError>>(self, snapshot: &surgeist_dom::DomSnapshot, token: &[u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub const fn surgeist_dom::tree::DomTokenList::element(self) -> surgeist_dom::identity::NodeId
+pub const fn surgeist_dom::tree::DomTokenList::html_reflection(self) -> core::option::Option<surgeist_html::internal::elements::token_list::HtmlTokenListReflection>
 pub fn surgeist_dom::tree::DomTokenList::raw_with<E: core::convert::From<surgeist_dom::DomError>>(self, snapshot: &surgeist_dom::DomSnapshot, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>, E>
+pub fn surgeist_dom::tree::DomTokenList::reflect_html(node: surgeist_dom::tree::DomNode<'_>, reflection: surgeist_html::internal::elements::token_list::HtmlTokenListReflection) -> core::option::Option<Self>
 pub struct surgeist_dom::tree::DomTokenListCapture<'a, B>
 impl<'a, B> surgeist_dom::tree::DomTokenListCapture<'a, B>
 pub fn surgeist_dom::tree::DomTokenListCapture<'a, B>::is_empty(&self) -> bool

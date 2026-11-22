@@ -1,11 +1,13 @@
 //! HTML Script's native async state and direct content reflections.
 
 use super::{
+    element::install_html_token_list,
     reflection::{self, Receiver, Reflection},
     *,
 };
 use surgeist_bindings_js::conversion::types::BOOLEAN;
 use surgeist_dom::source::DomSourceEdit;
+use surgeist_html::elements::token_list::HtmlTokenListReflection;
 
 const BEFORE_ASYNC: &[reflection::Member] = &[
     (
@@ -24,14 +26,15 @@ const BEFORE_ASYNC: &[reflection::Member] = &[
     ),
 ];
 
-const AFTER_ASYNC: &[reflection::Member] = &[
-    (
-        &ascii(b"defer"),
-        &ascii(b"get defer"),
-        &ascii(b"set defer"),
-        &ascii(b"defer"),
-        Reflection::Boolean,
-    ),
+const DEFER: reflection::Member = (
+    &ascii(b"defer"),
+    &ascii(b"get defer"),
+    &ascii(b"set defer"),
+    &ascii(b"defer"),
+    Reflection::Boolean,
+);
+
+const AFTER_BLOCKING: &[reflection::Member] = &[
     (
         &ascii(b"integrity"),
         &ascii(b"get integrity"),
@@ -92,7 +95,14 @@ pub(super) fn install<'scope>(
         Some(&setter),
         true,
     )?;
-    reflection::install(scope, prototype, capture, Receiver::Script, AFTER_ASYNC)
+    reflection::install(scope, prototype, capture, Receiver::Script, &[DEFER])?;
+    install_html_token_list(
+        scope,
+        prototype,
+        capture,
+        HtmlTokenListReflection::ScriptBlocking,
+    )?;
+    reflection::install(scope, prototype, capture, Receiver::Script, AFTER_BLOCKING)
 }
 
 enum AsyncAccess {

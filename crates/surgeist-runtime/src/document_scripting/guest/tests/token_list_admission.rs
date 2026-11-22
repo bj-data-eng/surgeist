@@ -38,6 +38,55 @@ fn destroy_element(host: &mut DocumentScriptHost, node: NodeId) {
     assert!(host.snapshot().unwrap().node(node).is_err());
 }
 
+pub(in crate::document_scripting) fn wrong_html_token_list_receiver_does_not_open_its_cached_view()
+{
+    let mut cold = None;
+    for exposed in [false, true] {
+        let (mut host, permit) = fixture();
+        host.in_document(&permit, |scope| {
+            scope.evaluate(&units(
+                r"globalThis.wrongBlockingReceiver =
+                    document.implementation.createHTMLDocument().createElement('style');
+                globalThis.getScriptBlocking =
+                    Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'blocking').get;",
+            ))?;
+            if exposed {
+                scope.evaluate(&units("wrongBlockingReceiver.blocking"))?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        fund_guest_operation_after_setup(&host);
+        let events = host.guest_events().unwrap();
+        let initial = events.budget.used();
+        let (result, peak) = events.budget.measure_peak(|| {
+            host.in_document(&permit, |scope| {
+                assert_guest(
+                    scope,
+                    r"(() => {
+                        try { getScriptBlocking.call(wrongBlockingReceiver); }
+                        catch (error) { return error instanceof TypeError; }
+                        return false;
+                    })()",
+                )
+            })
+        });
+        result.unwrap();
+        let temporary = peak - initial;
+        if let Some(cold) = cold {
+            assert_eq!(
+                temporary, cold,
+                "wrong family retained a root to another list"
+            );
+        } else {
+            cold = Some(temporary);
+        }
+        assert_eq!(events.budget.used(), initial);
+        drop(events);
+        host.stop().into_session().unwrap();
+    }
+}
+
 pub(in crate::document_scripting) fn class_token_read_admits_exact_work_and_temporary_backing() {
     let read = |scope: &mut Scope<'_>| assert_guest(scope, "classProbe.item(1) === 'two'");
     let (mut host, permit) = fixture();

@@ -804,13 +804,44 @@ class DescriptionTests(unittest.TestCase):
                                  {"write_output_value", command})
         self.assertEqual(mappings["HTMLOutputElement.htmlFor/set"]["target"], "value")
         self.assertEqual(mappings["HTMLOutputElement.htmlFor/set"]["kind"], "forwarding")
-        for name in ["htmlFor", "validity", "labels"]:
+        for name in ["validity", "labels"]:
             with self.subTest(member=name):
                 getter = mappings[f"HTMLOutputElement.{name}/get"]
                 self.assertEqual(getter["result_view"], "live")
                 self.assertTrue(getter.get("requirements") or getter.get("requirement"))
         self.member("HTMLOutputElement.defaultValue")["attributes"].clear()
         self.rejected("source declaration mismatch: HTMLOutputElement.source")
+
+    def test_html_token_lists_use_the_exact_live_association_and_forward_set(self):
+        mappings = self.data["access_mappings"]
+        for interface, member, attribute in [
+            ("HTMLScriptElement", "blocking", None),
+            ("HTMLLinkElement", "blocking", None),
+            ("HTMLStyleElement", "blocking", None),
+            ("HTMLAnchorElement", "relList", "rel"),
+            ("HTMLAreaElement", "relList", "rel"),
+            ("HTMLFormElement", "relList", "rel"),
+            ("HTMLLinkElement", "relList", "rel"),
+            ("HTMLLinkElement", "sizes", None),
+            ("HTMLIFrameElement", "sandbox", None),
+            ("HTMLOutputElement", "htmlFor", "for"),
+        ]:
+            key = f"{interface}.{member}"
+            with self.subTest(member=key):
+                declaration = self.member(key)
+                self.assertTrue(declaration["readonly"])
+                self.assertEqual(declaration["type"], {"kind": "named", "name": "DOMTokenList"})
+                self.assertEqual({item["name"]: item.get("value") for item in declaration["attributes"]},
+                                 {"SameObject": None, "PutForwards": "value", "Reflect": attribute})
+                getter = mappings[key + "/get"]
+                self.assertEqual((getter["kind"], getter["result_view"]), ("native", "live"))
+                self.assertFalse(getter["requirements"])
+                self.assertEqual({(item["owner"], item["symbol"]) for item in getter["producers"]},
+                                 {("surgeist-runtime", "element_token_list"),
+                                  ("surgeist-dom", "reflect_html")})
+                setter = mappings[key + "/set"]
+                self.assertEqual((setter["kind"], setter["getter"], setter["target"]),
+                                 ("forwarding", key + "/get", "value"))
 
     def test_button_keeps_owned_keyword_rules_and_the_popover_mixin(self):
         button = self.definition("HTMLButtonElement")

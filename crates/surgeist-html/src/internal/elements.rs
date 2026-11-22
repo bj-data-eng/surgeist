@@ -33,3 +33,4 @@ pub(crate) mod style;
 pub(crate) mod svg_script_flags;
 pub(crate) mod template_markers;
 pub(crate) mod template_state;
+pub(crate) mod token_list;

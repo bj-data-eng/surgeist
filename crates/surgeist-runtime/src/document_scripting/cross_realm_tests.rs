@@ -463,6 +463,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::token_list_admission::retained_class_list_keeps_then_releases_its_traced_element();
     super::guest::tests::token_list_admission::cached_class_list_authenticates_the_current_element(
     );
+    super::guest::tests::token_list_admission::wrong_html_token_list_receiver_does_not_open_its_cached_view();
     super::guest::tests::token_list_admission::token_edit_preserves_the_original_source_refusal();
     super::guest::tests::token_list_admission::indexed_membership_admits_the_native_descriptor_read(
     );

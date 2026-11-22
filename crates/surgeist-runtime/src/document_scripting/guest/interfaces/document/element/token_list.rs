@@ -10,15 +10,92 @@ use surgeist_bindings_js::{
 };
 use surgeist_dom::{
     source::{DomSourceEdit, DomTokenListEdit},
-    tree::DomTokenList,
+    tree::{DomNode, DomTokenList},
 };
-use surgeist_html::values::Namespace;
+use surgeist_html::{
+    attributes::sandbox::HtmlSandboxKeyword,
+    elements::token_list::{HtmlTokenListReflection, HtmlTokenListSupport},
+    values::Namespace,
+};
 
 const INTERFACE: &[u16] = &ascii(b"DOMTokenList");
-const CLASS_LIST: &[u16] = &ascii(b"classList");
 const VALUE: &[u16] = &ascii(b"value");
-const CLASS_LIST_REFERENCE: u32 = 12;
 const ELEMENT_REFERENCE: u32 = 0;
+
+#[derive(Clone, Copy)]
+pub(super) enum Reflection {
+    Class,
+    Html(HtmlTokenListReflection),
+}
+
+struct Member {
+    property: &'static [u16],
+    getter: &'static [u16],
+    setter: &'static [u16],
+    reference: u32,
+}
+
+impl Reflection {
+    fn member(self) -> Member {
+        use HtmlTokenListReflection::{
+            AnchorRel, AreaRel, FormRel, IframeSandbox, LinkBlocking, LinkRel, LinkSizes,
+            OutputHtmlFor, ScriptBlocking, StyleBlocking,
+        };
+
+        match self {
+            Self::Class => Member {
+                property: &const { ascii(b"classList") },
+                getter: &const { ascii(b"get classList") },
+                setter: &const { ascii(b"set classList") },
+                reference: 12,
+            },
+            Self::Html(ScriptBlocking | LinkBlocking | StyleBlocking) => Member {
+                property: &const { ascii(b"blocking") },
+                getter: &const { ascii(b"get blocking") },
+                setter: &const { ascii(b"set blocking") },
+                reference: 13,
+            },
+            Self::Html(AnchorRel | AreaRel | FormRel | LinkRel) => Member {
+                property: &const { ascii(b"relList") },
+                getter: &const { ascii(b"get relList") },
+                setter: &const { ascii(b"set relList") },
+                reference: 14,
+            },
+            Self::Html(LinkSizes) => Member {
+                property: &const { ascii(b"sizes") },
+                getter: &const { ascii(b"get sizes") },
+                setter: &const { ascii(b"set sizes") },
+                reference: 15,
+            },
+            Self::Html(IframeSandbox) => Member {
+                property: &const { ascii(b"sandbox") },
+                getter: &const { ascii(b"get sandbox") },
+                setter: &const { ascii(b"set sandbox") },
+                reference: 16,
+            },
+            Self::Html(OutputHtmlFor) => Member {
+                property: &const { ascii(b"htmlFor") },
+                getter: &const { ascii(b"get htmlFor") },
+                setter: &const { ascii(b"set htmlFor") },
+                reference: 17,
+            },
+        }
+    }
+
+    fn read(
+        self,
+        read: &NativeRead<'_>,
+        node: DomNode<'_>,
+    ) -> Result<Option<DomTokenList>, DocumentGuestEventError> {
+        match self {
+            Self::Class => Ok(Some(DomTokenList::class(node.id()))),
+            Self::Html(reflection) => {
+                read.step()?;
+                Ok(DomTokenList::reflect_html(node, reflection))
+            }
+        }
+    }
+}
 
 pub(super) struct Projection {
     prototype: RetainedCallbackObject,
@@ -44,22 +121,9 @@ enum Method {
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     global: &Value<'scope>,
-    element: &Value<'scope>,
     capture: CaptureFunding<'_>,
     retain: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
 ) -> Result<Projection, DocumentGuestEventError> {
-    let getter = capture(size_of::<Capture>())?;
-    let setter = capture(size_of::<Capture>())?;
-    install_accessor(
-        scope,
-        element,
-        CLASS_LIST,
-        &ascii(b"get classList"),
-        &ascii(b"set classList"),
-        &Callback::new(move |scope, arguments| getter.class_list(scope, arguments)),
-        &Callback::new(move |scope, arguments| setter.forward_class_list(scope, arguments)),
-    )?;
-
     let prototype = scope.object(ObjectPrototype::Default)?;
     let constructor = scope.constructor(
         &illegal_constructor(capture)?,
@@ -149,6 +213,31 @@ pub(super) fn install<'scope>(
     })
 }
 
+pub(super) fn install_reflection<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+    reflection: Reflection,
+) -> Result<(), DocumentGuestEventError> {
+    let member = reflection.member();
+    let getter = capture(size_of::<(Capture, Reflection)>())?;
+    let setter = capture(size_of::<(Capture, Reflection)>())?;
+    install_accessor(
+        scope,
+        prototype,
+        member.property,
+        member.getter,
+        member.setter,
+        &Callback::new(move |scope, arguments| {
+            getter.element_token_list(scope, arguments, reflection)
+        }),
+        &Callback::new(move |scope, arguments| {
+            setter.forward_token_list(scope, arguments, reflection)
+        }),
+    )?;
+    Ok(())
+}
+
 fn install_accessor<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
@@ -201,19 +290,25 @@ impl Projection {
         owner: &NativeOwner,
         events: &GuestEvents,
         receiver: &Value<'scope>,
-        list: DomTokenList,
+        association: (DomTokenList, u32),
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let prototype = scope.open_callback_object(&self.prototype)?;
         let callback = scope.callback_object(&prototype)?;
         if callback.associated_realm().identity() == scope.realm_authority()?.identity() {
-            return self.project_in_realm(scope, (owner, events), &prototype, receiver, list);
+            return self.project_in_realm(
+                scope,
+                (owner, events),
+                &prototype,
+                receiver,
+                association,
+            );
         }
 
         let receiver = scope.retain(receiver);
         let root = scope.in_callback_object_realm(&callback, |scope, prototype| {
             let receiver = scope.import(&receiver)?;
             let value =
-                self.project_in_realm(scope, (owner, events), prototype, &receiver, list)?;
+                self.project_in_realm(scope, (owner, events), prototype, &receiver, association)?;
             Ok::<_, DocumentGuestEventError>(scope.retain(&value))
         })?;
         Ok(scope.import(&root)?)
@@ -225,7 +320,7 @@ impl Projection {
         (owner, events): (&NativeOwner, &GuestEvents),
         prototype: &Value<'scope>,
         receiver: &Value<'scope>,
-        list: DomTokenList,
+        (list, reference): (DomTokenList, u32),
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let index = scope.open_callback_object(&self.index)?;
         let keys = scope.open_callback_object(&self.keys)?;
@@ -244,7 +339,7 @@ impl Projection {
         )?;
         scope.set_native_object_reference::<GuestNodeProjection>(
             receiver,
-            CLASS_LIST_REFERENCE,
+            reference,
             Some(&value),
         )?;
         Ok(value)
@@ -252,10 +347,11 @@ impl Projection {
 }
 
 impl Capture {
-    fn class_list<'scope>(
+    fn element_token_list<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
+        reflection: Reflection,
     ) -> Result<Completion<'scope>, Error> {
         let receiver = arguments.receiver();
         let Some(GuestNode::Element(element)) = tree::projected_node(scope, receiver)? else {
@@ -264,13 +360,22 @@ impl Capture {
             ));
         };
         let (owner, events) = self.active(scope)?;
+        let reference = reflection.member().reference;
         let result = (|| {
             events.step()?;
-            if let Some(cached) = scope
-                .native_object_reference::<GuestNodeProjection>(receiver, CLASS_LIST_REFERENCE)?
+            let list = self.callbacks.with_read(&owner, &events, |read, _| {
+                reflection.read(read, read.node(element)?)
+            })?;
+            let Some(list) = list else {
+                return Ok(Completion::Throw(
+                    scope.type_error(&ascii(b"Incompatible Element"))?,
+                ));
+            };
+            // A scoped root can reach native admission. Authenticate the
+            // receiver first, then open the slot outside that native borrow.
+            if let Some(cached) =
+                scope.native_object_reference::<GuestNodeProjection>(receiver, reference)?
             {
-                self.callbacks
-                    .with_read(&owner, &events, |read, _| read.node(element).map(drop))?;
                 return Ok(Completion::Return(cached));
             }
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
@@ -284,19 +389,24 @@ impl Capture {
                             .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
                         Ok((origin, attached))
                     })?;
-            let list = DomTokenList::class(element);
+            let association = (list, reference);
             let value = if origin == attached {
-                public
-                    .document
-                    .element
-                    .token_list
-                    .project(scope, &owner, &events, receiver, list)?
+                public.document.element.token_list.project(
+                    scope,
+                    &owner,
+                    &events,
+                    receiver,
+                    association,
+                )?
             } else {
                 public.with_origin(&events, origin, |origin| {
-                    origin
-                        .elements
-                        .token_list
-                        .project(scope, &owner, &events, receiver, list)
+                    origin.elements.token_list.project(
+                        scope,
+                        &owner,
+                        &events,
+                        receiver,
+                        association,
+                    )
                 })?
             };
             Ok(Completion::Return(value))
@@ -304,28 +414,38 @@ impl Capture {
         tree::tree_completion(scope, &events, result)
     }
 
-    fn forward_class_list<'scope>(
+    fn forward_token_list<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
+        reflection: Reflection,
     ) -> Result<Completion<'scope>, Error> {
         let receiver = arguments.receiver();
-        if !matches!(
-            tree::projected_node(scope, receiver)?,
-            Some(GuestNode::Element(_))
-        ) {
+        let Some(GuestNode::Element(element)) = tree::projected_node(scope, receiver)? else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Element required"))?,
             ));
-        }
-        let (_, events) = self.active(scope)?;
+        };
+        let (owner, events) = self.active(scope)?;
         let result = (|| {
+            if matches!(reflection, Reflection::Html(_)) {
+                let applicable = self.callbacks.with_read(&owner, &events, |read, _| {
+                    reflection
+                        .read(read, read.node(element)?)
+                        .map(|list| list.is_some())
+                })?;
+                if !applicable {
+                    return Ok(Completion::Throw(
+                        scope.type_error(&ascii(b"Incompatible Element"))?,
+                    ));
+                }
+            }
             events.step()?;
-            let target = scope.get(receiver, PropertyKey::String(CLASS_LIST))?;
+            let target = scope.get(receiver, PropertyKey::String(reflection.member().property))?;
             scope.check_active()?;
             if scope.kind(&target)? != ValueKind::Object {
                 return Ok(Completion::Throw(
-                    scope.type_error(&ascii(b"classList must be an object"))?,
+                    scope.type_error(&ascii(b"Token list must be an object"))?,
                 ));
             }
             let undefined;
@@ -418,9 +538,13 @@ impl Capture {
                     return Err(Error::BackendUnavailable.into());
                 };
                 if matches!(method, Method::Supports) {
-                    return Ok(Completion::Throw(scope.type_error(&ascii(
-                        b"classList has no defined supported tokens",
-                    ))?));
+                    return self.token_list_supports(
+                        scope,
+                        owner,
+                        events,
+                        list,
+                        token.as_code_units(),
+                    );
                 }
                 let contains = self.callbacks.with_read(owner, events, |read, _| {
                     list.contains_with(&read.snapshot, token.as_code_units(), || read.step())
@@ -430,6 +554,41 @@ impl Capture {
             _ => return Err(Error::BackendUnavailable.into()),
         };
         Ok(Completion::Return(value))
+    }
+
+    fn token_list_supports<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        list: DomTokenList,
+        token: &[u16],
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let support = match list.html_reflection() {
+            Some(reflection) => self.callbacks.with_read(owner, events, |read, _| {
+                read.node(list.element())?;
+                reflection.support_with(token, || read.step())
+            })?,
+            None => HtmlTokenListSupport::Undefined,
+        };
+        let supported = match support {
+            HtmlTokenListSupport::Undefined => {
+                return Ok(Completion::Throw(scope.type_error(&ascii(
+                    b"The association has no defined supported tokens",
+                ))?));
+            }
+            HtmlTokenListSupport::Supported
+            | HtmlTokenListSupport::SandboxCandidate(
+                HtmlSandboxKeyword::AllowScripts | HtmlSandboxKeyword::AllowSameOrigin,
+            ) => true,
+            HtmlTokenListSupport::Unsupported => false,
+            HtmlTokenListSupport::RelCandidate(_) | HtmlTokenListSupport::SandboxCandidate(_) => {
+                return Err(DocumentGuestEventError::HostRouteUnavailable);
+            }
+        };
+        Ok(Completion::Return(
+            scope.primitive(Primitive::Boolean(supported))?,
+        ))
     }
 
     fn token_list_item<'scope>(

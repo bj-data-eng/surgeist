@@ -5291,6 +5291,29 @@ pub surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::Curren
 pub enum surgeist_html::elements::template::HtmlTemplateFreshInsertionState
 pub surgeist_html::elements::template::HtmlTemplateFreshInsertionState::NullTargetAndMarkers
 pub const fn surgeist_html::elements::template::template_contents_owner_document(created_by_template_owner_algorithm: bool, has_associated_inert_document: bool) -> surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument
+pub mod surgeist_html::elements::token_list
+pub enum surgeist_html::elements::token_list::HtmlTokenListReflection
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::AnchorRel
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::AreaRel
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::FormRel
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::IframeSandbox
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::LinkBlocking
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::LinkRel
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::LinkSizes
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::OutputHtmlFor
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::ScriptBlocking
+pub surgeist_html::elements::token_list::HtmlTokenListReflection::StyleBlocking
+impl surgeist_html::elements::token_list::HtmlTokenListReflection
+pub const fn surgeist_html::elements::token_list::HtmlTokenListReflection::attribute(self) -> &'static str
+pub const fn surgeist_html::elements::token_list::HtmlTokenListReflection::attribute_units(self) -> &'static [u16]
+pub const fn surgeist_html::elements::token_list::HtmlTokenListReflection::element(self) -> surgeist_html::vocabulary::KnownHtmlElement
+pub fn surgeist_html::elements::token_list::HtmlTokenListReflection::support_with<E>(self, token: &[u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::elements::token_list::HtmlTokenListSupport, E>
+pub enum surgeist_html::elements::token_list::HtmlTokenListSupport
+pub surgeist_html::elements::token_list::HtmlTokenListSupport::RelCandidate(surgeist_html::elements::link::HtmlRelKeyword)
+pub surgeist_html::elements::token_list::HtmlTokenListSupport::SandboxCandidate(surgeist_html::attributes::sandbox::HtmlSandboxKeyword)
+pub surgeist_html::elements::token_list::HtmlTokenListSupport::Supported
+pub surgeist_html::elements::token_list::HtmlTokenListSupport::Undefined
+pub surgeist_html::elements::token_list::HtmlTokenListSupport::Unsupported
 pub mod surgeist_html::focus
 pub enum surgeist_html::focus::HtmlAutofocusDelegateAction
 pub surgeist_html::focus::HtmlAutofocusDelegateAction::BeginDescendants

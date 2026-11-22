@@ -1,9 +1,11 @@
 //! Local HTMLFormElement reflections over the canonical Form.
 
 use super::{
+    element::install_html_token_list,
     reflection::{self, Receiver, Reflection},
     *,
 };
+use surgeist_html::elements::token_list::HtmlTokenListReflection;
 
 const MEMBERS: &[reflection::Member] = &[
     (
@@ -76,5 +78,6 @@ pub(super) fn install<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    reflection::install(scope, prototype, capture, Receiver::Form, MEMBERS)
+    reflection::install(scope, prototype, capture, Receiver::Form, MEMBERS)?;
+    install_html_token_list(scope, prototype, capture, HtmlTokenListReflection::FormRel)
 }

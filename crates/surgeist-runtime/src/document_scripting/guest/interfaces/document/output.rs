@@ -3,6 +3,7 @@
 use super::{
     barred_control::BarredControl,
     custom_validity::CustomValidityControl,
+    element::install_html_token_list,
     form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
     text::{TextBuffer, collect_text},
@@ -10,6 +11,7 @@ use super::{
 };
 use surgeist_bindings_js::conversion::types::DOM_STRING;
 use surgeist_dom::source::DomSourceEdit;
+use surgeist_html::elements::token_list::HtmlTokenListReflection;
 
 const NAME: reflection::Member = (
     &ascii(b"name"),
@@ -66,6 +68,12 @@ pub(super) fn install<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    install_html_token_list(
+        scope,
+        prototype,
+        capture,
+        HtmlTokenListReflection::OutputHtmlFor,
+    )?;
     form_owner::install(scope, prototype, capture, FormOwnerGetter::Output)?;
     reflection::install(scope, prototype, capture, Receiver::Output, &[NAME])?;
     BarredControl::Output.install_type(scope, prototype, capture)?;

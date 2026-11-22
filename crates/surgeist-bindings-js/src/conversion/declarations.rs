@@ -2949,3 +2949,13 @@ pub fn html_select_element_selected_index_setter() -> IntegerType {
 pub fn html_option_element_selected_setter() -> Type<bool> {
     types::BOOLEAN
 }
+
+/// Selected setter conversion for `HTMLIFrameElement.obsolete.marginHeight`.
+pub fn htmli_frame_element_obsolete_margin_height_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLIFrameElement.obsolete.marginWidth`.
+pub fn htmli_frame_element_obsolete_margin_width_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}

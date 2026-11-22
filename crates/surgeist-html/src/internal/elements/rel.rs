@@ -666,13 +666,17 @@ pub(crate) fn contains_ascii_keyword(raw: &DocumentString, keyword: &str) -> boo
 pub(crate) fn contains(raw: &DocumentString, keyword: HtmlRelKeyword) -> bool {
     contains_ascii_keyword(raw, keyword.keyword())
 }
-fn keyword_at<C: RelMeter>(units: &[u16], keyword: &str, m: &mut C) -> Result<bool, C::Error> {
-    m.work(1)?;
+fn keyword_at<E>(
+    units: &[u16],
+    keyword: &str,
+    mut work: impl FnMut(usize) -> Result<(), E>,
+) -> Result<bool, E> {
+    work(1)?;
     if units.len() != keyword.len() {
         return Ok(false);
     }
     for (unit, byte) in units.iter().zip(keyword.bytes()) {
-        m.work(3)?;
+        work(3)?;
         if !ascii_case_insensitive_unit(*unit, byte) {
             return Ok(false);
         }
@@ -773,27 +777,38 @@ fn mark_duplicates<C: RelMeter>(
         Ok(a.start.cmp(&b.start))
     })
 }
+/// Recognize a pinned standard spelling without running alias or author-grammar rules.
+pub(crate) fn standard_keyword_with<E>(
+    units: &[u16],
+    mut work: impl FnMut(usize) -> Result<(), E>,
+) -> Result<Option<HtmlRelKeyword>, E> {
+    for &keyword in HtmlRelKeyword::ALL {
+        work(1)?;
+        if keyword_at(units, keyword.keyword(), &mut work)? {
+            return Ok(Some(keyword));
+        }
+    }
+    Ok(None)
+}
+
 fn classify<C: RelMeter>(
     units: &[u16],
     m: &mut C,
 ) -> Result<(Option<HtmlRelKeyword>, HtmlRelSpelling), C::Error> {
-    for &keyword in HtmlRelKeyword::ALL {
-        m.work(1)?;
-        if keyword_at(units, keyword.keyword(), m)? {
-            return Ok((Some(keyword), HtmlRelSpelling::Standard));
-        }
+    if let Some(keyword) = standard_keyword_with(units, |cost| m.work(cost))? {
+        return Ok((Some(keyword), HtmlRelSpelling::Standard));
     }
     for (alias, keyword) in [
         ("copyright", HtmlRelKeyword::License),
         ("previous", HtmlRelKeyword::Prev),
     ] {
-        if keyword_at(units, alias, m)? {
+        if keyword_at(units, alias, |cost| m.work(cost))? {
             return Ok((Some(keyword), HtmlRelSpelling::ForbiddenSynonym));
         }
     }
     Ok((
         None,
-        if keyword_at(units, "shortcut", m)? {
+        if keyword_at(units, "shortcut", |cost| m.work(cost))? {
             HtmlRelSpelling::InvalidShortcut
         } else {
             HtmlRelSpelling::Unknown
@@ -826,7 +841,7 @@ fn interpret<C: RelMeter>(
                     let (keyword, mut spelling) = classify(units, m)?;
                     if spelling == HtmlRelSpelling::InvalidShortcut
                         && input.role == Some(HtmlRelRole::Link)
-                        && keyword_at(raw.code_units(), "shortcut icon", m)?
+                        && keyword_at(raw.code_units(), "shortcut icon", |cost| m.work(cost))?
                     {
                         spelling = HtmlRelSpelling::ShortcutException;
                     }
