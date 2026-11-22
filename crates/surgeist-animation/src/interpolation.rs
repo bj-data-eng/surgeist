@@ -19,6 +19,7 @@ use crate::easing::EasedProgress;
 use crate::filter::{FilterError, FilterList};
 use crate::grid::{GridError, GridValue};
 use crate::masking::ClipPathValue;
+use crate::palette::{PaletteError, PaletteValue};
 use crate::progress::UnitRatio;
 use crate::shadow::{ShadowError, ShadowList};
 use crate::shape::{ShapeError, ShapeValue};
@@ -44,6 +45,7 @@ pub enum ValueFamily {
     Grid,
     ClipPath,
     Filter,
+    Palette,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -107,6 +109,7 @@ pub enum InterpolableValue {
     Grid(GridValue),
     ClipPath(ClipPathValue),
     Filter(FilterList),
+    Palette(PaletteValue),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -135,6 +138,7 @@ pub enum InterpolationOutcome {
     ShadowFailure(ShadowInterpolationFailure),
     GridFailure(GridInterpolationFailure),
     FilterFailure(FilterInterpolationFailure),
+    PaletteFailure(PaletteInterpolationFailure),
     Unsupported(InterpolationError),
 }
 
@@ -291,6 +295,33 @@ impl FilterInterpolationFailure {
     }
 }
 
+/// A sample-local palette plan failure retaining both endpoints and progress.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaletteInterpolationFailure {
+    property: PropertyKey,
+    endpoints: Arc<InterpolationEndpoints>,
+    progress: InterpolationProgress,
+    error: PaletteError,
+}
+
+impl PaletteInterpolationFailure {
+    pub const fn property(&self) -> &PropertyKey {
+        &self.property
+    }
+    pub fn from(&self) -> &InterpolableValue {
+        &self.endpoints.from
+    }
+    pub fn to(&self) -> &InterpolableValue {
+        &self.endpoints.to
+    }
+    pub const fn progress(&self) -> InterpolationProgress {
+        self.progress
+    }
+    pub const fn error(&self) -> &PaletteError {
+        &self.error
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolationError {
     EmptyPropertyKey,
@@ -305,6 +336,7 @@ pub enum InterpolationError {
     Shadow(ShadowInterpolationFailure),
     Grid(GridInterpolationFailure),
     Filter(FilterInterpolationFailure),
+    Palette(PaletteInterpolationFailure),
     MismatchedFamilies {
         property: PropertyKey,
         from: ValueFamily,
@@ -360,6 +392,13 @@ impl fmt::Display for InterpolationError {
                 f,
                 "interpolating {} failed: {}",
                 result.property.as_str(),
+                result.error
+            ),
+            Self::Palette(result) => write!(
+                f,
+                "interpolating {} at progress {} failed: {}",
+                result.property.as_str(),
+                result.progress.value(),
                 result.error
             ),
             Self::Shape(result) => write!(
@@ -429,6 +468,7 @@ impl std::error::Error for InterpolationError {
             Self::Shadow(result) => Some(&result.error),
             Self::Grid(result) => Some(&result.error),
             Self::Filter(result) => Some(&result.error),
+            Self::Palette(result) => Some(&result.error),
             _ => None,
         }
     }
@@ -449,6 +489,7 @@ fn value_family_name(family: ValueFamily) -> &'static str {
         ValueFamily::Grid => "grid",
         ValueFamily::ClipPath => "clip-path",
         ValueFamily::Filter => "filter",
+        ValueFamily::Palette => "palette",
     }
 }
 
@@ -757,6 +798,10 @@ impl InterpolableValue {
         Self::ClipPath(value)
     }
 
+    pub fn palette(value: PaletteValue) -> Self {
+        Self::Palette(value)
+    }
+
     pub fn shape(value: ShapeValue) -> Self {
         Self::Shape(value)
     }
@@ -784,6 +829,7 @@ impl InterpolableValue {
             Self::Grid(_) => ValueFamily::Grid,
             Self::ClipPath(_) => ValueFamily::ClipPath,
             Self::Filter(_) => ValueFamily::Filter,
+            Self::Palette(_) => ValueFamily::Palette,
         }
     }
 }
@@ -959,6 +1005,19 @@ impl InterpolationPair {
                         progress,
                         error,
                     }),
+                }
+            }
+            (InterpolableValue::Palette(from), InterpolableValue::Palette(to)) => {
+                match from.interpolate(to, progress) {
+                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::Palette(value)),
+                    Err(error) => {
+                        InterpolationOutcome::PaletteFailure(PaletteInterpolationFailure {
+                            property: self.property.clone(),
+                            endpoints: Arc::clone(&self.endpoints),
+                            progress,
+                            error,
+                        })
+                    }
                 }
             }
             (InterpolableValue::Shape(from), InterpolableValue::Shape(to)) => {

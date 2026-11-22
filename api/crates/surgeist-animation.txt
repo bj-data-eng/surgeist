@@ -677,6 +677,7 @@ pub surgeist_animation::interpolation::InterpolableValue::Discrete(surgeist_anim
 pub surgeist_animation::interpolation::InterpolableValue::Filter(surgeist_animation::filter::FilterList)
 pub surgeist_animation::interpolation::InterpolableValue::Grid(surgeist_animation::grid::GridValue)
 pub surgeist_animation::interpolation::InterpolableValue::Number(surgeist_animation::interpolation::InterpolableNumber)
+pub surgeist_animation::interpolation::InterpolableValue::Palette(surgeist_animation::palette::PaletteValue)
 pub surgeist_animation::interpolation::InterpolableValue::Percentage(surgeist_animation::interpolation::InterpolablePercentage)
 pub surgeist_animation::interpolation::InterpolableValue::RepeatableList(surgeist_animation::computed::RepeatableList)
 pub surgeist_animation::interpolation::InterpolableValue::Shadow(surgeist_animation::shadow::ShadowList)
@@ -692,6 +693,7 @@ pub const fn surgeist_animation::interpolation::InterpolableValue::family(&self)
 pub fn surgeist_animation::interpolation::InterpolableValue::filter(value: surgeist_animation::filter::FilterList) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::grid(value: surgeist_animation::grid::GridValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::number(value: surgeist_animation::interpolation::InterpolableNumber) -> Self
+pub fn surgeist_animation::interpolation::InterpolableValue::palette(value: surgeist_animation::palette::PaletteValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::percentage(value: surgeist_animation::interpolation::InterpolablePercentage) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::repeatable_list(value: surgeist_animation::computed::RepeatableList) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::shadow(value: surgeist_animation::shadow::ShadowList) -> Self
@@ -731,6 +733,7 @@ pub surgeist_animation::interpolation::InterpolationError::NonFiniteNumber::valu
 pub surgeist_animation::interpolation::InterpolationError::NonFiniteProgress
 pub surgeist_animation::interpolation::InterpolationError::NonFiniteProgress::value: f64
 pub surgeist_animation::interpolation::InterpolationError::Numeric(surgeist_animation::diagnostics::NumericError)
+pub surgeist_animation::interpolation::InterpolationError::Palette(surgeist_animation::interpolation::PaletteInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::Shadow(surgeist_animation::interpolation::ShadowInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::Shape(surgeist_animation::interpolation::ShapeInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily
@@ -752,6 +755,7 @@ pub surgeist_animation::interpolation::InterpolationOutcome::ArithmeticFailure(s
 pub surgeist_animation::interpolation::InterpolationOutcome::ComputedFailure(surgeist_animation::interpolation::ComputedInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::FilterFailure(surgeist_animation::interpolation::FilterInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::GridFailure(surgeist_animation::interpolation::GridInterpolationFailure)
+pub surgeist_animation::interpolation::InterpolationOutcome::PaletteFailure(surgeist_animation::interpolation::PaletteInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::ShadowFailure(surgeist_animation::interpolation::ShadowInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::ShapeFailure(surgeist_animation::interpolation::ShapeInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::Unsupported(surgeist_animation::interpolation::InterpolationError)
@@ -765,6 +769,7 @@ pub surgeist_animation::interpolation::ValueFamily::Discrete
 pub surgeist_animation::interpolation::ValueFamily::Filter
 pub surgeist_animation::interpolation::ValueFamily::Grid
 pub surgeist_animation::interpolation::ValueFamily::Number
+pub surgeist_animation::interpolation::ValueFamily::Palette
 pub surgeist_animation::interpolation::ValueFamily::Percentage
 pub surgeist_animation::interpolation::ValueFamily::RepeatableList
 pub surgeist_animation::interpolation::ValueFamily::Shadow
@@ -837,6 +842,13 @@ pub const fn surgeist_animation::interpolation::NonFiniteInterpolationResult::pr
 pub const fn surgeist_animation::interpolation::NonFiniteInterpolationResult::property(&self) -> &surgeist_animation::interpolation::PropertyKey
 pub fn surgeist_animation::interpolation::NonFiniteInterpolationResult::to(&self) -> &surgeist_animation::interpolation::InterpolableValue
 pub const fn surgeist_animation::interpolation::NonFiniteInterpolationResult::value(&self) -> f64
+pub struct surgeist_animation::interpolation::PaletteInterpolationFailure
+impl surgeist_animation::interpolation::PaletteInterpolationFailure
+pub const fn surgeist_animation::interpolation::PaletteInterpolationFailure::error(&self) -> &surgeist_animation::palette::PaletteError
+pub fn surgeist_animation::interpolation::PaletteInterpolationFailure::from(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub const fn surgeist_animation::interpolation::PaletteInterpolationFailure::progress(&self) -> surgeist_animation::interpolation::InterpolationProgress
+pub const fn surgeist_animation::interpolation::PaletteInterpolationFailure::property(&self) -> &surgeist_animation::interpolation::PropertyKey
+pub fn surgeist_animation::interpolation::PaletteInterpolationFailure::to(&self) -> &surgeist_animation::interpolation::InterpolableValue
 pub struct surgeist_animation::interpolation::PropertyKey
 impl surgeist_animation::interpolation::PropertyKey
 pub fn surgeist_animation::interpolation::PropertyKey::as_str(&self) -> &str
@@ -1064,6 +1076,38 @@ pub const fn surgeist_animation::masking::ClipSourceError::kind(&self) -> surgei
 impl core::error::Error for surgeist_animation::masking::ClipSourceError
 impl core::fmt::Display for surgeist_animation::masking::ClipSourceError
 pub fn surgeist_animation::masking::ClipSourceError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub mod surgeist_animation::palette
+pub enum surgeist_animation::palette::PaletteErrorKind
+pub surgeist_animation::palette::PaletteErrorKind::Capacity
+pub enum surgeist_animation::palette::PaletteNode
+pub surgeist_animation::palette::PaletteNode::MixOklab
+pub surgeist_animation::palette::PaletteNode::MixOklab::first: usize
+pub surgeist_animation::palette::PaletteNode::MixOklab::progress: surgeist_animation::interpolation::InterpolationProgress
+pub surgeist_animation::palette::PaletteNode::MixOklab::second: usize
+pub surgeist_animation::palette::PaletteNode::Source(surgeist_animation::palette::PaletteSource)
+pub struct surgeist_animation::palette::PaletteError
+impl surgeist_animation::palette::PaletteError
+pub const fn surgeist_animation::palette::PaletteError::kind(&self) -> surgeist_animation::palette::PaletteErrorKind
+impl core::error::Error for surgeist_animation::palette::PaletteError
+impl core::fmt::Display for surgeist_animation::palette::PaletteError
+pub fn surgeist_animation::palette::PaletteError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::palette::PaletteSource
+impl surgeist_animation::palette::PaletteSource
+pub fn surgeist_animation::palette::PaletteSource::new() -> Self
+impl core::cmp::Eq for surgeist_animation::palette::PaletteSource
+impl core::cmp::PartialEq for surgeist_animation::palette::PaletteSource
+pub fn surgeist_animation::palette::PaletteSource::eq(&self, other: &Self) -> bool
+impl core::default::Default for surgeist_animation::palette::PaletteSource
+pub fn surgeist_animation::palette::PaletteSource::default() -> Self
+impl core::hash::Hash for surgeist_animation::palette::PaletteSource
+pub fn surgeist_animation::palette::PaletteSource::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_animation::palette::PaletteValue
+impl surgeist_animation::palette::PaletteValue
+pub fn surgeist_animation::palette::PaletteValue::add(&self, effect: &Self) -> Self
+pub fn surgeist_animation::palette::PaletteValue::as_source(&self) -> core::option::Option<&surgeist_animation::palette::PaletteSource>
+pub fn surgeist_animation::palette::PaletteValue::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::palette::PaletteError>
+pub fn surgeist_animation::palette::PaletteValue::nodes(&self) -> &[surgeist_animation::palette::PaletteNode]
+pub fn surgeist_animation::palette::PaletteValue::source(source: surgeist_animation::palette::PaletteSource) -> Self
 pub mod surgeist_animation::playback
 pub enum surgeist_animation::playback::CompletionKind
 pub surgeist_animation::playback::CompletionKind::Finished

@@ -69,6 +69,9 @@ impl PropertyValueOperations for Operations {
             InterpolationOutcome::ComputedFailure(error) => {
                 Err(InterpolationError::Computed(error).into())
             }
+            InterpolationOutcome::PaletteFailure(error) => {
+                Err(InterpolationError::Palette(error).into())
+            }
             InterpolationOutcome::ShapeFailure(error) => {
                 Err(InterpolationError::Shape(error).into())
             }
@@ -94,6 +97,9 @@ impl PropertyValueOperations for Operations {
             ),
             (InterpolableValue::Computed(a), InterpolableValue::Computed(b)) => {
                 Ok(InterpolableValue::computed(a.add(b)?))
+            }
+            (InterpolableValue::Palette(a), InterpolableValue::Palette(b)) => {
+                Ok(InterpolableValue::palette(a.add(b)))
             }
             (InterpolableValue::Transform(a), InterpolableValue::Transform(b)) => {
                 match (a.resolved_list(), b.resolved_list()) {
@@ -168,6 +174,105 @@ fn normalized_metadata_is_preserved_without_recomputing_or_merging_offsets() {
         Some(CompositeOperation::Add)
     );
     assert_eq!(sample(&frames, 0.5, 0.0), 80.0);
+}
+
+#[test]
+fn native_palette_endpoints_apply_nonadditive_composition_before_symbolic_interpolation() {
+    use surgeist_animation::palette::{PaletteNode, PaletteSource, PaletteValue};
+    let property = PropertyKey::new("font-palette").unwrap();
+    let normal = PaletteSource::new();
+    let light = PaletteSource::new();
+    let dark = PaletteSource::new();
+    let underlying = InterpolableValue::palette(PaletteValue::source(normal.clone()));
+    let frames = ComputedKeyframes::new(
+        [light.clone(), dark.clone()]
+            .into_iter()
+            .enumerate()
+            .map(|(index, source)| ComputedKeyframeInput {
+                specified_offset: None,
+                computed_offset: UnitRatio::new(index as f64).unwrap(),
+                easing: Easing::linear(),
+                composite: None,
+                properties: vec![(
+                    property.clone(),
+                    InterpolableValue::palette(PaletteValue::source(source)),
+                )],
+            })
+            .collect(),
+        KeyframeEndpointSource::Native,
+    )
+    .unwrap();
+    let result = frames
+        .sample(
+            &property,
+            request(
+                KeyframeTarget::Available(&underlying),
+                CompositeOperation::Add,
+            ),
+            Some(InterpolationProgress::new(0.5).unwrap()),
+            &Operations,
+        )
+        .unwrap()
+        .unwrap();
+    let InterpolableValue::Palette(value) = result else {
+        panic!("expected palette mix")
+    };
+    assert_eq!(
+        value.nodes(),
+        &[
+            PaletteNode::Source(light),
+            PaletteNode::Source(dark),
+            PaletteNode::MixOklab {
+                first: 0,
+                second: 1,
+                progress: InterpolationProgress::new(0.5).unwrap()
+            },
+        ]
+    );
+    // A synthetic missing start endpoint still uses live underlying with
+    // replace; the explicit endpoint's add uses its effect palette alone.
+    let endpoint = PaletteSource::new();
+    let sparse = ComputedKeyframes::new(
+        vec![ComputedKeyframeInput {
+            specified_offset: None,
+            computed_offset: UnitRatio::new(1.0).unwrap(),
+            easing: Easing::linear(),
+            composite: None,
+            properties: vec![(
+                property.clone(),
+                InterpolableValue::palette(PaletteValue::source(endpoint.clone())),
+            )],
+        }],
+        KeyframeEndpointSource::Native,
+    )
+    .unwrap();
+    let result = sparse
+        .sample(
+            &property,
+            request(
+                KeyframeTarget::Available(&underlying),
+                CompositeOperation::Add,
+            ),
+            Some(InterpolationProgress::new(0.5).unwrap()),
+            &Operations,
+        )
+        .unwrap()
+        .unwrap();
+    let InterpolableValue::Palette(value) = result else {
+        panic!("expected palette mix")
+    };
+    assert_eq!(
+        value.nodes(),
+        &[
+            PaletteNode::Source(normal),
+            PaletteNode::Source(endpoint),
+            PaletteNode::MixOklab {
+                first: 0,
+                second: 1,
+                progress: InterpolationProgress::new(0.5).unwrap()
+            },
+        ]
+    );
 }
 
 #[test]

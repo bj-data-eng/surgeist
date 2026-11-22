@@ -156,6 +156,9 @@ impl PropertyValueOperations for AnimationTypeOperations {
             InterpolationOutcome::FilterFailure(error) => {
                 Err(InterpolationError::Filter(error).into())
             }
+            InterpolationOutcome::PaletteFailure(error) => {
+                Err(InterpolationError::Palette(error).into())
+            }
             InterpolationOutcome::Unsupported(error) => Err(error.into()),
         }
     }
@@ -211,6 +214,11 @@ impl AnimationTypeOperations {
             // Selected Values 4: absent color addition selects B; unspecified
             // accumulation uses that same nonadditive operation.
             (InterpolableValue::Color(_), InterpolableValue::Color(_)) => Ok(value.clone()),
+            // Palette addition belongs to its symbolic value owner. Unspecified
+            // accumulation uses the same operation, retaining the effect palette.
+            (InterpolableValue::Palette(a), InterpolableValue::Palette(b)) => {
+                Ok(InterpolableValue::palette(a.add(b)))
+            }
             (InterpolableValue::Computed(a), InterpolableValue::Computed(b)) => Ok(
                 InterpolableValue::computed(if operation == CompositeOperation::Add {
                     a.add(b)?

@@ -158,6 +158,12 @@ impl SampledPropertyResult {
                 next_frame: next_frame_for_timing(timing),
                 value: SampleValue::Error(InterpolationError::Computed(result)),
             },
+            InterpolationOutcome::PaletteFailure(result) => Self {
+                classification: SampleClassification::Failed,
+                completion: failed_completion(timing.phase()),
+                next_frame: next_frame_for_timing(timing),
+                value: SampleValue::Error(InterpolationError::Palette(result)),
+            },
             InterpolationOutcome::ShapeFailure(result) => Self {
                 classification: SampleClassification::Failed,
                 completion: failed_completion(timing.phase()),

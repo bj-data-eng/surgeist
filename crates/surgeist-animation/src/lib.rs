@@ -39,6 +39,7 @@
 //! | [`composition`] | Pure underlying-first endpoint composition and property operations. |
 //! | [`filter`] | Normalized filter lists and native filter-image specialization. |
 //! | [`grid`] | Structured computed Grid tracks and fixed-repeat interpolation. |
+//! | [`palette`] | Symbolic computed font-palette operands and Oklab mix plans. |
 //! | [`shadow`] | Resolved box/text shadows, padding and ordered list combination. |
 //! | [`shape`] | Computed circle, ellipse, inset and polygon interpolation. |
 //! | [`masking`] | Computed clip-path branches over opaque sources, boxes and shapes. |
@@ -152,6 +153,7 @@ pub mod interpolation;
 pub mod keyframe;
 pub mod keyframe_input;
 pub mod masking;
+pub mod palette;
 pub mod playback;
 pub mod progress;
 pub mod sample;
