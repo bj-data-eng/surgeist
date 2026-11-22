@@ -8,10 +8,10 @@ dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
 [src/lib.rs](../src/lib.rs) declares the public modules `diagnostics`, `easing`,
-`interpolation`, `keyframe`, `progress`, `sample`, `time`, `timeline`, `timing`, and
-`transition`, and the constant `CRATE_NAME`. Each public type has one path,
-through the module that owns it, for example `surgeist_animation::easing::Easing`;
-the crate root reexports nothing. The crate forbids unsafe code. Tests live in
+`interpolation`, `keyframe`, `keyframe_input`, `progress`, `sample`, `time`,
+`timeline`, `timing`, and `transition`, and the constant `CRATE_NAME`. Each public
+type has one path through its owning module, such as
+`surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
 source modules and the external consumer targets under
 [tests/](../tests/); crate-level examples are doctests.
 
@@ -90,8 +90,59 @@ property's interval and applies its easing once to the local interval fraction.
 Reverse playback traverses those same intervals and timing functions backwards.
 During the delay, backwards fill holds the first iteration's directed starting
 value without applying easing. At the start of the active phase, interval easing
-applies normally. Endpoint synthesis and authored-keyframe normalization remain
-caller-owned.
+applies normally. CSS endpoint synthesis and CSS keyframe assembly remain caller-owned.
+
+## Native keyframe normalization
+
+`keyframe_input::KeyframesInput<V, E>::normalize()` consumes an absent,
+sequential, or property-indexed candidate. `V` is the caller's accepted parsed
+value, including any typed source provenance; `E` is its easing validation
+failure. The raw inputs expose fields because they can contain invalid data.
+Only normalization constructs `NormalizedKeyframes<V>` and its private-field
+frames. Results preserve specified offsets separately from computed offsets,
+validated easing, optional composite overrides, and accepted property payloads.
+
+Each property entry uses a caller-supplied canonical `PropertyKey` and an
+`Option<V>`: `Some` retains the payload unchanged, while `None` discards a
+rejected property value without removing its frame or list slot. Duplicate keys
+in one typed dictionary are rejected. Property identity is exact and
+case-sensitive, including custom properties; this API does not convert IDL
+names or choose animatable properties. Entry order within merged frames follows
+caller track order. Scalar property-indexed metadata is represented by a
+one-element list; empty easing defaults to linear and empty composite to auto.
+
+Offsets are raw `Option<f64>` inputs. The complete explicit sequence is checked
+for loosely nondecreasing order before checking finite `[0,1]` range, and both
+checks precede easing failures. Equal sequence offsets remain separate frames in
+their supplied order. A missing first offset defaults to zero when there are
+multiple frames; a missing final offset defaults to one, including a singleton.
+Interior missing runs are distributed by frame index between defined anchors.
+Specified anchors retain their exact validated values.
+
+For property-indexed inputs, each property track first receives intermediate
+computed offsets. Tracks are stably sorted and merged at equal intermediate
+offsets. The supplied offset list is assigned positionally to these merged
+frames, without repetition; surplus offsets are ignored. Final computed offsets
+are calculated anew from specified offsets. For example, tracks of lengths
+three and four form five merged frames; without specified offsets the final
+computed offsets are `0, .25, .5, .75, 1`, while property entries retain the
+placement determined by the intermediate merge.
+
+Short easing and composite lists repeat independently. Every supplied easing
+validation result is checked, including surplus entries when no frame exists.
+Used entries precede surplus entries for failure reporting. `None` composite is
+auto; `effective_composite(effect)` resolves it against the current effect
+setting without freezing that setting during normalization. Replacement
+publication remains caller-owned: normalization returns the complete result or
+a `KeyframeInputError<E>` with its category, source position, and applicable
+offset, property, or original easing failure. It publishes no partial frames.
+When `E` implements `std::error::Error`, the normalization error also implements
+that trait and exposes numeric or easing causes.
+
+These rules implement the pinned [native processing algorithm](../../../references/web-animations-1--WD-web-animations-1-20230605--e814a799ef24.md#processing-a-keyframes-argument)
+and [missing-offset calculation](../../../references/web-animations-1--WD-web-animations-1-20230605--e814a799ef24.md#compute-missing-keyframe-offsets).
+CSS parsing and serialization, target-context value computation, computed-frame
+sampling, and effect replacement are separate caller or consumer boundaries.
 
 Property names, value markers, and diagnostic endpoints use immutable shared
 storage. This moves some allocation into construction; see the
@@ -190,6 +241,7 @@ supported interpolation produces `SampleClassification::Failed` and
 | Time intake, finite durations, delays, and effective elapsed time | `supported` | `surgeist-animation` validates finite typed time values; runtime/root supplies elapsed time. |
 | Signed nullable model time, immutable conversion snapshots and fixed-origin document time | `supported` | `surgeist-animation` owns pure coordinate arithmetic and checked document reports; callers supply clocks, activity and timeline identities. |
 | Timing phases, fill modes, direction, iteration counts, play state, and next-frame hints | `supported` | `surgeist-animation` samples validated timing and reports stable or may-change hints. |
+| Typed native keyframe inputs and missing-offset computation | `supported` | `keyframe_input` normalizes sequences and property-indexed inputs while preserving specified offsets and caller payloads. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |

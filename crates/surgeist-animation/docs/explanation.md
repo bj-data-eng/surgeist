@@ -35,6 +35,15 @@ snapshots keep queue-time conversion inputs coherent while callers later change
 timeline or playback state. Play-control lifecycle and effect sampling consume
 these values separately. See [model time](reference.md#model-time-and-timeline-conversions).
 
+Native keyframe inputs have a separate normalization boundary in
+`keyframe_input`. It owns offset validation, property-track merging, list
+repetition, and missing-offset calculation. Callers supply parsed property
+payloads and easing validation results, so this boundary retains authored
+meaning and source provenance. Its opaque result certifies normalized offsets
+and metadata. Style supplies target-context computed property values. The
+[reference](reference.md#native-keyframe-normalization) describes the phases
+and failure semantics.
+
 ## Values and failure semantics
 
 Unrestricted finite percentages and eased progress preserve values outside the
