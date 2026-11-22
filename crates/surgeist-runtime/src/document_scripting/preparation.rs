@@ -615,7 +615,7 @@ impl State {
     fn charge(&self, work: Work) -> Result<(), Error> {
         let native = self.native()?;
         let units = match work {
-            Work::BufferElement(_) => 1,
+            Work::BufferElement(_) | Work::RealmRecord => 1,
             Work::CodeUnits { units } => units,
         };
         let cancelled = native

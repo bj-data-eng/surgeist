@@ -193,6 +193,8 @@ pub enum BufferKind {
 pub enum Work {
     /// One element copied or visited in the selected physical buffer.
     BufferElement(BufferKind),
+    /// One realm registry record visited to authenticate a Window receiver.
+    RealmRecord,
     /// One explicit payload pass over this many UTF-16 code units.
     CodeUnits { units: usize },
 }

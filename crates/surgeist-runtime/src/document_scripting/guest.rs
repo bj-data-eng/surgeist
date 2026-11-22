@@ -14,6 +14,7 @@ pub(super) use reports::DispatchFailure;
 mod csp_task;
 mod element_task;
 mod interfaces;
+pub(super) use interfaces::call_child_window_relation;
 pub(super) use interfaces::{ActiveConstructor, ActiveReactionQueue, PendingConstructor};
 mod listeners;
 mod parsing_event;

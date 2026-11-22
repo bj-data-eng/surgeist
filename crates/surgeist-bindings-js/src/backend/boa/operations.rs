@@ -174,7 +174,7 @@ impl Operations for Entered<'_> {
         }
     }
 
-    fn prepare_same_origin_window(&mut self) -> Result<Realm, Error> {
+    fn prepare_same_origin_window(&mut self, payload: Weak<dyn Any>) -> Result<Realm, Error> {
         self.check_active()?;
         let origin = boa_engine::object::host::window_proxy_origin(&self.context.global_this())
             .ok_or(Error::BackendUnavailable)?;
@@ -191,7 +191,38 @@ impl Operations for Entered<'_> {
                 Ok::<_, Error>(RealmBacking::new(guard))
             })
             .transpose()?;
-        self.state.create_realm(self.context, Some(origin), backing)
+        self.state
+            .create_realm(self.context, Some(origin), backing, Some(payload))
+    }
+
+    fn child_window_payload(&self, value: &Root) -> Result<Option<Rc<dyn Any>>, Error> {
+        self.check_active()?;
+        let value = self.value(value)?;
+        let Some(proxy) = value.as_object() else {
+            return Ok(None);
+        };
+        if boa_engine::object::host::window_proxy_origin(&proxy).is_none() {
+            return Ok(None);
+        }
+        let realm = proxy.creation_realm().ok_or(Error::RegistryConflict)?;
+        let realms = self
+            .state
+            .realms
+            .try_borrow()
+            .map_err(|_| self.state.conflict())?;
+        if &realm == self.context.realm() {
+            return Ok(realms
+                .get(&self.realm.index)
+                .and_then(|record| record.child_payload.as_ref())
+                .and_then(Weak::upgrade));
+        }
+        for record in realms.values() {
+            preparation::charge(&self.state.owner, Work::RealmRecord)?;
+            if record.realm.upgrade().as_ref() == Some(&realm) {
+                return Ok(record.child_payload.as_ref().and_then(Weak::upgrade));
+            }
+        }
+        Err(Error::RegistryConflict)
     }
 
     fn install_child_window(

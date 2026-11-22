@@ -1,7 +1,7 @@
 pub(crate) mod boa;
 
 use std::any::{Any, TypeId};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
@@ -151,7 +151,8 @@ pub(crate) trait Operations {
     fn window_interface(&mut self) -> Result<WindowInterface, Error>;
     fn install_window_name_reader(&mut self, reader: &Root) -> Result<(), Error>;
     fn install_window_index_reader(&mut self, reader: &Root) -> Result<(), Error>;
-    fn prepare_same_origin_window(&mut self) -> Result<Realm, Error>;
+    fn prepare_same_origin_window(&mut self, payload: Weak<dyn Any>) -> Result<Realm, Error>;
+    fn child_window_payload(&self, value: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
     fn install_child_window(
         &mut self,
         realm: &Realm,

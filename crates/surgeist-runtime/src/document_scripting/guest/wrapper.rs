@@ -25,7 +25,7 @@ pub(super) fn event_receiver<'scope>(
     events: &GuestEvents,
     scope: &mut Scope<'scope>,
     receiver: &Value<'scope>,
-) -> Result<Option<GuestReceiver>, Error> {
+) -> Result<Option<GuestReceiver>, DocumentGuestEventError> {
     if let Some(projection) = scope.native_object::<GuestTargetProjection>(receiver)? {
         return Ok(Some(GuestReceiver::Projected(projection)));
     }
@@ -44,9 +44,13 @@ pub(super) fn event_receiver<'scope>(
     } else {
         return Ok(None);
     };
-    Ok(scope
-        .strict_equals(receiver, &global)?
-        .then(|| GuestReceiver::Window(attachment.target.global())))
+    if scope.strict_equals(receiver, &global)? {
+        return Ok(Some(GuestReceiver::Window(attachment.target.global())));
+    }
+    Ok(
+        interfaces::child_window_event_global(scope, receiver, owner, events)?
+            .map(GuestReceiver::Window),
+    )
 }
 
 pub(super) fn event_target_value<'scope>(
@@ -57,7 +61,19 @@ pub(super) fn event_target_value<'scope>(
     target: &DomEventTarget,
 ) -> Result<Value<'scope>, DocumentGuestEventError> {
     match target {
-        DomEventTarget::Global(_) => project_native_event_target(owner, events, scope, target),
+        DomEventTarget::Global(global) => {
+            let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
+            if *global != attachment.target.global()
+                && let Some(value) = scope.native_object_reference::<GuestEventProjection>(
+                    event,
+                    interfaces::EVENT_TARGET_REFERENCE,
+                )?
+                && interfaces::was_child_window(scope, &value, *global)?
+            {
+                return Ok(value);
+            }
+            project_native_event_target(owner, events, scope, target)
+        }
         DomEventTarget::Node(node) => {
             events.step()?;
             if let Some(value) = scope.native_object_reference::<GuestEventProjection>(
@@ -101,7 +117,20 @@ pub(super) fn project_native_event_target<'scope>(
         DomEventTarget::Global(global) => {
             let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
             if *global == attachment.target.global() {
-                return Ok(scope.global()?);
+                return if scope.realm_authority()?.identity() == attachment.realm.identity() {
+                    Ok(scope.global()?)
+                } else {
+                    Ok(events
+                        .public
+                        .as_ref()
+                        .ok_or(Error::ExpiredIdentity)?
+                        .window(scope)?)
+                };
+            }
+            if let Some(public) = &events.public
+                && let Some(value) = public.child_window(scope, events, *global)?
+            {
+                return Ok(value);
             }
         }
         DomEventTarget::Node(node) => {
@@ -238,7 +267,14 @@ pub(super) fn call_dispatch_event<'scope>(
         return refuse(scope, &events.refusal, error);
     }
     let receiver = arguments.receiver();
-    let Some(target) = event_receiver(owner, events, scope, receiver)? else {
+    let target = match event_receiver(owner, events, scope, receiver) {
+        Ok(target) => target,
+        Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+            return Err(error);
+        }
+        Err(error) => return refuse(scope, &events.refusal, error),
+    };
+    let Some(target) = target else {
         return Ok(Completion::Throw(
             scope.type_error(&b"EventTarget required".map(u16::from))?,
         ));

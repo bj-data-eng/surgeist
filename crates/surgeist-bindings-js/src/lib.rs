@@ -90,8 +90,8 @@ pub mod preparation;
 mod promise;
 mod trusted_types;
 
-use std::marker::PhantomData;
 use std::rc::Rc;
+use std::{any::Any, marker::PhantomData};
 
 pub use callback_object::{CallbackObject, RetainedCallbackObject};
 pub use custom_elements::{CustomElementRegistryIdentity, PublishedCustomElementRegistry};
@@ -963,12 +963,16 @@ impl<'scope> Scope<'scope> {
     /// establishes the reserved EventTarget prototype before publication.
     pub fn create_same_origin_window<T, E: From<Error>>(
         &mut self,
+        payload: &Rc<impl Any>,
         install: impl for<'child> FnOnce(
             &mut Scope<'child>,
             &Value<'child>,
         ) -> Result<(Value<'child>, T), E>,
     ) -> Result<(ChildWindow, T), E> {
-        let child = self.operations.prepare_same_origin_window()?;
+        let erased: Rc<dyn Any> = payload.clone();
+        let child = self
+            .operations
+            .prepare_same_origin_window(Rc::downgrade(&erased))?;
         let mut install = Some(install);
         let mut result = None;
         self.operations
@@ -992,6 +996,18 @@ impl<'scope> Scope<'scope> {
             },
             value,
         ))
+    }
+
+    /// Resolve host data only for an authentic child WindowProxy in this heap.
+    /// The child realm holds a weak reference to its host payload.
+    pub fn child_window_payload<T: Any>(
+        &self,
+        value: &Value<'scope>,
+    ) -> Result<Option<Rc<T>>, Error> {
+        Ok(self
+            .operations
+            .child_window_payload(&value.root)?
+            .and_then(|data| data.downcast().ok()))
     }
 
     fn assemble_window<T, E: From<Error>>(

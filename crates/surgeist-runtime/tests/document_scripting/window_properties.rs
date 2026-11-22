@@ -373,3 +373,104 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
     );
     assert_eq!(reinserted, "ok");
 }
+
+pub(super) fn retired_child_keeps_the_creation_origin_of_native_nodes() {
+    let (mut session, top) = setup();
+    let document = top.document();
+    let snapshot = session.snapshot();
+    let html = snapshot.node(document.node()).unwrap().children()[0];
+    let body = snapshot.node(html).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(document, None);
+    let iframe = batch.create_element_ns(&detached, Namespace::html(), "iframe");
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    let iframe = commit.created(&iframe).unwrap().unwrap();
+    let (mut host, _) = attach_event_window_with_limits(
+        session,
+        top,
+        Arc::new(cancel()),
+        (8_000_000, 6_000_000, 160_000),
+        surgeist_ledger::ProfileMode::Off,
+        DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
+        |_, _, _| {},
+    );
+    let permit = host.permit().unwrap();
+    edit(&mut host, DomSourceEdit::insert_before(iframe, body, None));
+    let snapshot = host.snapshot().unwrap();
+    let child = content_navigable(&snapshot, iframe).unwrap();
+    let child_state = snapshot.hosted_navigable(child).unwrap();
+    let child_document = child_state.active_document().unwrap();
+    let child_global = child_state.global();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const child = window[0];
+                child.HTMLDivElement.prototype.originWitness = 'original child';
+                return 'ok';
+            })()"#,
+        ),
+        "ok"
+    );
+
+    let place_child_node = |host: &mut DocumentScriptHost, name: &str| {
+        host.with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let node = batch.create_element_ns(child_document, Namespace::html(), "div");
+            batch.set_attribute(&node, "id", name);
+            batch.adopt(&node, document.node());
+            batch.insert_before(&node, body, None);
+            let commit = dom.apply(batch, &cancel()).unwrap();
+            let node = commit.created(&node).unwrap().unwrap();
+            let snapshot = dom.snapshot();
+            assert_eq!(snapshot.relevant_global(node).unwrap(), Some(child_global));
+            assert_eq!(
+                snapshot.node(node).unwrap().owner_document(),
+                Some(document)
+            );
+        })
+        .unwrap();
+    };
+    place_child_node(&mut host, "adoptedBeforeRetirement");
+    edit(&mut host, DomSourceEdit::detach(iframe));
+    host.with_native(|dom, mut hosted, _| {
+        for _ in 0..32 {
+            match dom.snapshot().hosted_navigable(child) {
+                Ok(record) if record.is_retired() => return,
+                Err(DomHostedError::StaleIdentity) => return,
+                Ok(_) => (),
+                Err(error) => panic!("child retirement failed: {error:?}"),
+            }
+            hosted.run_next(dom, top.navigable(), &cancel()).unwrap();
+        }
+        panic!("child retirement did not complete");
+    })
+    .unwrap();
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .global_document(child_global)
+            .unwrap(),
+        child_document
+    );
+    place_child_node(&mut host, "adoptedAfterRetirement");
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                if (window[0] !== undefined) return 'retired child still occupies an index';
+                const before = window.adoptedBeforeRetirement;
+                const after = window.adoptedAfterRetirement;
+                if (before?.originWitness !== 'original child' || after?.originWitness !== 'original child'
+                    || Object.getPrototypeOf(before) !== Object.getPrototypeOf(after)
+                    || Object.getPrototypeOf(before) === HTMLDivElement.prototype) {
+                    return 'child nodes lost their original creation prototype';
+                }
+                return 'ok';
+            })()"#,
+        ),
+        "ok"
+    );
+}

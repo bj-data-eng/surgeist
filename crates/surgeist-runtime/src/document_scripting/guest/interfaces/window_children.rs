@@ -163,11 +163,10 @@ impl ChildAccess {
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
     ) -> Result<Completion<'scope>, Error> {
-        let proxy = scope.global()?;
-        if !scope.strict_equals(arguments.receiver(), &proxy)? {
-            return Ok(Completion::Throw(
-                scope.type_error(&ascii(b"Window required"))?,
-            ));
+        if let Some(result) =
+            call_child_window_relation(scope, &arguments, self.member, self.setter)?
+        {
+            return Ok(result);
         }
         let callbacks = &self.relations.callbacks;
         let owner = callbacks.owner.upgrade().ok_or(Error::ExpiredIdentity)?;
@@ -177,19 +176,65 @@ impl ChildAccess {
             .and_then(|access| access.events.upgrade())
             .ok_or(Error::ExpiredIdentity)?;
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-        let child = self.relations.child;
+        let attached = public.window(scope)?;
+        if !scope.strict_equals(arguments.receiver(), &attached)? {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Window required"))?,
+            ));
+        }
+        window_relations::access_attached(
+            scope,
+            &owner,
+            &callbacks.permit,
+            &arguments,
+            self.member,
+            self.setter,
+        )
+    }
+}
+
+pub(in crate::document_scripting) fn call_child_window_relation<'scope>(
+    scope: &mut Scope<'scope>,
+    arguments: &Arguments<'scope>,
+    member: &Member,
+    setter: bool,
+) -> Result<Option<Completion<'scope>>, Error> {
+    let Some(relations) = scope.child_window_payload::<ChildRelations>(arguments.receiver())?
+    else {
+        return Ok(None);
+    };
+    relations.call(scope, arguments, member, setter).map(Some)
+}
+
+impl ChildRelations {
+    fn call<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: &Arguments<'scope>,
+        member: &Member,
+        setter: bool,
+    ) -> Result<Completion<'scope>, Error> {
+        let callbacks = &self.callbacks;
+        let owner = callbacks.owner.upgrade().ok_or(Error::ExpiredIdentity)?;
+        let events = callbacks
+            .access
+            .get()
+            .and_then(|access| access.events.upgrade())
+            .ok_or(Error::ExpiredIdentity)?;
+        let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+        let child = self.child;
+        let proxy = arguments.receiver();
         let result = (|| {
             let (live, count) = callbacks.with_read(&owner, &events, |read, _| {
                 let live = child.is_live(read)?;
-                let count =
-                    if live && !self.setter && matches!(self.member.relation, Relation::Length) {
-                        child_count(read, child.document)?
-                    } else {
-                        0
-                    };
+                let count = if live && !setter && matches!(member.relation, Relation::Length) {
+                    child_count(read, child.document)?
+                } else {
+                    0
+                };
                 Ok((live, count))
             })?;
-            if self.setter {
+            if setter {
                 let undefined;
                 let value = if let Some(value) = arguments.get(0) {
                     value
@@ -197,21 +242,18 @@ impl ChildAccess {
                     undefined = scope.primitive(Primitive::Undefined)?;
                     &undefined
                 };
-                if matches!(self.member.relation, Relation::Opener)
+                if matches!(member.relation, Relation::Opener)
                     && scope.kind(value)? == ValueKind::Null
                 {
                     return Ok(Completion::Undefined);
                 }
-                events.charge_work(self.member.key.len() as u64)?;
+                events.charge_work(member.key.len() as u64)?;
                 return Ok(window_relations::replace_attribute(
-                    scope,
-                    &proxy,
-                    self.member,
-                    value,
+                    scope, proxy, member, value,
                 )?);
             }
-            let value = match self.member.relation {
-                Relation::WindowProxy => proxy,
+            let value = match member.relation {
+                Relation::WindowProxy => scope.import(&scope.retain(proxy))?,
                 Relation::Parent if live => match child.parent.context {
                     Some(context) => public
                         .window_children
@@ -227,6 +269,33 @@ impl ChildAccess {
         })();
         document::tree::tree_completion(scope, &events, result)
     }
+}
+
+pub(in crate::document_scripting::guest) fn child_window_event_global<'scope>(
+    scope: &Scope<'scope>,
+    receiver: &Value<'scope>,
+    owner: &NativeOwner,
+    events: &GuestEvents,
+) -> Result<Option<DomHostedGlobalId>, DocumentGuestEventError> {
+    let Some(relations) = scope.child_window_payload::<ChildRelations>(receiver)? else {
+        return Ok(None);
+    };
+    relations.callbacks.with_read(owner, events, |read, _| {
+        Ok(relations
+            .child
+            .is_live(read)?
+            .then_some(relations.child.global))
+    })
+}
+
+pub(in crate::document_scripting::guest) fn was_child_window<'scope>(
+    scope: &Scope<'scope>,
+    value: &Value<'scope>,
+    global: DomHostedGlobalId,
+) -> Result<bool, Error> {
+    Ok(scope
+        .child_window_payload::<ChildRelations>(value)?
+        .is_some_and(|relations| relations.child.global == global))
 }
 
 fn child_count(
@@ -260,9 +329,10 @@ fn release_entries(mut entries: Option<Box<Entry>>) {
 }
 
 impl Children {
-    /// Release registry custody at a published native revision. Existing guest
-    /// references and the separate creation-provenance graph retain their
-    /// original realms. Cleanup needs no new guest admission.
+    /// Release live registry custody at a published native revision. DOM's
+    /// retired Documents can still create nodes with their original global, so
+    /// Runtime retains the corresponding creation prototypes in OriginBindings.
+    /// Cleanup needs no new guest admission.
     pub(super) fn reap(&self, snapshot: &DomSnapshot) -> bool {
         if self.reconciled.get() == Some(snapshot.stamp()) {
             return false;
@@ -306,6 +376,28 @@ impl Children {
         events: &GuestEvents,
         project: impl FnOnce(&Entry) -> Result<T, DocumentGuestEventError>,
     ) -> Result<Option<T>, DocumentGuestEventError> {
+        self.lookup_where(|child| child.context == context, events, project)
+    }
+
+    pub(in crate::document_scripting::guest) fn open_global<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+        global: DomHostedGlobalId,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        self.lookup_where(
+            |child| child.global == global,
+            events,
+            |entry| Ok(entry.proxy.open(scope)?),
+        )
+    }
+
+    fn lookup_where<T>(
+        &self,
+        matches: impl Fn(Child) -> bool,
+        events: &GuestEvents,
+        project: impl FnOnce(&Entry) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<Option<T>, DocumentGuestEventError> {
         let children = self
             .live
             .try_borrow()
@@ -313,7 +405,7 @@ impl Children {
         let mut next = children.as_deref();
         while let Some(entry) = next {
             events.step()?;
-            if entry.child.context == context {
+            if matches(entry.child) {
                 return project(entry).map(Some);
             }
             next = entry.next.as_deref();
@@ -483,7 +575,7 @@ impl Capture {
         let admission = events
             .prepare_origin(owner)?
             .ok_or(Error::RegistryConflict)?;
-        let (proxy, origin) = scope.create_same_origin_window(|scope, target| {
+        let (proxy, origin) = scope.create_same_origin_window(&source, |scope, target| {
             window_relations::install_child_members(scope, |member, setter| {
                 let access = ChildAccess {
                     relations: source.clone(),

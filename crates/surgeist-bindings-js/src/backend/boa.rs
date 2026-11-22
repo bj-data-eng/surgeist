@@ -1,6 +1,7 @@
 //! The Boa adapter owns the only guest heap used by this execution owner.
 
 use std::{
+    any::Any,
     cell::{Cell, OnceCell, RefCell},
     collections::BTreeMap,
     rc::{Rc, Weak},
@@ -89,6 +90,7 @@ struct RealmRecord {
     external: Option<BoaRealm>,
     realm: WeakRealm,
     window: Option<WindowObjects>,
+    child_payload: Option<Weak<dyn Any>>,
     _backing: Option<Rc<RealmBacking>>,
 }
 
@@ -128,6 +130,7 @@ impl State {
         context: &mut Context,
         origin: Option<WindowOrigin>,
         backing: Option<Rc<RealmBacking>>,
+        child_payload: Option<Weak<dyn Any>>,
     ) -> Result<Realm, Error> {
         self.owner.available()?;
         let index = self
@@ -195,6 +198,7 @@ impl State {
                     realm: realm.downgrade(),
                     external: Some(realm),
                     window,
+                    child_payload,
                     _backing: backing,
                 },
             );
@@ -500,7 +504,8 @@ impl super::Engine for Engine {
         backing: Option<Rc<RealmBacking>>,
     ) -> Result<Realm, Error> {
         let origin = matches!(profile, RealmProfile::Window).then(WindowOrigin::default);
-        self.state.create_realm(&mut self.context, origin, backing)
+        self.state
+            .create_realm(&mut self.context, origin, backing, None)
     }
 
     fn with_realm(

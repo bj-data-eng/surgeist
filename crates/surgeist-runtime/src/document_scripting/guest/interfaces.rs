@@ -11,6 +11,8 @@ mod security_policy_violation;
 mod toggle_event;
 mod trusted_policy;
 mod window_children;
+pub(in crate::document_scripting) use window_children::call_child_window_relation;
+pub(super) use window_children::{child_window_event_global, was_child_window};
 
 use super::*;
 pub(in crate::document_scripting) use custom_elements::document_registry as creation_document_registry;
@@ -760,6 +762,15 @@ impl PublicEventBindings {
 
     pub(super) fn window<'scope>(&self, scope: &mut Scope<'scope>) -> Result<Value<'scope>, Error> {
         scope.open_callback_object(&self.window)
+    }
+
+    pub(super) fn child_window<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+        global: DomHostedGlobalId,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        self.window_children.open_global(scope, events, global)
     }
 
     pub(super) fn target_prototype<'scope>(

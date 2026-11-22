@@ -2532,6 +2532,7 @@ fn main() {
             "window-length" => window_length::attached_window_length_tracks_current_native_children(),
             "window-named-properties" => window_properties::named_window_elements_follow_the_live_document(),
             "window-indexed-properties" => window_properties::indexed_window_children_follow_the_live_browsing_contexts(),
+            "window-retired-origin" => window_properties::retired_child_keeps_the_creation_origin_of_native_nodes(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "content-editable" => content_editable::attached_html_elements_use_native_content_editability(),
             "hidden-reflection" => hidden_reflection::attached_hidden_reflects_the_native_attribute_and_web_idl_union(),
@@ -2674,6 +2675,7 @@ fn main() {
     window_length::attached_window_length_tracks_current_native_children();
     window_properties::named_window_elements_follow_the_live_document();
     window_properties::indexed_window_children_follow_the_live_browsing_contexts();
+    window_properties::retired_child_keeps_the_creation_origin_of_native_nodes();
     content_editable::attached_html_elements_use_native_content_editability();
     hidden_reflection::attached_hidden_reflects_the_native_attribute_and_web_idl_union();
     html_prototype_order::attached_html_prototypes_link_constructors_after_own_members();
