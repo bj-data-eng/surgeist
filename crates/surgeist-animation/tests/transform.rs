@@ -437,22 +437,24 @@ fn subnormal_non_axis_aligned_columns_preserve_the_other_axis() {
 
 #[test]
 fn non_axis_aligned_normalization_preserves_tiny_and_large_unequal_endpoints() {
-    for factor in [
-        f64::from_bits(2),
-        -f64::from_bits(2),
-        f64::MIN_POSITIVE / 2.,
-        f64::MIN_POSITIVE,
-        1e-300,
-        f64::MAX / 8.,
-        -f64::MAX / 8.,
+    for (factor, multiplier) in [
+        (f64::from_bits(2), 2.),
+        (-f64::from_bits(2), 2.),
+        (f64::MIN_POSITIVE / 2., 2.),
+        (f64::MIN_POSITIVE, 2.),
+        (1e-300, 2.),
+        (f64::MAX / 8., 2.),
+        (-f64::MAX / 8., 2.),
+        (f64::MAX * 0.7, 1.),
+        (-f64::MAX * 0.7, 1.),
     ] {
         // The endpoint linear parts have identical column directions. Their
         // independent midpoint scales each column and translation arithmetically.
         let from = [factor, factor, 1., 2., 10., 20.];
-        let to = [factor * 2., factor * 2., 3., 6., 30., 40.];
+        let to = [factor * multiplier, factor * multiplier, 3., 6., 30., 40.];
         let pair = make_pair(list(vec![matrix(from)]), list(vec![matrix(to)]));
         let result = sampled(&pair, 0.5).to_matrix().unwrap().coefficients();
-        let first_column = factor * 1.5;
+        let first_column = factor * (0.5 + multiplier * 0.5);
         let tolerance = (first_column.abs() * 2e-12).max(f64::from_bits(1));
         for actual in [result[0], result[1]] {
             assert!(

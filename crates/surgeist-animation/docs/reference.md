@@ -491,8 +491,11 @@ Exact singularity of finite matrix endpoints selects whole-value discrete
 fallback: the original from value below progress `0.5`, the to value otherwise.
 The determinant sign compares exact binary significand products, without an
 epsilon or overflowing/underflowing floating determinant products. A singular
-intermediate sample remains a value for caller-owned visibility. Scalar,
-decomposition, composition and recomposition overflow instead produce typed
+intermediate sample remains a value for caller-owned visibility. Column
+directions are normalized at unit magnitude before restoring scale, so
+rounded subnormal lengths cannot distort the other axis. An established singular
+matrix pair selects fallback before arithmetic in a later unmatched suffix.
+Scalar, decomposition, composition and recomposition overflow instead produce typed
 sample-local arithmetic failure with a function index and transform component.
 Exact zero/one progress returns the original concrete endpoint. Finite eased
 progress outside the unit interval is preserved; output is never clipped.

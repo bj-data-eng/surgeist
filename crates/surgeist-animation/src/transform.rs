@@ -277,8 +277,8 @@ enum PairPart {
     Matrix(TransformMatrix, TransformMatrix, usize),
 }
 
-/// Preflight decomposition before interpolating any prefix, so a singular
-/// endpoint selects whole-value discrete fallback even if a prefix would overflow.
+/// Check each matrix pair for singularity as soon as it is available, before
+/// processing any later suffix. Defer decomposition until matching is complete.
 pub(crate) fn interpolate(
     from: &ResolvedTransformList,
     to: &ResolvedTransformList,
@@ -306,17 +306,14 @@ pub(crate) fn interpolate(
             ))
         };
         if let Some((a, b, suffix)) = matrices {
+            if math::singular(a) || math::singular(b) {
+                return Ok(TransformInterpolation::Discrete);
+            }
             parts.push(PairPart::Matrix(a, b, index));
             if suffix {
                 break;
             }
         }
-    }
-    if parts.iter().any(|part| match part {
-        PairPart::Matrix(a, b, _) => math::singular(*a) || math::singular(*b),
-        PairPart::Functions(_, _) => false,
-    }) {
-        return Ok(TransformInterpolation::Discrete);
     }
     let functions = parts
         .into_iter()

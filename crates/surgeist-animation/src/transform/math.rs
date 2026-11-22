@@ -174,23 +174,36 @@ pub(super) struct Decomposed {
     residual: [f64; 4],
 }
 
+fn normalized_column(x: f64, y: f64, component: C) -> Result<(f64, f64, f64), TransformError> {
+    let magnitude = x.abs().max(y.abs());
+    let scaled_x = checked(x / magnitude, component)?;
+    let scaled_y = checked(y / magnitude, component)?;
+    let length = scaled_x.hypot(scaled_y);
+    // Derive the unit direction before restoring the column's magnitude.
+    // Dividing by its rounded subnormal length would no longer produce a unit
+    // vector, distorting the other column when rotation is removed and restored.
+    Ok((
+        checked(magnitude * length, component)?,
+        checked(scaled_x / length, component)?,
+        checked(scaled_y / length, component)?,
+    ))
+}
+
 pub(super) fn decompose(matrix: TransformMatrix) -> Result<Decomposed, TransformError> {
-    let [mut a, mut b, mut c, mut d, x, y] = matrix.coefficients();
-    let mut sx = checked(a.hypot(b), C::ScaleX)?;
-    let mut sy = checked(c.hypot(d), C::ScaleY)?;
+    let [original_a, original_b, original_c, original_d, x, y] = matrix.coefficients();
+    let (mut sx, mut a, mut b) = normalized_column(original_a, original_b, C::ScaleX)?;
+    let (mut sy, mut c, mut d) = normalized_column(original_c, original_d, C::ScaleY)?;
     if determinant_sign(matrix).is_lt() {
-        if a < d {
+        if original_a < original_d {
             sx = -sx;
+            a = -a;
+            b = -b;
         } else {
             sy = -sy;
+            c = -c;
+            d = -d;
         }
     }
-    // Division, rather than multiplication by reciprocal, preserves subnormal
-    // scales without overflowing their otherwise unnecessary reciprocal.
-    a = checked(a / sx, C::MatrixCoefficient(0))?;
-    b = checked(b / sx, C::MatrixCoefficient(1))?;
-    c = checked(c / sy, C::MatrixCoefficient(2))?;
-    d = checked(d / sy, C::MatrixCoefficient(3))?;
     let angle = b.atan2(a);
     let residual = if angle == 0. {
         [a, b, c, d]
