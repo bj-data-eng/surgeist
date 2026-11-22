@@ -1193,8 +1193,10 @@ and typed Color cause through `ColorInterpolationFailure`. A later sample can
 recover on the same track.
 
 Style resolves contextual colors and selects the method. A running transition
-can use its checked current sample as the replacement start. It holds that
-sample exactly at the handoff and preserves reversal shortening.
+can use its checked current sample as the replacement start. The delay hold
+returns that exact sample. A negative delay advances the replacement's
+creation-time sample under the existing timing rules. Reversal preserves
+duration shortening.
 `TransitionPropertyPolicy::equivalent` defaults to exact same-space comparison
 between a checked sample and a resolved color when their numerical meanings
 agree. Style can supply contextual equality. Checked color pair admission
