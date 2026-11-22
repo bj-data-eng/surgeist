@@ -61,8 +61,6 @@ pub(crate) fn piecewise_p3_profile(with_mpe: bool) -> Vec<u8> {
 }
 
 pub(crate) fn v2_matrix_profile() -> Vec<u8> {
-    // ICC.1:2001-04 §§6.1–6.3 and 6.5.
-    // <https://archive.color.org/files/ICC_Minor_Revision_for_Web.pdf>
     // The v2 XYZ type requires nonnegative colorants. Use the sRGB primaries
     // from CSS Color 4, here Bradford-adapted to the ICC D50 PCS in s15Fixed16.
     let columns = [
@@ -70,20 +68,7 @@ pub(crate) fn v2_matrix_profile() -> Vec<u8> {
         [25239, 46983, 6361],
         [9375, 3972, 46787],
     ];
-    let mut tags = matrix_tags(columns, sampled_curve());
-    let ascii = b"Surgeist v2 RGB fixture\0";
-    let mut description = b"desc\0\0\0\0".to_vec();
-    description.extend(u32::try_from(ascii.len()).unwrap().to_be_bytes());
-    description.extend_from_slice(ascii);
-    // Unused Unicode code/count (8), ScriptCode code/count (3), and text (67).
-    description.extend_from_slice(&[0; 8 + 3 + 67]);
-    tags.extend([
-        (*b"wtpt", fixed(b"XYZ ", &D50)),
-        (*b"chad", fixed(b"sf32", &D65_TO_D50)),
-        (*b"desc", description),
-        (*b"cprt", b"text\0\0\0\0Surgeist test fixture\0".to_vec()),
-    ]);
-    input_profile([2, 0x40], b"RGB ", tags)
+    v2_rgb_profile(matrix_tags(columns, sampled_curve()))
 }
 
 pub(crate) fn gray_profile() -> Vec<u8> {
@@ -161,6 +146,27 @@ pub(crate) fn lut8_transform() -> Vec<u8> {
     transform
 }
 
+pub(crate) fn lut16_lab_transform() -> Vec<u8> {
+    // ICC.1:2022 §10.10. An input table reshapes red before the CLUT.
+    // The lightness output table scales its CLUT coordinate to legacy Lab.
+    let mut transform = fixed(b"mft2", &[0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x10000]);
+    transform.splice(8..8, [3, 3, 2, 0]);
+    transform.extend_from_slice(&[0, 3, 0, 2]);
+    let input: [u16; 9] = [0, 16384, 65535, 0, 32768, 65535, 0, 32768, 65535];
+    transform.extend(input.into_iter().flat_map(u16::to_be_bytes));
+    for r in [0, 1] {
+        for g in [0, 1] {
+            for b in [0, 1] {
+                let lab = [65535_u16 * r, 0x8000 + 0x2800 * g, 0x8000 - 0x2000 * b];
+                transform.extend(lab.into_iter().flat_map(u16::to_be_bytes));
+            }
+        }
+    }
+    let output: [u16; 6] = [0, 0xff00, 0, 65535, 0, 65535];
+    transform.extend(output.into_iter().flat_map(u16::to_be_bytes));
+    transform
+}
+
 pub(crate) fn lut_a_to_b_transform() -> Vec<u8> {
     // ICC.1:2022 §10.12 permits a B-curve-only pipeline. With three
     // input and output channels, all three B curves follow the 32-byte
@@ -174,10 +180,128 @@ pub(crate) fn lut_a_to_b_transform() -> Vec<u8> {
     transform
 }
 
+pub(crate) enum LabStages {
+    Clut,
+    Matrix,
+    Full,
+}
+
+pub(crate) fn staged_lab_transform(stages: LabStages) -> Vec<u8> {
+    let with_clut = matches!(stages, LabStages::Clut | LabStages::Full);
+    let with_matrix = matches!(stages, LabStages::Matrix | LabStages::Full);
+    // B applies x² to lightness via parametricCurveType function zero.
+    let mut b_lightness = fixed(b"para", &[0x20000]);
+    b_lightness.splice(8..8, [0; 4]);
+    let mut transform = b"mAB \0\0\0\0\x03\x03\0\0".to_vec();
+    transform.resize(32, 0);
+    append_stage(&mut transform, 12, [b_lightness, curve(&[]), curve(&[])]);
+
+    if with_matrix {
+        // Matrix rows implement [2X - 1/4, Y/4 + 3/8, -Y/4 + Z/8 + 1/2].
+        let coefficients: [i32; 12] = [
+            131072, 0, 0, 0, 16384, 0, 0, -16384, 8192, -16384, 24576, 32768,
+        ];
+        let matrix: Vec<_> = coefficients
+            .into_iter()
+            .flat_map(i32::to_be_bytes)
+            .collect();
+        append_stage(&mut transform, 16, [matrix]);
+        append_stage(
+            &mut transform,
+            20,
+            [curve(&[0x200]), curve(&[]), curve(&[])],
+        );
+    }
+    if with_clut {
+        // Distinct grid lengths and a red-green cross term distinguish axis
+        // order and multilinear interpolation on the two green cells.
+        let mut clut = vec![2, 3, 2];
+        clut.resize(16, 0);
+        let precision = if with_matrix { 2 } else { 1 };
+        clut.extend([precision, 0, 0, 0]);
+        for r in [0, 1] {
+            for g in [0, 1, 2] {
+                for b in [0, 1] {
+                    let values = [
+                        36 + 46 * r * g + 46 * b + 24 * g,
+                        104 + 50 * r + 8 * g,
+                        112 + 8 * g + 28 * b,
+                    ];
+                    if precision == 1 {
+                        clut.extend(values);
+                    } else {
+                        // Include low bits beyond a replicated 8-bit value.
+                        clut.extend(
+                            values
+                                .into_iter()
+                                .flat_map(|value| (u16::from(value) * 257 + 199).to_be_bytes()),
+                        );
+                    }
+                }
+            }
+        }
+        append_stage(&mut transform, 24, [clut]);
+        append_stage(
+            &mut transform,
+            28,
+            [curve(&[0x200]), curve(&[]), curve(&[])],
+        );
+    }
+    transform
+}
+
+fn append_stage<const N: usize>(transform: &mut Vec<u8>, field: usize, elements: [Vec<u8>; N]) {
+    let offset = u32::try_from(transform.len()).unwrap();
+    transform[field..field + 4].copy_from_slice(&offset.to_be_bytes());
+    for element in elements {
+        transform.extend(element);
+        transform.resize(transform.len().next_multiple_of(4), 0);
+    }
+}
+
 pub(crate) fn lut_profile_with_transform(transform: Vec<u8>, pcs: &[u8; 4]) -> Vec<u8> {
     let mut profile = v4_profile(b"RGB ", "Surgeist RGB fixture", vec![(*b"A2B0", transform)]);
     profile[20..24].copy_from_slice(pcs);
     profile
+}
+
+pub(crate) fn colorimetric_lut_profile(transform: Vec<u8>, pcs: &[u8; 4], version: u8) -> Vec<u8> {
+    // Include the mandatory A2B0 transform and exercise A2B1 directly.
+    let tags = vec![(*b"A2B0", transform.clone()), (*b"A2B1", transform)];
+    let mut profile = match version {
+        2 => v2_rgb_profile(tags),
+        4 => v4_profile(b"RGB ", "Surgeist colorimetric LUT fixture", tags),
+        _ => panic!("unsupported fixture version {version}"),
+    };
+    profile[20..24].copy_from_slice(pcs);
+    profile
+}
+
+pub(crate) fn matrix_and_lut_profile(with_a2b1: bool) -> Vec<u8> {
+    let mut tags = matrix_tags([RED, GREEN, BLUE], sampled_curve());
+    tags.push((*b"A2B0", lut16_transform()));
+    if with_a2b1 {
+        tags.push((*b"A2B1", lut_a_to_b_transform()));
+    }
+    v4_profile(b"RGB ", "Surgeist matrix and LUT fixture", tags)
+}
+
+fn v2_rgb_profile(mut tags: Vec<([u8; 4], Vec<u8>)>) -> Vec<u8> {
+    // ICC.1:2001-04 §§6.1–6.3 and 6.5.
+    // <https://archive.color.org/files/ICC_Minor_Revision_for_Web.pdf>
+    let ascii = b"Surgeist v2 RGB fixture\0";
+    let mut description = b"desc\0\0\0\0".to_vec();
+    description.extend(u32::try_from(ascii.len()).unwrap().to_be_bytes());
+    description.extend_from_slice(ascii);
+    // Unused Unicode code/count (8), ScriptCode code/count (3), and text (67).
+    description.extend_from_slice(&[0; 8 + 3 + 67]);
+    tags.extend([
+        (*b"wtpt", fixed(b"XYZ ", &D50)),
+        (*b"chad", fixed(b"sf32", &D65_TO_D50)),
+        (*b"desc", description),
+        (*b"cprt", b"text\0\0\0\0Surgeist test fixture\0".to_vec()),
+    ]);
+    input_profile([2, 0x40], b"RGB ", tags)
 }
 
 fn fixed(kind: &[u8; 4], values: &[i32]) -> Vec<u8> {

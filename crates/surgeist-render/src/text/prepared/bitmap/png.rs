@@ -1,6 +1,6 @@
 //! Owned narrow PNG decoding, authored from W3C PNG Third Edition,
 //! 24 June 2025, sections 5, 9–11: <https://www.w3.org/TR/2025/REC-png-3-20250624/>.
-//! Noninterlaced RGBA8 admits sRGB/gAMA/cHRM and embedded RGB ICC matrix/TRC.
+//! Noninterlaced RGBA8 admits sRGB/gAMA/cHRM and supported embedded RGB ICC.
 //! Other valid profiles/ancillary semantics refuse rather than being ignored.
 //! miniz_oxide 0.8.9's safe low-level core owns fixed inline state, not an
 //! allocating stream decoder. Its state and source-declared Huffman temporary

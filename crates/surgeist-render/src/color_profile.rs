@@ -16,12 +16,33 @@ pub(crate) enum Selection {
     Invalid,
     NonRgb,
     Unsupported,
-    RgbMatrix(RgbMatrixProfile),
+    Rgb(RgbProfile),
+}
+
+pub(crate) enum PcsColor {
+    XyzD50([f64; 3]),
+    Lab([f64; 3]),
+}
+
+pub(crate) struct RgbProfile(Transform);
+
+enum Transform {
+    Matrix(RgbMatrixProfile),
+    Lookup(lut::RgbLutProfile),
+}
+
+impl RgbProfile {
+    pub(crate) fn pcs(&self, samples: [u8; 3], account: &Account) -> Result<PcsColor> {
+        match &self.0 {
+            Transform::Matrix(profile) => Ok(PcsColor::XyzD50(profile.xyz_d50(samples, account)?)),
+            Transform::Lookup(profile) => profile.pcs(samples, account),
+        }
+    }
 }
 
 /// A media-relative input/display transform with validated matrix columns and
 /// forward curves. Sampled curves refer to extents in its immutable custody.
-pub(crate) struct RgbMatrixProfile {
+struct RgbMatrixProfile {
     data: Box<ProfileData>,
     // Dispose the fixed allocation and any sampled backing before release.
     _hold: Hold,
@@ -34,16 +55,8 @@ struct ProfileData {
 }
 
 pub(crate) fn prepare(bytes: AccountedVec<u8>, account: &Account) -> Result<Selection> {
-    match prepare_matrix(&bytes, account) {
-        Ok(mut profile) => {
-            let needs_samples = profile
-                .data
-                .curves
-                .iter()
-                .any(|curve| matches!(curve, Curve::Sampled { .. }));
-            profile.data.sampled_curves = needs_samples.then_some(bytes);
-            Ok(Selection::RgbMatrix(profile))
-        }
+    match prepare_transform(bytes, account) {
+        Ok(transform) => Ok(Selection::Rgb(RgbProfile(transform))),
         Err(ProfileError::Invalid) => Ok(Selection::Invalid),
         Err(ProfileError::NonRgb) => Ok(Selection::NonRgb),
         Err(ProfileError::Unsupported) => Ok(Selection::Unsupported),
@@ -52,13 +65,13 @@ pub(crate) fn prepare(bytes: AccountedVec<u8>, account: &Account) -> Result<Sele
 }
 
 impl RgbMatrixProfile {
-    pub(crate) fn xyz_d50(&self, samples: [u8; 3], account: &Account) -> Result<[f64; 3]> {
+    fn xyz_d50(&self, samples: [u8; 3], account: &Account) -> Result<[f64; 3]> {
         let mut xyz = [0.0; 3];
         let curve_bytes = self.data.sampled_curves.as_deref().unwrap_or_default();
         for ((curve, column), sample) in
             self.data.curves.iter().zip(&self.data.columns).zip(samples)
         {
-            let linear = curve.evaluate(sample, curve_bytes, account)?;
+            let linear = curve.evaluate(CurveInput::Byte(sample), curve_bytes, account)?;
             for (value, tint) in xyz.iter_mut().zip(column) {
                 *value = account.coordinate(|| linear.mul_add(*tint, *value))?;
             }
@@ -82,10 +95,10 @@ impl From<Error> for ProfileError {
 
 type ProfileResult<T> = std::result::Result<T, ProfileError>;
 
-fn prepare_matrix(bytes: &[u8], account: &Account) -> ProfileResult<RgbMatrixProfile> {
-    let header = Header::read(bytes, account)?;
+fn prepare_transform(bytes: AccountedVec<u8>, account: &Account) -> ProfileResult<Transform> {
+    let header = Header::read(&bytes, account)?;
     let contiguous = matches!(header.version, [4, 0x40..=0x49, 0, 0]);
-    let table = read_tag_table(bytes, contiguous, account)?;
+    let table = read_tag_table(&bytes, contiguous, account)?;
     let version = header.version[0];
     if !matches!(version, 2 | 4) {
         return Err(ProfileError::Unsupported);
@@ -101,7 +114,7 @@ fn prepare_matrix(bytes: &[u8], account: &Account) -> ProfileResult<RgbMatrixPro
     // matrix columns already include chromatic adaptation and scaling.
     required_tag(&table, b"desc", account)?;
     required_tag(&table, b"cprt", account)?;
-    let white = xyz_tag(&table, bytes, b"wtpt", account)?;
+    let white = xyz_tag(&table, &bytes, b"wtpt", account)?;
     for component in white {
         if account.coordinate(|| component <= 0.0)? {
             return Err(ProfileError::Invalid);
@@ -114,12 +127,12 @@ fn prepare_matrix(bytes: &[u8], account: &Account) -> ProfileResult<RgbMatrixPro
     }
 
     // ICC.1:2022 §8.10.2 skips the optional multi-process route when the CMM
-    // lacks its operations. The media-relative AToB1 or fallback AToB0 then
-    // outranks the matrix and requires a supported lookup-table decoder.
+    // lacks its operations. AToB1 carries the requested media-relative
+    // transform, then AToB0 is the prescribed perceptual fallback.
     for signature in [b"A2B1", b"A2B0"] {
         if let Some(tag) = find_tag(&table, signature, account)? {
-            lut::validate(tag.payload(bytes)?, version, account)?;
-            return Err(ProfileError::Unsupported);
+            let profile = lut::RgbLutProfile::read(bytes, tag, version, &header.pcs, account)?;
+            return Ok(Transform::Lookup(profile));
         }
     }
 
@@ -127,6 +140,17 @@ fn prepare_matrix(bytes: &[u8], account: &Account) -> ProfileResult<RgbMatrixPro
     if &header.pcs != b"XYZ " {
         return Err(ProfileError::Invalid);
     }
+    Ok(Transform::Matrix(prepare_matrix(
+        &table, bytes, version, account,
+    )?))
+}
+
+fn prepare_matrix(
+    table: &[Tag],
+    bytes: AccountedVec<u8>,
+    version: u8,
+    account: &Account,
+) -> ProfileResult<RgbMatrixProfile> {
     let hold = account.acquire(RenderResource::ScratchCpuBytes, size_of::<ProfileData>())?;
     let mut transform = Box::new(ProfileData {
         columns: [[0.0; 3]; 3],
@@ -138,7 +162,7 @@ fn prepare_matrix(bytes: &[u8], account: &Account) -> ProfileResult<RgbMatrixPro
         .iter_mut()
         .zip([b"rXYZ", b"gXYZ", b"bXYZ"])
     {
-        *column = xyz_tag(&table, bytes, signature, account)?;
+        *column = xyz_tag(table, &bytes, signature, account)?;
         if version == 2 {
             for &component in column.iter() {
                 if account.coordinate(|| component < 0.0)? {
@@ -148,9 +172,14 @@ fn prepare_matrix(bytes: &[u8], account: &Account) -> ProfileResult<RgbMatrixPro
         }
     }
     for (curve, signature) in transform.curves.iter_mut().zip([b"rTRC", b"gTRC", b"bTRC"]) {
-        let tag = required_tag(&table, signature, account)?;
-        *curve = Curve::read(tag, bytes, version, account)?;
+        let tag = required_tag(table, signature, account)?;
+        *curve = Curve::read(tag, &bytes, version, account)?;
     }
+    let needs_samples = transform
+        .curves
+        .iter()
+        .any(|curve| matches!(curve, Curve::Sampled { .. }));
+    transform.sampled_curves = needs_samples.then_some(bytes);
     Ok(RgbMatrixProfile {
         data: transform,
         _hold: hold,
@@ -410,6 +439,36 @@ enum Curve {
     Parametric(ParametricCurve),
 }
 
+#[derive(Copy, Clone)]
+enum CurveInput {
+    Byte(u8),
+    Unit(f64),
+}
+
+impl CurveInput {
+    fn unit(self) -> f64 {
+        match self {
+            Self::Byte(sample) => f64::from(sample) / 255.0,
+            Self::Unit(value) => value,
+        }
+    }
+
+    fn sample_position(self, intervals: u32) -> (u64, f64) {
+        match self {
+            Self::Byte(sample) => {
+                // Preserve the exact integer lower index of an RGBA8 sample.
+                let position = u64::from(sample) * u64::from(intervals);
+                (position / 255, (position % 255) as f64 / 255.0)
+            }
+            Self::Unit(value) => {
+                let position = value.clamp(0.0, 1.0) * f64::from(intervals);
+                let lower = position as u64;
+                (lower, position - lower as f64)
+            }
+        }
+    }
+}
+
 impl Curve {
     fn read(tag: Extent, bytes: &[u8], version: u8, account: &Account) -> ProfileResult<Self> {
         let payload = tag.payload(bytes)?;
@@ -445,27 +504,22 @@ impl Curve {
         }
     }
 
-    fn evaluate(&self, sample: u8, bytes: &[u8], account: &Account) -> Result<f64> {
+    fn evaluate(&self, input: CurveInput, bytes: &[u8], account: &Account) -> Result<f64> {
         match self {
-            Self::Identity => account.coordinate(|| f64::from(sample) / 255.0),
-            Self::Gamma(gamma) => account.coordinate(|| (f64::from(sample) / 255.0).powf(*gamma)),
-            Self::Parametric(curve) => {
-                account.coordinate(|| curve.evaluate(f64::from(sample) / 255.0))
-            }
+            Self::Identity => account.coordinate(|| input.unit()),
+            Self::Gamma(gamma) => account.coordinate(|| input.unit().powf(*gamma)),
+            Self::Parametric(curve) => account.coordinate(|| curve.evaluate(input.unit())),
             Self::Sampled { data, intervals } => {
-                // The integer quotient selects the lower sample exactly.
-                // At the final endpoint no successor is needed.
-                let position = account.coordinate(|| u64::from(sample) * u64::from(*intervals))?;
-                let (index, remainder) = (position / 255, position % 255);
+                let (index, fraction) = account.coordinate(|| input.sample_position(*intervals))?;
                 let values = bytes
                     .get(data.start..data.end)
                     .ok_or_else(sample_invariant)?;
                 let lower = sample_value(values, index, account)?;
-                if remainder == 0 {
+                if fraction == 0.0 {
                     return Ok(lower);
                 }
                 let upper = sample_value(values, index + 1, account)?;
-                account.coordinate(|| (upper - lower).mul_add(remainder as f64 / 255.0, lower))
+                account.coordinate(|| (upper - lower).mul_add(fraction, lower))
             }
         }
     }
@@ -490,7 +544,7 @@ fn sample_value(bytes: &[u8], index: u64, account: &Account) -> Result<f64> {
 fn sample_invariant() -> Error {
     Error::new(
         BackendErrorCode::RenderFailed,
-        "validated ICC curve sample is outside its extent",
+        "validated ICC transform sample is outside its extent",
     )
 }
 

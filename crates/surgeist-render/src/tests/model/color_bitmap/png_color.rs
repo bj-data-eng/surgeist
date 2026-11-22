@@ -186,7 +186,23 @@ fn real_gpu_selected_icc_png_preserves_converted_ink_on_both_routes() {
         &[(png::chunk::sRGB, &[0])],
         &[],
     );
-    let original = positioned_sbix(&png);
+    // The fixture's per-channel TRCs, P3-to-sRGB matrix and sRGB transfer
+    // give [196.976, 134.791, 216.167] after scaling to byte range.
+    assert_icc_readback(&png, [197, 135, 216, 128], [109, 88, 138, 255]);
+}
+
+#[test]
+fn real_gpu_selected_icc_lut_png_preserves_converted_ink_on_both_routes() {
+    let profile = icc_png::colorimetric_lut_profile(icc_png::lut16_transform(), b"XYZ ", 4);
+    let png = icc_png::image(&[128, 128, 128, 128], Some(&profile), &[], &[]);
+    // The neutral P3 corner sum gives a D50 neutral at linear 128/255.
+    // The sRGB transfer maps it to byte 188; source-over rounds the result
+    // on the original [20, 40, 60] destination with the original 128 alpha.
+    assert_icc_readback(&png, [188, 188, 188, 128], [104, 114, 124, 255]);
+}
+
+fn assert_icc_readback(png: &[u8], converted: [u8; 4], composited: [u8; 4]) {
+    let original = positioned_sbix(png);
     let ready = prepare(original.clone());
     assert_eq!(ready.font().bytes(), original);
     assert_eq!(
@@ -196,12 +212,7 @@ fn real_gpu_selected_icc_png_preserves_converted_ink_on_both_routes() {
     let [crate::text::GlyphPaint::Bitmap { image, .. }] = ready.paints() else {
         panic!("the selected sbix glyph must retain its bitmap");
     };
-    // The fixture's per-channel TRCs, P3-to-sRGB matrix and sRGB transfer
-    // give [196.976, 134.791, 216.167] after scaling to byte range.
-    assert_eq!(
-        image.content_identity().source_bytes().as_ref(),
-        [197, 135, 216, 128]
-    );
+    assert_eq!(image.content_identity().source_bytes().as_ref(), converted);
     let mut scene = Scene::new();
     scene.fill(
         Rect::new(0.0, 0.0, 12.0, 16.0),
@@ -233,8 +244,7 @@ fn real_gpu_selected_icc_png_preserves_converted_ink_on_both_routes() {
         assert_eq!(stats.route, Some(route));
         assert_eq!(stats.glyphs, 1);
         let readback = pollster::block_on(renderer.read_headless(&surface)).unwrap();
-        // Source-over combines original 128/255 alpha with [20, 40, 60].
-        for ((x, y), expected) in [((5, 11), [109, 88, 138, 255]), ((4, 11), [20, 40, 60, 255])] {
+        for ((x, y), expected) in [((5, 11), composited), ((4, 11), [20, 40, 60, 255])] {
             let actual = pixel_rgba(&readback, x, y);
             assert!(
                 actual.iter().zip(expected).all(|(a, e)| a.abs_diff(e) <= 2),
