@@ -26,21 +26,17 @@ use super::{Entered, Handle, State};
 #[derive(Default)]
 pub(super) struct DomExceptions {
     // Boa's ephemeron keeps slots alive exactly while the branded object lives.
-    // The map's null prototype lets one owner use it from any realm without
-    // pinning the realm where the map was first created.
+    // The owner-private map has neither a prototype nor a realm to retain.
     slots: OnceCell<JsWeakMap>,
     accounts: RefCell<BTreeMap<u64, (WeakRealm, Weak<ConversionAccount>)>>,
 }
 
 impl DomExceptions {
-    fn slots(&self, context: &mut Context) -> Result<JsWeakMap, Error> {
+    fn slots(&self) -> Result<JsWeakMap, Error> {
         if let Some(slots) = self.slots.get() {
             return Ok(slots.clone());
         }
-        let slots = JsWeakMap::new(context);
-        if !slots.set_prototype(None) {
-            return Err(Error::BackendUnavailable);
-        }
+        let slots = JsWeakMap::with_null_proto();
         self.slots
             .set(slots.clone())
             .map_err(|_| Error::RegistryConflict)?;
@@ -91,7 +87,7 @@ fn fresh_error(context: &mut Context) -> JsResult<JsObject> {
 impl Entered<'_> {
     pub(super) fn boa_type_error(&mut self, message: &[u16]) -> Result<Root, Error> {
         self.validate_string_length(message.len())?;
-        let error = self.attempt_value(ExceptionPhase::Coerce, |context| {
+        self.attempt_value(ExceptionPhase::Coerce, |context| {
             let constructor = context
                 .intrinsics()
                 .constructors()
@@ -101,19 +97,13 @@ impl Entered<'_> {
             constructor
                 .construct(&[message], None, context)
                 .map(Into::into)
-        })?;
-        self.state
-            .note_origin(&self.object_value(&error)?, self.realm)?;
-        Ok(error)
+        })
     }
 
     pub(super) fn boa_native_error(&mut self) -> Result<Root, Error> {
-        let error = self.attempt_value(ExceptionPhase::Invoke, |context| {
+        self.attempt_value(ExceptionPhase::Invoke, |context| {
             fresh_error(context).map(Into::into)
-        })?;
-        self.state
-            .note_origin(&self.object_value(&error)?, self.realm)?;
-        Ok(error)
+        })
     }
 
     pub(super) fn boa_dom_exception_profile(
@@ -232,10 +222,11 @@ impl Entered<'_> {
             .value(message)?
             .as_string()
             .ok_or(Error::BackendUnavailable)?;
-        let slots = self.state.dom_exceptions.slots(self.context)?;
+        let slots = self.state.dom_exceptions.slots()?;
         let result = (|| -> JsResult<JsObject> {
             let error = fresh_error(self.context)?;
-            let record = JsObject::from_proto_and_data(
+            let record = JsObject::new(
+                self.context.root_shape(),
                 None,
                 Slots {
                     name,
@@ -243,7 +234,7 @@ impl Entered<'_> {
                     code,
                 },
             );
-            slots.set(&error, record.into(), self.context)?;
+            slots.set(&error, record.upcast().into(), self.context)?;
             Ok(error)
         })();
         self.state.owner.available()?;
@@ -251,7 +242,6 @@ impl Entered<'_> {
             Ok(error) => error,
             Err(error) => return self.capture(ExceptionPhase::Invoke, error, prepared),
         };
-        self.state.note_origin(&error, self.realm)?;
         let error = prepared.finish(Handle::Value(error.into()))?;
         self.set_prototype(&error, ObjectPrototype::Object(prototype))?;
         Ok(error)

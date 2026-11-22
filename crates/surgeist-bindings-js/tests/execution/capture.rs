@@ -149,7 +149,7 @@ fn install_general_roots(process: &mut Process, account: Rc<Account>) -> Result<
 /// General value materialization owns a record, while importing or retaining
 /// an existing identity shares that record without another admission.
 pub(super) fn private_native_slots_admit_only_returned_value_records() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let (native, reference, token) = process.execution().in_realm(&realm, |scope| {
         let reference = scope.object(ObjectPrototype::Null)?;
@@ -193,7 +193,7 @@ pub(super) fn private_native_slots_admit_only_returned_value_records() -> Result
 }
 
 pub(super) fn native_slot_cleanup_preserves_terminal_refusal() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let (native, token) = process.execution().in_realm(&realm, |scope| {
         let reference = scope.object(ObjectPrototype::Null)?;
@@ -230,7 +230,7 @@ pub(super) fn native_slot_cleanup_preserves_terminal_refusal() -> Result<(), Err
 
     // A later heap may reuse the native index. The original token still has
     // no authority to clear that heap's reference.
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let retired = process.execution().in_realm(&realm, |scope| {
         let reference = scope.object(ObjectPrototype::Null)?;
@@ -262,7 +262,7 @@ pub(super) fn native_slot_cleanup_preserves_terminal_refusal() -> Result<(), Err
 }
 
 pub(super) fn general_roots_keep_admission_until_reaping() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
     let account = Account::new(1, u64::try_from(bytes).unwrap(), ProfileMode::Off);
@@ -293,7 +293,7 @@ pub(super) fn general_roots_keep_admission_until_reaping() -> Result<(), Error> 
 
     drop(process);
     for (work, available, expected_work) in [(1, bytes - 1, 1), (0, bytes, 0)] {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let realm = process.execution().create_realm()?;
         let account = Account::new(work, u64::try_from(available).unwrap(), ProfileMode::Off);
         install_general_roots(&mut process, account.clone())?;
@@ -314,7 +314,7 @@ pub(super) fn general_roots_keep_admission_until_reaping() -> Result<(), Error> 
 
 pub(super) fn evaluation_prepares_its_outcome_before_guest_entry() -> Result<(), Error> {
     for work in [1, 2] {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let realm = process.execution().create_realm()?;
         let called = Rc::new(Cell::new(false));
         let marker = called.clone();
@@ -386,7 +386,7 @@ pub(super) fn utf16_output_keeps_its_buffer_admitted_after_process_teardown() ->
         (exact_work - 1, bytes),
         (exact_work, bytes - 1),
     ] {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let realm = process.execution().create_realm()?;
         let original = process.execution().in_realm(&realm, |scope| {
             let value = scope.string(&ORIGINAL)?;
@@ -480,7 +480,7 @@ fn registration_case(
     constructor: bool,
     collect: bool,
 ) -> Result<Option<usize>, Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let account = Account::new(1, capacity, ProfileMode::Off);
     let callback_drops = Rc::new(Cell::new(0));
@@ -567,7 +567,7 @@ fn registration_case(
     assert_eq!(account.live(), u64::try_from(bytes).unwrap());
     if collect {
         process.execution().in_realm(&realm, |scope| {
-            scope.evaluate(&units("held = null; gc()"))?;
+            scope.evaluate(&units("held = null"))?;
             Ok(())
         })?;
         process.execution().memory_pressure();
@@ -604,7 +604,7 @@ fn callable_case(
     mode: ProfileMode,
     selected: usize,
 ) -> Result<(u64, bool), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let root_bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
     let buffer_bytes = selected * size_of::<Value<'_>>() + size_of::<Backing>();
     let account = Account::new(work, bytes, mode);
@@ -687,7 +687,7 @@ fn callable_case(
 }
 
 pub(super) fn boundaries_and_retained_roots() -> Result<(), Error> {
-    let process = Process::bootstrap(EngineKind::V8)?;
+    let process = Process::bootstrap()?;
     let root_bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
     let buffer_bytes = 2 * size_of::<Value<'_>>() + size_of::<Backing>();
     drop(process);
@@ -717,7 +717,7 @@ pub(super) fn boundaries_and_retained_roots() -> Result<(), Error> {
         callable_case(5, full_peak - 1, ProfileMode::Off, 3)?,
         (5, false)
     );
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let account = Account::new(100, 1_000_000, ProfileMode::Off);
     install(&mut process, account.clone())?;
     let retained = Rc::new(RefCell::new(None));
@@ -746,7 +746,7 @@ pub(super) fn constructors_and_nested_callbacks_share_admission() -> Result<(), 
         .into_iter()
         .flat_map(|maximum| (0..3).map(move |shortage| (maximum, shortage)))
     {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let root_bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
         let selected = usize::try_from(maximum.min(3)).unwrap();
         let work = u64::try_from(selected + 1 + usize::from(selected != 0)).unwrap();
@@ -832,7 +832,7 @@ pub(super) fn constructors_and_nested_callbacks_share_admission() -> Result<(), 
         process.execution().memory_pressure();
         assert_eq!(account.live(), 0);
     }
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let root_bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
     let buffer_bytes = size_of::<Value<'_>>() + size_of::<Backing>();
     let account = Account::new(
@@ -871,7 +871,7 @@ pub(super) fn constructors_and_nested_callbacks_share_admission() -> Result<(), 
 }
 
 pub(super) fn failed_release_keeps_the_original_guest_exception() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let account = Account::new(100, 1_000_000, ProfileMode::Off);
     let observation = install(&mut process, account.clone())?;
     let failing = account.clone();
@@ -922,7 +922,7 @@ pub(super) fn setup_custody_follows_surviving_observations() -> Result<(), Error
             self.0.set(self.0.get() + 1);
         }
     }
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let drops = Rc::new(Cell::new(0));
     let account = Account::new(100, 1_000_000, ProfileMode::Off);
     let controller = Admission::new(move |request| account.admit_incoming(request), |_| Ok(()))
@@ -938,7 +938,7 @@ pub(super) fn setup_custody_follows_surviving_observations() -> Result<(), Error
 }
 
 pub(super) fn admission_refusals_and_prior_host_errors_are_terminal() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let original = process
         .execution()
@@ -977,7 +977,7 @@ pub(super) fn admission_refusals_and_prior_host_errors_are_terminal() -> Result<
     ));
     drop(process);
 
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let account = Account::new(100, 1_000_000, ProfileMode::Off);
     let observation = install(&mut process, account.clone())?;
     let failing = account.clone();

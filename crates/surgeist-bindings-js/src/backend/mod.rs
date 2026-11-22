@@ -1,6 +1,4 @@
-#[cfg(feature = "boa-qualification")]
 pub(crate) mod boa;
-pub(crate) mod v8;
 
 use std::any::{Any, TypeId};
 use std::rc::Rc;

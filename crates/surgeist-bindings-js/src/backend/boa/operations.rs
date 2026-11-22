@@ -155,7 +155,7 @@ impl Operations for Entered<'_> {
                     .map(|window| window.event_target.clone())
             })
             .ok_or(Error::BackendUnavailable)?;
-        if prototype != reserved || self.state.object_origin(&parent)? != Some((self.realm, true)) {
+        if prototype != reserved || !self.state.callables.is_constructor(&parent, self.realm)? {
             return Err(Error::PropertyRejected);
         }
         let global = self.context.global_object();
@@ -190,11 +190,8 @@ impl Operations for Entered<'_> {
     }
 
     fn managed_object(&mut self) -> Result<Root, Error> {
-        let state = self.state.clone();
-        let key = self.realm;
         self.new_handle(|context| {
             let object = JsObject::with_object_proto(context.intrinsics());
-            state.note_origin(&object, key)?;
             Ok(Handle::Managed(object, context.realm().clone()))
         })
     }
@@ -386,9 +383,12 @@ impl Operations for Entered<'_> {
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error> {
         self.check_active()?;
         let prototype = self.object_prototype(prototype)?;
-        let object = JsObject::from_proto_and_data(prototype, cssom::ProjectableObject::default());
-        self.state.note_origin(&object, self.realm)?;
-        self.root(object.into())
+        let object = JsObject::new(
+            self.context.root_shape(),
+            prototype,
+            cssom::ProjectableObject::default(),
+        );
+        self.root(object.upcast().into())
     }
 
     fn set_prototype(
@@ -412,7 +412,6 @@ impl Operations for Entered<'_> {
         let elements = self.outbound_values(values)?;
         let object =
             elements.map(|values| JsObject::from(JsArray::from_iter(values, self.context)));
-        self.state.note_origin(&object, self.realm)?;
         self.root(object.value.into())
     }
 
@@ -742,12 +741,9 @@ impl Operations for Entered<'_> {
     }
 
     fn new_promise_resolver(&mut self) -> Result<Root, Error> {
-        let realm = self.realm;
-        let state = self.state.clone();
         self.new_handle(|context| {
             let (promise, resolving) =
                 boa_engine::object::builtins::JsPromise::new_pending(context);
-            state.note_origin(&promise.clone().into(), realm)?;
             Ok(Handle::Promise(promise, resolving))
         })
     }

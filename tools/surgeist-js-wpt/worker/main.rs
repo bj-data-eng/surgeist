@@ -7,15 +7,13 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-use surgeist_bindings_js::{
-    Error, Exception, ExceptionPhase, HeapObservation, Primitive, Scope, ValueKind,
-};
+use surgeist_bindings_js::{Error, Exception, ExceptionPhase, Primitive, Scope, ValueKind};
 use surgeist_dom::{DomError, hosted::DomHostedError};
 use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_js_wpt::{
     BoaHeapSample, EngineResourceEvidence, GuestDiagnostic, HarnessResult, HarnessStatus,
-    HeapSample, NativeLedgerUsage, NativeResourceEvidence, Subtest, SubtestStatus, WorkerFailure,
-    WorkerReport, WorkerResources, WorkerResult, read_request, write_report,
+    NativeLedgerUsage, NativeResourceEvidence, Subtest, SubtestStatus, WorkerFailure, WorkerReport,
+    WorkerResources, WorkerResult, read_request, write_report,
 };
 use surgeist_ledger::ProfileMode;
 use surgeist_runtime::{
@@ -67,7 +65,7 @@ fn serve() -> Result<(), Box<dyn StdError>> {
 }
 
 fn run_case(fixture: fixtures::Fixture) -> Result<WorkerReport, Box<dyn StdError>> {
-    let selected_heap = selected_heap_without_sample();
+    let selected_heap = EngineResourceEvidence::BoaCollector { sample: None };
     let cancellation = Arc::new(AtomicBool::new(false));
     let mut session = DomSession::new(policy::dom()?, policy::session())?;
     let mut hosted = session.hosted_execution();
@@ -167,45 +165,14 @@ fn native_evidence(accounting: Option<&DocumentGuestAccounting>) -> NativeResour
     )
 }
 
-fn selected_heap_without_sample() -> EngineResourceEvidence {
-    #[cfg(feature = "boa-qualification")]
-    {
-        EngineResourceEvidence::BoaCollector { sample: None }
-    }
-    #[cfg(not(feature = "boa-qualification"))]
-    {
-        EngineResourceEvidence::V8Default { sample: None }
-    }
-}
-
 fn heap_evidence(host: &mut DocumentScriptHost) -> EngineResourceEvidence {
-    let Some(observation) = host
+    let sample = host
         .permit()
         .ok()
         .and_then(|permit| host.observe_engine_heap(&permit).ok())
-    else {
-        return selected_heap_without_sample();
-    };
-    match observation {
-        HeapObservation::V8 {
-            used_bytes,
-            limit_bytes,
-        } => {
-            let sample = (|| {
-                Some(HeapSample {
-                    used_bytes: u64::try_from(used_bytes).ok()?,
-                    limit_bytes: u64::try_from(limit_bytes).ok()?,
-                })
-            })();
-            EngineResourceEvidence::V8Default { sample }
-        }
-        HeapObservation::BoaCollector { used_bytes } => EngineResourceEvidence::BoaCollector {
-            sample: u64::try_from(used_bytes)
-                .ok()
-                .map(|used_bytes| BoaHeapSample { used_bytes }),
-        },
-        _ => selected_heap_without_sample(),
-    }
+        .and_then(|observation| u64::try_from(observation.used_bytes).ok())
+        .map(|used_bytes| BoaHeapSample { used_bytes });
+    EngineResourceEvidence::BoaCollector { sample }
 }
 
 fn evaluate(

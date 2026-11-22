@@ -8,16 +8,12 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[features]
-boa-qualification = ["dep:boa_engine", "dep:boa_gc"]
-
 [dependencies]
-boa_engine = { version = "=0.22.0", default-features = false, features = ["experimental"], optional = true }
-boa_gc = { version = "=0.22.0", optional = true }
+boa_engine = { path = "../surgeist-boa/core/engine", version = "=0.22.0", default-features = false, features = ["experimental"] }
+boa_gc = { path = "../surgeist-boa/core/gc", version = "=0.22.0" }
 surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
 surgeist-cssom = { path = "../surgeist-cssom", version = "=0.1.0" }
 surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
-v8 = "=152.2.0"
 
 [lints]
 workspace = true

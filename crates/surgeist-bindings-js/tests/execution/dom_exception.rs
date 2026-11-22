@@ -13,7 +13,7 @@ pub(super) fn profile_survives_guest_global_replacement_and_cross_realm_construc
     let driver = execution.create_realm()?;
     let nonextensible = execution.create_realm()?;
     execution.in_realm(&nonextensible, |scope| {
-        // The absent own-key probe succeeds. V8 then refuses the actual
+        // The absent own-key probe succeeds. The engine then refuses the actual
         // definition because its context global is nonextensible.
         scope.evaluate(&units("Object.preventExtensions(globalThis)"))?;
         assert!(matches!(

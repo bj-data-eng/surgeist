@@ -619,7 +619,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
     // Independent static-body lower bound for the native budget. The Bindings native
     // qualification checks these account field shapes against the actual
     // retained Rc<Account> targets. The hosted budget counts requested Rust
-    // payload bytes and excludes allocator and V8 overhead.
+    // payload bytes and excludes allocator and engine overhead.
     let account = size_of::<(Weak<()>, Arc<()>, (u64, usize), Cell<CleanupStatus>)>();
     let dom_exception = size_of::<(Rc<ConversionAccount>, DomHostedRuntimeRetention)>()
         + size_of::<ConversionAccount>()

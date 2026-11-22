@@ -6,12 +6,11 @@ use std::collections::{BTreeMap, btree_map::Entry as MapEntry};
 use std::ops::Bound::{Excluded, Included};
 use std::rc::{Rc, Weak};
 
-use boa_engine::builtins::function::OrdinaryFunction;
 use boa_engine::realm::Realm as BoaRealm;
 use boa_engine::{Context, JsObject};
 
 use crate::callback_object::{CallbackObjectIdentity, HolderBacking};
-use crate::{Error, ExceptionPhase, RealmKey, Root};
+use crate::{Error, RealmKey, Root};
 
 use super::{Entered, Operations, State};
 
@@ -188,21 +187,9 @@ impl Entered<'_> {
         &mut self,
         object: &JsObject,
     ) -> Result<(RealmKey, BoaRealm), Error> {
-        if let Some(key) = self.state.native.creation_realm(&self.state, object)? {
-            return Ok((key, self.state.lookup_realm(key)?));
-        }
-        if let Some(key) = self.state.known_origin(object)? {
-            return Ok((key, self.state.lookup_realm(key)?));
-        }
-        // Ordinary functions carry their own Realm. GetFunctionRealm can
-        // follow a bound function or Proxy target, or use the entered Realm
-        // for a native function with no realm. Those cases are insufficient.
-        if !object.is::<OrdinaryFunction>() {
-            return Err(Error::CallbackRealmUnavailable);
-        }
-        let realm = self.attempt(ExceptionPhase::Invoke, |context| {
-            object.callable_realm(context)
-        })?;
+        let realm = object
+            .creation_realm()
+            .ok_or(Error::CallbackRealmUnavailable)?;
         Ok((self.state.realm_key(&realm)?, realm))
     }
 

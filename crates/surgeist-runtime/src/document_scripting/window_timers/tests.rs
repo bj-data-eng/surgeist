@@ -63,7 +63,7 @@ fn timer_backing(host: &DocumentScriptHost) -> Rc<Backing> {
         .clone()
 }
 
-// The V8 process must bootstrap on the same OS thread for all Runtime tests.
+// These cases share the Runtime scripting entry thread.
 pub(in crate::document_scripting) fn run_timer_tests() {
     deadlines_reentrant_arguments_exceptions_and_task_checkpoints();
     nested_timers_are_clamped_only_after_the_sixth_timer_task();

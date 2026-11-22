@@ -10,7 +10,6 @@ description = "Isolated JavaScript conformance tooling for Surgeist"
 
 [features]
 native-worker = ["dep:sha1", "dep:surgeist-bindings-js", "dep:surgeist-css", "dep:surgeist-dom", "dep:surgeist-html", "dep:surgeist-ledger", "dep:surgeist-runtime"]
-boa-qualification = ["native-worker", "surgeist-runtime/boa-qualification"]
 
 [dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }

@@ -32,8 +32,9 @@ are recorded in its provenance.
 It is distinct from the facade's geometry crate `surgeist-shape`.
 
 [`surgeist-bindings-js`](../crates/surgeist-bindings-js/README.md) supplies the safe
-embedding core over external V8: a thread-affine heap owner, independent realms,
-scoped values, checked persistent roots and explicit job checkpoints. Native
+embedding core over the maintained Boa fork. It provides a thread-affine
+execution owner, independent realms, scoped values, checked persistent roots
+and explicit job checkpoints. Native
 Web IDL and framework object exposure remain planned. Native framework crates
 remain usable without scripting.
 [Host regression inputs](../tests/fixtures/js-bindings/README.md) retain the

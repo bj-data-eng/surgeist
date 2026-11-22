@@ -13,7 +13,6 @@ name = "surgeist_runtime"
 path = "src/lib.rs"
 
 [features]
-boa-qualification = ["document-scripting", "surgeist-bindings-js/boa-qualification"]
 default = []
 document-scripting = ["dep:base64", "dep:sha2", "dep:surgeist-bindings-js", "dep:surgeist-ledger"]
 

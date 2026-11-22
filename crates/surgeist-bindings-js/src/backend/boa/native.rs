@@ -24,13 +24,11 @@ use super::{Entered, Handle, State};
 struct Entry {
     object: WeakJsObject,
     payload: Rc<dyn Any>,
-    realm: RealmKey,
 }
 
 struct Live {
     object: JsObject,
     payload: Rc<dyn Any>,
-    realm: RealmKey,
 }
 
 #[derive(Default)]
@@ -83,7 +81,6 @@ impl NativeObjects {
             entry.object.upgrade().map(|object| Live {
                 object,
                 payload: entry.payload.clone(),
-                realm: entry.realm,
             })
         }))
     }
@@ -97,19 +94,6 @@ impl NativeObjects {
         Ok(self
             .live(state, index)?
             .filter(|live| JsObject::equals(object, &live.object)))
-    }
-
-    pub(super) fn creation_realm(
-        &self,
-        state: &State,
-        object: &JsObject,
-    ) -> Result<Option<RealmKey>, Error> {
-        let Some(data) = native_data(object) else {
-            return Ok(None);
-        };
-        Ok(self
-            .canonical(state, object, data.index)?
-            .map(|live| live.realm))
     }
 
     pub(super) fn reap(&self, state: &State) {
@@ -326,6 +310,8 @@ impl Entered<'_> {
         funding: Option<Guard>,
     ) -> Result<Prepared, Error> {
         self.state.owner.available()?;
+        let allocation_realm = self.state.lookup_realm(realm)?;
+        let root_shape = allocation_realm.intrinsics().root_shape();
         let index = self.state.native.next()?;
         let mut references = BTreeMap::new();
         if let Some(NativeProjectionSlot::Traced(slot, reference)) = slot.as_ref() {
@@ -351,6 +337,7 @@ impl Entered<'_> {
                         .ok_or(Error::ExpectedObject)
                 };
                 readonly_indexed(
+                    root_shape,
                     prototype,
                     Collection {
                         native,
@@ -359,12 +346,11 @@ impl Entered<'_> {
                     },
                 )
             }
-            _ => JsObject::from_proto_and_data(prototype, NativeCarrier(native)),
+            _ => JsObject::new(root_shape, prototype, NativeCarrier(native)).upcast(),
         };
         let entry = Entry {
             object: object.downgrade(),
             payload,
-            realm,
         };
         let root = self
             .state
@@ -427,7 +413,7 @@ impl Entered<'_> {
         backing: Box<dyn Any>,
     ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error> {
         let Prepared { index, root, entry } = prepared;
-        // Pinning checks the exact native entry's creation realm first. The
+        // Pinning checks the object's exact creation realm. The
         // object and entry remain private until both admissions succeed.
         if let Err(error) = self.state.native.insert(&self.state, index, entry) {
             let _ = self.state.discard_root(&root);

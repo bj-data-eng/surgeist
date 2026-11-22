@@ -7,7 +7,7 @@ use std::rc::{Rc, Weak};
 use std::sync::{Arc, atomic::AtomicBool};
 
 use surgeist_bindings_js::{
-    Callback, Completion, EngineKind, Error, HeapObservation, HostFailureSlot, Primitive, Process,
+    Callback, Completion, Error, HeapObservation, HostFailureSlot, Primitive, Process,
     PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Root, Scope,
     css::{self, CssNamespaceLimits},
     dom_exception::{self, DomExceptionLimits},
@@ -808,11 +808,7 @@ impl PreparedDocumentScriptHost {
             setup_bytes.set(bytes);
             Ok::<_, DocumentScriptError>(backing)
         };
-        #[cfg(feature = "boa-qualification")]
-        let engine = EngineKind::Boa;
-        #[cfg(not(feature = "boa-qualification"))]
-        let engine = EngineKind::V8;
-        let mut process = Process::bootstrap_funded(engine, fund_setup)?;
+        let mut process = Process::bootstrap_funded(fund_setup)?;
         let realm = match realm_kind {
             ScriptRealmKind::Ordinary => {
                 PreparedScriptRealm::Ready(process.execution().create_realm_funded(fund_setup)?)

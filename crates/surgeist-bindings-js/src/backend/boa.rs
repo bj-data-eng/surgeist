@@ -2,8 +2,7 @@
 
 use std::{
     cell::{Cell, OnceCell, RefCell},
-    collections::{BTreeMap, HashMap},
-    hash::{DefaultHasher, Hash, Hasher},
+    collections::BTreeMap,
     rc::{Rc, Weak},
 };
 
@@ -12,7 +11,6 @@ use boa_engine::{
     builtins::promise::ResolvingFunctions,
     context::{HostHooks, intrinsics::Intrinsics},
     object::{
-        WeakJsObject,
         builtins::JsPromise,
         host::{immutable_prototype, window_properties},
     },
@@ -36,6 +34,8 @@ mod dom_exception;
 mod functions;
 mod native;
 mod operations;
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone)]
 enum Handle {
@@ -90,18 +90,11 @@ struct RealmRecord {
     _backing: Option<Rc<RealmBacking>>,
 }
 
-struct ObjectOrigin {
-    object: WeakJsObject,
-    realm: RealmKey,
-    constructor: bool,
-}
-
 struct State {
     self_weak: Weak<State>,
     owner: Rc<OwnerState>,
     roots: RefCell<BTreeMap<u64, Rc<RootRecord>>>,
     realms: RefCell<BTreeMap<u64, RealmRecord>>,
-    origins: RefCell<HashMap<u64, Vec<ObjectOrigin>>>,
     next_root: Cell<u64>,
     callbacks: callback_objects::CallbackObjects,
     native: native::NativeObjects,
@@ -117,7 +110,6 @@ impl State {
             owner: Rc::new(OwnerState::new(owner)),
             roots: RefCell::new(BTreeMap::new()),
             realms: RefCell::new(BTreeMap::new()),
-            origins: RefCell::new(HashMap::new()),
             next_root: Cell::new(0),
             callbacks: Default::default(),
             native: Default::default(),
@@ -277,60 +269,6 @@ impl State {
         self.realm_key(context.realm())
     }
 
-    fn note_origin(&self, object: &JsObject, realm: RealmKey) -> Result<(), Error> {
-        self.register_origin(object, realm, false)
-    }
-
-    fn note_constructor(&self, object: &JsObject, realm: RealmKey) -> Result<(), Error> {
-        self.register_origin(object, realm, true)
-    }
-
-    fn register_origin(
-        &self,
-        object: &JsObject,
-        realm: RealmKey,
-        constructor: bool,
-    ) -> Result<(), Error> {
-        let mut origins = self.origins.try_borrow_mut().map_err(|_| self.conflict())?;
-        let bucket = origins.entry(object_bucket(object)).or_default();
-        if let Some(known) = bucket
-            .iter_mut()
-            .find(|origin| origin.object.upgrade().as_ref() == Some(object))
-        {
-            if known.realm != realm {
-                return Err(self.conflict());
-            }
-            known.constructor |= constructor;
-        } else {
-            bucket.try_reserve(1).map_err(|_| Error::Allocation)?;
-            bucket.push(ObjectOrigin {
-                object: object.downgrade(),
-                realm,
-                constructor,
-            });
-        }
-        Ok(())
-    }
-
-    fn object_origin(&self, object: &JsObject) -> Result<Option<(RealmKey, bool)>, Error> {
-        Ok(self
-            .origins
-            .try_borrow()
-            .map_err(|_| self.conflict())?
-            .get(&object_bucket(object))
-            .and_then(|bucket| {
-                bucket
-                    .iter()
-                    .find(|origin| origin.object.upgrade().as_ref() == Some(object))
-            })
-            .map(|origin| (origin.realm, origin.constructor)))
-    }
-
-    fn known_origin(&self, object: &JsObject) -> Result<Option<RealmKey>, Error> {
-        self.object_origin(object)
-            .map(|origin| origin.map(|(key, _)| key))
-    }
-
     fn reap(&self) {
         loop {
             let retired = {
@@ -355,14 +293,6 @@ impl State {
         if let Err(error) = self.callables.reap() {
             self.owner.fail(error);
         }
-        if let Ok(mut origins) = self.origins.try_borrow_mut() {
-            origins.retain(|_, bucket| {
-                bucket.retain(|entry| entry.object.upgrade().is_some());
-                !bucket.is_empty()
-            });
-        } else {
-            self.conflict();
-        }
         if let Ok(mut realms) = self.realms.try_borrow_mut() {
             realms.retain(|_, entry| {
                 if entry.identity.strong_count() == 0 {
@@ -378,12 +308,6 @@ impl State {
     }
 }
 
-fn object_bucket(object: &JsObject) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    object.hash(&mut hasher);
-    hasher.finish()
-}
-
 #[derive(Default)]
 struct Globals {
     window: Cell<bool>,
@@ -392,7 +316,10 @@ struct Globals {
 impl HostHooks for Globals {
     fn create_global_object(&self, intrinsics: &Intrinsics) -> JsObject {
         if self.window.get() {
-            immutable_prototype(Some(intrinsics.constructors().object().prototype()))
+            immutable_prototype(
+                intrinsics.root_shape(),
+                Some(intrinsics.constructors().object().prototype()),
+            )
         } else {
             JsObject::with_object_proto(intrinsics)
         }
@@ -461,7 +388,7 @@ impl super::Engine for Engine {
     fn observe_heap(&mut self) -> Result<HeapObservation, Error> {
         self.state.owner.available()?;
         let sample = boa_gc::heap_statistics().ok_or(Error::BackendUnavailable)?;
-        Ok(HeapObservation::BoaCollector {
+        Ok(HeapObservation {
             used_bytes: sample.bytes_allocated,
         })
     }
@@ -498,7 +425,6 @@ impl super::Engine for Engine {
         let window = {
             let frame = EnterRealm::new(&mut self.context, realm.clone());
             let global = frame.context.global_object();
-            self.state.note_origin(&global, key)?;
             if window {
                 let prototype = frame
                     .context
@@ -506,8 +432,9 @@ impl super::Engine for Engine {
                     .constructors()
                     .object()
                     .prototype();
-                let event_target = immutable_prototype(Some(prototype));
-                let names = window_properties(event_target.clone());
+                let root_shape = frame.context.root_shape();
+                let event_target = immutable_prototype(root_shape, Some(prototype));
+                let names = window_properties(root_shape, event_target.clone());
                 names.insert_property(
                     JsSymbol::to_string_tag(),
                     BoaDescriptor::builder()
@@ -516,7 +443,7 @@ impl super::Engine for Engine {
                         .enumerable(false)
                         .configurable(true),
                 );
-                let prototype = immutable_prototype(Some(names));
+                let prototype = immutable_prototype(root_shape, Some(names));
                 prototype.insert_property(
                     JsSymbol::to_string_tag(),
                     BoaDescriptor::builder()
@@ -528,8 +455,6 @@ impl super::Engine for Engine {
                 if !global.set_prototype(Some(prototype.clone())) {
                     return Err(Error::PropertyRejected);
                 }
-                self.state.note_origin(&event_target, key)?;
-                self.state.note_origin(&prototype, key)?;
                 Some(WindowObjects {
                     prototype,
                     event_target,
@@ -575,6 +500,8 @@ impl super::Engine for Engine {
     fn checkpoint(&mut self) -> Result<(), Error> {
         self.state.owner.available()?;
         let result = self.context.run_jobs();
+        // The host job ends even when there were no queued microtasks.
+        self.context.clear_kept_objects();
         self.state.reap();
         self.state.owner.available()?;
         result.map_err(|_| Error::BackendUnavailable)
@@ -678,6 +605,7 @@ impl Entered<'_> {
     }
 
     fn value(&self, root: &Root) -> Result<JsValue, Error> {
+        self.check_active()?;
         self.state.value(root)
     }
 

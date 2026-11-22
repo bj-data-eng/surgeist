@@ -63,17 +63,6 @@ fn received(fixture: &FixtureId) -> WorkerResult {
     received_report(fixture).result
 }
 
-fn selected_heap_without_sample() -> EngineResourceEvidence {
-    #[cfg(feature = "boa-qualification")]
-    {
-        EngineResourceEvidence::BoaCollector { sample: None }
-    }
-    #[cfg(not(feature = "boa-qualification"))]
-    {
-        EngineResourceEvidence::V8Default { sample: None }
-    }
-}
-
 fn received_report(fixture: &FixtureId) -> WorkerReport {
     let run = invoke(fixture, Duration::from_secs(10));
     assert_eq!(run.process.stop, ProcessStop::Exited, "{run:?}");
@@ -294,7 +283,10 @@ fn canonical_source_refusal_keeps_a_qualified_native_result() {
         ),
         "{report:?}"
     );
-    assert_eq!(report.resources.engine, selected_heap_without_sample());
+    assert_eq!(
+        report.resources.engine,
+        EngineResourceEvidence::BoaCollector { sample: None }
+    );
     let NativeResourceEvidence::Measured(usage) = &report.resources.native else {
         panic!("expected native accounting after refusal: {report:?}");
     };
@@ -354,13 +346,6 @@ fn native_resource_evidence_reports_actual_work_and_teardown() {
     assert!(adapter_work > 0);
     assert!(peak_backing_bytes > 0);
     assert_eq!(live_backing_bytes, 0);
-    #[cfg(not(feature = "boa-qualification"))]
-    assert!(
-        matches!(&engine, EngineResourceEvidence::V8Default { sample: Some(sample) }
-            if sample.used_bytes > 0 && sample.limit_bytes > 0),
-        "{engine:?}"
-    );
-    #[cfg(feature = "boa-qualification")]
     assert!(
         matches!(&engine, EngineResourceEvidence::BoaCollector { sample: Some(sample) }
             if sample.used_bytes > 0),
@@ -376,5 +361,8 @@ fn native_resource_evidence_reports_actual_work_and_teardown() {
         matches!(refused, NativeEvidence::NotAttached),
         "{refused:?}"
     );
-    assert_eq!(engine, selected_heap_without_sample());
+    assert_eq!(
+        engine,
+        EngineResourceEvidence::BoaCollector { sample: None }
+    );
 }

@@ -80,9 +80,9 @@ Use `--check --crate surgeist-runtime` to check its default native API and
 optional document scripting API. The companion
 `surgeist-runtime.document-scripting.txt` artifact uses
 `--no-default-features --features document-scripting` and is identified as
-`surgeist-runtime [document-scripting]`. Supply the qualified native archive as
-described in the [bindings verification guide](../crates/surgeist-bindings-js/README.md#verification)
-when checking or refreshing both profiles.
+`surgeist-runtime [document-scripting]`. Initialize the
+[Boa submodule](../crates/surgeist-bindings-js/PROVENANCE.md) before checking or
+refreshing the scripting profile.
 
 ### Check The API Tool
 

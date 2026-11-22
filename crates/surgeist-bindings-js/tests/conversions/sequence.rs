@@ -7,7 +7,7 @@ use surgeist_bindings_js::conversion::{
     types,
 };
 use surgeist_bindings_js::{
-    Callback, Completion, DomString, EngineKind, Error, Primitive, Process, PropertyKey,
+    Callback, Completion, DomString, Error, Primitive, Process, PropertyKey,
 };
 use surgeist_ledger::{EventFilter, Limits, ProfileMode};
 
@@ -348,7 +348,7 @@ enum Cut {
 }
 
 fn bounded_growth(cut: Cut) -> TestResult {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let peak = 12 * mem::size_of::<Converted<DomString>>() as u64 + 10;
@@ -449,7 +449,7 @@ pub(super) fn run(process: &mut Process) -> TestResult {
 fn retained_nested_output_outlives_heap() -> TestResult {
     let ledger = new_ledger(ProfileMode::Off)?;
     let output = {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let realm = process.execution().create_realm()?;
         let account = account(&mut process, &realm, &ledger, Limits::unlimited())?;
         process.execution().in_realm(&realm, |scope| {
@@ -469,7 +469,7 @@ fn retained_nested_output_outlives_heap() -> TestResult {
 }
 
 fn callback_unwind_releases_nested_output() -> TestResult {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let account = account(&mut process, &realm, &ledger, Limits::unlimited())?;

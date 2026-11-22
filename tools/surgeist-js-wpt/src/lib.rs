@@ -5,9 +5,9 @@ mod protocol;
 
 pub use protocol::{
     BoaHeapSample, EngineResourceEvidence, FixtureId, FixtureUrlError, GuestDiagnostic,
-    HarnessResult, HarnessStatus, HeapSample, NativeLedgerUsage, NativeResourceEvidence,
-    ProtocolError, Subtest, SubtestStatus, WorkerFailure, WorkerReport, WorkerResources,
-    WorkerResult, read_request, write_report,
+    HarnessResult, HarnessStatus, NativeLedgerUsage, NativeResourceEvidence, ProtocolError,
+    Subtest, SubtestStatus, WorkerFailure, WorkerReport, WorkerResources, WorkerResult,
+    read_request, write_report,
 };
 pub use surgeist_fuzz::execution::{
     CleanupStatus, ExecutionCapabilities, ExecutionError, MemoryPolicy, OutputStream, ProcessExit,

@@ -49,7 +49,7 @@ struct ProcessBacking {
 impl Drop for ProcessBacking {
     fn drop(&mut self) {
         // A new owner can be acquired only after the original isolate exits.
-        let next = Process::bootstrap(EngineKind::V8);
+        let next = Process::bootstrap();
         self.disposed.set(next.is_ok());
         drop(next);
         assert!(self.backing.live.get() > 0);
@@ -57,7 +57,7 @@ impl Drop for ProcessBacking {
 }
 
 fn direct_setup_refusal_preserves_cause_and_releases_singleton() -> Result<(), Error> {
-    let refused = Process::bootstrap_funded(EngineKind::V8, |request| {
+    let refused = Process::bootstrap_funded(|request| {
         assert!(matches!(request, Request::Process { bytes } if bytes > 0));
         Err::<(), _>(SetupError::Refused)
     });
@@ -65,7 +65,7 @@ fn direct_setup_refusal_preserves_cause_and_releases_singleton() -> Result<(), E
 
     let live = Rc::new(Cell::new(0));
     let disposed = Rc::new(Cell::new(false));
-    let process = Process::bootstrap_funded(EngineKind::V8, |request| {
+    let process = Process::bootstrap_funded(|request| {
         Ok::<_, Error>(ProcessBacking {
             backing: Backing::new(&live, request.bytes()),
             disposed: disposed.clone(),
@@ -74,7 +74,7 @@ fn direct_setup_refusal_preserves_cause_and_releases_singleton() -> Result<(), E
     assert!(live.get() > 0);
     assert!(!process.has_preparation_admission());
     let called = Cell::new(false);
-    let duplicate = Process::bootstrap_funded(EngineKind::V8, |_| {
+    let duplicate = Process::bootstrap_funded(|_| {
         called.set(true);
         Ok::<_, SetupError>(())
     });
@@ -87,7 +87,7 @@ fn direct_setup_refusal_preserves_cause_and_releases_singleton() -> Result<(), E
     assert!(disposed.get());
     assert_eq!(live.get(), 0);
 
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let refused = process.execution().create_realm_funded(|request| {
         assert!(matches!(request, Request::Realm { bytes } if bytes > 0));
         Err::<(), _>(SetupError::Refused)
@@ -103,7 +103,7 @@ fn direct_setup_refusal_preserves_cause_and_releases_singleton() -> Result<(), E
 
 fn realm_backing_follows_surviving_tokens_and_guest_contexts() -> Result<(), Error> {
     let live = Rc::new(Cell::new(0));
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let bytes = process.realm_storage_bytes() + size_of::<Backing>();
     let realm = process.execution().create_realm_funded(|request| {
         assert_eq!(request, Request::Realm { bytes });
@@ -115,7 +115,7 @@ fn realm_backing_follows_surviving_tokens_and_guest_contexts() -> Result<(), Err
     drop(realm);
     assert_eq!(live.get(), 0);
 
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process
         .execution()
         .create_realm_funded(|request| Ok::<_, Error>(Backing::new(&live, request.bytes())))?;
@@ -141,7 +141,7 @@ fn realm_backing_follows_surviving_tokens_and_guest_contexts() -> Result<(), Err
 }
 
 fn installed_policy_owns_later_realm_admission() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let requests = Rc::new(RefCell::new(Vec::new()));
     let live = Rc::new(Cell::new(0));
     let admitted_requests = requests.clone();

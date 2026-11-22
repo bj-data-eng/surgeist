@@ -1,4 +1,4 @@
-//! Canonical ShadowRoot projection through native V8 callbacks.
+//! Canonical ShadowRoot projection through native callbacks.
 
 use super::*;
 use surgeist_dom::{

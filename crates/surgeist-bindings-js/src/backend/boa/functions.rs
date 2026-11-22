@@ -10,8 +10,9 @@ use std::rc::{Rc as CallbackRc, Weak as CallbackWeak};
 use boa_engine::{
     Context as CallbackContext, JsError as BoaJsError, JsObject as BoaJsObject,
     JsResult as BoaJsResult, JsString as BoaJsString, JsValue as BoaJsValue,
-    NativeFunction as BoaNativeFunction, error::PanicError as BoaPanicError,
-    object::FunctionObjectBuilder as BoaFunctionBuilder,
+    NativeFunction as BoaNativeFunction,
+    error::PanicError as BoaPanicError,
+    object::{FunctionObjectBuilder as BoaFunctionBuilder, WeakJsObject},
     property::PropertyDescriptor as BoaPropertyDescriptor,
 };
 
@@ -35,6 +36,7 @@ struct BoaCallableLease {
 struct BoaCallableEntry {
     retired: CallbackRc<CallbackCell<bool>>,
     lease: CallbackRc<BoaCallableLease>,
+    constructor: Option<WeakJsObject>,
     _backing: Option<CallbackGuard>,
 }
 
@@ -90,6 +92,27 @@ impl BoaCallables {
             returned_frames: BoaCallbackFrames::default(),
             panic_frames: BoaCallbackFrames::default(),
         }
+    }
+
+    pub(super) fn is_constructor(
+        &self,
+        object: &BoaJsObject,
+        realm: crate::RealmKey,
+    ) -> Result<bool, crate::Error> {
+        Ok(self
+            .entries
+            .try_borrow()
+            .map_err(|_| crate::Error::RegistryConflict)?
+            .values()
+            .any(|entry| {
+                entry.lease.realm == realm
+                    && entry
+                        .constructor
+                        .as_ref()
+                        .and_then(WeakJsObject::upgrade)
+                        .as_ref()
+                        == Some(object)
+            }))
     }
 
     pub(super) fn reap(&self) -> Result<(), crate::Error> {
@@ -208,12 +231,11 @@ impl Entered<'_> {
             }
             Ok(function.into())
         })?;
-        let object = self.object_value(&root)?;
-        if is_constructor {
-            state.note_constructor(&object, self.realm)?;
+        let constructor = if is_constructor {
+            Some(self.object_value(&root)?.downgrade())
         } else {
-            state.note_origin(&object, self.realm)?;
-        }
+            None
+        };
         state
             .callables
             .entries
@@ -223,6 +245,7 @@ impl Entered<'_> {
                 id,
                 BoaCallableEntry {
                     retired,
+                    constructor,
                     lease: CallbackRc::new(BoaCallableLease {
                         realm: self.realm,
                         body,

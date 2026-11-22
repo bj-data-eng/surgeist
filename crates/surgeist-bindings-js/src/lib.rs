@@ -6,8 +6,8 @@
 //!
 //! A scoped value cannot escape:
 //! ```compile_fail
-//! use surgeist_bindings_js::{EngineKind, Process};
-//! let mut process = Process::bootstrap(EngineKind::V8).unwrap();
+//! use surgeist_bindings_js::Process;
+//! let mut process = Process::bootstrap().unwrap();
 //! let mut execution = process.execution();
 //! let realm = execution.create_realm().unwrap();
 //! let escaped = execution.in_realm(&realm, |scope| scope.evaluate(&[49]));
@@ -15,8 +15,8 @@
 //!
 //! There cannot be two simultaneous execution borrows:
 //! ```compile_fail,E0499
-//! use surgeist_bindings_js::{EngineKind, Process};
-//! let mut process = Process::bootstrap(EngineKind::V8).unwrap();
+//! use surgeist_bindings_js::Process;
+//! let mut process = Process::bootstrap().unwrap();
 //! let mut first = process.execution();
 //! let mut second = process.execution();
 //! first.create_realm().unwrap();
@@ -25,8 +25,8 @@
 //!
 //! An execution owner cannot move to a pre-existing thread:
 //! ```compile_fail,E0277
-//! use surgeist_bindings_js::{EngineKind, Process};
-//! let process = Process::bootstrap(EngineKind::V8).unwrap();
+//! use surgeist_bindings_js::Process;
+//! let process = Process::bootstrap().unwrap();
 //! std::thread::spawn(move || drop(process));
 //! ```
 //!
@@ -41,9 +41,9 @@
 //!
 //! Explicit rooting is the supported way to retain a value:
 //! ```no_run
-//! use surgeist_bindings_js::{EngineKind, Error, Process};
+//! use surgeist_bindings_js::{Error, Process};
 //! # fn example() -> Result<(), Error> {
-//! let mut process = Process::bootstrap(EngineKind::V8)?;
+//! let mut process = Process::bootstrap()?;
 //! let mut execution = process.execution();
 //! let realm = execution.create_realm()?;
 //! let root = execution.in_realm(&realm, |scope| {
@@ -108,17 +108,6 @@ pub use trusted_types::{
     TrustedAttributeValue, TrustedPolicyCallback, TrustedType, TrustedTypeData, TrustedTypeKind,
 };
 
-/// Engine selected before creating any realm or heap values.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum EngineKind {
-    /// External rusty_v8, pinned by the package manifest.
-    V8,
-    /// Boa with native host object support, for Runtime qualification.
-    #[cfg(feature = "boa-qualification")]
-    Boa,
-}
-
 /// Host scalar values that can be constructed without evaluating guest source.
 /// Strings are constructed separately through [`Scope::string`].
 #[derive(Clone, Copy, Debug)]
@@ -155,14 +144,12 @@ pub enum ValueKind {
     Object,
 }
 
-/// One process-lived platform and one exclusively owned, thread-affine heap.
+/// The unique thread-affine JavaScript execution owner.
 ///
-/// Bootstrap on the worker's entry thread. Later bootstrap is allowed only on
-/// that same thread, after the prior owner is dropped. Other threads and a
-/// duplicate live owner receive typed errors before any engine entry. Do not
-/// independently initialize or use the same V8 dependency outside this owner.
-/// Platform disposal is deliberately excluded; dropping this token releases its
-/// heap, roots and pending jobs, while the platform remains process-lived.
+/// Bootstrap on the worker's entry thread. Later bootstrap is allowed on that
+/// thread after the prior owner is dropped. Other threads and duplicate owners
+/// receive typed errors before engine entry. Dropping this token releases its
+/// context, roots, and pending jobs.
 pub struct Process {
     engine: Box<dyn backend::Engine>,
     // Engine records and SDK slots are destroyed before their setup backing.
@@ -171,15 +158,10 @@ pub struct Process {
 }
 
 impl Process {
-    /// Initializes the selected backend and acquires its unique execution owner.
-    pub fn bootstrap(kind: EngineKind) -> Result<Self, Error> {
-        let engine: Box<dyn backend::Engine> = match kind {
-            EngineKind::V8 => Box::new(backend::v8::Engine::bootstrap()?),
-            #[cfg(feature = "boa-qualification")]
-            EngineKind::Boa => Box::new(backend::boa::Engine::bootstrap()?),
-        };
+    /// Initializes the backend and acquires the unique execution owner.
+    pub fn bootstrap() -> Result<Self, Error> {
         Ok(Self {
-            engine,
+            engine: Box::new(backend::boa::Engine::bootstrap()?),
             _setup_backing: None,
             thread_affinity: PhantomData,
         })
@@ -190,29 +172,18 @@ impl Process {
     /// backing is destroyed after the backend; allocator and SDK storage are
     /// excluded. This does not install a subsequent preparation policy.
     pub fn bootstrap_funded<B: 'static, E: From<Error>>(
-        kind: EngineKind,
         fund: impl FnOnce(preparation::Request) -> Result<B, E>,
     ) -> Result<Self, E> {
-        let (engine, backing): (Box<dyn backend::Engine>, B) = match kind {
-            EngineKind::V8 => {
-                let (engine, backing) = backend::v8::Engine::bootstrap_funded(fund)?;
-                (Box::new(engine), backing)
-            }
-            #[cfg(feature = "boa-qualification")]
-            EngineKind::Boa => {
-                let (engine, backing) = backend::boa::Engine::bootstrap_funded(fund)?;
-                (Box::new(engine), backing)
-            }
-        };
+        let (engine, backing) = backend::boa::Engine::bootstrap_funded(fund)?;
         Ok(Self {
-            engine,
+            engine: Box::new(engine),
             _setup_backing: Some(Box::new(backing)),
             thread_affinity: PhantomData,
         })
     }
 
     /// Borrows this heap exclusively. Forgetting the borrow cannot leak a
-    /// second isolate: this process token continues to own the original heap.
+    /// second execution owner: the original token retains custody.
     pub fn execution(&mut self) -> Execution<'_> {
         Execution {
             engine: self.engine.as_mut(),
@@ -253,22 +224,13 @@ impl Process {
     }
 }
 
-/// A point-in-time observation of the selected engine's memory accounting.
+/// A sample of Boa's thread-local garbage collector accounting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum HeapObservation {
-    /// Managed heap sample from an active V8 isolate.
-    V8 {
-        /// Bytes in use by the managed heap.
-        used_bytes: usize,
-        /// The isolate's reported heap-size limit.
-        limit_bytes: usize,
-    },
-    /// Shallow allocations counted by Boa's thread-local garbage collector.
-    BoaCollector {
-        /// Bytes in garbage-collected boxes and ephemerons.
-        used_bytes: usize,
-    },
+pub struct HeapObservation {
+    /// Shallow bytes in garbage-collected boxes and ephemerons, including
+    /// unreachable boxes awaiting collection.
+    pub used_bytes: usize,
 }
 
 /// Exclusive access to an execution owner's heap.
@@ -463,8 +425,9 @@ impl Execution<'_> {
         self.engine.checkpoint()
     }
 
-    /// Observe the current managed heap without executing guest code.
-    /// The result counts only the provider's managed heap.
+    /// Samples the thread-local collector without running a collection.
+    /// This counts shallow collector allocations across Boa contexts on the
+    /// thread. Separate buffers and process memory are outside the sample.
     pub fn observe_heap(&mut self) -> Result<HeapObservation, Error> {
         self.engine.observe_heap()
     }

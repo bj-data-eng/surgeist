@@ -6,7 +6,7 @@ use crate::document_scripting::guest::tests::{
 
 // Independent authorities: HTML877d BR/HR interfaces and their obsolete partial
 // interfaces; HTML reflected DOMString/boolean rules; Web IDL conversion and
-// receiver rules. Each case runs through the existing real-V8 entry thread.
+// receiver rules. Each case runs on the existing Runtime scripting entry thread.
 pub(super) fn break_element_families_preserve_native_and_web_idl_contracts() {
     break_element_brands_precede_value_conversion();
     break_strings_use_exact_reflection_semantics();

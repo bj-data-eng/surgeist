@@ -232,11 +232,12 @@ association readiness.
 The [hosted Style custody withdrawal](docs/explanation.md#hosted-style-custody-withdrawal)
 front joins an idle bound root to its original hosted destruction Cleanup.
 
-The optional `document-scripting` feature attaches a bindings process and realm
+The optional `document-scripting` feature attaches a Boa process and realm
 to an authenticated native top-level Document. Before publishing the attachment,
-Runtime installs `window`, `self`, `parent`, `opener`, `length`, `CSS`, and
-`DOMException`, and the constructed stylesheet interfaces on the realm's global object. For this native no-opener top-level, the first
-three getters return the same WindowProxy and the `opener` getter returns
+Runtime installs `window`, `self`, `parent`, `opener`, `length`, `CSS`,
+`DOMException`, and the constructed stylesheet interfaces on the realm's global
+object. For this native no-opener top-level, the first three getters return the
+same WindowProxy and the `opener` getter returns
 `null`. The relation accessors qualify the receiving Window against the
 current native attachment. The `length` getter reads DOM's current count of
 ordinary Document-tree child navigables. Assignments to `self`, `parent`,
@@ -253,11 +254,11 @@ retains access to that producer. Rule edits and media mutations publish
 through the actual CSSOM store.
 The host-defined child-count callable reads the original Session's current DOM.
 Entry releases native loans before running guest code and leaves queued jobs for
-an explicit checked
-checkpoint. Stop disposes of the queue and returns custody of the native Session,
-including any original pending native work. It closes the canonical engine
-registration before V8 teardown. A fresh recovered snapshot reports scripting
-Disabled, even when cancellation prevents other native work.
+an explicit checked checkpoint. Stop disposes of the queue and returns custody of
+the native Session, including any original pending native work. It closes the
+canonical engine registration before tearing down the script process. A fresh
+recovered snapshot reports scripting Disabled, even when cancellation prevents
+other native work.
 
 The attached Document exposes native `NodeIterator` and `TreeWalker` cursors.
 Set `DomLimits::with_node_iterators` and `DomLimits::with_tree_walkers` to admit
@@ -473,7 +474,7 @@ covers native hooks and timers, then attaches the original guest operation when
 a registry is enabled. Native preparation, live Source projection/report bodies
 and the reserved guest allowance share the host storage cap. Source and native
 retirement also retain their domain work limits. Reports describe Rust adapter
-work and backing. V8 owns its execution and heap behavior. Conversion policies
+work and backing. Boa owns its execution and heap behavior. Conversion policies
 installed during native setup join the original guest budget on activation.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's

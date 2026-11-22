@@ -1,4 +1,4 @@
-//! Attached V8 tests over canonical Text and Comment nodes.
+//! Attached scripting tests over canonical Text and Comment nodes.
 
 use super::*;
 

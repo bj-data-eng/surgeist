@@ -1,4 +1,4 @@
-//! Real entry-thread V8 ownership over an original native Runtime Session.
+//! Entry-thread scripting ownership over an original native Runtime Session.
 
 use std::sync::{
     Arc,
@@ -7,7 +7,7 @@ use std::sync::{
 use surgeist_bindings_js::css::CssNamespaceLimits;
 use surgeist_bindings_js::dom_exception::{DomExceptionLimits, DomExceptionName};
 use surgeist_bindings_js::{
-    Callback, Completion, EngineKind, Error, Primitive, Process, PropertyKey, Scope, ValueKind,
+    Callback, Completion, Error, Primitive, Process, PropertyKey, Scope, ValueKind,
 };
 use surgeist_css::{
     query::media::CssMediaScripting,
@@ -1209,7 +1209,7 @@ fn native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion()
     .unwrap();
 
     // The selected Web IDL exception binding requires ErrorData/Stack and an
-    // implementation-checked receiver. V8's Error.isError checks ErrorData.
+    // implementation-checked receiver. Error.isError checks ErrorData.
     eval(
         &mut host,
         &permit,
@@ -1784,7 +1784,7 @@ fn failed_enable_preserves_original_owner() {
     prepared = refused.owner;
     drop(foreign);
 
-    let occupied = Process::bootstrap(EngineKind::V8).unwrap();
+    let occupied = Process::bootstrap().unwrap();
     let refused = prepared.enable(target, ALLOW, hooks(&hook())).unwrap_err();
     assert!(matches!(
         refused.error,
@@ -2067,7 +2067,7 @@ fn assert_immediate_retirement(host: &DocumentScriptHost, queued_calls: &Arc<Ato
     let revoked = matches!(host.permit(), Err(DocumentScriptNativeError::Revoked));
     let calls = queued_calls.load(Ordering::Relaxed);
     let captures = Arc::strong_count(queued_calls);
-    let replacement = Process::bootstrap(EngineKind::V8);
+    let replacement = Process::bootstrap();
     let available = replacement.is_ok();
     drop(replacement);
     assert!(
@@ -2123,7 +2123,7 @@ fn retirement_refusals_follow_actual_canonical_publication() {
     assert!(host.permit().is_ok());
     assert_eq!(before.load(Ordering::Relaxed), 0);
     assert!(matches!(
-        Process::bootstrap(EngineKind::V8),
+        Process::bootstrap(),
         Err(Error::OwnerAlreadyActive)
     ));
     host.checkpoint().unwrap();
@@ -2190,7 +2190,7 @@ fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
     ));
     assert_eq!(queued_calls.load(Ordering::Relaxed), 0);
     assert_eq!(Arc::strong_count(&queued_calls), 1);
-    let replacement = Process::bootstrap(EngineKind::V8).unwrap();
+    let replacement = Process::bootstrap().unwrap();
     drop(replacement);
     let snapshot = host.snapshot().unwrap();
     assert_eq!(
@@ -2421,8 +2421,8 @@ fn verify_hook_keys(mut host: DocumentScriptHost, child: &[u16], detach: &[u16])
     }
 
     // The exact enable allowance is spent. Raise the same native owner's work
-    // before entering V8. JS escapes read the authored keys independently of
-    // the bindings' PropertyKey::String path that installed them.
+    // before evaluating the script. JS escapes read the authored keys
+    // independently of the bindings' PropertyKey::String installation path.
     host.with_native(|dom, mut hosted, _| hosted.set_limits(dom, limits().hosted, &cancel()))
         .unwrap()
         .unwrap();
@@ -2511,8 +2511,8 @@ fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
             baseline = probe;
         }
     }
-    // Equal-length independent keys control for V8 representation, including
-    // NUL and isolated surrogates. Only the authored UTF-16 extent varies.
+    // Equal-length keys independently exercise NUL and isolated surrogates
+    // before varying the authored UTF-16 extent.
     let other_ascii = [u16::from(b'r'), u16::from(b'2')];
     let other_lone = [0, 0xdc00];
     verify_hook_keys(
@@ -2546,7 +2546,7 @@ fn main() {
         match scenario.as_str() {
             "window-event-target-lookup" => window_document::window_resolves_the_inherited_event_target_operations(),
             "window-properties-full" => window_document::window_properties_full_assignment_regression(),
-            "boa-qualification-window-oracle" => window_document::qualification_window_oracle(),
+            "window-native-oracle" => window_document::qualification_window_oracle(),
             "window-properties-alternate-assignment" => window_document::window_properties_refuses_alternate_receiver(),
             "window-properties-direct-storage" => window_document::window_properties_direct_assignment_preserves_storage_and_inheritance(),
             "wpt-window-startup" => wpt_window_startup::starts_unmodified_harness_with_native_timers(),

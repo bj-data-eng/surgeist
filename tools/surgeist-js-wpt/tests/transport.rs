@@ -496,7 +496,7 @@ fn worker(mode: &str) {
             raw_report("V2", FIXTURE)
                 .replace(
                     r#""status":"unavailable""#,
-                    r#""status":"unavailable","sample":{"used_bytes":4,"limit_bytes":5}"#,
+                    r#""status":"unavailable","sample":{"used_bytes":4}"#,
                 )
                 .as_bytes(),
         ),

@@ -3,7 +3,7 @@
 
 Run with Python -B. --rustc additionally compiles and executes a temporary,
 standalone consumer of the generated typed values; it uses no
-Cargo, V8, downloads, or repository target directory. Run through pisct run.
+Cargo, downloads, or the repository target directory. Run through pisct run.
 """
 
 import copy

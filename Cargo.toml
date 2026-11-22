@@ -119,6 +119,4 @@ surgeist-ledger = { path = "crates/surgeist-ledger", version = "=0.1.0" }
 unsafe_code = "forbid"
 
 [patch.crates-io]
-boa_engine = { path = "crates/surgeist-boa/core/engine" }
-boa_gc = { path = "crates/surgeist-boa/core/gc" }
 accesskit_consumer = { path = "vendor/accesskit-consumer" }
