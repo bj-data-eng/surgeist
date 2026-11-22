@@ -93,6 +93,8 @@ mod document_collections;
 mod document_create_event;
 #[path = "document_scripting/document_create_range.rs"]
 mod document_create_range;
+#[path = "document_scripting/document_default_view.rs"]
+mod document_default_view;
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
 #[path = "document_scripting/document_metadata.rs"]
@@ -2537,6 +2539,7 @@ fn main() {
             "document-create-event" => document_create_event::document_create_event_exposes_the_native_uninitialized_event(),
             "document-create-event-realm" => document_create_event::borrowed_create_event_uses_the_receiving_document_realm(),
             "document-create-range" => document_create_range::document_range_keeps_canonical_live_boundaries(),
+            "document-default-view" => document_default_view::default_view_follows_the_native_document_context(),
             "document-create-range-realm" => document_create_range::borrowed_range_factory_uses_the_receiving_document_realm(),
             "document-metadata" => document_metadata::metadata_comes_from_the_canonical_document_receiver(),
             "document-metadata-source" => document_metadata::metadata_getters_read_during_an_original_native_source_reaction(),
@@ -2721,6 +2724,7 @@ fn main() {
     document_create_event::borrowed_create_event_uses_the_receiving_document_realm();
     document_create_range::document_range_keeps_canonical_live_boundaries();
     document_create_range::borrowed_range_factory_uses_the_receiving_document_realm();
+    document_default_view::default_view_follows_the_native_document_context();
     document_metadata::metadata_comes_from_the_canonical_document_receiver();
     document_metadata::metadata_getters_read_during_an_original_native_source_reaction();
     document_metadata::borrowed_metadata_getters_read_the_other_live_document();

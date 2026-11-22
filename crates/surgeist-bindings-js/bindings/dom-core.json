@@ -17761,12 +17761,39 @@
       ]
     },
     "Document.html.defaultView/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "The actual associated WindowProxy or source-defined null for no browsing context; native Global association alone supplies no WindowProxy exotic behavior.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-defaultview"
-      }
+      "kind": "native",
+      "adapter": "document.defaultview.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/document.rs",
+          "symbol": "browsing_context"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/hosted/history.rs",
+          "symbol": "hosted_creation_navigable_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/window_children.rs",
+          "symbol": "document_window"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Publish the actual associated cross-origin WindowProxy with its caller-origin access rules when that profile is available.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-defaultview",
+          "issue": 3145
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Preserve WindowProxy identity across active Window transitions when navigation retargeting is available.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-defaultview",
+          "issue": 3146
+        }
+      ]
     },
     "Document.html.hasFocus:0/call": {
       "kind": "host",

@@ -198,18 +198,40 @@ pub(super) fn install_document_element_collections<'scope>(
     document: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    use HtmlDocumentCollection::{Anchors, Applets, Embeds, Forms, Images, Links, Scripts};
-    let getters: [(&[u16], &[u16], HtmlDocumentCollection); 8] = [
+    use HtmlDocumentCollection::{Embeds, Forms, Images, Links, Scripts};
+    let getters: [CollectionGetter<'_>; 6] = [
         (&ascii(b"images"), &ascii(b"get images"), Images),
         (&ascii(b"embeds"), &ascii(b"get embeds"), Embeds),
         (&ascii(b"plugins"), &ascii(b"get plugins"), Embeds),
         (&ascii(b"links"), &ascii(b"get links"), Links),
         (&ascii(b"forms"), &ascii(b"get forms"), Forms),
         (&ascii(b"scripts"), &ascii(b"get scripts"), Scripts),
+    ];
+    install_document_collections(scope, document, capture, &getters)
+}
+
+pub(super) fn install_obsolete_document_collections<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    use HtmlDocumentCollection::{Anchors, Applets};
+    let getters: [CollectionGetter<'_>; 2] = [
         (&ascii(b"anchors"), &ascii(b"get anchors"), Anchors),
         (&ascii(b"applets"), &ascii(b"get applets"), Applets),
     ];
-    for (name, function_name, filter) in getters {
+    install_document_collections(scope, document, capture, &getters)
+}
+
+type CollectionGetter<'a> = (&'a [u16], &'a [u16], HtmlDocumentCollection);
+
+fn install_document_collections<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+    getters: &[CollectionGetter<'_>],
+) -> Result<(), DocumentGuestEventError> {
+    for &(name, function_name, filter) in getters {
         let getter = capture(size_of::<(Capture, HtmlDocumentCollection)>())?;
         install_getter(
             scope,

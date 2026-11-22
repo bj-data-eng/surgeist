@@ -17,6 +17,7 @@ pub(in crate::document_scripting) mod attributes;
 pub(in crate::document_scripting) mod canvas_dimension_admission;
 pub(in crate::document_scripting) mod control_autocomplete_admission;
 pub(in crate::document_scripting) mod conversion_admission;
+pub(in crate::document_scripting) mod document_default_view;
 pub(in crate::document_scripting) mod document_event_admission;
 pub(in crate::document_scripting) mod document_metadata_admission;
 pub(in crate::document_scripting) mod document_range_admission;
