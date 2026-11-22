@@ -139,12 +139,13 @@ impl Capture {
             }
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let project = |scope: &mut Scope<'scope>, prototype: &RetainedCallbackObject| {
+                let admit = cached_projection_admission(scope, &owner, &events, 1)?;
                 let (value, holder, ()) = scope.try_project_retained_native_object(
                     NativeProjectionPrototype::Creation(prototype),
                     Implementation(document),
                     |payload, holder| {
                         Ok::<_, DocumentGuestEventError>((
-                            events.reserve(&owner, payload)?,
+                            admit(payload)?,
                             events.reserve(&owner, holder)?,
                         ))
                     },

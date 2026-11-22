@@ -1,7 +1,22 @@
 use super::{window_length::observe, *};
+use surgeist_html_semantics::{
+    HtmlAboutBaseUrl, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsLimits,
+    HtmlBaseFactsRevision, HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme,
+    HtmlEncodingUrlParseFacts, HtmlEncodingUrlParseObservation, HtmlEncodingUrlParseOutcome,
+    HtmlParseBaseFacts,
+};
 
 pub(super) fn document_collections_share_live_native_identity() {
-    let (session, top) = setup();
+    let mut dom = native_dom();
+    let native_limits = dom
+        .limits()
+        .with_base_processing(128, 1_000_000)
+        .unwrap()
+        .with_encoding_url_processing(128, 1_000_000)
+        .unwrap();
+    dom.set_limits(native_limits).unwrap();
+    let mut session = DomSession::new(dom, limits()).unwrap();
+    let (_, top) = create(&mut session);
     let (mut host, _) =
         attach_event_window_with_work(session, top, Arc::new(cancel()), 180_000, |_, _, _| {});
     let permit = host.permit().unwrap();
@@ -22,6 +37,70 @@ pub(super) fn document_collections_share_live_native_identity() {
             receipt.created(&form).unwrap().unwrap()
         })
         .unwrap();
+
+    let existing = host.snapshot().unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            "(globalThis.collectionFixture = document.implementation.createHTMLDocument(), 'ok')",
+        ),
+        "ok"
+    );
+    host.with_native(|dom, _, _| {
+        let snapshot = dom.snapshot();
+        let mut fresh = snapshot.nodes().filter_map(|node| {
+            if existing.node(node).is_ok() {
+                return None;
+            }
+            snapshot.node(node).unwrap().as_document()
+        });
+        let document = fresh.next().unwrap().id();
+        assert!(fresh.next().is_none());
+        let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 1, 1);
+        let encoding = HtmlBaseEncoding::fresh();
+        let base = HtmlBaseUrlRecord::observed(
+            revision.clone(),
+            "about:blank".into(),
+            HtmlBaseUrlScheme::Other,
+            true,
+            None,
+        )
+        .unwrap();
+        let limits = HtmlBaseFactsLimits::new(16, 4096, 100_000);
+        let base_facts = HtmlParseBaseFacts::new(
+            HtmlBaseDocumentFacts::new(
+                revision.clone(),
+                Some(base.clone()),
+                HtmlAboutBaseUrl::KnownNull,
+                false,
+                Some(encoding.clone()),
+            )
+            .unwrap(),
+            Vec::new(),
+            limits,
+        )
+        .unwrap();
+        let mut batch = DomBatch::new();
+        batch.bind_base_facts(snapshot.document(document).unwrap().stamp(), &base_facts);
+        dom.apply(batch, &cancel()).unwrap();
+        let urls = HtmlEncodingUrlParseFacts::new(
+            base,
+            encoding,
+            revision,
+            vec![HtmlEncodingUrlParseObservation::new(
+                "".into(),
+                HtmlEncodingUrlParseOutcome::Failure,
+            )],
+            limits,
+        )
+        .unwrap();
+        let mut batch = DomBatch::new();
+        batch.bind_encoding_url_facts(dom.snapshot().document(document).unwrap().stamp(), &urls);
+        dom.apply(batch, &cancel()).unwrap();
+    })
+    .unwrap();
+    drop(existing);
 
     let initial = observe(
         &mut host,
@@ -55,7 +134,7 @@ pub(super) fn document_collections_share_live_native_identity() {
                 || document.applets === document.images || empty.applets === empty.images)
                 return 'identity must be shared only by the specified alias';
 
-            const detached = document.implementation.createHTMLDocument();
+            const detached = collectionFixture;
             const {images, links, anchors, applets, embeds} = detached;
             const image = detached.createElement('img');
             const a = detached.createElement('a');
@@ -64,10 +143,20 @@ pub(super) fn document_collections_share_live_native_identity() {
             const svgAnchor = detached.createElementNS('http://www.w3.org/2000/svg', 'a');
             const svgEmbed = detached.createElementNS('http://www.w3.org/2000/svg', 'embed');
             a.setAttribute('name', '');
+            a.setAttributeNS('urn:other', 'p:href', '');
             area.setAttribute('href', '');
             svgAnchor.setAttribute('href', '');
             for (const node of [image, a, area, applet, svgAnchor, svgEmbed])
                 detached.body.appendChild(node);
+            const template = detached.body.appendChild(detached.createElement('template'));
+            const shadowHost = detached.body.appendChild(detached.createElement('div'));
+            const shadow = shadowHost.attachShadow({mode: 'open'});
+            for (const container of [template.content, shadow]) {
+                const hidden = detached.createElement('a');
+                hidden.setAttribute('name', 'hidden');
+                hidden.setAttribute('href', '');
+                container.appendChild(hidden);
+            }
             if (images !== detached.images || images.length !== 1 || images[0] !== image
                 || links.length !== 1 || links[0] !== area || anchors.length !== 1 || anchors[0] !== a
                 || applets.length !== 0 || embeds.length !== 0 || detached.plugins !== embeds)

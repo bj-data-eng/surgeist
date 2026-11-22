@@ -88,9 +88,11 @@ pub(in crate::document_scripting) fn document_collection_admits_its_reference_pa
         })
         .unwrap();
     let base = std::cell::Cell::new(0);
+    let references = std::cell::Cell::new(0);
     let permit = control.permit().unwrap();
     control
         .in_document(&permit, |scope| {
+            references.set(2 * scope.native_reference_storage_bytes());
             let probe = scope.project_native_object(
                 surgeist_bindings_js::ObjectPrototype::Default,
                 ProjectionPayload {
@@ -111,8 +113,7 @@ pub(in crate::document_scripting) fn document_collection_admits_its_reference_pa
     let before = events.budget.used();
     let (result, peak) = events.budget.measure_peak(|| open_collection(&mut control));
     result.unwrap();
-    let refs = 2 * size_of::<(u32, usize)>();
-    assert_eq!(events.budget.used() - before, base.get() + refs);
+    assert_eq!(events.budget.used() - before, base.get() + references.get());
     let required = peak - before;
     drop((events, control));
 

@@ -456,6 +456,7 @@ impl DocumentPrototypes {
         tree::install_import(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         html_document::install(scope, &document, funding.capture)?;
+        tag_collection::install_document_element_collections(scope, &document, funding.capture)?;
         title::install_document(scope, &document, funding.capture)?;
         legacy::install(scope, &document, funding.capture)?;
         let all = all_collection::install(scope, &global, &document, funding)?;
@@ -884,6 +885,25 @@ pub(super) fn install_node<'scope>(
     let global = scope.global()?;
     install_interface(scope, &global, NODE, &node_constructor, &node)?;
     Ok((node_constructor, node))
+}
+
+fn cached_projection_admission<'fund>(
+    scope: &Scope<'_>,
+    owner: &'fund NativeOwner,
+    events: &'fund GuestEvents,
+    references: usize,
+) -> Result<impl FnOnce(usize) -> Result<GuestBacking, DocumentGuestEventError> + use<'fund>, Error>
+{
+    let reference_bytes = scope
+        .native_reference_storage_bytes()
+        .checked_mul(references)
+        .ok_or(Error::Allocation)?;
+    Ok(move |projection_bytes: usize| {
+        let bytes = projection_bytes
+            .checked_add(reference_bytes)
+            .ok_or(Error::Allocation)?;
+        events.reserve(owner, bytes)
+    })
 }
 
 pub(super) fn install_interface<'scope>(

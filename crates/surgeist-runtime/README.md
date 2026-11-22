@@ -578,6 +578,11 @@ the ECMAScript IsHTMLDDA semantics to this object. Indexed and named reads use
 the current canonical tree, and multiple named matches return a live
 `HTMLCollection`.
 
+The standard Document element collection getters return live
+`HTMLCollection` objects. `document.plugins` shares the exact
+`document.embeds` object. `document.applets` exposes the standard empty
+collection.
+
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.
 `clearTimeout` releases the registration. Runtime orders admitted timers by

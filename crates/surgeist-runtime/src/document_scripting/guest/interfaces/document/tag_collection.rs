@@ -11,6 +11,7 @@ use surgeist_dom::hosted::DomWindowNamedValue;
 use surgeist_dom::tree::{
     DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
 };
+use surgeist_html::vocabulary::HtmlDocumentCollection;
 
 const COLLECTION: &[u16] = &ascii(b"HTMLCollection");
 const GET_BY_TAG: &[u16] = &ascii(b"getElementsByTagName");
@@ -19,7 +20,7 @@ const NAMED_ITEM: &[u16] = &ascii(b"namedItem");
 
 struct Collection {
     native: DomHtmlCollection,
-    _query: GuestBacking,
+    _query: Option<GuestBacking>,
 }
 
 #[derive(Clone)]
@@ -39,8 +40,10 @@ impl CollectionProjection {
         collection: Collection,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let prototype = scope.open_callback_object(&self.prototype)?;
-        self.project_in_realm(scope, &prototype, owner, events, collection)
-            .map(Completion::Return)
+        self.project_in_realm(scope, &prototype, collection, |bytes| {
+            events.reserve(owner, bytes)
+        })
+        .map(Completion::Return)
     }
 
     pub(super) fn project_named_result<'scope>(
@@ -53,29 +56,78 @@ impl CollectionProjection {
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let collection = Collection {
             native,
-            _query: query,
+            _query: Some(query),
         };
         let prototype = scope.open_callback_object(&self.prototype)?;
         let callback = scope.callback_object(&prototype)?;
+        let admit = |bytes| events.reserve(owner, bytes);
         if callback.associated_realm().identity() == scope.realm_authority()?.identity() {
             return self
-                .project_in_realm(scope, &prototype, owner, events, collection)
+                .project_in_realm(scope, &prototype, collection, admit)
                 .map(Completion::Return);
         }
         let value = scope.in_callback_object_realm(&callback, |scope, prototype| {
-            let value = self.project_in_realm(scope, prototype, owner, events, collection)?;
+            let value = self.project_in_realm(scope, prototype, collection, admit)?;
             Ok::<_, DocumentGuestEventError>(scope.retain(&value))
         })?;
         Ok(Completion::Return(scope.import(&value)?))
+    }
+
+    fn project_for_document<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        native: (&NativeOwner, &GuestEvents, DomHtmlCollection),
+        document: &Value<'scope>,
+        reference: u32,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let prototype = scope.open_callback_object(&self.prototype)?;
+        let callback = scope.callback_object(&prototype)?;
+        if callback.associated_realm().identity() == scope.realm_authority()?.identity() {
+            return self.project_bound_in_realm(scope, &prototype, native, document, reference);
+        }
+        let document = scope.retain(document);
+        let projected = scope.in_callback_object_realm(&callback, |scope, prototype| {
+            let document = scope.import(&document)?;
+            let projected =
+                self.project_bound_in_realm(scope, prototype, native, &document, reference)?;
+            Ok::<_, DocumentGuestEventError>(scope.retain(&projected))
+        })?;
+        Ok(scope.import(&projected)?)
+    }
+
+    fn project_bound_in_realm<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        prototype: &Value<'scope>,
+        (owner, events, native): (&NativeOwner, &GuestEvents, DomHtmlCollection),
+        document: &Value<'scope>,
+        reference: u32,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let admit = cached_projection_admission(scope, owner, events, 2)?;
+        let projected = self.project_in_realm(
+            scope,
+            prototype,
+            Collection {
+                native,
+                _query: None,
+            },
+            admit,
+        )?;
+        scope.set_native_object_reference::<Collection>(&projected, 0, Some(document))?;
+        scope.set_native_object_reference::<GuestNodeProjection>(
+            document,
+            reference,
+            Some(&projected),
+        )?;
+        Ok(projected)
     }
 
     fn project_in_realm<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         prototype: &Value<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
         collection: Collection,
+        admit: impl FnOnce(usize) -> Result<GuestBacking, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let read = scope.open_callback_object(&self.read)?;
         let keys = scope.open_callback_object(&self.keys)?;
@@ -86,10 +138,55 @@ impl CollectionProjection {
             &read,
             &keys,
             &named_getter,
-            |bytes| events.reserve(owner, bytes),
+            admit,
         )?;
         Ok(value)
     }
+}
+
+fn document_collection_reference(filter: HtmlDocumentCollection) -> u32 {
+    // Document's earlier slots hold DOMImplementation and HTMLAllCollection.
+    match filter {
+        HtmlDocumentCollection::Images => 3,
+        HtmlDocumentCollection::Embeds => 4,
+        HtmlDocumentCollection::Links => 5,
+        HtmlDocumentCollection::Forms => 6,
+        HtmlDocumentCollection::Scripts => 7,
+        HtmlDocumentCollection::Anchors => 8,
+        HtmlDocumentCollection::Applets => 9,
+    }
+}
+
+pub(super) fn install_document_element_collections<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    use HtmlDocumentCollection::{Anchors, Applets, Embeds, Forms, Images, Links, Scripts};
+    let getters: [(&[u16], &[u16], HtmlDocumentCollection); 8] = [
+        (&ascii(b"images"), &ascii(b"get images"), Images),
+        (&ascii(b"embeds"), &ascii(b"get embeds"), Embeds),
+        (&ascii(b"plugins"), &ascii(b"get plugins"), Embeds),
+        (&ascii(b"links"), &ascii(b"get links"), Links),
+        (&ascii(b"forms"), &ascii(b"get forms"), Forms),
+        (&ascii(b"scripts"), &ascii(b"get scripts"), Scripts),
+        (&ascii(b"anchors"), &ascii(b"get anchors"), Anchors),
+        (&ascii(b"applets"), &ascii(b"get applets"), Applets),
+    ];
+    for (name, function_name, filter) in getters {
+        let getter = capture(size_of::<(Capture, HtmlDocumentCollection)>())?;
+        install_getter(
+            scope,
+            document,
+            name,
+            function_name,
+            true,
+            Callback::new(move |scope, arguments| {
+                getter.document_element_collection(scope, arguments, filter)
+            }),
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -272,6 +369,59 @@ pub(super) fn install_window(
 }
 
 impl Capture {
+    fn document_element_collection<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+        filter: HtmlDocumentCollection,
+    ) -> Result<Completion<'scope>, Error> {
+        let receiver = arguments.receiver();
+        let Some(GuestNode::Document(document)) = tree::projected_node(scope, receiver)? else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Document required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            events.step()?;
+            let reference = document_collection_reference(filter);
+            if let Some(cached) =
+                scope.native_object_reference::<GuestNodeProjection>(receiver, reference)?
+            {
+                return Ok(Completion::Return(cached));
+            }
+            let native = self.callbacks.with_read(&owner, &events, |read, _| {
+                read.step()?;
+                let dom = read
+                    .dom
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                Ok(dom
+                    .raw()
+                    .document_html_collection(document, filter, read.cancel)?)
+            })?;
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let project = |scope: &mut Scope<'scope>, projection: &CollectionProjection| {
+                projection.project_for_document(
+                    scope,
+                    (&owner, &events, native),
+                    receiver,
+                    reference,
+                )
+            };
+            let value =
+                if let Some(origin) = public.other_document_origin(&owner, &events, document)? {
+                    public.with_origin(&events, origin, |origin| {
+                        project(scope, &origin.documents.collections)
+                    })?
+                } else {
+                    project(scope, &public.document.prototypes.collections)?
+                };
+            Ok(Completion::Return(value))
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
     fn get_elements_by_tag_name<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -317,7 +467,7 @@ impl Capture {
                 &events,
                 Collection {
                     native,
-                    _query: backing,
+                    _query: Some(backing),
                 },
             )
         })();
@@ -372,7 +522,7 @@ impl Capture {
                     &events,
                     Collection {
                         native,
-                        _query: backing,
+                        _query: Some(backing),
                     },
                 ),
                 DomWindowNamedValue::Child(context) => {

@@ -233,7 +233,13 @@ fn legacy_methods_and_alias_keep_registered_realms() {
         origin.document().node(),
         "originLegacyDocument",
     );
-    let (foreign_document, foreign_alias, foreign_type_error, foreign_all_collection) = {
+    let (
+        foreign_document,
+        foreign_alias,
+        foreign_type_error,
+        foreign_all_collection,
+        foreign_collection,
+    ) = {
         let engine = host.engine.as_mut().unwrap();
         let realm = engine
             .creations
@@ -248,11 +254,13 @@ fn legacy_methods_and_alias_keep_registered_realms() {
                 let alias = evaluate(scope, "HTMLDocument")?;
                 let error = evaluate(scope, "TypeError")?;
                 let all_collection = evaluate(scope, "HTMLAllCollection")?;
+                let collection = evaluate(scope, "HTMLCollection")?;
                 Ok((
                     scope.retain(&document),
                     scope.retain(&alias),
                     scope.retain(&error),
                     scope.retain(&all_collection),
+                    scope.retain(&collection),
                 ))
             })
             .unwrap()
@@ -264,7 +272,8 @@ fn legacy_methods_and_alias_keep_registered_realms() {
         let global = scope.global()?;
         for (name, root) in [("foreignLegacyDocument", &foreign_document),
             ("foreignLegacyAlias", &foreign_alias), ("foreignLegacyTypeError", &foreign_type_error),
-            ("foreignAllCollection", &foreign_all_collection)] {
+            ("foreignAllCollection", &foreign_all_collection),
+            ("foreignHTMLCollection", &foreign_collection)] {
             let value = scope.import(root)?;
             scope.set(&global, PropertyKey::String(&name.encode_utf16().collect::<Vec<_>>()), &value)?;
         }
@@ -293,6 +302,16 @@ fn legacy_methods_and_alias_keep_registered_realms() {
                     return 'borrowed collection getters retain the Document creation realm and holder';
                 globalThis.originalLegacyAll = registeredCollection;
                 globalThis.originalLegacyRoot = originalRoot;
+                const localForms = Object.getOwnPropertyDescriptor(Document.prototype, 'forms').get;
+                const foreignForms = Object.getOwnPropertyDescriptor(foreignLegacyDocument.prototype, 'forms').get;
+                const registeredForms = localForms.call(originLegacyDocument);
+                if (!(registeredForms instanceof foreignHTMLCollection)
+                    || registeredForms instanceof HTMLCollection
+                    || !(foreignForms.call(document) instanceof HTMLCollection)
+                    || registeredForms !== originLegacyDocument.forms
+                    || registeredForms === document.forms || registeredForms.length !== 0)
+                    return 'standard collections follow foreign Document creation and identity';
+                globalThis.originalLegacyForms = registeredForms;
                 const poison = new Proxy({}, {get() { throw 0; }, ownKeys() { throw 0; }});
                 for (const name of ['clear', 'captureEvents', 'releaseEvents']) {
                     const foreign = Object.getOwnPropertyDescriptor(foreignLegacyDocument.prototype, name).value;
@@ -315,6 +334,11 @@ fn legacy_methods_and_alias_keep_registered_realms() {
         let all = evaluate(scope, "originalLegacyAll")?;
         assert_eq!(
             scope.callback_object(&all)?.associated_realm().identity(),
+            scope.callback_object(&value)?.associated_realm().identity()
+        );
+        let forms = evaluate(scope, "originalLegacyForms")?;
+        assert_eq!(
+            scope.callback_object(&forms)?.associated_realm().identity(),
             scope.callback_object(&value)?.associated_realm().identity()
         );
         Ok(())
@@ -386,7 +410,9 @@ fn legacy_methods_and_alias_keep_registered_realms() {
                     && collection === originalLegacyAll
                     && Object.getPrototypeOf(collection) === foreignAllCollection.prototype
                     && collection[0] === originalLegacyRoot
-                    && Reflect.apply(collection, null, ['0']) === originalLegacyRoot;
+                    && Reflect.apply(collection, null, ['0']) === originalLegacyRoot
+                    && originLegacyDocument.forms === originalLegacyForms
+                    && originalLegacyForms.length === 0;
             })()
         "#)?;
         assert!(scope.boolean(&result)?);

@@ -205,6 +205,7 @@ impl Projection {
         let keys = scope.open_callback_object(&self.keys)?;
         let named_getter = scope.open_callback_object(&self.named_getter)?;
         let call = scope.open_callback_object(&self.call)?;
+        let admit = cached_projection_admission(scope, owner, events, 2)?;
         let all = scope.project_html_all_collection(
             ObjectPrototype::Object(prototype),
             collection,
@@ -214,7 +215,7 @@ impl Projection {
                 named_getter: &named_getter,
                 call: &call,
             },
-            |bytes| events.reserve(owner, bytes),
+            admit,
         )?;
         scope.set_native_object_reference::<Collection>(
             &all,

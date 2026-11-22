@@ -87,6 +87,56 @@ macro_rules! vocabulary {
 #[cfg(test)]
 mod recognition_tests;
 
+/// The element filters for the standard Document collection attributes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlDocumentCollection {
+    /// HTML img elements.
+    Images,
+    /// HTML embed elements, shared by the embeds and plugins getters.
+    Embeds,
+    /// HTML a and area elements with an href attribute.
+    Links,
+    /// HTML form elements.
+    Forms,
+    /// HTML script elements.
+    Scripts,
+    /// HTML a elements with a name attribute.
+    Anchors,
+    /// The source-defined empty applets collection.
+    Applets,
+}
+
+/// The membership rule once an element is known to be in the HTML namespace.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlDocumentCollectionMatch {
+    /// This local name does not qualify.
+    Excluded,
+    /// This local name qualifies without further inspection.
+    Included,
+    /// Membership requires a present null-namespace attribute with this name.
+    AttributePresent(&'static [u16]),
+}
+
+impl HtmlDocumentCollection {
+    /// Select the rule for an exact HTML local name.
+    pub const fn match_local_name(self, units: &[u16]) -> HtmlDocumentCollectionMatch {
+        use HtmlDocumentCollectionMatch::{AttributePresent, Excluded, Included};
+        use KnownHtmlElement as Element;
+
+        match (self, KnownHtmlElement::from_units(units)) {
+            (Self::Images, Some(Element::Img))
+            | (Self::Embeds, Some(Element::Embed))
+            | (Self::Forms, Some(Element::Form))
+            | (Self::Scripts, Some(Element::Script)) => Included,
+            (Self::Links, Some(Element::A | Element::Area)) => {
+                AttributePresent(&[0x68, 0x72, 0x65, 0x66])
+            }
+            (Self::Anchors, Some(Element::A)) => AttributePresent(&[0x6e, 0x61, 0x6d, 0x65]),
+            _ => Excluded,
+        }
+    }
+}
+
 /// Whether an exact HTML local name contributes its name attribute to Document.all.
 pub const fn is_document_all_named_local_name(units: &[u16]) -> bool {
     matches!(

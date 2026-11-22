@@ -15,7 +15,10 @@ use crate::internal::{
 
 use surgeist_html::{
     values::HtmlNameInput,
-    vocabulary::{KnownHtmlElement, is_document_all_named_local_name},
+    vocabulary::{
+        HtmlDocumentCollection, HtmlDocumentCollectionMatch, KnownHtmlElement,
+        is_document_all_named_local_name,
+    },
 };
 
 const ID: &[u16] = &[0x69, 0x64];
@@ -54,6 +57,7 @@ enum Filter {
     WindowName(DocumentString),
     All,
     AllName(DocumentString),
+    Document(HtmlDocumentCollection),
 }
 
 #[derive(Clone, Copy)]
@@ -225,6 +229,20 @@ impl Dom {
             document,
             filter: Filter::All,
         }))
+    }
+
+    /// Form a live collection for a standard Document element filter.
+    pub fn document_html_collection(
+        &self,
+        document: DocumentId,
+        filter: HtmlDocumentCollection,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlCollection, DomError> {
+        self.validate_collection_document(document, cancel)?;
+        Ok(DomHtmlCollection {
+            document,
+            filter: Filter::Document(filter),
+        })
     }
 
     fn validate_collection_document(
@@ -521,6 +539,13 @@ where
         &self,
         mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
+        if matches!(
+            &self.collection.filter,
+            Filter::Document(HtmlDocumentCollection::Applets)
+        ) {
+            self.meter.step()?;
+            return Ok(None);
+        }
         let root = self.collection.document.node();
         let mut at = self.child(root, 0)?;
         while let Some(id) = at {
@@ -546,6 +571,7 @@ where
                     Filter::AllName(name) => {
                         self.element_matches_name(node, name, ElementNameScope::All)?
                     }
+                    Filter::Document(filter) => self.matches_document_filter(node, *filter)?,
                 };
                 if matches && let ControlFlow::Break(value) = visit(node)? {
                     return Ok(Some(value));
@@ -578,6 +604,28 @@ where
             Ok(ElementMatches::Multiple)
         } else {
             Ok(first.map_or(ElementMatches::Absent, ElementMatches::One))
+        }
+    }
+
+    fn matches_document_filter(
+        &self,
+        node: DomNode<'_>,
+        filter: HtmlDocumentCollection,
+    ) -> Result<bool, E> {
+        let element = node.as_element().ok_or(DomError::WrongNodeKind)?;
+        if !in_html_namespace_with(element.name(), || self.meter.step())? {
+            return Ok(false);
+        }
+        self.meter.step()?;
+        match filter.match_local_name(element.name().local_name().code_units()) {
+            HtmlDocumentCollectionMatch::Excluded => Ok(false),
+            HtmlDocumentCollectionMatch::Included => Ok(true),
+            HtmlDocumentCollectionMatch::AttributePresent(name) => {
+                let attributes = node.attributes().ok_or(DomError::WrongNodeKind)?;
+                Ok(attributes
+                    .get_null_namespace_attribute_with(name, || self.meter.step())?
+                    .is_some())
+            }
         }
     }
 
