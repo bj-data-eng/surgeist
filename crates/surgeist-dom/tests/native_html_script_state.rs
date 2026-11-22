@@ -1,5 +1,5 @@
 //! HTML877d native Script state and source hooks through the Disabled return.
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use surgeist_dom::{
     Dom, DomBatch, DomCommit, DomError, DomSnapshot,
     capture::DomHtmlCaptureLimits,
@@ -8,6 +8,7 @@ use surgeist_dom::{
     limits::{DomLimits, DomResource},
     script::DomHtmlScript,
     shadow::DomTemplateDocumentRole,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
 };
 use surgeist_html::elements::script::{HtmlScriptKind as Kind, HtmlScriptResult};
 use surgeist_html::{
@@ -793,4 +794,132 @@ fn fragment_script_hooks_compose_with_real_slot_form_and_clonable_shadow_state()
             .unwrap(),
         Some(form)
     );
+}
+
+#[test]
+fn async_idl_flag_and_attribute_have_one_source_admission_boundary() {
+    let mut dom = dom();
+    let (document, _) = setup(&mut dom);
+    let mut batch = DomBatch::new();
+    let node = batch.create_element_ns(document, Namespace::html(), "script");
+    batch.set_attribute(&node, "title", "unreached while force-async is true");
+    let node = apply(&mut dom, batch).created(&node).unwrap().unwrap();
+    let cancel = AtomicBool::new(false);
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let read = |snapshot: &DomSnapshot| {
+        script(snapshot, node)
+            .effective_async_with(|| Ok::<_, DomError>(()))
+            .unwrap()
+    };
+    let attr = |snapshot: &DomSnapshot| {
+        snapshot
+            .node(node)
+            .unwrap()
+            .attribute_ns(&Namespace::none(), &"async".into())
+            .cloned()
+    };
+    let read_one_step = |snapshot: &DomSnapshot| {
+        let mut first = true;
+        script(snapshot, node).effective_async_with(|| {
+            if std::mem::take(&mut first) {
+                Ok(())
+            } else {
+                Err(DomError::Cancelled)
+            }
+        })
+    };
+    let unchanged = |dom: &Dom| {
+        let after = dom.snapshot();
+        assert!(script(&after, node).flags().force_async());
+        assert_eq!(attr(&after), None);
+        assert_eq!(after.stamp(), before.stamp());
+        assert_eq!(dom.usage(), usage);
+        assert!(dom.pending_source_edit().is_none());
+    };
+    let policy = |work| DomSourceLimits::new(16_000_000, 200_000, work, 64, 64, 64, 2);
+    assert_eq!(read_one_step(&before), Ok(true));
+    assert_eq!(attr(&before), None);
+
+    // Admit the Source entry itself, then run the edit at that exact retained
+    // unit cap. Forming the async attribute name reaches additional storage.
+    let (entry_limit, result) = (0..12_000)
+        .find_map(|units| {
+            let policy = DomSourceLimits::new(16_000_000, units, 12_000, 64, 64, 64, 2);
+            let edit = DomSourceEdit::set_html_script_async(node, true);
+            match dom.begin_source_edit(edit, policy, &cancel) {
+                Ok(mut lease) => Some((units, lease.advance(&cancel))),
+                Err(DomError::ResourceLimit {
+                    resource: DomResource::SourceRetainedUnits,
+                    limit,
+                }) => {
+                    assert_eq!(limit, units);
+                    None
+                }
+                Err(error) => panic!("unexpected storage entry refusal: {error:?}"),
+            }
+        })
+        .expect("finite Script Source entry");
+    assert!(matches!(
+        result,
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedUnits,
+            limit,
+        }) if limit == entry_limit
+    ));
+    unchanged(&dom);
+
+    let edit = DomSourceEdit::set_html_script_async(node, true);
+    let mut lease = dom
+        .begin_source_edit(edit, policy(12_000), &cancel)
+        .unwrap();
+    cancel.store(true, Ordering::Relaxed);
+    assert!(matches!(lease.advance(&cancel), Err(DomError::Cancelled)));
+    drop(lease);
+    unchanged(&dom);
+    cancel.store(false, Ordering::Relaxed);
+
+    let mut reached = None;
+    for work in 0..12_000 {
+        let result = dom
+            .begin_source_edit(
+                DomSourceEdit::set_html_script_async(node, true),
+                policy(work),
+                &cancel,
+            )
+            .and_then(|mut lease| lease.advance(&cancel));
+        match result {
+            Ok(DomSourceProgress::Complete(_)) => {
+                reached = Some(work);
+                break;
+            }
+            Err(DomError::SourceWorkLimit { limit }) => assert_eq!(limit, work),
+            other => panic!("unexpected async Source result: {other:?}"),
+        }
+        unchanged(&dom);
+    }
+    assert!(reached.is_some_and(|work| work > 0));
+    let published = dom.snapshot();
+    assert!(!script(&published, node).flags().force_async());
+    assert_eq!(attr(&published), Some("".into()));
+    assert!(read(&published));
+    assert_eq!(read_one_step(&published), Err(DomError::Cancelled));
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_html_script_async(node, false),
+            policy(12_000),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel),
+        Ok(DomSourceProgress::Complete(_))
+    ));
+    drop(lease);
+    let after = dom.snapshot();
+    assert!(!read(&after));
+    assert_eq!(attr(&after), None);
+    assert!(read(&before));
+    assert!(read(&published));
 }

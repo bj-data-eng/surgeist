@@ -1,6 +1,7 @@
 //! Actual bounded native HTML Script metadata, in the canonical identity phase.
 use crate::{
     internal::identity::DocumentId, internal::identity::NodeId, internal::snapshot::DomNode,
+    internal::store::DomError,
 };
 use surgeist_html::elements::script::{
     HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult,
@@ -57,6 +58,30 @@ impl DomHtmlScript<'_> {
     pub fn flags(self) -> HtmlScriptFlags {
         self.state().flags
     }
+    /// Read the current HTML Script async property from this snapshot.
+    ///
+    /// A true native force-async flag settles the read. Otherwise `step`
+    /// admits the lookup of the exact null-namespace content attribute.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first reached admission or native lookup failure.
+    pub fn effective_async_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        step()?;
+        let state = self.node.node.script().ok_or(DomError::WrongNodeKind)?;
+        if state.flags.force_async() {
+            return Ok(true);
+        }
+        const ASYNC: [u16; 5] = [0x61, 0x73, 0x79, 0x6e, 0x63];
+        let attrs = self.node.attributes().ok_or(DomError::WrongNodeKind)?;
+        Ok(attrs
+            .get_null_namespace_attribute_with(&ASYNC, step)?
+            .is_some())
+    }
+
     pub fn script_type(self) -> Option<HtmlScriptKind> {
         self.state().kind
     }

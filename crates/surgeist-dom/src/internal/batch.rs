@@ -170,6 +170,10 @@ pub(crate) enum Command {
         node: NodeOperand,
         disabled: bool,
     },
+    SetHtmlScriptAsync {
+        node: NodeOperand,
+        value: bool,
+    },
     Output {
         node: NodeOperand,
         edit: crate::internal::output::Edit,

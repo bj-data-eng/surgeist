@@ -131,6 +131,7 @@ impl OperationRoot {
             Command::AssignSlot { slot, .. } => existing(slot),
             Command::Select { node, .. }
             | Command::SetStyleDisabled { node, .. }
+            | Command::SetHtmlScriptAsync { node, .. }
             | Command::Output { node, .. }
             | Command::SetTextareaValue { node, .. }
             | Command::SetTextareaDefaultValue { node, .. }

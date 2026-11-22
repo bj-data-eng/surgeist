@@ -1291,6 +1291,20 @@ impl DomSourceEdit {
             },
         }
     }
+    /// Clear a native HTML Script's force-async flag and reflect the assigned
+    /// async value in the same Source operation.
+    ///
+    /// A true assignment sets the null-namespace attribute to the empty
+    /// string. A false assignment removes it. Both clear the native flag.
+    pub fn set_html_script_async(node: NodeId, value: bool) -> Self {
+        Self {
+            command: Command::SetHtmlScriptAsync {
+                node: node.into(),
+                value,
+            },
+        }
+    }
+
     /// Request one `set_input_checked` operation on the canonical owner.
     pub fn set_input_checked(node: NodeId, value: bool) -> Self {
         Self {

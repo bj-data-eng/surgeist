@@ -80,6 +80,14 @@ impl HtmlScriptFlags {
         self.force_async = false;
     }
 
+    /// The flag write performed by assigning the Script's async IDL property.
+    ///
+    /// The native owner applies the matching content-attribute action in the
+    /// same operation, including assignment when no attribute is present.
+    pub fn async_idl_assigned(&mut self) {
+        self.force_async = false;
+    }
+
     /// Preparation step 4, after clearing a nonnull parser document, when the
     /// actual async attribute is absent. Other preparation work stays pending.
     pub fn parser_document_cleared_without_async(&mut self) {

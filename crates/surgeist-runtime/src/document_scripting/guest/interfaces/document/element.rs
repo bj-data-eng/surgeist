@@ -849,6 +849,7 @@ fn install_html_members<'scope>(
         }
         "HTMLMediaElement" => super::media::install(scope, constructor, prototype, capture)?,
         "HTMLAnchorElement" => super::anchor::install(scope, prototype, capture)?,
+        "HTMLScriptElement" => super::script::install(scope, prototype, capture)?,
         "HTMLBodyElement" => super::body::install(scope, prototype, capture)?,
         "HTMLButtonElement" => super::button::install(scope, prototype, capture)?,
         "HTMLBRElement" => super::break_elements::install_br(scope, prototype, capture)?,

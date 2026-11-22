@@ -417,6 +417,30 @@
       "entries": ["HTMLTitleElement"]
     },
     {
+      "id": "HTMLScriptElement.source",
+      "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
+      "anchor": "htmlscriptelement",
+      "block": 0,
+      "sha256": "4037d650af77441eeabecd980a7802251c76f3250bfa2519feea9a3883fb086a",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlscriptelement",
+      "entries": [
+        "HTMLScriptElement"
+      ]
+    },
+    {
+      "id": "HTMLScriptElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLScriptElement&#45;partial",
+      "block": 0,
+      "sha256": "3c7c61bcd70173784135fd5a8c502ae4fd9a1e78e2c877f057cc0a6bca5f2867",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLScriptElement-partial",
+      "entries": [
+        "HTMLScriptElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLAnchorElement.source",
       "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
       "anchor": "htmlanchorelement",
@@ -5288,6 +5312,42 @@
         }
       ],
       "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLScriptElement",
+      "kind": "interface",
+      "name": "HTMLScriptElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {"attributes": [{"name": "HTMLConstructor"}], "kind": "constructor", "arguments": [], "id": "HTMLScriptElement.constructor:0"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "type", "readonly": false, "id": "HTMLScriptElement.type"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "union", "members": [{"kind": "named", "name": "TrustedScriptURL"}, {"kind": "named", "name": "USVString"}]}, "name": "src", "readonly": false, "id": "HTMLScriptElement.src"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "boolean"}, "name": "noModule", "readonly": false, "id": "HTMLScriptElement.noModule"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "named", "name": "boolean"}, "name": "async", "readonly": false, "id": "HTMLScriptElement.async"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "boolean"}, "name": "defer", "readonly": false, "id": "HTMLScriptElement.defer"},
+        {"attributes": [{"name": "SameObject"}, {"name": "PutForwards", "value": "value"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMTokenList"}, "name": "blocking", "readonly": true, "id": "HTMLScriptElement.blocking"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "nullable", "inner": {"kind": "named", "name": "DOMString"}}, "name": "crossOrigin", "readonly": false, "id": "HTMLScriptElement.crossOrigin"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "referrerPolicy", "readonly": false, "id": "HTMLScriptElement.referrerPolicy"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "integrity", "readonly": false, "id": "HTMLScriptElement.integrity"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "fetchPriority", "readonly": false, "id": "HTMLScriptElement.fetchPriority"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "union", "members": [{"kind": "named", "name": "TrustedScript"}, {"kind": "named", "name": "DOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]}]}, "name": "innerText", "readonly": false, "id": "HTMLScriptElement.innerText"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "nullable", "inner": {"kind": "union", "members": [{"kind": "named", "name": "TrustedScript"}, {"kind": "named", "name": "DOMString"}]}}, "name": "textContent", "readonly": false, "id": "HTMLScriptElement.textContent"},
+        {"attributes": [{"name": "CEReactions"}], "kind": "attribute", "type": {"kind": "union", "members": [{"kind": "named", "name": "TrustedScript"}, {"kind": "named", "name": "DOMString"}]}, "name": "text", "readonly": false, "id": "HTMLScriptElement.text"},
+        {"attributes": [], "kind": "operation", "static": true, "name": "supports", "type": {"kind": "named", "name": "boolean"}, "arguments": [{"name": "type", "presence": "required", "type": {"kind": "named", "name": "DOMString"}}], "id": "HTMLScriptElement.supports:0"}
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLScriptElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLScriptElement",
+      "attributes": [],
+      "members": [
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "charset", "readonly": false, "id": "HTMLScriptElement.obsolete.charset"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "event", "readonly": false, "id": "HTMLScriptElement.obsolete.event"},
+        {"attributes": [{"name": "CEReactions"}, {"name": "Reflect", "value": "for"}], "kind": "attribute", "type": {"kind": "named", "name": "DOMString"}, "name": "htmlFor", "readonly": false, "id": "HTMLScriptElement.obsolete.htmlFor"}
+      ],
+      "partial": true
     },
     {
       "id": "HTMLAnchorElement",
@@ -12237,13 +12297,6 @@
       "requirement": "Pinned live HTMLOptionsCollection wrapper with canonical option membership and legacy indexed and named properties under #2480."
     },
     {
-      "name": "HTMLScriptElement",
-      "kind": "interface",
-      "owner": "surgeist-dom",
-      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlscriptelement",
-      "requirement": "Source-qualified HTMLScriptElement definition and its owning native/binding family; not an empty installed interface."
-    },
-    {
       "name": "Location",
       "kind": "interface",
       "owner": "surgeist-runtime",
@@ -12321,6 +12374,20 @@
       "owner": "surgeist-html",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-document-object",
       "requirement": "Pin the delegated TrustedHTML definition before converting/exposing this external type; the retained source here references it but is not its full defining clause."
+    },
+    {
+      "name": "TrustedScript",
+      "kind": "type",
+      "owner": "surgeist-runtime",
+      "url": "https://www.w3.org/TR/2026/WD-trusted-types-20261007/#trustedscript",
+      "requirement": "Provide the standard type identity and use the native trusted producer before conversion."
+    },
+    {
+      "name": "TrustedScriptURL",
+      "kind": "type",
+      "owner": "surgeist-runtime",
+      "url": "https://www.w3.org/TR/2026/WD-trusted-types-20261007/#trustedscripturl",
+      "requirement": "Provide the standard type identity and use the native trusted producer before conversion."
     },
     {
       "name": "TrustedHTMLParserOptions",
@@ -16762,6 +16829,230 @@
       "adapter": "htmltitleelement.text.set",
       "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "set_text_content"}],
       "requirements": []
+    },
+    "HTMLScriptElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.type/get": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.type.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.type/set": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.type.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.src/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Read the Native Script's qualified URL, and set it through the TrustedScriptURL-or-USVString sink with original policy/refusal and loading effects.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-src", "issue": 1875}
+    },
+    "HTMLScriptElement.src/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Read the Native Script's qualified URL, and set it through the TrustedScriptURL-or-USVString sink with original policy/refusal and loading effects.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-src", "issue": 1875}
+    },
+    "HTMLScriptElement.noModule/get": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.nomodule.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.noModule/set": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.nomodule.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.async/get": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.async.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/script.rs", "symbol": "script_async"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/script.rs", "symbol": "effective_async_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.async/set": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.async.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/script.rs", "symbol": "script_async"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_html_script_async"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/elements/script_flags.rs", "symbol": "async_idl_assigned"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.defer/get": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.defer.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.defer/set": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.defer.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.blocking/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-dom", "contract": "Provide the associated live Script blocking DOMTokenList.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-blocking"},
+      "result_view": "live"
+    },
+    "HTMLScriptElement.blocking/set": {
+      "kind": "forwarding",
+      "getter": "HTMLScriptElement.blocking/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLScriptElement.crossOrigin/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Use the native Script cross-origin keyword and nullable reflection contract.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-crossorigin", "issue": 2258}
+    },
+    "HTMLScriptElement.crossOrigin/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Use the native Script cross-origin keyword and nullable reflection contract.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-crossorigin", "issue": 2258}
+    },
+    "HTMLScriptElement.referrerPolicy/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Use the selected HTML referrer-policy reflection over the actual Script attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-referrerpolicy", "issue": 2258}
+    },
+    "HTMLScriptElement.referrerPolicy/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Use the selected HTML referrer-policy reflection over the actual Script attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-referrerpolicy", "issue": 2258}
+    },
+    "HTMLScriptElement.integrity/get": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.integrity.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.integrity/set": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.integrity.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.fetchPriority/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Use the selected HTML fetch-priority vocabulary over the actual Script attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-fetchpriority", "issue": 2258}
+    },
+    "HTMLScriptElement.fetchPriority/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Use the selected HTML fetch-priority vocabulary over the actual Script attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-fetchpriority", "issue": 2258}
+    },
+    "HTMLScriptElement.innerText/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the actual Script rendered-text read and apply the TrustedScript compliance and script-text write on assignment.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-innertext", "issue": 2258}
+    },
+    "HTMLScriptElement.innerText/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the actual Script rendered-text read and apply the TrustedScript compliance and script-text write on assignment.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-innertext", "issue": 2258}
+    },
+    "HTMLScriptElement.textContent/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Install Script's own textContent override with native TrustedScript conversion, compliance and canonical Source replacement.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-textcontent", "issue": 2258}
+    },
+    "HTMLScriptElement.textContent/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Install Script's own textContent override with native TrustedScript conversion, compliance and canonical Source replacement.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-textcontent", "issue": 2258}
+    },
+    "HTMLScriptElement.text/get": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Read native descendant text and assign it through TrustedScript compliance and canonical Source replacement.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-text", "issue": 2258}
+    },
+    "HTMLScriptElement.text/set": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Read native descendant text and assign it through TrustedScript compliance and canonical Source replacement.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-text", "issue": 2258}
+    },
+    "HTMLScriptElement.obsolete.charset/get": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.charset.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.obsolete.charset/set": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.charset.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.obsolete.event/get": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.event.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.obsolete.event/set": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.event.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.obsolete.htmlFor/get": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.htmlfor.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.obsolete.htmlFor/set": {
+      "kind": "native",
+      "adapter": "htmlscriptelement.htmlfor.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
+    },
+    "HTMLScriptElement.supports:0/call": {
+      "kind": "host",
+      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the standard static operation with exact DOMString matching and its supported script contract.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-supports", "issue": 2259}
     },
     "HTMLAnchorElement.constructor:0/construct": {
       "kind": "native",

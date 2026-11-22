@@ -62,6 +62,7 @@ mod processing_instruction;
 mod range_indicator;
 mod reflected_element;
 mod reflection;
+mod script;
 mod select;
 mod shadow;
 mod slot;

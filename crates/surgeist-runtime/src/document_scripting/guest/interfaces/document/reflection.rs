@@ -124,6 +124,7 @@ pub(super) enum Receiver {
     Mathml,
     Template,
     Anchor,
+    Script,
     Body,
     Button,
     Canvas,
@@ -199,6 +200,13 @@ impl Receiver {
             Self::Anchor => {
                 step()?;
                 html_element_is(node, "HTMLAnchorElement")
+            }
+            Self::Script => {
+                step()?;
+                node.as_html_script().is_some()
+                    && node
+                        .as_element()
+                        .is_some_and(|element| !element.has_failed_construction_interface())
             }
             Self::Body => {
                 step()?;
@@ -336,6 +344,7 @@ impl Receiver {
             Self::Mathml => const { &ascii(b"MathMLElement required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Anchor => const { &ascii(b"HTMLAnchorElement required") },
+            Self::Script => const { &ascii(b"HTMLScriptElement required") },
             Self::Body => const { &ascii(b"HTMLBodyElement required") },
             Self::Button => const { &ascii(b"HTMLButtonElement required") },
             Self::Canvas => const { &ascii(b"HTMLCanvasElement required") },
@@ -995,6 +1004,7 @@ impl Capture {
                     if matches!(
                         receiver,
                         Receiver::Anchor
+                            | Receiver::Script
                             | Receiver::Body
                             | Receiver::Button
                             | Receiver::Dialog
