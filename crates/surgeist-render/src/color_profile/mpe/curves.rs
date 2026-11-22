@@ -1,6 +1,6 @@
 //! Segmented curve sets specified by ICC.1:2022 §10.16.2.2.
 
-use std::mem::size_of;
+use std::{f64::consts::LN_10, mem::size_of};
 
 use super::{Positions, checked_value, float_at, float_values, invariant, sample_at};
 use crate::color_profile::{
@@ -247,14 +247,75 @@ impl Formula {
     }
 
     fn evaluate(&self, input: f64, account: &Account) -> Result<f64> {
-        checked_value(account.coordinate(|| match *self {
-            Self::Power([gamma, a, b, c]) => a.mul_add(input, b).powf(gamma) + c,
-            Self::Logarithm([gamma, a, b, c, d]) => {
-                a.mul_add(b.mul_add(input.powf(gamma), c).log10(), d)
+        let result = match *self {
+            Self::Power([gamma, a, b, c]) => {
+                account.coordinate(|| a.mul_add(input, b).powf(gamma) + c)?
             }
-            Self::Exponential([a, b, c, d, e]) => a.mul_add(b.powf(c.mul_add(input, d)), e),
-        })?)
+            Self::Logarithm([gamma, a, b, c, d]) => {
+                let logarithm = log10_affine_power(input, gamma, b, c, account)?;
+                account.coordinate(|| a.mul_add(logarithm, d))?
+            }
+            Self::Exponential([a, b, c, d, e]) => account.coordinate(|| {
+                let exponent = c.mul_add(input, d);
+                if a == 0.0
+                    && (b > 0.0
+                        || (b < 0.0 && exponent.fract() == 0.0)
+                        || (b == 0.0 && exponent >= 0.0))
+                {
+                    // A real power multiplied by zero gives the offset, even
+                    // when the power alone exceeds the arithmetic range.
+                    e
+                } else {
+                    a.mul_add(b.powf(exponent), e)
+                }
+            })?,
+        };
+        checked_value(result)
     }
+}
+
+fn log10_affine_power(input: f64, gamma: f64, b: f64, c: f64, account: &Account) -> Result<f64> {
+    let power = account.coordinate(|| input.powf(gamma))?;
+    let argument = account.coordinate(|| b.mul_add(power, c))?;
+    if (power.is_normal() && argument.is_normal()) || input == 0.0 || power.is_nan() {
+        return account.coordinate(|| argument.log10());
+    }
+    if b == 0.0 {
+        return account.coordinate(|| c.log10());
+    }
+
+    // A real nonzero power can exceed the binary64 range even when its
+    // logarithm is representable. Add the two signed terms in log space.
+    let power_is_negative = input.is_sign_negative() && gamma % 2.0 != 0.0;
+    let product_is_positive = b.is_sign_positive() != power_is_negative;
+    let product = account.coordinate(|| gamma.mul_add(input.abs().ln(), b.abs().ln()))?;
+    if c == 0.0 {
+        return account.coordinate(|| {
+            if product_is_positive {
+                product / LN_10
+            } else {
+                f64::NAN
+            }
+        });
+    }
+    let constant = account.coordinate(|| c.abs().ln())?;
+    account.coordinate(|| {
+        let logarithm = match (product_is_positive, c.is_sign_positive()) {
+            (true, true) => {
+                let high = product.max(constant);
+                high + (product.min(constant) - high).exp().ln_1p()
+            }
+            (true, false) => log_difference(product, constant),
+            (false, true) => log_difference(constant, product),
+            (false, false) => f64::NAN,
+        };
+        logarithm / LN_10
+    })
+}
+
+fn log_difference(positive: f64, negative: f64) -> f64 {
+    // exp_m1 preserves the residual when the two magnitudes are close.
+    positive + (-(negative - positive).exp_m1()).ln()
 }
 
 fn parameters<const N: usize>(bytes: &[u8], account: &Account) -> ProfileResult<[f64; N]> {
