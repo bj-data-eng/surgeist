@@ -419,6 +419,10 @@ pub struct ResolvedTransformList {
     functions: Arc<[TransformFunction]>,
 }
 
+/// Internal checked concatenation failure, translated at its public consumer.
+#[derive(Debug)]
+pub(crate) struct TransformListCapacity;
+
 impl ResolvedTransformList {
     pub fn new(functions: Vec<TransformFunction>) -> Self {
         Self {
@@ -440,6 +444,21 @@ impl ResolvedTransformList {
                 .copied()
                 .collect(),
         )
+    }
+
+    /// Keeps checked concatenation with the transform list's semantic owner.
+    pub(crate) fn try_added_to(&self, other: &Self) -> Result<Self, TransformListCapacity> {
+        let length = self
+            .functions
+            .len()
+            .checked_add(other.functions.len())
+            .ok_or(TransformListCapacity)?;
+        let mut functions = Vec::new();
+        functions
+            .try_reserve_exact(length)
+            .map_err(|_| TransformListCapacity)?;
+        functions.extend(self.functions.iter().chain(other.functions.iter()).copied());
+        Ok(Self::new(functions))
     }
 
     /// Post-multiplies the functions into a finite affine matrix.

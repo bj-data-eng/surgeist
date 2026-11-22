@@ -8,7 +8,10 @@ use crate::keyframe::{
     ComputedKeyframes, KeyframeSampleError, KeyframeSampleInput, KeyframeTarget,
 };
 use crate::keyframe_input::CompositeOperation;
-use crate::playback::{AnimationId, AnimationRecords, CreationOrder, EffectFacts, PlaybackError};
+use crate::playback::{
+    AnimationId, AnimationRecords, CreationOrder, EffectFacts, EffectSnapshot, PlaybackError,
+    PlaybackObservation,
+};
 use crate::time::AnimationTime;
 use crate::timeline::{TimelineMonotonicity, TimelineSnapshot};
 use crate::timing::{
@@ -76,25 +79,61 @@ impl AnimationOrder {
 /// changes effect timing, completion, or event eligibility.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectStackEffect {
+    setup: EffectSnapshot,
     pub timing: EffectTiming,
     pub keyframes: ComputedKeyframes,
     pub composite: CompositeOperation,
     pub not_animatable: Vec<PropertyKey>,
 }
 
+impl EffectStackEffect {
+    /// Binds computed frames to the associated effect identity and setup revision.
+    ///
+    /// Capture `setup` from the checked animation snapshot when computing these
+    /// values. Stack construction rejects reassociation and setup changes even
+    /// when the replacement effect has the same duration. Target-context value
+    /// freshness remains the computing adapter's responsibility.
+    pub fn new(
+        setup: EffectSnapshot,
+        timing: EffectTiming,
+        keyframes: ComputedKeyframes,
+        composite: CompositeOperation,
+        not_animatable: Vec<PropertyKey>,
+    ) -> Self {
+        Self {
+            setup,
+            timing,
+            keyframes,
+            composite,
+            not_animatable,
+        }
+    }
+    pub const fn setup(&self) -> &EffectSnapshot {
+        &self.setup
+    }
+}
+
 /// Coherent caller-owned observations for one registered animation in one update.
 ///
-/// Playback/control owners supply `local_time` and `state`; this is not another
-/// playback lifecycle. Construction checks identities, association, timeline
-/// consistency, registered effect end, and effect timing's state/time rules.
+/// Playback facts come from the checked records observation at construction;
+/// callers supply only replacement state. Construction checks identities,
+/// association, setup revision, timeline consistency and effect timing rules.
 /// Adapters own the truth of CSS ordering, target identity, markup-prescribed
 /// existence, and document membership; this crate cannot infer them from IDs.
+///
+/// Playback coordinates cannot be overwritten independently of checked records:
+///
+/// ```compile_fail,E0609
+/// use surgeist_animation::composition::AnimationStackInput;
+/// fn overwrite(input: &mut AnimationStackInput) {
+///     input.local_time = None;
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnimationStackInput {
     pub animation: AnimationId,
     pub timeline: Option<TimelineSnapshot>,
-    pub local_time: Option<AnimationTime>,
-    pub state: EffectAnimationState,
+    pub replace_state: AnimationReplaceState,
     pub order: AnimationOrder,
     pub target: Option<EffectTargetId>,
     pub prescribed_by_markup: bool,
@@ -111,7 +150,6 @@ pub enum EffectStackErrorKind {
     DuplicateAnimation,
     TimelineMismatch,
     TargetMismatch,
-    StateMismatch,
     EffectMismatch,
     PropertyPolicy,
     UndefinedOrder,
@@ -188,6 +226,7 @@ struct StackEntry {
     input: AnimationStackInput,
     creation: CreationOrder,
     timing: Option<EffectTimingSample>,
+    playback: PlaybackObservation,
 }
 impl StackEntry {
     fn targets(&self, property: &PropertyKey) -> bool {
@@ -202,8 +241,8 @@ impl StackEntry {
     }
     fn replaceable(&self) -> bool {
         !self.input.prescribed_by_markup
-            && self.input.state.play_state() == EffectPlayState::Finished
-            && self.input.state.replace_state() != AnimationReplaceState::Removed
+            && self.playback.play_state() == EffectPlayState::Finished
+            && self.input.replace_state != AnimationReplaceState::Removed
             && self
                 .input
                 .timeline
@@ -272,21 +311,27 @@ impl EffectStackSnapshot {
                 }
             }
             observed.push((input.timeline, input.target, input.in_document));
-            if input.state.timeline() != input.timeline.map(TimelineSnapshot::monotonicity) {
-                return Err(EffectStackError::new(
-                    EffectStackErrorKind::TimelineMismatch,
-                ));
-            }
-            if matches!(
-                (input.state.play_state(), input.local_time),
-                (EffectPlayState::Idle, Some(_)) | (EffectPlayState::Finished, None)
-            ) {
-                return Err(EffectStackError::new(EffectStackErrorKind::StateMismatch));
-            }
+            let playback = record.observation()?;
+            let effect_input = match playback.effect_input() {
+                EffectTimingInput::Associated {
+                    local_time,
+                    animation,
+                } => EffectTimingInput::Associated {
+                    local_time,
+                    animation: EffectAnimationState::new(
+                        animation.playback_rate(),
+                        animation.play_state(),
+                        animation.timeline(),
+                        input.replace_state,
+                    ),
+                },
+                EffectTimingInput::Unassociated => EffectTimingInput::Unassociated,
+            };
             let timing = match (record.effect(), &input.effect) {
                 (None, None) => None,
                 (Some(registered), Some(effect))
-                    if registered.facts() == EffectFacts::from_timing(&effect.timing) =>
+                    if registered == &effect.setup
+                        && registered.facts() == EffectFacts::from_timing(&effect.timing) =>
                 {
                     for (index, property) in effect.not_animatable.iter().enumerate() {
                         if effect.not_animatable[..index].contains(property)
@@ -299,15 +344,12 @@ impl EffectStackSnapshot {
                             ));
                         }
                     }
-                    Some(effect.timing.sample(EffectTimingInput::Associated {
-                        local_time: input.local_time,
-                        animation: input.state,
-                    })?)
+                    Some(effect.timing.sample(effect_input)?)
                 }
                 _ => return Err(EffectStackError::new(EffectStackErrorKind::EffectMismatch)),
             };
             if matches!(input.order, AnimationOrder::Undefined { .. }) {
-                if input.state.play_state() != EffectPlayState::Idle {
+                if playback.play_state() != EffectPlayState::Idle {
                     return Err(EffectStackError::new(EffectStackErrorKind::UndefinedOrder));
                 }
                 undefined
@@ -320,6 +362,7 @@ impl EffectStackSnapshot {
                 input,
                 creation: record.creation_order(),
                 timing,
+                playback,
             };
             let position = entries
                 .iter()
@@ -368,7 +411,7 @@ impl EffectStackSnapshot {
         let mut top = None;
         for entry in &self.entries {
             if entry.input.target != Some(target)
-                || entry.input.state.replace_state() == AnimationReplaceState::Removed
+                || entry.input.replace_state == AnimationReplaceState::Removed
                 || !entry.targets(property)
             {
                 continue;
@@ -419,7 +462,7 @@ impl EffectStackSnapshot {
             .map_err(|_| EffectStackError::new(EffectStackErrorKind::Capacity))?;
         for (index, entry) in self.entries.iter().enumerate() {
             if !entry.input.in_document
-                || entry.input.state.replace_state() != AnimationReplaceState::Active
+                || entry.input.replace_state != AnimationReplaceState::Active
                 || !entry.replaceable()
             {
                 continue;
@@ -443,7 +486,7 @@ impl EffectStackSnapshot {
             if covered {
                 decisions.push(ReplacementDecision {
                     animation: entry.input.animation.clone(),
-                    current_time: entry.input.local_time,
+                    current_time: entry.playback.current_time(),
                     timeline: entry.input.timeline,
                 });
             }

@@ -23,7 +23,6 @@ pub surgeist_animation::composition::EffectStackErrorKind::EffectMismatch
 pub surgeist_animation::composition::EffectStackErrorKind::InconsistentOrder
 pub surgeist_animation::composition::EffectStackErrorKind::Playback
 pub surgeist_animation::composition::EffectStackErrorKind::PropertyPolicy
-pub surgeist_animation::composition::EffectStackErrorKind::StateMismatch
 pub surgeist_animation::composition::EffectStackErrorKind::TargetMismatch
 pub surgeist_animation::composition::EffectStackErrorKind::TimelineMismatch
 pub surgeist_animation::composition::EffectStackErrorKind::Timing
@@ -32,6 +31,8 @@ pub enum surgeist_animation::composition::PropertyOperationErrorKind
 pub surgeist_animation::composition::PropertyOperationErrorKind::Capacity
 pub surgeist_animation::composition::PropertyOperationErrorKind::Computed(surgeist_animation::computed::ComputedError)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Interpolation(alloc::boxed::Box<surgeist_animation::interpolation::InterpolationError>)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Shadow(alloc::boxed::Box<surgeist_animation::shadow::ShadowError>)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Transform(alloc::boxed::Box<surgeist_animation::transform::TransformError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Unsupported(surgeist_animation::keyframe_input::CompositeOperation)
 pub surgeist_animation::composition::PropertyOperationErrorKind::WrongValueFamily
 pub struct surgeist_animation::composition::AnimationClass(_)
@@ -42,10 +43,9 @@ pub struct surgeist_animation::composition::AnimationStackInput
 pub surgeist_animation::composition::AnimationStackInput::animation: surgeist_animation::playback::AnimationId
 pub surgeist_animation::composition::AnimationStackInput::effect: core::option::Option<surgeist_animation::composition::EffectStackEffect>
 pub surgeist_animation::composition::AnimationStackInput::in_document: bool
-pub surgeist_animation::composition::AnimationStackInput::local_time: core::option::Option<surgeist_animation::time::AnimationTime>
 pub surgeist_animation::composition::AnimationStackInput::order: surgeist_animation::composition::AnimationOrder
 pub surgeist_animation::composition::AnimationStackInput::prescribed_by_markup: bool
-pub surgeist_animation::composition::AnimationStackInput::state: surgeist_animation::timing::EffectAnimationState
+pub surgeist_animation::composition::AnimationStackInput::replace_state: surgeist_animation::timing::AnimationReplaceState
 pub surgeist_animation::composition::AnimationStackInput::target: core::option::Option<surgeist_animation::composition::EffectTargetId>
 pub surgeist_animation::composition::AnimationStackInput::timeline: core::option::Option<surgeist_animation::timeline::TimelineSnapshot>
 pub struct surgeist_animation::composition::AnimationTypeOperations
@@ -67,6 +67,9 @@ pub surgeist_animation::composition::EffectStackEffect::composite: surgeist_anim
 pub surgeist_animation::composition::EffectStackEffect::keyframes: surgeist_animation::keyframe::ComputedKeyframes
 pub surgeist_animation::composition::EffectStackEffect::not_animatable: alloc::vec::Vec<surgeist_animation::interpolation::PropertyKey>
 pub surgeist_animation::composition::EffectStackEffect::timing: surgeist_animation::timing::EffectTiming
+impl surgeist_animation::composition::EffectStackEffect
+pub fn surgeist_animation::composition::EffectStackEffect::new(setup: surgeist_animation::playback::EffectSnapshot, timing: surgeist_animation::timing::EffectTiming, keyframes: surgeist_animation::keyframe::ComputedKeyframes, composite: surgeist_animation::keyframe_input::CompositeOperation, not_animatable: alloc::vec::Vec<surgeist_animation::interpolation::PropertyKey>) -> Self
+pub const fn surgeist_animation::composition::EffectStackEffect::setup(&self) -> &surgeist_animation::playback::EffectSnapshot
 pub struct surgeist_animation::composition::EffectStackError
 impl surgeist_animation::composition::EffectStackError
 pub const fn surgeist_animation::composition::EffectStackError::kind(&self) -> surgeist_animation::composition::EffectStackErrorKind

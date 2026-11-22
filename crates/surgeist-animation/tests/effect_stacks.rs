@@ -11,13 +11,14 @@ use surgeist_animation::keyframe::{
     ComputedKeyframeInput, ComputedKeyframes, KeyframeEndpointSource, KeyframeTarget,
 };
 use surgeist_animation::keyframe_input::CompositeOperation;
-use surgeist_animation::playback::{AnimationRecords, EffectFacts, PlaybackContext};
+use surgeist_animation::playback::{
+    AnimationRecords, EffectFacts, PlaybackCommand, PlaybackContext,
+};
 use surgeist_animation::progress::UnitRatio;
-use surgeist_animation::time::{AnimationTime, PlaybackRate, TimelineTime};
+use surgeist_animation::time::TimelineTime;
 use surgeist_animation::timeline::{TimelineId, TimelineMonotonicity, TimelineSnapshot};
 use surgeist_animation::timing::{
-    AnimationReplaceState, EffectAnimationState, EffectPlayState, EffectTiming,
-    EffectTimingOptions, FillMode,
+    AnimationReplaceState, EffectPlayState, EffectTiming, EffectTimingOptions, FillMode,
 };
 
 fn key(name: &str) -> PropertyKey {
@@ -75,16 +76,24 @@ fn input(
     let created = records
         .create(Some(timeline.id()), Some(&effect), &context)
         .unwrap();
+    let animation = created.animation().clone();
+    records
+        .apply(
+            &animation,
+            PlaybackCommand::SetStartTime(Some(TimelineTime::from_millis(0.0).unwrap())),
+            &context,
+        )
+        .unwrap();
+    let setup = records
+        .snapshot(&animation, Some(timeline))
+        .unwrap()
+        .effect()
+        .unwrap()
+        .clone();
     AnimationStackInput {
-        animation: created.animation().clone(),
+        animation,
         timeline: Some(timeline),
-        local_time: Some(AnimationTime::from_millis(100.0).unwrap()),
-        state: EffectAnimationState::new(
-            PlaybackRate::new(1.0).unwrap(),
-            EffectPlayState::Finished,
-            Some(TimelineMonotonicity::Monotonic),
-            AnimationReplaceState::Active,
-        ),
+        replace_state: AnimationReplaceState::Active,
         order: AnimationOrder::Defined {
             class: AnimationClass::new(0),
             inter_class: None,
@@ -93,20 +102,42 @@ fn input(
         target: Some(EffectTargetId::new(1)),
         prescribed_by_markup: false,
         in_document: true,
-        effect: Some(EffectStackEffect {
+        effect: Some(EffectStackEffect::new(
+            setup,
             timing,
-            keyframes: frames(values, None),
+            frames(values, None),
             composite,
-            not_animatable: vec![],
-        }),
+            vec![],
+        )),
     }
 }
-fn state(input: &mut AnimationStackInput, play: EffectPlayState, replace: AnimationReplaceState) {
-    input.state = EffectAnimationState::new(
-        PlaybackRate::new(1.0).unwrap(),
-        play,
-        input.timeline.map(|t| t.monotonicity()),
-        replace,
+fn state(
+    records: &mut AnimationRecords,
+    input: &mut AnimationStackInput,
+    play: EffectPlayState,
+    replace: AnimationReplaceState,
+) {
+    let context = PlaybackContext::new(input.timeline.into_iter().collect()).unwrap();
+    let command = match play {
+        EffectPlayState::Idle => PlaybackCommand::Cancel,
+        EffectPlayState::Finished => {
+            PlaybackCommand::SetStartTime(Some(TimelineTime::from_millis(0.0).unwrap()))
+        }
+        EffectPlayState::Running => {
+            PlaybackCommand::SetStartTime(Some(TimelineTime::from_millis(50.0).unwrap()))
+        }
+        EffectPlayState::Paused => PlaybackCommand::Pause,
+    };
+    records.apply(&input.animation, command, &context).unwrap();
+    input.replace_state = replace;
+    assert_eq!(
+        records
+            .snapshot(&input.animation, input.timeline)
+            .unwrap()
+            .observation()
+            .unwrap()
+            .play_state(),
+        play
     );
 }
 fn sample(
@@ -158,8 +189,8 @@ fn keyframe_override_composes_before_interpolation_using_the_new_underlying() {
         CompositeOperation::Replace,
     );
     let mut high = input(&mut records, &[], CompositeOperation::Add);
-    high.local_time = Some(AnimationTime::from_millis(50.0).unwrap());
     state(
+        &mut records,
         &mut high,
         EffectPlayState::Running,
         AnimationReplaceState::Active,
@@ -319,17 +350,17 @@ fn contradictory_order_foreign_duplicate_and_inconsistent_observations_are_rejec
             .kind(),
         EffectStackErrorKind::Playback
     );
-    a.state = EffectAnimationState::new(
-        PlaybackRate::new(1.0).unwrap(),
-        EffectPlayState::Finished,
+    a.timeline = Some(TimelineSnapshot::new(
+        TimelineId::new(2),
         None,
-        AnimationReplaceState::Active,
-    );
+        TimelineMonotonicity::Monotonic,
+        None,
+    ));
     assert_eq!(
         EffectStackSnapshot::new(&records, vec![a])
             .unwrap_err()
             .kind(),
-        EffectStackErrorKind::TimelineMismatch
+        EffectStackErrorKind::Playback
     );
 }
 
@@ -351,11 +382,11 @@ fn undefined_orphan_idle_order_is_retained_but_never_enters_a_stack() {
         EffectStackErrorKind::UndefinedOrder
     );
     state(
+        &mut records,
         &mut orphan,
         EffectPlayState::Idle,
         AnimationReplaceState::Active,
     );
-    orphan.local_time = None;
     let snapshot = EffectStackSnapshot::new(&records, vec![orphan]).unwrap();
     assert_eq!(snapshot.undefined_animations().count(), 1);
     assert_eq!(sample(&snapshot, "x", &number(0.0)), None);
@@ -377,11 +408,17 @@ fn replacement_uses_union_coverage_and_persisted_covers_without_being_removed() 
         CompositeOperation::Accumulate,
     );
     state(
+        &mut records,
         &mut c,
         EffectPlayState::Finished,
         AnimationReplaceState::Persisted,
     );
-    let saved_time = a.local_time;
+    let saved_time = records
+        .snapshot(&a.animation, a.timeline)
+        .unwrap()
+        .observation()
+        .unwrap()
+        .current_time();
     let snapshot =
         EffectStackSnapshot::new(&records, vec![c.clone(), b.clone(), a.clone()]).unwrap();
     let decisions = snapshot.replacements().unwrap();
@@ -432,7 +469,7 @@ fn nonreplaceable_cover_and_removed_effects_are_excluded() {
             true,
         ),
     ] {
-        state(&mut b, play, replace);
+        state(&mut records, &mut b, play, replace);
         b.prescribed_by_markup = markup;
         assert!(
             EffectStackSnapshot::new(&records, vec![a.clone(), b.clone()])
@@ -443,6 +480,7 @@ fn nonreplaceable_cover_and_removed_effects_are_excluded() {
         );
     }
     state(
+        &mut records,
         &mut b,
         EffectPlayState::Finished,
         AnimationReplaceState::Removed,
@@ -592,7 +630,21 @@ fn snapshot_survives_registration_retirement_and_retains_captured_times() {
     );
     let a_id = a.animation.clone();
     let b_id = b.animation.clone();
+    let timeline = a.timeline;
     let snapshot = EffectStackSnapshot::new(&records, vec![a, b]).unwrap();
+    let context = PlaybackContext::new(timeline.into_iter().collect()).unwrap();
+    records
+        .apply(&a_id, PlaybackCommand::Cancel, &context)
+        .unwrap();
+    records
+        .apply(&b_id, PlaybackCommand::Cancel, &context)
+        .unwrap();
+    for id in [&a_id, &b_id] {
+        let snapshot = records.snapshot(id, timeline).unwrap();
+        if let Some(token) = snapshot.finish_notification() {
+            records.process_finish(token, &context).unwrap();
+        }
+    }
     records.remove_animation(&a_id).unwrap();
     records.remove_animation(&b_id).unwrap();
     assert_eq!(sample(&snapshot, "x", &number(0.0)), Some(number(2.0)));
@@ -640,7 +692,12 @@ fn replacement_requires_in_effect_monotonic_and_document_candidate_facts() {
                 None,
             ));
         }
-        state(&mut candidate, EffectPlayState::Finished, replace);
+        state(
+            &mut records,
+            &mut candidate,
+            EffectPlayState::Finished,
+            replace,
+        );
         if !fill {
             candidate.effect.as_mut().unwrap().timing =
                 EffectTiming::try_new(EffectTimingOptions {
@@ -653,6 +710,7 @@ fn replacement_requires_in_effect_monotonic_and_document_candidate_facts() {
         covering.in_document = in_document;
         covering.timeline = candidate.timeline;
         state(
+            &mut records,
             &mut covering,
             EffectPlayState::Finished,
             AnimationReplaceState::Active,
@@ -810,8 +868,8 @@ fn assert_color_stack_fallback(operation: CompositeOperation) {
     );
     let mut higher = input(&mut records, &[("color", effect.clone())], operation);
     // Exercise composition of both interval endpoints before real interpolation.
-    higher.local_time = Some(AnimationTime::from_millis(50.0).unwrap());
     state(
+        &mut records,
         &mut higher,
         EffectPlayState::Running,
         AnimationReplaceState::Active,
@@ -1017,4 +1075,72 @@ fn integration_default_operations_use_shadow_accumulation() {
         ),
         Ok(integration_shadow_items(&[(4.0, 6.0)]))
     );
+}
+
+#[test]
+fn integration_landed_list_operations_fold_through_canonical_stack_samples() {
+    for (underlying, effect, operation, expected) in [
+        (
+            integration_scale(2.0),
+            integration_scale(3.0),
+            CompositeOperation::Accumulate,
+            integration_scale(4.0),
+        ),
+        (
+            integration_shadow_items(&[(1.0, 2.0)]),
+            integration_shadow_items(&[(3.0, 4.0)]),
+            CompositeOperation::Add,
+            integration_shadow_items(&[(1.0, 2.0), (3.0, 4.0)]),
+        ),
+        (
+            integration_shadow_items(&[(1.0, 2.0)]),
+            integration_shadow_items(&[(3.0, 4.0)]),
+            CompositeOperation::Accumulate,
+            integration_shadow_items(&[(4.0, 6.0)]),
+        ),
+    ] {
+        let mut records = AnimationRecords::new();
+        let lower = input(
+            &mut records,
+            &[("x", underlying.clone())],
+            CompositeOperation::Replace,
+        );
+        let mut higher = input(&mut records, &[("x", effect)], operation);
+        state(
+            &mut records,
+            &mut higher,
+            EffectPlayState::Running,
+            AnimationReplaceState::Active,
+        );
+        let snapshot = EffectStackSnapshot::new(&records, vec![higher, lower]).unwrap();
+        assert_eq!(sample(&snapshot, "x", &underlying), Some(expected));
+    }
+}
+
+#[test]
+fn integration_list_failures_preserve_their_owning_typed_diagnostics() {
+    use surgeist_animation::composition::{PropertyOperationErrorKind, PropertyValueOperations};
+    use surgeist_animation::shadow::ShadowErrorKind;
+    use surgeist_animation::transform::TransformErrorKind;
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    let error = operations
+        .accumulate(
+            &key("transform"),
+            &integration_scale(f64::MAX),
+            &integration_scale(f64::MAX),
+        )
+        .unwrap_err();
+    let PropertyOperationErrorKind::Transform(error) = error.kind() else {
+        panic!("transform diagnostic required");
+    };
+    assert_eq!(error.kind(), TransformErrorKind::NonFinite);
+    let shadow = integration_shadow_items(&[(f64::MAX, 0.0)]);
+    let error = operations
+        .accumulate(&key("box-shadow"), &shadow, &shadow)
+        .unwrap_err();
+    let PropertyOperationErrorKind::Shadow(error) = error.kind() else {
+        panic!("shadow diagnostic required");
+    };
+    assert_eq!(error.kind(), ShadowErrorKind::NonFinite);
+    assert_eq!(error.shadow_index(), Some(0));
 }

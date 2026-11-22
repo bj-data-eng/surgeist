@@ -7,7 +7,8 @@ use crate::interpolation::{
     InterpolationOutcome, InterpolationPair, InterpolationProgress, PropertyKey, TransformValue,
 };
 use crate::keyframe_input::CompositeOperation;
-use crate::transform::ResolvedTransformList;
+use crate::shadow::ShadowError;
+use crate::transform::TransformError;
 use core::fmt;
 
 /// Selects a generic animation type after the property's own rule is consulted.
@@ -18,6 +19,9 @@ use core::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimationType {
     Discrete,
+    /// Combines computed components and dispatches guarded Transform/Shadow
+    /// payloads to their selected property-specific list owners. Shadow kind
+    /// remains encoded by ShadowList; generic repeatable-list rules do not apply.
     ByComputedValue,
     RepeatableList,
 }
@@ -47,6 +51,8 @@ pub enum PropertyOperationErrorKind {
     Unsupported(CompositeOperation),
     Capacity,
     Computed(ComputedError),
+    Transform(Box<TransformError>),
+    Shadow(Box<ShadowError>),
     Interpolation(Box<InterpolationError>),
 }
 /// A typed failure from a generic property operation.
@@ -73,6 +79,8 @@ impl std::error::Error for PropertyOperationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
             PropertyOperationErrorKind::Computed(error) => Some(error),
+            PropertyOperationErrorKind::Transform(error) => Some(error.as_ref()),
+            PropertyOperationErrorKind::Shadow(error) => Some(error.as_ref()),
             PropertyOperationErrorKind::Interpolation(error) => Some(error.as_ref()),
             _ => None,
         }
@@ -203,28 +211,34 @@ impl AnimationTypeOperations {
                     a.accumulate(b)?
                 }),
             ),
-            (InterpolableValue::Transform(a), InterpolableValue::Transform(b))
-                if operation == CompositeOperation::Add =>
-            {
+            (InterpolableValue::Transform(a), InterpolableValue::Transform(b)) => {
                 let (Some(a), Some(b)) = (a.resolved_list(), b.resolved_list()) else {
                     return Err(PropertyOperationError::unsupported(operation));
                 };
-                let length = a.functions().len().checked_add(b.functions().len()).ok_or(
-                    PropertyOperationError {
+                let value = if operation == CompositeOperation::Add {
+                    a.try_added_to(b).map_err(|_| PropertyOperationError {
                         kind: PropertyOperationErrorKind::Capacity,
-                    },
-                )?;
-                let mut functions = Vec::new();
-                functions
-                    .try_reserve_exact(length)
-                    .map_err(|_| PropertyOperationError {
-                        kind: PropertyOperationErrorKind::Capacity,
-                    })?;
-                functions.extend_from_slice(a.functions());
-                functions.extend_from_slice(b.functions());
+                    })?
+                } else {
+                    a.accumulated_with(b)
+                        .map_err(|error| PropertyOperationError {
+                            kind: PropertyOperationErrorKind::Transform(Box::new(error)),
+                        })?
+                };
                 Ok(InterpolableValue::transform(TransformValue::resolved(
-                    ResolvedTransformList::new(functions),
+                    value,
                 )))
+            }
+            (InterpolableValue::Shadow(a), InterpolableValue::Shadow(b)) => {
+                let value = if operation == CompositeOperation::Add {
+                    a.added_to(b)
+                } else {
+                    a.accumulated_with(b)
+                }
+                .map_err(|error| PropertyOperationError {
+                    kind: PropertyOperationErrorKind::Shadow(Box::new(error)),
+                })?;
+                Ok(InterpolableValue::shadow(value))
             }
             (InterpolableValue::Discrete(_), InterpolableValue::Discrete(_)) => Ok(value.clone()),
             (a, b) if a.family() != b.family() => Ok(value.clone()),

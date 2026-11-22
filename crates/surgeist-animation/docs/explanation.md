@@ -70,7 +70,10 @@ and interpolation. CSS supplies its separately assembled endpoints. The shared
 pure composition boundary accepts selected property operations and validates
 effect ordering over supplied snapshots. It folds each effect against the
 previous output, without repeating endpoint composition. State publication stays
-caller-owned. See [computed effects](reference.md#computed-keyframe-effects)
+caller-owned. Stack playback facts come directly from checked records rather
+than another supplied mutable play state. Computed effect bundles retain their
+associated effect identity and setup revision, so reassociation or setup edits
+cannot silently reuse stale frames. See [computed effects](reference.md#computed-keyframe-effects)
 for native versus CSS timing adapters and atomic failure behavior.
 
 The same immutable snapshot supplies replacement decisions. Exact target and

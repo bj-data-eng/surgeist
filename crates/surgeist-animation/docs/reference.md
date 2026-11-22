@@ -198,11 +198,19 @@ See the [module example](../src/playback.rs) for context-aware creation and play
 
 `composition::EffectStackSnapshot::new` validates one immutable set of supplied
 animation/effect observations against an `AnimationRecords` owner. It checks
-identity, association, registered effect-end facts, timeline monotonicity
-agreement and effect timing's state/time rules. Adapters supply the truth of
+identity, association, effect setup identity/revision, registered effect-end
+facts, timeline agreement and effect timing's rules. Adapters supply the truth of
 target identities (including pseudo-elements), CSS ownership, document membership,
-and class-specific ordering. Playback owners supply coherent current time and
-`EffectAnimationState`; this boundary does not implement playback control.
+and class-specific ordering. Local time, play state and playback rate come from
+the checked `AnimationRecordSnapshot::observation()`, including pending controls;
+stack input accepts only caller-owned replacement state. A cancellation cannot
+be bypassed with an independently supplied Finished state or old local time.
+
+`EffectStackEffect::new` binds computed frames to an opaque `EffectSnapshot`
+captured when computing them. Reassociation and setup edits invalidate that
+bundle even if the new associated effect has the same duration. The computing
+adapter still owns freshness for target-context computed values. Old validated
+stack snapshots remain immutable through later control or setup changes.
 
 `AnimationClass` identifies the creating interface, independently of CSS owning
 elements. `AnimationOrder` first compares applicable inter-class ranks, then
@@ -226,8 +234,12 @@ inapplicable target, and typed sampling failure remain distinct.
 values while retaining their effect timing. Unlisted represented properties are
 animatable by default. `AnimationTypeOperations` implements selected discrete,
 by-computed-value and repeatable-list operations; property-specific algorithms
-can instead implement `PropertyValueOperations`. Unsupported accumulation does
-not silently become addition. Property-definition and applicable Appendix A
+can instead implement `PropertyValueOperations`. Guarded Transform payloads use
+the transform owner's checked concatenation and accumulation; guarded Shadow
+payloads use their encoded box/text kind and the shadow owner's list algorithms.
+Shadow lists never enter generic repeatable-list expansion. Owning Transform and
+Shadow failures retain their typed diagnostics. Unsupported operations do not
+silently become addition. Property-definition and applicable Appendix A
 selection remain with the caller, without another CSS property registry.
 
 `replacements` selects Active, non-markup-prescribed, finished animations with a
