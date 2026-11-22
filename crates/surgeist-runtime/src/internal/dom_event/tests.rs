@@ -260,11 +260,18 @@ pub(super) fn dom() -> Dom {
     .unwrap()
 }
 fn event_session(owner: Dom) -> crate::internal::dom_style::DomSession {
+    event_session_with_storage(owner, 16_000_000)
+}
+
+fn event_session_with_storage(
+    owner: Dom,
+    storage_bytes: usize,
+) -> crate::internal::dom_style::DomSession {
     crate::internal::dom_style::DomSession::new(
         owner,
         crate::internal::dom_style::DomSessionLimits {
             authored_events: crate::internal::dom_event::DomEventStorageLimits {
-                storage_bytes: 16_000_000,
+                storage_bytes,
                 work: 1_000_000,
             },
             source_events: crate::internal::dom_dialog::DomSourceEventRuntimeLimits {
@@ -301,6 +308,60 @@ fn event_session(owner: Dom) -> crate::internal::dom_style::DomSession {
     )
     .unwrap()
 }
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn native_legacy_event_admits_one_body_and_reuses_released_storage() {
+    let control = event_session(dom());
+    let baseline = control.hosted_execution().event_storage.used_bytes();
+    let exact = baseline + EventBodyCustody::event_bytes();
+    let cancel = AtomicBool::new(false);
+    let alias = b"Event".map(u16::from);
+
+    for capacity in [exact - 1, exact] {
+        let mut session = event_session_with_storage(dom(), capacity);
+        let mut hosted = session.hosted_execution();
+        let host = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+        let top = hosted
+            .create_top_level(&mut session.dom(), host, &cancel)
+            .unwrap();
+        let stamp = session.snapshot().stamp();
+        let storage = hosted.event_storage.clone();
+        let mut make =
+            || hosted.create_legacy_event(&mut session.dom(), top.document(), &alias, &cancel);
+
+        let result = make();
+        if capacity == exact {
+            let event = result.unwrap();
+            assert_eq!(storage.used_bytes(), exact);
+            assert!(matches!(
+                make(),
+                Err(DomEventConstructionError::Event(
+                    DomEventDispatchError::Admission(DomEventResource::Storage)
+                ))
+            ));
+            drop(event);
+            assert_eq!(storage.used_bytes(), baseline);
+            assert!(make().unwrap().event_type().code_units().is_empty());
+        } else {
+            assert!(matches!(
+                result,
+                Err(DomEventConstructionError::Event(
+                    DomEventDispatchError::Admission(DomEventResource::Storage)
+                ))
+            ));
+        }
+        assert_eq!(storage.used_bytes(), baseline);
+        assert_eq!(session.snapshot().stamp(), stamp);
+    }
+}
+
 struct Ordinary {
     dom: Dom,
     document: DocumentId,

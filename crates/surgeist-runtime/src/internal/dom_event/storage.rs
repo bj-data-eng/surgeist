@@ -77,7 +77,7 @@ impl EventStorage {
     }
 
     #[cfg(test)]
-    pub(super) fn used_bytes(&self) -> usize {
+    pub(crate) fn used_bytes(&self) -> usize {
         self.counter().unwrap().bytes.get()
     }
 

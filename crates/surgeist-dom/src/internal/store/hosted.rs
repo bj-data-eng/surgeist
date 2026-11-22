@@ -1499,14 +1499,15 @@ impl Dom {
         E: From<DomError> + From<DomHostedError>,
     {
         let _work = self.dispatch_hosted_read_work(cancel)?;
-        self.dispatch_relevant_global_current_with(node, step, AssociationReadWork::Record)
+        self.dispatch_global_association_current_with(node, step, AssociationReadWork::Record)
+            .map(|association| association.map(|(global, _)| global))
     }
-    fn dispatch_relevant_global_current_with<E>(
+    fn dispatch_global_association_current_with<E>(
         &self,
         node: NodeId,
         step: &mut impl FnMut() -> Result<(), E>,
         work: AssociationReadWork,
-    ) -> Result<Option<DomHostedGlobalId>, E>
+    ) -> Result<Option<(DomHostedGlobalId, DocumentId)>, E>
     where
         E: From<DomError> + From<DomHostedError>,
     {
@@ -1518,11 +1519,11 @@ impl Dom {
             }
             AssociationReadWork::Pages => snapshot.node_with(node, &mut *step)?,
         };
-        let global = node.relevant_global()?;
-        if let Some(global) = global {
-            self.dispatch_global_document_metadata(global, step, work)?;
-        }
-        Ok(global)
+        let Some(global) = node.relevant_global()? else {
+            return Ok(None);
+        };
+        let (document, _, _) = self.dispatch_global_document_metadata(global, step, work)?;
+        Ok(Some((global, document)))
     }
     /// Qualify the actual current issuer for a hosted Document reached during
     /// selected native dispatch preparation, independently of its event parent.
@@ -1553,9 +1554,26 @@ impl Dom {
     where
         E: From<DomError> + From<DomHostedError>,
     {
+        self.dispatch_document_global_association_with(document, cancel, step)
+            .map(|association| association.map(|(global, _)| global))
+    }
+
+    /// Observe the receiving Document's relevant Global together with that
+    /// Global's verified current Document. A detached receiver can share the
+    /// actual Global of another Document. Both identities come from one
+    /// metered association lookup, with no added authority.
+    pub fn dispatch_document_global_association_with<E>(
+        &self,
+        receiver: DocumentId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(DomHostedGlobalId, DocumentId)>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         let work = self.dispatch_hosted_read_work(cancel)?;
-        self.dispatch_relevant_global_current_with(
-            document.node(),
+        self.dispatch_global_association_current_with(
+            receiver.node(),
             &mut || -> Result<(), E> {
                 check_cancel(cancel)?;
                 step()?;

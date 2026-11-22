@@ -5,7 +5,10 @@ use std::rc::Rc;
 
 use crate::backend::{NativeCollectionKind, NativeProjectionSlot};
 use crate::callback_object::CallbackObjectIdentity;
-use crate::{Error, ObjectPrototype, RealmAuthority, RetainedCallbackObject, Scope, Value};
+use crate::{
+    Error, ObjectPrototype, PropertyDescriptor, PropertyKey, RealmAuthority,
+    RetainedCallbackObject, Scope, Value,
+};
 
 /// One typed native payload and its admitted Rust backing. A lookup can keep
 /// both alive after the original JavaScript object becomes unreachable.
@@ -203,6 +206,27 @@ impl<'scope> Scope<'scope> {
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<Value<'scope>, E> {
         self.project_payload(prototype, payload, None, admit)
+    }
+
+    /// Create an ordinary native object with its initial own property. The
+    /// property is defined while the object is private. If definition fails,
+    /// the native payload and its backing are released without collection.
+    pub fn project_native_object_with_own_property<T: 'static, Storage: 'static, E: From<Error>>(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        payload: T,
+        (key, descriptor): (PropertyKey<'_, 'scope>, PropertyDescriptor<'_, 'scope>),
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Value<'scope>, E> {
+        self.project_payload(
+            prototype,
+            payload,
+            Some(NativeProjectionSlot::OwnProperty(
+                key.input(),
+                descriptor.input(),
+            )),
+            admit,
+        )
     }
 
     /// Project a native object with one engine-traced reference already set.

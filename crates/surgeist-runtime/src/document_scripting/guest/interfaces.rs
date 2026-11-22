@@ -113,6 +113,7 @@ impl OriginAuthority {
 
 struct OriginBindings {
     global: DomHostedGlobalId,
+    event: BaseEventBindings,
     target: RetainedCallbackObject,
     documents: document::DocumentPrototypes,
     elements: document::element::ElementBindings,
@@ -183,12 +184,11 @@ pub(super) struct PublicEventBindings {
     callbacks: Rc<Callbacks>,
     window: RetainedCallbackObject,
     trusted_types: RetainedCallbackObject,
-    event: RetainedCallbackObject,
+    event: BaseEventBindings,
     page_transition_event: RetainedCallbackObject,
     toggle_event: RetainedCallbackObject,
     security_policy_violation: RetainedCallbackObject,
     target: RetainedCallbackObject,
-    trusted: RetainedCallbackObject,
     dispatch_in_attachment: RetainedCallbackObject,
     backup_reaction_job: RetainedCallbackObject,
     backup_reactions_scheduled: Cell<bool>,
@@ -373,97 +373,22 @@ impl PublicEventBindings {
             })
         };
 
-        let event = scope.object(ObjectPrototype::Default)?;
-        for (attribute, key, name) in [
-            (
-                Attribute::Type,
-                &ascii(b"type")[..],
-                &ascii(b"get type")[..],
-            ),
-            (Attribute::Target, &ascii(b"target"), &ascii(b"get target")),
-            (
-                Attribute::Target,
-                &ascii(b"srcElement"),
-                &ascii(b"get srcElement"),
-            ),
-            (
-                Attribute::CurrentTarget,
-                &ascii(b"currentTarget"),
-                &ascii(b"get currentTarget"),
-            ),
-            (
-                Attribute::Phase,
-                &ascii(b"eventPhase"),
-                &ascii(b"get eventPhase"),
-            ),
-            (
-                Attribute::CancelBubble,
-                &ascii(b"cancelBubble"),
-                &ascii(b"get cancelBubble"),
-            ),
-            (
-                Attribute::Bubbles,
-                &ascii(b"bubbles"),
-                &ascii(b"get bubbles"),
-            ),
-            (
-                Attribute::Cancelable,
-                &ascii(b"cancelable"),
-                &ascii(b"get cancelable"),
-            ),
-            (
-                Attribute::ReturnValue,
-                &ascii(b"returnValue"),
-                &ascii(b"get returnValue"),
-            ),
-            (
-                Attribute::DefaultPrevented,
-                &ascii(b"defaultPrevented"),
-                &ascii(b"get defaultPrevented"),
-            ),
-            (
-                Attribute::Composed,
-                &ascii(b"composed"),
-                &ascii(b"get composed"),
-            ),
-            (
-                Attribute::TimeStamp,
-                &ascii(b"timeStamp"),
-                &ascii(b"get timeStamp"),
-            ),
-        ] {
-            let getter = make_getter(
-                scope,
-                capture(size_of::<(Capture, Attribute)>())?,
-                attribute,
-                name,
-            )?;
-            let setter = operations::event_setter(scope, attribute, &capture)?;
-            define_accessor(scope, &event, key, &getter, setter.as_ref(), true)?;
-        }
-        operations::install(scope, &event, &capture)?;
-        let trusted = make_getter(
-            scope,
-            capture(size_of::<(Capture, Attribute)>())?,
-            Attribute::Trusted,
-            &ascii(b"get isTrusted"),
-        )?;
-
+        let (event_prototype, event) =
+            BaseEventBindings::install(scope, &capture_origin, &fund_origin)?;
         install_target_operations(scope, target, &capture_origin)?;
 
-        install_event_interface(scope, Interface::Event, &event, &capture)?;
-        let page_transition_event = page_transition_event::install(scope, &event, &capture)?;
+        let page_transition_event =
+            page_transition_event::install(scope, &event_prototype, &capture)?;
         let page_transition_event = scope.callback_object(&page_transition_event)?;
         let page_transition_event = scope.retain_callback_object(page_transition_event, fund)?;
-        let toggle_event = toggle_event::install(scope, &event, &capture)?;
+        let toggle_event = toggle_event::install(scope, &event_prototype, &capture)?;
         let toggle_event = scope.callback_object(&toggle_event)?;
         let toggle_event = scope.retain_callback_object(toggle_event, fund)?;
-        let violation = security_policy_violation::install(scope, &event, &capture)?;
+        let violation = security_policy_violation::install(scope, &event_prototype, &capture)?;
         let violation = scope.callback_object(&violation)?;
         let security_policy_violation = scope.retain_callback_object(violation, fund)?;
         let constructor =
             install_event_interface(scope, Interface::Target, target, &capture_origin)?;
-        let observed = scope.callback_object(&event)?;
         let document = document::DocumentBindings::install(
             scope,
             document_id,
@@ -476,11 +401,8 @@ impl PublicEventBindings {
                 retain: &fund_origin,
             },
         )?;
-        let event = scope.retain_callback_object(observed, fund)?;
         let observed = scope.callback_object(target)?;
         let target = scope.retain_callback_object(observed, fund_origin)?;
-        let observed = scope.callback_object(&trusted)?;
-        let trusted = scope.retain_callback_object(observed, fund)?;
         let window = scope.global()?;
         let custom_elements = custom_elements::install(
             scope,
@@ -548,7 +470,6 @@ impl PublicEventBindings {
                 toggle_event,
                 security_policy_violation,
                 target,
-                trusted,
                 dispatch_in_attachment,
                 backup_reaction_job,
                 backup_reactions_scheduled: Cell::new(false),
@@ -656,6 +577,7 @@ impl PublicEventBindings {
                 &ordinary_target
             }
         };
+        let (_, event) = BaseEventBindings::install(scope, &capture, &fund)?;
         let target_constructor =
             install_event_interface(scope, Interface::Target, target, &capture)?;
         let (constructor, node) = document::install_node(scope, target, &capture)?;
@@ -705,6 +627,7 @@ impl PublicEventBindings {
             target_constructor,
             OriginBindings {
                 global,
+                event,
                 target,
                 documents,
                 elements,
@@ -787,7 +710,7 @@ impl PublicEventBindings {
         &self,
         scope: &mut Scope<'scope>,
     ) -> Result<Value<'scope>, Error> {
-        scope.open_callback_object(&self.event)
+        self.event.prototype(scope)
     }
 
     pub(super) fn native_event_prototype<'scope>(
@@ -811,7 +734,149 @@ impl PublicEventBindings {
         &self,
         scope: &mut Scope<'scope>,
     ) -> Result<Value<'scope>, Error> {
+        self.event.trusted_getter(scope)
+    }
+}
+
+/// Original base Event objects retained for each installed creation realm.
+struct BaseEventBindings {
+    prototype: RetainedCallbackObject,
+    trusted: RetainedCallbackObject,
+}
+
+impl BaseEventBindings {
+    fn install<'scope>(
+        scope: &mut Scope<'scope>,
+        capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+        fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
+    ) -> Result<(Value<'scope>, Self), DocumentGuestEventError> {
+        let event = scope.object(ObjectPrototype::Default)?;
+        for (attribute, key, name) in [
+            (
+                Attribute::Type,
+                &ascii(b"type")[..],
+                &ascii(b"get type")[..],
+            ),
+            (Attribute::Target, &ascii(b"target"), &ascii(b"get target")),
+            (
+                Attribute::Target,
+                &ascii(b"srcElement"),
+                &ascii(b"get srcElement"),
+            ),
+            (
+                Attribute::CurrentTarget,
+                &ascii(b"currentTarget"),
+                &ascii(b"get currentTarget"),
+            ),
+            (
+                Attribute::Phase,
+                &ascii(b"eventPhase"),
+                &ascii(b"get eventPhase"),
+            ),
+            (
+                Attribute::CancelBubble,
+                &ascii(b"cancelBubble"),
+                &ascii(b"get cancelBubble"),
+            ),
+            (
+                Attribute::Bubbles,
+                &ascii(b"bubbles"),
+                &ascii(b"get bubbles"),
+            ),
+            (
+                Attribute::Cancelable,
+                &ascii(b"cancelable"),
+                &ascii(b"get cancelable"),
+            ),
+            (
+                Attribute::ReturnValue,
+                &ascii(b"returnValue"),
+                &ascii(b"get returnValue"),
+            ),
+            (
+                Attribute::DefaultPrevented,
+                &ascii(b"defaultPrevented"),
+                &ascii(b"get defaultPrevented"),
+            ),
+            (
+                Attribute::Composed,
+                &ascii(b"composed"),
+                &ascii(b"get composed"),
+            ),
+            (
+                Attribute::TimeStamp,
+                &ascii(b"timeStamp"),
+                &ascii(b"get timeStamp"),
+            ),
+        ] {
+            let getter = make_getter(
+                scope,
+                capture(size_of::<(Capture, Attribute)>())?,
+                attribute,
+                name,
+            )?;
+            let setter = operations::event_setter(scope, attribute, capture)?;
+            define_accessor(scope, &event, key, &getter, setter.as_ref(), true)?;
+        }
+        operations::install(scope, &event, capture)?;
+        let trusted = make_getter(
+            scope,
+            capture(size_of::<(Capture, Attribute)>())?,
+            Attribute::Trusted,
+            &ascii(b"get isTrusted"),
+        )?;
+        install_event_interface(scope, Interface::Event, &event, capture)?;
+        let prototype = scope.callback_object(&event)?;
+        let trusted = scope.callback_object(&trusted)?;
+        Ok((
+            event,
+            Self {
+                prototype: scope.retain_callback_object(prototype, fund)?,
+                trusted: scope.retain_callback_object(trusted, fund)?,
+            },
+        ))
+    }
+
+    fn prototype<'scope>(&self, scope: &mut Scope<'scope>) -> Result<Value<'scope>, Error> {
+        scope.open_callback_object(&self.prototype)
+    }
+
+    fn trusted_getter<'scope>(&self, scope: &mut Scope<'scope>) -> Result<Value<'scope>, Error> {
         scope.open_callback_object(&self.trusted)
+    }
+
+    fn project<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        prototype: &Value<'scope>,
+        event: NativeDomEvent,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let trusted = self.trusted_getter(scope)?;
+        scope.project_native_object_with_own_property(
+            ObjectPrototype::Object(prototype),
+            GuestEventProjection(event),
+            (PropertyKey::String(TRUSTED), trust_descriptor(&trusted)),
+            |bytes| events.reserve(owner, bytes),
+        )
+    }
+
+    fn project_legacy<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        host: (&NativeOwner, &GuestEvents),
+        event: NativeDomEvent,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let prototype = self.prototype(scope)?;
+        if self.prototype.associated_realm().identity() == scope.realm_authority()?.identity() {
+            return self.project(scope, host, &prototype, event);
+        }
+        let callback = scope.callback_object(&prototype)?;
+        let value = scope.in_callback_object_realm(&callback, |scope, prototype| {
+            let value = self.project(scope, host, prototype, event)?;
+            Ok::<_, DocumentGuestEventError>(scope.retain(&value))
+        })?;
+        Ok(scope.import(&value)?)
     }
 }
 
@@ -1201,9 +1266,12 @@ impl Capture {
     ) -> Result<Value<'scope>, Error> {
         let (_, events) = self.active(scope)?;
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-        if let (Interface::Target, Some(origin)) = (kind, &self.origin) {
+        if let Some(origin) = &self.origin {
             return match public.with_origin(&events, origin.global, |bindings| {
-                Ok(scope.open_callback_object(&bindings.target)?)
+                Ok(match kind {
+                    Interface::Event => bindings.event.prototype(scope)?,
+                    Interface::Target => scope.open_callback_object(&bindings.target)?,
+                })
             }) {
                 Ok(value) => Ok(value),
                 Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
@@ -1212,10 +1280,10 @@ impl Capture {
                 Err(error) => refuse(scope, &events.refusal, error),
             };
         }
-        scope.open_callback_object(match kind {
-            Interface::Event => &public.event,
-            Interface::Target => &public.target,
-        })
+        match kind {
+            Interface::Event => public.event_prototype(scope),
+            Interface::Target => public.target_prototype(scope),
+        }
     }
 
     fn dispatch<'scope>(
@@ -1280,6 +1348,7 @@ impl Capture {
         scope.check_active()?;
         events.step()?;
         let native = self.with_native(owner, |session, global| {
+            let global = self.origin.as_ref().map_or(global, |origin| origin.global);
             session
                 .hosted_execution()
                 .create_event(
@@ -1296,14 +1365,16 @@ impl Capture {
                 .map_err(DocumentGuestEventError::Construction)
         })?;
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-        let trusted = public.trusted_getter(scope)?;
-        let value = scope.project_native_object(
-            ObjectPrototype::Object(selected.prototype()),
-            GuestEventProjection(native),
-            |bytes| events.reserve(owner, bytes),
-        )?;
-        expose_trust(scope, &value, &trusted)?;
-        Ok(value)
+        if let Some(origin) = &self.origin {
+            return public.with_origin(events, origin.global, |bindings| {
+                bindings
+                    .event
+                    .project(scope, (owner, events), selected.prototype(), native)
+            });
+        }
+        public
+            .event
+            .project(scope, (owner, events), selected.prototype(), native)
     }
 
     fn construct_target<'scope>(
@@ -1436,7 +1507,22 @@ pub(super) fn expose_trust<'scope>(
     event: &Value<'scope>,
     trusted: &Value<'scope>,
 ) -> Result<(), Error> {
-    define_accessor(scope, event, TRUSTED, trusted, None, false)
+    scope.define_new_property(
+        event,
+        PropertyKey::String(TRUSTED),
+        trust_descriptor(trusted),
+    )
+}
+
+fn trust_descriptor<'value, 'scope>(
+    trusted: &'value Value<'scope>,
+) -> PropertyDescriptor<'value, 'scope> {
+    PropertyDescriptor::Accessor {
+        get: Some(trusted),
+        set: None,
+        enumerable: true,
+        configurable: false,
+    }
 }
 
 fn define_accessor<'scope>(

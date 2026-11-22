@@ -206,6 +206,11 @@ against the receiving Document's canonical registry. The hosted factories
 execute reached autonomous and customized built-in definitions synchronously.
 General union and overload selection have separate binding work.
 
+`Document.createEvent` converts its required DOMString and uses Runtime's
+uninitialized native Event factory. The base Event aliases create a fresh
+instance in the receiving Document's creation realm, including factory-created
+detached Documents. Unsupported names throw a method-realm `NotSupportedError`.
+
 [Runtime's native document attachment](../surgeist-runtime/README.md) installs
 the standard `CSS` namespace in the selected Window realm. `CSS.escape` uses
 the generated required DOMString argument descriptor and the native CSSOM

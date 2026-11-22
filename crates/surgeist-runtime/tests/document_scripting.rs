@@ -89,6 +89,8 @@ mod dialog_state;
 mod document_all;
 #[path = "document_scripting/document_collections.rs"]
 mod document_collections;
+#[path = "document_scripting/document_create_event.rs"]
+mod document_create_event;
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
 #[path = "document_scripting/document_metadata.rs"]
@@ -2530,6 +2532,8 @@ fn main() {
             "html-collection-properties" => tag_collection::reflects_live_tag_collection_properties(),
             "document-all" => document_all::uses_the_canonical_live_document(),
             "document-collections" => document_collections::document_collections_share_live_native_identity(),
+            "document-create-event" => document_create_event::document_create_event_exposes_the_native_uninitialized_event(),
+            "document-create-event-realm" => document_create_event::borrowed_create_event_uses_the_receiving_document_realm(),
             "document-metadata" => document_metadata::metadata_comes_from_the_canonical_document_receiver(),
             "document-metadata-source" => document_metadata::metadata_getters_read_during_an_original_native_source_reaction(),
             "document-metadata-realm" => document_metadata::borrowed_metadata_getters_read_the_other_live_document(),
@@ -2709,6 +2713,8 @@ fn main() {
     window_properties::named_window_elements_follow_the_live_document();
     document_all::uses_the_canonical_live_document();
     document_collections::document_collections_share_live_native_identity();
+    document_create_event::document_create_event_exposes_the_native_uninitialized_event();
+    document_create_event::borrowed_create_event_uses_the_receiving_document_realm();
     document_metadata::metadata_comes_from_the_canonical_document_receiver();
     document_metadata::metadata_getters_read_during_an_original_native_source_reaction();
     document_metadata::borrowed_metadata_getters_read_the_other_live_document();

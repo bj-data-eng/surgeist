@@ -114,6 +114,7 @@ pub(crate) trait Engine {
 }
 
 pub(crate) enum NativeProjectionSlot<'a> {
+    OwnProperty(PropertyKey<'a>, PropertyDescriptor<'a>),
     Traced(u32, &'a Root),
     NamedOverride {
         read: &'a Root,

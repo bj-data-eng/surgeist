@@ -14931,15 +14931,24 @@
     "Document.createEvent:0/call": {
       "kind": "native",
       "adapter": "document.createevent.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The legacy createEvent interface-name mapping and uninitialized Event object state, including unsupported interface errors; this is distinct from constructing an already initialized Event.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-document-createevent",
-          "issue": 2278
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/event_factory.rs",
+          "symbol": "create_legacy_event"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/internal/dom_lifecycle/event.rs",
+          "symbol": "create_legacy_event"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/hosted.rs",
+          "symbol": "dispatch_document_global_association_with"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Document.createRange:0/call": {
       "kind": "native",

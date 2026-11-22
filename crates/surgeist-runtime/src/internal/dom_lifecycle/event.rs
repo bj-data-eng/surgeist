@@ -519,9 +519,9 @@ impl HostedRuntime {
                 .try_borrow_mut()
                 .map_err(|_| DomHostedRuntimeError::Busy)?;
             state.qualify(dom)?;
-            let global = dom
+            let (global, document) = dom
                 .raw()
-                .dispatch_document_relevant_global_with(document, cancel, &mut || {
+                .dispatch_document_global_association_with(document, cancel, &mut || {
                     state.step(cancel).map_err(EventLookupError)
                 })
                 .map_err(|error| error.0)?
