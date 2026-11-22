@@ -574,10 +574,10 @@ fn sample_property<'a, T>(
         };
         interpolation_progress.ok().map(|progress| {
             if before
-                && matches!(segment.from(), InterpolableValue::ResolvedColor(_))
+                && segment.from().is_checked_color()
                 && let Some(endpoint) = segment.pair.exact_endpoint(progress)
             {
-                // Hold the resolved color before conversion or missing carry.
+                // Hold the color endpoint before conversion or missing carry.
                 endpoint
             } else {
                 segment.pair.sample(progress)

@@ -1178,23 +1178,28 @@ values and their selected `surgeist_color::InterpolationMethod`. The colors
 may start in different spaces. `KeyframeSegment::from_pair` and
 `TransitionTrack::from_pair` admit this pair with their normal timing and
 offset validation. Construct one pair per interval when methods differ.
-Computed keyframes can supply `InterpolableValue::resolved_color` endpoints
-and `AnimationTypeOperations::for_color` for the selected method.
+`InterpolationPair::color_endpoints` also accepts checked samples.
+`InterpolableValue::color_endpoint` exposes either supported operand to a
+transition property policy. Computed keyframes can use
+`AnimationTypeOperations::for_color` with resolved or sampled endpoints.
 
 Active sampling passes the finite eased progress unchanged. Color owns the
 ordered conversion, missing-component carry and fill, hue arc, premultiplication
 and unpremultiplication. A running sample is `InterpolableValue::ColorSample`
 with its selected space, optional finite channels, and optional extended
-alpha. At a delay hold, the sampled value is the held resolved endpoint.
+alpha. At a delay hold, the sampled value is the held endpoint.
 Arithmetic failures retain the property, eased progress, original endpoints
 and typed Color cause through `ColorInterpolationFailure`. A later sample can
 recover on the same track.
 
-Style resolves contextual colors and selects the method. Reusing a checked
-sample as an interpolation endpoint requires a separate sampled-endpoint
-contract. The resolved pair takes only resolved colors, and generic admission
-reports `UnsupportedFamily` for same-family interpolation of a sampled color.
-Color addition and default accumulation select the effect operand.
+Style resolves contextual colors and selects the method. A running transition
+can use its checked current sample as the replacement start. It holds that
+sample exactly at the handoff and preserves reversal shortening.
+`TransitionPropertyPolicy::equivalent` defaults to exact same-space comparison
+between a checked sample and a resolved color when their numerical meanings
+agree. Style can supply contextual equality. Checked color pair admission
+requires an explicit method. Color addition and default accumulation select
+the effect operand.
 
 ## Normalized filter lists and filter images
 

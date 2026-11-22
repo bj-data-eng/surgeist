@@ -10,7 +10,8 @@
 use core::fmt;
 use std::sync::Arc;
 use surgeist_color::{
-    Color, Finite, InterpolationMethod, InterpolationSample, InterpolationSampleError,
+    Color, Finite, InterpolationEndpoint, InterpolationMethod, InterpolationSample,
+    InterpolationSampleError,
 };
 
 use crate::computed::{ComputedError, ComputedValue, RepeatableList};
@@ -870,6 +871,19 @@ impl InterpolableValue {
         Self::ResolvedColor(ResolvedColorValue(Arc::new(value)))
     }
 
+    /// Returns an operand for Color's checked interpolation contract.
+    pub fn color_endpoint(&self) -> Option<InterpolationEndpoint> {
+        match self {
+            Self::ResolvedColor(value) => Some(InterpolationEndpoint::Resolved(value.color())),
+            Self::ColorSample(value) => Some(InterpolationEndpoint::Sampled(*value)),
+            _ => None,
+        }
+    }
+
+    pub(crate) const fn is_checked_color(&self) -> bool {
+        matches!(self, Self::ResolvedColor(_) | Self::ColorSample(_))
+    }
+
     pub fn discrete(value: DiscreteValue) -> Self {
         Self::Discrete(value)
     }
@@ -1005,17 +1019,12 @@ impl InterpolationPair {
             return Err(mismatched_families(property, from, to));
         }
 
-        let unsupported_color = match (&from, &to) {
-            (InterpolableValue::ColorSample(_), _) | (_, InterpolableValue::ColorSample(_)) => {
-                Some("a checked color sample cannot be used as a resolved endpoint")
+        let unsupported_color = match (from.is_checked_color(), to.is_checked_color()) {
+            (true, true) => Some("checked color operands require an explicit interpolation method"),
+            (true, false) | (false, true) => {
+                Some("checked and explicit premultiplied color operands cannot be paired")
             }
-            (InterpolableValue::ResolvedColor(_), InterpolableValue::ResolvedColor(_)) => {
-                Some("resolved colors require an explicit interpolation method")
-            }
-            (InterpolableValue::ResolvedColor(_), _) | (_, InterpolableValue::ResolvedColor(_)) => {
-                Some("resolved and premultiplied color operands cannot be paired")
-            }
-            _ => None,
+            (false, false) => None,
         };
         if let Some(reason) = unsupported_color {
             return Err(InterpolationError::unsupported_family(
@@ -1056,25 +1065,50 @@ impl InterpolationPair {
         to: Color,
         method: InterpolationMethod,
     ) -> Self {
-        Self::with_color_method(
+        Self::color_endpoints(
             property,
-            ResolvedColorValue(Arc::new(from)),
-            ResolvedColorValue(Arc::new(to)),
+            InterpolationEndpoint::Resolved(from),
+            InterpolationEndpoint::Resolved(to),
             method,
         )
     }
 
+    /// Admits resolved colors and checked samples with a selected method.
+    /// A selected sampled endpoint is held exactly at progress zero or one.
+    pub fn color_endpoints(
+        property: PropertyKey,
+        from: InterpolationEndpoint,
+        to: InterpolationEndpoint,
+        method: InterpolationMethod,
+    ) -> Self {
+        let into_value = |endpoint| match endpoint {
+            InterpolationEndpoint::Resolved(color) => InterpolableValue::resolved_color(color),
+            InterpolationEndpoint::Sampled(sample) => InterpolableValue::ColorSample(sample),
+        };
+        Self::admitted_color_pair(property, into_value(from), into_value(to), method)
+    }
+
     pub(crate) fn with_color_method(
         property: PropertyKey,
-        from: ResolvedColorValue,
-        to: ResolvedColorValue,
+        from: &InterpolableValue,
+        to: &InterpolableValue,
+        method: InterpolationMethod,
+    ) -> Option<Self> {
+        (from.is_checked_color() && to.is_checked_color())
+            .then(|| Self::admitted_color_pair(property, from.clone(), to.clone(), method))
+    }
+
+    fn admitted_color_pair(
+        property: PropertyKey,
+        from: InterpolableValue,
+        to: InterpolableValue,
         method: InterpolationMethod,
     ) -> Self {
         Self {
             property,
             endpoints: Arc::new(InterpolationEndpoints {
-                from: InterpolableValue::ResolvedColor(from),
-                to: InterpolableValue::ResolvedColor(to),
+                from,
+                to,
                 color_method: Some(method),
             }),
         }
@@ -1093,6 +1127,20 @@ impl InterpolationPair {
     }
 
     pub fn sample(&self, progress: InterpolationProgress) -> InterpolationOutcome {
+        if let Some(method) = self.endpoints.color_method
+            && let (Some(from), Some(to)) =
+                (self.from().color_endpoint(), self.to().color_endpoint())
+        {
+            return match from.sample_interpolation(to, method, progress.value) {
+                Ok(value) => InterpolationOutcome::Value(InterpolableValue::ColorSample(value)),
+                Err(error) => InterpolationOutcome::ColorFailure(ColorInterpolationFailure {
+                    property: self.property.clone(),
+                    endpoints: Arc::clone(&self.endpoints),
+                    progress,
+                    error,
+                }),
+            };
+        }
         match (&self.endpoints.from, &self.endpoints.to) {
             (InterpolableValue::Number(from), InterpolableValue::Number(to)) => {
                 self.sample_number(*from, *to, progress)
@@ -1102,22 +1150,6 @@ impl InterpolationPair {
             }
             (InterpolableValue::Color(from), InterpolableValue::Color(to)) => {
                 self.sample_color(*from, *to, progress)
-            }
-            (InterpolableValue::ResolvedColor(from), InterpolableValue::ResolvedColor(to))
-                if let Some(method) = self.endpoints.color_method =>
-            {
-                match from
-                    .color()
-                    .sample_interpolation(to.color(), method, progress.value)
-                {
-                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::ColorSample(value)),
-                    Err(error) => InterpolationOutcome::ColorFailure(ColorInterpolationFailure {
-                        property: self.property.clone(),
-                        endpoints: Arc::clone(&self.endpoints),
-                        progress,
-                        error,
-                    }),
-                }
             }
             (InterpolableValue::Discrete(from), InterpolableValue::Discrete(to)) => {
                 let value = if progress.value() < 0.5 { from } else { to };

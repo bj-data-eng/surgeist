@@ -47,7 +47,7 @@ impl AnimationTypeOperations {
         }
     }
 
-    /// Selects the supplied color method for resolved endpoints in
+    /// Selects the supplied color method for resolved or sampled endpoints in
     /// by-computed-value operations.
     pub const fn for_color(method: InterpolationMethod) -> Self {
         Self {
@@ -153,19 +153,13 @@ impl PropertyValueOperations for AnimationTypeOperations {
                 }),
             };
         }
-        let pair = match (start, end, self.color_method) {
-            (
-                InterpolableValue::ResolvedColor(start),
-                InterpolableValue::ResolvedColor(end),
-                Some(method),
-            ) => Ok(InterpolationPair::with_color_method(
-                property.clone(),
-                start.clone(),
-                end.clone(),
-                method,
-            )),
-            _ => InterpolationPair::new(property.clone(), start.clone(), end.clone()),
-        };
+        let color_pair = self.color_method.and_then(|method| {
+            InterpolationPair::with_color_method(property.clone(), start, end, method)
+        });
+        let pair = color_pair.map_or_else(
+            || InterpolationPair::new(property.clone(), start.clone(), end.clone()),
+            Ok,
+        );
         let pair = match pair {
             Ok(pair) => pair,
             Err(

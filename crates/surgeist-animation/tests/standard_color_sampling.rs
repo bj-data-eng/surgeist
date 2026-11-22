@@ -1,6 +1,4 @@
-use surgeist_animation::composition::{
-    AnimationTypeOperations, PropertyOperationErrorKind, PropertyValueOperations,
-};
+use surgeist_animation::composition::{AnimationTypeOperations, PropertyValueOperations};
 use surgeist_animation::easing::{Easing, LinearControlPointInput, LinearEasing};
 use surgeist_animation::interpolation::{
     InterpolableValue, InterpolationError, InterpolationOutcome, InterpolationPair,
@@ -479,7 +477,7 @@ fn transition_holds_the_raw_start_then_converts_to_the_selected_space() {
 }
 
 #[test]
-fn computed_keyframes_publish_a_checked_sample_that_cannot_be_interpolated_again() {
+fn computed_keyframe_samples_can_reenter_a_color_pair_with_a_selected_method() {
     let property = PropertyKey::new("color").unwrap();
     let start = InterpolableValue::resolved_color(color(SRGB, [Some(0.0); 3], Some(0.0)));
     let end = InterpolableValue::resolved_color(color(SRGB, [Some(1.0); 3], Some(1.0)));
@@ -520,12 +518,22 @@ fn computed_keyframes_publish_a_checked_sample_that_cannot_be_interpolated_again
     assert_eq!(sample.alpha().map(Finite::get), Some(2.0));
     assert_eq!(channels(*sample), [Some(1.0); 3]);
 
-    let error = operations
-        .interpolate(&property, &value, &end, progress)
-        .unwrap_err();
     assert!(matches!(
-        error.kind(),
-        PropertyOperationErrorKind::Interpolation(interpolation)
-            if matches!(**interpolation, InterpolationError::UnsupportedFamily(_))
+        InterpolationPair::new(property.clone(), value.clone(), end.clone()),
+        Err(InterpolationError::UnsupportedFamily(_))
     ));
+    let next = operations
+        .interpolate(
+            &property,
+            &value,
+            &end,
+            InterpolationProgress::new(0.5).unwrap(),
+        )
+        .unwrap();
+    let InterpolableValue::ColorSample(next) = next else {
+        panic!("expected a re-interpolated color sample, got {next:?}");
+    };
+    assert_eq!(next.space(), LINEAR_SRGB);
+    assert_eq!(next.alpha().map(Finite::get), Some(1.5));
+    assert_eq!(channels(next), [Some(1.0); 3]);
 }

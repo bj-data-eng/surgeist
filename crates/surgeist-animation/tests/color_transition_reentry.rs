@@ -12,7 +12,8 @@ use surgeist_animation::transition::{
     TransitionTiming, TransitionTrackId, Transitionability,
 };
 use surgeist_color::{
-    Color, ColorSpace, Finite, InterpolationMethod, PredefinedColorSpace, UnitInterval,
+    Color, ColorSpace, Finite, InterpolationComponent, InterpolationMethod, PredefinedColorSpace,
+    UnitInterval,
 };
 
 const SRGB: ColorSpace = ColorSpace::Predefined(PredefinedColorSpace::Srgb);
@@ -25,13 +26,11 @@ impl ColorPolicy {
         from: &InterpolableValue,
         to: &InterpolableValue,
     ) -> Result<InterpolationPair, InterpolationError> {
-        if let (InterpolableValue::ResolvedColor(from), InterpolableValue::ResolvedColor(to)) =
-            (from, to)
-        {
-            return Ok(InterpolationPair::resolved_colors(
+        if let (Some(from), Some(to)) = (from.color_endpoint(), to.color_endpoint()) {
+            return Ok(InterpolationPair::color_endpoints(
                 property.clone(),
-                from.color(),
-                to.color(),
+                from,
+                to,
                 InterpolationMethod::try_new(SRGB, None).unwrap(),
             ));
         }
@@ -72,24 +71,7 @@ fn retargeting_keeps_the_extrapolated_color_as_the_new_start() {
     let before = color(0.25, 0.5);
     let old_target = color(0.25, 1.0);
     let new_target = color(1.0, 0.25);
-    let overshoot = Easing::linear_function(
-        LinearEasing::new(vec![
-            LinearControlPointInput {
-                input: 0.0,
-                output: 0.0,
-            },
-            LinearControlPointInput {
-                input: 0.25,
-                output: 1.5,
-            },
-            LinearControlPointInput {
-                input: 1.0,
-                output: 1.0,
-            },
-        ])
-        .unwrap(),
-    );
-    let initial = start(before, old_target.clone(), overshoot);
+    let initial = start(before, old_target.clone(), overshoot());
     let current = running(&initial).sample(at(250.0), &ColorPolicy).unwrap();
     assert_eq!(current.phase(), TransitionSamplePhase::Active);
     assert_checked_color(current.value(), 0.25, 1.25);
@@ -204,6 +186,80 @@ fn retargeting_to_the_current_color_cancels_without_starting_a_replacement() {
         update.outcomes(),
     );
     assert!(update.state().records().is_empty());
+}
+
+#[test]
+fn an_unrepresentable_sample_from_a_replacement_leaves_its_snapshot_intact() {
+    // The quarter-point easing extrapolates from 0.5 * large to -1.5 * large
+    // and produces -2.5 * large, beyond the finite channel range.
+    let large = f64::from_bits(0x7fe0_0000_0000_0000); // 2^1023
+    let before = color(0.0, 1.0);
+    let old_target = color(large, 1.0);
+    let replacement_target = color(-1.5 * large, 1.0);
+    let initial = start(before.clone(), old_target.clone(), Easing::linear());
+    let update = initial
+        .update(
+            at(500.0),
+            &[change(
+                old_target,
+                replacement_target.clone(),
+                overshoot(),
+                2,
+            )],
+            &ColorPolicy,
+        )
+        .unwrap()
+        .unwrap();
+    assert_replacement(update.outcomes());
+    let snapshot = update.state();
+    let run = running(snapshot);
+    assert_checked_color(Some(run.start_value()), 0.5 * large, 1.0);
+    let first_active = run.sample(at(625.0), &ColorPolicy).unwrap();
+    assert_eq!(first_active.phase(), TransitionSamplePhase::Active);
+    assert_checked_color(first_active.value(), -large, 1.0);
+
+    let original = (*snapshot).clone();
+    let error = snapshot
+        .update(
+            at(750.0),
+            &[change(
+                replacement_target.clone(),
+                before,
+                Easing::linear(),
+                3,
+            )],
+            &ColorPolicy,
+        )
+        .unwrap_err();
+    let Some(InterpolationError::Color(cause)) = error.interpolation_error() else {
+        panic!("expected a typed color interpolation error, got {error:?}");
+    };
+    assert_eq!(cause.property(), run.key().property());
+    assert_eq!(cause.from(), run.start_value());
+    assert_eq!(cause.to(), &replacement_target);
+    assert_eq!(cause.progress().value(), 1.5);
+    assert_eq!(
+        cause.error().component(),
+        InterpolationComponent::Channel(0)
+    );
+    assert_eq!(snapshot, &original);
+
+    let recovered = running(snapshot).sample(at(1_250.0), &ColorPolicy).unwrap();
+    assert_eq!(recovered.phase(), TransitionSamplePhase::Active);
+    assert_checked_color(recovered.value(), -0.5 * large, 1.0);
+}
+
+fn overshoot() -> Easing {
+    let points = [(0.0, 0.0), (0.25, 1.5), (0.75, 0.5), (1.0, 1.0)];
+    Easing::linear_function(
+        LinearEasing::new(
+            points
+                .into_iter()
+                .map(|(input, output)| LinearControlPointInput { input, output })
+                .collect(),
+        )
+        .unwrap(),
+    )
 }
 
 fn color(red: f64, alpha: f64) -> InterpolableValue {
