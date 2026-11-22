@@ -375,6 +375,14 @@ pub(super) fn window_properties_full_assignment_regression() {
         }
         if (prototypeReads !== 0) return "Window must refuse before reading NewTarget.prototype";
         const names = Object.getPrototypeOf(Window.prototype);
+        const hasExpectedOwnProperties = () => {
+            const keys = Reflect.ownKeys(names);
+            const tag = Object.getOwnPropertyDescriptor(names, Symbol.toStringTag);
+            return Object.isExtensible(names) && keys.length === 1 && keys[0] === Symbol.toStringTag
+                && tag?.value === "WindowProperties" && tag.writable === false
+                && tag.enumerable === false && tag.configurable === true;
+        };
+        if (!hasExpectedOwnProperties()) return "unexpected WindowProperties descriptors";
         if (Object.getPrototypeOf(names) !== target || Object.hasOwn(names, "constructor")
             || Object.prototype.toString.call(names) !== "[object WindowProperties]"
             || Reflect.setPrototypeOf(Window.prototype, {}) || Reflect.setPrototypeOf(target, {})
@@ -409,6 +417,22 @@ pub(super) fn window_properties_full_assignment_regression() {
             if (!assigned || !received || received[0] !== names || received[1] !== 42) {
                 return "WindowProperties must invoke an inherited setter with the exact receiver";
             }
+        }
+        const throwingKey = Symbol("alternate throwing setter");
+        const thrown = {};
+        const alternateTarget = Object.create(target);
+        let receiver;
+        Object.defineProperty(target, throwingKey, {
+            configurable: true,
+            set() { receiver = this; throw thrown; },
+        });
+        let caught;
+        try { Reflect.set(alternateTarget, throwingKey, 17, names); }
+        catch (error) { caught = error; }
+        delete target[throwingKey];
+        if (caught !== thrown || receiver !== names || Object.hasOwn(alternateTarget, throwingKey)
+            || !hasExpectedOwnProperties()) {
+            return "alternate assignment must preserve the setter exception, receiver and descriptors";
         }
         for (const key of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
             if (Object.hasOwn(window, key) || window[key] !== target[key]) {

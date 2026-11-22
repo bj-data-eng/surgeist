@@ -1,4 +1,4 @@
-//! Real entry-thread V8 ownership over an original native Runtime Session.
+//! Real entry-thread Boa ownership over an original native Runtime Session.
 
 use std::sync::{
     Arc,
@@ -2689,6 +2689,7 @@ fn main() {
     window_document::window_uses_the_real_global_event_target();
     window_document::window_resolves_the_inherited_event_target_operations();
     window_document::window_properties_direct_assignment_preserves_storage_and_inheritance();
+    window_document::window_properties_full_assignment_regression();
     tag_collection::reflects_live_tag_collection_properties();
     local_html::window_listener_attaches_to_the_visible_prefix_before_eof();
     native_window_exposes_dom_exception();
