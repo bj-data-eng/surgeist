@@ -69,6 +69,8 @@ mod body_reflections;
 mod button_attributes;
 #[path = "document_scripting/canvas_dimensions.rs"]
 mod canvas_dimensions;
+#[path = "document_scripting/class_list.rs"]
+mod class_list;
 #[path = "document_scripting/content_editable.rs"]
 mod content_editable;
 #[path = "document_scripting/control_autocomplete.rs"]
@@ -2539,6 +2541,8 @@ fn main() {
             "document-create-event" => document_create_event::document_create_event_exposes_the_native_uninitialized_event(),
             "document-create-event-realm" => document_create_event::borrowed_create_event_uses_the_receiving_document_realm(),
             "document-create-range" => document_create_range::document_range_keeps_canonical_live_boundaries(),
+            "class-list" => class_list::class_list_observes_and_edits_the_canonical_attribute(),
+            "class-list-reactions" => class_list::class_list_uses_native_attribute_reactions_once(),
             "document-default-view" => document_default_view::default_view_follows_the_native_document_context(),
             "document-create-range-realm" => document_create_range::borrowed_range_factory_uses_the_receiving_document_realm(),
             "document-metadata" => document_metadata::metadata_comes_from_the_canonical_document_receiver(),
@@ -2725,6 +2729,8 @@ fn main() {
     document_create_range::document_range_keeps_canonical_live_boundaries();
     document_create_range::borrowed_range_factory_uses_the_receiving_document_realm();
     document_default_view::default_view_follows_the_native_document_context();
+    class_list::class_list_observes_and_edits_the_canonical_attribute();
+    class_list::class_list_uses_native_attribute_reactions_once();
     document_metadata::metadata_comes_from_the_canonical_document_receiver();
     document_metadata::metadata_getters_read_during_an_original_native_source_reaction();
     document_metadata::borrowed_metadata_getters_read_the_other_live_document();
