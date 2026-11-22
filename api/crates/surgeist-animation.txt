@@ -140,6 +140,9 @@ pub enum surgeist_animation::computed::CalcSizeBasis
 pub surgeist_animation::computed::CalcSizeBasis::Any
 pub surgeist_animation::computed::CalcSizeBasis::Keyword(surgeist_animation::computed::SizingKeyword)
 pub surgeist_animation::computed::CalcSizeBasis::Percentage
+pub enum surgeist_animation::computed::CalcSizeBasisInput<'a>
+pub surgeist_animation::computed::CalcSizeBasisInput::Canonical(surgeist_animation::computed::CalcSizeBasis)
+pub surgeist_animation::computed::CalcSizeBasisInput::Numeric(&'a surgeist_animation::computed::CalcSizeCalculation)
 pub enum surgeist_animation::computed::CalcSizeNode
 pub surgeist_animation::computed::CalcSizeNode::Depercentify
 pub surgeist_animation::computed::CalcSizeNode::Depercentify::calculation: usize
@@ -232,7 +235,7 @@ pub fn surgeist_animation::computed::CalcSize::from_keyword(keyword: surgeist_an
 pub fn surgeist_animation::computed::CalcSize::from_numeric(value: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
 pub fn surgeist_animation::computed::CalcSize::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<core::option::Option<Self>, surgeist_animation::computed::ComputedError>
 pub fn surgeist_animation::computed::CalcSize::new(basis: surgeist_animation::computed::CalcSizeBasis, calculation: surgeist_animation::computed::CalcSizeCalculation) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
-pub fn surgeist_animation::computed::CalcSize::with_nested_basis(basis: &Self, calculation: &surgeist_animation::computed::CalcSizeCalculation) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::CalcSize::prepare(basis: surgeist_animation::computed::CalcSizeBasisInput<'_>, calculation: &surgeist_animation::computed::CalcSizeCalculation, nested_calculations: &[surgeist_animation::computed::CalcSizeCalculation]) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
 pub fn surgeist_animation::computed::CalcSize::with_numeric_basis(basis: &surgeist_animation::computed::CalcSizeCalculation, calculation: &surgeist_animation::computed::CalcSizeCalculation) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
 pub struct surgeist_animation::computed::CalcSizeCalculation
 impl surgeist_animation::computed::CalcSizeCalculation

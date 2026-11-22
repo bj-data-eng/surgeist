@@ -815,8 +815,9 @@ Use the normal transition or keyframe sampling interfaces with these operands.
 | `column-rule-color` | A resolved color endpoint and the caller's [selected interpolation method](#standard-space-color-sampling). |
 | `column-rule-style`, `column-span`, `column-fill` | Complete `DiscreteValue` endpoints switch at the eased midpoint. |
 
-`CalcSize` separates the basis from a bounded symbolic calculation. It
-substitutes nested calculations, reduces a pure-length basis to `any`, and
+`CalcSize` separates the basis from a bounded symbolic calculation.
+`CalcSize::prepare` substitutes nested calculations from the outside in,
+reduces a pure-length basis to `any`, and
 normalizes a basis containing percentages to `100%`. In that last case,
 only percentages originating in the basis become ratios of the bound `size`.
 Matching canonical bases combine. An `any` basis adopts the other basis.

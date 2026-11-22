@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
 use surgeist_animation::computed::{
-    CalcSize, CalcSizeBasis, CalcSizeCalculation, CalcSizeFootprint, CalcSizeNode,
-    ComputedDimension, ComputedErrorKind, ComputedNumeric, DimensionKind, MathContext, MathSource,
-    NumericLiteral, NumericType, SizingKeyword,
+    CalcSize, CalcSizeBasis, CalcSizeBasisInput, CalcSizeCalculation, CalcSizeFootprint,
+    CalcSizeNode, ComputedDimension, ComputedErrorKind, ComputedNumeric, DimensionKind,
+    MathContext, MathSource, NumericLiteral, NumericType, SizingKeyword,
 };
 use surgeist_animation::interpolation::InterpolationProgress;
 
@@ -47,12 +47,12 @@ fn a_nested_calculation_substitutes_size_and_retains_ordinary_percentages() {
     let sizing_keyword = SizingKeyword::MinContent;
     let inner_source = context.source(NumericType::Dimension(DimensionKind::Length));
     let outer_source = context.source(NumericType::DimensionPercentage(DimensionKind::Length));
-    let inner = CalcSize::new(
-        CalcSizeBasis::Keyword(sizing_keyword),
-        source(&inner_source, 3, 1, 0),
+    let nested = CalcSize::prepare(
+        CalcSizeBasisInput::Canonical(CalcSizeBasis::Keyword(sizing_keyword)),
+        &source(&outer_source, 5, 1, 1),
+        &[source(&inner_source, 3, 1, 0)],
     )
     .unwrap();
-    let nested = CalcSize::with_nested_basis(&inner, &source(&outer_source, 5, 1, 1)).unwrap();
     let sampled = midpoint(&nested, &CalcSize::from_keyword(sizing_keyword));
 
     let resolve = |source: &MathSource, size: f64, percentage_basis: f64| {
@@ -106,6 +106,16 @@ fn any_and_numeric_bases_reject_unbound_size() {
         ComputedErrorKind::IncompatibleTypes
     );
     assert_eq!(
+        CalcSize::prepare(
+            CalcSizeBasisInput::Canonical(CalcSizeBasis::Any),
+            &length(12.0),
+            &[size],
+        )
+        .unwrap_err()
+        .kind(),
+        ComputedErrorKind::IncompatibleTypes
+    );
+    assert_eq!(
         CalcSize::from_numeric(ComputedNumeric::number(2.0).unwrap())
             .unwrap_err()
             .kind(),
@@ -146,8 +156,7 @@ fn nested_basis_skips_an_unused_inner_expansion() {
 
     // Substituting the percentage into all 1,001 size references would exceed
     // the budget. The outer expression discards the inner calculation first.
-    let prepared = CalcSize::with_numeric_basis(&basis, &inner)
-        .and_then(|inner| CalcSize::with_nested_basis(&inner, &outer))
+    let prepared = CalcSize::prepare(CalcSizeBasisInput::Numeric(&basis), &outer, &[inner])
         .expect("the ignored inner calculation takes no space in the result");
     assert_eq!(prepared.basis(), CalcSizeBasis::Percentage);
     assert_eq!(prepared.calculation(), &outer);
@@ -173,22 +182,20 @@ fn substitution_rejects_excessive_expansion_and_leaves_inputs_usable() {
     let kind = NumericType::Dimension(DimensionKind::Length);
     let basis_source = context.source(kind);
     let calculation_source = context.source(kind);
-    let basis = CalcSize::new(CalcSizeBasis::Any, source(&basis_source, 3000, 0, 0)).unwrap();
+    let basis = CalcSizeBasisInput::Canonical(CalcSizeBasis::Any);
+    let inner = [source(&basis_source, 3000, 0, 0)];
     let repeated_size = source(&calculation_source, 3, 2, 0);
 
     assert_eq!(
-        CalcSize::with_nested_basis(&basis, &repeated_size)
+        CalcSize::prepare(basis, &repeated_size, &inner)
             .unwrap_err()
             .kind(),
         ComputedErrorKind::Capacity
     );
     let ignores_size = length(12.0);
-    let result = CalcSize::with_nested_basis(&basis, &ignores_size).unwrap();
+    let result = CalcSize::prepare(basis, &ignores_size, &inner).unwrap();
     assert_eq!(result.calculation(), &ignores_size);
-    assert_eq!(
-        basis.calculation().nodes(),
-        &[CalcSizeNode::Source(basis_source)]
-    );
+    assert_eq!(inner[0].nodes(), &[CalcSizeNode::Source(basis_source)]);
 }
 
 #[test]

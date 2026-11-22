@@ -32,6 +32,13 @@ pub enum CalcSizeBasis {
     Percentage,
 }
 
+/// The innermost basis of a `calc-size()` expression awaiting preparation.
+#[derive(Debug, Clone, Copy)]
+pub enum CalcSizeBasisInput<'a> {
+    Canonical(CalcSizeBasis),
+    Numeric(&'a CalcSizeCalculation),
+}
+
 /// The normalized expression size supplied for one opaque calculation source.
 ///
 /// `size_references` and `percentages` count leaf occurrences in the normalized
@@ -286,12 +293,35 @@ impl CalcSize {
         Ok(Self { basis, calculation })
     }
 
-    /// Substitutes a prepared nested basis into a new calculation.
-    pub fn with_nested_basis(
-        basis: &Self,
+    /// Prepares the outermost calculation and its nested basis calculations.
+    ///
+    /// Supply each nested calculation from the outermost basis inward, then
+    /// describe the innermost basis with `basis`. Substitution follows that
+    /// order. Once the expression has no free `size` reference, later
+    /// calculations contribute no terms, though the innermost basis still
+    /// supplies its sizing behavior.
+    pub fn prepare(
+        basis: CalcSizeBasisInput<'_>,
         calculation: &CalcSizeCalculation,
+        nested_calculations: &[CalcSizeCalculation],
     ) -> Result<Self, ComputedError> {
-        Self::new(basis.basis, calculation.substitute(&basis.calculation)?)
+        let innermost = nested_calculations.last().unwrap_or(calculation);
+        if matches!(basis, CalcSizeBasisInput::Canonical(CalcSizeBasis::Any))
+            && innermost.footprint.size_references != 0
+        {
+            return Err(incompatible());
+        }
+        let mut expanded = calculation.clone();
+        for nested in nested_calculations {
+            if expanded.footprint.size_references == 0 {
+                break;
+            }
+            expanded = expanded.substitute(nested)?;
+        }
+        match basis {
+            CalcSizeBasisInput::Canonical(basis) => Self::new(basis, expanded),
+            CalcSizeBasisInput::Numeric(basis) => Self::with_numeric_basis(basis, &expanded),
+        }
     }
 
     /// Prepares a numeric sum basis by substitution, retaining `100%` for a

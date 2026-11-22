@@ -40,7 +40,8 @@ pub use box_size::{ComputedSize, ComputedSizeValue};
 mod calc_size;
 #[doc(inline)]
 pub use calc_size::{
-    CalcSize, CalcSizeBasis, CalcSizeCalculation, CalcSizeFootprint, CalcSizeNode, SizingKeyword,
+    CalcSize, CalcSizeBasis, CalcSizeBasisInput, CalcSizeCalculation, CalcSizeFootprint,
+    CalcSizeNode, SizingKeyword,
 };
 
 mod integer;
