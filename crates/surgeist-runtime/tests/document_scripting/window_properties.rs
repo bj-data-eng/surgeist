@@ -175,6 +175,83 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
     );
     assert_eq!(indexed, "ok");
 
+    let reentrant = observe(
+        &mut host,
+        &permit,
+        r#"(() => {
+            let evidence = "connected callback did not run";
+            class WindowPropertyObserver extends HTMLElement {
+                connectedCallback() {
+                    const own = Reflect.ownKeys(window);
+                    const first = window[0];
+                    evidence = own[0] === '0' && own[1] === '1'
+                        && first === originalFirstChild && window.firstNativeChild === first
+                        && first.closed === false ? 'ok' : 'incorrect Window read during Source';
+                }
+            }
+            customElements.define('x-window-property-observer', WindowPropertyObserver);
+            document.body.appendChild(document.createElement('x-window-property-observer'));
+            return evidence;
+        })()"#,
+    );
+    assert_eq!(reentrant, "ok");
+
+    let (inner, child_body) = host
+        .with_native(|dom, _, _| {
+            let snapshot = dom.snapshot();
+            let parent = snapshot.hosted_navigable(first_child).unwrap();
+            let document = parent.active_document().unwrap();
+            let html = snapshot.node(document.node()).unwrap().children()[0];
+            let child_body = snapshot.node(html).unwrap().children()[1];
+            let mut batch = DomBatch::new();
+            let detached = batch.create_html_document(document, None);
+            let inner = batch.create_element_ns(&detached, Namespace::html(), "iframe");
+            batch.set_attribute(&inner, "name", "nestedNativeChild");
+            let subject = batch.create_element_ns(document, Namespace::html(), "span");
+            batch.set_attribute(&subject, "id", "nestedWindowElement");
+            batch.insert_before(&subject, child_body, None);
+            let commit = dom.apply(batch, &cancel()).unwrap();
+            let subject = commit.created(&subject).unwrap().unwrap();
+            assert_eq!(
+                dom.snapshot()
+                    .node(subject)
+                    .unwrap()
+                    .relevant_global()
+                    .unwrap(),
+                Some(parent.global())
+            );
+            (commit.created(&inner).unwrap().unwrap(), child_body)
+        })
+        .unwrap();
+    edit(
+        &mut host,
+        DomSourceEdit::insert_before(inner, child_body, None),
+    );
+    let nested_native = content_navigable(&host.snapshot().unwrap(), inner).unwrap();
+    assert_ne!(nested_native, first_child);
+
+    let nested = observe(
+        &mut host,
+        &permit,
+        r#"(() => {
+            const parent = originalFirstChild;
+            if (parent.length !== 1) return "fixture must have a live nested navigable";
+            const child = parent[0];
+            if (child === undefined || child !== parent.nestedNativeChild || child.parent !== parent
+                || child === window[0] || Reflect.ownKeys(parent)[0] !== '0') {
+                return "nested native context must have its own stable WindowProxy";
+            }
+            const element = parent.nestedWindowElement;
+            if (element === undefined || element.id !== 'nestedWindowElement'
+                || !(element instanceof parent.HTMLElement) || element instanceof HTMLElement) {
+                return "nested native element must use the child creation realm";
+            }
+            globalThis.originalNestedChild = child;
+            return "ok";
+        })()"#,
+    );
+    assert_eq!(nested, "ok");
+
     edit(&mut host, DomSourceEdit::detach(first));
     let snapshot = host.snapshot().unwrap();
     assert!(
@@ -191,6 +268,9 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
             && window[0] !== originalFirstChild && window[1] === undefined
             && window.firstNativeChild === undefined && window.secondNativeChild === originalSecondChild
             && originalFirstChild.closed === true && originalSecondChild.closed === false
+            && originalFirstChild.parent === null && originalFirstChild.length === 0
+            && originalFirstChild[0] === undefined && originalFirstChild.nestedNativeChild === undefined
+            && originalNestedChild.closed === true && originalNestedChild.parent === null
             && Object.getPrototypeOf(originalFirstChild) === originalFirstPrototype
             ? 'ok' : 'stale or replaced WindowProxy after child removal')()"#,
     );
