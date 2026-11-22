@@ -601,6 +601,77 @@ fn identities(creation: DomHostedCreation) -> ChildIdentities {
 }
 
 #[test]
+fn document_named_iframe_reads_its_exact_active_global_and_shares_one_work_allowance() {
+    use crate::tree::DomDocumentNamedValue;
+    use std::cell::Cell;
+
+    let mut f = build_fixture(0, true, true);
+    let active = f.containers[2];
+    let null = f.containers[3];
+    let mut edit = DomBatch::new();
+    // A Frame and a shadow-root iframe are both outside this Document lookup.
+    for container in &f.containers[..3] {
+        edit.set_attribute(*container, "name", "active");
+    }
+    edit.set_attribute(null, "name", "null");
+    f.inner.dom.apply(edit, &cancel()).unwrap();
+    let work = Cell::new(0);
+    let read = |name: &str, work_limit| {
+        work.set(0);
+        f.inner.dom.document_named_value(
+            f.top.document,
+            name.into(),
+            64,
+            work_limit,
+            || {
+                work.set(work.get() + 1);
+                Ok::<_, DomHostedError>(())
+            },
+            &cancel(),
+        )
+    };
+    assert!(
+        matches!(read("null", 10_000), Ok(DomDocumentNamedValue::Element(node)) if node == null)
+    );
+    assert!(
+        matches!(read("active", 10_000), Ok(DomDocumentNamedValue::Child(global)) if global == f.light.global())
+    );
+    let exact = work.get();
+    assert!(
+        matches!(read("active", exact), Ok(DomDocumentNamedValue::Child(global)) if global == f.light.global())
+    );
+    assert_eq!(work.get(), exact);
+    assert!(matches!(
+        read("active", exact - 1),
+        Err(DomHostedError::Dom(DomError::WorkLimit { resource: DomResource::HtmlCollectionWork, limit }))
+            if limit == exact - 1
+    ));
+    assert_eq!(work.get(), exact - 1);
+    assert!(matches!(
+        f.inner.dom.document_named_value(
+            f.top.document,
+            "active".into(),
+            64,
+            exact,
+            || Err(ReadRefusal::Admission),
+            &cancel(),
+        ),
+        Err(ReadRefusal::Admission),
+    ));
+    assert_eq!(
+        f.inner
+            .dom
+            .snapshot()
+            .node(active)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .child_navigable(),
+        Some(Some(f.light.navigable()))
+    );
+}
+
+#[test]
 fn document_tree_children_use_ordinary_container_order_and_the_selected_document() {
     let f = build_fixture(20, true, true);
     let before = f.inner.dom.snapshot().stamp();

@@ -4,12 +4,13 @@ use std::{cell::Cell, sync::atomic::AtomicBool};
 
 use surgeist_dom::{
     Dom, DomBatch, DomError,
+    hosted::DomHostedError,
     identity::DocumentId,
     limits::{DomLimits, DomNameLimits, DomResource},
     shadow::DomShadowRootInit,
     tree::{
-        DomDescendantQueryRoot, DomHtmlAllNamedValue, DomHtmlCollection, DomHtmlCollectionLimits,
-        DomHtmlCollectionRead, DomSiblingDirection,
+        DomDescendantQueryRoot, DomDocumentNamedValue, DomHtmlAllNamedValue, DomHtmlCollection,
+        DomHtmlCollectionLimits, DomHtmlCollectionRead, DomSiblingDirection,
     },
 };
 use surgeist_html::{
@@ -378,6 +379,183 @@ fn element_rooted_collections_preserve_live_members_and_call_time_tag_casing() {
     let current = read(&dom, &new_tag, &cancel);
     assert_eq!(current.length().unwrap(), 1);
     assert_eq!(current.item(0).unwrap(), Some(nested));
+}
+
+#[test]
+fn document_named_values_and_supported_names_use_the_exact_ordinary_tree() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let exact_name = DocumentString::from_utf16([0xd800, 0, 0xdc00]);
+    let mut edit = DomBatch::new();
+    let doc = edit.create_document();
+    let root = edit.create_element(&doc, "root");
+    edit.insert_before(&root, &doc, None);
+    let ns = Namespace::html();
+    let first_image = edit.create_element_ns(&doc, ns.clone(), "img");
+    let image = edit.create_element_ns(&doc, ns.clone(), "p:img");
+    let unnamed = edit.create_element_ns(&doc, ns.clone(), "img");
+    let form = edit.create_element_ns(&doc, ns.clone(), "form");
+    let frame = edit.create_element_ns(&doc, ns.clone(), "iframe");
+    let exact_form = edit.create_element_ns(&doc, ns.clone(), "form");
+    let div = edit.create_element_ns(&doc, ns.clone(), "div");
+    let svg = edit.create_element_ns(&doc, Namespace::svg(), "form");
+    let hidden = edit.create_element_ns(&doc, ns.clone(), "form");
+    let detached = edit.create_element_ns(&doc, ns, "form");
+    let shadow = edit.attach_shadow(&div, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    edit.set_attribute(&first_image, "id", "first");
+    edit.set_attribute(&first_image, "name", "shared");
+    edit.set_attribute(&image, "id", "image-id");
+    edit.set_attribute(&image, "name", "shared");
+    edit.set_attribute(&unnamed, "id", "unnamed-image");
+    edit.set_attribute(&unnamed, "name", "");
+    edit.set_attribute(&form, "id", "ignored-form-id");
+    edit.set_attribute(&form, "name", "form-name");
+    edit.set_attribute(&frame, "id", "ignored-frame-id");
+    edit.set_attribute(&frame, "name", "frame-name");
+    edit.set_attribute(&exact_form, "name", exact_name.clone());
+    edit.set_attribute(&div, "name", "ignored-div");
+    edit.set_attribute(&svg, "name", "ignored-svg");
+    edit.set_attribute(&hidden, "name", "ignored-shadow");
+    edit.set_attribute(&detached, "name", "ignored-detached");
+    edit.insert_before(&hidden, &shadow, None);
+    for child in [
+        &first_image,
+        &image,
+        &unnamed,
+        &form,
+        &frame,
+        &exact_form,
+        &div,
+        &svg,
+    ] {
+        edit.insert_before(child, &root, None);
+    }
+    let receipt = dom.apply(edit, &cancel).unwrap();
+    let document = receipt.document(&doc).unwrap();
+    let id = |ticket| receipt.created(ticket).unwrap().unwrap();
+    let (first_image, image, frame, exact_form) =
+        (id(&first_image), id(&image), id(&frame), id(&exact_form));
+
+    let supported = |dom: &Dom, limits| {
+        dom.document_supported_names(document, limits, || Ok::<_, DomError>(()), &cancel)
+    };
+    let names = supported(&dom, COLLECTION).unwrap();
+    assert_eq!(
+        names.as_slice(),
+        &[
+            "first".into(),
+            "shared".into(),
+            "image-id".into(),
+            "form-name".into(),
+            "frame-name".into(),
+            exact_name.clone()
+        ]
+    );
+    assert!(matches!(
+        supported(&dom, DomHtmlCollectionLimits::new(200_000, 5, 8192)),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::HtmlCollectionNames,
+            limit: 5
+        })
+    ));
+
+    let lookup = |dom: &Dom, name, max| {
+        dom.document_named_value(
+            document,
+            name,
+            max,
+            200_000,
+            || Ok::<_, DomHostedError>(()),
+            &cancel,
+        )
+    };
+    assert!(matches!(
+        lookup(&dom, exact_name.clone(), 2),
+        Err(DomHostedError::Dom(DomError::ResourceLimit {
+            resource: DomResource::HtmlCollectionQueryUnits,
+            limit: 2
+        }))
+    ));
+    assert!(
+        matches!(lookup(&dom, exact_name.clone(), 3), Ok(DomDocumentNamedValue::Element(id)) if id == exact_form)
+    );
+    assert!(
+        matches!(lookup(&dom, "frame-name".into(), 128), Ok(DomDocumentNamedValue::Element(id)) if id == frame)
+    );
+    for absent in [
+        "",
+        "unnamed-image",
+        "ignored-form-id",
+        "ignored-frame-id",
+        "ignored-div",
+        "ignored-svg",
+        "ignored-shadow",
+        "ignored-detached",
+    ] {
+        let name = DocumentString::from(absent);
+        assert!(
+            !dom.document_has_named_property(
+                document,
+                &name,
+                200_000,
+                || Ok::<_, DomError>(()),
+                &cancel
+            )
+            .unwrap()
+        );
+        assert!(matches!(
+            lookup(&dom, name, 128),
+            Ok(DomDocumentNamedValue::Absent)
+        ));
+    }
+    assert!(
+        dom.document_has_named_property(
+            document,
+            &"shared".into(),
+            200_000,
+            || Ok::<_, DomError>(()),
+            &cancel
+        )
+        .unwrap()
+    );
+    assert!(matches!(
+        dom.document_has_named_property(
+            document,
+            &exact_name,
+            200_000,
+            || Err(DomError::AllocationFailed),
+            &cancel
+        ),
+        Err(DomError::AllocationFailed)
+    ));
+    let Ok(DomDocumentNamedValue::Collection(live)) = lookup(&dom, "shared".into(), 128) else {
+        panic!("the two named images must form a live collection");
+    };
+    {
+        let current = read(&dom, &live, &cancel);
+        assert_eq!(current.length().unwrap(), 2);
+        assert_eq!(current.item(0).unwrap(), Some(first_image));
+        assert_eq!(current.item(1).unwrap(), Some(image));
+        assert_eq!(
+            current.named_item(&"first".into()).unwrap(),
+            Some(first_image)
+        );
+    }
+
+    let mut edit = DomBatch::new();
+    edit.remove_attribute(image, "name");
+    edit.set_attribute(first_image, "id", "shared");
+    dom.apply(edit, &cancel).unwrap();
+    assert_eq!(read(&dom, &live, &cancel).length().unwrap(), 1);
+    assert!(
+        matches!(lookup(&dom, "shared".into(), 128), Ok(DomDocumentNamedValue::Element(id)) if id == first_image)
+    );
+    assert!(matches!(
+        lookup(&dom, "image-id".into(), 128),
+        Ok(DomDocumentNamedValue::Absent)
+    ));
+    // The retained output keeps the original names across mutation.
+    assert_eq!(names.as_slice()[0], DocumentString::from("first"));
 }
 
 #[test]

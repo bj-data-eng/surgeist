@@ -1095,6 +1095,7 @@ impl PublicEventBindings {
                         scope,
                         admission,
                         ordinary::NodePrototype::Creation(documents.for_document(interface)),
+                        &documents.named,
                         || Ok(document),
                     )
                 }

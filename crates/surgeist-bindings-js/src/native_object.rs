@@ -70,6 +70,26 @@ impl fmt::Debug for HtmlAllCollectionCallbacks<'_, '_> {
     }
 }
 
+/// Native callbacks for a named-only Web IDL object with LegacyOverrideBuiltIns.
+pub struct NativeNamedPropertyCallbacks<'value, 'scope> {
+    /// Receives the exact holder as receiver and the name as a string. A
+    /// second argument requests only presence, which returns a Boolean.
+    /// A value read returns the native value or undefined when unsupported.
+    pub read: &'value Value<'scope>,
+    /// Returns the supported string keys in source order.
+    pub keys: &'value Value<'scope>,
+    /// Declared LegacyUnforgeable names retain their ordinary definition rules.
+    pub unforgeable_names: &'static [&'static [u16]],
+}
+
+impl fmt::Debug for NativeNamedPropertyCallbacks<'_, '_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NativeNamedPropertyCallbacks")
+            .finish_non_exhaustive()
+    }
+}
+
 struct ProjectedNativeObject {
     holder: Rc<CallbackObjectIdentity>,
     realm: RealmAuthority,
@@ -344,6 +364,7 @@ impl<'scope> Scope<'scope> {
             Rc::new(NativeObject::new(payload, projection)),
             Box::new(holder_backing),
             None,
+            None,
         )?;
         Ok(RetainedCallbackObject::new(holder, realm))
     }
@@ -368,6 +389,7 @@ impl<'scope> Scope<'scope> {
         self.form_retained_native_object(
             NativeProjectionPrototype::Creation(prototype),
             payload,
+            None,
             admit,
             |_| Ok(None),
         )
@@ -390,6 +412,57 @@ impl<'scope> Scope<'scope> {
         Ok(prepared.publish(|_| result))
     }
 
+    /// Form one canonical native object with enumerable live named properties.
+    /// Both callbacks must belong to the selected allocation realm. The exact
+    /// guest object and holder publish only after the native commit succeeds.
+    ///
+    /// # Errors
+    /// Returns the first invalid realm or callback, admission refusal, engine
+    /// failure, or native commit failure. Unpublished backing is released.
+    pub fn try_project_retained_native_named_object<
+        T: 'static,
+        Storage: 'static,
+        R,
+        E: From<Error>,
+    >(
+        &mut self,
+        prototype: NativeProjectionPrototype<'_, 'scope>,
+        payload: T,
+        callbacks: NativeNamedPropertyCallbacks<'_, 'scope>,
+        admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
+        commit: impl FnOnce(&T) -> Result<R, E>,
+    ) -> Result<(Value<'scope>, RetainedCallbackObject, R), E> {
+        let realm = match &prototype {
+            NativeProjectionPrototype::Current(_) => self.realm_authority()?.identity(),
+            NativeProjectionPrototype::Creation(prototype) => {
+                prototype.associated_realm().identity()
+            }
+        };
+        for callback in [callbacks.read, callbacks.keys] {
+            if !self.is_callable(callback)? {
+                return Err(Error::ExpectedFunction.into());
+            }
+            if self
+                .callback_object(callback)?
+                .associated_realm()
+                .identity()
+                != realm
+            {
+                return Err(Error::CallbackRealmUnavailable.into());
+            }
+        }
+        let slot = NativeProjectionSlot::NamedOverride {
+            read: &callbacks.read.root,
+            keys: &callbacks.keys.root,
+            unforgeable_names: callbacks.unforgeable_names,
+        };
+        let projected =
+            self.form_retained_native_object(prototype, payload, Some(slot), admit, |_| Ok(None))?;
+        let prepared = self.prepared_native_projection::<T, E>(projected)?;
+        let result = commit(prepared.native.payload())?;
+        Ok(prepared.publish(|_| result))
+    }
+
     /// Requested Rust backing for the payload and persistent holder, in order.
     pub fn retained_native_object_bytes<T, Storage>(&self) -> Result<(usize, usize), Error> {
         Ok((
@@ -407,7 +480,7 @@ impl<'scope> Scope<'scope> {
         admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
     ) -> Result<PreparedNativeProjection<'_, 'scope, T>, E> {
         let projected =
-            self.form_retained_native_object(prototype, payload, admit, |_| Ok(None))?;
+            self.form_retained_native_object(prototype, payload, None, admit, |_| Ok(None))?;
         self.prepared_native_projection(projected)
     }
 
@@ -457,14 +530,15 @@ impl<'scope> Scope<'scope> {
         admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
         funding: NativeProjectionFunding,
     ) -> Result<PreparedNativeProjection<'_, 'scope, T>, E> {
-        let projected = self.form_retained_native_object(prototype, payload, admit, |scope| {
-            let owner = scope.operations.owner_state();
-            if !funding.owner.ptr_eq(&Rc::downgrade(&owner)) {
-                return Err(E::from(Error::ForeignOwner));
-            }
-            owner.available().map_err(E::from)?;
-            Ok(funding.backing)
-        })?;
+        let projected =
+            self.form_retained_native_object(prototype, payload, None, admit, |scope| {
+                let owner = scope.operations.owner_state();
+                if !funding.owner.ptr_eq(&Rc::downgrade(&owner)) {
+                    return Err(E::from(Error::ForeignOwner));
+                }
+                owner.available().map_err(E::from)?;
+                Ok(funding.backing)
+            })?;
         self.prepared_native_projection(projected)
     }
 
@@ -494,6 +568,7 @@ impl<'scope> Scope<'scope> {
         &mut self,
         prototype: NativeProjectionPrototype<'_, 'scope>,
         payload: T,
+        slot: Option<NativeProjectionSlot<'_>>,
         admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
         prepare_root: impl FnOnce(&Self) -> Result<Option<crate::preparation::Guard>, E>,
     ) -> Result<ProjectedNativeObject, E> {
@@ -524,6 +599,7 @@ impl<'scope> Scope<'scope> {
                 prototype,
                 payload,
                 backing,
+                slot,
                 root_funding,
             )?,
             Resolved::Creation(prototype) => self
@@ -533,6 +609,7 @@ impl<'scope> Scope<'scope> {
                     realm.key,
                     payload,
                     backing,
+                    slot,
                     root_funding,
                 )?,
         };

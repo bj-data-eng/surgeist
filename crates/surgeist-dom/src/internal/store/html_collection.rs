@@ -18,7 +18,7 @@ use surgeist_html::{
     construction::HtmlDocumentMode,
     values::HtmlNameInput,
     vocabulary::{
-        HtmlDocumentCollection, HtmlDocumentCollectionMatch, KnownHtmlElement,
+        HtmlDocumentCollection, HtmlDocumentCollectionMatch, HtmlDocumentNamedId, KnownHtmlElement,
         is_document_all_named_local_name,
     },
 };
@@ -111,6 +111,19 @@ fn window_name_element<E>(
     ))
 }
 
+fn document_named_id_policy<E>(
+    element: &(impl HtmlNameInput + ?Sized),
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<Option<HtmlDocumentNamedId>, E> {
+    if !in_html_namespace_with(element, &mut step)? {
+        return Ok(None);
+    }
+    step()?;
+    Ok(HtmlDocumentNamedId::for_local_name(
+        element.local_name().code_units(),
+    ))
+}
+
 /// The exact Document or Element that owns a descendant query.
 #[derive(Clone, Copy, Debug)]
 pub enum DomDescendantQueryRoot {
@@ -157,6 +170,7 @@ enum Filter {
     },
     ClassName(DocumentString),
     WindowName(DocumentString),
+    DocumentName(DocumentString),
     All,
     AllName(DocumentString),
     Document(HtmlDocumentCollection),
@@ -205,6 +219,19 @@ pub enum DomWindowNamedValue {
     /// The one matching Element.
     Element(NodeId),
     /// A live collection of the matching Elements.
+    Collection(DomHtmlCollection),
+}
+
+/// The current native value of an exact Document property name.
+#[derive(Debug)]
+pub enum DomDocumentNamedValue {
+    /// The Document has no native value for the name.
+    Absent,
+    /// Exactly one Element matches the name and returns as an Element.
+    Element(NodeId),
+    /// The active Global of the sole matching iframe's actual content navigable.
+    Child(DomHostedGlobalId),
+    /// Multiple Elements match. The collection remains live across edits.
     Collection(DomHtmlCollection),
 }
 
@@ -454,6 +481,113 @@ impl Dom {
         Ok(DomHtmlCollection {
             root: document.node(),
             filter: Filter::Document(filter),
+        })
+    }
+
+    /// Read one exact Document named property in the current ordinary tree.
+    /// The collection and any sole iframe's content edge share one admission.
+    pub fn document_named_value<E: From<DomHostedError>>(
+        &self,
+        document: DocumentId,
+        name: DocumentString,
+        max_retained_query_units: usize,
+        work_limit: u64,
+        admission: impl Fn() -> Result<(), E>,
+        cancel: &AtomicBool,
+    ) -> Result<DomDocumentNamedValue, E> {
+        let empty = name.is_empty();
+        let retained = name.retained_units();
+        let collection = DomHtmlCollection {
+            root: document.node(),
+            filter: Filter::DocumentName(name),
+        };
+        let read = || -> Result<DomDocumentNamedValue, HostedReadError<E>> {
+            let read = self.read_html_collection(
+                &collection,
+                DomHtmlCollectionLimits::new(work_limit, 0, 0),
+                || admission().map_err(HostedReadError::Caller),
+                cancel,
+            )?;
+            admit(
+                retained,
+                max_retained_query_units,
+                DomResource::HtmlCollectionQueryUnits,
+            )?;
+            if empty {
+                return Ok(DomDocumentNamedValue::Absent);
+            }
+            match read.first_two_matches(|_| Ok(true))? {
+                ElementMatches::Absent => Ok(DomDocumentNamedValue::Absent),
+                ElementMatches::Multiple => Ok(DomDocumentNamedValue::Collection(collection)),
+                ElementMatches::One(node) => {
+                    let candidate = read.view.node(node)?;
+                    let element = candidate.as_element().ok_or(DomError::WrongNodeKind)?;
+                    if element.iframe_initial_state().is_some()
+                        && let Some(Some(content)) = element.child_navigable()
+                    {
+                        let child = self.document_named_child_global(
+                            &read.view.snapshot,
+                            document,
+                            candidate,
+                            content,
+                            &mut || read.view.meter.step(),
+                        )?;
+                        return Ok(DomDocumentNamedValue::Child(child));
+                    }
+                    Ok(DomDocumentNamedValue::Element(node))
+                }
+            }
+        };
+        read().map_err(HostedReadError::into_caller)
+    }
+
+    /// Check support for an exact Document name without retaining a query or result.
+    pub fn document_has_named_property<E: From<DomError>>(
+        &self,
+        document: DocumentId,
+        name: &DocumentString,
+        work_limit: u64,
+        admission: impl Fn() -> Result<(), E>,
+        cancel: &AtomicBool,
+    ) -> Result<bool, E> {
+        let collection = DomHtmlCollection {
+            root: document.node(),
+            filter: Filter::All,
+        };
+        let read = self.read_html_collection(
+            &collection,
+            DomHtmlCollectionLimits::new(work_limit, 0, 0),
+            admission,
+            cancel,
+        )?;
+        if name.is_empty() {
+            return Ok(false);
+        }
+        Ok(read
+            .walk(|node| {
+                read.document_names(node, |candidate| read.name_match(candidate, name, ()))
+            })?
+            .is_some())
+    }
+
+    /// Read each Document property name once, in ordinary tree order.
+    pub fn document_supported_names<E: From<DomError>>(
+        &self,
+        document: DocumentId,
+        limits: DomHtmlCollectionLimits,
+        admission: impl Fn() -> Result<(), E>,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlCollectionNames, E> {
+        let collection = DomHtmlCollection {
+            root: document.node(),
+            filter: Filter::All,
+        };
+        let read = self.read_html_collection(&collection, limits, admission, cancel)?;
+        read.collect_names(|node, output| {
+            read.document_names(node, |value| {
+                read.append_supported_name(output, value)?;
+                Ok(ControlFlow::Continue(()))
+            })
         })
     }
 
@@ -738,6 +872,9 @@ where
                     Filter::WindowName(name) => {
                         self.element_matches_name(node, name, ElementNameScope::Window)?
                     }
+                    Filter::DocumentName(name) => self
+                        .document_names(node, |candidate| self.name_match(candidate, name, ()))?
+                        .is_break(),
                     Filter::Children | Filter::All => true,
                     Filter::AllName(name) => {
                         self.element_matches_name(node, name, ElementNameScope::All)?
@@ -922,6 +1059,43 @@ where
         ))
     }
 
+    fn document_names<T>(
+        &self,
+        node: DomNode<'_>,
+        mut visit: impl FnMut(&DocumentString) -> Result<ControlFlow<T>, E>,
+    ) -> Result<ControlFlow<T>, E> {
+        let step = || self.view.meter.step();
+        let element = node.as_element().ok_or(DomError::WrongNodeKind)?;
+        let Some(id_policy) = document_named_id_policy(element.name(), step)? else {
+            return Ok(ControlFlow::Continue(()));
+        };
+        let attributes = node.attributes().ok_or(DomError::WrongNodeKind)?;
+        let read_name = || -> Result<_, E> {
+            Ok(attributes
+                .get_null_namespace_attribute_with(NAME, step)?
+                .filter(|name| !name.value().is_empty()))
+        };
+        // An image's name determines whether its ID contributes. Emit the ID first.
+        let image_name = (id_policy == HtmlDocumentNamedId::WithName)
+            .then(read_name)
+            .transpose()?;
+        if (id_policy == HtmlDocumentNamedId::Always || matches!(image_name, Some(Some(_))))
+            && let Some(id) = attributes.get_null_namespace_attribute_with(ID, step)?
+            && !id.value().is_empty()
+            && let ControlFlow::Break(value) = visit(id.value())?
+        {
+            return Ok(ControlFlow::Break(value));
+        }
+        let name = match image_name {
+            Some(name) => name,
+            None => read_name()?,
+        };
+        match name {
+            Some(name) => visit(name.value()),
+            None => Ok(ControlFlow::Continue(())),
+        }
+    }
+
     // Borrow the exact ID and eligible name contributions from one Element.
     fn names<T>(
         &self,
@@ -972,18 +1146,25 @@ where
     }
 
     fn names_for(&self, scope: ElementNameScope) -> Result<DomHtmlCollectionNames, E> {
+        self.collect_names(|node, output| {
+            self.names(node, scope, |value| {
+                self.append_supported_name(output, value)?;
+                Ok(ControlFlow::Continue(()))
+            })
+        })
+    }
+
+    fn collect_names(
+        &self,
+        mut collect: impl FnMut(DomNode<'_>, &mut DomHtmlCollectionNames) -> Result<ControlFlow<()>, E>,
+    ) -> Result<DomHtmlCollectionNames, E> {
         let mut output = DomHtmlCollectionNames {
             names: Vec::new(),
             vector_backing: None,
             text_backing: None,
             retained_units: 0,
         };
-        self.walk::<()>(|node| {
-            self.names(node, scope, |value| {
-                self.append_supported_name(&mut output, value)?;
-                Ok(ControlFlow::Continue(()))
-            })
-        })?;
+        self.walk(|node| collect(node, &mut output))?;
         Ok(output)
     }
 
@@ -1163,7 +1344,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::window_name_element;
+    use super::{HtmlDocumentNamedId, document_named_id_policy, window_name_element};
     use surgeist_html::values::{Namespace, QualifiedName};
 
     #[test]
@@ -1180,6 +1361,29 @@ mod tests {
             let name = QualifiedName::new(namespace, Some("p".into()), local);
             assert_eq!(
                 window_name_element(&name, || Ok::<_, ()>(())),
+                Ok(expected),
+                "{name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn document_named_eligibility_applies_the_exact_html_expanded_name_and_id_rule() {
+        use HtmlDocumentNamedId::{Always, Never, WithName};
+        for (namespace, local, expected) in [
+            (Namespace::html(), "embed", Some(Never)),
+            (Namespace::html(), "form", Some(Never)),
+            (Namespace::html(), "iframe", Some(Never)),
+            (Namespace::html(), "img", Some(WithName)),
+            (Namespace::html(), "object", Some(Always)),
+            (Namespace::html(), "frame", None),
+            (Namespace::html(), "OBJECT", None),
+            (Namespace::none(), "object", None),
+            (Namespace::svg(), "iframe", None),
+        ] {
+            let name = QualifiedName::new(namespace, Some("p".into()), local);
+            assert_eq!(
+                document_named_id_policy(&name, || Ok::<_, ()>(())),
                 Ok(expected),
                 "{name:?}"
             );

@@ -115,6 +115,11 @@ pub(crate) trait Engine {
 
 pub(crate) enum NativeProjectionSlot<'a> {
     Traced(u32, &'a Root),
+    NamedOverride {
+        read: &'a Root,
+        keys: &'a Root,
+        unforgeable_names: &'static [&'static [u16]],
+    },
     Collection {
         read: &'a Root,
         keys: &'a Root,
@@ -285,6 +290,7 @@ pub(crate) trait Operations {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
+        slot: Option<NativeProjectionSlot<'_>>,
         funding: Option<crate::preparation::Guard>,
     ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error>;
     fn project_retained_native_object_in_prototype_realm(
@@ -293,6 +299,7 @@ pub(crate) trait Operations {
         realm: RealmKey,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
+        slot: Option<NativeProjectionSlot<'_>>,
         funding: Option<crate::preparation::Guard>,
     ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error>;
     fn discard_unpublished_native_object(

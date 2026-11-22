@@ -2,7 +2,10 @@
 //! Rows use the original issuer's identities; no independent allocator or
 //! Runtime activity/history mirror is admitted here.
 use super::*;
-use crate::internal::store::read_source::{HostedReadBudget, HostedReadError};
+use crate::internal::{
+    snapshot::DomNode,
+    store::read_source::{HostedReadBudget, HostedReadError},
+};
 use std::cell::Cell;
 use std::ops::Deref;
 use surgeist_html::values::DocumentString;
@@ -1774,14 +1777,7 @@ impl DocumentTreeChildren<'_> {
         E: From<DomError> + From<DomHostedError>,
         S: FnMut() -> Result<(), E>,
     {
-        let Self {
-            association,
-            graph,
-            parent,
-            document,
-            ..
-        } = self;
-        let document = *document;
+        let document = self.document;
         let found = self
             .index
             .find_with(Key::Existing(document.node()), step, |key, step| {
@@ -1797,38 +1793,54 @@ impl DocumentTreeChildren<'_> {
                 if candidate.root_with(false, &mut *step)?.id() != document.node() {
                     return Ok(false);
                 }
-                if child.source != parent.id.source {
-                    return Err(DomHostedError::ForeignSource.into());
-                }
-                let record = graph.navigable_with(child, &mut *step)?;
-                if record.container != Some(container) {
-                    return Err(DomHostedError::StaleIdentity.into());
-                }
-                step()?;
-                let insertion = element
-                    .hosted_insertion()
-                    .ok_or(DomHostedError::MissingPublication)?;
-                let projection = record.insertion.ok_or(DomHostedError::MissingPublication)?;
-                if insertion.document != document || projection != insertion {
-                    return Err(DomHostedError::StaleBasis.into());
-                }
-                let active = graph.entry_with(record.active, &mut *step)?;
-                let child_document = active.document.ok_or(DomHostedError::StaleIdentity)?;
-                let child_node = snapshot.node_with(child_document.node(), &mut *step)?;
-                let DomNodeKind::Document(metadata) = child_node.kind() else {
-                    return Err(DomError::WrongDocument.into());
-                };
-                step()?;
-                let child_association = metadata
-                    .document_environment()
-                    .hosted
-                    .ok_or(DomHostedError::UnsupportedProfile)?;
-                validate_navigable_association(&child_association, record)?;
-                visit(DomHostedNavigable { record, active }, metadata, step)
+                self.visit_child(snapshot, candidate, child, step, &mut visit)
             })?;
         step()?;
-        association.validate_live()?;
+        self.association.validate_live()?;
         Ok(found)
+    }
+
+    fn visit_child<E, S, T>(
+        &self,
+        snapshot: &DomSnapshot,
+        container: DomNode<'_>,
+        child: DomHostedNavigableId,
+        step: &mut S,
+        visit: impl FnOnce(DomHostedNavigable<'_>, &DomDocumentMetadata, &mut S) -> Result<T, E>,
+    ) -> Result<T, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+        S: FnMut() -> Result<(), E>,
+    {
+        let element = container.as_element().ok_or(DomError::WrongNodeKind)?;
+        if child.source != self.parent.id.source {
+            return Err(DomHostedError::ForeignSource.into());
+        }
+        let record = self.graph.navigable_with(child, &mut *step)?;
+        if record.container != Some(container.id()) {
+            return Err(DomHostedError::StaleIdentity.into());
+        }
+        step()?;
+        let insertion = element
+            .hosted_insertion()
+            .ok_or(DomHostedError::MissingPublication)?;
+        let projection = record.insertion.ok_or(DomHostedError::MissingPublication)?;
+        if insertion.document != self.document || projection != insertion {
+            return Err(DomHostedError::StaleBasis.into());
+        }
+        let active = self.graph.entry_with(record.active, &mut *step)?;
+        let child_document = active.document.ok_or(DomHostedError::StaleIdentity)?;
+        let child_node = snapshot.node_with(child_document.node(), &mut *step)?;
+        let DomNodeKind::Document(metadata) = child_node.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        step()?;
+        let child_association = metadata
+            .document_environment()
+            .hosted
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        validate_navigable_association(&child_association, record)?;
+        visit(DomHostedNavigable { record, active }, metadata, step)
     }
 }
 
@@ -1906,6 +1918,37 @@ impl Dom {
             Some(children) if search_children => children.find(snapshot, step, visit),
             _ => Ok(false),
         }
+    }
+
+    /// Qualify the direct content edge of an iframe already matched in this Document's tree.
+    pub(in crate::internal::store) fn document_named_child_global<E, S>(
+        &self,
+        snapshot: &DomSnapshot,
+        document: DocumentId,
+        container: DomNode<'_>,
+        child: DomHostedNavigableId,
+        step: &mut S,
+    ) -> Result<DomHostedGlobalId, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+        S: FnMut() -> Result<(), E>,
+    {
+        let root = snapshot.node_with(document.node(), &mut *step)?;
+        let DomNodeKind::Document(metadata) = root.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let children = self
+            .qualify_document_tree_children(document, metadata, step)?
+            .ok_or(DomHostedError::StaleIdentity)?;
+        let global = children.visit_child(snapshot, container, child, step, |child, _, _| {
+            if child.parent() != Some(children.parent.id) {
+                return Err(DomHostedError::StaleIdentity.into());
+            }
+            Ok(child.global())
+        })?;
+        step()?;
+        children.association.validate_live()?;
+        Ok(global)
     }
 
     fn qualify_document_tree_children<E, S>(

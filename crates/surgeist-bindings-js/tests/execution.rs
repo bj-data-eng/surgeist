@@ -18,6 +18,8 @@ mod language_profile;
 mod microtask_checkpoint;
 #[path = "execution/module_profile.rs"]
 mod module_profile;
+#[path = "execution/native_named_properties.rs"]
+mod native_named_properties;
 #[path = "execution/native_reachability.rs"]
 mod native_reachability;
 #[path = "execution/panic_preparation.rs"]
@@ -2578,6 +2580,9 @@ fn main() -> Result<(), Error> {
             Some("collection-visibility") => {
                 Some(collection_visibility::collection_names_follow_prototype_own_descriptors)
             }
+            Some("native-named-properties") => Some(
+                native_named_properties::retained_named_properties_stay_on_the_canonical_object,
+            ),
             _ => None,
         };
         if let Some(regression) = regression {
@@ -2637,6 +2642,7 @@ fn main() -> Result<(), Error> {
     microtask_checkpoint::raw_guest_throw_keeps_microtask_checkpoint_in_fifo(&mut process)?;
     module_profile::module_resolution_stays_host_owned(&mut process)?;
     collection_visibility::collection_names_follow_prototype_own_descriptors(&mut process)?;
+    native_named_properties::retained_named_properties_stay_on_the_canonical_object(&mut process)?;
     promise_realm::promise_resolver_rejects_self_resolution_in_its_original_realm(&mut process)?;
     realm_and_root_contracts(&mut process)?;
     utf16_is_code_unit_exact(&mut process)?;
