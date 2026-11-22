@@ -1,6 +1,8 @@
-use super::units;
+use super::{DropReceipt, units};
+use std::{cell::Cell, rc::Rc};
+use surgeist_bindings_js::dom_exception::{self, DomExceptionLimits};
 use surgeist_bindings_js::{
-    Error, Execution, ObjectPrototype, Primitive, Process, PropertyKey, Realm, Root,
+    Error, ExceptionPhase, Execution, ObjectPrototype, Primitive, Process, PropertyKey, Realm, Root,
 };
 
 pub(super) fn guest_objects_keep_their_creation_realm(process: &mut Process) -> Result<(), Error> {
@@ -123,4 +125,113 @@ fn check_associated_realm(
         assert!(scope.strict_equals(&restored, &observer_global)?, "{label}");
         Ok(())
     })
+}
+
+pub(super) fn native_type_error_uses_the_throwing_realm(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let a = execution.create_realm()?;
+    let b = execution.create_realm()?;
+    let (a_id, native_throw, guest_throw, type_error_prototype) =
+        execution.in_realm(&a, |scope| {
+            let native_throw = scope.evaluate(&units("() => null.x"))?;
+            let guest_throw = scope.evaluate(&units("value => { throw value; }"))?;
+            let type_error_prototype = scope.evaluate(&units("TypeError.prototype"))?;
+            Ok((
+                scope.realm_authority()?.identity(),
+                scope.retain(&native_throw),
+                scope.retain(&guest_throw),
+                scope.retain(&type_error_prototype),
+            ))
+        })?;
+
+    execution.in_realm(&b, |scope| {
+        let b_id = scope.realm_authority()?.identity();
+        assert_ne!(a_id, b_id);
+        let undefined = scope.primitive(Primitive::Undefined)?;
+
+        let guest_throw = scope.import(&guest_throw)?;
+        let sentinel = scope.evaluate(&units("({ sentinel: true })"))?;
+        let original = scope.retain(&sentinel);
+        let Err(Error::Exception(explicit)) = scope.call(&guest_throw, &undefined, &[sentinel])
+        else {
+            panic!("explicit guest throw did not produce an exception");
+        };
+        assert_eq!(explicit.phase(), ExceptionPhase::Invoke);
+        let explicit = scope.import(explicit.value())?;
+        let original = scope.import(&original)?;
+        assert!(scope.strict_equals(&explicit, &original)?);
+        assert_eq!(
+            scope
+                .callback_object(&explicit)?
+                .associated_realm()
+                .identity(),
+            b_id,
+            "the explicitly thrown object retains its original creation realm"
+        );
+
+        let native_throw = scope.import(&native_throw)?;
+        let Err(Error::Exception(native)) = scope.call(&native_throw, &undefined, &[]) else {
+            panic!("the native TypeError did not reach the host as an exception");
+        };
+        assert_eq!(native.phase(), ExceptionPhase::Invoke);
+        let native = scope.import(native.value())?;
+        let read_prototype = scope.evaluate(&units("value => Object.getPrototypeOf(value)"))?;
+        let origin = scope
+            .callback_object(&native)?
+            .associated_realm()
+            .identity();
+        let actual_prototype = scope.call(&read_prototype, &undefined, &[native])?;
+        let expected_prototype = scope.import(&type_error_prototype)?;
+        let prototype_matches = scope.strict_equals(&actual_prototype, &expected_prototype)?;
+        assert_eq!(
+            (origin, prototype_matches),
+            (a_id, true),
+            "the native TypeError uses the throwing realm and its original TypeError.prototype"
+        );
+        Ok(())
+    })
+}
+
+pub(super) fn dom_exception_slots_do_not_pin_a_retired_realm(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let retired = execution.create_realm()?;
+    let live = execution.create_realm()?;
+    let drops = Rc::new(Cell::new(0));
+    execution.in_realm(&retired, |scope| {
+        dom_exception::install(
+            scope,
+            DomExceptionLimits::default(),
+            DropReceipt(drops.clone()),
+        )?;
+        let checked = scope.evaluate(&units(
+            r#"(() => {
+                const value = new DOMException("retire me", "SyntaxError");
+                return value.name === "SyntaxError" && value.message === "retire me" && value.code === 12;
+            })()"#,
+        ))?;
+        assert!(scope.boolean(&checked)?, "the first private slot is readable");
+        Ok(())
+    })?;
+    assert_eq!(drops.get(), 0, "the live profile retains its backing");
+
+    drop(retired);
+    // Repeat collection so dead private slots and their registrations can retire.
+    for _ in 0..4 {
+        execution.memory_pressure();
+    }
+    execution.in_realm(&live, |scope| {
+        let checked = scope.evaluate(&units("6 * 7 === 42"))?;
+        assert!(scope.boolean(&checked)?, "the other realm remains usable");
+        Ok(())
+    })?;
+    assert_eq!(
+        drops.get(),
+        1,
+        "the retired profile releases its backing exactly once"
+    );
+    Ok(())
 }

@@ -2512,9 +2512,24 @@ fn native_collection_rejects_invalid_key_results(process: &mut Process) -> Resul
 
 fn main() -> Result<(), Error> {
     #[cfg(feature = "boa-qualification")]
-    if std::env::args().nth(1).as_deref() == Some("guest-creation-realm") {
-        let mut process = Process::bootstrap(EngineKind::Boa)?;
-        return guest_creation_realm::guest_objects_keep_their_creation_realm(&mut process);
+    {
+        let regression: Option<fn(&mut Process) -> Result<(), Error>> =
+            match std::env::args().nth(1).as_deref() {
+                Some("guest-creation-realm") => {
+                    Some(guest_creation_realm::guest_objects_keep_their_creation_realm)
+                }
+                Some("native-error-creation-realm") => {
+                    Some(guest_creation_realm::native_type_error_uses_the_throwing_realm)
+                }
+                Some("dom-exception-profile-retirement") => {
+                    Some(guest_creation_realm::dom_exception_slots_do_not_pin_a_retired_realm)
+                }
+                _ => None,
+            };
+        if let Some(regression) = regression {
+            let mut process = Process::bootstrap(EngineKind::Boa)?;
+            return regression(&mut process);
+        }
     }
     v8::V8::set_flags_from_string("--expose-gc");
     let mut process = Process::bootstrap(EngineKind::V8)?;
