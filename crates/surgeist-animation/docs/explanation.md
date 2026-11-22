@@ -20,6 +20,13 @@ The crate and facade now share one source repository and Cargo workspace.
 Cross-crate composition and generated API audits remain root-owned; their current
 behavior and coverage come from root source and verification evidence.
 
+Computed font palettes follow the same boundary. Animation retains opaque
+computed operand identities and returns flat Oklab mix plans. Style keeps their
+keyword/name/mix mapping, determines context-dependent equivalence and resolves
+palette entries against the selected font and rules. Nested sampled mixes keep
+their operation boundaries; they do not introduce Color or font-resource
+dependencies. See [computed font properties](reference.md#computed-font-properties).
+
 ## Why inputs are normalized
 
 Separating authored style from executable timing lets callers resolve property

@@ -156,6 +156,9 @@ impl PropertyValueOperations for AnimationTypeOperations {
             InterpolationOutcome::FilterFailure(error) => {
                 Err(InterpolationError::Filter(error).into())
             }
+            InterpolationOutcome::PaletteFailure(error) => {
+                Err(InterpolationError::Palette(error).into())
+            }
             InterpolationOutcome::Unsupported(error) => Err(error.into()),
         }
     }

@@ -9,7 +9,8 @@ dependencies, features, or explicit minimum Rust version. The dev-only
 
 [src/lib.rs](../src/lib.rs) declares the public modules `computed`, `diagnostics`,
 `composition`, `css_animation`, `easing`, `interpolation`, `keyframe`,
-`keyframe_input`, `playback`, `progress`, `sample`, `shadow`, `shape`, `time`, `timeline`,
+`keyframe_input`, `palette`, `playback`, `progress`, `sample`, `shadow`, `shape`,
+`time`, `timeline`,
 `timing`, `transform`, and `transition`, and the
 constant `CRATE_NAME`. Each public type has one path through its owning module,
 such as `surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
@@ -794,6 +795,72 @@ and `InterpolationError::Computed`, retaining both endpoints and a semantic
 ratio underflow and capacity refusal are distinct error kinds. Later endpoint
 samples can recover. See [the computed-value example](how-to.md#combine-computed-property-values).
 
+## Computed font properties
+
+Callers select the pinned [Fonts 4 property table](../../../references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md)
+animation type and supply effective computed operands. Existing computed numeric
+records sample `font-weight`, `font-width`, `font-style`, `font-size` and
+`font-size-adjust`. Style supplies normal as comparable oblique zero degrees for
+style interpolation, keeps italic as a distinct branch, resolves font-size to
+computed lengths, and supplies the `none` branch of font-size-adjust separately
+from numbers. Weight samples retain fractions. Font matching and final property
+range handling remain outside Animation.
+
+`font-family`, the synthesis longhands/shorthand, kerning, variant
+longhands/shorthand, feature settings, language override, optical sizing and
+variant emoji select the whole discrete endpoint at the midpoint. For variation
+settings, Style supplies sorted, deduplicated effective case-sensitive axis maps:
+corresponding numbers interpolate only when their tag sets agree; incompatible
+maps and normal versus a map select the whole endpoint discretely. The font
+shorthand supplies its effective longhands, and the legacy font-stretch alias
+supplies font-width operands. These paths use ordinary interpolation pairs,
+keyframe tracks and transition tracks, as demonstrated by the
+[font property tests](../tests/font_properties.rs) and
+[computed property tests](../tests/computed_layout_properties.rs).
+
+### Symbolic font palettes
+
+`palette::PaletteSource` identifies one caller-owned computed palette operand:
+a keyword, named palette or existing computed palette mix. Clones preserve its
+identity. Style retains the source-to-value mapping, supplies one identity for
+known-equivalent operands and keeps that mapping while plans are in use. A new
+source is a distinct operand; Animation does not infer equivalence from font
+metadata, rule matching or resolved colors.
+
+`PaletteValue::source` enters that operand into the sampler;
+`InterpolableValue::palette` integrates it with pairs, keyframes and transitions.
+Strictly interior progress produces an Oklab palette mix. At or below zero it
+returns the exact first operand; at or above one the exact second. Equal supplied
+operands remain unchanged, including equal already sampled plans. Palette
+addition selects the effect palette rather than adding colors. Palette progress
+selection is specific to this value family; numeric font interpolation retains
+finite extrapolation. No palette accumulation operation is provided.
+
+`PaletteValue::nodes()` exposes an immutable nonempty postorder plan. A source
+node carries its opaque identity. `PaletteNode::MixOklab` carries two earlier
+node indices and the strictly interior fraction of its second operand. The last
+node is the result. Style can materialize the plan in one forward pass,
+performing each per-entry CSS Color interpolation in Oklab. Existing authored
+mixes can remain opaque source operands with their own computation rules.
+Nested samples preserve their operation boundaries; they are not flattened into
+leaf weights. Merging interns identical operations so repeated branches share
+subplans. Flat ownership also makes sampling, equality, debugging and destruction
+independent of nesting depth, without a fixed depth cutoff.
+
+Storage and index arithmetic are checked. `PaletteErrorKind::Capacity` reports a
+plan that could not be represented, leaving its operands unchanged.
+`InterpolationOutcome::PaletteFailure` and `InterpolationError::Palette` retain
+its property, progress, complete endpoints and typed cause. Sampling reports a
+failed result rather than substituting an endpoint for storage failure.
+
+These symbolic rules follow [Fonts 4 §9.1](../../../references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md#font-palette-prop)
+and the [palette interpolation cases](https://github.com/web-platform-tests/wpt/blob/master/css/css-fonts/animations/font-palette-interpolation.html).
+See the [module example](../src/palette.rs) and
+[palette sampling tests](../tests/font_palette.rs). Style owns live parent/context
+updates, chosen-font and palette-rule resolution, contextual equivalence,
+percentage normalization inside supplied authored mixes and per-entry colors.
+Animation adds no Color dependency or font-resource lookup.
+
 ## Computed basic shapes
 
 `shape::ShapeValue` combines a guarded `BasicShape` with an explicit semantic
@@ -1297,6 +1364,7 @@ basis is guessed.
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
 | Computed clip-path branches | `supported` | Supplied opaque sources, boxes and complete shapes retain whole-value fallback and typed shape failures. |
+| Computed font numeric/discrete families and symbolic palette sampling | `supported` | Effective computed operands, fractional numeric samples, whole discrete selection and flat Oklab palette mix plans; Style resolves palette entries. |
 | Computed circle, ellipse, inset and polygon interpolation | `supported` | Explicit reference boxes, guarded numeric domains, whole-shape compatibility and typed sample-local errors. |
 | Native shape/path command interpolation | `supported` | Matching forms, effective anchors and fill rules; mixed pairs return Shape, with explicit arc-flag extrapolation. |
 | Shape addition/accumulation | `deferred` | Composition operations remain outside the shape value model. |
