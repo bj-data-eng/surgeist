@@ -32,6 +32,7 @@
 //! | [`timing`] | Timing parameters, phases and the timing sample. |
 //! | [`interpolation`] | Interpolable values, property keys and pairs. |
 //! | [`computed`] | Canonical computed atoms, symbolic math and property combination. |
+//! | [`transform`] | Resolved 2D functions, list addition and affine interpolation. |
 //! | [`sample`] | Sampled property results and next-frame hints. |
 //! | [`transition`] | Transition tracks, lifecycle decisions, and current values. |
 //! | [`keyframe`] | Keyframe tracks, the entry point for keyframe animations. |
@@ -140,6 +141,7 @@ pub mod sample;
 pub mod time;
 pub mod timeline;
 pub mod timing;
+pub mod transform;
 pub mod transition;
 
 /// Crate identity string used by smoke tests and API artifacts.

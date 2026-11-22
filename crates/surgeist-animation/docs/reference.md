@@ -7,11 +7,10 @@ and the library import name `surgeist_animation`. It declares no runtime
 dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
-[src/lib.rs](../src/lib.rs) declares the public modules `computed`,
-`diagnostics`, `easing`,
-`interpolation`, `keyframe`, `keyframe_input`, `progress`, `sample`, `time`,
-`timeline`, `timing`, and `transition`, and the constant `CRATE_NAME`. Each public
-type has one path through its owning module, such as
+[src/lib.rs](../src/lib.rs) declares the public modules `computed`, `diagnostics`,
+`easing`, `interpolation`, `keyframe`, `keyframe_input`, `progress`, `sample`,
+`time`, `timeline`, `timing`, `transform`, and `transition`, and the constant
+`CRATE_NAME`. Each public type has one path through its owning module, such as
 `surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
 source modules and the external consumer targets under
 [tests/](../tests/); crate-level examples are doctests.
@@ -447,11 +446,66 @@ components, convert between spaces, or apply final property range policy.
 
 Permanent unsupported behavior is a stable unsupported outcome.
 Recoverable sample-local arithmetic failure is a failed sample that can later recover.
-Unsupported same-family interpolation, such as transform or composite
-interpolation in this crate, produces `SampleClassification::Unsupported` and
+Unsupported same-family interpolation, such as diagnostic transform markers or
+composite interpolation, produces `SampleClassification::Unsupported` and
 `SampleValue::Unsupported`. Finite arithmetic overflow during an otherwise
 supported interpolation produces `SampleClassification::Failed` and
 `SampleValue::Error`, and later endpoint samples can recover.
+
+## Resolved 2D transforms
+
+[`transform`](../src/transform.rs) owns `ResolvedTransformList`, `TransformFunction`,
+`TransformMatrix`, `CssPixels`, `ScaleFactor`, `TransformAngle` and their numeric
+diagnostics. Scalars and matrix coefficients are finite and immutable. Finite
+negative lengths/scales, zero scales and singular matrices are valid. Matrices
+use CSS column-major `[a,b,c,d,e,f]` order. Lengths are resolved CSS pixels;
+angles have explicit radians, degrees or turns constructors and retain turns.
+Function variants preserve CSS names and optional argument arity.
+
+`TransformValue::resolved(list)` enters the normal interpolation, transition and
+keyframe sampling paths. `resolved_list()` borrows the immutable payload.
+Unsupported marker constructors never parse their text: even `resolved-2d`
+remains an unsupported marker. `kind()` is descriptive text; it does not certify
+a concrete payload. Both endpoints must carry resolved lists for interpolation.
+
+An empty list represents `none`. Sampling pads the shorter list with matching
+identity functions. Functions with matching name/arity interpolate numerically;
+translate/scale derivatives normalize to their common 2D primitives. Different
+skew axes have no shared primitive. At the first unmatched pair, each remaining
+suffix is post-multiplied into a matrix and interpolated as one matrix. Matching
+prefixes retain their function semantics, including full rotation turns.
+`matrix()` pairs use decomposition even when their names match.
+
+Matrix sampling follows the pinned [Transforms 1 algorithm](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#interpolation-of-2d-matrices):
+decompose translation, signed scales, angle and residual; normalize flipped axes;
+adjust matrix rotations to the shorter arc; interpolate components and recompose.
+[#552](https://github.com/bj-data-eng/surgeist/issues/552) selects direct placement
+of extracted affine translation in recomposition. The pinned residual-weighted
+translation does not reconstruct matrices with shear. The selected midpoint of
+`matrix(1,0,1,1,10,20)` and `matrix(1,0,1,1,30,40)` is
+`matrix(1,0,1,1,20,30)`, independently witnessed in Firefox 152 and corroborated
+by [pinned WebKit affine recomposition](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/transforms/TransformationMatrix.cpp#L1878-L1893).
+This bounded selection does not adopt newer 3D algorithms.
+
+Exact singularity of finite matrix endpoints selects whole-value discrete
+fallback: the original from value below progress `0.5`, the to value otherwise.
+The determinant sign compares exact binary significand products, without an
+epsilon or overflowing/underflowing floating determinant products. A singular
+intermediate sample remains a value for caller-owned visibility. Column
+directions are normalized at unit magnitude before restoring scale, so
+rounded subnormal lengths cannot distort the other axis. An established singular
+matrix pair selects fallback before arithmetic in a later unmatched suffix.
+Scalar, decomposition, composition and recomposition overflow instead produce typed
+sample-local arithmetic failure with a function index and transform component.
+Exact zero/one progress returns the original concrete endpoint. Finite eased
+progress outside the unit interval is preserved; output is never clipped.
+
+`ResolvedTransformList::added_to` concatenates lists in operand order, retaining
+all function identities. `to_matrix()` performs checked CSS post-multiplication.
+Parameter accumulation, 3D values, authored calculations, percentage/reference-box
+resolution, transform origins and visibility decisions are outside this
+increment. Callers resolve context before construction and refresh the immutable
+endpoints when it changes; no percentage basis is guessed.
 
 ## Capability table
 
@@ -467,7 +521,8 @@ supported interpolation produces `SampleClassification::Failed` and
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
-| Transform and opaque composite-marker interpolation | `typed-unsupported` | Markers produce typed unsupported samples rather than fallback values. |
+| Resolved 2D transform interpolation and list addition | `supported` | Typed native lists, identity padding, common primitives, matrix suffixes, whole-value singular fallback and checked arithmetic. |
+| 3D transforms, transform accumulation, diagnostic transform markers and composite interpolation | `typed-unsupported` | Markers retain explicit unsupported outcomes; no authored or 3D lowering is implied. |
 | CSS parsing, cascade, transition generation, keyframe lookup, endpoint synthesis, property transitionability, allow-discrete policy, and shorthand/list expansion | `deferred/root-owned` | Root/style normalize authored declarations into this crate's typed tracks. |
 | Runtime clocks, scheduling, lifecycle, invalidation, pause bookkeeping, and external input changes | `deferred/root-owned` | Runtime/root decide when to sample and pass `ElapsedTime` plus play state. |
 | Color-space conversion, gamut mapping, clipping, and final property range clamping | `root-owned` | Root/consumers prepare interpolation-space values and apply downstream output policy. |
