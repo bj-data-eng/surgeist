@@ -14,6 +14,7 @@ mod dialog_state;
 mod document_cookie;
 mod document_import;
 mod document_legacy_entrypoints;
+mod document_metadata;
 mod document_referrer;
 mod document_title;
 mod document_tree_properties;
